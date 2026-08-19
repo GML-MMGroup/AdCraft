@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FONT_CATALOG } from "./fontCatalog";
-import { getWebFontStylesheetId, loadWebFont } from "./webFontLoader";
+import {
+  getWebFontStylesheetHref,
+  getWebFontStylesheetId,
+  loadWebFont,
+} from "./webFontLoader";
 
 const webFont = FONT_CATALOG.find((font) => font.source === "web");
 const localFont = FONT_CATALOG.find((font) => font.source === "local");
@@ -36,5 +40,14 @@ describe("home typography web font loader", () => {
     await expect(loadWebFont(systemFont)).resolves.toBeUndefined();
 
     expect(document.head.querySelectorAll("link[data-home-typography-font]")).toHaveLength(0);
+  });
+
+  it("requests only supported variants for a handwritten web font", () => {
+    const dancingScript = FONT_CATALOG.find((font) => font.id === "dancing-script");
+
+    expect(dancingScript).toBeDefined();
+    expect(getWebFontStylesheetHref(dancingScript!)).toBe(
+      "https://fonts.googleapis.com/css2?family=Dancing%20Script:wght@400;500;600;700&display=swap",
+    );
   });
 });

@@ -1,5 +1,11 @@
 export type FontSource = "local" | "system" | "web";
 
+export type FontCollection =
+  | "handwritten-signature"
+  | "handwritten-casual"
+  | "handwritten-marker"
+  | "handwritten-playful";
+
 export type TypographyRegionId =
   | "heroMain"
   | "heroAccent"
@@ -35,7 +41,176 @@ export type FontCatalogEntry = {
   weights: readonly number[];
   supportsItalic: boolean;
   googleFamily?: string;
+  collection?: FontCollection;
+  allowedRegions?: readonly TypographyRegionId[];
 };
+
+export const HANDWRITTEN_FONT_COLLECTIONS = [
+  { id: "handwritten-signature", label: "Handwritten: Signature & calligraphy" },
+  { id: "handwritten-casual", label: "Handwritten: Casual pen" },
+  { id: "handwritten-marker", label: "Handwritten: Marker & brush" },
+  { id: "handwritten-playful", label: "Handwritten: Playful display" },
+] as const satisfies readonly { id: FontCollection; label: string }[];
+
+type HandwrittenFontDefinition = readonly [
+  id: string,
+  family: string,
+  weights: readonly number[],
+  collection: FontCollection,
+];
+
+const HANDWRITTEN_FONT_DEFINITIONS: readonly HandwrittenFontDefinition[] = [
+  // Signature and calligraphy
+  ["aguafina-script", "Aguafina Script", [400], "handwritten-signature"],
+  ["alex-brush", "Alex Brush", [400], "handwritten-signature"],
+  ["allura", "Allura", [400], "handwritten-signature"],
+  ["arizonia", "Arizonia", [400], "handwritten-signature"],
+  ["babylonica", "Babylonica", [400], "handwritten-signature"],
+  ["beau-rivage", "Beau Rivage", [400], "handwritten-signature"],
+  ["bilbo", "Bilbo", [400], "handwritten-signature"],
+  ["birthstone", "Birthstone", [400], "handwritten-signature"],
+  ["bonheur-royale", "Bonheur Royale", [400], "handwritten-signature"],
+  ["carattere", "Carattere", [400], "handwritten-signature"],
+  ["clicker-script", "Clicker Script", [400], "handwritten-signature"],
+  ["cookie", "Cookie", [400], "handwritten-signature"],
+  ["corinthia", "Corinthia", [400, 700], "handwritten-signature"],
+  ["dancing-script", "Dancing Script", [400, 500, 600, 700], "handwritten-signature"],
+  ["ephesis", "Ephesis", [400], "handwritten-signature"],
+  ["euphoria-script", "Euphoria Script", [400], "handwritten-signature"],
+  ["fleur-de-leah", "Fleur De Leah", [400], "handwritten-signature"],
+  ["great-vibes", "Great Vibes", [400], "handwritten-signature"],
+  ["herr-von-muellerhoff", "Herr Von Muellerhoff", [400], "handwritten-signature"],
+  ["imperial-script", "Imperial Script", [400], "handwritten-signature"],
+  ["italianno", "Italianno", [400], "handwritten-signature"],
+  ["kaushan-script", "Kaushan Script", [400], "handwritten-signature"],
+  ["lavishly-yours", "Lavishly Yours", [400], "handwritten-signature"],
+  ["luxurious-script", "Luxurious Script", [400], "handwritten-signature"],
+  ["meow-script", "Meow Script", [400], "handwritten-signature"],
+  ["monsieur-la-doulaise", "Monsieur La Doulaise", [400], "handwritten-signature"],
+  ["montecarlo", "MonteCarlo", [400], "handwritten-signature"],
+  ["ms-madi", "Ms Madi", [400], "handwritten-signature"],
+  ["parisienne", "Parisienne", [400], "handwritten-signature"],
+  ["petit-formal-script", "Petit Formal Script", [400], "handwritten-signature"],
+  ["pinyon-script", "Pinyon Script", [400], "handwritten-signature"],
+  ["qwigley", "Qwigley", [400], "handwritten-signature"],
+  ["rochester", "Rochester", [400], "handwritten-signature"],
+  ["rouge-script", "Rouge Script", [400], "handwritten-signature"],
+  ["sacramento", "Sacramento", [400], "handwritten-signature"],
+  ["satisfy", "Satisfy", [400], "handwritten-signature"],
+  ["tangerine", "Tangerine", [400, 700], "handwritten-signature"],
+  ["windsong", "WindSong", [400, 500], "handwritten-signature"],
+  ["yellowtail", "Yellowtail", [400], "handwritten-signature"],
+
+  // Natural handwriting and casual pen
+  ["annie-use-your-telescope", "Annie Use Your Telescope", [400], "handwritten-casual"],
+  ["architects-daughter", "Architects Daughter", [400], "handwritten-casual"],
+  ["bad-script", "Bad Script", [400], "handwritten-casual"],
+  ["caveat", "Caveat", [400, 500, 600, 700], "handwritten-casual"],
+  ["cedarville-cursive", "Cedarville Cursive", [400], "handwritten-casual"],
+  ["coming-soon", "Coming Soon", [400], "handwritten-casual"],
+  ["covered-by-your-grace", "Covered By Your Grace", [400], "handwritten-casual"],
+  ["dawning-of-a-new-day", "Dawning of a New Day", [400], "handwritten-casual"],
+  ["delius", "Delius", [400], "handwritten-casual"],
+  ["give-you-glory", "Give You Glory", [400], "handwritten-casual"],
+  ["gloria-hallelujah", "Gloria Hallelujah", [400], "handwritten-casual"],
+  ["handlee", "Handlee", [400], "handwritten-casual"],
+  ["homemade-apple", "Homemade Apple", [400], "handwritten-casual"],
+  ["indie-flower", "Indie Flower", [400], "handwritten-casual"],
+  ["just-another-hand", "Just Another Hand", [400], "handwritten-casual"],
+  ["kalam", "Kalam", [300, 400, 700], "handwritten-casual"],
+  ["la-belle-aurore", "La Belle Aurore", [400], "handwritten-casual"],
+  ["loved-by-the-king", "Loved by the King", [400], "handwritten-casual"],
+  ["mansalva", "Mansalva", [400], "handwritten-casual"],
+  ["nanum-pen-script", "Nanum Pen Script", [400], "handwritten-casual"],
+  ["neucha", "Neucha", [400], "handwritten-casual"],
+  ["nothing-you-could-do", "Nothing You Could Do", [400], "handwritten-casual"],
+  ["oooh-baby", "Oooh Baby", [400], "handwritten-casual"],
+  ["over-the-rainbow", "Over the Rainbow", [400], "handwritten-casual"],
+  ["patrick-hand", "Patrick Hand", [400], "handwritten-casual"],
+  ["patrick-hand-sc", "Patrick Hand SC", [400], "handwritten-casual"],
+  ["reenie-beanie", "Reenie Beanie", [400], "handwritten-casual"],
+  ["schoolbell", "Schoolbell", [400], "handwritten-casual"],
+  ["shadows-into-light", "Shadows Into Light", [400], "handwritten-casual"],
+  ["shadows-into-light-two", "Shadows Into Light Two", [400], "handwritten-casual"],
+  ["sue-ellen-francisco", "Sue Ellen Francisco", [400], "handwritten-casual"],
+  ["swanky-and-moo-moo", "Swanky and Moo Moo", [400], "handwritten-casual"],
+  ["the-girl-next-door", "The Girl Next Door", [400], "handwritten-casual"],
+  ["waiting-for-the-sunrise", "Waiting for the Sunrise", [400], "handwritten-casual"],
+  ["walter-turncoat", "Walter Turncoat", [400], "handwritten-casual"],
+  ["zeyada", "Zeyada", [400], "handwritten-casual"],
+
+  // Marker and brush lettering
+  ["amatic-sc", "Amatic SC", [400, 700], "handwritten-marker"],
+  ["caveat-brush", "Caveat Brush", [400], "handwritten-marker"],
+  ["chilanka", "Chilanka", [400], "handwritten-marker"],
+  ["comforter-brush", "Comforter Brush", [400], "handwritten-marker"],
+  ["delicious-handrawn", "Delicious Handrawn", [400], "handwritten-marker"],
+  ["east-sea-dokdo", "East Sea Dokdo", [400], "handwritten-marker"],
+  ["gaegu", "Gaegu", [300, 400, 700], "handwritten-marker"],
+  ["gamja-flower", "Gamja Flower", [400], "handwritten-marker"],
+  ["gochi-hand", "Gochi Hand", [400], "handwritten-marker"],
+  ["grape-nuts", "Grape Nuts", [400], "handwritten-marker"],
+  ["hachi-maru-pop", "Hachi Maru Pop", [400], "handwritten-marker"],
+  ["hi-melody", "Hi Melody", [400], "handwritten-marker"],
+  ["itim", "Itim", [400], "handwritten-marker"],
+  ["kolker-brush", "Kolker Brush", [400], "handwritten-marker"],
+  ["nanum-brush-script", "Nanum Brush Script", [400], "handwritten-marker"],
+  ["permanent-marker", "Permanent Marker", [400], "handwritten-marker"],
+  ["rock-salt", "Rock Salt", [400], "handwritten-marker"],
+  ["sedgwick-ave", "Sedgwick Ave", [400], "handwritten-marker"],
+  ["sedgwick-ave-display", "Sedgwick Ave Display", [400], "handwritten-marker"],
+  ["short-stack", "Short Stack", [400], "handwritten-marker"],
+  ["sriracha", "Sriracha", [400], "handwritten-marker"],
+  ["water-brush", "Water Brush", [400], "handwritten-marker"],
+  ["yomogi", "Yomogi", [400], "handwritten-marker"],
+
+  // Playful and editorial handwriting
+  ["amita", "Amita", [400, 700], "handwritten-playful"],
+  ["are-you-serious", "Are You Serious", [400], "handwritten-playful"],
+  ["berkshire-swash", "Berkshire Swash", [400], "handwritten-playful"],
+  ["bonbon", "Bonbon", [400], "handwritten-playful"],
+  ["borel", "Borel", [400], "handwritten-playful"],
+  ["butterfly-kids", "Butterfly Kids", [400], "handwritten-playful"],
+  ["calligraffitti", "Calligraffitti", [400], "handwritten-playful"],
+  ["crafty-girls", "Crafty Girls", [400], "handwritten-playful"],
+  ["delius-swash-caps", "Delius Swash Caps", [400], "handwritten-playful"],
+  ["delius-unicase", "Delius Unicase", [400, 700], "handwritten-playful"],
+  ["eagle-lake", "Eagle Lake", [400], "handwritten-playful"],
+  ["fuggles", "Fuggles", [400], "handwritten-playful"],
+  ["fuzzy-bubbles", "Fuzzy Bubbles", [400, 700], "handwritten-playful"],
+  ["julee", "Julee", [400], "handwritten-playful"],
+  ["just-me-again-down-here", "Just Me Again Down Here", [400], "handwritten-playful"],
+  ["lakki-reddy", "Lakki Reddy", [400], "handwritten-playful"],
+  ["leckerli-one", "Leckerli One", [400], "handwritten-playful"],
+  ["merienda", "Merienda", [300, 400, 500, 600, 700, 800, 900], "handwritten-playful"],
+  ["nerko-one", "Nerko One", [400], "handwritten-playful"],
+  ["niconne", "Niconne", [400], "handwritten-playful"],
+  ["pangolin", "Pangolin", [400], "handwritten-playful"],
+  ["playpen-sans", "Playpen Sans", [100, 200, 300, 400, 500, 600, 700, 800], "handwritten-playful"],
+  ["princess-sofia", "Princess Sofia", [400], "handwritten-playful"],
+  ["rancho", "Rancho", [400], "handwritten-playful"],
+  ["redressed", "Redressed", [400], "handwritten-playful"],
+  ["romanesco", "Romanesco", [400], "handwritten-playful"],
+  ["sofia", "Sofia", [400], "handwritten-playful"],
+  ["sunshiney", "Sunshiney", [400], "handwritten-playful"],
+  ["twinkle-star", "Twinkle Star", [400], "handwritten-playful"],
+  ["vibur", "Vibur", [400], "handwritten-playful"],
+  ["yesteryear", "Yesteryear", [400], "handwritten-playful"],
+];
+
+const HERO_ACCENT_HANDWRITTEN_FONTS: readonly FontCatalogEntry[] =
+  HANDWRITTEN_FONT_DEFINITIONS.map(([id, family, weights, collection]) => ({
+    id,
+    label: family,
+    family,
+    fallback: "cursive",
+    source: "web",
+    weights,
+    supportsItalic: false,
+    googleFamily: family,
+    collection,
+    allowedRegions: ["heroAccent"],
+  }));
 
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   { id: "manrope", label: "Manrope", family: "Manrope", fallback: "sans-serif", source: "local", weights: [400, 500, 600, 700, 800], supportsItalic: false },
@@ -94,7 +269,14 @@ export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   { id: "roboto-mono", label: "Roboto Mono", family: "Roboto Mono", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Roboto Mono" },
   { id: "inconsolata", label: "Inconsolata", family: "Inconsolata", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: false, googleFamily: "Inconsolata" },
   { id: "source-code-pro", label: "Source Code Pro", family: "Source Code Pro", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Source Code Pro" },
+  ...HERO_ACCENT_HANDWRITTEN_FONTS,
 ];
+
+export function getFontsForRegion(regionId: TypographyRegionId): readonly FontCatalogEntry[] {
+  return FONT_CATALOG.filter(
+    (font) => !font.allowedRegions || font.allowedRegions.includes(regionId),
+  );
+}
 
 export const TYPOGRAPHY_REGION_DEFINITIONS: readonly TypographyRegionDefinition[] = [
   { id: "heroMain", label: "Hero main" },
@@ -110,7 +292,7 @@ export const TYPOGRAPHY_REGION_DEFINITIONS: readonly TypographyRegionDefinition[
 
 export const DEFAULT_REGION_SETTINGS: Record<TypographyRegionId, TypographyRegionSettings> = {
   heroMain: { fontId: "instrument-serif", fontWeight: 400, fontStyle: "normal", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0.012, textTransform: "none" },
-  heroAccent: { fontId: "instrument-serif", fontWeight: 400, fontStyle: "italic", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0.012, textTransform: "none" },
+  heroAccent: { fontId: "georgia", fontWeight: 400, fontStyle: "italic", fontSizePx: 70, lineHeight: 1.2, letterSpacingEm: 0.046, textTransform: "none" },
   heroBody: { fontId: "manrope", fontWeight: 400, fontStyle: "normal", fontSizePx: 18, lineHeight: 1.6, letterSpacingEm: 0, textTransform: "none" },
   heroAction: { fontId: "manrope", fontWeight: 700, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },
   navigation: { fontId: "manrope", fontWeight: 600, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },

@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_CANVAS_VISIBLE_NODE_TYPES,
   createDefaultCanvasNodeRequest,
   sourceAssetSemanticRole,
   sourceAssetStructuredContent,
 } from "./nodeDefaults.ts";
 
 describe("Agent Canvas node defaults", () => {
+  it("exposes all six canonical authoring node types", () => {
+    expect(AGENT_CANVAS_VISIBLE_NODE_TYPES).toEqual([
+      "text",
+      "script",
+      "image",
+      "video",
+      "audio",
+      "editing",
+    ]);
+  });
+
   it.each([
     ["text", "general_text"],
     ["script", "script"],
@@ -42,10 +54,15 @@ describe("Agent Canvas node defaults", () => {
     });
   });
 
-  it("creates an empty Script as a runnable draft instead of a completed document", () => {
+  it("creates an empty Script as a runnable draft", () => {
     const request = createDefaultCanvasNodeRequest("script", { x: 0, y: 0 });
 
-    expect(request.generation_prompt).toBe("");
+    expect(request).toMatchObject({
+      node_type: "script",
+      creative_role: "script",
+      generation_prompt: "",
+    });
     expect(request.structured_content).toBeUndefined();
   });
+
 });

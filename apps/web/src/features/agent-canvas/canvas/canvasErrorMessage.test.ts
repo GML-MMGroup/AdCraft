@@ -4,6 +4,15 @@ import { V2ApiError } from "../../../api/v2Client.ts";
 import { canvasAuthoringErrorMessage } from "./canvasErrorMessage.ts";
 
 describe("canvasAuthoringErrorMessage", () => {
+  it("explains a retryable World Setting projection failure", () => {
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 409,
+      code: "world_setting_projection_unavailable",
+      message: "Projection service unavailable.",
+      details: { retryable: true },
+    }))).toBe("World Setting context is temporarily unavailable. Retry this node.");
+  });
+
   it("turns cycle and capability failures into actionable canvas messages", () => {
     expect(canvasAuthoringErrorMessage(new V2ApiError({
       status: 409,

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { PlusIcon } from "../../../icons.tsx";
-import type { CanvasNodeTypeV2, CanvasPositionV2 } from "../../../types-v2.ts";
+import type { CanvasPositionV2 } from "../../../types-v2.ts";
+import type { AgentCanvasVisibleNodeTypeV2 } from "../model/nodeDefaults.ts";
 import { AgentCanvasNodePicker } from "./AgentCanvasNodePicker.tsx";
 
 interface AgentCanvasContextMenuProps {
   menuPosition: CanvasPositionV2;
   canvasPosition: CanvasPositionV2;
-  onCreateNode: (nodeType: CanvasNodeTypeV2, position: CanvasPositionV2) => void;
+  onCreateNode: (nodeType: AgentCanvasVisibleNodeTypeV2, position: CanvasPositionV2) => void;
   onClose: () => void;
+  onRelocate?: (menuPosition: CanvasPositionV2) => void;
 }
 
 const MENU_WIDTH = 212;
@@ -28,6 +30,7 @@ export function AgentCanvasContextMenu({
   canvasPosition,
   onCreateNode,
   onClose,
+  onRelocate,
 }: AgentCanvasContextMenuProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT;
@@ -51,6 +54,11 @@ export function AgentCanvasContextMenu({
         className="agent-canvas-context-menu__backdrop"
         aria-label="Close canvas menu"
         onClick={onClose}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setPickerOpen(false);
+          onRelocate?.({ x: event.clientX, y: event.clientY });
+        }}
       />
       <div
         className="agent-canvas-context-menu"

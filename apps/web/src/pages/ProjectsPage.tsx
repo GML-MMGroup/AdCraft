@@ -7,6 +7,7 @@ import type { RouteName } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
+import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import "./projects.css";
 
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
@@ -14,7 +15,17 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   const [search, setSearch] = useState("");
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const { savedProjects, startNewProject, openProject, moveProjectToTrash, renameProject, toggleProjectFavorite } = useApp();
+  const {
+    savedProjects,
+    startNewProject,
+    openProject,
+    moveProjectToTrash,
+    renameProject,
+    toggleProjectFavorite,
+    projectCatalogError,
+    projectCatalogRefreshing,
+    refreshProjects,
+  } = useApp();
 
   const createProject = useCallback(() => {
     void startNewProject().then((created) => {
@@ -85,6 +96,11 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
           </button>
         </div>
       </div>
+      <ProjectCatalogNotice
+        error={projectCatalogError}
+        refreshing={projectCatalogRefreshing}
+        onRetry={refreshProjects}
+      />
       <div className="grid">
         <CreateCard title="New Project" onClick={createProject} />
         <ProjectList

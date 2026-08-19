@@ -1,494 +1,236 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { AssetEntityViewerFallback, AssetsPage } from "./AssetsPage.tsx";
-import AssetEntityViewer from "../features/assets/AssetEntityViewer.tsx";
-import { v2AssetMediaUrl } from "../features/assets/v2AssetLibraryModel.ts";
+import { AssetsPage } from "./AssetsPage.tsx";
 
-const assetStyles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+const canonicalApi = vi.hoisted(() => ({
+  listAgentCanvasMyAssets: vi.fn(),
+  listAgentCanvasRecommendedAssets: vi.fn(),
+}));
 
-const assetFixture = vi.hoisted(() => {
-  const summary = {
-    entity_id: "recommended-v1-character-001",
-    scope: "my",
-    entity_type: "character",
-    library_category: "characters",
-    display_name: "Portrait Spark",
-    description: "Portrait reference",
-    tags: ["portrait"],
-    is_favorite: false,
-    status: "active",
-    preview_member: null,
-    preview_url: "/media/portrait-spark.webp",
-    member_count: 1,
-  };
-  const detail = {
-    ...summary,
-    scope: "recommended",
-    members: [
-      {
-        member_id: "portrait-front",
-        semantic_type: "character_front",
-        asset_id: "portrait-front-asset",
-        version_id: "portrait-front-version",
-        public_url: "/media/portrait-front.webp",
-        thumbnail_url: "/media/portrait-front-thumb.webp",
-        media_type: "image",
-        display_name: "Front view",
-        is_primary: true,
-      },
-      {
-        member_id: "portrait-side",
-        semantic_type: "character_side",
-        asset_id: "portrait-side-asset",
-        version_id: "portrait-side-version",
-        public_url: "/media/portrait-side.webp",
-        thumbnail_url: "/media/portrait-side-thumb.webp",
-        media_type: "image",
-        display_name: "Side view",
-      },
-    ],
-    catalog_source_url: "https://example.com/catalog",
-    license_id: "CC0-1.0",
-    attribution: "Example catalog",
-  };
-  const secondSummary = {
-    ...summary,
-    entity_id: "recommended-v1-character-002",
-    display_name: "Portrait Ember",
-    preview_url: "/media/portrait-ember.webp",
-  };
-  const secondDetail = {
-    ...detail,
-    ...secondSummary,
-    members: [
-      {
-        ...detail.members[0],
-        member_id: "ember-front",
-        asset_id: "ember-front-asset",
-        version_id: "ember-front-version",
-        public_url: "/media/ember-front.webp",
-        thumbnail_url: "/media/ember-front-thumb.webp",
-        display_name: "Ember front view",
-      },
-    ],
-  };
+vi.mock("../api/agentCanvasApi.ts", () => ({
+  agentCanvasApi: canonicalApi,
+}));
 
+function imageLibraryItem(scope: "my" | "recommended", category: string) {
   return {
-    detail,
-    entities: [summary],
-    fetchDetail: vi.fn(),
-    loadMore: vi.fn(),
-    refresh: vi.fn(),
-    secondDetail,
-    secondSummary,
-    summary,
-  };
-});
-
-vi.mock("../features/assets/useRecommendedCatalog.ts", () => ({
-  useRecommendedCatalog: () => ({
-    status: {
-      catalog_key: "adcraft-recommended-assets-v1",
-      status: "ready",
-      entity_count: 1,
-      member_count: 1,
-      expected_relative_path: "data/assets/catalogs/recommended/",
-      message: "Recommended assets are ready.",
+    entity_id: `${scope}-${category}-entity`,
+    scope,
+    entity_type: category === "characters" ? "character" : category === "scenes" ? "scene" : "prop",
+    library_category: category,
+    display_name: `${scope} ${category}`,
+    tags: [category],
+    status: "active",
+    preview_url: `/api/v2/assets/${scope}-${category}-thumbnail/content`,
+    preview_member: {
+      asset_id: `${scope}-${category}-asset`,
+      version_id: `${scope}-${category}-version`,
+      public_url: `/api/v2/assets/${scope}-${category}-asset/content`,
     },
-    error: null,
-    refresh: vi.fn(),
-  }),
-}));
+  };
+}
 
-vi.mock("../features/assets/useV2AssetLibrary.ts", () => ({
-  useV2AssetLibrary: ({ category }: { category: string }) => ({
-    entities: assetFixture.entities,
-    nextCursor: null,
-    loading: category === "scenes",
-    loadingMore: false,
-    error: null,
-    refresh: assetFixture.refresh,
-    loadMore: assetFixture.loadMore,
-    fetchDetail: assetFixture.fetchDetail,
-  }),
-}));
+function imageLibraryItems(scope: "my" | "recommended", category: string, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...imageLibraryItem(scope, category),
+    entity_id: `${scope}-${category}-entity-${index + 1}`,
+    display_name: `${scope} ${category} ${index + 1}`,
+    preview_member: {
+      asset_id: `${scope}-${category}-asset-${index + 1}`,
+      version_id: `${scope}-${category}-version-${index + 1}`,
+      public_url: `/api/v2/assets/${scope}-${category}-asset-${index + 1}/content`,
+    },
+  }));
+}
 
 describe("AssetsPage", () => {
   beforeEach(() => {
-    assetFixture.entities.splice(0, assetFixture.entities.length, assetFixture.summary);
-    assetFixture.fetchDetail.mockImplementation(async (entityId: string) => (
-      entityId === assetFixture.secondSummary.entity_id
-        ? assetFixture.secondDetail
-        : assetFixture.detail
-    ));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    canonicalApi.listAgentCanvasMyAssets.mockReset();
+    canonicalApi.listAgentCanvasRecommendedAssets.mockReset();
+    canonicalApi.listAgentCanvasMyAssets.mockResolvedValue({
+      items: [imageLibraryItem("my", "characters")],
+    });
+    canonicalApi.listAgentCanvasRecommendedAssets.mockResolvedValue({
+      items: [imageLibraryItem("recommended", "characters")],
+    });
   });
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
-  it("renders a Discover-style card using only the display name", () => {
-    const { container } = render(<AssetsPage />);
-    const card = screen.getByRole("button", { name: "Open asset Portrait Spark" });
+  it("loads My Assets by category through the canonical Agent Canvas API", async () => {
+    render(<AssetsPage />);
 
-    expect(card.textContent).toBe("Portrait Spark");
-    expect(card.querySelector(".play-dot")).toBeNull();
-    expect(card.textContent).not.toContain("recommended-v1-character-001");
-    expect(container.querySelector(".v2-asset-entity-card-title")).toBeTruthy();
-  });
+    await waitFor(() => {
+      expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenCalledWith("characters");
+    });
+    expect(canonicalApi.listAgentCanvasRecommendedAssets).not.toHaveBeenCalled();
 
-  it("keeps the grid layout unchanged when a card opens the viewer", async () => {
-    const { container } = render(<AssetsPage />);
-    const layout = container.querySelector(".v2-asset-library-layout");
-
-    expect(screen.queryByText("Select an asset to view its members.")).toBeNull();
-    expect(layout?.classList.contains("is-detail-open")).toBe(false);
-
-    fireEvent.click(container.querySelector(".v2-asset-entity-card") as HTMLElement);
-
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
-    expect(layout?.classList.contains("is-detail-open")).toBe(false);
-  });
-
-  it("does not offer saving for a recommended detail", async () => {
-    const { container } = render(<AssetsPage />);
-
-    fireEvent.click(container.querySelector(".v2-asset-entity-card") as HTMLElement);
-
-    await screen.findByRole("dialog", { name: "Portrait Spark" });
-    expect(screen.queryByRole("button", { name: "Save to My Assets" })).toBeNull();
-  });
-
-  it("removes stale cards while a new category is loading", () => {
-    const { container } = render(<AssetsPage />);
-
-    expect(container.querySelectorAll(".v2-asset-entity-card")).toHaveLength(1);
     fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
-
-    expect(screen.getByText("Loading assets...")).toBeTruthy();
-    expect(container.querySelectorAll(".v2-asset-entity-card")).toHaveLength(0);
-    expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
+    await waitFor(() => {
+      expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenLastCalledWith("scenes");
+    });
   });
 
-  it("contains full-bleed media inside the asset card", () => {
-    const rule = assetStyles.match(/\.v2-asset-entity-card\.v2-asset-discover-card\s*\{([^}]*)\}/);
-    const declarations = document.createElement("div").style;
+  it("loads Recommended Assets through the canonical API without catalog polling", async () => {
+    render(<AssetsPage />);
 
-    expect(rule).not.toBeNull();
-    declarations.cssText = rule?.[1] ?? "";
-    expect(declarations.position).toBe("relative");
-    expect(declarations.overflow).toBe("hidden");
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    await waitFor(() => {
+      expect(canonicalApi.listAgentCanvasRecommendedAssets).toHaveBeenCalledWith("characters");
+    });
+    expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenCalledTimes(1);
   });
 
-  it("uses five fluid columns and intrinsic discover card media on desktop", () => {
-    const gridRule = assetStyles.match(/\.v2-asset-library-grid\s*\{([^}]*)\}/);
-    const cardRule = assetStyles.match(/\.v2-asset-entity-card\.v2-asset-discover-card\s*\{([^}]*)\}/);
-    const mediaRule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\s*\{([^}]*)\}/);
-    const gridDeclarations = document.createElement("div").style;
-    const cardDeclarations = document.createElement("div").style;
-    const mediaDeclarations = document.createElement("div").style;
+  it("keeps Recommended Assets viewable while using their canonical content URL for the original preview", async () => {
+    render(<AssetsPage />);
 
-    expect(gridRule).not.toBeNull();
-    expect(cardRule).not.toBeNull();
-    expect(mediaRule).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    const card = await screen.findByRole("button", { name: "Open asset recommended characters" });
+    fireEvent.click(card);
 
-    gridDeclarations.cssText = gridRule?.[1] ?? "";
-    cardDeclarations.cssText = cardRule?.[1] ?? "";
-    mediaDeclarations.cssText = mediaRule?.[1] ?? "";
-
-    expect(gridDeclarations.gridTemplateColumns).toBe("repeat(5, minmax(0, 1fr))");
-    expect(cardDeclarations.aspectRatio).toBe("");
-    expect(cardDeclarations.padding).toBe("0px");
-    expect(mediaDeclarations.position).toBe("relative");
-    expect(mediaDeclarations.height).toBe("auto");
-    expect(mediaDeclarations.objectFit).toBe("contain");
+    const dialog = await screen.findByRole("dialog", { name: "recommended characters" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("/api/v2/assets/recommended-characters-asset/content");
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Trash" })).toBeNull();
   });
 
-  it("uses non-overlapping five-to-one column ranges at the exact breakpoints", () => {
-    const breakpointRules = [
-      [1279, "repeat(4, minmax(0, 1fr))"],
-      [959, "repeat(3, minmax(0, 1fr))"],
-      [719, "repeat(2, minmax(0, 1fr))"],
-      [479, "minmax(0, 1fr)"],
-    ] as const;
+  it("filters canonical list results client-side", async () => {
+    render(<AssetsPage />);
 
-    for (const [maxWidth, columns] of breakpointRules) {
-      const rule = assetStyles.match(
-        new RegExp(`@media \\(max-width: ${maxWidth}px\\) \\{\\s*\\.v2-asset-library-grid \\{([^}]*)\\}`),
-      );
-      const declarations = document.createElement("div").style;
+    await screen.findByRole("button", { name: "Open asset my characters" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search assets" }), { target: { value: "not present" } });
 
-      expect(rule).not.toBeNull();
-      declarations.cssText = rule?.[1] ?? "";
-      expect(declarations.gridTemplateColumns).toBe(columns);
-    }
+    expect(screen.getByText("No assets found.")).toBeTruthy();
+    expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps empty discover media in normal flow with a 4/3 fallback footprint", () => {
-    const rule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\.is-empty\s*\{([^}]*)\}/);
-    const declarations = document.createElement("div").style;
-
-    expect(rule).not.toBeNull();
-    declarations.cssText = rule?.[1] ?? "";
-    expect(declarations.position).toBe("relative");
-    expect(declarations.aspectRatio).toBe("4 / 3");
-  });
-
-  it("contains asset card media without cropping it", () => {
-    const rule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\s*\{([^}]*)\}/);
-    const declarations = document.createElement("div").style;
-
-    expect(rule).not.toBeNull();
-    declarations.cssText = rule?.[1] ?? "";
-    expect(declarations.objectFit).toBe("contain");
-  });
-
-  it("defers card video metadata and shows its poster first", () => {
-    class DeferredIntersectionObserver {
-      observe() {}
-      disconnect() {}
-    }
-    vi.stubGlobal("IntersectionObserver", DeferredIntersectionObserver);
-    assetFixture.entities.splice(0, assetFixture.entities.length, {
-      ...assetFixture.summary,
-      preview_member: {
-        member_id: "video-preview",
-        asset_id: "video-asset",
-        version_id: "video-version",
-        public_url: "/media/preview.mp4",
-        thumbnail_url: "/media/preview-poster.webp",
-        media_type: "video",
-      },
+  it("uses a lead contact sheet cluster before the patterned browse flow", async () => {
+    canonicalApi.listAgentCanvasMyAssets.mockResolvedValue({
+      items: imageLibraryItems("my", "characters", 10),
     });
 
     const { container } = render(<AssetsPage />);
-    const video = container.querySelector(".v2-asset-media.is-card") as HTMLVideoElement;
 
-    expect(video.tagName).toBe("VIDEO");
-    expect(video.getAttribute("src")).toBeNull();
-    expect(video.getAttribute("preload")).toBe("none");
-    expect(video.getAttribute("poster")).toBe("/media/preview-poster.webp");
+    await screen.findByRole("button", { name: "Open asset my characters 1" });
+    expect(container.querySelectorAll('[data-gallery-placement="feature"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-gallery-placement="support"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-gallery-placement="flow"]')).toHaveLength(5);
+    expect(container.querySelector('[data-gallery-size="feature"]')).toBeTruthy();
+    expect(container.querySelector('[data-gallery-size="wide"]')).toBeTruthy();
   });
 
-  it("opens the selected asset in a dismissible modal viewer", async () => {
+  it("uses a hologram scene gallery for Recommended Assets scenes and keeps original scene previews available", async () => {
+    canonicalApi.listAgentCanvasRecommendedAssets.mockResolvedValue({
+      items: imageLibraryItems("recommended", "scenes", 5).map((item, index) => ({
+        ...item,
+        entity_id: `recommended-v1-scene-${String(index + 1).padStart(3, "0")}`,
+        tags: ["scenes", index % 2 === 0 ? "night" : "interior"],
+      })),
+    });
+
     const { container } = render(<AssetsPage />);
-    const card = screen.getByRole("button", { name: "Open asset Portrait Spark" });
 
-    fireEvent.click(card);
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Portrait Spark" });
-    const backdrop = dialog.closest(".v2-asset-viewer-backdrop");
-    expect(backdrop?.parentElement).toBe(document.body);
-    expect(screen.getAllByRole("button", { name: "Close asset viewer" })).toHaveLength(1);
-    expect(dialog.querySelector(".v2-asset-viewer-heading")).toBeNull();
-    expect(dialog.querySelector(".v2-asset-viewer-thumbnails")).toBeTruthy();
-    expect(dialog.querySelector(".v2-asset-viewer-details")).toBeNull();
-    expect(dialog.querySelector("form")).toBeNull();
-    expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
-    expect(screen.getByRole("img", { name: "Front view" }).getAttribute("src")).toBe("/media/portrait-front.webp");
-    expect(screen.getByText("Front view, view 1 of 2")).toBeTruthy();
+    await screen.findByRole("button", { name: "Open original scene recommended scenes 1" });
+    expect(container.querySelector('[data-testid="recommended-scenes-hologram"]')).toBeTruthy();
+    expect(container.querySelector("[data-hologram-scene-option]")).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Recommended scene selection" })).toBeNull();
+    expect(container.querySelector(".asset-contact-sheet")).toBeNull();
+    expect(screen.getByText("recommended scenes 1", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
+    expect(container.querySelectorAll(".recommended-scenes-hologram__scene")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next hologram scene" }));
+    await waitFor(() => {
+      expect(screen.getByText("recommended scenes 2", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
+    });
+    const transitionScenes = Array.from(container.querySelectorAll<HTMLImageElement>(".recommended-scenes-hologram__scene"));
+    expect(transitionScenes.map((scene) => scene.className)).toEqual([
+      "recommended-scenes-hologram__scene is-outgoing is-forward",
+      "recommended-scenes-hologram__scene is-incoming is-forward",
+    ]);
+    expect(container.querySelector(".recommended-scenes-hologram__scene.is-outgoing.is-forward")).toBeTruthy();
+    expect(container.querySelector(".recommended-scenes-hologram__scene.is-incoming.is-forward")).toBeTruthy();
 
-    expect((await screen.findByRole("img", { name: "Side view" })).getAttribute("src")).toBe("/media/portrait-side.webp");
-    expect(screen.getByText("Side view, view 2 of 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous hologram scene" }));
+    await waitFor(() => {
+      expect(screen.getByText("recommended scenes 1", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
+    });
 
-    fireEvent.keyDown(document, { key: "Escape" });
-
-    expect(screen.queryByRole("dialog", { name: "Portrait Spark" })).toBeNull();
-    expect(document.activeElement).toBe(card);
+    fireEvent.click(screen.getByRole("button", { name: "Open original scene recommended scenes 1" }));
+    const dialog = await screen.findByRole("dialog", { name: "recommended scenes 1" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("/api/v2/assets/recommended-scenes-asset-1/content");
   });
 
-  it("cycles through displayed asset cards with side arrows and keyboard arrows", async () => {
-    assetFixture.entities.push(assetFixture.secondSummary);
-    render(<AssetsPage />);
-    const firstCard = screen.getByRole("button", { name: "Open asset Portrait Spark" });
-    const secondCard = screen.getByRole("button", { name: "Open asset Portrait Ember" });
+  it("maps each canonical recommended scene ID to its own transparent hologram asset", async () => {
+    canonicalApi.listAgentCanvasRecommendedAssets.mockResolvedValue({
+      items: [
+        { ...imageLibraryItem("recommended", "scenes"), entity_id: "recommended-v1-scene-001", display_name: "First scene" },
+        { ...imageLibraryItem("recommended", "scenes"), entity_id: "recommended-v1-scene-002", display_name: "Second scene" },
+      ],
+    });
 
-    fireEvent.click(firstCard);
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
-    expect(screen.getByRole("img", { name: "Side view" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Next asset" }));
-    expect(await screen.findByRole("dialog", { name: "Portrait Ember" })).toBeTruthy();
-    expect(assetFixture.fetchDetail).toHaveBeenLastCalledWith(assetFixture.secondSummary.entity_id);
-
-    fireEvent.keyDown(document, { key: "ArrowRight" });
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
-    expect(screen.getByRole("img", { name: "Front view" })).toBeTruthy();
-
-    fireEvent.keyDown(document, { key: "ArrowLeft" });
-    expect(await screen.findByRole("dialog", { name: "Portrait Ember" })).toBeTruthy();
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(document.activeElement).toBe(secondCard);
-  });
-
-  it("shows member thumbnails for characters and hides them for scenes", () => {
-    const { rerender } = render(
-      <AssetEntityViewer
-        detail={assetFixture.detail}
-        loading={false}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole("group", { name: "Character views" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Show Front view" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
-    expect(screen.getByRole("img", { name: "Side view" })).toBeTruthy();
-
-    rerender(
-      <AssetEntityViewer
-        detail={{
-          ...assetFixture.detail,
-          entity_id: "scene-1",
-          entity_type: "scene",
-          library_category: "scenes",
-          display_name: "City scene",
-        }}
-        loading={false}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole("group", { name: "Character views" })).toBeNull();
-  });
-
-  it("hides entity navigation when only one asset is displayed", async () => {
-    render(<AssetsPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Open asset Portrait Spark" }));
-
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Previous asset" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Next asset" })).toBeNull();
-  });
-
-  it("closes from the backdrop control and restores card focus", async () => {
     const { container } = render(<AssetsPage />);
-    const card = screen.getByRole("button", { name: "Open asset Portrait Spark" });
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
 
-    fireEvent.click(container.querySelector(".v2-asset-entity-card") as HTMLElement);
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+    await screen.findByRole("button", { name: "Open original scene First scene" });
+    const projection = () => container.querySelector<HTMLImageElement>(".recommended-scenes-hologram__scene");
+    expect(projection()?.getAttribute("src")).toBe("/assets/hologram/scene-001-multi-view.png");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss asset viewer" }));
-
-    expect(screen.queryByRole("dialog", { name: "Portrait Spark" })).toBeNull();
-    expect(document.activeElement).toBe(card);
+    fireEvent.click(screen.getByRole("button", { name: "Next hologram scene" }));
+    await waitFor(() => {
+      expect(container.querySelector<HTMLImageElement>(".recommended-scenes-hologram__scene.is-incoming")?.getAttribute("src")).toBe(
+        "/assets/hologram/scene-002-multi-view.png",
+      );
+    });
   });
 
-  it("restores focus when the asset detail request fails", async () => {
-    assetFixture.fetchDetail.mockRejectedValueOnce(new Error("Asset detail request failed."));
-    render(<AssetsPage />);
-    const card = screen.getByRole("button", { name: "Open asset Portrait Spark" });
+  it("keeps the hologram scene stage unclipped and makes its generated scene asset transparent", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+    const sceneSource = readFileSync(resolve(process.cwd(), "src/features/assets/RecommendedSceneHologram.tsx"), "utf8");
 
-    fireEvent.click(card);
-
-    expect(await screen.findByText("Asset detail request failed.")).toBeTruthy();
-    expect(document.activeElement).toBe(card);
+    expect(styles).toMatch(/\.recommended-scenes-hologram\s*\{[^}]*overflow:\s*visible/s);
+    expect(styles).toMatch(/\.recommended-scenes-hologram__scene\s*\{[^}]*object-fit:\s*contain/s);
+    expect(sceneSource).toContain("hologramSceneUrlForAsset");
   });
 
-  it("keeps the lazy viewer fallback dismissible with the keyboard", () => {
-    const onClose = vi.fn();
-    const onPreviousEntity = vi.fn();
-    const onNextEntity = vi.fn();
-    render(
-      <AssetEntityViewerFallback
-        hasEntityNavigation
-        onPreviousEntity={onPreviousEntity}
-        onNextEntity={onNextEntity}
-        onClose={onClose}
-      />,
-    );
-    const closeButton = screen.getByRole("button", { name: "Close asset viewer" });
+  it("uses an unframed projection stack without a light cone or thumbnail selector", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+    const stageSource = readFileSync(resolve(process.cwd(), "src/features/assets/HologramStage.tsx"), "utf8");
+    const gallerySource = readFileSync(resolve(process.cwd(), "src/features/assets/RecommendedSceneHologram.tsx"), "utf8");
 
-    fireEvent.keyDown(document, { key: "ArrowLeft" });
-    fireEvent.keyDown(document, { key: "ArrowRight" });
-    expect(onPreviousEntity).toHaveBeenCalledOnce();
-    expect(onNextEntity).toHaveBeenCalledOnce();
-
-    fireEvent.keyDown(document, { key: "Tab" });
-    expect(document.activeElement).toBe(closeButton);
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(styles).toMatch(/\.recommended-scenes-hologram__projection-wrap\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*10/s);
+    expect(styles).not.toContain(".recommended-scenes-hologram__beam");
+    expect(stageSource).not.toContain("HologramBeamCanvas");
+    expect(gallerySource).not.toContain("recommended-scenes-hologram__selector");
+    expect(styles).toMatch(/\.recommended-scenes-hologram__nav\s*\{[^}]*border:\s*0[^}]*background:\s*transparent/s);
   });
 
-  it("includes video controls in the viewer keyboard focus loop", async () => {
-    const videoDetail = {
-      ...assetFixture.detail,
-      members: [{ ...assetFixture.detail.members[0], media_type: "video", public_url: "/media/portrait-video.mp4" }],
-    };
-    render(
-      <AssetEntityViewer
-        detail={videoDetail}
-        loading={false}
-        onClose={vi.fn()}
-      />,
-    );
-    const closeButton = screen.getByRole("button", { name: "Close asset viewer" });
-    const video = document.querySelector("video") as HTMLVideoElement;
+  it("defines paired directional scene transitions", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
 
-    await new Promise<void>(requestAnimationFrame);
-    closeButton.focus();
-    fireEvent.keyDown(document, { key: "Tab" });
-
-    expect(document.activeElement).toBe(video);
+    expect(styles).toContain("@keyframes hologram-scene-exit-forward");
+    expect(styles).toContain("@keyframes hologram-scene-enter-forward");
+    expect(styles).toMatch(/hologram-scene-exit-forward[\s\S]*translateX\(-/);
+    expect(styles).toMatch(/hologram-scene-enter-forward[\s\S]*translateX\(/);
   });
 
-  it("centers a media-only lightbox against the viewport without cropping", () => {
-    const backdropRule = assetStyles.match(/\.v2-asset-viewer-backdrop\s*\{([^}]*)\}/);
-    const viewerRule = assetStyles.match(/\.v2-asset-viewer\s*\{([^}]*)\}/);
-    const stageRule = assetStyles.match(/\.v2-asset-viewer-stage\s*\{([^}]*)\}/);
-    const mediaRule = assetStyles.match(/\.v2-asset-viewer-stage \.v2-asset-media,\s*\.v2-asset-viewer-stage \.v2-asset-audio\s*\{([^}]*)\}/);
-    const backdropDeclarations = document.createElement("div").style;
-    const viewerDeclarations = document.createElement("div").style;
-    const stageDeclarations = document.createElement("div").style;
-    const mediaDeclarations = document.createElement("div").style;
+  it("does not retain retired standalone asset-library route dependencies", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/pages/AssetsPage.tsx"), "utf8");
 
-    expect(backdropRule).not.toBeNull();
-    expect(viewerRule).not.toBeNull();
-    expect(stageRule).not.toBeNull();
-    expect(mediaRule).not.toBeNull();
-
-    backdropDeclarations.cssText = backdropRule?.[1] ?? "";
-    viewerDeclarations.cssText = viewerRule?.[1] ?? "";
-    stageDeclarations.cssText = stageRule?.[1] ?? "";
-    mediaDeclarations.cssText = mediaRule?.[1] ?? "";
-
-    expect(backdropDeclarations.position).toBe("fixed");
-    expect(backdropDeclarations.inset).toBe("0px");
-    expect(viewerDeclarations.width).toBe("calc(100vw - 64px)");
-    expect(viewerDeclarations.maxWidth).toBe("1400px");
-    expect(viewerRule?.[1]).toContain("height: calc(100dvh - 64px)");
-    expect(viewerDeclarations.gridTemplateRows).toBe("minmax(0, 1fr)");
-    expect(viewerDeclarations.gap).toBe("");
-    expect(viewerDeclarations.overflow).toBe("visible");
-    expect(stageDeclarations.placeItems).toBe("center");
-    expect(mediaDeclarations.width).toBe("auto");
-    expect(mediaDeclarations.height).toBe("auto");
-    expect(mediaDeclarations.maxHeight).toBe("100%");
-    expect(mediaDeclarations.objectFit).toBe("contain");
-  });
-
-  it("does not use a thumbnail as full-viewer media", () => {
-    expect(v2AssetMediaUrl({ ...assetFixture.detail.members[0], public_url: null })).toBeNull();
-  });
-
-  it("keeps long display names inside the title overlay", () => {
-    const rule = assetStyles.match(/\.v2-asset-entity-card-title\s*\{([^}]*)\}/);
-    const declarations = document.createElement("div").style;
-
-    expect(rule).not.toBeNull();
-    declarations.cssText = rule?.[1] ?? "";
-    expect(declarations.whiteSpace).toBe("normal");
-    expect(declarations.overflowWrap).toBe("anywhere");
-    expect(declarations.getPropertyValue("-webkit-line-clamp")).toBe("2");
+    expect(source).not.toContain("useV2AssetLibrary");
+    expect(source).not.toContain("useRecommendedCatalog");
+    expect(source).not.toContain("recommendedCatalogStatus");
+    expect(source).not.toContain("/asset-library/");
+    expect(source).not.toContain("catalogs/recommended/status");
   });
 });

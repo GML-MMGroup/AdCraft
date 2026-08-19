@@ -22,9 +22,9 @@ describe("AgentCanvasContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Add Image node" })).toBeNull();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Add node" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add Image node" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add Script node" }));
 
-    expect(onCreateNode).toHaveBeenCalledWith("image", { x: 84, y: 132 });
+    expect(onCreateNode).toHaveBeenCalledWith("script", { x: 84, y: 132 });
   });
 
   it("closes when Escape is pressed or the backdrop is clicked", () => {
@@ -44,6 +44,32 @@ describe("AgentCanvasContextMenu", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close canvas menu" }));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves the single menu to the latest right-click position and resets its picker", () => {
+    const onRelocate = vi.fn();
+
+    render(
+      <AgentCanvasContextMenu
+        menuPosition={{ x: 240, y: 180 }}
+        canvasPosition={{ x: 84, y: 132 }}
+        onCreateNode={vi.fn()}
+        onClose={vi.fn()}
+        onRelocate={onRelocate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add node" }));
+    expect(screen.getByRole("menuitem", { name: "Add Image node" })).toBeTruthy();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Close canvas menu" }), {
+      clientX: 520,
+      clientY: 340,
+    });
+
+    expect(onRelocate).toHaveBeenCalledWith({ x: 520, y: 340 });
+    expect(screen.getByRole("menuitem", { name: "Add node" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Add Image node" })).toBeNull();
   });
 
   it("keeps the expanded node picker inside the viewport", () => {

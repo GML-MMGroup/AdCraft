@@ -21,6 +21,24 @@ describe("route-scoped styles", () => {
     expect(source("main.tsx")).not.toContain('import "./styles.css"');
   });
 
+  it("keeps the shared shell full-bleed without a visible frame", () => {
+    const baseStyles = source("styles/base.css");
+    const shell = declarationBlock(baseStyles, ".app-shell");
+    const workflowShell = declarationBlock(baseStyles, ".app-shell--workflow");
+
+    expect(shell).toContain("width: 100%");
+    expect(shell).toContain("min-height: 100dvh");
+    expect(shell).toContain("margin: 0");
+    expect(shell).toContain("overflow: visible");
+    expect(shell).toContain("border: 0");
+    expect(shell).toContain("border-radius: 0");
+    expect(shell).toContain("background: transparent");
+    expect(shell).toContain("box-shadow: none");
+    expect(shell).toContain("backdrop-filter: none");
+    expect(workflowShell).toContain("min-height: 100dvh");
+    expect(workflowShell).toContain("margin: 0");
+  });
+
   it("keeps complete cross-route primitives in the shared stylesheet", () => {
     const baseStyles = source("styles/base.css");
 
@@ -85,7 +103,7 @@ describe("route-scoped styles", () => {
     expect(agentCanvasPageSource).toContain('import "@xyflow/react/dist/style.css"');
     expect(agentCanvasPageSource).toContain('import "./agent-canvas-page.css"');
     expect(declarationBlock(agentCanvasStyles, ".agent-canvas-page")).toMatch(
-      /position:\s*relative;[\s\S]*display:\s*grid;[\s\S]*height:\s*calc\(100vh - 102px\);[\s\S]*overflow:\s*hidden;/,
+      /position:\s*relative;[\s\S]*display:\s*grid;[\s\S]*height:\s*calc\(100dvh - var\(--topbar-height\)\);[\s\S]*overflow:\s*hidden;/,
     );
     expect(declarationBlock(agentCanvasStyles, ".agent-canvas-board")).toMatch(
       /position:\s*relative;[\s\S]*min-width:\s*0;[\s\S]*min-height:\s*0;[\s\S]*overflow:\s*hidden;/,

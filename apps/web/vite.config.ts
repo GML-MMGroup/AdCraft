@@ -2,9 +2,10 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage } from "node:http";
 import { API_METADATA_CACHE_CONTROL, mediaCacheControl } from "./mediaCachePolicy";
+import { resolveBackendOrigin } from "./src/config/devServer.ts";
 
 const FRONTEND_PORT = 5189;
-const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN?.trim() || "http://127.0.0.1:8888";
+const BACKEND_ORIGIN = resolveBackendOrigin(process.env.BACKEND_ORIGIN);
 
 type ProxyWithResponseEvents = {
   on(event: "proxyRes", listener: (proxyResponse: IncomingMessage, request: IncomingMessage) => void): void;

@@ -1,44 +1,45 @@
 import { useMemo, useState } from "react";
 import { EmptyState, PageHeader } from "../components/Layout";
-import { trashItems } from "../data";
 import { useApp } from "../AppContextValue";
+import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import "./projects.css";
 
 export function TrashPage() {
-  const [type, setType] = useState<"project" | "role" | "scene">("project");
   const [search, setSearch] = useState("");
-  const { trashedProjects, restoreTrashedProject } = useApp();
+  const {
+    trashedProjects,
+    restoreTrashedProject,
+    projectCatalogError,
+    projectCatalogRefreshing,
+    refreshProjects,
+  } = useApp();
 
   const localTrashItems = useMemo(
     () => trashedProjects.map((project) => ({
       key: project.project_id,
       projectId: project.project_id,
-      isBackendProject: true,
-      type: "project" as const,
       name: project.name,
       meta: `Deleted project · ${new Date(project.updated_at).toLocaleDateString()}`,
     })),
     [trashedProjects],
   );
 
-  const list = useMemo(() => {
-    const staticTrashItems = trashItems.map((item) => ({ key: `${item.type}-${item.name}`, projectId: null, isBackendProject: false, ...item }));
-    return [...staticTrashItems, ...localTrashItems].filter((item) => item.type === type && item.name.toLowerCase().includes(search.toLowerCase()));
-  }, [localTrashItems, search, type]);
+  const list = useMemo(() => localTrashItems.filter((item) => (
+    item.name.toLowerCase().includes(search.toLowerCase())
+  )), [localTrashItems, search]);
 
   return (
     <section className="content-wrap">
       <PageHeader title="Trash" subtitle="Trashed projects can be restored here." />
       <div className="page-toolbar">
-        <div className="toolbar-row">
-          {(["project", "role", "scene"] as const).map((item) => (
-            <button key={item} className={`filter-btn ${type === item ? "is-active" : ""}`} onClick={() => setType(item)}>
-              {item.charAt(0).toUpperCase() + item.slice(1)}s
-            </button>
-          ))}
-        </div>
+        <div className="toolbar-row"><span className="filter-btn is-active">Projects</span></div>
         <input className="search-box" placeholder="Search deleted items" value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
+      <ProjectCatalogNotice
+        error={projectCatalogError}
+        refreshing={projectCatalogRefreshing}
+        onRetry={refreshProjects}
+      />
       {list.length ? (
         <div className="trash-layout">
           {list.map((item) => (
@@ -51,8 +52,7 @@ export function TrashPage() {
               <div className="trash-actions">
                 <button
                   className="small-action"
-                  disabled={!item.isBackendProject}
-                  title={item.isBackendProject ? "Restore project" : "Static item"}
+                  title="Restore project"
                   onClick={(event) => {
                     event.stopPropagation();
                     if (item.projectId) void restoreTrashedProject(item.projectId);

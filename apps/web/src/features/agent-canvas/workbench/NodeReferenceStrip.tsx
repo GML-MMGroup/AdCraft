@@ -1,4 +1,4 @@
-import { CloseIcon } from "../../../icons.tsx";
+import { CloseIcon, DocumentIcon } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -59,10 +59,19 @@ export function NodeReferenceStrip({
           const source = sourcePresentation(workflow, binding);
           const label = binding.label || source.name || `Reference ${index + 1}`;
           return (
-            <article key={binding.binding_id} className={!binding.enabled ? "is-disabled" : ""} title={label}>
+            <article
+              key={binding.binding_id}
+              className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}`}
+              title={label}
+              aria-label={source.previewUrl ? undefined : `${label} text reference`}
+            >
               {source.previewUrl ? (
                 <img src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
-              ) : <span aria-hidden="true">{index + 1}</span>}
+              ) : (
+                <span className="agent-node-workbench__reference-icon">
+                  <DocumentIcon />
+                </span>
+              )}
               <button
                 type="button"
                 aria-label={`Remove ${label} reference`}

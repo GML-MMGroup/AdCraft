@@ -23,6 +23,7 @@ type PatchNode = (
 export interface AgentCanvasEditingPanelProps {
   workflow: AgentCanvasWorkflowV2;
   node: CanvasNodeV2;
+  omittedNodeIds?: string[];
   patchNode: PatchNode;
   onClose: () => void;
 }
@@ -43,6 +44,7 @@ function numericValue(value: string): number | null {
 export function AgentCanvasEditingPanel({
   workflow,
   node,
+  omittedNodeIds = [],
   patchNode,
   onClose,
 }: AgentCanvasEditingPanelProps) {
@@ -436,6 +438,29 @@ export function AgentCanvasEditingPanel({
                 ) : null}
               </div>
             </div>
+
+            {omittedNodeIds.length ? (
+              <section
+                className="agent-editing-panel__omitted"
+                aria-labelledby="agent-editing-omitted-heading"
+              >
+                <div>
+                  <h3 id="agent-editing-omitted-heading">Omitted planned inputs</h3>
+                  <p>These planned nodes were not included in the prepared composition.</p>
+                </div>
+                <ul>
+                  {omittedNodeIds.map((nodeId) => {
+                    const omittedNode = workflow.nodes.find((candidate) => candidate.node_id === nodeId);
+                    return (
+                      <li key={nodeId}>
+                        <strong>{omittedNode?.title || nodeId}</strong>
+                        <span>{omittedNode ? `${omittedNode.node_type} · ${omittedNode.status}` : "Not materialized"}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
 
             {editing.content.preview.warnings.length ? (
               <ul className="agent-editing-panel__warnings">

@@ -20,7 +20,7 @@ export interface AgentAssetUploadOptions {
 }
 
 export interface UseAgentCanvasAssetsOptions {
-  workflowId: string;
+  workflowId?: string;
   scope: AgentAssetScope;
   category?: string | null;
   mediaType?: AgentAssetMediaFilter;
@@ -154,6 +154,7 @@ export function useAgentCanvasAssets({
     try {
       let nextItems: AgentAssetBrowserItem[];
       if (scope === "project") {
+        if (!workflowId) throw new Error("Project assets require a workflow.");
         const response = await agentCanvasApi.listAgentCanvasProjectAssets(workflowId);
         nextItems = response.assets.map(projectItem);
       } else {
@@ -190,6 +191,7 @@ export function useAgentCanvasAssets({
     if (scope !== "project") {
       throw new Error("Uploads are available only in Project Assets.");
     }
+    if (!workflowId) throw new Error("Project assets require a workflow.");
     const selectedFiles = Array.from(files);
     if (selectedFiles.length === 0) return [];
 

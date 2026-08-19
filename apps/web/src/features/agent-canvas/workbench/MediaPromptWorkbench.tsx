@@ -2,6 +2,7 @@ import { SendIcon } from "../../../icons.tsx";
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
+import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import { NodeAssetActions } from "./NodeAssetActions.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
@@ -30,8 +31,8 @@ export function MediaPromptWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
-        <textarea
-          aria-label="Generation prompt"
+        <FourLinePromptEditor
+          ariaLabel="Generation prompt"
           value={draft.prompt}
           disabled={draft.pending}
           placeholder={`Describe the ${node.node_type} you want to create.`}
