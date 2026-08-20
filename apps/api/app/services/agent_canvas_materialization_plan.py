@@ -85,6 +85,7 @@ class CapabilityMaterializationPlanCompiler:
             "selection_actor": envelope.selection_actor,
             "expected_workflow_revision": snapshot.workflow_revision,
             "expected_session_revision": snapshot.session_revision,
+            "stage_revision": envelope.stage_revision,
             "expected_proposal_revision": snapshot.proposal_revision,
             "expected_target_node_revision": snapshot.target_node_revision,
             "nodes": nodes,
@@ -94,6 +95,9 @@ class CapabilityMaterializationPlanCompiler:
             "receipt": receipt,
             "continuation": continuation,
             "prompt_preparations": preparations,
+            "operation_kind": envelope.operation_kind,
+            "parent_snapshot": envelope.parent_snapshot,
+            "derivative_intent": bundle.derivative_intent,
             "journey_event": _journey_event(
                 envelope,
                 snapshot,

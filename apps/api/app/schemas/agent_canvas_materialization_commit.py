@@ -21,6 +21,11 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyEvidenceKindV2,
     JourneyStageV2,
 )
+from app.schemas.agent_canvas_materialization import (
+    MaterializationOperationKindV1,
+    ParentDerivedMaterializationIntentV1,
+    ParentNodeSnapshotV1,
+)
 
 
 class _MaterializationCommitModel(BaseModel):
@@ -142,6 +147,7 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     selection_actor: Literal["user", "agent"]
     expected_workflow_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
+    stage_revision: int = Field(default=1, ge=1)
     expected_proposal_revision: int = Field(ge=1)
     expected_target_node_revision: int | None = Field(default=None, ge=1)
     nodes: tuple[CanvasNodeV2, ...] = Field(min_length=1, max_length=32)
@@ -155,11 +161,26 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     prompt_preparations: tuple[NodePromptPreparationIntentV1, ...] = Field(
         default=(), max_length=32
     )
+    operation_kind: MaterializationOperationKindV1 = "standalone"
+    parent_snapshot: ParentNodeSnapshotV1 | None = None
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None = None
     journey_event: MaterializationJourneyEventV1 | None = None
     payload_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_plan_integrity(self) -> "MaterializationPlanV1":
+        if self.operation_kind == "standalone" and (
+            self.parent_snapshot is not None or self.derivative_intent is not None
+        ):
+            raise ValueError("Standalone plans cannot include parent-derived fields.")
+        if self.operation_kind == "parent" and (
+            self.parent_snapshot is not None or self.derivative_intent is None
+        ):
+            raise ValueError("Parent plans require a derivative intent only.")
+        if self.operation_kind == "derivative" and (
+            self.parent_snapshot is None or self.derivative_intent is not None
+        ):
+            raise ValueError("Derivative plans require one parent snapshot only.")
         node_ids = tuple(node.node_id for node in self.nodes)
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("Node IDs must be unique.")

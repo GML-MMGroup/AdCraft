@@ -61,6 +61,25 @@ class ProposalReferencePlanV1(_MaterializationModel):
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+MaterializationOperationKindV1: TypeAlias = Literal["standalone", "parent", "derivative"]
+
+
+class ParentNodeSnapshotV1(_MaterializationModel):
+    node_id: str = Field(min_length=1, max_length=160)
+    node_revision: int = Field(ge=1)
+    semantic_role: Literal["product_main", "character_main"]
+
+
+class ParentDerivedMaterializationIntentV1(_MaterializationModel):
+    intent_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    stage_revision: int = Field(ge=1)
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    parent: ParentNodeSnapshotV1
+    derivative_role: Literal["product_multiview", "character_turnaround"]
+    payload_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     schema_version: Literal["1"] = "1"
     envelope_id: str = Field(min_length=1, max_length=160)
@@ -82,12 +101,16 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     selected_option: SelectedConceptOptionV1
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
+    stage_revision: int = Field(default=1, ge=1)
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     style_skill_run_id: str | None = Field(default=None, max_length=160)
     result_contract_name: str = Field(min_length=1, max_length=160)
+    operation_kind: MaterializationOperationKindV1 = "standalone"
+    parent_snapshot: ParentNodeSnapshotV1 | None = None
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None = None
     attempt_no: int = Field(ge=1)
     agent_request_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
@@ -96,6 +119,11 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     def validate_target_revision_pair(self) -> "CapabilityMaterializationEnvelopeV1":
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted Materialization requires node ID and revision.")
+        _validate_operation_fields(
+            self.operation_kind,
+            parent_snapshot=self.parent_snapshot,
+            derivative_intent=self.derivative_intent,
+        )
         return self
 
 
@@ -120,11 +148,15 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     selected_option: SelectedConceptOptionV1
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
+    stage_revision: int = Field(default=1, ge=1)
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     style_skill_run_id: str | None = Field(default=None, max_length=160)
+    operation_kind: MaterializationOperationKindV1 = "standalone"
+    parent_snapshot: ParentNodeSnapshotV1 | None = None
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None = None
     attempt_no: int = Field(ge=1)
     idempotency_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
@@ -133,7 +165,28 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     def validate_publication_identity(self) -> "ProposalPublicationEnvelopeV1":
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted Proposal publication requires node ID and revision.")
+        _validate_operation_fields(
+            self.operation_kind,
+            parent_snapshot=self.parent_snapshot,
+            derivative_intent=self.derivative_intent,
+        )
         return self
+
+
+def _validate_operation_fields(
+    operation_kind: MaterializationOperationKindV1,
+    *,
+    parent_snapshot: ParentNodeSnapshotV1 | None,
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None,
+) -> None:
+    if operation_kind == "standalone" and (parent_snapshot or derivative_intent):
+        raise ValueError("Standalone materialization cannot include parent-derived fields.")
+    if operation_kind == "parent" and (parent_snapshot is not None or derivative_intent is None):
+        raise ValueError("Parent materialization requires a derivative intent only.")
+    if operation_kind == "derivative" and (
+        parent_snapshot is None or derivative_intent is not None
+    ):
+        raise ValueError("Derivative materialization requires one parent snapshot only.")
 
 
 ProposalApplicationEnvelopeV1: TypeAlias = (

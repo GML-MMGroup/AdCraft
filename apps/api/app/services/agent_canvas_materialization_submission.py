@@ -27,6 +27,8 @@ from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationEnvelopeV1,
+    ParentDerivedMaterializationIntentV1,
+    ParentNodeSnapshotV1,
     ProposalPublicationEnvelopeV1,
     ProposalReferencePlanV1,
     ProposalReferenceSnapshotV1,
@@ -255,6 +257,22 @@ class _ProposalSelectionSubmissionService:
         result_contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[
             proposal.capability_id
         ].__name__
+        stage_revision = self._conversations.get_guidance_session(
+            proposal.workflow_id
+        ).journey.stage_revision
+        operation_kind = (
+            "parent" if proposal.capability_id in {"product_design", "character_design"} else "standalone"
+        )
+        derivative_intent = (
+            _parent_derivative_intent(
+                workflow_id=proposal.workflow_id,
+                materialization_id=materialization_id,
+                stage_revision=stage_revision,
+                capability_id=proposal.capability_id,
+            )
+            if operation_kind == "parent"
+            else None
+        )
         return CapabilityMaterializationEnvelopeV1(
             envelope_id="envelope_" + _digest(materialization_id)[:32],
             materialization_id=materialization_id,
@@ -270,6 +288,9 @@ class _ProposalSelectionSubmissionService:
             selected_option=option,
             reference_plan=reference_plan,
             expected_session_revision=action.expected_session_revision,
+            stage_revision=stage_revision,
+            operation_kind=operation_kind,
+            derivative_intent=derivative_intent,
             target_node_id=proposal.target_node_id,
             target_node_revision=proposal.target_node_revision,
             context_snapshot_id="snapshot_" + context_digest[:32],
@@ -342,6 +363,10 @@ class ProposalPublicationSubmissionService(_ProposalSelectionSubmissionService):
             selected_option=legacy.selected_option,
             reference_plan=legacy.reference_plan,
             expected_session_revision=legacy.expected_session_revision,
+            stage_revision=legacy.stage_revision,
+            operation_kind=legacy.operation_kind,
+            parent_snapshot=legacy.parent_snapshot,
+            derivative_intent=legacy.derivative_intent,
             target_node_id=legacy.target_node_id,
             target_node_revision=legacy.target_node_revision,
             context_snapshot_id=legacy.context_snapshot_id,
@@ -367,6 +392,32 @@ def _json_digest(value: object) -> str:
     return sha256(
         json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ).hexdigest()
+
+
+def _parent_derivative_intent(
+    *,
+    workflow_id: str,
+    materialization_id: str,
+    stage_revision: int,
+    capability_id: str,
+) -> ParentDerivedMaterializationIntentV1:
+    is_character = capability_id == "character_design"
+    node_id = "node_" + _digest(f"{materialization_id}:main")[:32]
+    derivative_role = "character_turnaround" if is_character else "product_multiview"
+    semantic_role = "character_main" if is_character else "product_main"
+    return ParentDerivedMaterializationIntentV1(
+        intent_id="derivative_" + _digest(f"{materialization_id}:{derivative_role}")[:32],
+        workflow_id=workflow_id,
+        stage_revision=stage_revision,
+        occurrence_id="character-1" if is_character else "product-1",
+        parent=ParentNodeSnapshotV1(
+            node_id=node_id,
+            node_revision=1,
+            semantic_role=semantic_role,
+        ),
+        derivative_role=derivative_role,
+        payload_digest=_digest(f"{workflow_id}:{node_id}:1:{derivative_role}"),
+    )
 
 
 def _digest(value: str) -> str:
