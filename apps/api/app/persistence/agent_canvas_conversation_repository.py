@@ -41,7 +41,6 @@ from app.persistence.models import (
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasContinuationOutboxRow,
-    AgentCanvasBindingRow,
     AgentCanvasCreativeMemoryRow,
     AgentCanvasConceptOptionRow,
     AgentCanvasConceptProposalRow,
@@ -55,16 +54,9 @@ from app.persistence.models import (
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
-    AgentCanvasPromptContextSnapshotRow,
     AgentCanvasSkillRunRow,
     AgentCanvasWorkflowRow,
-    AgentWorkingDocumentRow,
     WorkflowEventRow,
-)
-from app.schemas.agent_canvas import (
-    CanvasBindingV2,
-    CanvasNodeV2,
-    ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_conversation import (
     AgentActionReceiptV2,
@@ -121,13 +113,8 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionnaireV1,
     GuidedQuestionV1,
 )
-from app.schemas.agent_canvas_materialization_commit import (
-    MaterializationDocumentWriteV1,
-    MaterializationPlanV1,
-)
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
-from app.schemas.agent_working_documents import AgentWorkingDocumentV2
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
@@ -5425,7 +5412,7 @@ def _memory_revision(connection: Connection, workflow_id: str) -> int:
 
 def _proposal_topic_id(proposal_kind: str) -> str:
     return {
-        "script": "script",
+        "script": "narrative_direction",
         "product": "product",
         "prop": "props",
         "character": "characters",
@@ -5743,7 +5730,7 @@ def _proposal_action_descriptors(
         "prop": "props",
         "character": "character",
         "scene": "scene",
-        "script": "script",
+        "script": "narrative_direction",
         "storyboard": "storyboard_plan",
         "video": "videos",
         "bgm": "bgm",
@@ -6032,188 +6019,6 @@ def _require_guidance_session_row_by_workflow(
 def _require_guidance_revision(row: RowMapping, expected_revision: int) -> None:
     if int(row["revision"]) != expected_revision:
         raise _error("guidance_revision_conflict", "Guidance session revision is stale.")
-
-
-def _insert_materialized_node(
-    connection: Connection,
-    *,
-    node: CanvasNodeV2,
-    bindings: tuple[CanvasBindingV2, ...],
-    creative_direction_snapshot_id: str | None,
-    skill_refs: tuple[dict[str, str], ...],
-    now: str,
-) -> str:
-    snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
-    connection.execute(
-        insert(AgentCanvasNodeRow).values(
-            node_id=node.node_id,
-            workflow_id=node.workflow_id,
-            node_type=node.node_type,
-            creative_role=node.creative_role,
-            role_contract_version=node.role_contract_version,
-            title=node.title,
-            status=node.status,
-            summary_prompt=node.summary_prompt,
-            generation_prompt=node.generation_prompt,
-            structured_content_json=_dump(node.structured_content),
-            model_selection_mode=node.model_selection_mode,
-            model_ref=node.model_ref,
-            parameters_json=_dump(node.parameters),
-            metadata_json=_dump(node.metadata),
-            parameter_provenance_json=_dump(
-                {
-                    field: provenance.model_dump(mode="json")
-                    for field, provenance in node.parameter_provenance.items()
-                }
-            ),
-            prompt_context_snapshot_id=snapshot_id,
-            output_asset_id=node.output_asset_id,
-            position_x=node.position.x,
-            position_y=node.position.y,
-            revision=node.revision,
-            error_json=None,
-            prompt_preparation_json=_dump(node.prompt_preparation.model_dump(mode="json")),
-            created_at=node.created_at.isoformat(),
-            updated_at=node.updated_at.isoformat(),
-        )
-    )
-    for binding in bindings:
-        connection.execute(
-            insert(AgentCanvasBindingRow).values(
-                binding_id=binding.binding_id,
-                workflow_id=binding.workflow_id,
-                source_kind=binding.source.kind,
-                source_node_id=(
-                    binding.source.source_node_id if binding.source.kind == "node_output" else None
-                ),
-                source_asset_id=(
-                    binding.source.asset_id if binding.source.kind == "image_asset" else None
-                ),
-                target_node_id=binding.target_node_id,
-                input_role=binding.input_role,
-                required=binding.required,
-                enabled=binding.enabled,
-                order_index=binding.order,
-                label=binding.label,
-                metadata_json=_dump(binding.metadata),
-                created_at=binding.created_at.isoformat(),
-                updated_at=binding.updated_at.isoformat(),
-            )
-        )
-    connection.execute(
-        insert(AgentCanvasPromptContextSnapshotRow).values(
-            snapshot_id=snapshot_id,
-            workflow_id=node.workflow_id,
-            target_node_id=node.node_id,
-            inputs_json=_dump(_materialization_text_snapshots(connection, bindings)),
-            creative_direction_snapshot_id=creative_direction_snapshot_id,
-            skill_refs_json=_dump(skill_refs),
-            content_digest=hashlib.sha256(
-                _dump(
-                    {
-                        "generation_prompt": node.generation_prompt,
-                        "structured_content": node.structured_content,
-                        "skill_refs": skill_refs,
-                    }
-                ).encode("utf-8")
-            ).hexdigest(),
-            created_at=now,
-        )
-    )
-    return snapshot_id
-
-
-def _insert_materialization_document(
-    connection: Connection,
-    *,
-    plan: MaterializationPlanV1,
-    guidance_session_id: str,
-    document_write: MaterializationDocumentWriteV1,
-) -> None:
-    if document_write.document_type != "agent_working_document":
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document type is not supported.",
-        )
-    if document_write.payload is None:
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document create payload is missing.",
-        )
-    try:
-        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
-    except ValueError as error:
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document payload is invalid.",
-        ) from error
-    if (
-        document.document_id != document_write.document_id
-        or document.workflow_id != plan.workflow_id
-        or document.guidance_session_id != guidance_session_id
-    ):
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document scope is inconsistent.",
-        )
-    connection.execute(
-        insert(AgentWorkingDocumentRow).values(
-            document_id=document.document_id,
-            workflow_id=document.workflow_id,
-            guidance_session_id=document.guidance_session_id,
-            document_kind=document.kind,
-            title=document.title,
-            revision=document.revision,
-            content_schema_version=document.content_schema_version,
-            content_digest=document.content_digest,
-            content_json=_dump(document.content.model_dump(mode="json")),
-            created_by_agent_run_id=document.created_by_agent_run_id,
-            updated_by_agent_run_id=document.updated_by_agent_run_id,
-            created_at=document.created_at.isoformat(),
-            updated_at=document.updated_at.isoformat(),
-        )
-    )
-
-
-def _materialization_text_snapshots(
-    connection: Connection,
-    bindings: tuple[CanvasBindingV2, ...],
-) -> list[dict[str, object]]:
-    snapshots: list[dict[str, object]] = []
-    for binding in sorted(
-        bindings,
-        key=lambda item: (item.display_order, item.binding_id),
-    ):
-        if binding.input_role != "text_context" or binding.source.kind != "node_output":
-            continue
-        source = (
-            connection.execute(
-                select(AgentCanvasNodeRow).where(
-                    AgentCanvasNodeRow.node_id == binding.source.node_id
-                )
-            )
-            .mappings()
-            .one()
-        )
-        structured_content = json.loads(str(source["structured_content_json"]))
-        content = str(structured_content.get("content", ""))
-        snapshot = ResolvedTextInputSnapshotV2(
-            source_node_id=str(source["node_id"]),
-            source_node_revision=int(source["revision"]),
-            binding_kind="text_context",
-            document_kind=("script" if str(source["node_type"]) == "script" else "text"),
-            content=content[:16_000],
-            content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
-            source_semantic_role=str(source["creative_role"]),
-            binding_metadata=binding.metadata,
-            source_structured_content=structured_content,
-            binding_id=binding.binding_id,
-            input_role="text_context",
-            required=binding.required,
-            display_order=binding.display_order,
-        )
-        snapshots.append(snapshot.model_dump(mode="json"))
-    return snapshots
 
 
 def _dump(value: object) -> str:

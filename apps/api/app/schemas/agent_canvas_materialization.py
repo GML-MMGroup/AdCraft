@@ -121,6 +121,7 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted Materialization requires node ID and revision.")
         _validate_operation_fields(
+            self.capability_id,
             self.operation_kind,
             parent_snapshot=self.parent_snapshot,
             derivative_intent=self.derivative_intent,
@@ -167,6 +168,7 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted Proposal publication requires node ID and revision.")
         _validate_operation_fields(
+            self.capability_id,
             self.operation_kind,
             parent_snapshot=self.parent_snapshot,
             derivative_intent=self.derivative_intent,
@@ -175,11 +177,17 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
 
 
 def _validate_operation_fields(
+    capability_id: CapabilityIdV1,
     operation_kind: MaterializationOperationKindV1,
     *,
     parent_snapshot: ParentNodeSnapshotV1 | None,
     derivative_intent: ParentDerivedMaterializationIntentV1 | None,
 ) -> None:
+    pair_capabilities = {"product_design", "character_design"}
+    if capability_id in pair_capabilities and operation_kind == "standalone":
+        raise ValueError("Pair capabilities require a parent-derived operation.")
+    if capability_id not in pair_capabilities and operation_kind != "standalone":
+        raise ValueError("This capability does not support parent-derived operations.")
     if operation_kind == "standalone" and (parent_snapshot or derivative_intent):
         raise ValueError("Standalone materialization cannot include parent-derived fields.")
     if operation_kind == "parent" and (parent_snapshot is not None or derivative_intent is None):
@@ -188,6 +196,21 @@ def _validate_operation_fields(
         parent_snapshot is None or derivative_intent is not None
     ):
         raise ValueError("Derivative materialization requires one parent snapshot only.")
+    expected_parent_role = (
+        "character_main" if capability_id == "character_design" else "product_main"
+    )
+    expected_derivative_role = (
+        "character_turnaround" if capability_id == "character_design" else "product_multiview"
+    )
+    if operation_kind == "parent" and derivative_intent is not None:
+        if (
+            derivative_intent.parent.semantic_role != expected_parent_role
+            or derivative_intent.derivative_role != expected_derivative_role
+        ):
+            raise ValueError("Parent-derived intent does not match the capability.")
+    if operation_kind == "derivative" and parent_snapshot is not None:
+        if parent_snapshot.semantic_role != expected_parent_role:
+            raise ValueError("Parent snapshot does not match the derivative capability.")
 
 
 ProposalApplicationEnvelopeV1: TypeAlias = (
@@ -215,7 +238,7 @@ class CapabilityMaterializationContextV1(_MaterializationModel):
 
 class CapabilityMaterializationExecutionResultV1(_MaterializationModel):
     materialization_id: str = Field(min_length=1, max_length=160)
-    node_id: str = Field(min_length=1, max_length=160)
+    node_id: str | None = Field(default=None, max_length=160)
     repaired: bool = False
 
 

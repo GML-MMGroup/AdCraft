@@ -165,6 +165,11 @@ class AdReferenceBundleResolver:
                 raise _error(
                     "role_reference_policy_invalid",
                     "Resolved references do not satisfy the role reference policy.",
+                    details={
+                        "target_role": policy.target_role,
+                        "policy_version": policy.policy_version,
+                        "violations": list(violations),
+                    },
                 )
         anchor_references = tuple(
             item
@@ -252,8 +257,16 @@ def _bounded_text(value: object) -> str:
     return ""
 
 
-def _error(code: str, message: str) -> V2PersistenceError:
-    return V2PersistenceError(code, message, stage="ad_reference_bundle_resolver")
+def _error(
+    code: str,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> V2PersistenceError:
+    error = V2PersistenceError(code, message, stage="ad_reference_bundle_resolver")
+    if details:
+        error.details = details
+    return error
 
 
 def _target_role_policy(node: CanvasNodeV2, policy_service: AgentCanvasRoleReferencePolicyService):

@@ -145,6 +145,12 @@ class CapabilityDraftBundleBuilder:
         envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1,
     ) -> CapabilityDraftBundleV1:
+        if envelope.capability_id == "script_authoring":
+            return CapabilityDraftBundleV1(
+                nodes=(),
+                bindings=(),
+                prompt_preparations=(),
+            )
         result = normalization.result
         if envelope.capability_id == "world_setting":
             return CapabilityDraftBundleV1(
@@ -214,18 +220,47 @@ def stage_definitions(
         "derivative",
     }:
         raise ValueError("parent_derived_operation_required")
-    if capability_id not in {"product_design", "character_design"} and operation_kind != "standalone":
+    if (
+        capability_id not in {"product_design", "character_design"}
+        and operation_kind != "standalone"
+    ):
         raise ValueError("operation_kind_not_supported")
+    if capability_id == "script_authoring":
+        return ()
     definitions = {
         "world_setting": (("world-setting", "text", "world_setting", "World Setting", {}),),
         "product_design": {
             "parent": (("product-main", "image", "product", "Main", {"asset_kind": "main"}),),
-            "derivative": (("product-multi-view", "image", "product", "Multi-view", {"asset_kind": "multi_view"}),),
+            "derivative": (
+                (
+                    "product-multi-view",
+                    "image",
+                    "product",
+                    "Multi-view",
+                    {"asset_kind": "multi_view"},
+                ),
+            ),
         },
         "prop_design": (("prop", "image", "prop", "Prop", {"asset_kind": "main"}),),
         "character_design": {
-            "parent": (("character-main", "image", "character", "Main", {"character_asset_kind": "identity_master"}),),
-            "derivative": (("character-three-view", "image", "character", "Three-view", {"character_asset_kind": "turnaround"}),),
+            "parent": (
+                (
+                    "character-main",
+                    "image",
+                    "character",
+                    "Main",
+                    {"character_asset_kind": "identity_master"},
+                ),
+            ),
+            "derivative": (
+                (
+                    "character-three-view",
+                    "image",
+                    "character",
+                    "Three-view",
+                    {"character_asset_kind": "turnaround"},
+                ),
+            ),
         },
         "scene_design": (
             (
@@ -379,7 +414,6 @@ def _normalized_character_bundle(
             prompt_preparations=preparations,
         )
     raise ValueError("parent_derived_operation_required")
-
 
 
 def _normalized_product_bundle(

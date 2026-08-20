@@ -150,7 +150,7 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     stage_revision: int = Field(default=1, ge=1)
     expected_proposal_revision: int = Field(ge=1)
     expected_target_node_revision: int | None = Field(default=None, ge=1)
-    nodes: tuple[CanvasNodeV2, ...] = Field(min_length=1, max_length=32)
+    nodes: tuple[CanvasNodeV2, ...] = Field(default=(), max_length=32)
     bindings: tuple[CanvasBindingV2, ...] = Field(default=(), max_length=128)
     document_writes: tuple[MaterializationDocumentWriteV1, ...] = Field(default=(), max_length=32)
     requirement_commitments: tuple[AcceptedProposalCommitmentV1, ...] = Field(

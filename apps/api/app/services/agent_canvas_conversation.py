@@ -753,7 +753,8 @@ def _deterministic_capability_result(
     capability_id: str,
     candidate_count: int,
 ) -> dict[str, object]:
-    count = max(2, candidate_count) if capability_id == "world_setting" else candidate_count
+    del candidate_count
+    count = 1 if capability_id == "quick_media" else 3
     options: list[dict[str, object]] = []
     for index in range(1, count + 1):
         summary = f"Deterministic {capability_id} option {index}."

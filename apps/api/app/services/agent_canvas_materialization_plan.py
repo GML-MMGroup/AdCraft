@@ -152,7 +152,11 @@ def _receipt(
         proposal_action=envelope.action,
         actor_kind=envelope.selection_actor,
         status="applied",
-        summary="The selected concept is now an editable Draft.",
+        summary=(
+            "The selected direction is now an authoritative working document."
+            if not nodes
+            else "The selected concept is now an editable Draft."
+        ),
         created_node_ids=tuple(node.node_id for node in nodes),
         created_binding_ids=tuple(binding.binding_id for binding in bindings),
         workflow_revision=snapshot.workflow_revision + 1,

@@ -111,6 +111,30 @@
       "title": "AgentAnchorNodeSourceV3",
       "type": "object"
     },
+    "AgentAnchorRoleSourceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "character_main",
+            "character_turnaround",
+            "product_main",
+            "product_multiview"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/AgentAnchorNodeSourceV3"
+        }
+      },
+      "required": [
+        "role",
+        "source"
+      ],
+      "title": "AgentAnchorRoleSourceV3",
+      "type": "object"
+    },
     "AgentAnchorSkillSnapshotSourceV3": {
       "additionalProperties": false,
       "properties": {
@@ -258,6 +282,15 @@
           ],
           "title": "Lifecycle",
           "type": "string"
+        },
+        "role_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentAnchorRoleSourceV3"
+          },
+          "maxItems": 8,
+          "title": "Role Sources",
+          "type": "array"
         },
         "semantic_role": {
           "enum": [
@@ -6893,6 +6926,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "derivative_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentDerivedMaterializationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "envelope_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -6909,6 +6953,27 @@
           "minLength": 1,
           "title": "Materialization Id",
           "type": "string"
+        },
+        "operation_kind": {
+          "default": "standalone",
+          "enum": [
+            "derivative",
+            "parent",
+            "standalone"
+          ],
+          "title": "Operation Kind",
+          "type": "string"
+        },
+        "parent_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentNodeSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "proposal_id": {
           "maxLength": 160,
@@ -6959,6 +7024,12 @@
           ],
           "default": null,
           "title": "Selection Reason"
+        },
+        "stage_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         },
         "style_skill_run_id": {
           "anyOf": [
@@ -7040,10 +7111,17 @@
           "type": "string"
         },
         "node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Node Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
         },
         "repaired": {
           "default": false,
@@ -7052,8 +7130,7 @@
         }
       },
       "required": [
-        "materialization_id",
-        "node_id"
+        "materialization_id"
       ],
       "title": "CapabilityMaterializationExecutionResultV1",
       "type": "object"
@@ -8842,6 +8919,19 @@
           "maxItems": 32,
           "title": "Reference Purposes",
           "type": "array"
+        },
+        "role_reference_policy_version": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Reference Policy Version"
         },
         "role_variant": {
           "enum": [
@@ -16030,6 +16120,106 @@
       "title": "OutputResolutionControlV1",
       "type": "object"
     },
+    "ParentDerivedMaterializationIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "derivative_role": {
+          "enum": [
+            "character_turnaround",
+            "product_multiview"
+          ],
+          "title": "Derivative Role",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "parent": {
+          "$ref": "#/$defs/ParentNodeSnapshotV1"
+        },
+        "payload_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Payload Digest",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "derivative_role",
+        "intent_id",
+        "occurrence_id",
+        "parent",
+        "payload_digest",
+        "stage_revision",
+        "workflow_id"
+      ],
+      "title": "ParentDerivedMaterializationIntentV1",
+      "type": "object"
+    },
+    "ParentNodeSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "prompt_preparation_operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Preparation Operation Id"
+        },
+        "semantic_role": {
+          "enum": [
+            "character_main",
+            "product_main"
+          ],
+          "title": "Semantic Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_revision",
+        "semantic_role"
+      ],
+      "title": "ParentNodeSnapshotV1",
+      "type": "object"
+    },
     "PlannedCapabilityReferenceV1": {
       "additionalProperties": false,
       "properties": {
@@ -17149,6 +17339,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "derivative_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentDerivedMaterializationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "envelope_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -17171,6 +17372,27 @@
           "minLength": 1,
           "title": "Materialization Id",
           "type": "string"
+        },
+        "operation_kind": {
+          "default": "standalone",
+          "enum": [
+            "derivative",
+            "parent",
+            "standalone"
+          ],
+          "title": "Operation Kind",
+          "type": "string"
+        },
+        "parent_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentNodeSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "proposal_id": {
           "maxLength": 160,
@@ -17215,6 +17437,12 @@
           ],
           "default": null,
           "title": "Selection Reason"
+        },
+        "stage_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         },
         "style_skill_run_id": {
           "anyOf": [

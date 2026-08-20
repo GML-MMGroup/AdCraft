@@ -61,7 +61,7 @@ class _ProposalSelectionSubmissionService:
             | ReuseDirectionActionV2
         ),
         accepted: ChatTurnAcceptedV2,
-    ) -> CapabilityMaterializationEnvelopeV1:
+    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
         proposal = self._conversations.get_proposal(proposal_id)
         envelope = self._build_envelope(proposal, action, accepted)
         self._materializations.queue(envelope)
@@ -192,7 +192,8 @@ class _ProposalSelectionSubmissionService:
             | ReuseDirectionActionV2
         ),
         accepted: ChatTurnAcceptedV2,
-    ) -> CapabilityMaterializationEnvelopeV1:
+    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
+        self._validate_capability(proposal)
         if proposal.materialization is not None:
             if proposal.materialization.turn_id == accepted.turn_id:
                 return self._load_envelope(proposal.materialization.materialization_id)
@@ -261,7 +262,9 @@ class _ProposalSelectionSubmissionService:
             proposal.workflow_id
         ).journey.stage_revision
         operation_kind = (
-            "parent" if proposal.capability_id in {"product_design", "character_design"} else "standalone"
+            "parent"
+            if proposal.capability_id in {"product_design", "character_design"}
+            else "standalone"
         )
         derivative_intent = (
             _parent_derivative_intent(
@@ -273,38 +276,59 @@ class _ProposalSelectionSubmissionService:
             if operation_kind == "parent"
             else None
         )
-        return CapabilityMaterializationEnvelopeV1(
-            envelope_id="envelope_" + _digest(materialization_id)[:32],
-            materialization_id=materialization_id,
-            proposal_id=proposal.proposal_id,
-            proposal_revision=proposal.proposal_revision,
-            workflow_id=proposal.workflow_id,
-            conversation_id=accepted.conversation_id,
-            action_turn_id=accepted.turn_id,
-            action=action.action,
-            selection_actor=("agent" if action.action == "delegate_choice" else "user"),
-            selection_reason=selection_reason,
-            capability_id=proposal.capability_id,
-            selected_option=option,
-            reference_plan=reference_plan,
-            expected_session_revision=action.expected_session_revision,
-            stage_revision=stage_revision,
-            operation_kind=operation_kind,
-            derivative_intent=derivative_intent,
-            target_node_id=proposal.target_node_id,
-            target_node_revision=proposal.target_node_revision,
-            context_snapshot_id="snapshot_" + context_digest[:32],
-            context_snapshot_digest=context_digest,
-            style_skill_run_id=proposal.video_skill_run_id,
+        request_identity = f"capability-materialization:{materialization_id}:attempt:{attempt_no}"
+        return self._create_envelope(
+            payload={
+                "envelope_id": "envelope_" + _digest(materialization_id)[:32],
+                "materialization_id": materialization_id,
+                "proposal_id": proposal.proposal_id,
+                "proposal_revision": proposal.proposal_revision,
+                "workflow_id": proposal.workflow_id,
+                "conversation_id": accepted.conversation_id,
+                "action_turn_id": accepted.turn_id,
+                "action": action.action,
+                "selection_actor": ("agent" if action.action == "delegate_choice" else "user"),
+                "selection_reason": selection_reason,
+                "capability_id": proposal.capability_id,
+                "selected_option": option,
+                "reference_plan": reference_plan,
+                "expected_session_revision": action.expected_session_revision,
+                "stage_revision": stage_revision,
+                "operation_kind": operation_kind,
+                "derivative_intent": derivative_intent,
+                "target_node_id": proposal.target_node_id,
+                "target_node_revision": proposal.target_node_revision,
+                "context_snapshot_id": "snapshot_" + context_digest[:32],
+                "context_snapshot_digest": context_digest,
+                "style_skill_run_id": proposal.video_skill_run_id,
+                "attempt_no": attempt_no,
+                "created_at": datetime.now(timezone.utc),
+            },
             result_contract_name=result_contract,
-            attempt_no=attempt_no,
-            agent_request_identity=(
-                f"capability-materialization:{materialization_id}:attempt:{attempt_no}"
-            ),
-            created_at=datetime.now(timezone.utc),
+            request_identity=request_identity,
         )
 
-    def _load_envelope(self, materialization_id: str) -> CapabilityMaterializationEnvelopeV1:
+    def _validate_capability(self, proposal) -> None:
+        del proposal
+
+    def _create_envelope(
+        self,
+        *,
+        payload: dict[str, object],
+        result_contract_name: str,
+        request_identity: str,
+    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
+        return CapabilityMaterializationEnvelopeV1.model_validate(
+            {
+                **payload,
+                "result_contract_name": result_contract_name,
+                "agent_request_identity": request_identity,
+            }
+        )
+
+    def _load_envelope(
+        self, materialization_id: str
+    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
         envelope_id = "envelope_" + _digest(materialization_id)[:32]
         return self._materializations.get_envelope(envelope_id)
 
@@ -312,69 +336,34 @@ class _ProposalSelectionSubmissionService:
 class QuickMediaMaterializationSubmissionService(_ProposalSelectionSubmissionService):
     """Queue the sole remaining model-assisted Proposal materialization path."""
 
-    def _build_envelope(
-        self,
-        proposal,
-        action: (
-            SelectOptionActionV2
-            | CustomDirectionActionV2
-            | DelegateChoiceActionV2
-            | ReuseDirectionActionV2
-        ),
-        accepted: ChatTurnAcceptedV2,
-    ) -> CapabilityMaterializationEnvelopeV1:
+    def _validate_capability(self, proposal) -> None:
         if proposal.capability_id != "quick_media":
             raise _error(
                 "quick_media_materialization_invalid",
                 "Only Quick Media uses model-assisted Proposal materialization.",
             )
-        return super()._build_envelope(proposal, action, accepted)
 
 
 class ProposalPublicationSubmissionService(_ProposalSelectionSubmissionService):
     """Queue deterministic Proposal publication while preserving the public lifecycle."""
 
-    def _build_envelope(
-        self,
-        proposal,
-        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
-        accepted: ChatTurnAcceptedV2,
-    ) -> ProposalPublicationEnvelopeV1:
+    def _validate_capability(self, proposal) -> None:
         if proposal.capability_id == "quick_media":
             raise _error(
                 "proposal_publication_invalid",
                 "Quick Media does not use deterministic Proposal publication.",
             )
-        legacy = super()._build_envelope(proposal, action, accepted)
-        if isinstance(legacy, ProposalPublicationEnvelopeV1):
-            return legacy
-        return ProposalPublicationEnvelopeV1(
-            envelope_id=legacy.envelope_id,
-            materialization_id=legacy.materialization_id,
-            proposal_id=legacy.proposal_id,
-            proposal_revision=legacy.proposal_revision,
-            workflow_id=legacy.workflow_id,
-            conversation_id=legacy.conversation_id,
-            action_turn_id=legacy.action_turn_id,
-            action=legacy.action,
-            selection_actor=legacy.selection_actor,
-            selection_reason=legacy.selection_reason,
-            capability_id=legacy.capability_id,
-            selected_option=legacy.selected_option,
-            reference_plan=legacy.reference_plan,
-            expected_session_revision=legacy.expected_session_revision,
-            stage_revision=legacy.stage_revision,
-            operation_kind=legacy.operation_kind,
-            parent_snapshot=legacy.parent_snapshot,
-            derivative_intent=legacy.derivative_intent,
-            target_node_id=legacy.target_node_id,
-            target_node_revision=legacy.target_node_revision,
-            context_snapshot_id=legacy.context_snapshot_id,
-            context_snapshot_digest=legacy.context_snapshot_digest,
-            style_skill_run_id=legacy.style_skill_run_id,
-            attempt_no=legacy.attempt_no,
-            idempotency_identity=legacy.agent_request_identity,
-            created_at=legacy.created_at,
+
+    def _create_envelope(
+        self,
+        *,
+        payload: dict[str, object],
+        result_contract_name: str,
+        request_identity: str,
+    ) -> ProposalPublicationEnvelopeV1:
+        del result_contract_name
+        return ProposalPublicationEnvelopeV1.model_validate(
+            {**payload, "idempotency_identity": request_identity}
         )
 
     def _load_envelope(self, materialization_id: str) -> ProposalPublicationEnvelopeV1:
