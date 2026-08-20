@@ -81,6 +81,19 @@ AgentAnchorSourceV3: TypeAlias = Annotated[
 ]
 
 
+AgentAnchorMaterializedRoleV3 = Literal[
+    "product_main",
+    "product_multiview",
+    "character_main",
+    "character_turnaround",
+]
+
+
+class AgentAnchorRoleSourceV3(_AuthoritativeWorkingDocumentModel):
+    role: AgentAnchorMaterializedRoleV3
+    source: AgentAnchorNodeSourceV3
+
+
 class AnchorAcceptanceEvidenceV1(_AuthoritativeWorkingDocumentModel):
     evidence_id: str = Field(min_length=1, max_length=160)
     actor: Literal["user", "agent", "system"]
@@ -102,6 +115,7 @@ class AgentAnchorV3(_AuthoritativeWorkingDocumentModel):
     summary: str = Field(min_length=1, max_length=4_096)
     lifecycle: AgentAnchorLifecycleV3
     source: AgentAnchorSourceV3
+    role_sources: tuple[AgentAnchorRoleSourceV3, ...] = Field(default=(), max_length=8)
     acceptance_evidence: tuple[AnchorAcceptanceEvidenceV1, ...] = Field(
         min_length=1,
         max_length=64,
@@ -109,6 +123,15 @@ class AgentAnchorV3(_AuthoritativeWorkingDocumentModel):
 
     @model_validator(mode="after")
     def validate_source_evidence(self) -> "AgentAnchorV3":
+        roles = [item.role for item in self.role_sources]
+        if len(roles) != len(set(roles)):
+            raise ValueError("Anchor materialized roles must be unique.")
+        allowed_roles = {
+            "product": {"product_main", "product_multiview"},
+            "character": {"character_main", "character_turnaround"},
+        }.get(self.semantic_role, set())
+        if any(role not in allowed_roles for role in roles):
+            raise ValueError("Anchor materialized role does not match its semantic identity.")
         media_roles = {"product", "prop", "character", "scene"}
         if (
             self.lifecycle == "active"

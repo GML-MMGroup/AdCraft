@@ -329,7 +329,7 @@ def _normalized_character_bundle(
         title=result.title,
         summary_prompt=result.summary_prompt,
         generation_prompt=f"{_MAIN_PROMPT}\n\nIdentity direction: {result.generation_prompt}",
-        structured_content=main_content,
+        structured_content=_model_payload(main_content),
         parameters={**common_parameters, "character_asset_kind": "identity_master"},
         parameter_provenance=normalization.parameter_provenance,
         prompt_context_snapshot_id=envelope.context_snapshot_id,
@@ -408,7 +408,7 @@ def _normalized_product_bundle(
         title=result.title,
         summary_prompt=result.summary_prompt,
         generation_prompt=result.generation_prompt,
-        structured_content=main_content,
+        structured_content=_model_payload(main_content),
         parameters={**common_parameters, "asset_kind": "main"},
         parameter_provenance=normalization.parameter_provenance,
         prompt_context_snapshot_id=envelope.context_snapshot_id,
@@ -425,7 +425,7 @@ def _normalized_product_bundle(
             "with no people, application scene, labels, or unrelated props.\n\n"
             f"Identity: {main_content.subject_identity}. Design: {main_content.design_summary}."
         ),
-        structured_content=derivative_content,
+        structured_content=_model_payload(derivative_content),
         parameters={**common_parameters, "asset_kind": "multi_view"},
         parameter_provenance=normalization.parameter_provenance,
         prompt_context_snapshot_id=envelope.context_snapshot_id,
@@ -616,6 +616,9 @@ def _derivative_intent(
     if not nodes or pair_id is None:
         raise ValueError("parent_materialization_missing")
     node = nodes[0]
+    prompt_operation_id = node.prompt_preparation.operation_id
+    if prompt_operation_id is None:
+        raise ValueError("parent_prompt_preparation_identity_missing")
     is_character = capability_id == "character_design"
     derivative_role = "character_turnaround" if is_character else "product_multiview"
     return ParentDerivedMaterializationIntentV1(
@@ -627,10 +630,12 @@ def _derivative_intent(
             node_id=node.node_id,
             node_revision=node.revision,
             semantic_role="character_main" if is_character else "product_main",
+            prompt_preparation_operation_id=prompt_operation_id,
         ),
         derivative_role=derivative_role,
         payload_digest=_digest(
-            f"{envelope.workflow_id}:{node.node_id}:{node.revision}:{derivative_role}"
+            f"{envelope.workflow_id}:{node.node_id}:{node.revision}:"
+            f"{prompt_operation_id}:{derivative_role}"
         ),
     )
 

@@ -44,6 +44,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationDocumentWriteV1,
 )
 from app.schemas.agent_working_documents import (
+    AgentAnchorRoleSourceV3,
     AgentAnchorNodeSourceV3,
     AgentAnchorSkillSnapshotSourceV3,
     AgentAnchorV3,
@@ -391,44 +392,117 @@ class CapabilityMaterializationPublicationService:
         anchors = existing_content.anchors
         affected_aliases: list[str] = []
         replaced = False
+        attached_derived = False
         if semantic_role is not None and source_node is not None:
             current_anchor = existing_content.current_anchor(semantic_role)
-            if current_anchor is not None:
+            source = AgentAnchorNodeSourceV3(
+                workflow_id=envelope.workflow_id,
+                node_id=source_node.node_id,
+                node_revision=source_node.revision,
+            )
+            materialized_role = _anchor_materialized_role(envelope)
+            if envelope.operation_kind == "derivative":
+                if current_anchor is None or envelope.parent_snapshot is None:
+                    raise V2PersistenceError(
+                        "parent_materialization_missing",
+                        "The accepted parent identity is not available in the Anchor Registry.",
+                        stage="capability_materialization_publication",
+                    )
+                expected_parent_role = (
+                    "character_main" if semantic_role == "character" else "product_main"
+                )
+                if (
+                    not isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
+                    or current_anchor.source.node_id != envelope.parent_snapshot.node_id
+                    or current_anchor.source.node_revision
+                    != envelope.parent_snapshot.node_revision
+                    or envelope.parent_snapshot.semantic_role != expected_parent_role
+                ):
+                    raise V2PersistenceError(
+                        "parent_materialization_revision_stale",
+                        "The Anchor Registry parent identity no longer matches the derivative.",
+                        stage="capability_materialization_publication",
+                    )
+                role_sources = current_anchor.role_sources or (
+                    AgentAnchorRoleSourceV3(
+                        role=expected_parent_role,
+                        source=current_anchor.source,
+                    ),
+                )
+                existing_role = next(
+                    (item for item in role_sources if item.role == materialized_role),
+                    None,
+                )
+                if existing_role is not None and existing_role.source != source:
+                    raise V2PersistenceError(
+                        "derived_materialization_conflict",
+                        "The derived identity role is already attached to another Node.",
+                        stage="capability_materialization_publication",
+                    )
+                next_anchor = current_anchor.model_copy(
+                    update={
+                        "role_sources": (
+                            role_sources
+                            if existing_role is not None
+                            else (*role_sources, AgentAnchorRoleSourceV3(role=materialized_role, source=source))
+                        ),
+                        "acceptance_evidence": (
+                            *current_anchor.acceptance_evidence,
+                            _anchor_acceptance(
+                                envelope,
+                                requirement_revision_id=requirement.revision_id,
+                                requirement_revision_no=requirement.revision_no,
+                                document_revision=next_revision,
+                                evidence_scope=materialized_role,
+                                node_revision=source_node.revision,
+                            ),
+                        ),
+                    }
+                )
                 anchors = tuple(
-                    anchor.model_copy(update={"lifecycle": "retired"})
-                    if anchor.alias == current_anchor.alias
-                    else anchor
+                    next_anchor if anchor.alias == current_anchor.alias else anchor
                     for anchor in anchors
                 )
-                replaced = True
-            alias = _next_authoritative_alias(semantic_role, anchors)
-            affected_aliases.append(alias)
-            anchors += (
-                AgentAnchorV3(
-                    alias=alias,
-                    identity_id="identity_"
-                    + _digest(f"{envelope.materialization_id}:{semantic_role}")[:32],
-                    semantic_role=semantic_role,
-                    display_name=envelope.selected_option.title,
-                    summary=envelope.selected_option.public_summary,
-                    lifecycle=("active" if semantic_role == "world_setting" else "planned"),
-                    source=AgentAnchorNodeSourceV3(
-                        workflow_id=envelope.workflow_id,
-                        node_id=source_node.node_id,
-                        node_revision=source_node.revision,
-                    ),
-                    acceptance_evidence=(
-                        _anchor_acceptance(
-                            envelope,
-                            requirement_revision_id=requirement.revision_id,
-                            requirement_revision_no=requirement.revision_no,
-                            document_revision=next_revision,
-                            evidence_scope=semantic_role,
-                            node_revision=source_node.revision,
+                affected_aliases.append(current_anchor.alias)
+                attached_derived = True
+            else:
+                if current_anchor is not None:
+                    anchors = tuple(
+                        anchor.model_copy(update={"lifecycle": "retired"})
+                        if anchor.alias == current_anchor.alias
+                        else anchor
+                        for anchor in anchors
+                    )
+                    replaced = True
+                alias = _next_authoritative_alias(semantic_role, anchors)
+                affected_aliases.append(alias)
+                anchors += (
+                    AgentAnchorV3(
+                        alias=alias,
+                        identity_id="identity_"
+                        + _digest(f"{envelope.materialization_id}:{semantic_role}")[:32],
+                        semantic_role=semantic_role,
+                        display_name=envelope.selected_option.title,
+                        summary=envelope.selected_option.public_summary,
+                        lifecycle=("active" if semantic_role == "world_setting" else "planned"),
+                        source=source,
+                        role_sources=(
+                            (AgentAnchorRoleSourceV3(role=materialized_role, source=source),)
+                            if materialized_role is not None
+                            else ()
+                        ),
+                        acceptance_evidence=(
+                            _anchor_acceptance(
+                                envelope,
+                                requirement_revision_id=requirement.revision_id,
+                                requirement_revision_no=requirement.revision_no,
+                                document_revision=next_revision,
+                                evidence_scope=semantic_role,
+                                node_revision=source_node.revision,
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
         if envelope.style_skill_run_id is not None:
             snapshot = self._conversations.get_active_creative_direction_snapshot(
                 envelope.workflow_id
@@ -514,7 +588,9 @@ class CapabilityMaterializationPublicationService:
                 ),
             )
         operation = (
-            "replace_anchor"
+            "attach_derived_anchor_role"
+            if attached_derived
+            else "replace_anchor"
             if replaced
             else (
                 "register_planned_anchor" if semantic_role is not None else "activate_style_anchor"
@@ -955,3 +1031,15 @@ def _next_authoritative_alias(semantic_role: str, anchors: tuple[AgentAnchorV3, 
         "The Anchor Registry alias range is exhausted.",
         stage="capability_materialization_publication",
     )
+
+
+def _anchor_materialized_role(
+    envelope: ProposalApplicationEnvelopeV1,
+) -> str | None:
+    if envelope.capability_id == "product_design":
+        return "product_multiview" if envelope.operation_kind == "derivative" else "product_main"
+    if envelope.capability_id == "character_design":
+        return (
+            "character_turnaround" if envelope.operation_kind == "derivative" else "character_main"
+        )
+    return None

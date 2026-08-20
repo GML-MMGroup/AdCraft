@@ -405,6 +405,7 @@ def _parent_derivative_intent(
     node_id = "node_" + _digest(f"{materialization_id}:main")[:32]
     derivative_role = "character_turnaround" if is_character else "product_multiview"
     semantic_role = "character_main" if is_character else "product_main"
+    prompt_operation_id = "prompt_" + _digest(f"{materialization_id}:{node_id}")[:32]
     return ParentDerivedMaterializationIntentV1(
         intent_id="derivative_" + _digest(f"{materialization_id}:{derivative_role}")[:32],
         workflow_id=workflow_id,
@@ -414,9 +415,12 @@ def _parent_derivative_intent(
             node_id=node_id,
             node_revision=1,
             semantic_role=semantic_role,
+            prompt_preparation_operation_id=prompt_operation_id,
         ),
         derivative_role=derivative_role,
-        payload_digest=_digest(f"{workflow_id}:{node_id}:1:{derivative_role}"),
+        payload_digest=_digest(
+            f"{workflow_id}:{node_id}:1:{prompt_operation_id}:{derivative_role}"
+        ),
     )
 
 

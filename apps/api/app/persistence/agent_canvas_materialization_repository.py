@@ -1725,9 +1725,27 @@ class AgentCanvasMaterializationRepository:
                         if envelope.parent_snapshot.semantic_role == "character_main"
                         else "product"
                     )
+                    prompt_preparation = (
+                        json.loads(str(parent["prompt_preparation_json"]))
+                        if parent is not None
+                        else {}
+                    )
+                    expected_prompt_operation_id = (
+                        envelope.parent_snapshot.prompt_preparation_operation_id
+                    )
+                    revision_matches = parent is not None and (
+                        int(parent["revision"]) == envelope.parent_snapshot.node_revision
+                        or (
+                            expected_prompt_operation_id is not None
+                            and int(parent["revision"]) > envelope.parent_snapshot.node_revision
+                            and prompt_preparation.get("operation_id")
+                            == expected_prompt_operation_id
+                            and prompt_preparation.get("status") == "ready"
+                        )
+                    )
                     if (
                         parent is None
-                        or int(parent["revision"]) != envelope.parent_snapshot.node_revision
+                        or not revision_matches
                         or str(parent["creative_role"]) != expected_role
                     ):
                         raise _error(

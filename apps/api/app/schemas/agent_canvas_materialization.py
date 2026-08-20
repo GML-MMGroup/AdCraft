@@ -68,6 +68,7 @@ class ParentNodeSnapshotV1(_MaterializationModel):
     node_id: str = Field(min_length=1, max_length=160)
     node_revision: int = Field(ge=1)
     semantic_role: Literal["product_main", "character_main"]
+    prompt_preparation_operation_id: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class ParentDerivedMaterializationIntentV1(_MaterializationModel):
