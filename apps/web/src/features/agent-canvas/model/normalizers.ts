@@ -15,6 +15,8 @@ import type {
   AgentWorkingDocumentPageV2,
   AgentWorkingDocumentV2,
   AgentAnchorV2,
+  AgentAnchorNodeSourceV3,
+  AgentAnchorRoleSourceV3,
   AgentAnchorV3,
   AnchorAcceptanceEvidenceV1,
   AnchorRegistryContentV2,
@@ -1650,9 +1652,11 @@ function normalizeAnchorRegistryContentV3(value: unknown, path: string): AnchorR
 function normalizeAgentAnchorV3(value: unknown, path: string): AgentAnchorV3 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
-    "alias", "identity_id", "semantic_role", "display_name", "summary", "lifecycle", "source", "acceptance_evidence",
+    "alias", "identity_id", "semantic_role", "display_name", "summary", "lifecycle", "source", "role_sources", "acceptance_evidence",
   ], path);
   const source = normalizeAgentAnchorSourceV3(record.source, `${path}.source`);
+  const roleSources = expectArray(record.role_sources ?? [], `${path}.role_sources`);
+  if (roleSources.length > 8) fail(`${path}.role_sources`, "expected at most 8 role sources");
   const evidence = expectArray(record.acceptance_evidence, `${path}.acceptance_evidence`);
   if (!evidence.length) fail(`${path}.acceptance_evidence`, "expected at least one evidence record");
   return {
@@ -1667,6 +1671,10 @@ function normalizeAgentAnchorV3(value: unknown, path: string): AgentAnchorV3 {
       "planned", "active", "retired", "invalid",
     ]), `${path}.lifecycle`),
     source,
+    role_sources: roleSources.map((item, index) => normalizeAgentAnchorRoleSourceV3(
+      item,
+      `${path}.role_sources[${index}]`,
+    )),
     acceptance_evidence: evidence.map((item, index) => normalizeAnchorAcceptanceEvidenceV1(
       item,
       `${path}.acceptance_evidence[${index}]`,
@@ -1678,8 +1686,7 @@ function normalizeAgentAnchorSourceV3(value: unknown, path: string): AgentAnchor
   const record = expectRecord(value, path);
   const kind = record.source_kind === undefined ? "" : expectNonEmptyString(record.source_kind, `${path}.source_kind`);
   if (kind === "node") {
-    forbidUnknownFields(record, ["source_kind", "workflow_id", "node_id", "node_revision"], path);
-    return { source_kind: "node", workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), node_id: expectNonEmptyString(record.node_id, `${path}.node_id`), node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`) };
+    return normalizeAgentAnchorNodeSourceV3(record, path);
   }
   if (kind === "image_asset_version") {
     forbidUnknownFields(record, ["source_kind", "workflow_id", "node_id", "node_revision", "asset_id", "asset_version_id"], path);
@@ -1690,6 +1697,37 @@ function normalizeAgentAnchorSourceV3(value: unknown, path: string): AgentAnchor
     return { source_kind: "skill_snapshot", skill_id: expectNonEmptyString(record.skill_id, `${path}.skill_id`), skill_version: expectNonEmptyString(record.skill_version, `${path}.skill_version`), package_digest: nullableDigest(record.package_digest, `${path}.package_digest`) ?? (() => { fail(`${path}.package_digest`, "expected digest"); })() };
   }
   fail(`${path}.source_kind`, "expected node, image_asset_version, or skill_snapshot");
+}
+
+function normalizeAgentAnchorNodeSourceV3(
+  value: unknown,
+  path: string,
+): AgentAnchorNodeSourceV3 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["source_kind", "workflow_id", "node_id", "node_revision"], path);
+  return {
+    source_kind: expectLiteral(record.source_kind, new Set(["node"]), `${path}.source_kind`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`),
+  };
+}
+
+function normalizeAgentAnchorRoleSourceV3(
+  value: unknown,
+  path: string,
+): AgentAnchorRoleSourceV3 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["role", "source"], path);
+  return {
+    role: expectLiteral(record.role, new Set<AgentAnchorRoleSourceV3["role"]>([
+      "product_main",
+      "product_multiview",
+      "character_main",
+      "character_turnaround",
+    ]), `${path}.role`),
+    source: normalizeAgentAnchorNodeSourceV3(record.source, `${path}.source`),
+  };
 }
 
 function normalizeAnchorAcceptanceEvidenceV1(value: unknown, path: string): AnchorAcceptanceEvidenceV1 {

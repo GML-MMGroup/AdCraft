@@ -2039,11 +2039,47 @@ describe("Agent Canvas normalizers", () => {
       content: { schema_version: "3", anchors: [{
         alias: "HERO", identity_id: "identity-1", semantic_role: "character", display_name: "Hero",
         summary: "Lead talent", lifecycle: "active",
-        source: { source_kind: "node", workflow_id: "workflow-1", node_id: "node-1", node_revision: 2 },
+        source: {
+          source_kind: "image_asset_version",
+          workflow_id: "workflow-1",
+          node_id: "node-character-main",
+          node_revision: 2,
+          asset_id: "asset-character-main",
+          asset_version_id: "asset-version-character-main",
+        },
+        role_sources: [{
+          role: "character_main",
+          source: {
+            source_kind: "node",
+            workflow_id: "workflow-1",
+            node_id: "node-character-main",
+            node_revision: 2,
+          },
+        }, {
+          role: "character_turnaround",
+          source: {
+            source_kind: "node",
+            workflow_id: "workflow-1",
+            node_id: "node-character-turnaround",
+            node_revision: 1,
+          },
+        }],
         acceptance_evidence: [{ evidence_id: "evidence-1", actor: "user", decision: "accepted", action_id: "action-1", requirement_revision_id: "requirement-2", requirement_revision_no: 2, node_revision: 2, asset_version_id: null, document_revision: 3, recorded_at: "2026-08-15T10:00:00Z" }],
       }] },
     });
     expect(document.content_schema_version).toBe(3);
+    expect(document.content).toMatchObject({
+      schema_version: "3",
+      anchors: [{
+        role_sources: [{
+          role: "character_main",
+          source: { node_id: "node-character-main", node_revision: 2 },
+        }, {
+          role: "character_turnaround",
+          source: { node_id: "node-character-turnaround", node_revision: 1 },
+        }],
+      }],
+    });
   });
 
   it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {
