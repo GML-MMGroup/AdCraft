@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChatProposalCardV2, GuidedInteractionV1 } from "../../../types-v2.ts";
 import {
+  guidedInteractionContentVersion,
   interactionForTimelineProposal,
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
@@ -45,5 +46,15 @@ describe("guided interaction placement", () => {
 
     expect(interactionForTimelineProposal(questionnaire, timelineProposal)).toBeNull();
     expect(shouldRenderStandaloneInteraction(questionnaire, [timelineProposal])).toBe(true);
+  });
+
+  it("changes the timeline content version when the active review changes", () => {
+    expect(guidedInteractionContentVersion(interaction)).toBe("interaction-1:3:open");
+    expect(guidedInteractionContentVersion({
+      ...interaction,
+      revision: 4,
+      status: "submitted",
+    })).toBe("interaction-1:4:submitted");
+    expect(guidedInteractionContentVersion(null)).toBe("");
   });
 });

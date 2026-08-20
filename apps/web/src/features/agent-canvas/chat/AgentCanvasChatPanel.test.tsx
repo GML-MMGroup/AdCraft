@@ -979,6 +979,16 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(screen.getByRole("button", { name: "Style: Platform Default" })).toBeTruthy();
   });
 
+  it("renders a standalone review after the current conversation items", () => {
+    const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
+    const panelSource = readFileSync(panelPath, "utf8");
+    const timelineItemsIndex = panelSource.indexOf("{chat.state.items.map((item) => {");
+    const standaloneInteractionIndex = panelSource.indexOf("{standaloneGuidedInteraction ? (");
+
+    expect(timelineItemsIndex).toBeGreaterThan(-1);
+    expect(standaloneInteractionIndex).toBeGreaterThan(timelineItemsIndex);
+  });
+
   it("uses an opaque edge-aligned chat rail with plain Agent replies", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
