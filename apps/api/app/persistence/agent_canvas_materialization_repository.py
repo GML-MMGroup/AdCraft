@@ -310,6 +310,9 @@ class AgentCanvasMaterializationRepository:
                     availability_valid = persisted_availability == "open" or (
                         proposal_action == "reuse_direction"
                         and persisted_availability == "superseded"
+                    ) or (
+                        materialization_plan.operation_kind == "derivative"
+                        and persisted_availability == "applied"
                     )
                     if not availability_valid:
                         raise _error(
@@ -345,7 +348,7 @@ class AgentCanvasMaterializationRepository:
                         connection,
                         proposal.workflow_id,
                     )
-                    if (
+                    if materialization_plan.operation_kind != "derivative" and (
                         proposal_state["requirement_revision_id"] != requirement_head.revision_id
                         or proposal_state["requirement_revision_no"] != requirement_head.revision_no
                         or proposal_state["requirement_digest"] != requirement_head.digest
@@ -433,7 +436,8 @@ class AgentCanvasMaterializationRepository:
                     node = nodes[0]
                     next_awaiting = None
                     if (
-                        proposal_action != "reuse_direction"
+                        materialization_plan.operation_kind != "derivative"
+                        and proposal_action != "reuse_direction"
                         and str(session["active_proposal_id"]) != proposal_id
                     ):
                         raise _error(
@@ -568,7 +572,10 @@ class AgentCanvasMaterializationRepository:
                     if fault_injector is not None:
                         fault_injector("document")
                     requirement_revision = requirement_head
-                    if proposal.capability_id != "quick_media":
+                    if (
+                        proposal.capability_id != "quick_media"
+                        and materialization_plan.operation_kind != "derivative"
+                    ):
                         commitment_values = tuple(
                             (
                                 item.source_fragment,
@@ -745,21 +752,24 @@ class AgentCanvasMaterializationRepository:
                         "materialization_error_message": None,
                         "materialization_updated_at": now,
                     }
-                    proposal_update_conditions = [
-                        AgentCanvasConceptProposalRow.proposal_id == proposal_id,
-                        AgentCanvasConceptProposalRow.availability == persisted_availability,
-                        AgentCanvasConceptProposalRow.materialization_id == materialization_id,
-                    ]
-                    proposal_update = connection.execute(
-                        update(AgentCanvasConceptProposalRow)
-                        .where(*proposal_update_conditions)
-                        .values(**proposal_values)
-                    )
-                    if proposal_update.rowcount != 1:
-                        raise _error(
-                            "proposal_materialization_conflict",
-                            "Materialization attempt is no longer current.",
+                    if materialization_plan.operation_kind == "derivative":
+                        pass
+                    else:
+                        proposal_update_conditions = [
+                            AgentCanvasConceptProposalRow.proposal_id == proposal_id,
+                            AgentCanvasConceptProposalRow.availability == persisted_availability,
+                            AgentCanvasConceptProposalRow.materialization_id == materialization_id,
+                        ]
+                        proposal_update = connection.execute(
+                            update(AgentCanvasConceptProposalRow)
+                            .where(*proposal_update_conditions)
+                            .values(**proposal_values)
                         )
+                        if proposal_update.rowcount != 1:
+                            raise _error(
+                                "proposal_materialization_conflict",
+                                "Materialization attempt is no longer current.",
+                            )
                     if fault_injector is not None:
                         fault_injector("proposal")
                     next_session_revision = expected_session_revision + 1
@@ -1664,6 +1674,147 @@ class AgentCanvasMaterializationRepository:
                 "Materialization submission could not be persisted.",
             ) from error
         return self.get_projection(envelope.proposal_id)
+
+    def queue_derivative(
+        self,
+        envelope: ProposalPublicationEnvelopeV1,
+        *,
+        source_turn_id: str,
+        max_attempts: int = 5,
+    ) -> ProposalPublicationEnvelopeV1:
+        """Queue one parent-derived operation without republishing its Proposal."""
+
+        if envelope.operation_kind != "derivative" or envelope.parent_snapshot is None:
+            raise _error(
+                "derivative_materialization_invalid",
+                "Derivative queueing requires one parent snapshot.",
+            )
+        now = datetime.now(timezone.utc)
+        continuation_id = "continuation_" + _digest(envelope.materialization_id)[:32]
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    proposal = (
+                        connection.execute(
+                            select(AgentCanvasConceptProposalRow).where(
+                                AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
+                                AgentCanvasConceptProposalRow.workflow_id == envelope.workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if proposal is None or str(proposal["availability"]) != "applied":
+                        raise _error(
+                            "parent_materialization_missing",
+                            "The accepted parent materialization is not available.",
+                        )
+                    parent = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.node_id == envelope.parent_snapshot.node_id,
+                                AgentCanvasNodeRow.workflow_id == envelope.workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    expected_role = (
+                        "character"
+                        if envelope.parent_snapshot.semantic_role == "character_main"
+                        else "product"
+                    )
+                    if (
+                        parent is None
+                        or int(parent["revision"]) != envelope.parent_snapshot.node_revision
+                        or str(parent["creative_role"]) != expected_role
+                    ):
+                        raise _error(
+                            "parent_materialization_revision_stale",
+                            "The parent Node no longer matches the derived operation.",
+                        )
+                    self._envelopes.create_in_transaction(connection, envelope)
+                    existing = connection.execute(
+                        select(AgentCanvasContinuationOutboxRow).where(
+                            AgentCanvasContinuationOutboxRow.continuation_id == continuation_id
+                        )
+                    ).mappings().one_or_none()
+                    if existing is None:
+                        event_turn = (
+                            connection.execute(
+                                select(AgentCanvasChatTurnRow).where(
+                                    AgentCanvasChatTurnRow.turn_id == envelope.action_turn_id,
+                                    AgentCanvasChatTurnRow.workflow_id == envelope.workflow_id,
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if event_turn is None:
+                            raise _error(
+                                "chat_turn_not_found",
+                                "Derivative materialization Turn was not found.",
+                            )
+                        self._outbox.enqueue_in_transaction(
+                            connection,
+                            continuation_id=continuation_id,
+                            workflow_id=envelope.workflow_id,
+                            conversation_id=str(event_turn["conversation_id"]),
+                            source_turn_id=source_turn_id,
+                            continuation_turn_id=envelope.action_turn_id,
+                            operation="capability_materialization",
+                            payload={"schema_version": "1", "envelope_id": envelope.envelope_id},
+                            max_attempts=max_attempts,
+                            now=now,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasExpertActivityRow).values(
+                                activity_id="activity_" + _digest(envelope.materialization_id)[:32],
+                                turn_id=envelope.action_turn_id,
+                                workflow_id=envelope.workflow_id,
+                                capability_id=envelope.capability_id,
+                                operation="capability_materialization",
+                                status="working",
+                                display_name="Derived Capability Materialization",
+                                error_code=None,
+                                error_message=None,
+                                created_at=now.isoformat(),
+                                updated_at=now.isoformat(),
+                            )
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=envelope.workflow_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=envelope.action_turn_id,
+                                action_id=envelope.action_turn_id,
+                                event_type="parent_derived_materialization_queued",
+                                transition_key=f"materialization:{envelope.materialization_id}:queued",
+                                created_at=now.isoformat(),
+                                payload={
+                                    "materialization_id": envelope.materialization_id,
+                                    "parent_node_id": envelope.parent_snapshot.node_id,
+                                    "parent_node_revision": envelope.parent_snapshot.node_revision,
+                                    "derivative_role": envelope.derivative_intent.derivative_role
+                                    if envelope.derivative_intent is not None
+                                    else None,
+                                },
+                            ),
+                        )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "capability_materialization_failed",
+                "Derived materialization submission could not be persisted.",
+            ) from error
+        return envelope
 
     def mark_working(
         self,

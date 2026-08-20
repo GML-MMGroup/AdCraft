@@ -64,6 +64,9 @@ from app.services.agent_canvas_materialization_runtime import (
 from app.services.agent_canvas_materialization_normalizer import (
     CapabilityMaterializationNormalizer,
 )
+from app.services.agent_canvas_parent_derived_materialization import (
+    ParentDerivedMaterializationCoordinator,
+)
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
 )
@@ -107,12 +110,22 @@ class CapabilityMaterializationPublicationService:
         storyboard_gateway: VideoAgentGateway | None = None,
         storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
         prompt_ready_activation: Callable[..., object] | None = None,
+        parent_derived: ParentDerivedMaterializationCoordinator | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
+        materialization_repository = AgentCanvasMaterializationRepository(
+            workflows.database,
+            conversations.events,
+        )
         self._commit_service = commit_service or AgentCanvasMaterializationCommitService(
-            AgentCanvasMaterializationRepository(workflows.database, conversations.events),
+            materialization_repository,
             GuidedProductionJourneyReducer(),
+        )
+        self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
+            workflows=workflows,
+            conversations=conversations,
+            materializations=materialization_repository,
         )
         self._plan_compiler = CapabilityMaterializationPlanCompiler()
         self._asset_resolver = asset_resolver
@@ -248,6 +261,8 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.queue_after_parent(envelope, lease_guard=lease_guard)
         if not outcome.node_ids:
             raise V2PersistenceError(
                 "materialization_outcome_invalid",

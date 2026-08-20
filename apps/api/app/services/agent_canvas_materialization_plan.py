@@ -114,6 +114,10 @@ def _continuation(
     envelope: ProposalApplicationEnvelopeV1,
     snapshot: MaterializationAuthoringSnapshotV1,
 ) -> ContinuationCommitV2 | None:
+    if envelope.operation_kind == "parent":
+        # Parent-derived work is queued by ParentDerivedMaterializationCoordinator
+        # after the parent authority transaction commits.
+        return None
     if not (
         envelope.target_node_id is not None
         or envelope.capability_id == "quick_media"
@@ -189,6 +193,12 @@ def _journey_event(
             recorded_at=envelope.created_at,
         )
     if envelope.capability_id == "quick_media" or journey.active_action is None:
+        return None
+    if envelope.operation_kind == "parent" and envelope.capability_id in {
+        "product_design",
+        "character_design",
+    }:
+        # Pair completion belongs to the derivative commit, not parent presence.
         return None
     evidence_kind_by_stage = {
         "world_view": "world_view_selected",

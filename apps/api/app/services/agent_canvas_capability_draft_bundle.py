@@ -78,7 +78,7 @@ class CapabilityDraftBundleBuilder:
     ) -> CapabilityDraftBundleV1:
         definitions = stage_definitions(envelope.capability_id, envelope.operation_kind)
         node_ids = tuple(
-            f"node_{_digest(f'{envelope.materialization_id}:{draft_key}')[:32]}"
+            f"node_{_digest(f'{envelope.materialization_id}:{_pair_node_suffix(envelope, draft_key)}')[:32]}"
             for draft_key, *_ in definitions
         )
         references = _reference_intents(envelope)
@@ -276,6 +276,17 @@ def stage_draft_parameters(
 
 def stage_draft_title(base: str, suffix: str) -> str:
     return _bounded_title(base, suffix)
+
+
+def _pair_node_suffix(
+    envelope: ProposalApplicationEnvelopeV1,
+    draft_key: str,
+) -> str:
+    if envelope.capability_id == "product_design":
+        return "main" if envelope.operation_kind == "parent" else "multi-view"
+    if envelope.capability_id == "character_design":
+        return "main" if envelope.operation_kind == "parent" else "turnaround"
+    return draft_key
 
 
 def character_turnaround_prompt(
@@ -606,8 +617,9 @@ def _derivative_intent(
         raise ValueError("parent_materialization_missing")
     node = nodes[0]
     is_character = capability_id == "character_design"
+    derivative_role = "character_turnaround" if is_character else "product_multiview"
     return ParentDerivedMaterializationIntentV1(
-        intent_id="derivative_" + _digest(f"{envelope.materialization_id}:{capability_id}")[:32],
+        intent_id="derivative_" + _digest(f"{envelope.materialization_id}:{derivative_role}")[:32],
         workflow_id=envelope.workflow_id,
         stage_revision=envelope.stage_revision,
         occurrence_id="character-1" if is_character else "product-1",
@@ -616,9 +628,9 @@ def _derivative_intent(
             node_revision=node.revision,
             semantic_role="character_main" if is_character else "product_main",
         ),
-        derivative_role="character_turnaround" if is_character else "product_multiview",
+        derivative_role=derivative_role,
         payload_digest=_digest(
-            f"{envelope.workflow_id}:{node.node_id}:{node.revision}:{pair_id}"
+            f"{envelope.workflow_id}:{node.node_id}:{node.revision}:{derivative_role}"
         ),
     )
 
