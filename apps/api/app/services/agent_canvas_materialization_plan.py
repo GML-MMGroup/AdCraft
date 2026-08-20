@@ -58,7 +58,7 @@ class CapabilityMaterializationPlanCompiler:
         )
         if (
             envelope.capability_id == "storyboard_design"
-            and snapshot.current_journey.stage == "storyboard_plan"
+            and snapshot.current_journey.stage == "storyboard_grids"
             and not storyboard_draft_preparation_queued
         ):
             raise ValueError(

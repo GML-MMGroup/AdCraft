@@ -52,12 +52,12 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
 
     @model_validator(mode="after")
     def validate_storyboard_checkpoint(self) -> "StageMaterializedJourneyEventV1":
-        if (
-            self.storyboard_draft_preparation_queued
-            and self.evidence_kind != "storyboard_plan_accepted"
-        ):
+        if self.storyboard_draft_preparation_queued and self.evidence_kind not in {
+            "storyboard_plan_accepted",
+            "storyboard_grids_prepared",
+        }:
             raise ValueError(
-                "Storyboard Draft preparation evidence requires storyboard plan acceptance."
+                "Storyboard Draft preparation evidence requires storyboard plan or grid preparation."
             )
         return self
 
