@@ -216,28 +216,29 @@ function progressiveGuidanceSessionPayload() {
       matching_asset_ids: [],
     },
     journey: {
-      policy_version: "fixed_ad_production_v1",
-      stage: "foundation_design",
+      policy_version: "fixed_ad_production_v2",
+      stage: "scene",
       stage_status: "waiting_user",
       stage_revision: 4,
-      foundation_queue: [{
-        item_id: "scene-1",
-        kind: "scene",
+      decisions: [{
+        decision_id: "decision:scene:1",
+        element_kind: "scene",
+        occurrence_id: "occurrence:scene:1",
         occurrence_index: 1,
-        requirement_source: "explicit_user",
-        required: true,
-        status: "active",
-        topic_id: "topic-scene",
-        selected_node_ids: [],
+        outcome: "unresolved",
+        source: "user",
+        source_revision: 2,
+        requirements: {},
       }],
-      foundation_cursor: 0,
+      active_occurrence_id: "occurrence:scene:1",
       active_action: {
         action_id: "journey-action-1",
-        action_kind: "invoke_capability:scene_design",
-        stage: "foundation_design",
+        action_kind: "invoke_capability",
+        stage: "scene",
+        stage_revision: 4,
         status: "waiting_user",
         turn_id: "turn-scene-1",
-        foundation_item_id: "scene-1",
+        occurrence_id: "occurrence:scene:1",
       },
       suspended_action: null,
       transition_evidence: [{
@@ -245,6 +246,10 @@ function progressiveGuidanceSessionPayload() {
         evidence_kind: "clarification_completed",
         source_id: "turn-clarification-1",
         source_revision: 2,
+        stage: "scene",
+        stage_revision: 4,
+        occurrence_id: "occurrence:scene:1",
+        actor: "system",
         recorded_at: "2026-08-04T09:00:00Z",
       }],
     },
@@ -254,6 +259,25 @@ function progressiveGuidanceSessionPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("rejects the retired fixed Journey V1 projection instead of migrating it in the browser", () => {
+    const payload = progressiveGuidanceSessionPayload();
+
+    expect(() => normalizeGuidedSessionStateV2({
+      ...payload,
+      journey: {
+        policy_version: "fixed_ad_production_v1",
+        stage: "foundation_design",
+        stage_status: "waiting_user",
+        stage_revision: 1,
+        foundation_queue: [],
+        foundation_cursor: null,
+        active_action: null,
+        suspended_action: null,
+        transition_evidence: [],
+      },
+    })).toThrowError(/journey\.(policy_version|foundation_queue)/i);
+  });
+
   it("keeps a durable decision-bundle timeline pointer without treating it as chat text", () => {
     const timeline = normalizeAgentCanvasChatTimelineV2({
       workflow_id: "workflow-1",
@@ -748,17 +772,21 @@ describe("Agent Canvas normalizers", () => {
         interaction_id: "interaction-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
         kind: "concept_choice", status: "open", response_locale: "zh-CN", expected_session_revision: 3, revision: 2,
         title: "Choose scene", context: "Pick a scene direction.",
-        content: { content_kind: "concept_choice", proposal_id: null, options: [
+        content: { content_kind: "concept_choice", proposal_id: null,
+          stage: "scene", stage_revision: 4, action_id: "action-scene-1",
+          occurrence_id: "occurrence:scene:1", capability_id: "scene_design",
+          allow_custom: true, allow_exclusion: false, options: [
           { option_id: "option-a", title: "Morning", summary: "Soft morning light." },
           { option_id: "option-b", title: "Evening", summary: "Warm evening light." },
+          { option_id: "option-c", title: "Night", summary: "Focused night lighting.", recommended: true },
         ] },
-        allowed_actions: ["select", "revise", "delegate"], submit_path: "/submit",
+        allowed_actions: ["select", "custom", "delegate"], submit_path: "/submit",
         created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
       },
       awaiting: {
         awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
         kind: "concept_selection", requires_user_action: true, resume_policy: "submit_interaction",
-        interaction_id: "interaction-1", node_ids: [], stage: "foundation_design", stage_revision: 4,
+        interaction_id: "interaction-1", node_ids: [], stage: "scene", stage_revision: 4,
         created_at: "2026-08-15T10:00:00Z",
       },
     });
@@ -817,10 +845,10 @@ describe("Agent Canvas normalizers", () => {
         session_id: "guidance-1",
         session_revision: 3,
         session_status: "active",
-        journey_stage: "foundation_design",
+        journey_stage: "scene",
         journey_stage_status: "working",
         journey_stage_revision: 4,
-        source_id: "stage:foundation_design:4",
+        source_id: "stage:scene:4",
         requirement_revision_id: "requirement-1",
         requirement_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         active_action_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

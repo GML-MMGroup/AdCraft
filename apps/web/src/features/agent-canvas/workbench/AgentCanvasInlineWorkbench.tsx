@@ -50,8 +50,10 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       perform={draft.perform}
     />
   );
-  const promptPreparing = ["image", "video", "audio"].includes(node.node_type)
-    && !isNodePromptReady(node);
+  const requiresPreparedPrompt = ["text", "script", "image", "video", "audio"].includes(node.node_type)
+    && !(node.node_type === "text" && node.creative_role === "world_setting");
+  const promptReady = !requiresPreparedPrompt || isNodePromptReady(node);
+  const promptPreparing = requiresPreparedPrompt && !promptReady;
 
   return (
     <NodeWorkbenchShell
@@ -67,6 +69,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
+          promptReady={promptReady}
         />
       ) : null}
       {node.node_type === "script" ? (
@@ -78,9 +81,10 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
+          promptReady={promptReady}
         />
       ) : null}
-      {["image", "video", "audio"].includes(node.node_type) && !promptPreparing ? (
+      {["image", "video", "audio"].includes(node.node_type) && promptReady ? (
         <MediaPromptWorkbench
           node={node}
           draft={draft}

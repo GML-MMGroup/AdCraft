@@ -12,16 +12,18 @@ const JOURNEY_EVENTS = new Set([
 
 const JOURNEY_STAGES = new Set<GuidedJourneyStageV2>([
   "intake",
-  "clarification",
-  "world_setting",
-  "foundation_design",
+  "world_view",
+  "product",
+  "props",
+  "character",
+  "scene",
   "narrative_direction",
   "style_lock",
   "storyboard_plan",
   "storyboard_grids",
-  "video_segments",
+  "videos",
   "bgm",
-  "editing_ready",
+  "editing",
   "completed",
 ]);
 

@@ -697,11 +697,18 @@ export function useAgentCanvasChat({
           scheduleNextPoll();
           return;
         }
-        clearBarrier();
         if (checkpoint.status === "failed") {
+          clearBarrier();
           setError(postReadyFailureMessage(checkpoint));
           return;
         }
+        if (guidanceSession?.awaiting) {
+          clearBarrier();
+          setNotice("The current guided action must finish before production can continue.");
+          void refresh();
+          return;
+        }
+        clearBarrier();
         setNotice("Production work is ready. Continuing the guided step.");
         void submitGuidanceAdvance(postReadyBarrier.precondition, false, {
           idempotencyKey: postReadyBarrier.idempotencyKey,
@@ -742,11 +749,16 @@ export function useAgentCanvasChat({
     postReadyPollRevision,
     refresh,
     submitGuidanceAdvance,
+    guidanceSession?.awaiting,
     workflowId,
   ]);
 
   useEffect(() => {
     const rebase = guidanceAdvanceRebaseRef.current;
+    if (guidanceSession?.awaiting) {
+      if (rebase) guidanceAdvanceRebaseRef.current = null;
+      return;
+    }
     if (!guidanceAdvancePrecondition) {
       if (rebase) guidanceAdvanceRebaseRef.current = null;
       return;
@@ -765,7 +777,7 @@ export function useAgentCanvasChat({
       return;
     }
     void submitGuidanceAdvance(guidanceAdvancePrecondition, false);
-  }, [guidanceAdvancePrecondition, submitGuidanceAdvance]);
+  }, [guidanceAdvancePrecondition, guidanceSession?.awaiting, submitGuidanceAdvance]);
 
   const submit = useCallback(async (draft: SubmitDraft) => {
     if (!workflowId || !draft.text.trim()) return false;

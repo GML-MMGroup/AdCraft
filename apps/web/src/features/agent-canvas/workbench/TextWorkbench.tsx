@@ -13,6 +13,7 @@ export function TextWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
+  promptReady,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
@@ -20,6 +21,7 @@ export function TextWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
+  promptReady: boolean;
 }) {
   const isWorldSetting = node.creative_role === "world_setting";
 
@@ -63,7 +65,7 @@ export function TextWorkbench({
             title={isWorldSetting
               ? "Save changes"
               : node.status === "failed" ? "Retry text" : "Run text"}
-            disabled={draft.pending}
+            disabled={draft.pending || (!isWorldSetting && !promptReady)}
             onClick={() => void (isWorldSetting ? draft.save() : draft.run())}
           >
             {isWorldSetting ? <SaveIcon /> : <SendIcon />}

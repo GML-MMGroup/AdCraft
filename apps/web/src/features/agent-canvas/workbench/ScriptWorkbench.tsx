@@ -18,6 +18,7 @@ export function ScriptWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
+  promptReady,
 }: {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
@@ -26,6 +27,7 @@ export function ScriptWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
+  promptReady: boolean;
 }) {
   const canRun = status === "draft" || status === "failed";
   const isWorking = status === "working";
@@ -79,7 +81,7 @@ export function ScriptWorkbench({
               : canRun
                 ? status === "failed" ? "Retry script" : "Run script"
                 : "Save script"}
-            disabled={editorDisabled}
+            disabled={editorDisabled || (canRun && !promptReady)}
             onClick={() => void (canRun ? draft.run() : draft.save())}
           >
             <SendIcon />

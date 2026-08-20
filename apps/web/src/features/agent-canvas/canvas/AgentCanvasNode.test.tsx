@@ -247,7 +247,23 @@ describe("AgentCanvasNodeCard", () => {
       "A smooth cinematic camera move.",
     ],
   ] as const)("replaces the centered %s icon with saved node content", (nodeType, overrides, copy) => {
-    const node = { ...makeNode(nodeType), ...overrides } as CanvasNodeV2;
+    const node = {
+      ...makeNode(nodeType),
+      ...overrides,
+      ...(nodeType === "image" || nodeType === "video"
+        ? {
+            prompt_preparation: {
+              status: "ready" as const,
+              operation_id: "prompt-operation-1",
+              attempt_no: 1,
+              context_snapshot_id: "prompt-context-1",
+              prompt_digest: "prompt-digest-1",
+              error: null,
+              updated_at: "2026-08-04T00:00:00Z",
+            },
+          }
+        : {}),
+    } as CanvasNodeV2;
 
     render(<AgentCanvasNodeCard node={node} />);
 
@@ -350,7 +366,18 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it("uses the glass player title instead of audio artwork or a status pill", () => {
-    const node = makeNode("audio");
+    const node = {
+      ...makeNode("audio"),
+      prompt_preparation: {
+        status: "ready",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "prompt-context-1",
+        prompt_digest: "prompt-digest-1",
+        error: null,
+        updated_at: "2026-08-04T00:00:00Z",
+      },
+    } satisfies CanvasNodeV2;
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
