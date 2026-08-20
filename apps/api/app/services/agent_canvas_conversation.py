@@ -1544,7 +1544,11 @@ class AgentConversationService:
                     f"clarification-completed:{turn_id}:requirements:{requirements.revision_id}"
                 ),
             )
-        if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
+        if (
+            intent.mode == "targeted_authoring"
+            and session.journey.active_action is not None
+            and session.journey.suspended_action is None
+        ):
             session = self._journey.apply_evidence(
                 turn.workflow_id,
                 evidence=JourneyEvidenceV2(
