@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import re
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_ad_media import (
@@ -44,6 +45,52 @@ from app.schemas.agent_canvas_world_setting import (
 )
 
 
+_ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
+    "product_main": (
+        "person",
+        "people",
+        "hand",
+        "hands",
+        "lifestyle",
+        "using the product",
+        "application scene",
+        "narrative environment",
+        "active scene",
+    ),
+    "prop": (
+        "person",
+        "people",
+        "product interaction",
+        "using the product",
+        "active scene",
+    ),
+    "character_main": (
+        "photorealistic",
+        "photo-realistic",
+        "photograph",
+    ),
+    "character_turnaround": (
+        "label",
+        "labels",
+        "caption",
+        "captions",
+        "panel text",
+        "annotation",
+    ),
+    "scene_board": (
+        "character",
+        "characters",
+        "product",
+        "products",
+        "prop",
+        "props",
+        "narrative action",
+        "plot progression",
+        "active character",
+    ),
+}
+
+
 class AgentCanvasRolePromptCompiler:
     """Compile stable provider-neutral prompts from one strict role brief."""
 
@@ -61,10 +108,12 @@ class AgentCanvasRolePromptCompiler:
         if concrete_brief.role_variant != context.role_variant:
             raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
         recipe = self._registry.resolve(context.role_variant)
-        self._validate_required_references(recipe.reference_purposes, context)
         prompt, negative = _render(concrete_brief)
+        _validate_role_prompt_text(context.role_variant, prompt)
         if context.style_projection:
+            _validate_role_prompt_text(context.role_variant, context.style_projection)
             prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
+        self._validate_required_references(recipe.reference_purposes, context)
         if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         structured = _structured_content(concrete_brief, context)
@@ -372,6 +421,17 @@ def _digest(value: object) -> str:
         sort_keys=True,
     ).encode()
     return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _validate_role_prompt_text(role_variant: str, text: str) -> None:
+    normalized = text.casefold()
+    for phrase in _ROLE_PROMPT_CONFLICTS.get(role_variant, ()):
+        pattern = rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])"
+        if re.search(pattern, normalized):
+            raise _error(
+                "node_prompt_role_contract_invalid",
+                "Role prompt text conflicts with the foundation isolation contract.",
+            )
 
 
 def _error(code: str, message: str) -> V2PersistenceError:
