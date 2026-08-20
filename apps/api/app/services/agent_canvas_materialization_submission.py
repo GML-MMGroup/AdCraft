@@ -18,6 +18,7 @@ from app.persistence.agent_canvas_materialization_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import (
     ChatTurnAcceptedV2,
+    CustomDirectionActionV2,
     DelegateChoiceActionV2,
     ReuseDirectionActionV2,
     SelectOptionActionV2,
@@ -51,7 +52,12 @@ class _ProposalSelectionSubmissionService:
     def submit(
         self,
         proposal_id: str,
-        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        action: (
+            SelectOptionActionV2
+            | CustomDirectionActionV2
+            | DelegateChoiceActionV2
+            | ReuseDirectionActionV2
+        ),
         accepted: ChatTurnAcceptedV2,
     ) -> CapabilityMaterializationEnvelopeV1:
         proposal = self._conversations.get_proposal(proposal_id)
@@ -63,7 +69,12 @@ class _ProposalSelectionSubmissionService:
         self,
         workflow_id: str,
         proposal_id: str,
-        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        action: (
+            SelectOptionActionV2
+            | CustomDirectionActionV2
+            | DelegateChoiceActionV2
+            | ReuseDirectionActionV2
+        ),
         *,
         idempotency_key: str,
         guided_submission: dict[str, object] | None = None,
@@ -172,7 +183,12 @@ class _ProposalSelectionSubmissionService:
     def _build_envelope(
         self,
         proposal,
-        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        action: (
+            SelectOptionActionV2
+            | CustomDirectionActionV2
+            | DelegateChoiceActionV2
+            | ReuseDirectionActionV2
+        ),
         accepted: ChatTurnAcceptedV2,
     ) -> CapabilityMaterializationEnvelopeV1:
         if proposal.materialization is not None:
@@ -195,15 +211,32 @@ class _ProposalSelectionSubmissionService:
             raise _error("proposal_action_stale", "Proposal action is no longer available.")
         option_id = getattr(action, "option_id", None)
         selection_reason = None
-        if option_id is None:
+        if isinstance(action, CustomDirectionActionV2):
+            option_id = "custom_" + _digest(action.custom_text)[:32]
+            option = SelectedConceptOptionV1(
+                option_id=option_id,
+                title="Custom direction",
+                public_summary=action.custom_text,
+                key_decisions=(action.custom_text,),
+                custom_text=action.custom_text,
+            )
+            selection_reason = "The user supplied this direction directly."
+        elif option_id is None:
             option_id = proposal.options[0].option_id
             selection_reason = "The first current option best matches the approved direction."
-        option = next(
-            (candidate for candidate in proposal.options if candidate.option_id == option_id),
-            None,
-        )
-        if option is None:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
+            option = SelectedConceptOptionV1.model_validate(
+                proposal.options[0].model_dump(mode="json")
+            )
+        else:
+            proposal_option = next(
+                (candidate for candidate in proposal.options if candidate.option_id == option_id),
+                None,
+            )
+            if proposal_option is None:
+                raise _error("proposal_option_not_found", "Concept option was not found.")
+            option = SelectedConceptOptionV1.model_validate(
+                proposal_option.model_dump(mode="json")
+            )
         reference_plan = self._reference_plan(proposal, action)
         attempt_no = (
             proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1
@@ -236,7 +269,7 @@ class _ProposalSelectionSubmissionService:
             selection_actor=("agent" if action.action == "delegate_choice" else "user"),
             selection_reason=selection_reason,
             capability_id=proposal.capability_id,
-            selected_option=SelectedConceptOptionV1.model_validate(option.model_dump(mode="json")),
+            selected_option=option,
             reference_plan=reference_plan,
             expected_session_revision=action.expected_session_revision,
             target_node_id=proposal.target_node_id,
@@ -263,7 +296,12 @@ class QuickMediaMaterializationSubmissionService(_ProposalSelectionSubmissionSer
     def _build_envelope(
         self,
         proposal,
-        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        action: (
+            SelectOptionActionV2
+            | CustomDirectionActionV2
+            | DelegateChoiceActionV2
+            | ReuseDirectionActionV2
+        ),
         accepted: ChatTurnAcceptedV2,
     ) -> CapabilityMaterializationEnvelopeV1:
         if proposal.capability_id != "quick_media":

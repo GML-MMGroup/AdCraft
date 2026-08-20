@@ -46,7 +46,8 @@ from app.services.agent_canvas_requirement_projection import requirement_project
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
+from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.language import BCP47Tag
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -481,7 +482,7 @@ def _retry_snapshot_json(
         # Unguided compatibility dispatches remain executable but are deliberately
         # ineligible for typed explicit retry because no journey authority exists.
         return "{}"
-    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+    journey = parse_production_journey(str(session["journey_state_json"]))
     active_action = journey.active_action
     logical_action_id = (
         active_action.action_id

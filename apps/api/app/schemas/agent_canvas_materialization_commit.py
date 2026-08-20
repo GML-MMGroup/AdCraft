@@ -17,9 +17,9 @@ from app.schemas.agent_canvas_conversation import (
 from app.schemas.agent_canvas_draft_seeds import AcceptedProposalCommitmentV1
 from app.schemas.agent_working_documents import AgentDocumentMutationPlanV3
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyEvidenceKindV1,
-    JourneyStageV1,
+    GuidedProductionJourneyV2,
+    JourneyEvidenceKindV2,
+    JourneyStageV2,
 )
 
 
@@ -32,15 +32,15 @@ class MaterializationAuthoringSnapshotV1(_MaterializationCommitModel):
     session_revision: int = Field(ge=1)
     proposal_revision: int = Field(ge=1)
     target_node_revision: int | None = Field(default=None, ge=1)
-    current_journey: GuidedProductionJourneyV1
+    current_journey: GuidedProductionJourneyV2
 
 
 class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     event_type: Literal["stage_materialized"] = "stage_materialized"
     evidence_id: str = Field(min_length=1, max_length=160)
-    evidence_kind: JourneyEvidenceKindV1
+    evidence_kind: JourneyEvidenceKindV2
     source_id: str = Field(min_length=1, max_length=160)
-    foundation_item_id: str | None = Field(default=None, max_length=160)
+    occurrence_id: str | None = Field(default=None, max_length=160)
     storyboard_draft_preparation_queued: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -131,8 +131,14 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     proposal_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
+    custom_text: str | None = Field(default=None, max_length=2_048)
     action_turn_id: str = Field(min_length=1, max_length=160)
-    proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    proposal_action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     selection_actor: Literal["user", "agent"]
     expected_workflow_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
@@ -194,7 +200,7 @@ class MaterializationOutcomeV1(_MaterializationCommitModel):
     receipt_id: str | None = Field(default=None, max_length=160)
     workflow_revision: int = Field(ge=1)
     session_revision: int = Field(ge=1)
-    journey_stage: JourneyStageV1
+    journey_stage: JourneyStageV2
     replayed: bool = False
 
 

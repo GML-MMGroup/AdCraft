@@ -36,6 +36,7 @@ class SelectedConceptOptionV1(_MaterializationModel):
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
         min_length=1, max_length=6
     )
+    custom_text: str | None = Field(default=None, max_length=2_048)
 
 
 class ProposalReferenceSnapshotV1(_MaterializationModel):
@@ -69,7 +70,12 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     action_turn_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
@@ -102,7 +108,12 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     action_turn_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1

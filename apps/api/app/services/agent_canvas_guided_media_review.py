@@ -12,12 +12,12 @@ from app.persistence.agent_canvas_guided_media_resume_repository import (
     queued_guided_media_resume_delivery,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingResumeProofV1,
+    GuidanceAwaitingResumeProofV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
 )
 from app.schemas.agent_canvas import (
     CanvasVariationDraftUpsertV2,
@@ -144,7 +144,7 @@ class GuidedMediaReviewCoordinator:
                 return ()
             self._interactions.resume_awaiting(
                 node.workflow_id,
-                GuidanceAwaitingResumeProofV1(
+                GuidanceAwaitingResumeProofV2(
                     awaiting_id=current_awaiting.awaiting_id,
                     expected_session_revision=session.revision,
                     evidence_kind="node_terminal",
@@ -188,7 +188,7 @@ class GuidedMediaReviewCoordinator:
         )
         self._interactions.open_with_awaiting(
             interaction,
-            GuidanceAwaitingV1(
+            GuidanceAwaitingV2(
                 awaiting_id=f"awaiting_media_{review_id}",
                 workflow_id=node.workflow_id,
                 session_id=session.session_id,

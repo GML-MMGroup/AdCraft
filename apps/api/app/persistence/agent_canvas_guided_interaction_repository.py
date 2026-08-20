@@ -37,10 +37,10 @@ from app.schemas.agent_canvas_creative_session import (
     canonical_guidance_topic_kind,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingResumeProofV1,
-    GuidanceAwaitingV1,
-    GuidedConceptChoiceV1,
-    GuidedConceptSubmitV1,
+    GuidanceAwaitingResumeProofV2,
+    GuidanceAwaitingV2,
+    GuidedConceptChoiceV2,
+    GuidedConceptSubmitV2,
     GuidedInteractionSubmissionRecordV1,
     GuidedInteractionSubmitRequestV1,
     GuidedInteractionV1,
@@ -56,10 +56,9 @@ from app.schemas.agent_canvas_guided_media_resume import (
     GuidedMediaConfirmationResumeDeliveryV1,
 )
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyElementDecisionV1,
-    JourneyEvidenceV1,
-    JourneyPolicyContextV1,
+    GuidedProductionJourneyV2,
+    JourneyEvidenceV2,
+    JourneyPolicyContextV2,
 )
 from app.schemas.agent_canvas_requirements import (
     RequirementDirectiveV1,
@@ -68,6 +67,7 @@ from app.schemas.agent_canvas_requirements import (
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
+    parse_production_journey,
 )
 from app.services.agent_canvas_requirement_directives import (
     canonicalize_requirement_directives,
@@ -95,7 +95,7 @@ class AgentCanvasGuidedInteractionRepository:
     def open_with_awaiting(
         self,
         interaction: GuidedInteractionV1,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
     ) -> GuidedInteractionV1:
         self._validate_pair(interaction, awaiting)
         try:
@@ -294,7 +294,7 @@ class AgentCanvasGuidedInteractionRepository:
             )
         return guided_interaction_from_row(row) if row is not None else None
 
-    def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV1 | None:
+    def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
         with self._database.engine.connect() as connection:
             return _awaiting_for_workflow(connection, workflow_id)
 
@@ -505,14 +505,8 @@ class AgentCanvasGuidedInteractionRepository:
                 )
                 journey = _journey(session)
                 next_journey = policy.apply_evidence(
-                    JourneyPolicyContextV1(
-                        journey=journey,
-                        element_decisions=tuple(
-                            JourneyElementDecisionV1.model_validate(item)
-                            for item in json.loads(str(session["element_decisions_json"]))
-                        ),
-                    ),
-                    JourneyEvidenceV1(
+                    JourneyPolicyContextV2(journey=journey),
+                    JourneyEvidenceV2(
                         evidence_id=f"questionnaire-submitted:{submission_id}",
                         evidence_kind="clarification_completed",
                         source_id=submission_id,
@@ -652,7 +646,7 @@ class AgentCanvasGuidedInteractionRepository:
     def submit_concept_state_action(
         self,
         interaction: GuidedInteractionV1,
-        request: GuidedConceptSubmitV1,
+        request: GuidedConceptSubmitV2,
         *,
         submission_id: str,
         idempotency_key: str,
@@ -661,7 +655,7 @@ class AgentCanvasGuidedInteractionRepository:
     ) -> GuidedInteractionAcceptedV1:
         """Apply a non-materializing concept action without an Agent action Turn."""
 
-        if not isinstance(interaction.content, GuidedConceptChoiceV1):
+        if not isinstance(interaction.content, GuidedConceptChoiceV2):
             raise _error(
                 "guided_interaction_action_not_allowed",
                 "This guided interaction is not a concept choice.",
@@ -978,10 +972,10 @@ class AgentCanvasGuidedInteractionRepository:
 
     def enter_awaiting(
         self,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
         *,
         expected_session_revision: int,
-    ) -> GuidanceAwaitingV1:
+    ) -> GuidanceAwaitingV2:
         if awaiting.interaction_id is not None:
             raise _error(
                 "guidance_awaiting_conflict",
@@ -1266,7 +1260,7 @@ class AgentCanvasGuidedInteractionRepository:
     def resume_awaiting(
         self,
         workflow_id: str,
-        proof: GuidanceAwaitingResumeProofV1,
+        proof: GuidanceAwaitingResumeProofV2,
     ) -> None:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -1331,7 +1325,7 @@ class AgentCanvasGuidedInteractionRepository:
     @staticmethod
     def _validate_pair(
         interaction: GuidedInteractionV1,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
     ) -> None:
         if interaction.status != "open" or (
             interaction.workflow_id,
@@ -1383,7 +1377,7 @@ def guided_interaction_from_row(row: Mapping[str, object]) -> GuidedInteractionV
     )
 
 
-def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV1 | None:
+def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV2 | None:
     row = (
         connection.execute(
             select(AgentCanvasGuidanceAwaitingRow).where(
@@ -1398,8 +1392,8 @@ def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV1 |
     return guidance_awaiting_from_row(row)
 
 
-def guidance_awaiting_from_row(row: Mapping[str, object]) -> GuidanceAwaitingV1:
-    return GuidanceAwaitingV1.model_validate(
+def guidance_awaiting_from_row(row: Mapping[str, object]) -> GuidanceAwaitingV2:
+    return GuidanceAwaitingV2.model_validate(
         {
             "awaiting_id": row["awaiting_id"],
             "workflow_id": row["workflow_id"],
@@ -1447,8 +1441,8 @@ def _require_session(
     return row
 
 
-def _journey(session: Mapping[str, object]) -> GuidedProductionJourneyV1:
-    return GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+def _journey(session: Mapping[str, object]) -> GuidedProductionJourneyV2:
+    return parse_production_journey(str(session["journey_state_json"]))
 
 
 def _submission_row(connection, submission_id: str):
@@ -1489,7 +1483,7 @@ def _require_open_interaction(
 def _close_interaction_and_awaiting(
     connection,
     interaction: GuidedInteractionV1,
-    awaiting: GuidanceAwaitingV1,
+    awaiting: GuidanceAwaitingV2,
     *,
     updated_at: str,
 ) -> None:
@@ -1514,34 +1508,32 @@ def _close_interaction_and_awaiting(
 
 def _journey_after_state_action(
     policy: GuidedProductionJourneyPolicyService,
-    journey: GuidedProductionJourneyV1,
+    journey: GuidedProductionJourneyV2,
     element_decisions: tuple[CreativeElementDecisionV2, ...],
     proposal_action: Literal["defer_topic", "exclude_element"],
     *,
     submission_id: str,
-) -> GuidedProductionJourneyV1:
-    suffix = "deferred" if proposal_action == "defer_topic" else "excluded"
+) -> GuidedProductionJourneyV2:
+    if proposal_action == "defer_topic":
+        return journey.model_copy(update={"stage_status": "waiting_user"})
     evidence_kind = {
-        "world_setting": f"world_setting_{suffix}",
-        "foundation_design": f"foundation_item_{suffix}",
-        "bgm": f"bgm_{suffix}",
+        "world_view": "world_view_excluded",
+        "props": "props_excluded",
+        "character": "character_excluded",
+        "bgm": "bgm_excluded",
     }.get(journey.stage)
     if evidence_kind is None:
         return journey.model_copy(update={"stage_status": "ready", "active_action": None})
     return policy.apply_evidence(
-        JourneyPolicyContextV1(
-            journey=journey,
-            element_decisions=tuple(
-                JourneyElementDecisionV1.model_validate(item.model_dump())
-                for item in element_decisions
-            ),
-        ),
-        JourneyEvidenceV1(
+        JourneyPolicyContextV2(journey=journey),
+        JourneyEvidenceV2(
             evidence_id=f"guided-state-action:{submission_id}",
             evidence_kind=cast(str, evidence_kind),
             source_id=submission_id,
-            foundation_item_id=(
-                journey.active_action.foundation_item_id
+            stage=journey.stage,
+            stage_revision=journey.stage_revision,
+            occurrence_id=(
+                journey.active_action.occurrence_id
                 if journey.active_action is not None
                 else None
             ),
@@ -1550,8 +1542,8 @@ def _journey_after_state_action(
 
 
 def _validate_resume_proof(
-    awaiting: GuidanceAwaitingV1,
-    proof: GuidanceAwaitingResumeProofV1,
+    awaiting: GuidanceAwaitingV2,
+    proof: GuidanceAwaitingResumeProofV2,
 ) -> None:
     if awaiting.resume_policy != proof.evidence_kind:
         raise _error(

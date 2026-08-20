@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.schemas.agent_canvas_conversation import ConceptOptionRecordV2
 from app.schemas.agent_canvas_creative_session import CreativeGoalV2, ProposedDraftReferenceV2
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
-from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 
 
@@ -41,8 +41,8 @@ def stage_authoring_context_from_materialization(
     *,
     session_id: str,
     session_revision: int,
-    stage: JourneyStageV1,
-    foundation_item_id: str | None,
+    stage: JourneyStageV2,
+    occurrence_id: str | None,
     references: tuple[ProposedDraftReferenceV2, ...],
 ) -> StageAuthoringContextV1:
     """Drop private capability context fields before preparing one visible Draft."""
@@ -65,7 +65,7 @@ def stage_authoring_context_from_materialization(
         session_id=session_id,
         session_revision=session_revision,
         stage=stage,
-        foundation_item_id=foundation_item_id,
+        occurrence_id=occurrence_id,
         creative_goal=CreativeGoalV2(
             requested_output=_OUTPUT_KINDS[context.capability_id],
             delivery_scope="draft",

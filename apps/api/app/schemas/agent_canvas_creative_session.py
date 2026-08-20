@@ -27,10 +27,10 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
     GuidedInteractionV1,
 )
 
@@ -234,8 +234,8 @@ class GuidedSessionStateV2(_CreativeSessionModel):
         default_factory=GuidanceCompletionProjectionV2
     )
     interaction: GuidedInteractionV1 | None = None
-    awaiting: GuidanceAwaitingV1 | None = None
-    journey: GuidedProductionJourneyV1
+    awaiting: GuidanceAwaitingV2 | None = None
+    journey: GuidedProductionJourneyV2
     revision: int = Field(ge=1)
     updated_at: datetime
     response_locale: BCP47Tag = "und"

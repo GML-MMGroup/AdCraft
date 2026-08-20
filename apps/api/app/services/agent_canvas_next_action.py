@@ -35,7 +35,7 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
+from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
@@ -151,17 +151,6 @@ class DurableNextActionExecutionService:
         turn = self._conversations.mark_turn_running(envelope.next_action_turn_id)
         journey_action = None
         if session.journey.stage != "intake":
-            if session.journey.stage == "style_lock":
-                session = self._journey.apply_evidence(
-                    envelope.workflow_id,
-                    evidence=JourneyEvidenceV1(
-                        evidence_id=f"style-lock:{envelope.next_action_turn_id}",
-                        evidence_kind="style_locked",
-                        source_id=envelope.next_action_turn_id,
-                    ),
-                    expected_session_revision=session.revision,
-                    idempotency_key=f"style-lock:{envelope.envelope_id}",
-                )
             session, journey_action = self._journey.reserve_next_action(
                 envelope.workflow_id,
                 action_id=f"journey-action:{envelope.next_action_turn_id}",

@@ -29,7 +29,7 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardPanelV2,
     VisualStyleContractV2,
 )
-from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
 )
@@ -232,8 +232,8 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
             session_revision=session.revision,
             stage=session.journey.stage,
-            foundation_item_id=(
-                session.journey.active_action.foundation_item_id
+            occurrence_id=(
+                session.journey.active_action.occurrence_id
                 if session.journey.active_action is not None
                 else None
             ),
@@ -576,7 +576,7 @@ class CapabilityMaterializationPublicationService:
                 session_id=session.session_id,
                 session_revision=outcome.session_revision,
                 stage=outcome.journey_stage,
-                foundation_item_id=None,
+                occurrence_id=None,
                 node_ids=tuple(item[0] for item in pending_preparations),
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,
@@ -827,8 +827,8 @@ class CapabilityMaterializationPublicationService:
         *,
         session_id: str,
         session_revision: int,
-        stage: JourneyStageV1,
-        foundation_item_id: str | None,
+        stage: JourneyStageV2,
+        occurrence_id: str | None,
         node_ids: tuple[str, ...],
         operation_ids: tuple[str, ...],
         lease_guard: Callable[[], None],
@@ -840,7 +840,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session_id,
             session_revision=session_revision,
             stage=stage,
-            foundation_item_id=foundation_item_id,
+            occurrence_id=occurrence_id,
             references=envelope.reference_plan.references,
         )
         prompt_service = NodePromptPreparationService(self._workflows)

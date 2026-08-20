@@ -107,7 +107,7 @@ from app.schemas.agent_canvas_capabilities import (
 from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.schemas.agent_canvas_guidance import (
     ContinuationTurnRetrySnapshotV1,
     GuidanceAdvanceAuthorityPlanV1,
@@ -115,7 +115,7 @@ from app.schemas.agent_canvas_guidance import (
 )
 from app.schemas.agent_canvas_guided_checkpoint import GuidedCheckpointOriginV1
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
     GuidedChoiceOptionV1,
     GuidedInteractionV1,
     GuidedQuestionnaireV1,
@@ -131,7 +131,11 @@ from app.schemas.agent_working_documents import AgentWorkingDocumentV2
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
-from app.services.agent_canvas_production_journey import initial_production_journey
+from app.services.agent_canvas_production_journey import (
+    FIXED_JOURNEY_STAGE_DESCRIPTORS,
+    initial_production_journey,
+    parse_production_journey,
+)
 
 
 class AgentCanvasConversationRepository:
@@ -284,7 +288,7 @@ class AgentCanvasConversationRepository:
         self,
         session_id: str,
         *,
-        journey: GuidedProductionJourneyV1,
+        journey: GuidedProductionJourneyV2,
         expected_session_revision: int,
         idempotency_key: str,
         event_type: str,
@@ -369,7 +373,7 @@ class AgentCanvasConversationRepository:
         turn_id: str,
         *,
         expected_session_revision: int,
-        journey: GuidedProductionJourneyV1,
+        journey: GuidedProductionJourneyV2,
         assistant_message: str,
         transition_key: str,
     ) -> ChatTurnV2:
@@ -431,7 +435,7 @@ class AgentCanvasConversationRepository:
                             "journey_revision_conflict",
                             "Journey state changed before this transition.",
                         )
-                    current_journey = GuidedProductionJourneyV1.model_validate_json(
+                    current_journey = parse_production_journey(
                         str(session_row["journey_state_json"])
                     )
                     _validate_clarification_target(
@@ -846,7 +850,7 @@ class AgentCanvasConversationRepository:
         *,
         expected_session_revision: int,
         completion: GuidanceCompletionProjectionV2,
-        journey: GuidedProductionJourneyV1 | None = None,
+        journey: GuidedProductionJourneyV2 | None = None,
     ) -> GuidedSessionStateV2:
         now = _now()
         with self._database.engine.begin() as connection:
@@ -3623,7 +3627,7 @@ class AgentCanvasConversationRepository:
             context_snapshot_digest=context_digest,
             created_at=timestamp,
         )
-        journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+        journey = parse_production_journey(str(session["journey_state_json"]))
         requirement = self._requirements.get_current_in_transaction(connection, workflow_id)
         workflow_revision = int(
             connection.execute(
@@ -4791,8 +4795,8 @@ def _require_turn(connection: Connection, turn_id: str) -> RowMapping:
 
 def _validate_clarification_target(
     *,
-    current: GuidedProductionJourneyV1,
-    target: GuidedProductionJourneyV1,
+    current: GuidedProductionJourneyV2,
+    target: GuidedProductionJourneyV2,
     turn_id: str,
 ) -> None:
     if current.stage == "intake":
@@ -4830,7 +4834,7 @@ def _upsert_clarification_authority(
     session_id: str,
     response_locale: str,
     expected_session_revision: int,
-    journey: GuidedProductionJourneyV1,
+    journey: GuidedProductionJourneyV2,
     assistant_message: str,
     now: str,
 ) -> None:
@@ -4928,7 +4932,7 @@ def _upsert_clarification_authority(
         created_at=now,
         updated_at=now,
     )
-    awaiting = GuidanceAwaitingV1(
+    awaiting = GuidanceAwaitingV2(
         awaiting_id=awaiting_id,
         workflow_id=workflow_id,
         session_id=session_id,
@@ -5733,25 +5737,37 @@ def _proposal_action_descriptors(
     expected_session_revision: int,
     proposal_kind: str,
 ) -> tuple[ProposalActionDescriptorV2, ...]:
+    stage_by_kind = {
+        "world_setting": "world_view",
+        "product": "product",
+        "prop": "props",
+        "character": "character",
+        "scene": "scene",
+        "script": "script",
+        "storyboard": "storyboard_plan",
+        "video": "videos",
+        "bgm": "bgm",
+    }
+    stage = stage_by_kind.get(proposal_kind)
+    optional = bool(
+        stage is not None and FIXED_JOURNEY_STAGE_DESCRIPTORS[stage].optional
+    )
     definitions = (
         ("select_option", "Select option", True, "Publish one selected option as a Draft."),
+        (
+            "custom_direction",
+            "Custom direction",
+            True,
+            "Publish the user's exact direction as a Draft.",
+        ),
         ("revise_options", "Revise options", False, "Ask the Specialist for revised options."),
+        ("defer_topic", "Defer topic", True, "Keep this topic available for later guidance."),
         ("delegate_choice", "Delegate choice", True, "Let the Director choose one option."),
     )
-    if proposal_kind != "world_setting":
-        definitions = (
-            definitions[:2]
-            + (
-                (
-                    "defer_topic",
-                    "Defer topic",
-                    True,
-                    "Keep this topic available for later guidance.",
-                ),
-                ("exclude_element", "Exclude element", True, "Exclude this optional element."),
-            )
-            + definitions[2:]
-        )
+    if optional:
+        definitions = definitions[:4] + (
+            ("exclude_element", "Exclude element", True, "Exclude this optional element."),
+        ) + definitions[4:]
     return tuple(
         ProposalActionDescriptorV2(
             action_id=f"{action}:{proposal_id}:{expected_session_revision}",
@@ -5841,7 +5857,7 @@ def _guidance_session(
         .mappings()
         .one_or_none()
     )
-    journey = GuidedProductionJourneyV1.model_validate_json(str(row["journey_state_json"]))
+    journey = parse_production_journey(str(row["journey_state_json"]))
     awaiting = (
         guidance_awaiting_from_row(awaiting_row)
         if awaiting_row is not None
@@ -5923,8 +5939,8 @@ def guidance_session_from_row(
 def _derive_historical_manual_awaiting(
     connection: Connection,
     session_row: RowMapping,
-    journey: GuidedProductionJourneyV1,
-) -> GuidanceAwaitingV1 | None:
+    journey: GuidedProductionJourneyV2,
+) -> GuidanceAwaitingV2 | None:
     if journey.stage_status != "waiting_user":
         return None
     node_rows = (
@@ -5962,7 +5978,7 @@ def _derive_historical_manual_awaiting(
     identity = hashlib.sha256(
         f"{session_row['workflow_id']}:{checkpoint_id}".encode("utf-8")
     ).hexdigest()[:32]
-    return GuidanceAwaitingV1(
+    return GuidanceAwaitingV2(
         awaiting_id=f"derived_awaiting_{identity}",
         workflow_id=str(session_row["workflow_id"]),
         session_id=str(session_row["session_id"]),

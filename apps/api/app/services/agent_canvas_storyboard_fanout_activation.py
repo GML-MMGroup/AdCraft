@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Callable
 
-from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV1
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 
 
@@ -157,7 +157,7 @@ class StoryboardFanoutActivationService:
                 (),
             )
 
-        manual_wait = GuidanceAwaitingV1(
+        manual_wait = GuidanceAwaitingV2(
             awaiting_id=f"awaiting_{_digest(source_action_id)}",
             workflow_id=workflow_id,
             session_id=session.session_id,

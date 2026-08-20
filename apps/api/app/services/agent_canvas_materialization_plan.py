@@ -79,6 +79,7 @@ class CapabilityMaterializationPlanCompiler:
             "workflow_id": envelope.workflow_id,
             "proposal_id": envelope.proposal_id,
             "option_id": envelope.selected_option.option_id,
+            "custom_text": envelope.selected_option.custom_text,
             "action_turn_id": envelope.action_turn_id,
             "proposal_action": envelope.action,
             "selection_actor": envelope.selection_actor,
@@ -175,28 +176,30 @@ def _journey_event(
 ) -> StageMaterializedJourneyEventV1 | TargetedActionCompletedJourneyEventV1 | None:
     journey = snapshot.current_journey
     if journey.suspended_action is not None:
+        if journey.active_action is None:
+            return None
         return TargetedActionCompletedJourneyEventV1(
             evidence_id=f"targeted-finish:{envelope.materialization_id}",
             source_id=envelope.materialization_id,
-            action_id=journey.suspended_action.action_id,
+            action_id=journey.active_action.action_id,
             recorded_at=envelope.created_at,
         )
     if envelope.capability_id == "quick_media" or journey.active_action is None:
         return None
     evidence_kind_by_stage = {
-        "world_setting": "world_setting_selected",
-        "narrative_direction": "narrative_direction_selected",
+        "world_view": "world_view_selected",
+        "product": "product_materialized",
+        "props": "props_materialized",
+        "character": "character_materialized",
+        "scene": "scene_materialized",
+        "script": "script_materialized",
         "storyboard_plan": "storyboard_plan_accepted",
         "storyboard_grids": "storyboard_grids_prepared",
-        "video_segments": "video_segments_prepared",
+        "videos": "videos_prepared",
         "bgm": "bgm_prepared",
     }
-    foundation_item_id = None
-    if journey.stage == "foundation_design":
-        evidence_kind = "foundation_item_selected"
-        foundation_item_id = journey.active_action.foundation_item_id
-    else:
-        evidence_kind = evidence_kind_by_stage.get(journey.stage)
+    occurrence_id = journey.active_action.occurrence_id
+    evidence_kind = evidence_kind_by_stage.get(journey.stage)
     if evidence_kind is None:
         return None
     return StageMaterializedJourneyEventV1.model_validate(
@@ -204,7 +207,7 @@ def _journey_event(
             "evidence_id": f"materialization:{envelope.materialization_id}",
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
-            "foundation_item_id": foundation_item_id,
+            "occurrence_id": occurrence_id,
             "storyboard_draft_preparation_queued": storyboard_draft_preparation_queued,
             "recorded_at": envelope.created_at,
         }

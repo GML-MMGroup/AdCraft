@@ -33,13 +33,17 @@ from app.schemas.agent_canvas_creative_session import (
     canonical_guidance_topic_kind,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
     GuidedChoiceOptionV1,
-    GuidedConceptChoiceV1,
+    GuidedConceptChoiceV2,
     GuidedInteractionV1,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_production_journey import (
+    FIXED_JOURNEY_STAGE_DESCRIPTORS,
+    parse_production_journey,
+)
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
@@ -490,18 +494,23 @@ def _concept_interaction(
     now: datetime,
 ) -> tuple[
     GuidedInteractionV1 | None,
-    GuidanceAwaitingV1 | None,
-    GuidedProductionJourneyV1,
+    GuidanceAwaitingV2 | None,
+    GuidedProductionJourneyV2,
 ]:
-    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
-    if len(public_options) not in {2, 3}:
+    journey = parse_production_journey(str(session["journey_state_json"]))
+    if len(public_options) != 3 or journey.active_action is None:
         return None, None, journey
 
     checkpoint_id = f"checkpoint_{_digest(str(session['session_id']), journey.stage, str(journey.stage_revision))[:32]}"
     interaction_id = f"interaction_{_digest(proposal_id, 'interaction')[:32]}"
     awaiting_id = f"awaiting_{_digest(proposal_id, 'awaiting')[:32]}"
-    content = GuidedConceptChoiceV1(
+    content = GuidedConceptChoiceV2(
         proposal_id=proposal_id,
+        stage=journey.stage,
+        stage_revision=journey.stage_revision,
+        action_id=journey.active_action.action_id,
+        occurrence_id=journey.active_action.occurrence_id,
+        capability_id=envelope.capability_id,
         options=tuple(
             GuidedChoiceOptionV1(
                 option_id=str(option["option_id"]),
@@ -511,9 +520,11 @@ def _concept_interaction(
                     _bounded_text(decision, limit=80)
                     for decision in list(option["key_decisions"])[:6]
                 ),
+                recommended=order == 0,
             )
-            for option in public_options
+            for order, option in enumerate(public_options)
         ),
+        allow_exclusion=FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional,
     )
     interaction = GuidedInteractionV1(
         interaction_id=interaction_id,
@@ -530,14 +541,22 @@ def _concept_interaction(
         ),
         context=_bounded_text(envelope.objective, limit=1_024),
         content=content,
-        allowed_actions=("select", "revise", "defer", "exclude", "delegate"),
+        allowed_actions=(
+            ("select", "custom", "defer")
+            + (
+                ("exclude",)
+                if FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional
+                else ()
+            )
+            + ("delegate",)
+        ),
         submit_path=(
             f"/api/v2/workflows/{envelope.workflow_id}/chat/interactions/{interaction_id}/submit"
         ),
         created_at=now,
         updated_at=now,
     )
-    awaiting = GuidanceAwaitingV1(
+    awaiting = GuidanceAwaitingV2(
         awaiting_id=awaiting_id,
         workflow_id=envelope.workflow_id,
         session_id=str(session["session_id"]),

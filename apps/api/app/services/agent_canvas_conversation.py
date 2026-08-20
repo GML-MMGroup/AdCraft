@@ -84,7 +84,7 @@ from app.schemas.agent_canvas_creative_session import (
     SpecialistDraftV2,
     StyleGuidanceContextV2,
 )
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
+from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
@@ -1029,14 +1029,14 @@ class SpecialistDraftValidationService:
 
 
 def _journey_state_action_evidence(stage: str, action: str) -> str | None:
-    suffix = "deferred" if action == "defer_topic" else "excluded"
-    if stage == "world_setting":
-        return f"world_setting_{suffix}"
-    if stage == "foundation_design":
-        return f"foundation_item_{suffix}"
-    if stage == "bgm":
-        return f"bgm_{suffix}"
-    return None
+    if action == "defer_topic":
+        return None
+    return {
+        "world_view": "world_view_excluded",
+        "props": "props_excluded",
+        "character": "character_excluded",
+        "bgm": "bgm_excluded",
+    }.get(stage)
 
 
 class AgentConversationService:
@@ -1487,19 +1487,11 @@ class AgentConversationService:
             and not requirement_changed
             and intent.assistant_message is not None
         )
-        if clarification_required and session.journey.stage in {"intake", "clarification"}:
+        if clarification_required and session.journey.stage == "intake":
             if session.journey.stage == "intake":
-                evidence = JourneyEvidenceV1(
-                    evidence_id=f"journey-goal:{turn_id}",
-                    evidence_kind="creative_goal_validated",
-                    source_id=turn_id,
-                    source_revision=requirements.revision_no,
+                clarification_journey = session.journey.model_copy(
+                    update={"stage_status": "waiting_user"}
                 )
-                clarification_journey = self._journey.project_evidence(
-                    session,
-                    evidence=evidence,
-                    clarification_required=True,
-                ).model_copy(update={"stage_status": "waiting_user"})
             else:
                 clarification_journey = session.journey.model_copy(
                     update={"stage_status": "waiting_user"}
@@ -1526,12 +1518,12 @@ class AgentConversationService:
             intent.mode == "guided_production"
             and not requirement_changed
             and intent.assistant_message is not None
-            and session.journey.stage in {"intake", "clarification"}
+            and session.journey.stage == "intake"
         ):
             return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
         if (
             intent.mode == "guided_production"
-            and session.journey.stage == "clarification"
+            and session.journey.stage == "intake"
             and requirement_changed
         ):
             self._conversations.close_current_clarification(
@@ -1541,7 +1533,7 @@ class AgentConversationService:
             )
             session = self._journey.apply_evidence(
                 turn.workflow_id,
-                evidence=JourneyEvidenceV1(
+                evidence=JourneyEvidenceV2(
                     evidence_id=f"clarification-completed:{turn_id}",
                     evidence_kind="clarification_completed",
                     source_id=turn_id,
@@ -1555,7 +1547,7 @@ class AgentConversationService:
         if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
             session = self._journey.apply_evidence(
                 turn.workflow_id,
-                evidence=JourneyEvidenceV1(
+                evidence=JourneyEvidenceV2(
                     evidence_id=f"targeted-start:{turn_id}",
                     evidence_kind="targeted_action_started",
                     source_id=turn_id,
@@ -1569,7 +1561,7 @@ class AgentConversationService:
             if session.journey.stage == "intake":
                 session = self._journey.apply_evidence(
                     turn.workflow_id,
-                    evidence=JourneyEvidenceV1(
+                    evidence=JourneyEvidenceV2(
                         evidence_id=f"journey-goal:{turn_id}",
                         evidence_kind="creative_goal_validated",
                         source_id=turn_id,
@@ -1577,17 +1569,6 @@ class AgentConversationService:
                     ),
                     expected_session_revision=session.revision,
                     idempotency_key=f"creative-goal:{turn_id}",
-                )
-            elif session.journey.stage == "style_lock":
-                session = self._journey.apply_evidence(
-                    turn.workflow_id,
-                    evidence=JourneyEvidenceV1(
-                        evidence_id=f"style-lock:{turn_id}",
-                        evidence_kind="style_locked",
-                        source_id=turn_id,
-                    ),
-                    expected_session_revision=session.revision,
-                    idempotency_key=f"style-lock:{turn_id}",
                 )
             session, journey_action = self._journey.reserve_next_action(
                 turn.workflow_id,
@@ -1844,12 +1825,12 @@ class AgentConversationService:
                 if evidence_kind is not None:
                     self._journey.apply_evidence(
                         turn.workflow_id,
-                        evidence=JourneyEvidenceV1(
+                        evidence=JourneyEvidenceV2(
                             evidence_id=f"proposal-action:{action.action_id}",
                             evidence_kind=evidence_kind,
                             source_id=turn_id,
-                            foundation_item_id=(
-                                session.journey.active_action.foundation_item_id
+                            occurrence_id=(
+                                session.journey.active_action.occurrence_id
                                 if session.journey.active_action is not None
                                 else None
                             ),

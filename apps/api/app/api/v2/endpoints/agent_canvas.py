@@ -151,8 +151,8 @@ from app.schemas.agent_canvas_decision_bundles import (
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_guided_interactions import (
     GuidedAcceptedReferenceV1,
-    GuidedConceptChoiceV1,
-    GuidedConceptSubmitV1,
+    GuidedConceptChoiceV2,
+    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
@@ -2571,7 +2571,7 @@ def act_on_chat_proposal(
         interaction = runtime.guided_interactions.get_current(workflow_id)
         if (
             interaction is not None
-            and isinstance(interaction.content, GuidedConceptChoiceV1)
+            and isinstance(interaction.content, GuidedConceptChoiceV2)
             and interaction.content.proposal_id == proposal_id
             and isinstance(
                 request,
@@ -2586,7 +2586,7 @@ def act_on_chat_proposal(
             accepted_interaction = runtime.guided_interactions.submit_interaction(
                 workflow_id,
                 interaction.interaction_id,
-                GuidedConceptSubmitV1(
+                GuidedConceptSubmitV2(
                     submission_kind="concept_choice",
                     expected_interaction_revision=interaction.revision,
                     expected_session_revision=request.expected_session_revision,
@@ -3267,7 +3267,11 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guidance_revision_conflict": 409,
         "journey_transition_invalid": 422,
         "journey_revision_conflict": 409,
-        "journey_foundation_queue_invalid": 422,
+        "journey_policy_unsupported": 409,
+        "journey_state_invalid": 422,
+        "journey_stage_action_mismatch": 409,
+        "journey_stage_exclusion_not_allowed": 422,
+        "journey_custom_input_invalid": 422,
         "journey_action_in_progress": 409,
         "journey_evidence_invalid": 422,
         "guidance_goal_required": 422,

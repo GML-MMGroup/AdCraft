@@ -1,4 +1,4 @@
-"""Pure journey reduction for one Agent Canvas materialization commit."""
+"""Pure reducer for committed fixed-journey materialization evidence."""
 
 from __future__ import annotations
 
@@ -9,10 +9,9 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
 )
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyElementDecisionV1,
-    JourneyEvidenceV1,
-    JourneyPolicyContextV1,
+    GuidedProductionJourneyV2,
+    JourneyElementDecisionV2,
+    JourneyEvidenceV2,
 )
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
@@ -20,41 +19,43 @@ from app.services.agent_canvas_production_journey import (
 
 
 class GuidedProductionJourneyReducer:
-    """Return the deterministic journey produced by a materialization event."""
+    """Reduce one committed event without accessing persistence or providers."""
 
-    def __init__(self, policy: GuidedProductionJourneyPolicyService | None = None) -> None:
+    def __init__(
+        self,
+        policy: GuidedProductionJourneyPolicyService | None = None,
+    ) -> None:
         self._policy = policy or GuidedProductionJourneyPolicyService()
 
     def reduce(
         self,
-        current: GuidedProductionJourneyV1,
+        current: GuidedProductionJourneyV2,
         event: MaterializationJourneyEventV1 | None,
         *,
-        element_decisions: tuple[JourneyElementDecisionV1, ...] = (),
-    ) -> GuidedProductionJourneyV1:
+        element_decisions: tuple[JourneyElementDecisionV2, ...] = (),
+    ) -> GuidedProductionJourneyV2:
         if event is None:
             return current
         if any(
-            evidence.evidence_id == event.evidence_id for evidence in current.transition_evidence
+            item.evidence_id == event.evidence_id
+            for item in current.transition_evidence
         ):
             return current
         if current.stage == "completed":
             raise _error(
-                "journey_transition_invalid",
+                "journey_terminal_conflict",
                 "A terminal journey cannot accept materialization evidence.",
             )
 
         evidence = self._evidence(current, event)
         updated = self._policy.apply_evidence(
-            JourneyPolicyContextV1(
-                journey=current,
-                element_decisions=element_decisions,
-            ),
+            current,
             evidence,
             recorded_at=event.recorded_at,
         )
-        if isinstance(event, StageMaterializedJourneyEventV1) and (
-            event.evidence_kind == "storyboard_plan_accepted"
+        if (
+            isinstance(event, StageMaterializedJourneyEventV1)
+            and event.evidence_kind == "storyboard_plan_accepted"
         ):
             if not event.storyboard_draft_preparation_queued:
                 raise _error(
@@ -66,39 +67,37 @@ class GuidedProductionJourneyReducer:
 
     @staticmethod
     def _evidence(
-        current: GuidedProductionJourneyV1,
+        current: GuidedProductionJourneyV2,
         event: MaterializationJourneyEventV1,
-    ) -> JourneyEvidenceV1:
+    ) -> JourneyEvidenceV2:
         if isinstance(event, TargetedActionCompletedJourneyEventV1):
-            return JourneyEvidenceV1(
+            return JourneyEvidenceV2(
                 evidence_id=event.evidence_id,
                 evidence_kind="targeted_action_finished",
                 source_id=event.source_id,
                 action_id=event.action_id,
+                stage=current.stage,
+                stage_revision=current.stage_revision,
             )
-
         if isinstance(event, StageMaterializedJourneyEventV1):
             action = current.active_action
-            if action is None or action.stage != current.stage:
-                raise _error(
-                    "journey_evidence_invalid",
-                    "Materialization evidence does not match the current stage action.",
-                )
             if (
-                current.stage == "foundation_design"
-                and action.foundation_item_id != event.foundation_item_id
+                action is None
+                or action.stage != current.stage
+                or action.stage_revision != current.stage_revision
             ):
                 raise _error(
-                    "journey_evidence_invalid",
-                    "Foundation evidence targets another item.",
+                    "journey_stage_action_mismatch",
+                    "Materialization evidence does not match the current stage action.",
                 )
-            return JourneyEvidenceV1(
+            return JourneyEvidenceV2(
                 evidence_id=event.evidence_id,
                 evidence_kind=event.evidence_kind,
                 source_id=event.source_id,
-                foundation_item_id=event.foundation_item_id,
+                occurrence_id=event.occurrence_id,
+                stage=current.stage,
+                stage_revision=current.stage_revision,
             )
-
         raise _error(
             "journey_evidence_invalid",
             "Materialization journey event is unsupported.",

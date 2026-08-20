@@ -73,12 +73,13 @@ from app.persistence.models import (
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyElementDecisionV1,
+    GuidedProductionJourneyV2,
 )
+from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
     ProposalPublicationEnvelopeV1,
+    SelectedConceptOptionV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
     MaterializationAuthoritySnapshotV1,
@@ -94,7 +95,7 @@ from app.schemas.agent_working_documents import (
     StoryboardProductionPlanContentV3,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidedConceptSubmitV1,
+    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
 )
@@ -218,12 +219,26 @@ class AgentCanvasMaterializationRepository:
                 "Draft bundle Bindings must target a published bundle Node.",
             )
 
-        selected_option = next(
-            (option for option in proposal.options if option.option_id == option_id),
-            None,
-        )
-        if selected_option is None:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
+        if materialization_plan.proposal_action == "custom_direction":
+            if materialization_plan.custom_text is None:
+                raise _error(
+                    "guided_interaction_option_invalid",
+                    "Custom Materialization requires the original custom direction.",
+                )
+            selected_option = SelectedConceptOptionV1(
+                option_id=option_id,
+                title="Custom direction",
+                public_summary=materialization_plan.custom_text,
+                key_decisions=(materialization_plan.custom_text,),
+                custom_text=materialization_plan.custom_text,
+            )
+        else:
+            selected_option = next(
+                (option for option in proposal.options if option.option_id == option_id),
+                None,
+            )
+            if selected_option is None:
+                raise _error("proposal_option_not_found", "Concept option was not found.")
         now = _now()
         materialization_outcome: MaterializationOutcomeV1 | None = None
         try:
@@ -413,16 +428,12 @@ class AgentCanvasMaterializationRepository:
                         option_id=option_id,
                         expected_session_revision=expected_session_revision,
                     )
-                    current_journey = GuidedProductionJourneyV1.model_validate_json(
+                    current_journey = parse_production_journey(
                         str(session["journey_state_json"])
                     )
                     next_journey = journey_reducer.reduce(
                         current_journey,
                         materialization_plan.journey_event,
-                        element_decisions=tuple(
-                            JourneyElementDecisionV1.model_validate(item)
-                            for item in json.loads(str(session["element_decisions_json"]))
-                        ),
                     )
                     node = nodes[0]
                     next_awaiting = None
@@ -1086,8 +1097,8 @@ class AgentCanvasMaterializationRepository:
                                         materialization_plan.materialization_id
                                     ),
                                     "reason": None,
-                                    "foundation_item_id": (
-                                        materialization_plan.journey_event.foundation_item_id
+                                    "occurrence_id": (
+                                        materialization_plan.journey_event.occurrence_id
                                         if materialization_plan.journey_event is not None
                                         and materialization_plan.journey_event.event_type
                                         == "stage_materialized"
@@ -1510,18 +1521,19 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
                         )
-                    option_exists = connection.execute(
-                        select(AgentCanvasConceptOptionRow.option_id).where(
-                            AgentCanvasConceptOptionRow.proposal_id == envelope.proposal_id,
-                            AgentCanvasConceptOptionRow.option_id
-                            == envelope.selected_option.option_id,
-                        )
-                    ).scalar_one_or_none()
-                    if option_exists is None:
-                        raise _error(
-                            "proposal_option_not_found",
-                            "Concept option was not found.",
-                        )
+                    if envelope.action != "custom_direction":
+                        option_exists = connection.execute(
+                            select(AgentCanvasConceptOptionRow.option_id).where(
+                                AgentCanvasConceptOptionRow.proposal_id == envelope.proposal_id,
+                                AgentCanvasConceptOptionRow.option_id
+                                == envelope.selected_option.option_id,
+                            )
+                        ).scalar_one_or_none()
+                        if option_exists is None:
+                            raise _error(
+                                "proposal_option_not_found",
+                                "Concept option was not found.",
+                            )
                     turn = (
                         connection.execute(
                             select(AgentCanvasChatTurnRow).where(
@@ -2189,7 +2201,7 @@ def _guided_submission_context(
             "Guided interaction changed before Materialization.",
         )
     if (
-        not isinstance(request, GuidedConceptSubmitV1)
+        not isinstance(request, GuidedConceptSubmitV2)
         or content.get("proposal_id") != proposal_id
         or (request.action == "select" and request.option_id != option_id)
     ):
