@@ -67,6 +67,9 @@ from app.services.agent_canvas_output_preparation import (
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_video_parameter_compiler import (
     AgentCanvasVideoParameterCompiler,
@@ -1362,6 +1365,7 @@ def _prompt_recipe_is_current(node: CanvasNodeV2) -> bool:
         return True
     try:
         recipe = RolePromptRecipeRegistry().resolve(preparation.role_variant)
+        AgentCanvasRoleReferencePolicyService().for_prompt_variant(preparation.role_variant)
     except V2PersistenceError:
         return False
     return (

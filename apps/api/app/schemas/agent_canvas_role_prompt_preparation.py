@@ -319,3 +319,4 @@ class CompiledNodePromptV2(_RolePromptModel):
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     parameters: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
     reference_purposes: tuple[str, ...] = Field(default=(), max_length=32)
+    role_reference_policy_version: str | None = Field(default=None, max_length=64)

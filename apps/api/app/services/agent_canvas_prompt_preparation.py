@@ -138,6 +138,9 @@ class NodePromptPreparationService:
                         "prompt_recipe_version": recipe.recipe_version,
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
+                        "role_reference_policy_version": (
+                            compiled_prompt.role_reference_policy_version
+                        ),
                         "prompt_style_projection_digest": (compiled_prompt.style_projection_digest),
                     },
                     "revision": working.revision + 1,

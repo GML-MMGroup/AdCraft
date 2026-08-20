@@ -21,6 +21,9 @@ from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 _CAPABILITY_ELEMENT = {
@@ -111,6 +114,7 @@ class CapabilityReferencePlanner:
         self._connections = connection_policy or AgentCanvasConnectionPolicyService()
         self._capabilities = CapabilityPolicyService()
         self._model_selection = model_selection
+        self._role_references = AgentCanvasRoleReferencePolicyService()
 
     def plan(
         self,
@@ -127,6 +131,11 @@ class CapabilityReferencePlanner:
     ) -> CapabilityReferencePlanV1:
         del objective
         target_type = self._target_node_type(capability_id)
+        role_policy = (
+            self._role_references.for_capability(capability_id)
+            if bool(getattr(session, "is_new_guided_production", False))
+            else None
+        )
         nodes = {node.node_id: node for node in workflow.nodes}
         selected_node_ids = tuple(
             dict.fromkeys(
@@ -157,6 +166,7 @@ class CapabilityReferencePlanner:
                 priority=order,
                 explicit=True,
                 required=self._required_reference(capability_id, node.creative_role),
+                target_role=(role_policy.target_role if role_policy is not None else None),
             )
             if reference is not None:
                 candidates.append(reference)
@@ -218,6 +228,7 @@ class CapabilityReferencePlanner:
                     priority=100 + priorities[node.creative_role],
                     explicit=False,
                     required=self._required_reference(capability_id, node.creative_role),
+                    target_role=(role_policy.target_role if role_policy is not None else None),
                 )
                 if reference is not None:
                     candidates.append(reference)
@@ -234,6 +245,9 @@ class CapabilityReferencePlanner:
             "capability_id": capability_id,
             "references": [item.model_dump(mode="json") for item in references],
             "warnings": list(warnings),
+            "reference_policy_version": (
+                role_policy.policy_version if role_policy is not None else None
+            ),
         }
         digest = hashlib.sha256(
             json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -313,7 +327,17 @@ class CapabilityReferencePlanner:
         priority: int,
         explicit: bool,
         required: bool,
+        target_role: str | None = None,
     ) -> PlannedCapabilityReferenceV1 | None:
+        if target_role is not None:
+            source_role = _policy_source_role(node)
+            if (
+                source_role is None
+                or self._role_references.resolve(target_role).rule_for(source_role) is None
+            ):
+                if explicit:
+                    raise _error("Mentioned Node is not allowed by the role reference policy.")
+                return None
         input_role = (
             "text_context"
             if node.node_type in {"text", "script"}
@@ -415,3 +439,25 @@ def _error(message: str) -> V2PersistenceError:
         message,
         stage="capability_reference_planning",
     )
+
+
+def _policy_source_role(node: CanvasNodeV2) -> str | None:
+    if node.creative_role == "scene":
+        return "scene_board"
+    if node.creative_role == "prop":
+        return "prop"
+    if node.creative_role == "storyboard_sequence":
+        return "storyboard_grid"
+    if node.creative_role == "character":
+        return (
+            "character_turnaround"
+            if node.structured_content.get("character_asset_kind") == "turnaround"
+            else "character_main"
+        )
+    if node.creative_role == "product":
+        return (
+            "product_multiview"
+            if node.structured_content.get("asset_kind") == "multi_view"
+            else "product_main"
+        )
+    return None

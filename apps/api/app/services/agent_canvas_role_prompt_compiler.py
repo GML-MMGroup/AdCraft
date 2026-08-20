@@ -38,6 +38,9 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     WorldViewRoleBriefV2,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingAuthoringProvenanceV2,
     WorldSettingCoreV2,
@@ -96,6 +99,7 @@ class AgentCanvasRolePromptCompiler:
 
     def __init__(self, registry: RolePromptRecipeRegistry | None = None) -> None:
         self._registry = registry or RolePromptRecipeRegistry()
+        self._reference_policy = AgentCanvasRoleReferencePolicyService()
 
     def compile(
         self,
@@ -108,6 +112,7 @@ class AgentCanvasRolePromptCompiler:
         if concrete_brief.role_variant != context.role_variant:
             raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
         recipe = self._registry.resolve(context.role_variant)
+        role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
         prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
         if context.style_projection:
@@ -140,6 +145,9 @@ class AgentCanvasRolePromptCompiler:
             structured_content=structured,
             parameters=parameters,
             reference_purposes=references,
+            role_reference_policy_version=(
+                role_policy.policy_version if role_policy is not None else None
+            ),
         )
 
     @staticmethod

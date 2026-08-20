@@ -18,6 +18,9 @@ from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
     ResolvedAdReferenceV2,
 )
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 class AdReferenceBundleResolver:
@@ -33,6 +36,7 @@ class AdReferenceBundleResolver:
         self._workflows = workflows
         self._asset_resolver = asset_resolver
         self._max_references = max_references
+        self._role_policy = AgentCanvasRoleReferencePolicyService()
 
     def resolve(
         self,
@@ -141,6 +145,27 @@ class AdReferenceBundleResolver:
                     "Role reference cardinality is invalid.",
                 )
         ordered = tuple(sorted(references, key=lambda item: (item.display_order, item.binding_id)))
+        policy = (
+            _target_role_policy(nodes[node_id], self._role_policy)
+            if _is_guided_node(nodes[node_id])
+            else None
+        )
+        policy_version = policy.policy_version if policy is not None else None
+        if policy is not None:
+            violations = self._role_policy.validate(
+                policy.target_role,
+                tuple(
+                    _policy_source_role(nodes[item.source_node_id])
+                    if item.source_node_id and item.source_node_id in nodes
+                    else _policy_asset_source_role(item.source_semantic_role)
+                    for item in ordered
+                ),
+            )
+            if violations:
+                raise _error(
+                    "role_reference_policy_invalid",
+                    "Resolved references do not satisfy the role reference policy.",
+                )
         anchor_references = tuple(
             item
             for item in ordered
@@ -153,7 +178,10 @@ class AdReferenceBundleResolver:
             )
         digest = hashlib.sha256(
             json.dumps(
-                [item.model_dump(mode="json") for item in ordered],
+                {
+                    "policy_version": policy_version,
+                    "references": [item.model_dump(mode="json") for item in ordered],
+                },
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode()
@@ -226,3 +254,62 @@ def _bounded_text(value: object) -> str:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="ad_reference_bundle_resolver")
+
+
+def _target_role_policy(node: CanvasNodeV2, policy_service: AgentCanvasRoleReferencePolicyService):
+    if node.creative_role == "storyboard_sequence":
+        sequence_order = node.metadata.get("sequence_order")
+        return policy_service.resolve(
+            "storyboard_grid_n"
+            if isinstance(sequence_order, int) and sequence_order > 1
+            else "storyboard_grid_1"
+        )
+    if node.creative_role == "storyboard_video":
+        return policy_service.resolve("storyboard_video")
+    if node.creative_role == "bgm":
+        return policy_service.resolve("bgm")
+    if node.node_type == "editing":
+        return policy_service.resolve("editing")
+    return None
+
+
+def _is_guided_node(node: CanvasNodeV2) -> bool:
+    return bool(node.metadata.get("guided_checkpoint") or node.metadata.get("guided_origin"))
+
+
+def _policy_source_role(node: CanvasNodeV2) -> str:
+    if node.creative_role == "storyboard_sequence":
+        return "storyboard_grid"
+    if node.creative_role == "scene":
+        return "scene_board"
+    if node.creative_role == "prop":
+        return "prop"
+    if node.creative_role == "character":
+        return (
+            "character_turnaround"
+            if node.structured_content.get("character_asset_kind") == "turnaround"
+            else "character_main"
+        )
+    if node.creative_role == "product":
+        return (
+            "product_multiview"
+            if node.structured_content.get("asset_kind") == "multi_view"
+            else "product_main"
+        )
+    if node.creative_role == "storyboard_video":
+        return "video_segment"
+    if node.creative_role == "bgm":
+        return "bgm"
+    return node.creative_role
+
+
+def _policy_asset_source_role(source_semantic_role: str | None) -> str:
+    return {
+        "product": "product_multiview",
+        "prop": "prop",
+        "character": "character_turnaround",
+        "scene": "scene_board",
+        "storyboard_sequence": "storyboard_grid",
+        "storyboard_video": "video_segment",
+        "bgm": "bgm",
+    }.get(source_semantic_role or "", source_semantic_role or "unknown")
