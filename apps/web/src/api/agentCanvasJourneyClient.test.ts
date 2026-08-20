@@ -36,28 +36,29 @@ function creativeSession() {
       matching_asset_ids: [],
     },
     journey: {
-      policy_version: "fixed_ad_production_v1",
-      stage: "foundation_design",
+      policy_version: "fixed_ad_production_v2",
+      stage: "scene",
       stage_status: "waiting_user",
       stage_revision: 4,
-      foundation_queue: [{
-        item_id: "scene-1",
-        kind: "scene",
+      decisions: [{
+        decision_id: "decision:scene:1",
+        element_kind: "scene",
+        occurrence_id: "occurrence:scene:1",
         occurrence_index: 1,
-        requirement_source: "explicit_user",
-        required: true,
-        status: "active",
-        topic_id: "topic-scene",
-        selected_node_ids: [],
+        outcome: "unresolved",
+        source: "user",
+        source_revision: 1,
+        requirements: {},
       }],
-      foundation_cursor: 0,
+      active_occurrence_id: "occurrence:scene:1",
       active_action: {
         action_id: "journey-action-1",
         action_kind: "wait_for_user",
-        stage: "foundation_design",
+        stage: "scene",
+        stage_revision: 4,
         status: "waiting_user",
         turn_id: "turn-1",
-        foundation_item_id: "scene-1",
+        occurrence_id: "occurrence:scene:1",
       },
       suspended_action: null,
       transition_evidence: [],
@@ -118,10 +119,10 @@ describe("Agent Canvas creative session client", () => {
     const session = await v2Api.agentCanvasCreativeSession("workflow-1");
 
     expect(session.journey).toMatchObject({
-      stage: "foundation_design",
+      stage: "scene",
       stage_status: "waiting_user",
       stage_revision: 4,
-      foundation_cursor: 0,
+      active_occurrence_id: "occurrence:scene:1",
       active_action: { action_id: "journey-action-1" },
     });
   });

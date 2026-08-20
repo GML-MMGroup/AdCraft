@@ -444,6 +444,28 @@
   font-size: 10px;
 }
 
+.agent-chat__journey-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: rgb(157 175 230 / 8%);
+  font-size: 10px;
+}
+
+.agent-chat__journey-stage > span,
+.agent-chat__journey-stage > small {
+  color: #89869d;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
+.agent-chat__journey-stage > small {
+  grid-column: 1 / -1;
+}
+
 .agent-chat__recipe ol {
   display: grid;
   gap: 4px;
@@ -476,6 +498,11 @@
 }
 
 .agent-chat__recipe li.is-selected i {
+  background: #4fa987;
+}
+
+.agent-chat__recipe li.is-include i,
+.agent-chat__recipe li.is-delegate i {
   background: #4fa987;
 }
 
@@ -790,6 +817,20 @@
   font-size: 12px;
 }
 
+.agent-chat__options strong em,
+.agent-chat__guided-options strong em {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgb(156 211 142 / 14%);
+  color: #9cd38e;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .agent-chat__options span {
   color: #747588;
   font-size: 11px;
@@ -1046,6 +1087,42 @@
 .agent-chat__guided-actions button:hover:not(:disabled) {
   border-color: rgb(157 175 230 / 48%);
   background: rgb(157 175 230 / 10%);
+}
+
+.agent-chat__guided-actions button.is-selected {
+  border-color: rgb(157 175 230 / 52%);
+  background: rgb(157 175 230 / 14%);
+}
+
+.agent-chat__concept-submit {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.agent-chat__concept-submit > input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid rgb(157 175 230 / 22%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 16%);
+  color: inherit;
+}
+
+.agent-chat__concept-submit-button {
+  min-height: 31px;
+  border: 1px solid rgb(157 175 230 / 42%);
+  border-radius: 6px;
+  background: rgb(157 175 230 / 18%);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__concept-submit-button:disabled {
+  opacity: 0.45;
 }
 
 .agent-chat__guided-actions button:disabled {

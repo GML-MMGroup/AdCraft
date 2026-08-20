@@ -1,35 +1,9 @@
-import { useState } from "react";
-
-import { SendIcon } from "../../../icons.tsx";
 import type {
-  GuidedInteractionActionV1,
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
-
-const ACTION_LABELS: Record<GuidedInteractionActionV1, string> = {
-  answer: "Submit answers",
-  select: "Select",
-  custom: "Use custom direction",
-  skip: "Skip",
-  revise: "Revise",
-  defer: "Defer",
-  exclude: "Exclude",
-  delegate: "Delegate",
-  accept: "Accept",
-  retry: "Retry",
-  replace: "Replace",
-};
-
-const CONCEPT_ACTIONS = new Set<GuidedInteractionActionV1>([
-  "select",
-  "custom",
-  "revise",
-  "defer",
-  "exclude",
-  "delegate",
-]);
+import { ConceptChoiceSubmitControls } from "./ConceptChoiceSubmitControls.tsx";
 
 export function TimelineProposalInteractionActions({
   acceptedReferences,
@@ -46,12 +20,10 @@ export function TimelineProposalInteractionActions({
   pending: boolean;
   selectedOptionId: string | null;
 }) {
-  const [instruction, setInstruction] = useState("");
-  const [instructionAction, setInstructionAction] = useState<"custom" | "revise" | null>(null);
-  const actions = interaction.allowed_actions.filter((action) => CONCEPT_ACTIONS.has(action));
+  const concept = interaction.content.content_kind === "concept_choice" ? interaction.content : null;
 
   function submit(
-    action: "select" | "custom" | "revise" | "defer" | "exclude" | "delegate",
+    action: "select" | "custom" | "defer" | "exclude" | "delegate",
     customValue: string | null = null,
   ) {
     void onSubmit({
@@ -60,7 +32,7 @@ export function TimelineProposalInteractionActions({
       expected_session_revision: interaction.expected_session_revision,
       action,
       option_id: action === "select" ? selectedOptionId : null,
-      custom_value: action === "custom" || action === "revise" ? customValue : null,
+      custom_text: action === "custom" ? customValue : null,
       accepted_references: action === "select"
         ? acceptedReferences.map((reference, index) => ({
           source_kind: reference.source_kind,
@@ -78,54 +50,13 @@ export function TimelineProposalInteractionActions({
   }
 
   return (
-    <>
-      <div className="agent-chat__proposal-actions">
-        {actions.map((action) => (
-          <button
-            type="button"
-            key={action}
-            disabled={pending
-              || materializationBusy
-              || (action === "select" && !selectedOptionId)}
-            onClick={() => {
-              if (action === "custom" || action === "revise") {
-                setInstructionAction((current) => current === action ? null : action);
-                return;
-              }
-              submit(action as "select" | "defer" | "exclude" | "delegate");
-            }}
-          >
-            {pending ? "Submitting" : ACTION_LABELS[action]}
-          </button>
-        ))}
-      </div>
-      {instructionAction ? (
-        <form
-          className="agent-chat__revision"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const value = instruction.trim();
-            if (!value) return;
-            submit(instructionAction, value);
-            setInstruction("");
-            setInstructionAction(null);
-          }}
-        >
-          <input
-            value={instruction}
-            onChange={(event) => setInstruction(event.target.value)}
-            placeholder="Describe the change"
-            aria-label="Proposal revision"
-          />
-          <button
-            type="submit"
-            aria-label="Submit proposal revision"
-            disabled={!instruction.trim() || pending}
-          >
-            <SendIcon />
-          </button>
-        </form>
-      ) : null}
-    </>
+    <ConceptChoiceSubmitControls
+      allowedActions={interaction.allowed_actions}
+      allowCustom={concept?.allow_custom ?? false}
+      allowExclusion={concept?.allow_exclusion ?? false}
+      busy={pending || materializationBusy}
+      selectedOptionId={selectedOptionId}
+      onSubmit={submit}
+    />
   );
 }

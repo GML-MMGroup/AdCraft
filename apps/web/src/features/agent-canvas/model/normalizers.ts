@@ -121,7 +121,7 @@ import type {
   GuidedInteractionActionV1,
   GuidanceAwaitingV1,
   GuidanceAdvancePreconditionV1,
-  FoundationJourneyItemV2,
+  JourneyElementDecisionV2,
   JourneyActionProjectionV2,
   JourneyTransitionEvidenceV2,
   ProposalActionDescriptorV2,
@@ -300,16 +300,18 @@ const GUIDANCE_TOPIC_KINDS = new Set<GuidanceTopicKindV2>([
 ]);
 const GUIDED_JOURNEY_STAGES = new Set<GuidedJourneyStageV2>([
   "intake",
-  "clarification",
-  "world_setting",
-  "foundation_design",
+  "world_view",
+  "product",
+  "props",
+  "character",
+  "scene",
   "narrative_direction",
   "style_lock",
   "storyboard_plan",
   "storyboard_grids",
-  "video_segments",
+  "videos",
   "bgm",
-  "editing_ready",
+  "editing",
   "completed",
 ]);
 const GUIDED_JOURNEY_STAGE_STATUSES = new Set<GuidedJourneyStageStatusV2>([
@@ -320,23 +322,16 @@ const GUIDED_JOURNEY_STAGE_STATUSES = new Set<GuidedJourneyStageStatusV2>([
   "failed",
   "completed",
 ]);
-const FOUNDATION_JOURNEY_KINDS = new Set<FoundationJourneyItemV2["kind"]>([
-  "product",
-  "prop",
-  "character",
-  "scene",
+const JOURNEY_DECISION_OUTCOMES = new Set<JourneyElementDecisionV2["outcome"]>([
+  "include",
+  "exclude",
+  "delegate",
+  "unresolved",
 ]);
-const FOUNDATION_JOURNEY_REQUIREMENT_SOURCES = new Set<FoundationJourneyItemV2["requirement_source"]>([
-  "explicit_user",
-  "questionnaire",
+const JOURNEY_DECISION_SOURCES = new Set<JourneyElementDecisionV2["source"]>([
+  "user",
   "delegated",
-]);
-const FOUNDATION_JOURNEY_STATUSES = new Set<FoundationJourneyItemV2["status"]>([
-  "pending",
-  "active",
-  "selected",
-  "deferred",
-  "excluded",
+  "system",
 ]);
 const JOURNEY_ACTION_STATUSES = new Set<JourneyActionProjectionV2["status"]>([
   "reserved",
@@ -346,25 +341,38 @@ const JOURNEY_ACTION_STATUSES = new Set<JourneyActionProjectionV2["status"]>([
 const JOURNEY_EVIDENCE_KINDS = new Set<JourneyTransitionEvidenceV2["evidence_kind"]>([
   "creative_goal_validated",
   "clarification_completed",
-  "world_setting_selected",
-  "world_setting_deferred",
-  "world_setting_excluded",
-  "foundation_item_selected",
-  "foundation_item_deferred",
-  "foundation_item_excluded",
-  "narrative_direction_selected",
-  "style_locked",
+  "world_view_selected",
+  "world_view_delegated",
+  "world_view_excluded",
+  "product_materialized",
+  "product_delegated",
+  "product_excluded",
+  "props_materialized",
+  "props_delegated",
+  "props_excluded",
+  "character_materialized",
+  "character_delegated",
+  "character_excluded",
+  "scene_materialized",
+  "scene_delegated",
+  "scene_excluded",
+  "narrative_direction_accepted",
+  "style_lock_accepted",
   "storyboard_plan_accepted",
+  "storyboard_plan_excluded",
   "storyboard_grids_prepared",
-  "video_segments_prepared",
+  "storyboard_grids_excluded",
+  "videos_prepared",
+  "videos_excluded",
   "bgm_prepared",
-  "bgm_deferred",
+  "bgm_delegated",
   "bgm_excluded",
   "editing_prepared",
+  "editing_export_completed",
+  "editing_excluded",
   "targeted_action_started",
   "targeted_action_finished",
   "stage_failed",
-  "foundation_queue_amended",
 ]);
 const CREATIVE_ELEMENT_KIND_VALUES = {
   world_setting: true,
@@ -1023,28 +1031,8 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
-    prompt_preparation: record.prompt_preparation === undefined
-      ? {
-          status: "ready",
-          operation_id: null,
-          attempt_no: 0,
-          context_snapshot_id: null,
-          prompt_digest: "0".repeat(64),
-          role_variant: null,
-          recipe_id: null,
-          recipe_version: null,
-          recipe_digest: null,
-          requirement_revision_id: null,
-          requirement_revision_no: null,
-          document_revisions: {},
-          binding_digest: null,
-          style_projection_digest: null,
-          brief_digest: null,
-          parameter_origins: [],
-          attempt_stage: null,
-          error: null,
-          updated_at: updatedAt,
-        }
+    prompt_preparation: record.prompt_preparation === undefined || record.prompt_preparation === null
+      ? null
       : normalizeNodePromptPreparationV1(record.prompt_preparation, `${path}.prompt_preparation`),
     variation_draft: record.variation_draft === null || record.variation_draft === undefined
       ? null
@@ -4470,10 +4458,45 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     return { content_kind: "questionnaire", questions };
   }
   if (contentKind === "concept_choice") {
-    forbidUnknownFields(record, ["content_kind", "proposal_id", "options"], path);
+    forbidUnknownFields(record, [
+      "content_kind",
+      "proposal_id",
+      "stage",
+      "stage_revision",
+      "action_id",
+      "occurrence_id",
+      "capability_id",
+      "options",
+      "allow_custom",
+      "allow_exclusion",
+    ], path);
     const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeGuidedChoiceOptionV1(item, `${path}.options[${index}]`));
-    if (kind !== "concept_choice" || options.length < 2 || options.length > 3) fail(path, "invalid concept interaction content");
-    return { content_kind: "concept_choice", proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`), options };
+    if (kind !== "concept_choice" || options.length !== 3) fail(path, "expected exactly three concept options");
+    if (new Set(options.map((option) => option.option_id)).size !== options.length) {
+      fail(`${path}.options`, "option IDs must be unique");
+    }
+    if (options.filter((option) => option.recommended).length !== 1) {
+      fail(`${path}.options`, "expected exactly one recommended option");
+    }
+    const stage = expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`);
+    const allowCustom = expectBoolean(record.allow_custom, `${path}.allow_custom`);
+    if (!allowCustom) fail(`${path}.allow_custom`, "expected true");
+    const allowExclusion = expectBoolean(record.allow_exclusion, `${path}.allow_exclusion`);
+    if (allowExclusion && !new Set<GuidedJourneyStageV2>(["world_view", "props", "character", "bgm"]).has(stage)) {
+      fail(`${path}.allow_exclusion`, "exclusion is not allowed for this journey stage");
+    }
+    return {
+      content_kind: "concept_choice",
+      proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`),
+      stage,
+      stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
+      action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
+      occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+      capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
+      options,
+      allow_custom: true,
+      allow_exclusion: allowExclusion,
+    };
   }
   if (contentKind === "media_review") {
     forbidUnknownFields(record, ["content_kind", "node_id", "node_revision", "asset_id", "asset_version_id", "summary"], path);
@@ -4506,7 +4529,7 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  return { awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind: expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`), requires_user_action: expectBoolean(record.requires_user_action, `${path}.requires_user_action`), resume_policy: expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`), interaction_id: nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`), node_ids: optionalStringArray(record.node_ids, `${path}.node_ids`, []), stage: expectLiteral(record.stage, new Set<GuidanceAwaitingV1["stage"]>(["intake", "clarification", "world_setting", "foundation_design", "narrative_direction", "style_lock", "storyboard_plan", "storyboard_grids", "video_segments", "bgm", "editing_ready", "completed"]), `${path}.stage`), stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`) };
+  return { awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind: expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`), requires_user_action: expectBoolean(record.requires_user_action, `${path}.requires_user_action`), resume_policy: expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`), interaction_id: nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`), node_ids: optionalStringArray(record.node_ids, `${path}.node_ids`, []), stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`), stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`) };
 }
 
 export function normalizeGuidedInteractionAcceptedV1(value: unknown, path = "guidedInteractionAccepted"): GuidedInteractionAcceptedV1 {
@@ -4525,69 +4548,72 @@ function normalizeGuidedProductionJourneyV2(
     "stage",
     "stage_status",
     "stage_revision",
-    "foundation_queue",
-    "foundation_cursor",
+    "decisions",
+    "active_occurrence_id",
     "active_action",
     "suspended_action",
     "transition_evidence",
   ], path);
-  const foundationQueue = expectArray(record.foundation_queue ?? [], `${path}.foundation_queue`)
-    .map((item, index) => normalizeFoundationJourneyItemV2(item, `${path}.foundation_queue[${index}]`));
-  const foundationCursor = record.foundation_cursor === undefined || record.foundation_cursor === null
-    ? null
-    : expectNonNegativeInteger(record.foundation_cursor, `${path}.foundation_cursor`);
-  if (foundationCursor !== null && foundationCursor >= foundationQueue.length) {
-    fail(`${path}.foundation_cursor`, "out of range");
+  const decisions = expectArray(record.decisions ?? [], `${path}.decisions`)
+    .map((item, index) => normalizeJourneyElementDecisionV2(item, `${path}.decisions[${index}]`));
+  if (new Set(decisions.map((item) => item.decision_id)).size !== decisions.length) {
+    fail(`${path}.decisions`, "decision IDs must be unique");
   }
+  if (new Set(decisions.map((item) => item.occurrence_id)).size !== decisions.length) {
+    fail(`${path}.decisions`, "occurrence IDs must be unique");
+  }
+  const stage = expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`);
+  const stageRevision = expectPositiveInteger(record.stage_revision, `${path}.stage_revision`);
+  const activeAction = record.active_action === undefined || record.active_action === null
+    ? null
+    : normalizeJourneyActionProjectionV2(record.active_action, `${path}.active_action`);
+  const suspendedAction = record.suspended_action === undefined || record.suspended_action === null
+    ? null
+    : normalizeJourneyActionProjectionV2(record.suspended_action, `${path}.suspended_action`);
+  [activeAction, suspendedAction].forEach((action) => {
+    if (action && (action.stage !== stage || action.stage_revision !== stageRevision)) {
+      fail(path, "journey action does not belong to the current stage revision");
+    }
+  });
   return {
     policy_version: expectLiteral(
       record.policy_version,
-      new Set(["fixed_ad_production_v1"] as const),
+      new Set(["fixed_ad_production_v2"] as const),
       `${path}.policy_version`,
     ),
-    stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
+    stage,
     stage_status: expectLiteral(record.stage_status, GUIDED_JOURNEY_STAGE_STATUSES, `${path}.stage_status`),
-    stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
-    foundation_queue: foundationQueue,
-    foundation_cursor: foundationCursor,
-    active_action: record.active_action === undefined || record.active_action === null
-      ? null
-      : normalizeJourneyActionProjectionV2(record.active_action, `${path}.active_action`),
-    suspended_action: record.suspended_action === undefined || record.suspended_action === null
-      ? null
-      : normalizeJourneyActionProjectionV2(record.suspended_action, `${path}.suspended_action`),
+    stage_revision: stageRevision,
+    decisions,
+    active_occurrence_id: nullableStringWithDefault(record.active_occurrence_id, `${path}.active_occurrence_id`),
+    active_action: activeAction,
+    suspended_action: suspendedAction,
     transition_evidence: expectArray(record.transition_evidence ?? [], `${path}.transition_evidence`)
       .map((item, index) => normalizeJourneyTransitionEvidenceV2(item, `${path}.transition_evidence[${index}]`)),
   };
 }
 
-function normalizeFoundationJourneyItemV2(value: unknown, path: string): FoundationJourneyItemV2 {
+function normalizeJourneyElementDecisionV2(value: unknown, path: string): JourneyElementDecisionV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
-    "item_id",
-    "kind",
+    "decision_id",
+    "element_kind",
+    "occurrence_id",
     "occurrence_index",
-    "requirement_source",
-    "required",
-    "status",
-    "topic_id",
-    "selected_node_ids",
+    "outcome",
+    "source",
+    "source_revision",
+    "requirements",
   ], path);
   return {
-    item_id: expectNonEmptyString(record.item_id, `${path}.item_id`),
-    kind: expectLiteral(record.kind, FOUNDATION_JOURNEY_KINDS, `${path}.kind`),
+    decision_id: expectNonEmptyString(record.decision_id, `${path}.decision_id`),
+    element_kind: expectNonEmptyString(record.element_kind, `${path}.element_kind`),
+    occurrence_id: expectNonEmptyString(record.occurrence_id, `${path}.occurrence_id`),
     occurrence_index: expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`),
-    requirement_source: expectLiteral(
-      record.requirement_source,
-      FOUNDATION_JOURNEY_REQUIREMENT_SOURCES,
-      `${path}.requirement_source`,
-    ),
-    required: expectBoolean(record.required, `${path}.required`),
-    status: expectLiteral(record.status, FOUNDATION_JOURNEY_STATUSES, `${path}.status`),
-    topic_id: record.topic_id === undefined || record.topic_id === null
-      ? null
-      : expectNonEmptyString(record.topic_id, `${path}.topic_id`),
-    selected_node_ids: optionalStringArray(record.selected_node_ids, `${path}.selected_node_ids`, []),
+    outcome: expectLiteral(record.outcome, JOURNEY_DECISION_OUTCOMES, `${path}.outcome`),
+    source: expectLiteral(record.source, JOURNEY_DECISION_SOURCES, `${path}.source`),
+    source_revision: expectPositiveInteger(record.source_revision, `${path}.source_revision`),
+    requirements: expectRecordValue(record.requirements ?? {}, `${path}.requirements`),
   };
 }
 
@@ -4597,21 +4623,23 @@ function normalizeJourneyActionProjectionV2(value: unknown, path: string): Journ
     "action_id",
     "action_kind",
     "stage",
+    "stage_revision",
     "status",
     "turn_id",
-    "foundation_item_id",
+    "occurrence_id",
   ], path);
   return {
     action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
     action_kind: expectNonEmptyString(record.action_kind, `${path}.action_kind`),
     stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
+    stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
     status: expectLiteral(record.status, JOURNEY_ACTION_STATUSES, `${path}.status`),
     turn_id: record.turn_id === undefined || record.turn_id === null
       ? null
       : expectNonEmptyString(record.turn_id, `${path}.turn_id`),
-    foundation_item_id: record.foundation_item_id === undefined || record.foundation_item_id === null
+    occurrence_id: record.occurrence_id === undefined || record.occurrence_id === null
       ? null
-      : expectNonEmptyString(record.foundation_item_id, `${path}.foundation_item_id`),
+      : expectNonEmptyString(record.occurrence_id, `${path}.occurrence_id`),
   };
 }
 
@@ -4625,6 +4653,10 @@ function normalizeJourneyTransitionEvidenceV2(
     "evidence_kind",
     "source_id",
     "source_revision",
+    "stage",
+    "stage_revision",
+    "occurrence_id",
+    "actor",
     "recorded_at",
   ], path);
   return {
@@ -4634,6 +4666,12 @@ function normalizeJourneyTransitionEvidenceV2(
     source_revision: record.source_revision === undefined || record.source_revision === null
       ? null
       : expectPositiveInteger(record.source_revision, `${path}.source_revision`),
+    stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
+    stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    actor: record.actor === undefined
+      ? "system"
+      : expectLiteral(record.actor, JOURNEY_DECISION_SOURCES, `${path}.actor`),
     recorded_at: expectIsoDateTimeString(record.recorded_at, `${path}.recorded_at`),
   };
 }

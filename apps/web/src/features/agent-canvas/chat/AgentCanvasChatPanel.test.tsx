@@ -158,16 +158,41 @@ const proposalInteraction: GuidedInteractionV1 = {
   content: {
     content_kind: "concept_choice",
     proposal_id: "proposal-1",
-    options: [{
-      option_id: "option-1",
-      title: "Hero",
-      summary: "A focused campaign hero",
-      difference_tags: [],
-      recommended: true,
-      reference_preview: [],
-    }],
+    stage: "character",
+    stage_revision: 4,
+    action_id: "action-character-1",
+    occurrence_id: "occurrence:character:1",
+    capability_id: "character_design",
+    allow_custom: true,
+    allow_exclusion: true,
+    options: [
+      {
+        option_id: "option-1",
+        title: "Hero",
+        summary: "A focused campaign hero",
+        difference_tags: [],
+        recommended: true,
+        reference_preview: [],
+      },
+      {
+        option_id: "option-2",
+        title: "Maker",
+        summary: "A grounded craft-led character",
+        difference_tags: [],
+        recommended: false,
+        reference_preview: [],
+      },
+      {
+        option_id: "option-3",
+        title: "Explorer",
+        summary: "An energetic outdoor lead",
+        difference_tags: [],
+        recommended: false,
+        reference_preview: [],
+      },
+    ],
   },
-  allowed_actions: ["select", "revise", "defer", "exclude", "delegate"],
+  allowed_actions: ["select", "custom", "defer", "exclude", "delegate"],
   submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-proposal-1/submit",
   created_at: "2026-08-17T00:00:00Z",
   updated_at: "2026-08-17T00:00:00Z",
@@ -214,7 +239,10 @@ describe("ProposalCard", () => {
     );
 
     fireEvent.click(screen.getByText("Hero").closest("button")!);
-    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getAllByText("Recommended")).toHaveLength(1);
+    expect(screen.getByText("A grounded craft-led character")).toBeTruthy();
+    expect(screen.queryByText("Contemporary wardrobe")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(onSubmitInteraction).toHaveBeenCalledWith({
       submission_kind: "concept_choice",
@@ -222,7 +250,7 @@ describe("ProposalCard", () => {
       expected_session_revision: 7,
       action: "select",
       option_id: "option-1",
-      custom_value: null,
+      custom_text: null,
       accepted_references: [],
     });
     expect(document.querySelectorAll(".agent-chat__proposal")).toHaveLength(1);
@@ -577,21 +605,21 @@ describe("progress and action cards", () => {
         matching_asset_ids: [],
       },
       journey: {
-        policy_version: "fixed_ad_production_v1",
-        stage: "foundation_design",
+        policy_version: "fixed_ad_production_v2",
+        stage: "scene",
         stage_status: "waiting_user",
         stage_revision: 4,
-        foundation_queue: [{
-          item_id: "scene-1",
-          kind: "scene",
+        decisions: [{
+          decision_id: "decision:scene:1",
+          element_kind: "scene",
+          occurrence_id: "occurrence:scene:1",
           occurrence_index: 1,
-          requirement_source: "explicit_user",
-          required: true,
-          status: "active",
-          topic_id: "topic-scene",
-          selected_node_ids: [],
+          outcome: "unresolved",
+          source: "user",
+          source_revision: 1,
+          requirements: {},
         }],
-        foundation_cursor: 0,
+        active_occurrence_id: "occurrence:scene:1",
         active_action: null,
         suspended_action: null,
         transition_evidence: [],
@@ -603,14 +631,14 @@ describe("progress and action cards", () => {
     render(<GuidanceSessionProgress session={session} />);
 
     expect(screen.getByText("Create a launch film.")).toBeTruthy();
-    expect(screen.getByText("Lead character")).toBeTruthy();
-    expect(screen.getByText("Scene direction")).toBeTruthy();
+    expect(screen.getByText("Scene")).toBeTruthy();
+    expect(screen.getByText("6/14")).toBeTruthy();
     expect(screen.getByText("Authoring: not ready")).toBeTruthy();
     expect(screen.getByText("Delivery: not ready")).toBeTruthy();
     expect(screen.getByText("Direction: You")).toBeTruthy();
     expect(screen.getByText("Checkpoint: scene · waiting user")).toBeTruthy();
-    expect(screen.getByText("Stage: foundation design · waiting user")).toBeTruthy();
-    expect(screen.getByText("Foundation item: scene 1")).toBeTruthy();
+    expect(screen.getByText("Stage: Scene · waiting user")).toBeTruthy();
+    expect(screen.getByText("Current decision: scene 1 · unresolved")).toBeTruthy();
   });
 
   it("renders only current stop or resume guidance actions", () => {

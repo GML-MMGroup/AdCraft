@@ -33,7 +33,7 @@ function playerTitle(
 ) {
   const promptPreparation = promptPreparationForNode(node);
   if (status === "draft") {
-    return promptPreparation.status === "ready" ? "No audio yet" : promptExcerpt(node, asset);
+    return promptPreparation?.status === "ready" ? "No audio yet" : promptExcerpt(node, asset);
   }
   if (status === "working") return "Generating...";
   if (status === "failed") return "Generation failed";

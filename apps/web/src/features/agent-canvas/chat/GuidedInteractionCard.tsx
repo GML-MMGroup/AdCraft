@@ -5,6 +5,7 @@ import type {
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
+import { ConceptChoiceSubmitControls } from "./ConceptChoiceSubmitControls.tsx";
 
 const ACTION_LABELS: Record<GuidedInteractionActionV1, string> = {
   answer: "Submit answers",
@@ -157,21 +158,21 @@ function ConceptInteraction({ interaction, pending, onSubmit }: {
   pending: boolean;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }) {
-  const options = interaction.content.content_kind === "concept_choice" ? interaction.content.options : [];
+  const content = interaction.content.content_kind === "concept_choice" ? interaction.content : null;
+  const options = content?.options ?? [];
   const [optionId, setOptionId] = useState<string | null>(null);
-  const [customValue, setCustomValue] = useState("");
-  const actions = interaction.allowed_actions.filter((action) => ["select", "custom", "revise", "defer", "exclude", "delegate"].includes(action));
-  const submit = (action: "select" | "custom" | "revise" | "defer" | "exclude" | "delegate") => {
-    const value = customValue.trim();
+  const submit = (
+    action: "select" | "custom" | "defer" | "exclude" | "delegate",
+    customText: string | null,
+  ) => {
     if (action === "select" && !optionId) return;
-    if ((action === "custom" || action === "revise") && !value) return;
     void onSubmit({
       submission_kind: "concept_choice",
       expected_interaction_revision: interaction.revision,
       expected_session_revision: interaction.expected_session_revision,
       action,
       option_id: action === "select" ? optionId : null,
-      custom_value: action === "custom" || action === "revise" ? value : null,
+      custom_text: action === "custom" ? customText : null,
     });
   };
   return (
@@ -179,22 +180,20 @@ function ConceptInteraction({ interaction, pending, onSubmit }: {
       <div className="agent-chat__guided-options">
         {options.map((option) => (
           <button type="button" key={option.option_id} disabled={pending} className={optionId === option.option_id ? "is-selected" : ""} onClick={() => setOptionId(option.option_id)}>
-            <strong>{option.title}</strong><span>{option.summary}</span>
+            <strong>{option.title}{option.recommended ? <em>Recommended</em> : null}</strong><span>{option.summary}</span>
             {option.difference_tags.length ? <small>{option.difference_tags.join(" · ")}</small> : null}
             {option.reference_preview.length ? <em>{option.reference_preview.map((reference) => reference.display_name).join(" · ")}</em> : null}
           </button>
         ))}
       </div>
-      {(isAllowed(interaction, "custom") || isAllowed(interaction, "revise")) ? (
-        <input value={customValue} disabled={pending} placeholder="Describe your direction" onChange={(event) => setCustomValue(event.target.value)} />
-      ) : null}
-      <div className="agent-chat__guided-actions">
-        {actions.map((action) => (
-          <button type="button" key={action} disabled={pending || (action === "select" && !optionId) || ((action === "custom" || action === "revise") && !customValue.trim())} onClick={() => submit(action as "select" | "custom" | "revise" | "defer" | "exclude" | "delegate")}>
-            {pending ? "Submitting" : ACTION_LABELS[action]}
-          </button>
-        ))}
-      </div>
+      <ConceptChoiceSubmitControls
+        allowedActions={interaction.allowed_actions}
+        allowCustom={content?.allow_custom ?? false}
+        allowExclusion={content?.allow_exclusion ?? false}
+        busy={pending}
+        selectedOptionId={optionId}
+        onSubmit={submit}
+      />
     </InteractionFrame>
   );
 }

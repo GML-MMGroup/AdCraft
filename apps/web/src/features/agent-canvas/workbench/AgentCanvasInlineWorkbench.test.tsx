@@ -21,7 +21,7 @@ function makeNode(type: CanvasNodeTypeV2, status: CanvasNodeV2["status"] = "draf
     title: `${type} node`,
     status,
     summary_prompt: null,
-    generation_prompt: type === "image" ? "A quiet fragrance film" : null,
+    generation_prompt: type === "editing" ? null : `Prepare the ${type} node.`,
     structured_content: type === "text" ? { content: "Initial brief" } : type === "script" ? { script_text: "Open on dawn." } : {},
     model_id: null,
     parameters: {},
@@ -30,6 +30,27 @@ function makeNode(type: CanvasNodeTypeV2, status: CanvasNodeV2["status"] = "draf
     position: { x: 120, y: 140 },
     revision: 1,
     error: null,
+    prompt_preparation: type === "editing" ? null : {
+      status: "ready",
+      operation_id: `prepare-${type}`,
+      attempt_no: 1,
+      context_snapshot_id: `snapshot-${type}`,
+      prompt_digest: "a".repeat(64),
+      role_variant: null,
+      recipe_id: null,
+      recipe_version: null,
+      recipe_digest: null,
+      requirement_revision_id: null,
+      requirement_revision_no: null,
+      document_revisions: {},
+      binding_digest: null,
+      style_projection_digest: null,
+      brief_digest: null,
+      parameter_origins: [],
+      attempt_stage: "ready",
+      error: null,
+      updated_at: "2026-07-31T00:00:00Z",
+    },
     variation_draft: null,
     created_at: "2026-07-31T00:00:00Z",
     updated_at: "2026-07-31T00:00:00Z",
@@ -215,6 +236,18 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
     expect(screen.queryByLabelText("Generation prompt")).toBeNull();
     expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
+  it("keeps a new V2 Text node editable but disables Run when prompt preparation is missing", () => {
+    const node = {
+      ...makeNode("text"),
+      prompt_preparation: null,
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
+    expect((screen.getByRole("button", { name: "Run text node" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("renders the prepared generation prompt and enables the existing Run action once preparation is ready", () => {

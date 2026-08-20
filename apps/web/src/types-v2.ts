@@ -1664,7 +1664,7 @@ export interface CanvasNodeV2 {
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
-  prompt_preparation: NodePromptPreparationV1;
+  prompt_preparation: NodePromptPreparationV1 | null;
   variation_draft: CanvasVariationDraftV2 | null;
   created_at: string;
   updated_at: string;
@@ -3222,16 +3222,18 @@ export interface GuidedStepCheckpointV2 {
 
 export type GuidedJourneyStageV2 =
   | "intake"
-  | "clarification"
-  | "world_setting"
-  | "foundation_design"
+  | "world_view"
+  | "product"
+  | "props"
+  | "character"
+  | "scene"
   | "narrative_direction"
   | "style_lock"
   | "storyboard_plan"
   | "storyboard_grids"
-  | "video_segments"
+  | "videos"
   | "bgm"
-  | "editing_ready"
+  | "editing"
   | "completed";
 
 export type GuidedJourneyStageStatusV2 =
@@ -3242,24 +3244,25 @@ export type GuidedJourneyStageStatusV2 =
   | "failed"
   | "completed";
 
-export interface FoundationJourneyItemV2 {
-  item_id: string;
-  kind: "product" | "prop" | "character" | "scene";
+export interface JourneyElementDecisionV2 {
+  decision_id: string;
+  element_kind: string;
+  occurrence_id: string;
   occurrence_index: number;
-  requirement_source: "explicit_user" | "questionnaire" | "delegated";
-  required: boolean;
-  status: "pending" | "active" | "selected" | "deferred" | "excluded";
-  topic_id: string | null;
-  selected_node_ids: string[];
+  outcome: "include" | "exclude" | "delegate" | "unresolved";
+  source: "user" | "delegated" | "system";
+  source_revision: number;
+  requirements: Record<string, unknown>;
 }
 
 export interface JourneyActionProjectionV2 {
   action_id: string;
   action_kind: string;
   stage: GuidedJourneyStageV2;
+  stage_revision: number;
   status: "reserved" | "working" | "waiting_user";
   turn_id: string | null;
-  foundation_item_id: string | null;
+  occurrence_id: string | null;
 }
 
 export interface JourneyTransitionEvidenceV2 {
@@ -3267,37 +3270,54 @@ export interface JourneyTransitionEvidenceV2 {
   evidence_kind:
     | "creative_goal_validated"
     | "clarification_completed"
-    | "world_setting_selected"
-    | "world_setting_deferred"
-    | "world_setting_excluded"
-    | "foundation_item_selected"
-    | "foundation_item_deferred"
-    | "foundation_item_excluded"
-    | "narrative_direction_selected"
-    | "style_locked"
+    | "world_view_selected"
+    | "world_view_delegated"
+    | "world_view_excluded"
+    | "product_materialized"
+    | "product_delegated"
+    | "product_excluded"
+    | "props_materialized"
+    | "props_delegated"
+    | "props_excluded"
+    | "character_materialized"
+    | "character_delegated"
+    | "character_excluded"
+    | "scene_materialized"
+    | "scene_delegated"
+    | "scene_excluded"
+    | "narrative_direction_accepted"
+    | "style_lock_accepted"
     | "storyboard_plan_accepted"
+    | "storyboard_plan_excluded"
     | "storyboard_grids_prepared"
-    | "video_segments_prepared"
+    | "storyboard_grids_excluded"
+    | "videos_prepared"
+    | "videos_excluded"
     | "bgm_prepared"
-    | "bgm_deferred"
+    | "bgm_delegated"
     | "bgm_excluded"
     | "editing_prepared"
+    | "editing_export_completed"
+    | "editing_excluded"
     | "targeted_action_started"
     | "targeted_action_finished"
-    | "stage_failed"
-    | "foundation_queue_amended";
+    | "stage_failed";
   source_id: string;
   source_revision: number | null;
+  stage: GuidedJourneyStageV2;
+  stage_revision: number;
+  occurrence_id: string | null;
+  actor: "user" | "delegated" | "system";
   recorded_at: string;
 }
 
 export interface GuidedProductionJourneyV2 {
-  policy_version: "fixed_ad_production_v1";
+  policy_version: "fixed_ad_production_v2";
   stage: GuidedJourneyStageV2;
   stage_status: GuidedJourneyStageStatusV2;
   stage_revision: number;
-  foundation_queue: FoundationJourneyItemV2[];
-  foundation_cursor: number | null;
+  decisions: JourneyElementDecisionV2[];
+  active_occurrence_id: string | null;
   active_action: JourneyActionProjectionV2 | null;
   suspended_action: JourneyActionProjectionV2 | null;
   transition_evidence: JourneyTransitionEvidenceV2[];
@@ -3357,7 +3377,18 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
 
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
-  | { content_kind: "concept_choice"; proposal_id: string | null; options: GuidedChoiceOptionV1[] }
+  | {
+      content_kind: "concept_choice";
+      proposal_id: string | null;
+      stage: GuidedJourneyStageV2;
+      stage_revision: number;
+      action_id: string;
+      occurrence_id: string | null;
+      capability_id: string;
+      options: GuidedChoiceOptionV1[];
+      allow_custom: true;
+      allow_exclusion: boolean;
+    }
   | {
       content_kind: "media_review";
       node_id: string;
@@ -3401,9 +3432,9 @@ export type GuidedInteractionSubmitRequestV1 =
       submission_kind: "concept_choice";
       expected_interaction_revision: number;
       expected_session_revision: number;
-      action: "select" | "custom" | "revise" | "defer" | "exclude" | "delegate";
+      action: "select" | "custom" | "defer" | "exclude" | "delegate";
       option_id?: string | null;
-      custom_value?: string | null;
+      custom_text?: string | null;
       accepted_references?: GuidedAcceptedReferenceV1[];
     }
   | {

@@ -34,21 +34,21 @@ function session(overrides: Partial<GuidedSessionStateV2> = {}): GuidedSessionSt
       matching_asset_ids: [],
     },
     journey: {
-      policy_version: "fixed_ad_production_v1",
-      stage: "foundation_design",
+      policy_version: "fixed_ad_production_v2",
+      stage: "character",
       stage_status: "waiting_user",
       stage_revision: 4,
-      foundation_queue: [{
-        item_id: "character-1",
-        kind: "character",
+      decisions: [{
+        decision_id: "decision:character:1",
+        element_kind: "character",
+        occurrence_id: "occurrence:character:1",
         occurrence_index: 1,
-        requirement_source: "explicit_user",
-        required: true,
-        status: "active",
-        topic_id: "topic-character",
-        selected_node_ids: [],
+        outcome: "unresolved",
+        source: "user",
+        source_revision: 1,
+        requirements: {},
       }],
-      foundation_cursor: 0,
+      active_occurrence_id: "occurrence:character:1",
       active_action: null,
       suspended_action: null,
       transition_evidence: [],
@@ -66,9 +66,9 @@ describe("persisted production journey state", () => {
       revision: 7,
       journey: {
         ...current.journey,
-        stage: "world_setting",
+        stage: "product",
         stage_revision: 3,
-        foundation_cursor: null,
+        active_occurrence_id: null,
       },
     });
 
@@ -84,10 +84,11 @@ describe("persisted production journey state", () => {
         active_action: {
           action_id: "action-9",
           action_kind: "invoke_capability:character_design",
-          stage: "foundation_design",
+          stage: "character",
+          stage_revision: 4,
           status: "working",
           turn_id: "turn-9",
-          foundation_item_id: "character-1",
+          occurrence_id: "occurrence:character:1",
         },
       },
     });
@@ -106,9 +107,9 @@ describe("persisted production journey state", () => {
     expect(mergeGuidedSessionState(current, targetedUpdate)).toMatchObject({
       narrative_direction: "Keep the established visual direction.",
       journey: {
-        stage: "foundation_design",
+        stage: "character",
         stage_revision: 4,
-        foundation_cursor: 0,
+        active_occurrence_id: "occurrence:character:1",
       },
     });
   });
@@ -132,7 +133,7 @@ describe("persisted production journey state", () => {
       payload: {
         session_revision: 7,
         stage_revision: 3,
-        stage: "world_setting",
+        stage: "product",
       },
     }, current)).toBeNull();
   });

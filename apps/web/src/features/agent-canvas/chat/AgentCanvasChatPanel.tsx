@@ -49,7 +49,10 @@ import {
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
 import { TimelineProposalInteractionActions } from "./TimelineProposalInteractionActions.tsx";
+import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import "./agent-canvas-chat.css";
+
+export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 
 export function AgentCanvasChatPanel({
   workflow,
@@ -232,6 +235,7 @@ export function AgentCanvasChatPanel({
             ) : null}
             {standaloneGuidedInteraction ? (
               <GuidedInteractionCard
+                key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
                 interaction={standaloneGuidedInteraction}
                 pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
                 onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
@@ -651,60 +655,6 @@ export function GuidanceAwaitingRow({
   return <div className="agent-chat__activity agent-chat__awaiting" role="status"><i aria-hidden="true" /><span>{label}</span></div>;
 }
 
-export function GuidanceSessionProgress({
-  session,
-}: {
-  session: GuidedSessionStateV2;
-}) {
-  const journey = session.journey;
-  const activeFoundationItem = journey.foundation_cursor === null
-    ? null
-    : journey.foundation_queue[journey.foundation_cursor] ?? null;
-  return (
-    <section className="agent-chat__recipe" aria-label="Guidance progress">
-      <header>
-        <strong>{session.goal.summary}</strong>
-        <span>Stage revision {journey.stage_revision}</span>
-      </header>
-      {session.topics.length ? (
-        <ol>
-          {session.topics.map((topic) => (
-            <li
-              key={topic.topic_id}
-              className={`is-${topic.status}${topic.topic_id === session.current_topic_id ? " is-current" : ""}`}
-            >
-              <i aria-hidden="true" />
-              <span>{topic.title}</span>
-              <small>{topic.status.replaceAll("_", " ")}</small>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p>The agent is preparing the next creative decision.</p>
-      )}
-      <div className="agent-chat__completion" aria-label="Guidance completion">
-        <span>
-          Stage: {journey.stage.replaceAll("_", " ")} · {journey.stage_status.replaceAll("_", " ")}
-        </span>
-        {activeFoundationItem ? (
-          <span>Foundation item: {activeFoundationItem.kind} {activeFoundationItem.occurrence_index}</span>
-        ) : null}
-        {session.creative_authority ? (
-          <span>Direction: {session.creative_authority.authority === "user" ? "You" : "Director"}</span>
-        ) : null}
-        {session.current_checkpoint ? (
-          <span>
-            Checkpoint: {session.current_checkpoint.stage_kind?.replaceAll("_", " ") ?? "planning"}
-            {` · ${session.current_checkpoint.status.replaceAll("_", " ")}`}
-          </span>
-        ) : null}
-        <span>Authoring: {session.completion.authoring.replaceAll("_", " ")}</span>
-        <span>Delivery: {session.completion.delivery.replaceAll("_", " ")}</span>
-      </div>
-    </section>
-  );
-}
-
 export function CommandPlanCard({
   card,
   pending,
@@ -842,9 +792,19 @@ export function ProposalCard({
     && interaction.content.proposal_id === proposal.proposal_id
     ? interaction
     : null;
-  const interactionOptionIds = new Set(
+  const displayOptions: CapabilityProposalOptionV2[] = activeInteraction?.content.content_kind === "concept_choice"
+    ? activeInteraction.content.options.map((option) => ({
+        option_id: option.option_id,
+        title: option.title,
+        public_summary: option.summary,
+        key_decisions: [],
+      }))
+    : proposal.options;
+  const recommendedInteractionOptionIds = new Set(
     activeInteraction?.content.content_kind === "concept_choice"
-      ? activeInteraction.content.options.map((option) => option.option_id)
+      ? activeInteraction.content.options
+        .filter((option) => option.recommended)
+        .map((option) => option.option_id)
       : [],
   );
   const canSelect = activeInteraction
@@ -903,17 +863,18 @@ export function ProposalCard({
         <span>{proposal.availability}</span>
       </header>
       <div className="agent-chat__options">
-        {proposal.options.map((option) => (
+        {displayOptions.map((option) => (
           <button
             type="button"
             key={option.option_id}
             className={selected?.option_id === option.option_id ? "is-selected" : ""}
-            disabled={!canSelect || pending || Boolean(
-              activeInteraction && !interactionOptionIds.has(option.option_id)
-            )}
+            disabled={!canSelect || pending}
             onClick={() => setSelected(option)}
           >
-            <strong>{option.title}</strong>
+            <strong>
+              {option.title}
+              {recommendedInteractionOptionIds.has(option.option_id) ? <em>Recommended</em> : null}
+            </strong>
             <span>{option.public_summary}</span>
             <ul>
               {option.key_decisions.map((decision, index) => (
@@ -1030,6 +991,7 @@ export function ProposalCard({
       ) : null}
       {activeInteraction && onSubmitInteraction ? (
         <TimelineProposalInteractionActions
+          key={`${activeInteraction.interaction_id}:${activeInteraction.revision}`}
           acceptedReferences={acceptedReferences}
           interaction={activeInteraction}
           materializationBusy={materializationLocked}

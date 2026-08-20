@@ -93,6 +93,7 @@ import {
   sourceAssetStructuredContent,
   type AgentCanvasVisibleNodeTypeV2,
 } from "./model/nodeDefaults.ts";
+import { hasPromptReadyDraft } from "./model/promptPreparation.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
@@ -106,6 +107,7 @@ export function AgentCanvasPage() {
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
   const workflow = session.state.workflow;
+  const hasRunnableDraft = workflow ? hasPromptReadyDraft(workflow.nodes) : false;
   const {
     applyWorkflow,
     clearAuthoringError,
@@ -897,8 +899,8 @@ export function AgentCanvasPage() {
               type="button"
               className="agent-canvas-toolbar__run"
               aria-label="Run all draft nodes"
-              title="Run all"
-              disabled={live.state.runPending}
+              title={hasRunnableDraft ? "Run all" : "No prompt-ready drafts"}
+              disabled={live.state.runPending || !hasRunnableDraft}
               onClick={() => void runAll().catch((error) => {
                 setSurfaceError(error instanceof Error ? error.message : "Run could not start.");
               })}

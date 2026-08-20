@@ -75,10 +75,10 @@ function guidanceAdvancePrecondition(authorityDigest = "sha256:aaaaaaaaaaaaaaaaa
     session_id: "guidance-1",
     session_revision: 8,
     session_status: "active",
-    journey_stage: "foundation_design",
+    journey_stage: "scene",
     journey_stage_status: "working",
     journey_stage_revision: 4,
-    source_id: "stage:foundation_design:4",
+    source_id: "stage:scene:4",
     requirement_revision_id: "requirement-1",
     requirement_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     active_action_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -147,12 +147,12 @@ function guidedSession(stageRevision = 4, revision = 8): GuidedSessionStateV2 {
       matching_asset_ids: [],
     },
     journey: {
-      policy_version: "fixed_ad_production_v1",
-      stage: "foundation_design",
+      policy_version: "fixed_ad_production_v2",
+      stage: "scene",
       stage_status: "waiting_user",
       stage_revision: stageRevision,
-      foundation_queue: [],
-      foundation_cursor: null,
+      decisions: [],
+      active_occurrence_id: null,
       active_action: null,
       suspended_action: null,
       transition_evidence: [],
@@ -372,6 +372,47 @@ describe("useAgentCanvasChat", () => {
     expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
   });
 
+  it.each(["media_review", "manual_node_run"] as const)(
+    "does not Advance while typed awaiting is %s",
+    async (kind) => {
+      api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+        guidanceSession: {
+          ...guidedSession(),
+          interaction: null,
+          awaiting: {
+            awaiting_id: `awaiting-${kind}`,
+            workflow_id: "workflow-1",
+            session_id: "guidance-1",
+            checkpoint_id: "checkpoint-1",
+            kind,
+            requires_user_action: kind === "media_review",
+            resume_policy: kind === "media_review" ? "submit_interaction" : "node_terminal",
+            interaction_id: kind === "media_review" ? "interaction-1" : null,
+            node_ids: ["node-1"],
+            stage: "videos",
+            stage_revision: 6,
+            created_at: "2026-08-20T00:00:00Z",
+          },
+        },
+        guidanceAdvancePrecondition: guidanceAdvancePrecondition(),
+      }));
+
+      renderHook(() => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision: 0,
+        chatEvents: [],
+      }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(80);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+    },
+  );
+
   it("waits for post-ready completion then retries the exact same guidance command once", async () => {
     const precondition = guidanceAdvancePrecondition();
     api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
@@ -440,6 +481,75 @@ describe("useAgentCanvasChat", () => {
       api.advanceAgentCanvasGuidance.mock.calls[0]?.[2],
     );
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a completed post-ready Advance after typed media review becomes authoritative", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
+    api.advanceAgentCanvasGuidance.mockRejectedValueOnce({
+      code: "guidance_post_ready_pending",
+      message: "Document persistence is still running.",
+      status: 409,
+      details: {
+        checkpoint_id: "checkpoint-1",
+        execution_id: "execution-1",
+        retry_after_seconds: 1,
+      },
+    });
+    api.agentCanvasPostReadyCheckpoint
+      .mockResolvedValueOnce(postReadyCheckpoint("pending"))
+      .mockResolvedValueOnce(postReadyCheckpoint("completed"));
+
+    const { rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: {
+        ...guidedSession(),
+        awaiting: {
+          awaiting_id: "awaiting-media-review",
+          workflow_id: "workflow-1",
+          session_id: "guidance-1",
+          checkpoint_id: "checkpoint-media-review",
+          kind: "media_review",
+          requires_user_action: true,
+          resume_policy: "submit_interaction",
+          interaction_id: "interaction-media-review",
+          node_ids: ["node-video-1"],
+          stage: "videos",
+          stage_revision: 6,
+          created_at: "2026-08-20T00:00:00Z",
+        },
+      },
+      guidanceAdvancePrecondition: null,
+    }));
+    rerender({ chatRevision: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasPostReadyCheckpoint).toHaveBeenCalledTimes(2);
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the guidance checkpoint visible and does not retry when post-ready work fails", async () => {
@@ -954,12 +1064,12 @@ describe("useAgentCanvasChat", () => {
           matching_asset_ids: [],
         },
         journey: {
-          policy_version: "fixed_ad_production_v1",
-          stage: "foundation_design",
+          policy_version: "fixed_ad_production_v2",
+          stage: "scene",
           stage_status: "waiting_user",
           stage_revision: 4,
-          foundation_queue: [],
-          foundation_cursor: null,
+          decisions: [],
+          active_occurrence_id: null,
           active_action: null,
           suspended_action: null,
           transition_evidence: [],

@@ -210,7 +210,7 @@ export function AgentCanvasNodeCard({
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
     || Boolean(runtime?.blocked_by_node_ids.length);
   const promptPreparation = promptPreparationForNode(node);
-  const hasPromptPreparationFailure = promptPreparation.status === "failed";
+  const hasPromptPreparationFailure = promptPreparation?.status === "failed";
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
 
