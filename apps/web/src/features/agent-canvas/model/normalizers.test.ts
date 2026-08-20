@@ -933,8 +933,8 @@ describe("Agent Canvas normalizers", () => {
       application_count: 1,
       latest_application: {
         application_id: "application-1",
-        option_id: "scene-1",
-        action: "select_option",
+        option_id: "scene-custom-1",
+        action: "custom_direction",
         receipt_id: "receipt-1",
         created_node_ids: ["node-scene-1"],
         queued_execution_ids: [],
@@ -950,6 +950,14 @@ describe("Agent Canvas normalizers", () => {
         expected_session_revision: 3,
         confirmation_required: false,
         reason: "Create one editable Draft.",
+      }, {
+        action_id: "proposal-scene-1:1:custom_direction",
+        action: "custom_direction",
+        label: "Use a custom direction",
+        proposal_id: "proposal-scene-1",
+        expected_session_revision: 3,
+        confirmation_required: false,
+        reason: "Submit a user-authored direction for this topic.",
       }],
       created_at: "2026-08-04T09:00:00Z",
       updated_at: "2026-08-04T09:02:00Z",
@@ -988,7 +996,11 @@ describe("Agent Canvas normalizers", () => {
       action: "select_option",
       expected_session_revision: 3,
     });
-    expect(proposal.latest_application?.action).toBe("select_option");
+    expect(proposal.actions[1]).toMatchObject({
+      action: "custom_direction",
+      expected_session_revision: 3,
+    });
+    expect(proposal.latest_application?.action).toBe("custom_direction");
     expect(receipt).toMatchObject({
       proposal_id: "proposal-scene-1",
       proposal_option_id: "scene-1",

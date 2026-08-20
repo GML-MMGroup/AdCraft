@@ -2356,7 +2356,7 @@ export interface ProposalMaterializationProjectionV2 {
 export interface ProposalApplicationSummaryV2 {
   application_id: string;
   option_id: string;
-  action: "select_option" | "delegate_choice" | "reuse_direction";
+  action: "select_option" | "custom_direction" | "delegate_choice" | "reuse_direction";
   receipt_id: string;
   created_node_ids: string[];
   queued_execution_ids: string[];
@@ -2366,6 +2366,7 @@ export interface ProposalApplicationSummaryV2 {
 export type ProposalAvailabilityV2 = "open" | "applied" | "superseded";
 export type ProposalActionTypeV2 =
   | "select_option"
+  | "custom_direction"
   | "revise_options"
   | "defer_topic"
   | "exclude_element"
@@ -3664,6 +3665,12 @@ export type AgentCanvasProposalActionRequestV2 =
       action: "select_option";
       option_id: string;
       accepted_references?: ProposedDraftReferenceV2[] | null;
+    }
+  | {
+      action_id: string;
+      expected_session_revision: number;
+      action: "custom_direction";
+      custom_text: string;
     }
   | {
       action_id: string;
