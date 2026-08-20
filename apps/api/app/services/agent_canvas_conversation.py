@@ -1488,13 +1488,27 @@ class AgentConversationService:
             and intent.assistant_message is not None
         )
         if clarification_required and session.journey.stage == "intake":
-            if session.journey.stage == "intake":
-                clarification_journey = session.journey.model_copy(
-                    update={"stage_status": "waiting_user"}
-                )
+            if session.journey.stage_status == "waiting_user" and session.awaiting is not None:
+                clarification_journey = session.journey
             else:
+                clarification_evidence = JourneyEvidenceV2(
+                    evidence_id=f"creative-goal-validated:{turn_id}",
+                    evidence_kind="creative_goal_validated",
+                    source_id=turn_id,
+                    source_revision=requirements.revision_no,
+                )
                 clarification_journey = session.journey.model_copy(
-                    update={"stage_status": "waiting_user"}
+                    update={
+                        "stage_status": "waiting_user",
+                        "stage_revision": session.journey.stage_revision + 1,
+                        "transition_evidence": (
+                            *session.journey.transition_evidence,
+                            clarification_evidence.as_transition(
+                                stage=session.journey.stage,
+                                stage_revision=session.journey.stage_revision,
+                            ),
+                        ),
+                    }
                 )
             return self._conversations.complete_turn_with_clarification(
                 turn_id,
@@ -1559,6 +1573,12 @@ class AgentConversationService:
                 ),
                 expected_session_revision=session.revision,
                 idempotency_key=f"targeted-start:{turn_id}",
+            )
+        if intent.mode == "guided_production" and session.awaiting is not None:
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                "Please complete the current guided interaction before continuing production.",
             )
         journey_capability = None
         if intent.mode == "guided_production":

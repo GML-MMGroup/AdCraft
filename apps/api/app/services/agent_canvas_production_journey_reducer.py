@@ -36,10 +36,7 @@ class GuidedProductionJourneyReducer:
     ) -> GuidedProductionJourneyV2:
         if event is None:
             return current
-        if any(
-            item.evidence_id == event.evidence_id
-            for item in current.transition_evidence
-        ):
+        if any(item.evidence_id == event.evidence_id for item in current.transition_evidence):
             return current
         if current.stage == "completed":
             raise _error(

@@ -136,9 +136,7 @@ FIXED_JOURNEY_STAGE_DESCRIPTORS: dict[JourneyStageV2, FixedJourneyStageDescripto
         None,
         ("editing_prepared", "editing_export_completed"),
     ),
-    "completed": FixedJourneyStageDescriptorV2(
-        "completed", None, None, False, None, ()
-    ),
+    "completed": FixedJourneyStageDescriptorV2("completed", None, None, False, None, ()),
 }
 
 
@@ -152,9 +150,7 @@ def initial_production_journey(
     for decision in decisions:
         count_value = decision.requirements.get("count", 1)
         count = (
-            count_value
-            if isinstance(count_value, int) and not isinstance(count_value, bool)
-            else 1
+            count_value if isinstance(count_value, int) and not isinstance(count_value, bool) else 1
         )
         count = min(max(count, 1), 32)
         for _ in range(count):
@@ -171,11 +167,7 @@ def initial_production_journey(
                         "exclude": "exclude",
                         "unspecified": "unresolved",
                     }[decision.presence],
-                    source=(
-                        "delegated"
-                        if decision.source == "delegated_to_agent"
-                        else "user"
-                    ),
+                    source=("delegated" if decision.source == "delegated_to_agent" else "user"),
                     source_revision=1,
                     requirements=decision.requirements,
                 )
@@ -214,9 +206,7 @@ class GuidedProductionJourneyPolicyService:
             return _result(journey, "prepare_editing")
         if descriptor.capability_id is None:
             return _result(journey, "wait_for_user")
-        occurrence_id = journey.active_occurrence_id or self._next_occurrence(
-            journey, descriptor
-        )
+        occurrence_id = journey.active_occurrence_id or self._next_occurrence(journey, descriptor)
         return _result(
             journey,
             "invoke_capability",
@@ -274,9 +264,7 @@ class GuidedProductionJourneyPolicyService:
             return journey.model_copy(
                 update={
                     "decisions": decisions,
-                    "active_occurrence_id": self._next_occurrence_from(
-                        decisions, descriptor
-                    ),
+                    "active_occurrence_id": self._next_occurrence_from(decisions, descriptor),
                     "active_action": None,
                     "transition_evidence": (*journey.transition_evidence, transition),
                 }
@@ -290,9 +278,7 @@ class GuidedProductionJourneyPolicyService:
         return journey.model_copy(
             update={
                 "stage": descriptor.successor,
-                "stage_status": (
-                    "completed" if descriptor.successor == "completed" else "ready"
-                ),
+                "stage_status": ("completed" if descriptor.successor == "completed" else "ready"),
                 "stage_revision": journey.stage_revision + 1,
                 "decisions": decisions,
                 "active_occurrence_id": None,
@@ -435,8 +421,7 @@ class GuidedProductionJourneyPolicyService:
             (
                 item.occurrence_id
                 for item in decisions
-                if item.element_kind == descriptor.element_kind
-                and item.outcome == "unresolved"
+                if item.element_kind == descriptor.element_kind and item.outcome == "unresolved"
             ),
             None,
         )

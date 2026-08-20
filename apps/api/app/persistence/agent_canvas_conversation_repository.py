@@ -384,10 +384,10 @@ class AgentCanvasConversationRepository:
                 "journey_evidence_invalid",
                 "Clarification transition identity is invalid.",
             )
-        if journey.stage != "clarification" or journey.stage_status != "waiting_user":
+        if journey.stage != "intake" or journey.stage_status != "waiting_user":
             raise _error(
                 "journey_transition_invalid",
-                "Clarification completion requires a waiting clarification journey.",
+                "Clarification completion requires a waiting intake journey.",
             )
         now = _now()
         journey_payload = journey.model_dump(mode="json")
@@ -4799,6 +4799,14 @@ def _validate_clarification_target(
     target: GuidedProductionJourneyV2,
     turn_id: str,
 ) -> None:
+    if current.stage == "intake" and current.stage_status == "waiting_user":
+        expected = current.model_copy(update={"stage_status": "waiting_user"})
+        if target != expected:
+            raise _error(
+                "journey_transition_invalid",
+                "Repeated clarification may only retain the current waiting journey.",
+            )
+        return
     if current.stage == "intake":
         evidence = target.transition_evidence[-1] if target.transition_evidence else None
         if (
@@ -4812,17 +4820,9 @@ def _validate_clarification_target(
                 "Intake clarification target does not match its source Turn.",
             )
         return
-    if current.stage == "clarification":
-        expected = current.model_copy(update={"stage_status": "waiting_user"})
-        if target != expected:
-            raise _error(
-                "journey_transition_invalid",
-                "Repeated clarification may only retain the current waiting journey.",
-            )
-        return
     raise _error(
         "journey_transition_invalid",
-        "Only Intake or clarification may publish Intake clarification authority.",
+        "Only a waiting intake journey may publish Intake clarification authority.",
     )
 
 
@@ -5749,9 +5749,7 @@ def _proposal_action_descriptors(
         "bgm": "bgm",
     }
     stage = stage_by_kind.get(proposal_kind)
-    optional = bool(
-        stage is not None and FIXED_JOURNEY_STAGE_DESCRIPTORS[stage].optional
-    )
+    optional = bool(stage is not None and FIXED_JOURNEY_STAGE_DESCRIPTORS[stage].optional)
     definitions = (
         ("select_option", "Select option", True, "Publish one selected option as a Draft."),
         (
@@ -5765,9 +5763,11 @@ def _proposal_action_descriptors(
         ("delegate_choice", "Delegate choice", True, "Let the Director choose one option."),
     )
     if optional:
-        definitions = definitions[:4] + (
-            ("exclude_element", "Exclude element", True, "Exclude this optional element."),
-        ) + definitions[4:]
+        definitions = (
+            definitions[:4]
+            + (("exclude_element", "Exclude element", True, "Exclude this optional element."),)
+            + definitions[4:]
+        )
     return tuple(
         ProposalActionDescriptorV2(
             action_id=f"{action}:{proposal_id}:{expected_session_revision}",

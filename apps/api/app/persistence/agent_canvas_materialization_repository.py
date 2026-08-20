@@ -72,9 +72,6 @@ from app.persistence.models import (
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
-from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV2,
-)
 from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
@@ -428,9 +425,7 @@ class AgentCanvasMaterializationRepository:
                         option_id=option_id,
                         expected_session_revision=expected_session_revision,
                     )
-                    current_journey = parse_production_journey(
-                        str(session["journey_state_json"])
-                    )
+                    current_journey = parse_production_journey(str(session["journey_state_json"]))
                     next_journey = journey_reducer.reduce(
                         current_journey,
                         materialization_plan.journey_event,

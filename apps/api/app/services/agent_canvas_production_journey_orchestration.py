@@ -210,6 +210,7 @@ class GuidedProductionJourneyService:
             )
         return session
 
+
 def _context(
     session: GuidedSessionStateV2,
     *,

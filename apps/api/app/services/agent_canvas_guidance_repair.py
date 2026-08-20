@@ -40,7 +40,6 @@ from app.schemas.agent_canvas_guidance import (
     GuidanceRequirementLedgerRepairReceiptV1,
     GuidanceRequirementLedgerRepairRuntimeAssertionV1,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_requirements import RequirementElementPresenceV1
 from app.schemas.v2_persistence import V2EventInsert

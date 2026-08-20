@@ -543,11 +543,7 @@ def _concept_interaction(
         content=content,
         allowed_actions=(
             ("select", "custom", "defer")
-            + (
-                ("exclude",)
-                if FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional
-                else ()
-            )
+            + (("exclude",) if FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional else ())
             + ("delegate",)
         ),
         submit_path=(

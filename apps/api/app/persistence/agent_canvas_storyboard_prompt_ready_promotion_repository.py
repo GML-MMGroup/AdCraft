@@ -33,7 +33,6 @@ from app.schemas.agent_canvas_guided_checkpoint import (
     guided_checkpoint_id,
 )
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
@@ -103,9 +102,7 @@ class StoryboardPromptReadyPromotionRepository:
                         raise _stale("workflow_revision")
                     if int(session["revision"]) != command.expected_session_revision:
                         raise _stale("session_revision")
-                    journey = parse_production_journey(
-                        str(session["journey_state_json"])
-                    )
+                    journey = parse_production_journey(str(session["journey_state_json"]))
                     if (
                         journey.stage != "storyboard_grids"
                         or journey.stage_status != "working"

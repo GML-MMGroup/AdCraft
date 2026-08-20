@@ -35,7 +35,6 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,

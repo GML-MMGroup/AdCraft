@@ -26,6 +26,8 @@ JourneyActionKindV2 = Literal[
     "prepare_editing",
     "complete",
 ]
+
+
 class _JourneyModel(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
@@ -157,9 +159,7 @@ class GuidedProductionJourneyV2(_JourneyModel):
     active_occurrence_id: str | None = Field(default=None, max_length=160)
     active_action: JourneyActionProjectionV2 | None = None
     suspended_action: JourneyActionProjectionV2 | None = None
-    transition_evidence: tuple[JourneyTransitionEvidenceV2, ...] = Field(
-        default=(), max_length=512
-    )
+    transition_evidence: tuple[JourneyTransitionEvidenceV2, ...] = Field(default=(), max_length=512)
 
     @model_validator(mode="after")
     def validate_authority(self) -> "GuidedProductionJourneyV2":

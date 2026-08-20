@@ -1533,9 +1533,7 @@ def _journey_after_state_action(
             stage=journey.stage,
             stage_revision=journey.stage_revision,
             occurrence_id=(
-                journey.active_action.occurrence_id
-                if journey.active_action is not None
-                else None
+                journey.active_action.occurrence_id if journey.active_action is not None else None
             ),
         ),
     )

@@ -234,9 +234,7 @@ class _ProposalSelectionSubmissionService:
             )
             if proposal_option is None:
                 raise _error("proposal_option_not_found", "Concept option was not found.")
-            option = SelectedConceptOptionV1.model_validate(
-                proposal_option.model_dump(mode="json")
-            )
+            option = SelectedConceptOptionV1.model_validate(proposal_option.model_dump(mode="json"))
         reference_plan = self._reference_plan(proposal, action)
         attempt_no = (
             proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1
