@@ -279,6 +279,7 @@ const CHAT_MESSAGE_SPEAKERS = new Set<ChatMessageV2["speaker"]>(["user", "adcraf
 const PROPOSAL_AVAILABILITIES = new Set<ConceptProposalV2["availability"]>(["open", "applied", "superseded"]);
 const PROPOSAL_ACTIONS = new Set<ProposalActionDescriptorV2["action"]>([
   "select_option",
+  "custom_direction",
   "revise_options",
   "defer_topic",
   "exclude_element",
@@ -2720,7 +2721,12 @@ function normalizeProposalApplicationSummaryV2(
     option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
     action: expectLiteral(
       record.action,
-      new Set<ProposalApplicationSummaryV2["action"]>(["select_option", "delegate_choice", "reuse_direction"]),
+      new Set<ProposalApplicationSummaryV2["action"]>([
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+      ]),
       `${path}.action`,
     ),
     receipt_id: expectNonEmptyString(record.receipt_id, `${path}.receipt_id`),

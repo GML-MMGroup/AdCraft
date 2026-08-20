@@ -439,6 +439,49 @@ describe("ProposalCard", () => {
     }
   });
 
+  it("uses the canonical guided interaction to submit a proposal custom direction", () => {
+    const onSubmitInteraction = vi.fn().mockResolvedValue(true);
+    const onApplyAction = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            actions: [
+              ...proposalCard.proposal.actions,
+              proposalAction(
+                "custom_direction",
+                "Use a custom direction",
+              ),
+            ],
+          },
+        }}
+        pending={false}
+        interaction={proposalInteraction}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={onApplyAction}
+        onSubmitInteraction={onSubmitInteraction}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Custom creative direction" }), {
+      target: { value: "Follow the product through a quiet morning routine." },
+    });
+    expect(onSubmitInteraction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onSubmitInteraction).toHaveBeenCalledWith(expect.objectContaining({
+      submission_kind: "concept_choice",
+      action: "custom",
+      custom_text: "Follow the product through a quiet morning routine.",
+      expected_interaction_revision: 3,
+      expected_session_revision: 7,
+    }));
+    expect(onApplyAction).not.toHaveBeenCalled();
+  });
+
   it("keeps applied proposal content visible but disables all stale actions", () => {
     render(
       <ProposalCard
