@@ -3005,6 +3005,9 @@ export interface CanvasVariationMaterializeResponseV2 {
   run: Record<string, unknown> | null;
   run_error: CanvasNodeErrorV2 | null;
   placement_hint: AgentPlacementHintV2;
+  created_node_ids: string[];
+  created_binding_ids: string[];
+  placement_hints: AgentPlacementHintV2[];
 }
 
 export interface CanvasLayoutPositionV2 extends CanvasPositionV2 {
