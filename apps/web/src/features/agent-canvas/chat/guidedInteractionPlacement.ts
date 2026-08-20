@@ -12,6 +12,14 @@ function activeProposalId(interaction: GuidedInteractionV1 | null): string | nul
   return interaction.content.proposal_id;
 }
 
+export function guidedInteractionContentVersion(
+  interaction: GuidedInteractionV1 | null,
+): string {
+  return interaction
+    ? `${interaction.interaction_id}:${interaction.revision}:${interaction.status}`
+    : "";
+}
+
 export function interactionForTimelineProposal(
   interaction: GuidedInteractionV1 | null,
   item: ChatProposalCardV2,
