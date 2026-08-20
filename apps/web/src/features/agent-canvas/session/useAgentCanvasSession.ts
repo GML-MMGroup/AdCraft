@@ -23,6 +23,7 @@ import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
 import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
+import { variationMaterializationPlacement } from "./variationMaterialization.ts";
 import {
   mergeAgentCanvasLayout,
   mergeAgentCanvasBindingMutation,
@@ -363,10 +364,11 @@ export function useAgentCanvasSession() {
         const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId);
         if (workflowRef.current?.workflow_id !== workflowId) return null;
         applyWorkflow(latest.value);
+        const materializedPlacement = variationMaterializationPlacement(response);
         const positions = incrementalPlacementForNodes(
           latest.value.nodes,
-          [response.sibling_node.node_id],
-          [response.placement_hint],
+          materializedPlacement.nodeIds,
+          materializedPlacement.placementHints,
           source.position,
           latest.value.assets,
         );

@@ -3964,6 +3964,9 @@ export function normalizeCanvasVariationMaterializeResponseV2(
     "run",
     "run_error",
     "placement_hint",
+    "created_node_ids",
+    "created_binding_ids",
+    "placement_hints",
   ], path);
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -3978,6 +3981,17 @@ export function normalizeCanvasVariationMaterializeResponseV2(
       ? null
       : normalizeCanvasNodeErrorV2(record.run_error, `${path}.run_error`),
     placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
+    created_node_ids: optionalStringArray(record.created_node_ids, `${path}.created_node_ids`, []),
+    created_binding_ids: optionalStringArray(
+      record.created_binding_ids,
+      `${path}.created_binding_ids`,
+      [],
+    ),
+    placement_hints: expectArray(record.placement_hints ?? [], `${path}.placement_hints`)
+      .map((item, index) => normalizeAgentPlacementHintV2(
+        item,
+        `${path}.placement_hints[${index}]`,
+      )),
   };
 }
 

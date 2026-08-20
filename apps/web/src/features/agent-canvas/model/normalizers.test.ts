@@ -1741,6 +1741,17 @@ describe("Agent Canvas normalizers", () => {
         anchor_node_id: "node-image-1",
         group_key: null,
       },
+      created_node_ids: ["node-sibling-1", "node-turnaround-1"],
+      created_binding_ids: ["binding-copy-1", "binding-pair-1"],
+      placement_hints: [{
+        intent: "right_sibling",
+        anchor_node_id: "node-image-1",
+        group_key: "pair-1",
+      }, {
+        intent: "right_sibling",
+        anchor_node_id: "node-sibling-1",
+        group_key: "pair-1",
+      }],
     });
 
     expect(workflow.nodes[1]?.variation_draft?.variation_revision).toBe(2);
@@ -1751,6 +1762,9 @@ describe("Agent Canvas normalizers", () => {
     expect(layout.layout_revision).toBe(4);
     expect(materialized.sibling_node.node_id).toBe("node-sibling-1");
     expect(materialized.run?.execution_id).toBe("execution-1");
+    expect(materialized.created_node_ids).toEqual(["node-sibling-1", "node-turnaround-1"]);
+    expect(materialized.created_binding_ids).toEqual(["binding-copy-1", "binding-pair-1"]);
+    expect(materialized.placement_hints).toHaveLength(2);
   });
 
   it("normalizes runtime, capability, chat, and editing payloads with bounded defaults", () => {
