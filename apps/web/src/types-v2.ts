@@ -1833,13 +1833,15 @@ export type AgentAnchorSemanticRoleV3 =
   | "style"
   | "composition";
 
+export interface AgentAnchorNodeSourceV3 {
+  source_kind: "node";
+  workflow_id: string;
+  node_id: string;
+  node_revision: number;
+}
+
 export type AgentAnchorSourceV3 =
-  | {
-      source_kind: "node";
-      workflow_id: string;
-      node_id: string;
-      node_revision: number;
-    }
+  | AgentAnchorNodeSourceV3
   | {
       source_kind: "image_asset_version";
       workflow_id: string;
@@ -1854,6 +1856,17 @@ export type AgentAnchorSourceV3 =
       skill_version: string;
       package_digest: string;
     };
+
+export type AgentAnchorMaterializedRoleV3 =
+  | "product_main"
+  | "product_multiview"
+  | "character_main"
+  | "character_turnaround";
+
+export interface AgentAnchorRoleSourceV3 {
+  role: AgentAnchorMaterializedRoleV3;
+  source: AgentAnchorNodeSourceV3;
+}
 
 export interface AnchorAcceptanceEvidenceV1 {
   evidence_id: string;
@@ -1876,6 +1889,7 @@ export interface AgentAnchorV3 {
   summary: string;
   lifecycle: "planned" | "active" | "retired" | "invalid";
   source: AgentAnchorSourceV3;
+  role_sources: AgentAnchorRoleSourceV3[];
   acceptance_evidence: AnchorAcceptanceEvidenceV1[];
 }
 
