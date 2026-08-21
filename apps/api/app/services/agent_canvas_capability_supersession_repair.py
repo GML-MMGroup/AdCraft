@@ -68,7 +68,7 @@ _TARGET = _HistoricalTarget(
     continuation_id="continuation_f4f85a763e1afe96959272bf",
     confirmation_id="confirmation_29d38d88c25a190f1b47561558843d03",
     storyboard_node_id="node_2cc89f7ad2d96f86766b8eedf3781091",
-    expected_session_revision=31,
+    expected_session_revision=32,
     minimum_current_session_revision=35,
 )
 
