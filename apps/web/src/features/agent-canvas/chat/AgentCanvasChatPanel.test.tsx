@@ -238,13 +238,25 @@ describe("ProposalCard", () => {
       />,
     );
 
-    expect(screen.getByRole("article", { name: "Selected option: Natural sanctuary" })).toBeTruthy();
+    const selectedOption = screen.getByRole("article", { name: "Selected option: Natural sanctuary" });
+    expect(selectedOption).toBeTruthy();
+    expect(selectedOption.textContent).not.toContain("Selected");
     expect(screen.getByText("A")).toBeTruthy();
     expect(screen.getByText("B")).toBeTruthy();
     expect(screen.getByText("C")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Natural sanctuary/ })).toBeNull();
     expect(screen.queryByText(/Applied 1 time/)).toBeNull();
     expect(screen.queryByRole("status", { name: "Proposal materialization completed" })).toBeNull();
+  });
+
+  it("renders historical option markers without circular chrome", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const markerRule = css.match(/\.agent-chat__historical-option-marker\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(markerRule).toBeTruthy();
+    expect(markerRule).not.toContain("border:");
+    expect(markerRule).not.toContain("border-radius:");
   });
 
   it.each(["queued", "working"] as const)(
