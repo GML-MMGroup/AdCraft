@@ -633,6 +633,18 @@
   pointer-events: none;
 }
 
+.agent-canvas-node__working--media {
+  display: grid;
+  place-items: center;
+  background: rgba(9, 11, 17, 0.82);
+}
+
+.agent-canvas-node__generation-loader {
+  width: min(192px, calc(100% - 32px));
+  height: min(192px, calc(100% - 32px));
+  color: #9dafe6;
+}
+
 .agent-canvas-node__working-orbit {
   position: absolute;
   top: 50%;

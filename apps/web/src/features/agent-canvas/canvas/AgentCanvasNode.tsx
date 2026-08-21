@@ -16,6 +16,7 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
+import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
@@ -240,7 +241,9 @@ export function AgentCanvasNodeCard({
           onMediaDimensionsResolved={onMediaDimensionsResolved}
           onScriptContentHeightResolved={onScriptContentHeightResolved}
         />
-        {status === "working" && node.node_type !== "audio" ? (
+        {status === "working" && (node.node_type === "image" || node.node_type === "video") ? (
+          <AgentCanvasMediaGenerationLoader mediaType={node.node_type} />
+        ) : status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
