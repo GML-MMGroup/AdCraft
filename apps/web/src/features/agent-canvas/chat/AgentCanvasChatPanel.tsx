@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { InlineLoader } from "generative-loaders";
+import "generative-loaders/styles.css";
 
 import {
   AssetsIcon,
@@ -546,8 +548,12 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
         ? "AdCraft Video Agent is waiting for the model"
         : "AdCraft Video Agent is working"}
     >
+      <InlineLoader
+        variant="halo"
+        size={24}
+        className="agent-chat__working-loader"
+      />
       <span>{label}</span>
-      <i className="agent-chat__working-spinner" aria-hidden="true" />
     </div>
   );
 }

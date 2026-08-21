@@ -67,7 +67,8 @@ describe("AgentWorkingRow", () => {
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
+    expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
   });
 
   it("announces model waiting as a non-terminal Agent activity", () => {
@@ -75,7 +76,8 @@ describe("AgentWorkingRow", () => {
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is waiting for the model" })).toBeTruthy();
     expect(screen.getByText("Waiting for model")).toBeTruthy();
-    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
+    expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
   });
 });
 
