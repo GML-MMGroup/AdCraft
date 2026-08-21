@@ -398,41 +398,52 @@ describe("Agent Canvas normalizers", () => {
     expect(turn.turn_kind).toBe("capability");
   });
 
-  it("accepts a single authoritative world-setting option", () => {
+  it("accepts a public proposal option with redacted key decisions", () => {
     const proposal = normalizeConceptProposalV2({
-      proposal_id: "proposal-world-1",
-      workflow_id: "workflow-1",
-      turn_id: "turn-world-1",
-      video_skill_run_id: null,
-      topic_id: "topic-world",
-      creative_direction_snapshot_id: null,
+      proposal_id: "proposal_164add5ec074134d7905953c0be81780",
+      workflow_id: "adwf_v2_758d5ac55c609dc3",
+      turn_id: "turn_aeb04c93ce6d69f4f14bd3f90673facd",
+      video_skill_run_id: "skill_run_b9f5bf34b0624b6aba2ef5c4fec5d833",
+      topic_id: "topic_world_setting",
+      creative_direction_snapshot_id: "direction_31bcd1606e444dd59fcb0de5d4b5169b",
       proposal_revision: 1,
       source_proposal_id: null,
       proposal_kind: "world_setting",
       capability_id: "world_setting",
-      capability_display_name: "World Designer",
+      capability_display_name: "World Setting Designer",
       options: [{
-        option_id: "option-world-1",
-        title: "Rain-lit city",
-        public_summary: "A single backend-approved world direction.",
-        key_decisions: ["Night exterior", "Wet reflective streets"],
+        option_id: "option_59d7f6dce6bb15c9ba2b8ff9e49ef022",
+        title: "Warm family routine",
+        public_summary: "A bright modern home shaped by calm morning and evening routines.",
+        key_decisions: [],
+      }, {
+        option_id: "option_c91b1a664803e4e96b91493ecf9c3448",
+        title: "Minimal fresh living space",
+        public_summary: "A restrained modern interior with clean surfaces and soft neutral tones.",
+        key_decisions: [],
+      }, {
+        option_id: "option_693fb095fed8d5187cb82afa115b736e",
+        title: "Natural softness",
+        public_summary: "A gentle natural world with warm wood, pale textiles, and soft daylight.",
+        key_decisions: [],
       }],
       proposed_references: [],
       target_node_id: null,
       target_node_revision: null,
-      proposal_purpose: null,
+      proposal_purpose: "Create a tissue advertisement.",
       availability: "open",
       application_count: 0,
       latest_application: null,
       materialization: null,
-      guidance_session_id: "guidance-1",
-      guidance_session_revision: 1,
+      guidance_session_id: "guidance_ce0d6ee35bf64eb781475c8fa8cb09cd",
+      guidance_session_revision: 4,
       actions: [],
-      created_at: "2026-08-18T00:00:00Z",
-      updated_at: "2026-08-18T00:00:00Z",
+      created_at: "2026-08-21T02:32:10.579220Z",
+      updated_at: "2026-08-21T02:32:10.579220Z",
     });
 
-    expect(proposal.options).toHaveLength(1);
+    expect(proposal.options).toHaveLength(3);
+    expect(proposal.options.every((option) => option.key_decisions.length === 0)).toBe(true);
   });
 
   it("accepts retry lineage and safe operation recovery state for chat turns", () => {
