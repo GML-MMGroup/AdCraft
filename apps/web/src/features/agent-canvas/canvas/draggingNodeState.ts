@@ -25,6 +25,29 @@ function isFinitePosition(position: DragStateNode["position"]): boolean {
   return Number.isFinite(position.x) && Number.isFinite(position.y);
 }
 
+function samePresentationValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => samePresentationValue(value, right[index]));
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => (
+      Object.prototype.hasOwnProperty.call(rightRecord, key)
+      && samePresentationValue(leftRecord[key], rightRecord[key])
+    ));
+}
+
 function sameNodeState<T extends DragStateNode>(left: T, right: T): boolean {
   const leftKeys = Object.keys(left) as Array<keyof T>;
   const rightKeys = Object.keys(right) as Array<keyof T>;
@@ -34,7 +57,7 @@ function sameNodeState<T extends DragStateNode>(left: T, right: T): boolean {
     if (key === "position") {
       return left.position.x === right.position.x && left.position.y === right.position.y;
     }
-    return Object.is(left[key], right[key]);
+    return samePresentationValue(left[key], right[key]);
   });
 }
 
