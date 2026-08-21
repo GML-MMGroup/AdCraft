@@ -187,6 +187,66 @@ describe("ProposalCard", () => {
     expect(screen.queryByRole("button", { name: "Revise options" })).toBeNull();
   });
 
+  it("renders an applied Timeline proposal as a non-interactive option preview", () => {
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            availability: "applied",
+            options: [
+              proposalCard.proposal.options[0]!,
+              {
+                option_id: "option-2",
+                title: "Everyday warmth",
+                public_summary: "A familiar family moment with a calm domestic tone.",
+                key_decisions: [],
+              },
+              {
+                option_id: "option-3",
+                title: "Natural sanctuary",
+                public_summary: "A gentle world shaped by forests and morning light.",
+                key_decisions: [],
+              },
+            ],
+            application_count: 1,
+            latest_application: {
+              application_id: "application-1",
+              option_id: "option-3",
+              action: "select_option",
+              receipt_id: "receipt-1",
+              created_node_ids: ["node-character-1"],
+              queued_execution_ids: [],
+              created_at: "2026-08-04T00:01:00Z",
+            },
+            materialization: {
+              materialization_id: "materialization-1",
+              option_id: "option-1",
+              turn_id: "turn-materialization-1",
+              status: "completed",
+              attempt_no: 1,
+              retryable: false,
+              error: null,
+              created_at: "2026-08-04T00:01:00Z",
+              updated_at: "2026-08-04T00:01:01Z",
+            },
+          },
+        }}
+        pending={false}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "Selected option: Natural sanctuary" })).toBeTruthy();
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("B")).toBeTruthy();
+    expect(screen.getByText("C")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Natural sanctuary/ })).toBeNull();
+    expect(screen.queryByText(/Applied 1 time/)).toBeNull();
+    expect(screen.queryByRole("status", { name: "Proposal materialization completed" })).toBeNull();
+  });
+
   it.each(["queued", "working"] as const)(
     "keeps the selected direction visible and disables every action while materialization is %s",
     (status) => {

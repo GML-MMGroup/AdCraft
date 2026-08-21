@@ -567,6 +567,12 @@
   background: rgb(255 255 255 / 46%);
 }
 
+:root .agent-chat__proposal.is-read-only {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .agent-chat__command,
 .agent-chat__receipt {
   padding: 11px;
@@ -790,6 +796,96 @@
 
 .agent-chat__proposal > header span {
   color: #81749e;
+}
+
+.agent-chat__proposal.is-read-only > header {
+  margin-bottom: 8px;
+  padding: 0 2px;
+  text-transform: none;
+}
+
+.agent-chat__proposal.is-read-only > header strong {
+  color: rgb(255 255 255 / 90%);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.agent-chat__proposal.is-read-only > header span {
+  color: #9dafe6;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.agent-chat__historical-options {
+  display: grid;
+  gap: 7px;
+}
+
+.agent-chat__historical-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px 11px 10px 9px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 3.5%);
+}
+
+.agent-chat__historical-option.is-selected {
+  border-color: rgb(157 175 230 / 54%);
+  background: rgb(157 175 230 / 10%);
+  box-shadow: inset 3px 0 0 #9dafe6;
+}
+
+.agent-chat__historical-option-marker {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 11%);
+  border-radius: 50%;
+  color: rgb(255 255 255 / 52%);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.agent-chat__historical-option.is-selected .agent-chat__historical-option-marker {
+  border-color: rgb(157 175 230 / 60%);
+  color: #d9dff5;
+}
+
+.agent-chat__historical-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.agent-chat__historical-option-copy strong {
+  color: rgb(255 255 255 / 88%);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+.agent-chat__historical-option-copy > span {
+  color: rgb(255 255 255 / 52%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-chat__historical-option > em {
+  align-self: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgb(157 175 230 / 13%);
+  color: #b9c5ed;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 650;
 }
 
 .agent-chat__options {
