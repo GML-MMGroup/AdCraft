@@ -406,6 +406,7 @@ export function AgentCanvasPage() {
   }, [setNodes]);
 
   useEffect(() => {
+    const activeDraggedNodeIds = activeDraggedNodeIdsRef.current;
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") cancelActiveNodeDrag();
     };
@@ -414,7 +415,7 @@ export function AgentCanvasPage() {
     return () => {
       window.removeEventListener("blur", cancelActiveNodeDrag);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      activeDraggedNodeIdsRef.current.clear();
+      activeDraggedNodeIds.clear();
       pendingPresentedNodesRef.current = null;
     };
   }, [cancelActiveNodeDrag]);
