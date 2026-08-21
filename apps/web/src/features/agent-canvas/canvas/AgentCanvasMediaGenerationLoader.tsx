@@ -10,7 +10,7 @@ export function AgentCanvasMediaGenerationLoader({
     <div className="agent-canvas-node__working agent-canvas-node__working--media">
       <ImageLoader
         variant="diffusion"
-        size={192}
+        size="100%"
         label={`Generating ${mediaType}`}
         className="agent-canvas-node__generation-loader"
       />

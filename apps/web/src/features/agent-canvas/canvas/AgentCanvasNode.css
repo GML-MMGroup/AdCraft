@@ -640,8 +640,8 @@
 }
 
 .agent-canvas-node__generation-loader {
-  width: min(192px, calc(100% - 32px));
-  height: min(192px, calc(100% - 32px));
+  width: 100%;
+  height: 100%;
   color: #9dafe6;
 }
 

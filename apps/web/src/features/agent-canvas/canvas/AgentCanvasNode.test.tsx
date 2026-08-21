@@ -521,7 +521,7 @@ describe("AgentCanvasNodeCard", () => {
       expect(screen.getByText("Working")).toBeTruthy();
       const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
       expect(loader.getAttribute("data-variant")).toBe("diffusion");
-      expect((loader as HTMLElement).style.getPropertyValue("--iml-size")).toBe("192px");
+      expect((loader as HTMLElement).style.getPropertyValue("--iml-size")).toBe("100%");
       expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
       expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
