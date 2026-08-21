@@ -25,6 +25,55 @@ function isFinitePosition(position: DragStateNode["position"]): boolean {
   return Number.isFinite(position.x) && Number.isFinite(position.y);
 }
 
+function samePresentationValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => samePresentationValue(value, right[index]));
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => (
+      Object.prototype.hasOwnProperty.call(rightRecord, key)
+      && samePresentationValue(leftRecord[key], rightRecord[key])
+    ));
+}
+
+function sameNodeState<T extends DragStateNode>(left: T, right: T): boolean {
+  const leftKeys = Object.keys(left) as Array<keyof T>;
+  const rightKeys = Object.keys(right) as Array<keyof T>;
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => {
+    if (!(key in right)) return false;
+    if (key === "position") {
+      return left.position.x === right.position.x && left.position.y === right.position.y;
+    }
+    return samePresentationValue(left[key], right[key]);
+  });
+}
+
+function reuseCurrentNode<T extends DragStateNode>(current: T | undefined, next: T): T {
+  return current && sameNodeState(current, next) ? current : next;
+}
+
+export function beginNodeDrag(
+  activeDraggedNodeIds: Set<string>,
+  fallbackNodeId: string,
+  draggedNodeIds: readonly string[],
+): void {
+  activeDraggedNodeIds.clear();
+  setDraggedNodeIds(activeDraggedNodeIds, fallbackNodeId, draggedNodeIds, true);
+}
+
 export function setDraggedNodeIds(
   activeDraggedNodeIds: Set<string>,
   fallbackNodeId: string,
@@ -56,10 +105,18 @@ export function reconcileDragAwareNodes<T extends DragStateNode>(
 
     if (!activeDraggedNodeIds.has(node.id)) {
       const { dragging: _dragging, ...settledNode } = node;
-      return { ...settledNode, position: canonicalPosition, selected } as T;
+      const next = {
+        ...current,
+        ...settledNode,
+        position: canonicalPosition,
+        selected,
+      } as T;
+      delete next.dragging;
+      return reuseCurrentNode(current, next);
     }
 
-    return {
+    const next = {
+      ...current,
       ...node,
       position: current && isFinitePosition(current.position)
         ? current.position
@@ -67,6 +124,7 @@ export function reconcileDragAwareNodes<T extends DragStateNode>(
       dragging: true,
       selected,
     } as T;
+    return reuseCurrentNode(current, next);
   });
 }
 
@@ -82,6 +140,15 @@ export function deferNodeSnapshotDuringDrag<T extends DragStateNode>(
     nodes: reconcileDragAwareNodes(canonicalNodes, currentNodes, activeDraggedNodeIds),
     pendingNodes: null,
   };
+}
+
+export function cancelNodeDrag<T extends DragStateNode>(
+  canonicalNodes: readonly T[],
+  currentNodes: readonly T[],
+  activeDraggedNodeIds: Set<string>,
+): T[] {
+  activeDraggedNodeIds.clear();
+  return reconcileDragAwareNodes(canonicalNodes, currentNodes, activeDraggedNodeIds);
 }
 
 export function finishNodeDrag<T extends DragStateNode>(

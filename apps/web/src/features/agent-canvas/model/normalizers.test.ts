@@ -2123,6 +2123,27 @@ describe("Agent Canvas normalizers", () => {
           source_id: "doc-plan",
           source_revision: 3,
         }],
+        assertion_evidence: {
+          schema_version: "1",
+          policy_ref: "adcraft.prompt-policy",
+          policy_version: "1",
+          policy_digest: "sha256:" + "c".repeat(64),
+          recipe_id: "recipe-character",
+          recipe_version: "1",
+          assertion_ids: ["preserve-character-identity"],
+          assertion_block_digest: "sha256:" + "d".repeat(64),
+          prepared_prompt_digest: "e".repeat(64),
+          source_snapshots: [{
+            schema_version: "1",
+            source_kind: "document",
+            document_id: "doc-plan",
+            document_revision: 3,
+          }],
+          document_revisions: { "doc-plan": 3 },
+          sequence_id: null,
+          engine_owned_fields_digest: "sha256:" + "f".repeat(64),
+          evidence_digest: "sha256:" + "1".repeat(64),
+        },
         attempt_stage: "context_ready",
         error: null,
         updated_at: "2026-08-15T10:00:00Z",
@@ -2130,6 +2151,11 @@ describe("Agent Canvas normalizers", () => {
     });
     expect(node.prompt_preparation.status).toBe("superseded");
     expect(node.prompt_preparation.parameter_origins[0]?.source_kind).toBe("storyboard_plan");
+    expect(node.prompt_preparation.assertion_evidence?.source_snapshots[0]).toMatchObject({
+      source_kind: "document",
+      document_id: "doc-plan",
+      document_revision: 3,
+    });
 
     const document = normalizeAgentWorkingDocumentV2({
       document_id: "doc-v3", workflow_id: "workflow-1", guidance_session_id: "session-1",
@@ -2181,6 +2207,41 @@ describe("Agent Canvas normalizers", () => {
       }],
     });
   });
+
+  it.each(["schema_version", "source_snapshots", "document_revisions"])(
+    "rejects prompt assertion evidence without required %s",
+    (missingField) => {
+      const assertionEvidence: Record<string, unknown> = {
+        schema_version: "1",
+        policy_ref: "adcraft.prompt-policy",
+        policy_version: "1",
+        policy_digest: "sha256:" + "a".repeat(64),
+        recipe_id: "recipe-character",
+        recipe_version: "1",
+        assertion_ids: ["preserve-character-identity"],
+        assertion_block_digest: "sha256:" + "b".repeat(64),
+        prepared_prompt_digest: "c".repeat(64),
+        source_snapshots: [],
+        document_revisions: {},
+        sequence_id: null,
+        engine_owned_fields_digest: "sha256:" + "d".repeat(64),
+        evidence_digest: "sha256:" + "e".repeat(64),
+      };
+      delete assertionEvidence[missingField];
+
+      expect(() => normalizeCanvasNodeV2({
+        ...validWorkflowPayload().nodes[1],
+        prompt_preparation: {
+          status: "ready",
+          attempt_no: 1,
+          prompt_digest: "f".repeat(64),
+          assertion_evidence: assertionEvidence,
+          error: null,
+          updated_at: "2026-08-15T10:00:00Z",
+        },
+      })).toThrowError(new RegExp(`assertion_evidence\\.${missingField}`));
+    },
+  );
 
   it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {
     expect(() => normalizeCanvasNodeV2({

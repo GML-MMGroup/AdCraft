@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  beginNodeDrag,
+  cancelNodeDrag,
   deferNodeSnapshotDuringDrag,
   finishNodeDrag,
   reconcileDragAwareNodes,
@@ -10,11 +12,120 @@ import {
 interface TestNode {
   id: string;
   position: { x: number; y: number };
+  data?: {
+    node: { title: string; prompt: string };
+    runtime: { visible_status: string } | null;
+    onRun: (nodeId: string) => void;
+  };
   selected?: boolean;
   dragging?: boolean;
 }
 
 describe("draggingNodeState", () => {
+  it("starts a new drag session without retaining stale node identifiers", () => {
+    const activeDraggedNodeIds = new Set(["stale-node"]);
+
+    beginNodeDrag(activeDraggedNodeIds, "image-1", ["image-1", "video-1"]);
+
+    expect(activeDraggedNodeIds).toEqual(new Set(["image-1", "video-1"]));
+  });
+
+  it("cancels an interrupted drag against the latest complete snapshot", () => {
+    const activeDraggedNodeIds = new Set(["image-1"]);
+    const currentNodes: TestNode[] = [{
+      id: "image-1",
+      position: { x: 420, y: 260 },
+      selected: true,
+      dragging: true,
+    }];
+    const latestSnapshot: TestNode[] = [{
+      id: "image-1",
+      position: { x: 120, y: 80 },
+    }, {
+      id: "video-1",
+      position: { x: 620, y: 80 },
+    }];
+
+    const nodes = cancelNodeDrag(
+      latestSnapshot,
+      currentNodes,
+      activeDraggedNodeIds,
+    );
+
+    expect(activeDraggedNodeIds).toEqual(new Set());
+    expect(nodes).toEqual([{
+      id: "image-1",
+      position: { x: 120, y: 80 },
+      selected: true,
+    }, {
+      id: "video-1",
+      position: { x: 620, y: 80 },
+      selected: false,
+    }]);
+  });
+
+  it("reuses an unchanged current node instead of rerendering its card", () => {
+    const onRun = () => undefined;
+    const currentNode: TestNode = {
+      id: "image-1",
+      position: { x: 120, y: 80 },
+      selected: false,
+      data: {
+        node: { title: "Product", prompt: "A studio product shot" },
+        runtime: { visible_status: "ready" },
+        onRun,
+      },
+    };
+    const canonicalNode: TestNode = {
+      id: "image-1",
+      position: { x: 120, y: 80 },
+      data: {
+        node: { title: "Product", prompt: "A studio product shot" },
+        runtime: { visible_status: "ready" },
+        onRun,
+      },
+    };
+
+    const [reconciled] = reconcileDragAwareNodes(
+      [canonicalNode],
+      [currentNode],
+      new Set(),
+    );
+
+    expect(reconciled).toBe(currentNode);
+  });
+
+  it("replaces a node when nested presentation data changes", () => {
+    const onRun = () => undefined;
+    const currentNode: TestNode = {
+      id: "image-1",
+      position: { x: 120, y: 80 },
+      data: {
+        node: { title: "Product", prompt: "Original prompt" },
+        runtime: null,
+        onRun,
+      },
+    };
+    const canonicalNode: TestNode = {
+      id: "image-1",
+      position: { x: 120, y: 80 },
+      data: {
+        node: { title: "Product", prompt: "Updated prompt" },
+        runtime: null,
+        onRun,
+      },
+    };
+
+    const [reconciled] = reconcileDragAwareNodes(
+      [canonicalNode],
+      [currentNode],
+      new Set(),
+    );
+
+    expect(reconciled).not.toBe(currentNode);
+    expect(reconciled.data?.node.prompt).toBe("Updated prompt");
+  });
+
   it("stops preserving dragging state as soon as the pointer is released", () => {
     const activeDraggedNodeIds = new Set<string>();
     const currentNodes: TestNode[] = [{
