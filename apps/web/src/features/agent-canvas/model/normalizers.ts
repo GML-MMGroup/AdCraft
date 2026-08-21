@@ -2492,8 +2492,8 @@ function normalizeCapabilityProposalOptionV2(
   const keyDecisions = expectArray(record.key_decisions, `${path}.key_decisions`).map((item, index) => (
     expectNonEmptyString(item, `${path}.key_decisions[${index}]`)
   ));
-  if (keyDecisions.length < 1 || keyDecisions.length > 6) {
-    fail(`${path}.key_decisions`, "expected between 1 and 6 decisions");
+  if (keyDecisions.length > 6) {
+    fail(`${path}.key_decisions`, "expected between 0 and 6 decisions");
   }
   return {
     option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
