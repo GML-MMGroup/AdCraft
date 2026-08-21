@@ -148,6 +148,7 @@ import type {
   VideoSkillPreviewV2,
   VideoSkillPublicDetailV2,
 } from "../../../types-v2.ts";
+import { V2ContractValidationError } from "../../../api/v2ContractValidationError.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -166,6 +167,11 @@ const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>(
   "manual",
   "node_prompt",
   "binding",
+  "user_explicit",
+  "structured_content",
+  "guidance_default",
+  "role_default",
+  "provider_clamp",
 ]);
 const CANVAS_MODEL_CAPABILITIES = new Set<CanvasModelSummaryV2["capability"]>(["text", "image", "video", "audio"]);
 const CANVAS_MODEL_AVAILABILITIES = new Set<CanvasModelSummaryV2["availability"]>([
@@ -464,7 +470,7 @@ const STORYBOARD_SEGMENT_MATERIALIZATION_STATUSES = new Set<StoryboardSegmentMat
 ]);
 
 function fail(path: string, message: string): never {
-  throw new Error(`Invalid ${path}: ${message}`);
+  throw new V2ContractValidationError(path, message);
 }
 
 function isRecord(value: unknown): value is JsonRecord {

@@ -2243,6 +2243,39 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("accepts every parameter provenance origin in the backend contract", () => {
+    const origins = [
+      "manual",
+      "node_prompt",
+      "binding",
+      "user_explicit",
+      "structured_content",
+      "guidance_default",
+      "role_default",
+      "provider_clamp",
+    ] as const;
+    const parameterProvenance = Object.fromEntries(origins.map((origin, index) => [
+      `field_${index}`,
+      {
+        origin,
+        ...(origin === "binding" ? {
+          source_node_id: "node-text-1",
+          binding_id: "binding-1",
+          source_revision: 3,
+        } : {}),
+        requested_value: 18,
+        effective_value: 15,
+      },
+    ]));
+
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      parameter_provenance: parameterProvenance,
+    });
+
+    expect(Object.values(normalized.parameter_provenance).map(({ origin }) => origin)).toEqual(origins);
+  });
+
   it("normalizes model selection on a variation draft without a raw model ID", () => {
     const normalized = normalizeCanvasVariationDraftV2({
       source_node_id: "node-image-1",

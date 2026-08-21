@@ -20,9 +20,9 @@ function enumValues(schema) {
 }
 
 export function agentCanvasContractMismatches(openApi, contractManifest = manifest) {
-  const schemas = openApi?.components?.schemas;
+  const schemas = openApi?.components?.schemas ?? openApi?.$defs;
   if (!schemas || typeof schemas !== "object") {
-    return ["OpenAPI components.schemas is unavailable"];
+    return ["OpenAPI components.schemas and JSON Schema $defs are unavailable"];
   }
 
   const mismatches = [];
