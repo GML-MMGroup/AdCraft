@@ -52,6 +52,8 @@ import type {
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
   NodePromptPreparationV1,
+  PromptAssertionEvidenceV1,
+  PromptAssertionSourceSnapshotV1,
   ResolvedNodeParameterV2,
   CanvasModelSelectionModeV2,
   CanvasModelSummaryV2,
@@ -774,6 +776,111 @@ function normalizeAgentOperationFailureV2(
   };
 }
 
+function normalizePromptAssertionSourceSnapshotV1(
+  value: unknown,
+  path: string,
+): PromptAssertionSourceSnapshotV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "schema_version",
+    "source_kind",
+    "binding_id",
+    "binding_revision",
+    "source_node_id",
+    "source_node_revision",
+    "asset_id",
+    "asset_version_id",
+    "reference_purpose",
+    "document_id",
+    "document_revision",
+    "sequence_id",
+  ], path);
+  const nullableRevision = (field: string) => (
+    record[field] === undefined || record[field] === null
+      ? null
+      : expectPositiveInteger(record[field], `${path}.${field}`)
+  );
+  return {
+    schema_version: expectLiteral(record.schema_version ?? "1", new Set(["1"]), `${path}.schema_version`),
+    source_kind: expectLiteral(
+      record.source_kind,
+      new Set<PromptAssertionSourceSnapshotV1["source_kind"]>(["binding", "document", "sequence"]),
+      `${path}.source_kind`,
+    ),
+    binding_id: nullableStringWithDefault(record.binding_id, `${path}.binding_id`),
+    binding_revision: nullableRevision("binding_revision"),
+    source_node_id: nullableStringWithDefault(record.source_node_id, `${path}.source_node_id`),
+    source_node_revision: nullableRevision("source_node_revision"),
+    asset_id: nullableStringWithDefault(record.asset_id, `${path}.asset_id`),
+    asset_version_id: nullableStringWithDefault(record.asset_version_id, `${path}.asset_version_id`),
+    reference_purpose: nullableStringWithDefault(record.reference_purpose, `${path}.reference_purpose`),
+    document_id: nullableStringWithDefault(record.document_id, `${path}.document_id`),
+    document_revision: nullableRevision("document_revision"),
+    sequence_id: nullableStringWithDefault(record.sequence_id, `${path}.sequence_id`),
+  };
+}
+
+function normalizePromptAssertionEvidenceV1(
+  value: unknown,
+  path: string,
+): PromptAssertionEvidenceV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "schema_version",
+    "policy_ref",
+    "policy_version",
+    "policy_digest",
+    "recipe_id",
+    "recipe_version",
+    "assertion_ids",
+    "assertion_block_digest",
+    "prepared_prompt_digest",
+    "source_snapshots",
+    "document_revisions",
+    "sequence_id",
+    "engine_owned_fields_digest",
+    "evidence_digest",
+  ], path);
+  const preparedPromptDigest = expectNonEmptyString(
+    record.prepared_prompt_digest,
+    `${path}.prepared_prompt_digest`,
+  );
+  if (!/^[a-f0-9]{64}$/.test(preparedPromptDigest)) {
+    fail(`${path}.prepared_prompt_digest`, "expected a 64 character lowercase hexadecimal digest");
+  }
+  const assertionIds = expectStringArray(record.assertion_ids, `${path}.assertion_ids`);
+  if (!assertionIds.length) fail(`${path}.assertion_ids`, "expected at least one assertion identifier");
+  return {
+    schema_version: expectLiteral(record.schema_version ?? "1", new Set(["1"]), `${path}.schema_version`),
+    policy_ref: expectNonEmptyString(record.policy_ref, `${path}.policy_ref`),
+    policy_version: expectNonEmptyString(record.policy_version, `${path}.policy_version`),
+    policy_digest: requiredDigest(record.policy_digest, `${path}.policy_digest`),
+    recipe_id: expectNonEmptyString(record.recipe_id, `${path}.recipe_id`),
+    recipe_version: expectNonEmptyString(record.recipe_version, `${path}.recipe_version`),
+    assertion_ids: assertionIds,
+    assertion_block_digest: requiredDigest(
+      record.assertion_block_digest,
+      `${path}.assertion_block_digest`,
+    ),
+    prepared_prompt_digest: preparedPromptDigest,
+    source_snapshots: expectArray(record.source_snapshots ?? [], `${path}.source_snapshots`)
+      .map((item, index) => normalizePromptAssertionSourceSnapshotV1(
+        item,
+        `${path}.source_snapshots[${index}]`,
+      )),
+    document_revisions: normalizeDocumentRevisions(
+      record.document_revisions,
+      `${path}.document_revisions`,
+    ),
+    sequence_id: nullableStringWithDefault(record.sequence_id, `${path}.sequence_id`),
+    engine_owned_fields_digest: requiredDigest(
+      record.engine_owned_fields_digest,
+      `${path}.engine_owned_fields_digest`,
+    ),
+    evidence_digest: requiredDigest(record.evidence_digest, `${path}.evidence_digest`),
+  };
+}
+
 function normalizeNodePromptPreparationV1(
   value: unknown,
   path: string,
@@ -798,6 +905,7 @@ function normalizeNodePromptPreparationV1(
       "style_projection_digest",
       "brief_digest",
       "parameter_origins",
+      "assertion_evidence",
       "attempt_stage",
       "error",
       "updated_at",
@@ -847,6 +955,12 @@ function normalizeNodePromptPreparationV1(
     parameter_origins: expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
       normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
     )),
+    assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
+      ? null
+      : normalizePromptAssertionEvidenceV1(
+          record.assertion_evidence,
+          `${path}.assertion_evidence`,
+        ),
     attempt_stage: nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`),
     error,
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
@@ -856,6 +970,12 @@ function normalizeNodePromptPreparationV1(
 function nullableDigest(value: unknown, path: string): string | null {
   const digest = nullableStringWithDefault(value, path);
   if (digest !== null && !/^sha256:[a-f0-9]{64}$/.test(digest)) fail(path, "expected sha256 digest");
+  return digest;
+}
+
+function requiredDigest(value: unknown, path: string): string {
+  const digest = expectNonEmptyString(value, path);
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) fail(path, "expected sha256 digest");
   return digest;
 }
 

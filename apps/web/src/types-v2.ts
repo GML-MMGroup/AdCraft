@@ -1565,6 +1565,38 @@ export interface ResolvedNodeParameterV2 {
   source_revision: number | null;
 }
 
+export interface PromptAssertionSourceSnapshotV1 {
+  schema_version: "1";
+  source_kind: "binding" | "document" | "sequence";
+  binding_id: string | null;
+  binding_revision: number | null;
+  source_node_id: string | null;
+  source_node_revision: number | null;
+  asset_id: string | null;
+  asset_version_id: string | null;
+  reference_purpose: string | null;
+  document_id: string | null;
+  document_revision: number | null;
+  sequence_id: string | null;
+}
+
+export interface PromptAssertionEvidenceV1 {
+  schema_version: "1";
+  policy_ref: string;
+  policy_version: string;
+  policy_digest: string;
+  recipe_id: string;
+  recipe_version: string;
+  assertion_ids: string[];
+  assertion_block_digest: string;
+  prepared_prompt_digest: string;
+  source_snapshots: PromptAssertionSourceSnapshotV1[];
+  document_revisions: Record<string, number>;
+  sequence_id: string | null;
+  engine_owned_fields_digest: string;
+  evidence_digest: string;
+}
+
 /**
  * Backend-owned prompt authoring progress for a visible Draft node.
  * It deliberately does not alter the Canvas node's four visible statuses.
@@ -1586,6 +1618,7 @@ export interface NodePromptPreparationV1 {
   style_projection_digest: string | null;
   brief_digest: string | null;
   parameter_origins: ResolvedNodeParameterV2[];
+  assertion_evidence: PromptAssertionEvidenceV1 | null;
   attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
   updated_at: string;
