@@ -178,4 +178,21 @@ describe("Agent Canvas Documents", () => {
     expect(overlayRule).toContain("inset: 0");
     expect(overlayRule).toContain("place-items: center");
   });
+
+  it("uses the dedicated monochrome production-document palette", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/documents/agent-canvas-documents.css");
+    const css = readFileSync(cssPath, "utf8");
+    const panelRule = css.match(/\.agent-document-browser__panel\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const selectedFilterRule = css.match(/\.agent-document-browser__filters button\.is-selected\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(css).toContain("--document-panel: #181818");
+    expect(css).toContain("--document-surface: #222222");
+    expect(css).toContain("--document-text: #f2f2f2");
+    expect(css).toContain("--document-danger: #ca6f6f");
+    expect(panelRule).toContain("background: var(--document-panel)");
+    expect(selectedFilterRule).toContain("background: #e5e5e5");
+    expect(selectedFilterRule).toContain("color: #181818");
+    expect(css).not.toContain("var(--accent)");
+    expect(css).not.toContain("var(--brand-hover)");
+  });
 });
