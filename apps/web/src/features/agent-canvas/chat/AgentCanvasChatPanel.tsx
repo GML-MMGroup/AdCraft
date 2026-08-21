@@ -51,6 +51,7 @@ import {
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
+import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
@@ -774,8 +775,9 @@ export function ProposalCard({
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
+  const appliedOptionId = proposal.latest_application?.option_id ?? materialization?.option_id ?? null;
   const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(() => (
-    proposal.options.find((option) => option.option_id === materialization?.option_id) ?? null
+    proposal.options.find((option) => option.option_id === appliedOptionId) ?? null
   ));
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
@@ -808,10 +810,10 @@ export function ProposalCard({
   );
 
   useEffect(() => {
-    if (!materialization?.option_id) return;
-    const materializedOption = proposal.options.find((option) => option.option_id === materialization.option_id);
-    if (materializedOption) setSelected(materializedOption);
-  }, [materialization?.option_id, proposal.options]);
+    if (!appliedOptionId) return;
+    const appliedOption = proposal.options.find((option) => option.option_id === appliedOptionId);
+    if (appliedOption) setSelected(appliedOption);
+  }, [appliedOptionId, proposal.options]);
 
   useEffect(() => {
     const revisionChanged = referencesRevisionRef.current !== proposal.proposal_revision;
@@ -841,27 +843,34 @@ export function ProposalCard({
   }
 
   return (
-    <article className="agent-chat__proposal">
+    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
         <strong>{proposal.capability_display_name}</strong>
-        <span>{proposal.availability}</span>
+        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
       </header>
-      <div className="agent-chat__options">
-        {displayOptions.map((option) => (
-          <button
-            type="button"
-            key={option.option_id}
-            className={selected?.option_id === option.option_id ? "is-selected" : ""}
-            disabled={!canSelect || pending}
-            onClick={() => setSelected(option)}
-          >
-            <strong>
-              {option.title}
-            </strong>
-            <span>{option.public_summary}</span>
-          </button>
-        ))}
-      </div>
+      {readOnly ? (
+        <HistoricalProposalOptions
+          options={displayOptions}
+          selectedOptionId={appliedOptionId}
+        />
+      ) : (
+        <div className="agent-chat__options">
+          {displayOptions.map((option) => (
+            <button
+              type="button"
+              key={option.option_id}
+              className={selected?.option_id === option.option_id ? "is-selected" : ""}
+              disabled={!canSelect || pending}
+              onClick={() => setSelected(option)}
+            >
+              <strong>
+                {option.title}
+              </strong>
+              <span>{option.public_summary}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {!readOnly && (acceptedReferences.length || selectAction) ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
@@ -947,7 +956,7 @@ export function ProposalCard({
           ) : null}
         </section>
       ) : null}
-      {proposal.application_count > 0 ? (
+      {!readOnly && proposal.application_count > 0 ? (
         <p className="agent-chat__proposal-history">
           Applied {proposal.application_count} {proposal.application_count === 1 ? "time" : "times"}
           {proposal.latest_application
@@ -955,7 +964,7 @@ export function ProposalCard({
             : ""}
         </p>
       ) : null}
-      {materialization ? (
+      {materialization && (!readOnly || materialization.status === "failed") ? (
         <ProposalMaterializationStatus
           materialization={materialization}
           retrying={retryingMaterialization}
