@@ -257,6 +257,7 @@ describe("ProposalCard", () => {
     expect(markerRule).toBeTruthy();
     expect(markerRule).not.toContain("border:");
     expect(markerRule).not.toContain("border-radius:");
+    expect(markerRule).toContain("font-size: 11px");
   });
 
   it.each(["queued", "working"] as const)(
