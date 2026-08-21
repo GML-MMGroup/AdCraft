@@ -95,11 +95,11 @@ afterEach(() => {
 });
 
 describe("Agent Canvas Documents", () => {
-  it("renders a persisted Storyboard plan as a read-only card and navigates linked nodes", async () => {
-    vi.spyOn(agentCanvasApi, "agentCanvasDocument").mockResolvedValue(storyboardDocument);
+  it("keeps a timeline document compact and loads its details in a viewport dialog on demand", async () => {
+    const getDocument = vi.spyOn(agentCanvasApi, "agentCanvasDocument").mockResolvedValue(storyboardDocument);
     const focusNode = vi.fn();
 
-    render(
+    const { container } = render(
       <AgentCanvasDocumentReferenceCard
         workflowId="workflow-1"
         reference={reference}
@@ -108,13 +108,48 @@ describe("Agent Canvas Documents", () => {
       />,
     );
 
+    const entry = screen.getByRole("button", { name: "Open Pressure cooker storyboard plan" });
+    expect(screen.getByText("Storyboard Production Plan · revision 4")).toBeTruthy();
+    expect(screen.queryByText("15s")).toBeNull();
+    expect(getDocument).not.toHaveBeenCalled();
+
+    fireEvent.click(entry);
+
+    const dialog = await screen.findByRole("dialog", { name: "Pressure cooker storyboard plan" });
+    expect(container.contains(dialog)).toBe(false);
+    expect(getDocument).toHaveBeenCalledWith("workflow-1", "doc-plan-1");
     expect(await screen.findByText("15s")).toBeTruthy();
     expect(screen.getByText("16:9")).toBeTruthy();
     expect(screen.getByText("Steam clears to reveal the cooker.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Open storyboard grid/i }));
     expect(focusNode).toHaveBeenCalledWith("node-grid-1");
+    expect(screen.queryByRole("dialog", { name: "Pressure cooker storyboard plan" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Run/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Delete/i })).toBeNull();
+  });
+
+  it("uses the same compact timeline entry for Anchor Registry documents", () => {
+    const getDocument = vi.spyOn(agentCanvasApi, "agentCanvasDocument");
+
+    render(
+      <AgentCanvasDocumentReferenceCard
+        workflowId="workflow-1"
+        reference={{
+          ...reference,
+          document_id: "doc-anchors-1",
+          document_kind: "anchor_registry",
+          revision: 8,
+          content_digest: "sha256:anchors",
+          title: "Anchor Registry",
+        }}
+        documentEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Open Anchor Registry" })).toBeTruthy();
+    expect(screen.getByText("Anchor Registry · revision 8")).toBeTruthy();
+    expect(getDocument).not.toHaveBeenCalled();
   });
 
   it("filters and paginates the document browser using backend cursors", async () => {
