@@ -28,7 +28,7 @@ class AgentCanvasOutputPreparationService:
         *,
         fingerprint: str,
     ) -> PreparedNodeResultV2:
-        effects = _effects(context, outcome)
+        effects = _effects(context)
         if outcome.media is not None:
             prepared = self._assets.prepare_generated_bytes(
                 context.node.workflow_id,
@@ -63,10 +63,7 @@ class AgentCanvasOutputPreparationService:
 
 def _effects(
     context: NodeExecutionContext,
-    outcome: NodeExecutionOutcome,
 ) -> tuple[PreparedPostReadyEffectV2, ...]:
-    if outcome.provider_task_id is not None:
-        return ()
     if context.node.node_type == "script":
         return (
             PreparedPostReadyEffectV2(

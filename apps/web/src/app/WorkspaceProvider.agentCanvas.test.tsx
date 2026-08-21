@@ -23,10 +23,12 @@ vi.mock("../api/client", () => ({ api: legacyApi }));
 vi.mock("../api/v2Client", () => ({
   v2Api,
   isV2ApiError: (value: unknown) => Boolean(value && typeof value === "object" && "status" in value),
+  isNetworkError: (value: unknown) => value instanceof Error && value.name === "V2NetworkError",
 }));
 
 import { useApp } from "../AppContextValue.ts";
 import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
+import { normalizeCanvasNodeV2 } from "../features/agent-canvas/model/normalizers.ts";
 import { WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_WORKFLOW_KEY } from "../projects/newProject.ts";
 import { WorkspaceProvider } from "./WorkspaceProvider.tsx";
 
@@ -40,6 +42,15 @@ const workflow = {
   bindings: [],
   assets: [],
 } as const;
+
+function createWorkflowContractError() {
+  try {
+    normalizeCanvasNodeV2(null, "workflow.nodes[8]");
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected malformed workflow data to fail validation.");
+}
 
 function Probe() {
   const {
@@ -174,13 +185,26 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
     expect(screen.getByText("projects:1")).toBeTruthy();
   });
 
-  it("preserves the active project preference on a transient restore failure", async () => {
+  it("reports a network restore failure without clearing the active project preference", async () => {
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
-    v2Api.projectWithEtag.mockRejectedValue(new Error("Database temporarily unavailable"));
+    const networkError = new Error("Failed to fetch");
+    networkError.name = "V2NetworkError";
+    v2Api.projectWithEtag.mockRejectedValue(networkError);
 
     render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
 
-    await screen.findByText(/project selection was preserved/);
+    await screen.findByText(/backend could not be reached/i);
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
+    expect(screen.getByText("project-1")).toBeTruthy();
+  });
+
+  it("reports an incompatible workflow contract without clearing the active project preference", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    v2Api.agentCanvasWorkflowWithEtag.mockRejectedValue(createWorkflowContractError());
+
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+
+    await screen.findByText(/workflow data does not match this frontend/i);
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
     expect(screen.getByText("project-1")).toBeTruthy();
   });

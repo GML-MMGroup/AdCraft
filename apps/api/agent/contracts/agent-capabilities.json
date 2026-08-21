@@ -5,6 +5,7 @@
       "name": "video_agent",
       "operations": [
         "author_decision_bundle",
+        "author_guided_script_checkpoint",
         "author_role_brief",
         "decide_turn_intent",
         "decide_next_action",

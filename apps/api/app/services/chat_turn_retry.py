@@ -124,6 +124,11 @@ class ChatTurnRetryService:
         if source.workflow_id != workflow_id:
             raise _error("chat_turn_not_found", "Chat turn was not found.")
 
+        if source.status == "superseded":
+            raise _error(
+                "chat_turn_not_retryable",
+                "Superseded chat turns cannot be retried.",
+            )
         if source.status != "failed":
             raise _error("chat_turn_not_failed", "Only a failed chat turn can be retried.")
         if not source.retryable:

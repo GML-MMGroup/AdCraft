@@ -115,12 +115,15 @@ metadata.set("plan_storyboard_sequence_outline", creativeMetadata(
 metadata.set("materialize_storyboard_segment", creativeMetadata(
   "storyboard_design", "StoryboardSegmentMaterializationDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist", "StoryboardSegmentAuthoringContextV2",
 ));
+metadata.set("author_guided_script_checkpoint", creativeMetadata(
+  "script_authoring", "ScriptMaterializationResultV1", "video_agent_script_authoring", "script", "Script Writer", "CapabilityInvocationContextV2",
+));
 metadata.set("execute_canvas_text", { context_contract_name: "AgentRunContext", result_contract_name: "AgentCanvasTextOutput" });
 metadata.set("execute_canvas_script", creativeMetadata(
   "script_authoring", "AgentCanvasScriptOutput", "video_agent_script_authoring", "script", "Script Writer",
 ));
 metadata.set("compile_video_parameters", creativeMetadata(
-  "video_direction", "VideoParameterIntentV2", "video_agent_video_direction", "video", "Video Director", "VideoParameterIntentContextV2",
+  "video_direction", "VideoParameterIntentV3", "video_agent_video_direction", "video", "Video Director", "VideoParameterIntentContextV3",
 ));
 metadata.set("workflow_creation", { context_contract_name: "FrontDeskIntentAgentContext", result_contract_name: "FrontDeskIntentOutput" });
 metadata.set("intent_contract_planner", { context_contract_name: "IntentContractAgentContext", result_contract_name: "V2IntentPlan" });

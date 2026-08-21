@@ -112,9 +112,11 @@ function instructionForOperation(operation: string): string {
   }
   if (operation === "compile_video_parameters") {
     return [
-      "Extract only explicit technical video controls from the supplied target prompt and direct Text or Script Binding sources.",
-      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, limited by the supplied capability contract.",
-      "Copy source identity exactly. Return no_explicit_controls when no supplied source explicitly states a control.",
+      "Extract only the declared unresolved technical video controls from the supplied target prompt and direct Text or Script Binding projections, identified by opaque source references.",
+      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, further limited by unresolved_fields and the capability contract.",
+      "Return each supplied source_ref exactly. Never emit Node IDs, Binding IDs, revisions, provider payloads, paths, URLs, or credentials.",
+      "A request that excludes BGM does not disable native video dialogue, ambience, or synchronized effects. Return generate_audio=false only when all native video audio is explicitly disabled.",
+      "Return no_explicit_controls when no supplied source explicitly states an unresolved control.",
       "Do not infer controls from creative wording, defaults, sibling nodes, or transitive nodes.",
     ].join(" ");
   }
@@ -153,6 +155,13 @@ function instructionForOperation(operation: string): string {
   }
   if (operation === "materialize_storyboard_segment") {
     return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
+  }
+  if (operation === "author_guided_script_checkpoint") {
+    return [
+      "Author only the internal document checkpoint named by capability_context.journey_stage.",
+      "Return one complete ScriptMaterializationResultV1 without alternatives, platform identifiers, Canvas Nodes, Bindings, or user-choice copy.",
+      "Preserve the supplied duration, sequence count, accepted creative facts, and response locale.",
+    ].join(" ");
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [

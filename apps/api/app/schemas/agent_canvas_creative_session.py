@@ -27,10 +27,10 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
     GuidedInteractionV1,
 )
 
@@ -234,8 +234,8 @@ class GuidedSessionStateV2(_CreativeSessionModel):
         default_factory=GuidanceCompletionProjectionV2
     )
     interaction: GuidedInteractionV1 | None = None
-    awaiting: GuidanceAwaitingV1 | None = None
-    journey: GuidedProductionJourneyV1
+    awaiting: GuidanceAwaitingV2 | None = None
+    journey: GuidedProductionJourneyV2
     revision: int = Field(ge=1)
     updated_at: datetime
     response_locale: BCP47Tag = "und"
@@ -412,7 +412,7 @@ class ExpertActivityV2(_CreativeSessionModel):
     capability_id: CapabilityIdV1
     capability_display_name: str = Field(min_length=1, max_length=160)
     operation: str = Field(min_length=1, max_length=160)
-    status: Literal["working", "completed", "failed"]
+    status: Literal["working", "completed", "failed", "superseded"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
     created_at: datetime

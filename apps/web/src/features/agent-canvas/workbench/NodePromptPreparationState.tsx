@@ -11,18 +11,19 @@ const PREPARATION_LABELS = {
 
 export function NodePromptPreparationState({ node }: { node: CanvasNodeV2 }) {
   const preparation = promptPreparationForNode(node);
-  if (preparation.status === "ready") return null;
+  if (preparation?.status === "ready") return null;
 
   const summary = node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
-  const error = preparation.error;
+  const status = preparation?.status ?? "queued";
+  const error = preparation?.error ?? null;
 
   return (
     <section
-      className={`agent-node-workbench__prompt-preparation is-${preparation.status}`}
-      role={preparation.status === "failed" ? "alert" : "status"}
+      className={`agent-node-workbench__prompt-preparation is-${status}`}
+      role={status === "failed" ? "alert" : "status"}
       aria-label="Prompt preparation status"
     >
-      <span>{PREPARATION_LABELS[preparation.status]}</span>
+      <span>{PREPARATION_LABELS[status]}</span>
       <p>{summary}</p>
       {error ? (
         <small>

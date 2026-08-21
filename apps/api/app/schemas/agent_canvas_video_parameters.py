@@ -114,6 +114,48 @@ class VideoParameterIntentV2(_VideoParameterModel):
         return self
 
 
+class VideoParameterCandidateV3(_VideoParameterModel):
+    """One semantic value attributed to an opaque request-scoped source."""
+
+    field: VideoParameterFieldV2
+    value: VideoParameterScalarV2
+    source_ref: str = Field(min_length=1, max_length=80, pattern=r"^source_[1-9][0-9]*$")
+
+
+class VideoParameterIntentV3(_VideoParameterModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {"status": {"const": "explicit_controls"}},
+                        "required": ["status"],
+                    },
+                    "then": {"properties": {"candidates": {"minItems": 1}}},
+                    "else": {"properties": {"candidates": {"maxItems": 0}}},
+                }
+            ]
+        },
+    )
+    status: Literal["explicit_controls", "no_explicit_controls"]
+    candidates: tuple[VideoParameterCandidateV3, ...] = Field(default=(), max_length=32)
+
+    @field_validator("candidates", mode="before")
+    @classmethod
+    def normalize_json_candidates(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def validate_status(self) -> "VideoParameterIntentV3":
+        if self.status == "explicit_controls" and not self.candidates:
+            raise ValueError("Explicit controls require at least one candidate.")
+        if self.status == "no_explicit_controls" and self.candidates:
+            raise ValueError("No-explicit-controls cannot include candidates.")
+        return self
+
+
 class CanvasParameterProvenanceV2(_VideoParameterModel):
     origin: VideoParameterOriginV2
     source_node_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -173,10 +215,11 @@ class VideoParameterCompilationSnapshotV2(_VideoParameterModel):
     effective_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
     normalizations: tuple[VideoParameterNormalizationV2, ...] = ()
-    agent_run_id: str = Field(min_length=1, max_length=160)
+    semantic_extraction: Literal["agent", "not_required"] = "agent"
+    agent_run_id: str | None = Field(default=None, min_length=1, max_length=160)
     contract_version: str = Field(min_length=1, max_length=80)
     prompt_descriptor: str = Field(min_length=1, max_length=320)
-    output_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    output_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     created_at: datetime
 
     @model_validator(mode="after")

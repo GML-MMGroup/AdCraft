@@ -111,6 +111,30 @@
       "title": "AgentAnchorNodeSourceV3",
       "type": "object"
     },
+    "AgentAnchorRoleSourceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "character_main",
+            "character_turnaround",
+            "product_main",
+            "product_multiview"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/AgentAnchorNodeSourceV3"
+        }
+      },
+      "required": [
+        "role",
+        "source"
+      ],
+      "title": "AgentAnchorRoleSourceV3",
+      "type": "object"
+    },
     "AgentAnchorSkillSnapshotSourceV3": {
       "additionalProperties": false,
       "properties": {
@@ -258,6 +282,15 @@
           ],
           "title": "Lifecycle",
           "type": "string"
+        },
+        "role_sources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentAnchorRoleSourceV3"
+          },
+          "maxItems": 8,
+          "title": "Role Sources",
+          "type": "array"
         },
         "semantic_role": {
           "enum": [
@@ -2860,7 +2893,7 @@
                   "quick_media": "#/$defs/QuickMediaAgentContext",
                   "scene_expert": "#/$defs/SceneExpertAgentContext",
                   "script_writer": "#/$defs/ScriptWriterAgentContext",
-                  "video_parameter_intent": "#/$defs/VideoParameterIntentContextV2",
+                  "video_parameter_intent_v3": "#/$defs/VideoParameterIntentContextV3",
                   "workflow_conversation": "#/$defs/WorkflowConversationAgentContext"
                 },
                 "propertyName": "context_kind"
@@ -2906,7 +2939,7 @@
                   "$ref": "#/$defs/AgentCommandReplanContextV2"
                 },
                 {
-                  "$ref": "#/$defs/VideoParameterIntentContextV2"
+                  "$ref": "#/$defs/VideoParameterIntentContextV3"
                 }
               ]
             },
@@ -5299,7 +5332,7 @@
             "$ref": "#/$defs/BgmProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -6153,10 +6186,47 @@
           "default": null,
           "title": "Expected Session Revision"
         },
+        "journey_stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm",
+                "character",
+                "completed",
+                "editing",
+                "intake",
+                "narrative_direction",
+                "product",
+                "props",
+                "scene",
+                "storyboard_grids",
+                "storyboard_plan",
+                "style_lock",
+                "videos",
+                "world_view"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Stage"
+        },
         "objective": {
           "maxLength": 4096,
           "minLength": 1,
           "title": "Objective",
+          "type": "string"
+        },
+        "publication_kind": {
+          "default": "proposal",
+          "enum": [
+            "internal_document",
+            "proposal"
+          ],
+          "title": "Publication Kind",
           "type": "string"
         },
         "reference_allowlist": {
@@ -6541,12 +6611,41 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "document_receipt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Receipt Id"
+        },
         "envelope_id": {
           "title": "Envelope Id",
           "type": "string"
         },
         "proposal_id": {
-          "title": "Proposal Id",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Id"
+        },
+        "publication_kind": {
+          "default": "proposal",
+          "enum": [
+            "internal_document",
+            "proposal"
+          ],
+          "title": "Publication Kind",
           "type": "string"
         },
         "repaired": {
@@ -6562,7 +6661,6 @@
       "required": [
         "capability_id",
         "envelope_id",
-        "proposal_id",
         "result_contract_name"
       ],
       "title": "CapabilityExecutionResultV1",
@@ -6830,6 +6928,7 @@
       "properties": {
         "action": {
           "enum": [
+            "custom_direction",
             "delegate_choice",
             "reuse_direction",
             "select_option"
@@ -6892,6 +6991,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "derivative_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentDerivedMaterializationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "envelope_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -6908,6 +7018,27 @@
           "minLength": 1,
           "title": "Materialization Id",
           "type": "string"
+        },
+        "operation_kind": {
+          "default": "standalone",
+          "enum": [
+            "derivative",
+            "parent",
+            "standalone"
+          ],
+          "title": "Operation Kind",
+          "type": "string"
+        },
+        "parent_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentNodeSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "proposal_id": {
           "maxLength": 160,
@@ -6958,6 +7089,12 @@
           ],
           "default": null,
           "title": "Selection Reason"
+        },
+        "stage_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         },
         "style_skill_run_id": {
           "anyOf": [
@@ -7039,10 +7176,17 @@
           "type": "string"
         },
         "node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Node Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
         },
         "repaired": {
           "default": false,
@@ -7051,8 +7195,7 @@
         }
       },
       "required": [
-        "materialization_id",
-        "node_id"
+        "materialization_id"
       ],
       "title": "CapabilityMaterializationExecutionResultV1",
       "type": "object"
@@ -7996,7 +8139,7 @@
             "$ref": "#/$defs/CharacterProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -8775,6 +8918,9 @@
     "CompiledNodePromptV2": {
       "additionalProperties": false,
       "properties": {
+        "assertion_evidence": {
+          "$ref": "#/$defs/PromptAssertionEvidenceV1"
+        },
         "brief_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Brief Digest",
@@ -8842,6 +8988,19 @@
           "title": "Reference Purposes",
           "type": "array"
         },
+        "role_reference_policy_version": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Reference Policy Version"
+        },
         "role_variant": {
           "enum": [
             "bgm",
@@ -8877,6 +9036,7 @@
         }
       },
       "required": [
+        "assertion_evidence",
         "brief_digest",
         "context_digest",
         "prompt",
@@ -10837,6 +10997,7 @@
           "enum": [
             "completed",
             "failed",
+            "superseded",
             "working"
           ],
           "title": "Status",
@@ -10937,89 +11098,6 @@
         "action"
       ],
       "title": "FinishNextActionCommandV1",
-      "type": "object"
-    },
-    "FoundationJourneyItemV1": {
-      "additionalProperties": false,
-      "properties": {
-        "item_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Item Id",
-          "type": "string"
-        },
-        "kind": {
-          "enum": [
-            "character",
-            "product",
-            "prop",
-            "scene"
-          ],
-          "title": "Kind",
-          "type": "string"
-        },
-        "occurrence_index": {
-          "maximum": 32,
-          "minimum": 1,
-          "title": "Occurrence Index",
-          "type": "integer"
-        },
-        "required": {
-          "title": "Required",
-          "type": "boolean"
-        },
-        "requirement_source": {
-          "enum": [
-            "delegated",
-            "explicit_user",
-            "questionnaire"
-          ],
-          "title": "Requirement Source",
-          "type": "string"
-        },
-        "selected_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Selected Node Ids",
-          "type": "array"
-        },
-        "status": {
-          "default": "pending",
-          "enum": [
-            "active",
-            "deferred",
-            "excluded",
-            "pending",
-            "selected"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "topic_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Topic Id"
-        }
-      },
-      "required": [
-        "item_id",
-        "kind",
-        "occurrence_index",
-        "required",
-        "requirement_source"
-      ],
-      "title": "FoundationJourneyItemV1",
       "type": "object"
     },
     "FrameRateControlPatchV1": {
@@ -11432,7 +11510,7 @@
       "title": "FrozenPlanningFacts",
       "type": "object"
     },
-    "GuidanceAwaitingV1": {
+    "GuidanceAwaitingV2": {
       "additionalProperties": false,
       "properties": {
         "awaiting_id": {
@@ -11509,17 +11587,19 @@
         "stage": {
           "enum": [
             "bgm",
-            "clarification",
+            "character",
             "completed",
-            "editing_ready",
-            "foundation_design",
+            "editing",
             "intake",
             "narrative_direction",
+            "product",
+            "props",
+            "scene",
             "storyboard_grids",
             "storyboard_plan",
             "style_lock",
-            "video_segments",
-            "world_setting"
+            "videos",
+            "world_view"
           ],
           "title": "Stage",
           "type": "string"
@@ -11548,7 +11628,7 @@
         "stage_revision",
         "workflow_id"
       ],
-      "title": "GuidanceAwaitingV1",
+      "title": "GuidanceAwaitingV2",
       "type": "object"
     },
     "GuidanceCompletionProjectionV2": {
@@ -12117,13 +12197,13 @@
           "type": "array"
         },
         "summary": {
-          "maxLength": 512,
+          "maxLength": 240,
           "minLength": 1,
           "title": "Summary",
           "type": "string"
         },
         "title": {
-          "maxLength": 120,
+          "maxLength": 64,
           "minLength": 1,
           "title": "Title",
           "type": "string"
@@ -12379,21 +12459,56 @@
       "title": "GuidedClosurePlanV1",
       "type": "object"
     },
-    "GuidedConceptChoiceV1": {
+    "GuidedConceptChoiceV2": {
       "additionalProperties": false,
       "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "allow_custom": {
+          "const": true,
+          "default": true,
+          "title": "Allow Custom",
+          "type": "boolean"
+        },
+        "allow_exclusion": {
+          "title": "Allow Exclusion",
+          "type": "boolean"
+        },
+        "capability_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Capability Id",
+          "type": "string"
+        },
         "content_kind": {
           "const": "concept_choice",
           "default": "concept_choice",
           "title": "Content Kind",
           "type": "string"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "options": {
           "items": {
             "$ref": "#/$defs/GuidedChoiceOptionV1"
           },
           "maxItems": 3,
-          "minItems": 2,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         },
@@ -12410,15 +12525,45 @@
           ],
           "default": null,
           "title": "Proposal Id"
+        },
+        "stage": {
+          "enum": [
+            "bgm",
+            "character",
+            "completed",
+            "editing",
+            "intake",
+            "narrative_direction",
+            "product",
+            "props",
+            "scene",
+            "storyboard_grids",
+            "storyboard_plan",
+            "style_lock",
+            "videos",
+            "world_view"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         }
       },
       "required": [
-        "options"
+        "action_id",
+        "allow_exclusion",
+        "capability_id",
+        "options",
+        "stage",
+        "stage_revision"
       ],
-      "title": "GuidedConceptChoiceV1",
+      "title": "GuidedConceptChoiceV2",
       "type": "object"
     },
-    "GuidedConceptSubmitV1": {
+    "GuidedConceptSubmitV2": {
       "additionalProperties": false,
       "properties": {
         "accepted_references": {
@@ -12436,13 +12581,12 @@
             "defer",
             "delegate",
             "exclude",
-            "revise",
             "select"
           ],
           "title": "Action",
           "type": "string"
         },
-        "custom_value": {
+        "custom_text": {
           "anyOf": [
             {
               "maxLength": 2048,
@@ -12454,7 +12598,7 @@
             }
           ],
           "default": null,
-          "title": "Custom Value"
+          "title": "Custom Text"
         },
         "expected_interaction_revision": {
           "minimum": 1,
@@ -12492,7 +12636,7 @@
         "expected_session_revision",
         "submission_kind"
       ],
-      "title": "GuidedConceptSubmitV1",
+      "title": "GuidedConceptSubmitV2",
       "type": "object"
     },
     "GuidedCustomAnswerV1": {
@@ -12825,7 +12969,7 @@
         "request": {
           "discriminator": {
             "mapping": {
-              "concept_choice": "#/$defs/GuidedConceptSubmitV1",
+              "concept_choice": "#/$defs/GuidedConceptSubmitV2",
               "media_review": "#/$defs/GuidedMediaReviewSubmitV1",
               "questionnaire": "#/$defs/GuidedQuestionnaireSubmitV1"
             },
@@ -12836,7 +12980,7 @@
               "$ref": "#/$defs/GuidedQuestionnaireSubmitV1"
             },
             {
-              "$ref": "#/$defs/GuidedConceptSubmitV1"
+              "$ref": "#/$defs/GuidedConceptSubmitV2"
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewSubmitV1"
@@ -12913,7 +13057,7 @@
         "content": {
           "discriminator": {
             "mapping": {
-              "concept_choice": "#/$defs/GuidedConceptChoiceV1",
+              "concept_choice": "#/$defs/GuidedConceptChoiceV2",
               "media_review": "#/$defs/GuidedMediaReviewV1",
               "questionnaire": "#/$defs/GuidedQuestionnaireV1"
             },
@@ -12924,7 +13068,7 @@
               "$ref": "#/$defs/GuidedQuestionnaireV1"
             },
             {
-              "$ref": "#/$defs/GuidedConceptChoiceV1"
+              "$ref": "#/$defs/GuidedConceptChoiceV2"
             },
             {
               "$ref": "#/$defs/GuidedMediaReviewV1"
@@ -13264,13 +13408,13 @@
       "title": "GuidedMediaReviewV1",
       "type": "object"
     },
-    "GuidedProductionJourneyV1": {
+    "GuidedProductionJourneyV2": {
       "additionalProperties": false,
       "properties": {
         "active_action": {
           "anyOf": [
             {
-              "$ref": "#/$defs/JourneyActionProjectionV1"
+              "$ref": "#/$defs/JourneyActionProjectionV2"
             },
             {
               "type": "null"
@@ -13278,31 +13422,31 @@
           ],
           "default": null
         },
-        "foundation_cursor": {
+        "active_occurrence_id": {
           "anyOf": [
             {
-              "minimum": 0,
-              "type": "integer"
+              "maxLength": 160,
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Foundation Cursor"
+          "title": "Active Occurrence Id"
         },
-        "foundation_queue": {
+        "decisions": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/FoundationJourneyItemV1"
+            "$ref": "#/$defs/JourneyElementDecisionV2"
           },
-          "maxItems": 64,
-          "title": "Foundation Queue",
+          "maxItems": 128,
+          "title": "Decisions",
           "type": "array"
         },
         "policy_version": {
-          "const": "fixed_ad_production_v1",
-          "default": "fixed_ad_production_v1",
+          "const": "fixed_ad_production_v2",
+          "default": "fixed_ad_production_v2",
           "title": "Policy Version",
           "type": "string"
         },
@@ -13310,17 +13454,19 @@
           "default": "intake",
           "enum": [
             "bgm",
-            "clarification",
+            "character",
             "completed",
-            "editing_ready",
-            "foundation_design",
+            "editing",
             "intake",
             "narrative_direction",
+            "product",
+            "props",
+            "scene",
             "storyboard_grids",
             "storyboard_plan",
             "style_lock",
-            "video_segments",
-            "world_setting"
+            "videos",
+            "world_view"
           ],
           "title": "Stage",
           "type": "string"
@@ -13347,7 +13493,7 @@
         "suspended_action": {
           "anyOf": [
             {
-              "$ref": "#/$defs/JourneyActionProjectionV1"
+              "$ref": "#/$defs/JourneyActionProjectionV2"
             },
             {
               "type": "null"
@@ -13358,14 +13504,14 @@
         "transition_evidence": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/JourneyTransitionEvidenceV1"
+            "$ref": "#/$defs/JourneyTransitionEvidenceV2"
           },
-          "maxItems": 256,
+          "maxItems": 512,
           "title": "Transition Evidence",
           "type": "array"
         }
       },
-      "title": "GuidedProductionJourneyV1",
+      "title": "GuidedProductionJourneyV2",
       "type": "object"
     },
     "GuidedQuestionAnswerV1": {
@@ -13606,7 +13752,7 @@
         "awaiting": {
           "anyOf": [
             {
-              "$ref": "#/$defs/GuidanceAwaitingV1"
+              "$ref": "#/$defs/GuidanceAwaitingV2"
             },
             {
               "type": "null"
@@ -13676,7 +13822,7 @@
           "default": null
         },
         "journey": {
-          "$ref": "#/$defs/GuidedProductionJourneyV1"
+          "$ref": "#/$defs/GuidedProductionJourneyV2"
         },
         "narrative_direction": {
           "anyOf": [
@@ -14201,7 +14347,7 @@
       "title": "InvokeCapabilityNextActionCommandV1",
       "type": "object"
     },
-    "JourneyActionProjectionV1": {
+    "JourneyActionProjectionV2": {
       "additionalProperties": false,
       "properties": {
         "action_id": {
@@ -14216,7 +14362,7 @@
           "title": "Action Kind",
           "type": "string"
         },
-        "foundation_item_id": {
+        "occurrence_id": {
           "anyOf": [
             {
               "maxLength": 160,
@@ -14227,25 +14373,32 @@
             }
           ],
           "default": null,
-          "title": "Foundation Item Id"
+          "title": "Occurrence Id"
         },
         "stage": {
           "enum": [
             "bgm",
-            "clarification",
+            "character",
             "completed",
-            "editing_ready",
-            "foundation_design",
+            "editing",
             "intake",
             "narrative_direction",
+            "product",
+            "props",
+            "scene",
             "storyboard_grids",
             "storyboard_plan",
             "style_lock",
-            "video_segments",
-            "world_setting"
+            "videos",
+            "world_view"
           ],
           "title": "Stage",
           "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         },
         "status": {
           "enum": [
@@ -14274,20 +14427,19 @@
         "action_id",
         "action_kind",
         "stage",
+        "stage_revision",
         "status"
       ],
-      "title": "JourneyActionProjectionV1",
+      "title": "JourneyActionProjectionV2",
       "type": "object"
     },
-    "JourneyElementDecisionV1": {
+    "JourneyElementDecisionV2": {
       "additionalProperties": false,
       "properties": {
-        "authority": {
-          "enum": [
-            "agent",
-            "user"
-          ],
-          "title": "Authority",
+        "decision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Decision Id",
           "type": "string"
         },
         "element_kind": {
@@ -14296,13 +14448,26 @@
           "title": "Element Kind",
           "type": "string"
         },
-        "presence": {
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "outcome": {
           "enum": [
+            "delegate",
             "exclude",
             "include",
-            "unspecified"
+            "unresolved"
           ],
-          "title": "Presence",
+          "title": "Outcome",
           "type": "string"
         },
         "requirements": {
@@ -14314,24 +14479,32 @@
         },
         "source": {
           "enum": [
-            "accepted_proposal",
-            "delegated_to_agent",
-            "explicit_user"
+            "delegated",
+            "system",
+            "user"
           ],
           "title": "Source",
           "type": "string"
+        },
+        "source_revision": {
+          "minimum": 1,
+          "title": "Source Revision",
+          "type": "integer"
         }
       },
       "required": [
-        "authority",
+        "decision_id",
         "element_kind",
-        "presence",
-        "source"
+        "occurrence_id",
+        "occurrence_index",
+        "outcome",
+        "source",
+        "source_revision"
       ],
-      "title": "JourneyElementDecisionV1",
+      "title": "JourneyElementDecisionV2",
       "type": "object"
     },
-    "JourneyEvidenceV1": {
+    "JourneyEvidenceV2": {
       "additionalProperties": false,
       "properties": {
         "action_id": {
@@ -14347,6 +14520,16 @@
           "default": null,
           "title": "Action Id"
         },
+        "actor": {
+          "default": "system",
+          "enum": [
+            "delegated",
+            "system",
+            "user"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
         "evidence_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -14355,32 +14538,45 @@
         },
         "evidence_kind": {
           "enum": [
-            "bgm_deferred",
+            "bgm_delegated",
             "bgm_excluded",
             "bgm_prepared",
+            "character_delegated",
+            "character_excluded",
+            "character_materialized",
             "clarification_completed",
             "creative_goal_validated",
+            "editing_excluded",
+            "editing_export_completed",
             "editing_prepared",
-            "foundation_item_deferred",
-            "foundation_item_excluded",
-            "foundation_item_selected",
-            "foundation_queue_amended",
-            "narrative_direction_selected",
+            "narrative_direction_accepted",
+            "product_delegated",
+            "product_excluded",
+            "product_materialized",
+            "props_delegated",
+            "props_excluded",
+            "props_materialized",
+            "scene_delegated",
+            "scene_excluded",
+            "scene_materialized",
             "stage_failed",
+            "storyboard_grids_excluded",
             "storyboard_grids_prepared",
             "storyboard_plan_accepted",
-            "style_locked",
+            "storyboard_plan_excluded",
+            "style_lock_accepted",
             "targeted_action_finished",
             "targeted_action_started",
-            "video_segments_prepared",
-            "world_setting_deferred",
-            "world_setting_excluded",
-            "world_setting_selected"
+            "videos_excluded",
+            "videos_prepared",
+            "world_view_delegated",
+            "world_view_excluded",
+            "world_view_selected"
           ],
           "title": "Evidence Kind",
           "type": "string"
         },
-        "foundation_item_id": {
+        "occurrence_id": {
           "anyOf": [
             {
               "maxLength": 160,
@@ -14391,7 +14587,7 @@
             }
           ],
           "default": null,
-          "title": "Foundation Item Id"
+          "title": "Occurrence Id"
         },
         "source_id": {
           "maxLength": 160,
@@ -14411,6 +14607,47 @@
           ],
           "default": null,
           "title": "Source Revision"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm",
+                "character",
+                "completed",
+                "editing",
+                "intake",
+                "narrative_direction",
+                "product",
+                "props",
+                "scene",
+                "storyboard_grids",
+                "storyboard_plan",
+                "style_lock",
+                "videos",
+                "world_view"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "stage_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Revision"
         }
       },
       "required": [
@@ -14418,10 +14655,10 @@
         "evidence_kind",
         "source_id"
       ],
-      "title": "JourneyEvidenceV1",
+      "title": "JourneyEvidenceV2",
       "type": "object"
     },
-    "JourneyPolicyContextV1": {
+    "JourneyPolicyContextV2": {
       "additionalProperties": false,
       "properties": {
         "clarification_required": {
@@ -14429,58 +14666,17 @@
           "title": "Clarification Required",
           "type": "boolean"
         },
-        "completed_evidence_kinds": {
-          "default": [],
-          "items": {
-            "enum": [
-              "bgm_deferred",
-              "bgm_excluded",
-              "bgm_prepared",
-              "clarification_completed",
-              "creative_goal_validated",
-              "editing_prepared",
-              "foundation_item_deferred",
-              "foundation_item_excluded",
-              "foundation_item_selected",
-              "foundation_queue_amended",
-              "narrative_direction_selected",
-              "stage_failed",
-              "storyboard_grids_prepared",
-              "storyboard_plan_accepted",
-              "style_locked",
-              "targeted_action_finished",
-              "targeted_action_started",
-              "video_segments_prepared",
-              "world_setting_deferred",
-              "world_setting_excluded",
-              "world_setting_selected"
-            ],
-            "type": "string"
-          },
-          "maxItems": 64,
-          "title": "Completed Evidence Kinds",
-          "type": "array"
-        },
-        "element_decisions": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/JourneyElementDecisionV1"
-          },
-          "maxItems": 32,
-          "title": "Element Decisions",
-          "type": "array"
-        },
         "journey": {
-          "$ref": "#/$defs/GuidedProductionJourneyV1"
+          "$ref": "#/$defs/GuidedProductionJourneyV2"
         }
       },
       "required": [
         "journey"
       ],
-      "title": "JourneyPolicyContextV1",
+      "title": "JourneyPolicyContextV2",
       "type": "object"
     },
-    "JourneyPolicyResultV1": {
+    "JourneyPolicyResultV2": {
       "additionalProperties": false,
       "properties": {
         "action": {
@@ -14488,6 +14684,7 @@
             "advance_stage",
             "complete",
             "invoke_capability",
+            "invoke_internal_checkpoint",
             "materialize_selected_option",
             "prepare_editing",
             "wait_for_user"
@@ -14524,7 +14721,35 @@
           "title": "Expected Stage Revision",
           "type": "integer"
         },
-        "foundation_item_id": {
+        "next_stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm",
+                "character",
+                "completed",
+                "editing",
+                "intake",
+                "narrative_direction",
+                "product",
+                "props",
+                "scene",
+                "storyboard_grids",
+                "storyboard_plan",
+                "style_lock",
+                "videos",
+                "world_view"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Stage"
+        },
+        "occurrence_id": {
           "anyOf": [
             {
               "maxLength": 160,
@@ -14535,33 +14760,7 @@
             }
           ],
           "default": null,
-          "title": "Foundation Item Id"
-        },
-        "next_stage": {
-          "anyOf": [
-            {
-              "enum": [
-                "bgm",
-                "clarification",
-                "completed",
-                "editing_ready",
-                "foundation_design",
-                "intake",
-                "narrative_direction",
-                "storyboard_grids",
-                "storyboard_plan",
-                "style_lock",
-                "video_segments",
-                "world_setting"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Next Stage"
+          "title": "Occurrence Id"
         },
         "requires_model_call": {
           "default": false,
@@ -14573,12 +14772,22 @@
         "action",
         "expected_stage_revision"
       ],
-      "title": "JourneyPolicyResultV1",
+      "title": "JourneyPolicyResultV2",
       "type": "object"
     },
-    "JourneyTransitionEvidenceV1": {
+    "JourneyTransitionEvidenceV2": {
       "additionalProperties": false,
       "properties": {
+        "actor": {
+          "default": "system",
+          "enum": [
+            "delegated",
+            "system",
+            "user"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
         "evidence_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -14587,30 +14796,56 @@
         },
         "evidence_kind": {
           "enum": [
-            "bgm_deferred",
+            "bgm_delegated",
             "bgm_excluded",
             "bgm_prepared",
+            "character_delegated",
+            "character_excluded",
+            "character_materialized",
             "clarification_completed",
             "creative_goal_validated",
+            "editing_excluded",
+            "editing_export_completed",
             "editing_prepared",
-            "foundation_item_deferred",
-            "foundation_item_excluded",
-            "foundation_item_selected",
-            "foundation_queue_amended",
-            "narrative_direction_selected",
+            "narrative_direction_accepted",
+            "product_delegated",
+            "product_excluded",
+            "product_materialized",
+            "props_delegated",
+            "props_excluded",
+            "props_materialized",
+            "scene_delegated",
+            "scene_excluded",
+            "scene_materialized",
             "stage_failed",
+            "storyboard_grids_excluded",
             "storyboard_grids_prepared",
             "storyboard_plan_accepted",
-            "style_locked",
+            "storyboard_plan_excluded",
+            "style_lock_accepted",
             "targeted_action_finished",
             "targeted_action_started",
-            "video_segments_prepared",
-            "world_setting_deferred",
-            "world_setting_excluded",
-            "world_setting_selected"
+            "videos_excluded",
+            "videos_prepared",
+            "world_view_delegated",
+            "world_view_excluded",
+            "world_view_selected"
           ],
           "title": "Evidence Kind",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "recorded_at": {
           "format": "date-time",
@@ -14635,15 +14870,42 @@
           ],
           "default": null,
           "title": "Source Revision"
+        },
+        "stage": {
+          "enum": [
+            "bgm",
+            "character",
+            "completed",
+            "editing",
+            "intake",
+            "narrative_direction",
+            "product",
+            "props",
+            "scene",
+            "storyboard_grids",
+            "storyboard_plan",
+            "style_lock",
+            "videos",
+            "world_view"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         }
       },
       "required": [
         "evidence_id",
         "evidence_kind",
         "recorded_at",
-        "source_id"
+        "source_id",
+        "stage",
+        "stage_revision"
       ],
-      "title": "JourneyTransitionEvidenceV1",
+      "title": "JourneyTransitionEvidenceV2",
       "type": "object"
     },
     "JsonValue": {},
@@ -15305,6 +15567,17 @@
     "NodePromptPreparationV1": {
       "additionalProperties": false,
       "properties": {
+        "assertion_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PromptAssertionEvidenceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "attempt_no": {
           "minimum": 0,
           "title": "Attempt No",
@@ -15927,6 +16200,106 @@
         "value"
       ],
       "title": "OutputResolutionControlV1",
+      "type": "object"
+    },
+    "ParentDerivedMaterializationIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "derivative_role": {
+          "enum": [
+            "character_turnaround",
+            "product_multiview"
+          ],
+          "title": "Derivative Role",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "parent": {
+          "$ref": "#/$defs/ParentNodeSnapshotV1"
+        },
+        "payload_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Payload Digest",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "derivative_role",
+        "intent_id",
+        "occurrence_id",
+        "parent",
+        "payload_digest",
+        "stage_revision",
+        "workflow_id"
+      ],
+      "title": "ParentDerivedMaterializationIntentV1",
+      "type": "object"
+    },
+    "ParentNodeSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "prompt_preparation_operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Preparation Operation Id"
+        },
+        "semantic_role": {
+          "enum": [
+            "character_main",
+            "product_main"
+          ],
+          "title": "Semantic Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_revision",
+        "semantic_role"
+      ],
+      "title": "ParentNodeSnapshotV1",
       "type": "object"
     },
     "PlannedCapabilityReferenceV1": {
@@ -16586,7 +16959,7 @@
             "$ref": "#/$defs/ProductProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -16696,6 +17069,282 @@
         "workflow_id"
       ],
       "title": "ProjectCreativeMemoryV2",
+      "type": "object"
+    },
+    "PromptAssertionEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_block_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Assertion Block Digest",
+          "type": "string"
+        },
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "maxProperties": 16,
+          "title": "Document Revisions",
+          "type": "object"
+        },
+        "engine_owned_fields_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Engine Owned Fields Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "policy_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Policy Ref",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prepared_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Prepared Prompt Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "source_snapshots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PromptAssertionSourceSnapshotV1"
+          },
+          "maxItems": 64,
+          "title": "Source Snapshots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "assertion_block_digest",
+        "assertion_ids",
+        "engine_owned_fields_digest",
+        "evidence_digest",
+        "policy_digest",
+        "policy_ref",
+        "policy_version",
+        "prepared_prompt_digest",
+        "recipe_id",
+        "recipe_version"
+      ],
+      "title": "PromptAssertionEvidenceV1",
+      "type": "object"
+    },
+    "PromptAssertionSourceSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Version Id"
+        },
+        "binding_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "binding_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Revision"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "document_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Revision"
+        },
+        "reference_purpose": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Purpose"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "source_kind": {
+          "enum": [
+            "binding",
+            "document",
+            "sequence"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Revision"
+        }
+      },
+      "required": [
+        "source_kind"
+      ],
+      "title": "PromptAssertionSourceSnapshotV1",
       "type": "object"
     },
     "PropCountControlPatchV1": {
@@ -16932,7 +17581,7 @@
             "$ref": "#/$defs/PropProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -16991,6 +17640,7 @@
       "properties": {
         "action": {
           "enum": [
+            "custom_direction",
             "delegate_choice",
             "reuse_direction",
             "select_option"
@@ -17047,6 +17697,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "derivative_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentDerivedMaterializationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "envelope_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -17069,6 +17730,27 @@
           "minLength": 1,
           "title": "Materialization Id",
           "type": "string"
+        },
+        "operation_kind": {
+          "default": "standalone",
+          "enum": [
+            "derivative",
+            "parent",
+            "standalone"
+          ],
+          "title": "Operation Kind",
+          "type": "string"
+        },
+        "parent_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentNodeSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "proposal_id": {
           "maxLength": 160,
@@ -17113,6 +17795,12 @@
           ],
           "default": null,
           "title": "Selection Reason"
+        },
+        "stage_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
         },
         "style_skill_run_id": {
           "anyOf": [
@@ -17484,6 +18172,89 @@
         "source_kind"
       ],
       "title": "ProposedDraftReferenceV2",
+      "type": "object"
+    },
+    "ProviderPromptAssertionEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_block_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Assertion Block Digest",
+          "type": "string"
+        },
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "policy_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Policy Ref",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "preparation_evidence_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Preparation Evidence Digest",
+          "type": "string"
+        },
+        "prepared_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Prepared Prompt Digest",
+          "type": "string"
+        },
+        "provider_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Provider Prompt Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assertion_block_digest",
+        "assertion_ids",
+        "policy_digest",
+        "policy_ref",
+        "policy_version",
+        "preparation_evidence_digest",
+        "prepared_prompt_digest",
+        "provider_prompt_digest",
+        "recipe_id",
+        "recipe_version"
+      ],
+      "title": "ProviderPromptAssertionEvidenceV1",
       "type": "object"
     },
     "QuickMediaAgentContext": {
@@ -19194,6 +19965,20 @@
           ],
           "default": null,
           "title": "Source Role"
+        },
+        "source_sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Sequence Id"
         }
       },
       "required": [
@@ -20071,7 +20856,7 @@
             "$ref": "#/$defs/SceneProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -20098,11 +20883,34 @@
       "title": "ScriptDraftContentV2",
       "type": "object"
     },
+    "ScriptMaterializationContentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "total_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Total Duration Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "content",
+        "total_duration_seconds"
+      ],
+      "title": "ScriptMaterializationContentV1",
+      "type": "object"
+    },
     "ScriptMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
         "structured_content": {
-          "$ref": "#/$defs/ScriptDraftContentV2"
+          "$ref": "#/$defs/ScriptMaterializationContentV1"
         },
         "summary_prompt": {
           "maxLength": 8192,
@@ -20166,7 +20974,7 @@
             "$ref": "#/$defs/ScriptProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -20298,6 +21106,19 @@
     "SelectedConceptOptionV1": {
       "additionalProperties": false,
       "properties": {
+        "custom_text": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Text"
+        },
         "key_decisions": {
           "items": {
             "maxLength": 1024,
@@ -21978,7 +22799,7 @@
             "$ref": "#/$defs/StoryboardProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -24447,57 +25268,10 @@
       "title": "VideoMaterializationResultV1",
       "type": "object"
     },
-    "VideoParameterCandidateV2": {
+    "VideoParameterCandidateV3": {
       "additionalProperties": false,
-      "allOf": [
-        {
-          "else": {
-            "properties": {
-              "binding_id": {
-                "type": "null"
-              },
-              "source_node_id": {
-                "type": "null"
-              },
-              "source_revision": {
-                "type": "null"
-              }
-            }
-          },
-          "if": {
-            "properties": {
-              "source_kind": {
-                "const": "binding"
-              }
-            },
-            "required": [
-              "source_kind"
-            ]
-          },
-          "then": {
-            "required": [
-              "binding_id",
-              "source_node_id",
-              "source_revision"
-            ]
-          }
-        }
-      ],
+      "description": "One semantic value attributed to an opaque request-scoped source.",
       "properties": {
-        "binding_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Binding Id"
-        },
         "field": {
           "enum": [
             "aspect_ratio",
@@ -24508,40 +25282,12 @@
           "title": "Field",
           "type": "string"
         },
-        "source_kind": {
-          "enum": [
-            "binding",
-            "node_prompt"
-          ],
-          "title": "Source Kind",
+        "source_ref": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^source_[1-9][0-9]*$",
+          "title": "Source Ref",
           "type": "string"
-        },
-        "source_node_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Node Id"
-        },
-        "source_revision": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Revision"
         },
         "value": {
           "anyOf": [
@@ -24563,10 +25309,10 @@
       },
       "required": [
         "field",
-        "source_kind",
+        "source_ref",
         "value"
       ],
-      "title": "VideoParameterCandidateV2",
+      "title": "VideoParameterCandidateV3",
       "type": "object"
     },
     "VideoParameterCapabilityContextV2": {
@@ -24646,62 +25392,52 @@
       "title": "VideoParameterCapabilityContextV2",
       "type": "object"
     },
-    "VideoParameterIntentContextV2": {
+    "VideoParameterIntentContextV3": {
       "additionalProperties": false,
       "properties": {
         "capability": {
           "$ref": "#/$defs/VideoParameterCapabilityContextV2"
         },
         "context_kind": {
-          "const": "video_parameter_intent",
+          "const": "video_parameter_intent_v3",
           "title": "Context Kind",
           "type": "string"
         },
-        "selected_model_ref": {
-          "maxLength": 320,
-          "minLength": 3,
-          "title": "Selected Model Ref",
-          "type": "string"
-        },
         "sources": {
-          "default": [],
           "items": {
-            "$ref": "#/$defs/VideoParameterTextSourceV2"
+            "$ref": "#/$defs/VideoParameterTextSourceV3"
           },
           "maxItems": 129,
+          "minItems": 1,
           "title": "Sources",
           "type": "array"
         },
-        "target_node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Target Node Id",
-          "type": "string"
-        },
-        "target_node_revision": {
-          "minimum": 1,
-          "title": "Target Node Revision",
-          "type": "integer"
-        },
-        "workflow_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Workflow Id",
-          "type": "string"
+        "unresolved_fields": {
+          "items": {
+            "enum": [
+              "aspect_ratio",
+              "duration_seconds",
+              "generate_audio",
+              "resolution"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Unresolved Fields",
+          "type": "array"
         }
       },
       "required": [
         "capability",
         "context_kind",
-        "selected_model_ref",
-        "target_node_id",
-        "target_node_revision",
-        "workflow_id"
+        "sources",
+        "unresolved_fields"
       ],
-      "title": "VideoParameterIntentContextV2",
+      "title": "VideoParameterIntentContextV3",
       "type": "object"
     },
-    "VideoParameterIntentV2": {
+    "VideoParameterIntentV3": {
       "additionalProperties": false,
       "allOf": [
         {
@@ -24735,7 +25471,7 @@
         "candidates": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/VideoParameterCandidateV2"
+            "$ref": "#/$defs/VideoParameterCandidateV3"
           },
           "maxItems": 32,
           "title": "Candidates",
@@ -24753,44 +25489,18 @@
       "required": [
         "status"
       ],
-      "title": "VideoParameterIntentV2",
+      "title": "VideoParameterIntentV3",
       "type": "object"
     },
-    "VideoParameterTextSourceV2": {
+    "VideoParameterTextSourceV3": {
       "additionalProperties": false,
       "properties": {
-        "binding_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Binding Id"
-        },
-        "source_kind": {
-          "enum": [
-            "binding",
-            "node_prompt"
-          ],
-          "title": "Source Kind",
-          "type": "string"
-        },
-        "source_node_id": {
-          "maxLength": 160,
+        "source_ref": {
+          "maxLength": 80,
           "minLength": 1,
-          "title": "Source Node Id",
+          "pattern": "^source_[1-9][0-9]*$",
+          "title": "Source Ref",
           "type": "string"
-        },
-        "source_revision": {
-          "minimum": 1,
-          "title": "Source Revision",
-          "type": "integer"
         },
         "text": {
           "maxLength": 32768,
@@ -24800,12 +25510,10 @@
         }
       },
       "required": [
-        "source_kind",
-        "source_node_id",
-        "source_revision",
+        "source_ref",
         "text"
       ],
-      "title": "VideoParameterTextSourceV2",
+      "title": "VideoParameterTextSourceV3",
       "type": "object"
     },
     "VideoProposalOptionV1": {
@@ -24849,7 +25557,7 @@
             "$ref": "#/$defs/VideoProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -25596,7 +26304,7 @@
             "$ref": "#/$defs/WorldSettingProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 1,
+          "minItems": 3,
           "title": "Options",
           "type": "array"
         }
@@ -25765,7 +26473,7 @@
     "ConversationSummaryAgentContext",
     "DirectorTurnContextV2",
     "AgentCommandReplanContextV2",
-    "VideoParameterIntentContextV2",
+    "VideoParameterIntentContextV3",
     "TurnIntentContextV2",
     "NextActionContextV1",
     "CapabilityInvocationContextV2",
@@ -25779,7 +26487,7 @@
     "AgentCanvasScriptOutput",
     "AgentCanvasTextOutput",
     "AgentCommandPlanDraftV2",
-    "VideoParameterIntentV2",
+    "VideoParameterIntentV3",
     "CompactTurnIntentDecisionV3",
     "TurnIntentDecisionV2",
     "NextActionCommandV1",
@@ -25934,6 +26642,17 @@
       "operation": "materialize_storyboard_segment",
       "result_contract_name": "StoryboardSegmentMaterializationDraftV2",
       "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "author_guided_script_checkpoint",
+      "result_contract_name": "ScriptMaterializationResultV1",
+      "style_projection_role": "script"
     },
     {
       "capability_id": "world_setting",
@@ -26201,13 +26920,13 @@
     },
     {
       "capability_id": "video_direction",
-      "context_contract_name": "VideoParameterIntentContextV2",
+      "context_contract_name": "VideoParameterIntentContextV3",
       "display_name": "Video Director",
       "internal_skill_id": "video_agent_video_direction",
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "compile_video_parameters",
-      "result_contract_name": "VideoParameterIntentV2",
+      "result_contract_name": "VideoParameterIntentV3",
       "style_projection_role": "video"
     },
     {

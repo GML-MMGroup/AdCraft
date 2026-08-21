@@ -22,7 +22,9 @@ class ProposalPublicationRunner:
         context_loader: Callable[
             [ProposalPublicationEnvelopeV1], CapabilityMaterializationContextV1
         ],
-        publisher: Callable[[ProposalPublicationEnvelopeV1, object, Callable[[], None]], str],
+        publisher: Callable[
+            [ProposalPublicationEnvelopeV1, object, Callable[[], None]], str | None
+        ],
         conversations: object | None = None,
     ) -> None:
         del conversations

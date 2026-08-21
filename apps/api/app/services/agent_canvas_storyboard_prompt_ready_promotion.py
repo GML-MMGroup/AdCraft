@@ -21,6 +21,11 @@ from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptReadyPromotionCommandV1,
     StoryboardPromptReadyPromotionResultV1,
 )
+from app.schemas.agent_working_documents import (
+    AgentAnchorImageAssetVersionSourceV3,
+    AgentAnchorNodeSourceV3,
+    AnchorRegistryContentV3,
+)
 
 
 class StoryboardPromptReadyPromotionService:
@@ -105,6 +110,10 @@ class StoryboardPromptReadyPromotionService:
             workflow,
             tuple(pairs),
             execution_mode=execution_mode,
+            guided_anchor_node_ids=self._guided_anchor_node_ids(
+                outcome.workflow_id,
+                session_id,
+            ),
         )
         result, document = production_plans[0]
         assert document is not None
@@ -130,9 +139,9 @@ class StoryboardPromptReadyPromotionService:
         storyboard_preparations: tuple[StoryboardPromptPreparationPairV1, ...],
         *,
         execution_mode: str,
+        guided_anchor_node_ids: frozenset[str] = frozenset(),
     ) -> tuple[StoryboardPromptPreparationPairV1, ...]:
-        if execution_mode == "automatic":
-            return storyboard_preparations
+        del execution_mode
         nodes = {node.node_id: node for node in workflow.nodes}
         required_sources: dict[str, list[str]] = {}
         for binding in workflow.bindings:
@@ -145,6 +154,20 @@ class StoryboardPromptReadyPromotionService:
                     binding.source.node_id
                 )
         selected = {item.node_id: item for item in storyboard_preparations}
+        for node_id in sorted(guided_anchor_node_ids):
+            node = nodes.get(node_id)
+            if node is None:
+                raise _invalid("anchor_source_node")
+            if node.status != "draft":
+                continue
+            preparation = node.prompt_preparation
+            if preparation.status != "ready" or not preparation.operation_id:
+                continue
+            selected[node_id] = StoryboardPromptPreparationPairV1(
+                node_id=node_id,
+                operation_id=preparation.operation_id,
+                expected_node_revision=node.revision,
+            )
         pending = list(selected)
         while pending:
             target_node_id = pending.pop()
@@ -168,6 +191,42 @@ class StoryboardPromptReadyPromotionService:
                 )
                 pending.append(source_node_id)
         return tuple(sorted(selected.values(), key=lambda item: (item.node_id, item.operation_id)))
+
+    def _guided_anchor_node_ids(
+        self,
+        workflow_id: str,
+        session_id: str,
+    ) -> frozenset[str]:
+        registry = self._documents.get_by_kind(
+            workflow_id,
+            session_id,
+            "anchor_registry",
+        )
+        if registry is None:
+            return frozenset()
+        if not isinstance(registry.content, AnchorRegistryContentV3):
+            raise _invalid("anchor_registry")
+        node_ids: set[str] = set()
+        for anchor in registry.content.anchors:
+            if anchor.lifecycle not in {"planned", "active"} or anchor.semantic_role not in {
+                "world_setting",
+                "product",
+                "prop",
+                "character",
+                "scene",
+            }:
+                continue
+            sources = (anchor.source, *(item.source for item in anchor.role_sources))
+            for source in sources:
+                if not isinstance(
+                    source,
+                    (AgentAnchorNodeSourceV3, AgentAnchorImageAssetVersionSourceV3),
+                ):
+                    continue
+                if source.workflow_id != workflow_id:
+                    raise _invalid("anchor_source_workflow")
+                node_ids.add(source.node_id)
+        return frozenset(node_ids)
 
     def _session_revision(self, workflow_id: str, session_id: str) -> int:
         session = self._session(workflow_id, session_id)

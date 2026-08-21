@@ -16,6 +16,7 @@ from app.persistence.agent_canvas_materialization_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import (
+    CustomDirectionActionV2,
     DeferTopicActionV2,
     DelegateChoiceActionV2,
     ExcludeElementActionV2,
@@ -24,9 +25,9 @@ from app.schemas.agent_canvas_conversation import (
 )
 from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
-    GuidedConceptChoiceV1,
-    GuidedConceptSubmitV1,
+    GuidanceAwaitingV2,
+    GuidedConceptChoiceV2,
+    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedInteractionV1,
@@ -63,7 +64,7 @@ class GuidedInteractionService:
     def open_interaction(
         self,
         interaction: GuidedInteractionV1,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
     ) -> GuidedInteractionV1:
         return self._interactions.open_with_awaiting(interaction, awaiting)
 
@@ -95,9 +96,9 @@ class GuidedInteractionService:
             return None
         interaction = self.get_interaction(workflow_id, submission.interaction_id)
         if (
-            not isinstance(interaction.content, GuidedConceptChoiceV1)
+            not isinstance(interaction.content, GuidedConceptChoiceV2)
             or interaction.content.proposal_id != proposal_id
-            or not isinstance(submission.request, GuidedConceptSubmitV1)
+            or not isinstance(submission.request, GuidedConceptSubmitV2)
             or submission.result is None
         ):
             raise _error(
@@ -170,9 +171,10 @@ class GuidedInteractionService:
                 request,
                 submission_id=submission_id,
                 idempotency_key=idempotency_key,
+                continuation_writer=self._conversations.insert_continuation_in_transaction,
             )
-        if not isinstance(request, GuidedConceptSubmitV1) or not isinstance(
-            interaction.content, GuidedConceptChoiceV1
+        if not isinstance(request, GuidedConceptSubmitV2) or not isinstance(
+            interaction.content, GuidedConceptChoiceV2
         ):
             raise _error(
                 "guided_interaction_action_not_allowed",
@@ -291,6 +293,31 @@ class GuidedInteractionService:
                     for reference in request.accepted_references
                 ),
             )
+        if action_name == "custom":
+            if request.custom_text is None:
+                raise _error(
+                    "journey_custom_input_invalid",
+                    "A custom guided direction is required.",
+                )
+            descriptor = next(
+                (
+                    candidate
+                    for candidate in proposal.actions
+                    if candidate.action == "custom_direction"
+                ),
+                None,
+            )
+            if descriptor is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Custom direction is not available for the current Proposal.",
+                )
+            return CustomDirectionActionV2(
+                action_id=descriptor.action_id,
+                action="custom_direction",
+                custom_text=request.custom_text,
+                expected_session_revision=request.expected_session_revision,
+            )
         if action_name == "delegate":
             descriptor = next(
                 (
@@ -315,10 +342,11 @@ class GuidedInteractionService:
     def _proposal_action_matches_submission(
         proposal_id: str,
         action: ProposalActionRequestV2,
-        submission: GuidedConceptSubmitV1,
+        submission: GuidedConceptSubmitV2,
     ) -> bool:
         expected_action = {
             "select": "select_option",
+            "custom": "custom_direction",
             "delegate": "delegate_choice",
             "defer": "defer_topic",
             "exclude": "exclude_element",
@@ -339,6 +367,8 @@ class GuidedInteractionService:
                 )
                 == action.accepted_references
             )
+        if isinstance(action, CustomDirectionActionV2):
+            return submission.custom_text == action.custom_text
         return (
             isinstance(action, DelegateChoiceActionV2)
             if submission.action == "delegate"

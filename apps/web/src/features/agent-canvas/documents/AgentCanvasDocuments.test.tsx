@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -92,11 +95,11 @@ afterEach(() => {
 });
 
 describe("Agent Canvas Documents", () => {
-  it("renders a persisted Storyboard plan as a read-only card and navigates linked nodes", async () => {
-    vi.spyOn(agentCanvasApi, "agentCanvasDocument").mockResolvedValue(storyboardDocument);
+  it("keeps a timeline document compact and loads its details in a viewport dialog on demand", async () => {
+    const getDocument = vi.spyOn(agentCanvasApi, "agentCanvasDocument").mockResolvedValue(storyboardDocument);
     const focusNode = vi.fn();
 
-    render(
+    const { container } = render(
       <AgentCanvasDocumentReferenceCard
         workflowId="workflow-1"
         reference={reference}
@@ -105,13 +108,48 @@ describe("Agent Canvas Documents", () => {
       />,
     );
 
+    const entry = screen.getByRole("button", { name: "Open Pressure cooker storyboard plan" });
+    expect(screen.getByText("Storyboard Production Plan · revision 4")).toBeTruthy();
+    expect(screen.queryByText("15s")).toBeNull();
+    expect(getDocument).not.toHaveBeenCalled();
+
+    fireEvent.click(entry);
+
+    const dialog = await screen.findByRole("dialog", { name: "Pressure cooker storyboard plan" });
+    expect(container.contains(dialog)).toBe(false);
+    expect(getDocument).toHaveBeenCalledWith("workflow-1", "doc-plan-1");
     expect(await screen.findByText("15s")).toBeTruthy();
     expect(screen.getByText("16:9")).toBeTruthy();
     expect(screen.getByText("Steam clears to reveal the cooker.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Open storyboard grid/i }));
     expect(focusNode).toHaveBeenCalledWith("node-grid-1");
+    expect(screen.queryByRole("dialog", { name: "Pressure cooker storyboard plan" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Run/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Delete/i })).toBeNull();
+  });
+
+  it("uses the same compact timeline entry for Anchor Registry documents", () => {
+    const getDocument = vi.spyOn(agentCanvasApi, "agentCanvasDocument");
+
+    render(
+      <AgentCanvasDocumentReferenceCard
+        workflowId="workflow-1"
+        reference={{
+          ...reference,
+          document_id: "doc-anchors-1",
+          document_kind: "anchor_registry",
+          revision: 8,
+          content_digest: "sha256:anchors",
+          title: "Anchor Registry",
+        }}
+        documentEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Open Anchor Registry" })).toBeTruthy();
+    expect(screen.getByText("Anchor Registry · revision 8")).toBeTruthy();
+    expect(getDocument).not.toHaveBeenCalled();
   });
 
   it("filters and paginates the document browser using backend cursors", async () => {
@@ -142,5 +180,54 @@ describe("Agent Canvas Documents", () => {
       cursor: undefined,
       limit: 20,
     }));
+  });
+
+  it("opens Agent Documents in a viewport portal and closes it with Escape", async () => {
+    vi.spyOn(agentCanvasApi, "listAgentCanvasDocuments")
+      .mockResolvedValue({ items: [storyboardDocument], next_cursor: null });
+    const { container } = render(
+      <AgentCanvasDocumentBrowser
+        workflowId="workflow-1"
+        documentEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Agent Documents" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Agent Documents" });
+    expect(container.contains(dialog)).toBe(false);
+    expect(document.body.querySelector(".agent-document-browser__overlay")?.contains(dialog)).toBe(true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Agent Documents" })).toBeNull();
+  });
+
+  it("centers the Agent Documents overlay in the viewport", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/documents/agent-canvas-documents.css");
+    const css = readFileSync(cssPath, "utf8");
+    const overlayRule = css.match(/\.agent-document-browser__overlay\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(overlayRule).toBeTruthy();
+    expect(overlayRule).toContain("position: fixed");
+    expect(overlayRule).toContain("inset: 0");
+    expect(overlayRule).toContain("place-items: center");
+  });
+
+  it("uses the dedicated monochrome production-document palette", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/documents/agent-canvas-documents.css");
+    const css = readFileSync(cssPath, "utf8");
+    const panelRule = css.match(/\.agent-document-browser__panel\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const selectedFilterRule = css.match(/\.agent-document-browser__filters button\.is-selected\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(css).toContain("--document-panel: #181818");
+    expect(css).toContain("--document-surface: #222222");
+    expect(css).toContain("--document-text: #f2f2f2");
+    expect(css).toContain("--document-danger: #ca6f6f");
+    expect(panelRule).toContain("background: var(--document-panel)");
+    expect(selectedFilterRule).toContain("background: #e5e5e5");
+    expect(selectedFilterRule).toContain("color: #181818");
+    expect(css).not.toContain("var(--accent)");
+    expect(css).not.toContain("var(--brand-hover)");
   });
 });

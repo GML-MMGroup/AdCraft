@@ -13,13 +13,15 @@ from sqlalchemy import func, insert, select, update
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_expert_activity_terminal_publication import (
+    publish_expert_activity_terminal_in_transaction,
+)
 from app.persistence.models import (
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasConceptOptionRow,
     AgentCanvasConceptProposalRow,
     AgentCanvasContinuationOutboxRow,
-    AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
@@ -33,13 +35,21 @@ from app.schemas.agent_canvas_creative_session import (
     canonical_guidance_topic_kind,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
     GuidedChoiceOptionV1,
-    GuidedConceptChoiceV1,
+    GuidedConceptChoiceV2,
     GuidedInteractionV1,
 )
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_production_journey import (
+    FIXED_JOURNEY_STAGE_DESCRIPTORS,
+    parse_production_journey,
+)
+from app.services.agent_canvas_public_concept_projection import (
+    AgentCanvasPublicConceptProjector,
+    public_option_metadata,
+)
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
@@ -67,6 +77,12 @@ class AgentCanvasCapabilityProposalRepository:
         self._events = events
 
     def publish(self, envelope: CapabilityCommandEnvelopeV2, result: BaseModel) -> str:
+        if envelope.publication_kind != "proposal":
+            raise V2PersistenceError(
+                "capability_publication_mode_invalid",
+                "Internal document commands cannot publish a public Proposal.",
+                stage="capability_publication",
+            )
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
@@ -77,6 +93,15 @@ class AgentCanvasCapabilityProposalRepository:
                 "Capability result contains no Proposal options.",
                 stage="capability_publication",
             )
+        option_ids = tuple(
+            f"option_{_digest(proposal_id, str(order))[:32]}" for order in range(len(options))
+        )
+        public_projection = AgentCanvasPublicConceptProjector().project(
+            options=options,
+            option_ids=option_ids,
+            response_locale=envelope.response_locale,
+            recommended_option_id=option_ids[0],
+        )
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
@@ -235,9 +260,8 @@ class AgentCanvasCapabilityProposalRepository:
                         updated_at=timestamp,
                     )
                 )
-                public_options: list[dict[str, object]] = []
                 for order, option in enumerate(options):
-                    option_id = f"option_{_digest(proposal_id, str(order))[:32]}"
+                    option_id = option_ids[order]
                     public_summary = str(option.public_summary)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
@@ -256,20 +280,13 @@ class AgentCanvasCapabilityProposalRepository:
                             draft_seed_digest=None,
                         )
                     )
-                    public_options.append(
-                        {
-                            "option_id": option_id,
-                            "title": str(option.title),
-                            "public_summary": public_summary,
-                            "key_decisions": list(option.key_decisions),
-                        }
-                    )
                 interaction, awaiting, journey = _concept_interaction(
                     envelope=envelope,
                     proposal_id=proposal_id,
                     session=session,
                     session_revision=session_revision,
-                    public_options=public_options,
+                    public_options=public_projection.options,
+                    response_locale=public_projection.response_locale,
                     now=now,
                 )
                 if interaction is not None and awaiting is not None:
@@ -335,11 +352,20 @@ class AgentCanvasCapabilityProposalRepository:
                         updated_at=timestamp,
                     )
                 )
-                connection.execute(
-                    update(AgentCanvasExpertActivityRow)
-                    .where(AgentCanvasExpertActivityRow.turn_id == envelope.capability_turn_id)
-                    .values(status="completed", updated_at=timestamp)
+                activity_publication = publish_expert_activity_terminal_in_transaction(
+                    connection,
+                    self._events,
+                    turn_id=envelope.capability_turn_id,
+                    status="completed",
+                    response_locale=public_projection.response_locale,
+                    now=timestamp,
                 )
+                if not activity_publication.changed:
+                    raise V2PersistenceError(
+                        "expert_activity_terminal",
+                        "Expert activity already reached a terminal state.",
+                        stage="capability_publication",
+                    )
                 connection.execute(
                     update(AgentCanvasContinuationOutboxRow)
                     .where(
@@ -380,7 +406,7 @@ class AgentCanvasCapabilityProposalRepository:
                             build_presentation_metadata(
                                 message_key="concept_proposal.review",
                                 message_args={"option_count": len(options)},
-                                response_locale=envelope.response_locale,
+                                response_locale=public_projection.response_locale,
                                 presentation_key=f"proposal:{proposal_id}",
                                 base={
                                     "proposal_id": proposal_id,
@@ -389,7 +415,10 @@ class AgentCanvasCapabilityProposalRepository:
                                         envelope.capability_id
                                     ],
                                     "proposal_revision": 1,
-                                    "options": public_options,
+                                    "options": [
+                                        public_option_metadata(option)
+                                        for option in public_projection.options
+                                    ],
                                 },
                             ),
                             separators=(",", ":"),
@@ -443,13 +472,6 @@ class AgentCanvasCapabilityProposalRepository:
                 publication_events.extend(
                     [
                         (
-                            "expert_activity_completed",
-                            {
-                                "capability_id": envelope.capability_id,
-                                "status": "completed",
-                            },
-                        ),
-                        (
                             "agent_command_completed",
                             {
                                 "envelope_id": envelope.envelope_id,
@@ -486,34 +508,30 @@ def _concept_interaction(
     proposal_id: str,
     session: Mapping[str, object],
     session_revision: int,
-    public_options: list[dict[str, object]],
+    public_options: tuple[GuidedChoiceOptionV1, ...],
+    response_locale: str,
     now: datetime,
 ) -> tuple[
     GuidedInteractionV1 | None,
-    GuidanceAwaitingV1 | None,
-    GuidedProductionJourneyV1,
+    GuidanceAwaitingV2 | None,
+    GuidedProductionJourneyV2,
 ]:
-    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
-    if len(public_options) not in {2, 3}:
+    journey = parse_production_journey(str(session["journey_state_json"]))
+    if len(public_options) != 3 or journey.active_action is None:
         return None, None, journey
 
     checkpoint_id = f"checkpoint_{_digest(str(session['session_id']), journey.stage, str(journey.stage_revision))[:32]}"
     interaction_id = f"interaction_{_digest(proposal_id, 'interaction')[:32]}"
     awaiting_id = f"awaiting_{_digest(proposal_id, 'awaiting')[:32]}"
-    content = GuidedConceptChoiceV1(
+    content = GuidedConceptChoiceV2(
         proposal_id=proposal_id,
-        options=tuple(
-            GuidedChoiceOptionV1(
-                option_id=str(option["option_id"]),
-                title=_bounded_text(option["title"], limit=120),
-                summary=_bounded_text(option["public_summary"], limit=512),
-                difference_tags=tuple(
-                    _bounded_text(decision, limit=80)
-                    for decision in list(option["key_decisions"])[:6]
-                ),
-            )
-            for option in public_options
-        ),
+        stage=journey.stage,
+        stage_revision=journey.stage_revision,
+        action_id=journey.active_action.action_id,
+        occurrence_id=journey.active_action.occurrence_id,
+        capability_id=envelope.capability_id,
+        options=public_options,
+        allow_exclusion=FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional,
     )
     interaction = GuidedInteractionV1(
         interaction_id=interaction_id,
@@ -522,22 +540,27 @@ def _concept_interaction(
         checkpoint_id=checkpoint_id,
         kind="concept_choice",
         status="open",
-        response_locale=envelope.response_locale,
+        response_locale=response_locale,
         expected_session_revision=session_revision,
         revision=1,
         title=_bounded_text(
-            f"Choose {CAPABILITY_DISPLAY_NAMES[envelope.capability_id]}", limit=160
+            " / ".join(option.title for option in public_options),
+            limit=160,
         ),
         context=_bounded_text(envelope.objective, limit=1_024),
         content=content,
-        allowed_actions=("select", "revise", "defer", "exclude", "delegate"),
+        allowed_actions=(
+            ("select", "custom", "defer")
+            + (("exclude",) if FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional else ())
+            + ("delegate",)
+        ),
         submit_path=(
             f"/api/v2/workflows/{envelope.workflow_id}/chat/interactions/{interaction_id}/submit"
         ),
         created_at=now,
         updated_at=now,
     )
-    awaiting = GuidanceAwaitingV1(
+    awaiting = GuidanceAwaitingV2(
         awaiting_id=awaiting_id,
         workflow_id=envelope.workflow_id,
         session_id=str(session["session_id"]),

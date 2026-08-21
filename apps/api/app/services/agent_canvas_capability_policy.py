@@ -201,6 +201,19 @@ class CapabilityPolicyService:
     def definition(self, capability_id: CapabilityIdV1) -> CapabilityDefinitionV1:
         return self._definitions[capability_id]
 
+    @staticmethod
+    def internal_script_checkpoint_definition() -> CapabilityDefinitionV1:
+        return CapabilityDefinitionV1(
+            capability_id="script_authoring",
+            display_name="Script Writer",
+            operation="author_guided_script_checkpoint",
+            result_contract_name="ScriptMaterializationResultV1",
+            node_type=None,
+            creative_role=None,
+            default_candidate_count=1,
+            allowed_reference_roles=("world_setting_reference",),
+        )
+
     def evaluate(self, context: CapabilityPolicyContextV1) -> CapabilityPolicyResultV1:
         if context.journey_capability is not None:
             unavailable = {

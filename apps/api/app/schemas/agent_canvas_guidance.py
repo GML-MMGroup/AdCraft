@@ -8,8 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.schemas.agent_canvas_production_journey import (
-    JourneyStageStatusV1,
-    JourneyStageV1,
+    JourneyStageStatusV2,
+    JourneyStageV2,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_continuation import (
@@ -57,7 +57,7 @@ class ContinuationTurnRetrySnapshotV1(_PrivateGuidanceAuthorityModel):
     session_id: str = Field(min_length=1, max_length=160)
     workflow_revision: int = Field(ge=1)
     session_revision: int = Field(ge=1)
-    journey_stage: JourneyStageV1
+    journey_stage: JourneyStageV2
     journey_stage_revision: int = Field(ge=1)
     logical_action_id: str = Field(min_length=1, max_length=160)
     root_turn_id: str = Field(min_length=1, max_length=160)
@@ -82,8 +82,8 @@ class GuidanceAdvancePreconditionV1(_PrivateGuidanceAuthorityModel):
     session_id: str = Field(min_length=1, max_length=160)
     session_revision: int = Field(ge=1)
     session_status: Literal["active", "paused", "completed"]
-    journey_stage: JourneyStageV1
-    journey_stage_status: JourneyStageStatusV1
+    journey_stage: JourneyStageV2
+    journey_stage_status: JourneyStageStatusV2
     journey_stage_revision: int = Field(ge=1)
     source_id: str = Field(min_length=1, max_length=160)
     requirement_revision_id: str = Field(min_length=1, max_length=160)
@@ -100,7 +100,7 @@ class GuidanceAdvanceRequestV1(_GuidanceModel):
 class GuidanceAdvanceTargetV1(_GuidanceModel):
     source_kind: Literal["fresh_next_action"] = "fresh_next_action"
     source_id: str = Field(min_length=1, max_length=160)
-    journey_stage: JourneyStageV1
+    journey_stage: JourneyStageV2
     journey_stage_revision: int = Field(ge=1)
     requirement_revision_id: str = Field(min_length=1, max_length=160)
     guidance_session_revision: int = Field(ge=1)
@@ -108,6 +108,15 @@ class GuidanceAdvanceTargetV1(_GuidanceModel):
 
 class GuidanceAdvanceRequestSnapshotV1(_PrivateGuidanceAuthorityModel):
     precondition: GuidanceAdvancePreconditionV1
+
+
+class GuidedMediaResumeOwnerV1(_PrivateGuidanceAuthorityModel):
+    """Bounded private ownership for one accepted-media resume delivery."""
+
+    delivery_id: str = Field(min_length=1, max_length=160)
+    status: Literal["queued", "running"]
+    submission_id: str = Field(min_length=1, max_length=160)
+    confirmation_id: str = Field(min_length=1, max_length=160)
 
 
 class GuidanceAdvanceAuthoritySnapshotV1(_PrivateGuidanceAuthorityModel):
@@ -121,6 +130,7 @@ class GuidanceAdvanceAuthoritySnapshotV1(_PrivateGuidanceAuthorityModel):
     open_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
     open_decision_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
     active_continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    guided_media_resume_owner: GuidedMediaResumeOwnerV1 | None = None
     execution_leaf: GuidedActionExecutionLeafV1 | None = None
     post_ready_owner: dict[str, JsonValue] | None = None
     source_id: str | None = Field(default=None, min_length=1, max_length=160)

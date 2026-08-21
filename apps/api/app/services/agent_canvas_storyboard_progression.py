@@ -43,6 +43,9 @@ from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
 )
 from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
@@ -442,6 +445,8 @@ class ProgressiveStoryboardReadyService:
             status="draft",
             summary_prompt=content.narrative_goal,
             generation_prompt=(
+                f"Exact Storyboard Production Plan segment for {sequence_id}: "
+                f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
                 "Use the complete matching storyboard grid as the primary ordered reference. "
                 "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
                 "then follow panels 1 through 9 as one continuous commercial segment. "
@@ -475,7 +480,34 @@ class ProgressiveStoryboardReadyService:
             for binding in workflow.bindings
             if binding.target_node_id == grid.node_id
             and binding.metadata.get("storyboard_reference_purpose") != "sequence_visual_anchor"
+            and _grid_source_role(binding, {node.node_id: node for node in workflow.nodes})
+            in {"character_turnaround", "scene_board"}
         )
+        bound_source_ids = {
+            binding.source.source_node_id
+            for binding in element_bindings
+            if binding.source.kind == "node_output"
+        }
+        identity_bindings: list[CanvasBindingV2] = list(element_bindings)
+        for source_role, source_node in _video_identity_nodes(workflow):
+            if source_node.node_id in bound_source_ids:
+                continue
+            identity_bindings.append(
+                CanvasBindingV2(
+                    binding_id=_binding_id(video_id, "identity", len(identity_bindings) + 1),
+                    workflow_id=grid.workflow_id,
+                    source=CanvasBindingSourceNodeV2(source_node_id=source_node.node_id),
+                    target_node_id=video.node_id,
+                    input_role="image_reference",
+                    required=True,
+                    order=len(identity_bindings) + 1,
+                    metadata={
+                        "semantic_reference_role": _video_semantic_reference_role(source_role),
+                    },
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
         bindings = (
             CanvasBindingV2(
                 binding_id=_binding_id(video_id, "grid", 0),
@@ -503,7 +535,7 @@ class ProgressiveStoryboardReadyService:
                         "updated_at": now,
                     }
                 )
-                for index, binding in enumerate(element_bindings, start=1)
+                for index, binding in enumerate(identity_bindings, start=1)
             ),
         )
         self._workflows.add_node_with_bindings(
@@ -530,8 +562,21 @@ def _later_grid_bindings(
     target: CanvasNodeV2,
 ) -> tuple[CanvasBindingV2, ...]:
     now = target.created_at
-    copied = tuple(
-        binding for binding in workflow.bindings if binding.target_node_id == grid_one.node_id
+    nodes = {node.node_id: node for node in workflow.nodes}
+    copied: list[CanvasBindingV2] = []
+    source_roles: list[str] = []
+    for binding in workflow.bindings:
+        if binding.target_node_id != grid_one.node_id:
+            continue
+        source_role = _grid_source_role(binding, nodes)
+        if source_role not in {"character_turnaround", "scene_board"}:
+            continue
+        copied.append(binding)
+        source_roles.append(source_role)
+    self_policy = AgentCanvasRoleReferencePolicyService()
+    self_policy.require(
+        "storyboard_grid_n",
+        (*source_roles, "storyboard_grid_1"),
     )
     bindings = [
         binding.model_copy(
@@ -563,6 +608,64 @@ def _later_grid_bindings(
         )
     )
     return tuple(bindings)
+
+
+def _grid_source_role(binding: CanvasBindingV2, nodes: dict[str, CanvasNodeV2]) -> str | None:
+    """Resolve only the role identity allowed to cross the guided Grid boundary."""
+
+    if binding.input_role != "image_reference":
+        return None
+    if binding.source.kind == "node_output":
+        source = nodes.get(binding.source.source_node_id)
+        if source is None:
+            return None
+        if source.creative_role == "scene":
+            return "scene_board"
+        if (
+            source.creative_role == "character"
+            and source.structured_content.get("character_asset_kind") == "turnaround"
+        ):
+            return "character_turnaround"
+        return None
+    semantic_role = binding.metadata.get("semantic_reference_role")
+    return {
+        "subject_reference": "character_turnaround",
+        "environment_reference": "scene_board",
+    }.get(str(semantic_role))
+
+
+def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
+    """Return the canonical guided identity set in provider order."""
+
+    selected: list[tuple[str, object]] = []
+    for node in workflow.nodes:
+        role = None
+        if (
+            node.creative_role == "product"
+            and node.structured_content.get("asset_kind") == "multi_view"
+        ):
+            role = "product_multiview"
+        elif node.creative_role == "prop":
+            role = "prop"
+        elif (
+            node.creative_role == "character"
+            and node.structured_content.get("character_asset_kind") == "turnaround"
+        ):
+            role = "character_turnaround"
+        elif node.creative_role == "scene":
+            role = "scene_board"
+        if role is not None:
+            selected.append((role, node))
+    return tuple(selected)
+
+
+def _video_semantic_reference_role(source_role: str) -> str:
+    return {
+        "product_multiview": "product_reference",
+        "prop": "prop_reference",
+        "character_turnaround": "subject_reference",
+        "scene_board": "environment_reference",
+    }[source_role]
 
 
 def _accepted_segment(

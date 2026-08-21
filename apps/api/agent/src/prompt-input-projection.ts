@@ -89,8 +89,8 @@ const definitions = Object.freeze([
     topLevelString("creative_goal"),
   ),
   definition(
-    "VideoParameterIntentContextV2",
-    "video-parameter-ordered-sources-v1",
+    "VideoParameterIntentContextV3",
+    "video-parameter-ordered-sources-v3",
     primaryPlusTypedContext,
     joinedSourceText("sources", "text"),
   ),

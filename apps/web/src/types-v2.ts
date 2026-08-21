@@ -1565,6 +1565,38 @@ export interface ResolvedNodeParameterV2 {
   source_revision: number | null;
 }
 
+export interface PromptAssertionSourceSnapshotV1 {
+  schema_version: "1";
+  source_kind: "binding" | "document" | "sequence";
+  binding_id: string | null;
+  binding_revision: number | null;
+  source_node_id: string | null;
+  source_node_revision: number | null;
+  asset_id: string | null;
+  asset_version_id: string | null;
+  reference_purpose: string | null;
+  document_id: string | null;
+  document_revision: number | null;
+  sequence_id: string | null;
+}
+
+export interface PromptAssertionEvidenceV1 {
+  schema_version: "1";
+  policy_ref: string;
+  policy_version: string;
+  policy_digest: string;
+  recipe_id: string;
+  recipe_version: string;
+  assertion_ids: string[];
+  assertion_block_digest: string;
+  prepared_prompt_digest: string;
+  source_snapshots: PromptAssertionSourceSnapshotV1[];
+  document_revisions: Record<string, number>;
+  sequence_id: string | null;
+  engine_owned_fields_digest: string;
+  evidence_digest: string;
+}
+
 /**
  * Backend-owned prompt authoring progress for a visible Draft node.
  * It deliberately does not alter the Canvas node's four visible statuses.
@@ -1586,6 +1618,7 @@ export interface NodePromptPreparationV1 {
   style_projection_digest: string | null;
   brief_digest: string | null;
   parameter_origins: ResolvedNodeParameterV2[];
+  assertion_evidence: PromptAssertionEvidenceV1 | null;
   attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
   updated_at: string;
@@ -1604,7 +1637,15 @@ export interface CanvasModelSummaryV2 {
   catalog_revision: number;
 }
 
-export type CanvasParameterOriginV2 = "manual" | "node_prompt" | "binding";
+export type CanvasParameterOriginV2 =
+  | "manual"
+  | "node_prompt"
+  | "binding"
+  | "user_explicit"
+  | "structured_content"
+  | "guidance_default"
+  | "role_default"
+  | "provider_clamp";
 export type CanvasParameterScalarV2 = string | number | boolean;
 
 export interface CanvasParameterProvenanceV2 {
@@ -1664,7 +1705,7 @@ export interface CanvasNodeV2 {
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
-  prompt_preparation: NodePromptPreparationV1;
+  prompt_preparation: NodePromptPreparationV1 | null;
   variation_draft: CanvasVariationDraftV2 | null;
   created_at: string;
   updated_at: string;
@@ -1833,13 +1874,15 @@ export type AgentAnchorSemanticRoleV3 =
   | "style"
   | "composition";
 
+export interface AgentAnchorNodeSourceV3 {
+  source_kind: "node";
+  workflow_id: string;
+  node_id: string;
+  node_revision: number;
+}
+
 export type AgentAnchorSourceV3 =
-  | {
-      source_kind: "node";
-      workflow_id: string;
-      node_id: string;
-      node_revision: number;
-    }
+  | AgentAnchorNodeSourceV3
   | {
       source_kind: "image_asset_version";
       workflow_id: string;
@@ -1854,6 +1897,17 @@ export type AgentAnchorSourceV3 =
       skill_version: string;
       package_digest: string;
     };
+
+export type AgentAnchorMaterializedRoleV3 =
+  | "product_main"
+  | "product_multiview"
+  | "character_main"
+  | "character_turnaround";
+
+export interface AgentAnchorRoleSourceV3 {
+  role: AgentAnchorMaterializedRoleV3;
+  source: AgentAnchorNodeSourceV3;
+}
 
 export interface AnchorAcceptanceEvidenceV1 {
   evidence_id: string;
@@ -1876,6 +1930,7 @@ export interface AgentAnchorV3 {
   summary: string;
   lifecycle: "planned" | "active" | "retired" | "invalid";
   source: AgentAnchorSourceV3;
+  role_sources: AgentAnchorRoleSourceV3[];
   acceptance_evidence: AnchorAcceptanceEvidenceV1[];
 }
 
@@ -2356,7 +2411,7 @@ export interface ProposalMaterializationProjectionV2 {
 export interface ProposalApplicationSummaryV2 {
   application_id: string;
   option_id: string;
-  action: "select_option" | "delegate_choice" | "reuse_direction";
+  action: "select_option" | "custom_direction" | "delegate_choice" | "reuse_direction";
   receipt_id: string;
   created_node_ids: string[];
   queued_execution_ids: string[];
@@ -2366,6 +2421,7 @@ export interface ProposalApplicationSummaryV2 {
 export type ProposalAvailabilityV2 = "open" | "applied" | "superseded";
 export type ProposalActionTypeV2 =
   | "select_option"
+  | "custom_direction"
   | "revise_options"
   | "defer_topic"
   | "exclude_element"
@@ -2463,7 +2519,7 @@ export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   item_type: "expert_activity";
   activity_id: string;
   turn_id: string;
-  status: "working" | "completed" | "failed";
+  status: "working" | "completed" | "failed" | "superseded";
   sequence: number;
   started_at: string;
   finished_at: string | null;
@@ -2990,6 +3046,9 @@ export interface CanvasVariationMaterializeResponseV2 {
   run: Record<string, unknown> | null;
   run_error: CanvasNodeErrorV2 | null;
   placement_hint: AgentPlacementHintV2;
+  created_node_ids: string[];
+  created_binding_ids: string[];
+  placement_hints: AgentPlacementHintV2[];
 }
 
 export interface CanvasLayoutPositionV2 extends CanvasPositionV2 {
@@ -3222,16 +3281,18 @@ export interface GuidedStepCheckpointV2 {
 
 export type GuidedJourneyStageV2 =
   | "intake"
-  | "clarification"
-  | "world_setting"
-  | "foundation_design"
+  | "world_view"
+  | "product"
+  | "props"
+  | "character"
+  | "scene"
   | "narrative_direction"
   | "style_lock"
   | "storyboard_plan"
   | "storyboard_grids"
-  | "video_segments"
+  | "videos"
   | "bgm"
-  | "editing_ready"
+  | "editing"
   | "completed";
 
 export type GuidedJourneyStageStatusV2 =
@@ -3242,24 +3303,25 @@ export type GuidedJourneyStageStatusV2 =
   | "failed"
   | "completed";
 
-export interface FoundationJourneyItemV2 {
-  item_id: string;
-  kind: "product" | "prop" | "character" | "scene";
+export interface JourneyElementDecisionV2 {
+  decision_id: string;
+  element_kind: string;
+  occurrence_id: string;
   occurrence_index: number;
-  requirement_source: "explicit_user" | "questionnaire" | "delegated";
-  required: boolean;
-  status: "pending" | "active" | "selected" | "deferred" | "excluded";
-  topic_id: string | null;
-  selected_node_ids: string[];
+  outcome: "include" | "exclude" | "delegate" | "unresolved";
+  source: "user" | "delegated" | "system";
+  source_revision: number;
+  requirements: Record<string, unknown>;
 }
 
 export interface JourneyActionProjectionV2 {
   action_id: string;
   action_kind: string;
   stage: GuidedJourneyStageV2;
+  stage_revision: number;
   status: "reserved" | "working" | "waiting_user";
   turn_id: string | null;
-  foundation_item_id: string | null;
+  occurrence_id: string | null;
 }
 
 export interface JourneyTransitionEvidenceV2 {
@@ -3267,37 +3329,54 @@ export interface JourneyTransitionEvidenceV2 {
   evidence_kind:
     | "creative_goal_validated"
     | "clarification_completed"
-    | "world_setting_selected"
-    | "world_setting_deferred"
-    | "world_setting_excluded"
-    | "foundation_item_selected"
-    | "foundation_item_deferred"
-    | "foundation_item_excluded"
-    | "narrative_direction_selected"
-    | "style_locked"
+    | "world_view_selected"
+    | "world_view_delegated"
+    | "world_view_excluded"
+    | "product_materialized"
+    | "product_delegated"
+    | "product_excluded"
+    | "props_materialized"
+    | "props_delegated"
+    | "props_excluded"
+    | "character_materialized"
+    | "character_delegated"
+    | "character_excluded"
+    | "scene_materialized"
+    | "scene_delegated"
+    | "scene_excluded"
+    | "narrative_direction_accepted"
+    | "style_lock_accepted"
     | "storyboard_plan_accepted"
+    | "storyboard_plan_excluded"
     | "storyboard_grids_prepared"
-    | "video_segments_prepared"
+    | "storyboard_grids_excluded"
+    | "videos_prepared"
+    | "videos_excluded"
     | "bgm_prepared"
-    | "bgm_deferred"
+    | "bgm_delegated"
     | "bgm_excluded"
     | "editing_prepared"
+    | "editing_export_completed"
+    | "editing_excluded"
     | "targeted_action_started"
     | "targeted_action_finished"
-    | "stage_failed"
-    | "foundation_queue_amended";
+    | "stage_failed";
   source_id: string;
   source_revision: number | null;
+  stage: GuidedJourneyStageV2;
+  stage_revision: number;
+  occurrence_id: string | null;
+  actor: "user" | "delegated" | "system";
   recorded_at: string;
 }
 
 export interface GuidedProductionJourneyV2 {
-  policy_version: "fixed_ad_production_v1";
+  policy_version: "fixed_ad_production_v2";
   stage: GuidedJourneyStageV2;
   stage_status: GuidedJourneyStageStatusV2;
   stage_revision: number;
-  foundation_queue: FoundationJourneyItemV2[];
-  foundation_cursor: number | null;
+  decisions: JourneyElementDecisionV2[];
+  active_occurrence_id: string | null;
   active_action: JourneyActionProjectionV2 | null;
   suspended_action: JourneyActionProjectionV2 | null;
   transition_evidence: JourneyTransitionEvidenceV2[];
@@ -3357,7 +3436,18 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
 
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
-  | { content_kind: "concept_choice"; proposal_id: string | null; options: GuidedChoiceOptionV1[] }
+  | {
+      content_kind: "concept_choice";
+      proposal_id: string | null;
+      stage: GuidedJourneyStageV2;
+      stage_revision: number;
+      action_id: string;
+      occurrence_id: string | null;
+      capability_id: string;
+      options: GuidedChoiceOptionV1[];
+      allow_custom: true;
+      allow_exclusion: boolean;
+    }
   | {
       content_kind: "media_review";
       node_id: string;
@@ -3401,9 +3491,9 @@ export type GuidedInteractionSubmitRequestV1 =
       submission_kind: "concept_choice";
       expected_interaction_revision: number;
       expected_session_revision: number;
-      action: "select" | "custom" | "revise" | "defer" | "exclude" | "delegate";
+      action: "select" | "custom" | "defer" | "exclude" | "delegate";
       option_id?: string | null;
-      custom_value?: string | null;
+      custom_text?: string | null;
       accepted_references?: GuidedAcceptedReferenceV1[];
     }
   | {
@@ -3633,6 +3723,12 @@ export type AgentCanvasProposalActionRequestV2 =
       action: "select_option";
       option_id: string;
       accepted_references?: ProposedDraftReferenceV2[] | null;
+    }
+  | {
+      action_id: string;
+      expected_session_revision: number;
+      action: "custom_direction";
+      custom_text: string;
     }
   | {
       action_id: string;

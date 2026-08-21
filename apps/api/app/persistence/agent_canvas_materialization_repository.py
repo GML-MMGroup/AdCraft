@@ -29,8 +29,6 @@ from app.persistence.agent_canvas_conversation_repository import (
     _creative_memory_values,
     _dump,
     _ensure_conversation,
-    _insert_materialization_document,
-    _insert_materialized_node,
     _next_chat_sequence,
     _now,
     _require_guidance_revision,
@@ -49,6 +47,7 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
+    AgentCanvasBindingRow,
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasContinuationOutboxRow,
@@ -65,23 +64,28 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionSubmissionRow,
     AgentCanvasMaterializationCommitRow,
     AgentCanvasNodeRow,
+    AgentCanvasPromptContextSnapshotRow,
     AgentCanvasWorkflowRow,
     AgentWorkingDocumentRow,
     AssetVersionRow,
     WorkflowEventRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
-from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyElementDecisionV1,
+from app.schemas.agent_canvas import (
+    CanvasBindingV2,
+    CanvasNodeV2,
+    ResolvedTextInputSnapshotV2,
 )
+from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
+from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
     ProposalPublicationEnvelopeV1,
+    SelectedConceptOptionV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
     MaterializationAuthoritySnapshotV1,
+    MaterializationDocumentWriteV1,
     MaterializationDocumentResultV1,
     MaterializationOutcomeV1,
     MaterializationPlanV1,
@@ -94,7 +98,7 @@ from app.schemas.agent_working_documents import (
     StoryboardProductionPlanContentV3,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidedConceptSubmitV1,
+    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
 )
@@ -110,6 +114,7 @@ from app.services.agent_canvas_user_presentation import build_presentation_metad
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
+from app.services.response_locale_resolver import ResponseLocaleResolverV1
 from app.services.agent_canvas_production_journey_reducer import (
     GuidedProductionJourneyReducer,
 )
@@ -193,24 +198,23 @@ class AgentCanvasMaterializationRepository:
         receipt = materialization_plan.receipt
         continuation = materialization_plan.continuation
         materialization_id = materialization_plan.materialization_id
+        workflow_id = materialization_plan.workflow_id
         fault_injector = self._fault_injector
         proposal = self._conversations.get_proposal(proposal_id)
         skill_run_id = proposal.video_skill_run_id
         topic_id = proposal.topic_id
 
-        if not nodes:
-            raise _error("draft_bundle_invalid", "Draft bundle must contain a Node.")
-        node = nodes[0]
+        primary_node = nodes[0] if nodes else None
         node_ids = tuple(item.node_id for item in nodes)
         if len(set(node_ids)) != len(node_ids) or any(
-            item.workflow_id != node.workflow_id for item in nodes
+            item.workflow_id != workflow_id for item in nodes
         ):
             raise _error(
                 "draft_bundle_invalid",
                 "Draft bundle Nodes require unique IDs in one Workflow.",
             )
         if any(
-            binding.workflow_id != node.workflow_id or binding.target_node_id not in set(node_ids)
+            binding.workflow_id != workflow_id or binding.target_node_id not in set(node_ids)
             for binding in bindings
         ):
             raise _error(
@@ -218,12 +222,26 @@ class AgentCanvasMaterializationRepository:
                 "Draft bundle Bindings must target a published bundle Node.",
             )
 
-        selected_option = next(
-            (option for option in proposal.options if option.option_id == option_id),
-            None,
-        )
-        if selected_option is None:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
+        if materialization_plan.proposal_action == "custom_direction":
+            if materialization_plan.custom_text is None:
+                raise _error(
+                    "guided_interaction_option_invalid",
+                    "Custom Materialization requires the original custom direction.",
+                )
+            selected_option = SelectedConceptOptionV1(
+                option_id=option_id,
+                title="Custom direction",
+                public_summary=materialization_plan.custom_text,
+                key_decisions=(materialization_plan.custom_text,),
+                custom_text=materialization_plan.custom_text,
+            )
+        else:
+            selected_option = next(
+                (option for option in proposal.options if option.option_id == option_id),
+                None,
+            )
+            if selected_option is None:
+                raise _error("proposal_option_not_found", "Concept option was not found.")
         now = _now()
         materialization_outcome: MaterializationOutcomeV1 | None = None
         try:
@@ -261,6 +279,10 @@ class AgentCanvasMaterializationRepository:
                         return MaterializationOutcomeV1.model_validate_json(
                             str(existing_commit["outcome_json"])
                         ).model_copy(update={"replayed": True})
+                    _require_current_derivative_parent(
+                        connection,
+                        materialization_plan,
+                    )
                     current = connection.execute(
                         select(AgentCanvasWorkflowRow.revision).where(
                             AgentCanvasWorkflowRow.workflow_id == proposal.workflow_id
@@ -295,9 +317,16 @@ class AgentCanvasMaterializationRepository:
                     persisted_availability = (
                         str(proposal_state["availability"]) if proposal_state is not None else None
                     )
-                    availability_valid = persisted_availability == "open" or (
-                        proposal_action == "reuse_direction"
-                        and persisted_availability == "superseded"
+                    availability_valid = (
+                        persisted_availability == "open"
+                        or (
+                            proposal_action == "reuse_direction"
+                            and persisted_availability == "superseded"
+                        )
+                        or (
+                            materialization_plan.operation_kind == "derivative"
+                            and persisted_availability == "applied"
+                        )
                     )
                     if not availability_valid:
                         raise _error(
@@ -333,7 +362,7 @@ class AgentCanvasMaterializationRepository:
                         connection,
                         proposal.workflow_id,
                     )
-                    if (
+                    if materialization_plan.operation_kind != "derivative" and (
                         proposal_state["requirement_revision_id"] != requirement_head.revision_id
                         or proposal_state["requirement_revision_no"] != requirement_head.revision_no
                         or proposal_state["requirement_digest"] != requirement_head.digest
@@ -413,21 +442,15 @@ class AgentCanvasMaterializationRepository:
                         option_id=option_id,
                         expected_session_revision=expected_session_revision,
                     )
-                    current_journey = GuidedProductionJourneyV1.model_validate_json(
-                        str(session["journey_state_json"])
-                    )
+                    current_journey = parse_production_journey(str(session["journey_state_json"]))
                     next_journey = journey_reducer.reduce(
                         current_journey,
                         materialization_plan.journey_event,
-                        element_decisions=tuple(
-                            JourneyElementDecisionV1.model_validate(item)
-                            for item in json.loads(str(session["element_decisions_json"]))
-                        ),
                     )
-                    node = nodes[0]
                     next_awaiting = None
                     if (
-                        proposal_action != "reuse_direction"
+                        materialization_plan.operation_kind != "derivative"
+                        and proposal_action != "reuse_direction"
                         and str(session["active_proposal_id"]) != proposal_id
                     ):
                         raise _error(
@@ -562,7 +585,10 @@ class AgentCanvasMaterializationRepository:
                     if fault_injector is not None:
                         fault_injector("document")
                     requirement_revision = requirement_head
-                    if proposal.capability_id != "quick_media":
+                    if (
+                        proposal.capability_id != "quick_media"
+                        and materialization_plan.operation_kind != "derivative"
+                    ):
                         commitment_values = tuple(
                             (
                                 item.source_fragment,
@@ -585,10 +611,10 @@ class AgentCanvasMaterializationRepository:
                                 source_kind="accepted_proposal",
                                 source_turn_id=source_turn_id,
                                 source_proposal_id=proposal_id,
-                                source_node_id=node.node_id,
+                                source_node_id=(primary_node.node_id if primary_node else None),
                                 source_text=source_text,
                                 normalized_meaning=normalized_meaning,
-                                scope_kind="node",
+                                scope_kind=("node" if node_ids else "global"),
                                 target_node_ids=node_ids,
                                 strength=strength,
                                 created_revision_no=requirement_head.revision_no + 1,
@@ -613,7 +639,7 @@ class AgentCanvasMaterializationRepository:
                             source_kind="proposal_selection",
                             source_turn_id=source_turn_id,
                             source_proposal_id=proposal_id,
-                            source_node_id=node.node_id,
+                            source_node_id=(primary_node.node_id if primary_node else None),
                             created_at=now,
                         )
                         if requirement_revision.revision_id != requirement_head.revision_id:
@@ -629,7 +655,7 @@ class AgentCanvasMaterializationRepository:
                                 V2EventInsert(
                                     workflow_id=proposal.workflow_id,
                                     turn_id=source_turn_id,
-                                    node_id=node.node_id,
+                                    node_id=(primary_node.node_id if primary_node else None),
                                     event_type="requirement_ledger_updated",
                                     created_at=now,
                                     payload={
@@ -648,7 +674,9 @@ class AgentCanvasMaterializationRepository:
                             )
                     if fault_injector is not None:
                         fault_injector("requirements")
-                    snapshot_id = snapshot_ids[node.node_id]
+                    snapshot_id = (
+                        snapshot_ids[primary_node.node_id] if primary_node is not None else None
+                    )
                     if topic_id is None:
                         raise _error(
                             "guidance_topic_not_found",
@@ -694,13 +722,13 @@ class AgentCanvasMaterializationRepository:
                     memory_row = (
                         connection.execute(
                             select(AgentCanvasCreativeMemoryRow).where(
-                                AgentCanvasCreativeMemoryRow.workflow_id == node.workflow_id
+                                AgentCanvasCreativeMemoryRow.workflow_id == workflow_id
                             )
                         )
                         .mappings()
                         .one_or_none()
                     )
-                    memory = _creative_memory(memory_row, node.workflow_id)
+                    memory = _creative_memory(memory_row, workflow_id)
                     approved_node_ids = dict(memory.approved_node_ids)
                     for bundle_node in nodes:
                         approved_node_ids[bundle_node.creative_role] = tuple(
@@ -727,7 +755,7 @@ class AgentCanvasMaterializationRepository:
                     else:
                         connection.execute(
                             update(AgentCanvasCreativeMemoryRow)
-                            .where(AgentCanvasCreativeMemoryRow.workflow_id == node.workflow_id)
+                            .where(AgentCanvasCreativeMemoryRow.workflow_id == workflow_id)
                             .values(**memory_values)
                         )
                     proposal_values = {
@@ -739,21 +767,24 @@ class AgentCanvasMaterializationRepository:
                         "materialization_error_message": None,
                         "materialization_updated_at": now,
                     }
-                    proposal_update_conditions = [
-                        AgentCanvasConceptProposalRow.proposal_id == proposal_id,
-                        AgentCanvasConceptProposalRow.availability == persisted_availability,
-                        AgentCanvasConceptProposalRow.materialization_id == materialization_id,
-                    ]
-                    proposal_update = connection.execute(
-                        update(AgentCanvasConceptProposalRow)
-                        .where(*proposal_update_conditions)
-                        .values(**proposal_values)
-                    )
-                    if proposal_update.rowcount != 1:
-                        raise _error(
-                            "proposal_materialization_conflict",
-                            "Materialization attempt is no longer current.",
+                    if materialization_plan.operation_kind == "derivative":
+                        pass
+                    else:
+                        proposal_update_conditions = [
+                            AgentCanvasConceptProposalRow.proposal_id == proposal_id,
+                            AgentCanvasConceptProposalRow.availability == persisted_availability,
+                            AgentCanvasConceptProposalRow.materialization_id == materialization_id,
+                        ]
+                        proposal_update = connection.execute(
+                            update(AgentCanvasConceptProposalRow)
+                            .where(*proposal_update_conditions)
+                            .values(**proposal_values)
                         )
+                        if proposal_update.rowcount != 1:
+                            raise _error(
+                                "proposal_materialization_conflict",
+                                "Materialization attempt is no longer current.",
+                            )
                     if fault_injector is not None:
                         fault_injector("proposal")
                     next_session_revision = expected_session_revision + 1
@@ -836,7 +867,7 @@ class AgentCanvasMaterializationRepository:
                     )
                     if receipt is not None:
                         if (
-                            receipt.workflow_id != node.workflow_id
+                            receipt.workflow_id != workflow_id
                             or receipt.action_id != source_turn_id
                             or receipt.workflow_revision != expected_workflow_revision + 1
                         ):
@@ -895,14 +926,14 @@ class AgentCanvasMaterializationRepository:
                         event_turn = _require_turn(connection, continuation.source_turn_id)
                         self._conversations.insert_continuation_in_transaction(
                             connection,
-                            workflow_id=node.workflow_id,
+                            workflow_id=workflow_id,
                             conversation_id=str(event_turn["conversation_id"]),
                             continuation=continuation,
                             now=now,
                         )
                     execution_mode = connection.execute(
                         select(AgentCanvasExecutionSettingsRow.media_execution_mode).where(
-                            AgentCanvasExecutionSettingsRow.workflow_id == node.workflow_id
+                            AgentCanvasExecutionSettingsRow.workflow_id == workflow_id
                         )
                     ).scalar_one_or_none()
                     automatic_run_command_ids: list[str] = []
@@ -930,7 +961,7 @@ class AgentCanvasMaterializationRepository:
                         connection,
                         V2EventInsert(
                             workflow_id=proposal.workflow_id,
-                            node_id=node.node_id,
+                            node_id=(primary_node.node_id if primary_node else None),
                             conversation_id=str(event_turn["conversation_id"]),
                             turn_id=str(event_turn["turn_id"]),
                             action_id=source_turn_id,
@@ -942,7 +973,7 @@ class AgentCanvasMaterializationRepository:
                                 "selection_actor": selection_actor,
                                 "proposal_action": proposal_action,
                                 "session_revision": next_session_revision,
-                                "node_id": node.node_id,
+                                "node_id": (primary_node.node_id if primary_node else None),
                                 "node_ids": list(node_ids),
                                 "revision": expected_workflow_revision + 1,
                             },
@@ -967,37 +998,54 @@ class AgentCanvasMaterializationRepository:
                                 },
                             ),
                         )
-                    materialization_mode = node.metadata.get("materialization_mode")
-                    warning_code = node.metadata.get("warning_code")
-                    operation_policy_id = node.metadata.get("operation_policy_id")
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=node.workflow_id,
-                            node_id=node.node_id,
-                            conversation_id=str(event_turn["conversation_id"]),
-                            turn_id=str(event_turn["turn_id"]),
-                            action_id=source_turn_id,
-                            event_type="guided_draft_materialized",
-                            created_at=now,
-                            payload={
-                                "proposal_id": proposal_id,
-                                "option_id": option_id,
-                                "node_id": node.node_id,
-                                "node_ids": list(node_ids),
-                                "creative_role": node.creative_role,
-                                "completion_mode": (
-                                    materialization_mode
-                                    if materialization_mode == "deterministic_fallback"
-                                    else "agent"
-                                ),
-                                "warning_code": warning_code,
-                                "operation_policy_id": operation_policy_id,
-                                "refresh": ["workflow", "timeline"],
-                            },
-                        ),
+                    materialization_mode = (
+                        primary_node.metadata.get("materialization_mode")
+                        if primary_node is not None
+                        else None
                     )
-                    normalization_mode = node.metadata.get("normalization_mode")
+                    warning_code = (
+                        primary_node.metadata.get("warning_code")
+                        if primary_node is not None
+                        else None
+                    )
+                    operation_policy_id = (
+                        primary_node.metadata.get("operation_policy_id")
+                        if primary_node is not None
+                        else None
+                    )
+                    if primary_node is not None:
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                node_id=primary_node.node_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=str(event_turn["turn_id"]),
+                                action_id=source_turn_id,
+                                event_type="guided_draft_materialized",
+                                created_at=now,
+                                payload={
+                                    "proposal_id": proposal_id,
+                                    "option_id": option_id,
+                                    "node_id": primary_node.node_id,
+                                    "node_ids": list(node_ids),
+                                    "creative_role": primary_node.creative_role,
+                                    "completion_mode": (
+                                        materialization_mode
+                                        if materialization_mode == "deterministic_fallback"
+                                        else "agent"
+                                    ),
+                                    "warning_code": warning_code,
+                                    "operation_policy_id": operation_policy_id,
+                                    "refresh": ["workflow", "timeline"],
+                                },
+                            ),
+                        )
+                    normalization_mode = (
+                        primary_node.metadata.get("normalization_mode")
+                        if primary_node is not None
+                        else None
+                    )
                     if normalization_mode in {"repaired", "deterministic_fallback"}:
                         normalization_event = (
                             "materialization_prompt_repaired"
@@ -1007,8 +1055,8 @@ class AgentCanvasMaterializationRepository:
                         self._events.append_in_transaction(
                             connection,
                             V2EventInsert(
-                                workflow_id=node.workflow_id,
-                                node_id=node.node_id,
+                                workflow_id=workflow_id,
+                                node_id=(primary_node.node_id if primary_node else None),
                                 conversation_id=str(event_turn["conversation_id"]),
                                 turn_id=str(event_turn["turn_id"]),
                                 action_id=source_turn_id,
@@ -1016,13 +1064,17 @@ class AgentCanvasMaterializationRepository:
                                 created_at=now,
                                 payload={
                                     "capability_id": str(proposal_state["capability_id"]),
-                                    "node_id": node.node_id,
-                                    "violation_codes": node.metadata.get(
-                                        "normalization_warnings", []
+                                    "node_id": (primary_node.node_id if primary_node else None),
+                                    "violation_codes": (
+                                        primary_node.metadata.get("normalization_warnings", [])
+                                        if primary_node is not None
+                                        else []
                                     ),
                                     "prompt_context_snapshot_id": snapshot_id,
                                     "result_digest": hashlib.sha256(
-                                        (node.generation_prompt or "").encode("utf-8")
+                                        (primary_node.generation_prompt or "").encode("utf-8")
+                                        if primary_node is not None
+                                        else b""
                                     ).hexdigest(),
                                 },
                             ),
@@ -1031,7 +1083,7 @@ class AgentCanvasMaterializationRepository:
                         self._events.append_in_transaction(
                             connection,
                             V2EventInsert(
-                                workflow_id=node.workflow_id,
+                                workflow_id=workflow_id,
                                 node_id=binding.target_node_id,
                                 binding_id=binding.binding_id,
                                 conversation_id=str(event_turn["conversation_id"]),
@@ -1050,8 +1102,8 @@ class AgentCanvasMaterializationRepository:
                         self._events.append_in_transaction(
                             connection,
                             V2EventInsert(
-                                workflow_id=node.workflow_id,
-                                node_id=node.node_id,
+                                workflow_id=workflow_id,
+                                node_id=(primary_node.node_id if primary_node else None),
                                 conversation_id=str(event_turn["conversation_id"]),
                                 turn_id=str(event_turn["turn_id"]),
                                 action_id=source_turn_id,
@@ -1086,8 +1138,8 @@ class AgentCanvasMaterializationRepository:
                                         materialization_plan.materialization_id
                                     ),
                                     "reason": None,
-                                    "foundation_item_id": (
-                                        materialization_plan.journey_event.foundation_item_id
+                                    "occurrence_id": (
+                                        materialization_plan.journey_event.occurrence_id
                                         if materialization_plan.journey_event is not None
                                         and materialization_plan.journey_event.event_type
                                         == "stage_materialized"
@@ -1100,8 +1152,8 @@ class AgentCanvasMaterializationRepository:
                         self._events.append_in_transaction(
                             connection,
                             V2EventInsert(
-                                workflow_id=node.workflow_id,
-                                node_id=node.node_id,
+                                workflow_id=workflow_id,
+                                node_id=(primary_node.node_id if primary_node else None),
                                 conversation_id=str(event_turn["conversation_id"]),
                                 turn_id=str(event_turn["turn_id"]),
                                 action_id=source_turn_id,
@@ -1139,8 +1191,8 @@ class AgentCanvasMaterializationRepository:
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
-                            workflow_id=node.workflow_id,
-                            node_id=node.node_id,
+                            workflow_id=workflow_id,
+                            node_id=(primary_node.node_id if primary_node else None),
                             conversation_id=str(event_turn["conversation_id"]),
                             turn_id=source_turn_id,
                             action_id=source_turn_id,
@@ -1161,7 +1213,7 @@ class AgentCanvasMaterializationRepository:
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
-                            workflow_id=node.workflow_id,
+                            workflow_id=workflow_id,
                             conversation_id=str(event_turn["conversation_id"]),
                             turn_id=str(event_turn["turn_id"]),
                             action_id=source_turn_id,
@@ -1172,7 +1224,7 @@ class AgentCanvasMaterializationRepository:
                                 "session_revision": next_session_revision,
                                 "proposal_id": proposal_id,
                                 "topic_id": topic_id,
-                                "node_id": node.node_id,
+                                "node_id": (primary_node.node_id if primary_node else None),
                                 "node_ids": list(node_ids),
                             },
                         ),
@@ -1194,7 +1246,7 @@ class AgentCanvasMaterializationRepository:
                                 },
                             ),
                         )
-                    if node.node_type == "script":
+                    if primary_node is not None and primary_node.node_type == "script":
                         conversation_id = _ensure_conversation(
                             connection,
                             proposal.workflow_id,
@@ -1202,7 +1254,7 @@ class AgentCanvasMaterializationRepository:
                         )
                         entry_id = f"artifact_{uuid4().hex}"
                         metadata = {
-                            "script_node_id": node.node_id,
+                            "script_node_id": primary_node.node_id,
                             "source_turn_id": source_turn_id,
                             "action_label": "View Script",
                         }
@@ -1226,7 +1278,7 @@ class AgentCanvasMaterializationRepository:
                             connection,
                             V2EventInsert(
                                 workflow_id=proposal.workflow_id,
-                                node_id=node.node_id,
+                                node_id=primary_node.node_id,
                                 event_type="script_artifact_created",
                                 created_at=now,
                                 payload={"entry_id": entry_id, **metadata},
@@ -1267,8 +1319,8 @@ class AgentCanvasMaterializationRepository:
                             self._events.append_in_transaction(
                                 connection,
                                 V2EventInsert(
-                                    workflow_id=node.workflow_id,
-                                    node_id=node.node_id,
+                                    workflow_id=workflow_id,
+                                    node_id=(primary_node.node_id if primary_node else None),
                                     conversation_id=str(event_turn["conversation_id"]),
                                     turn_id=source_turn_id,
                                     action_id=guided_submission["interaction_id"],
@@ -1284,12 +1336,12 @@ class AgentCanvasMaterializationRepository:
                         events_cursor = int(
                             connection.execute(
                                 select(func.coalesce(func.max(WorkflowEventRow.seq), 0)).where(
-                                    WorkflowEventRow.workflow_id == node.workflow_id
+                                    WorkflowEventRow.workflow_id == workflow_id
                                 )
                             ).scalar_one()
                         )
                         accepted_result = GuidedInteractionAcceptedV1(
-                            workflow_id=node.workflow_id,
+                            workflow_id=workflow_id,
                             interaction_id=guided_submission["interaction_id"],
                             submission_id=guided_submission["submission_id"],
                             receipt_id=(
@@ -1310,7 +1362,7 @@ class AgentCanvasMaterializationRepository:
                         connection.execute(
                             insert(AgentCanvasGuidedInteractionSubmissionRow).values(
                                 submission_id=guided_submission["submission_id"],
-                                workflow_id=node.workflow_id,
+                                workflow_id=workflow_id,
                                 interaction_id=guided_submission["interaction_id"],
                                 idempotency_key=guided_submission["idempotency_key"],
                                 request_digest=guided_submission["request_digest"],
@@ -1510,18 +1562,19 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
                         )
-                    option_exists = connection.execute(
-                        select(AgentCanvasConceptOptionRow.option_id).where(
-                            AgentCanvasConceptOptionRow.proposal_id == envelope.proposal_id,
-                            AgentCanvasConceptOptionRow.option_id
-                            == envelope.selected_option.option_id,
-                        )
-                    ).scalar_one_or_none()
-                    if option_exists is None:
-                        raise _error(
-                            "proposal_option_not_found",
-                            "Concept option was not found.",
-                        )
+                    if envelope.action != "custom_direction":
+                        option_exists = connection.execute(
+                            select(AgentCanvasConceptOptionRow.option_id).where(
+                                AgentCanvasConceptOptionRow.proposal_id == envelope.proposal_id,
+                                AgentCanvasConceptOptionRow.option_id
+                                == envelope.selected_option.option_id,
+                            )
+                        ).scalar_one_or_none()
+                        if option_exists is None:
+                            raise _error(
+                                "proposal_option_not_found",
+                                "Concept option was not found.",
+                            )
                     turn = (
                         connection.execute(
                             select(AgentCanvasChatTurnRow).where(
@@ -1606,7 +1659,7 @@ class AgentCanvasMaterializationRepository:
                             content="The selected direction is being prepared as an editable Draft.",
                             metadata_json=json.dumps(
                                 build_presentation_metadata(
-                                    message_key=None,
+                                    message_key="planning_progress.next_action",
                                     message_args={},
                                     response_locale=_guidance_response_locale(
                                         connection,
@@ -1658,6 +1711,169 @@ class AgentCanvasMaterializationRepository:
             ) from error
         return self.get_projection(envelope.proposal_id)
 
+    def queue_derivative(
+        self,
+        envelope: ProposalPublicationEnvelopeV1,
+        *,
+        source_turn_id: str,
+        max_attempts: int = 5,
+    ) -> ProposalPublicationEnvelopeV1:
+        """Queue one parent-derived operation without republishing its Proposal."""
+
+        if envelope.operation_kind != "derivative" or envelope.parent_snapshot is None:
+            raise _error(
+                "derivative_materialization_invalid",
+                "Derivative queueing requires one parent snapshot.",
+            )
+        now = datetime.now(timezone.utc)
+        continuation_id = "continuation_" + _digest(envelope.materialization_id)[:32]
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    proposal = (
+                        connection.execute(
+                            select(AgentCanvasConceptProposalRow).where(
+                                AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
+                                AgentCanvasConceptProposalRow.workflow_id == envelope.workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if proposal is None or str(proposal["availability"]) != "applied":
+                        raise _error(
+                            "parent_materialization_missing",
+                            "The accepted parent materialization is not available.",
+                        )
+                    parent = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.node_id == envelope.parent_snapshot.node_id,
+                                AgentCanvasNodeRow.workflow_id == envelope.workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    expected_role = (
+                        "character"
+                        if envelope.parent_snapshot.semantic_role == "character_main"
+                        else "product"
+                    )
+                    prompt_preparation = (
+                        json.loads(str(parent["prompt_preparation_json"]))
+                        if parent is not None
+                        else {}
+                    )
+                    expected_prompt_operation_id = (
+                        envelope.parent_snapshot.prompt_preparation_operation_id
+                    )
+                    revision_matches = parent is not None and (
+                        int(parent["revision"]) == envelope.parent_snapshot.node_revision
+                        or (
+                            expected_prompt_operation_id is not None
+                            and int(parent["revision"]) > envelope.parent_snapshot.node_revision
+                            and prompt_preparation.get("operation_id")
+                            == expected_prompt_operation_id
+                            and prompt_preparation.get("status") == "ready"
+                        )
+                    )
+                    if (
+                        parent is None
+                        or not revision_matches
+                        or str(parent["creative_role"]) != expected_role
+                    ):
+                        raise _error(
+                            "parent_materialization_revision_stale",
+                            "The parent Node no longer matches the derived operation.",
+                        )
+                    self._envelopes.create_in_transaction(connection, envelope)
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasContinuationOutboxRow).where(
+                                AgentCanvasContinuationOutboxRow.continuation_id == continuation_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is None:
+                        event_turn = (
+                            connection.execute(
+                                select(AgentCanvasChatTurnRow).where(
+                                    AgentCanvasChatTurnRow.turn_id == envelope.action_turn_id,
+                                    AgentCanvasChatTurnRow.workflow_id == envelope.workflow_id,
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if event_turn is None:
+                            raise _error(
+                                "chat_turn_not_found",
+                                "Derivative materialization Turn was not found.",
+                            )
+                        self._outbox.enqueue_in_transaction(
+                            connection,
+                            continuation_id=continuation_id,
+                            workflow_id=envelope.workflow_id,
+                            conversation_id=str(event_turn["conversation_id"]),
+                            source_turn_id=source_turn_id,
+                            continuation_turn_id=envelope.action_turn_id,
+                            operation="capability_materialization",
+                            payload={"schema_version": "1", "envelope_id": envelope.envelope_id},
+                            max_attempts=max_attempts,
+                            now=now,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasExpertActivityRow).values(
+                                activity_id="activity_" + _digest(envelope.materialization_id)[:32],
+                                turn_id=envelope.action_turn_id,
+                                workflow_id=envelope.workflow_id,
+                                capability_id=envelope.capability_id,
+                                operation="capability_materialization",
+                                status="working",
+                                display_name="Derived Capability Materialization",
+                                error_code=None,
+                                error_message=None,
+                                created_at=now.isoformat(),
+                                updated_at=now.isoformat(),
+                            )
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=envelope.workflow_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=envelope.action_turn_id,
+                                action_id=envelope.action_turn_id,
+                                event_type="parent_derived_materialization_queued",
+                                transition_key=f"materialization:{envelope.materialization_id}:queued",
+                                created_at=now.isoformat(),
+                                payload={
+                                    "materialization_id": envelope.materialization_id,
+                                    "parent_node_id": envelope.parent_snapshot.node_id,
+                                    "parent_node_revision": envelope.parent_snapshot.node_revision,
+                                    "derivative_role": envelope.derivative_intent.derivative_role
+                                    if envelope.derivative_intent is not None
+                                    else None,
+                                },
+                            ),
+                        )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "capability_materialization_failed",
+                "Derived materialization submission could not be persisted.",
+            ) from error
+        return envelope
+
     def mark_working(
         self,
         envelope: MaterializationEnvelopeV1,
@@ -1665,23 +1881,40 @@ class AgentCanvasMaterializationRepository:
         now = datetime.now(timezone.utc).isoformat()
         try:
             with self._database.engine.begin() as connection:
-                result = connection.execute(
-                    update(AgentCanvasConceptProposalRow)
-                    .where(
-                        AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
-                        AgentCanvasConceptProposalRow.materialization_id
-                        == envelope.materialization_id,
-                        AgentCanvasConceptProposalRow.materialization_status.in_(
-                            ("queued", "working")
-                        ),
+                if envelope.operation_kind == "derivative":
+                    proposal = (
+                        connection.execute(
+                            select(AgentCanvasConceptProposalRow).where(
+                                AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
+                                AgentCanvasConceptProposalRow.availability == "applied",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
                     )
-                    .values(materialization_status="working", materialization_updated_at=now)
-                )
-                if result.rowcount != 1:
-                    raise _error(
-                        "proposal_materialization_conflict",
-                        "Materialization attempt is no longer active.",
+                    if proposal is None:
+                        raise _error(
+                            "proposal_materialization_conflict",
+                            "Parent materialization is not available for the derived operation.",
+                        )
+                else:
+                    result = connection.execute(
+                        update(AgentCanvasConceptProposalRow)
+                        .where(
+                            AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
+                            AgentCanvasConceptProposalRow.materialization_id
+                            == envelope.materialization_id,
+                            AgentCanvasConceptProposalRow.materialization_status.in_(
+                                ("queued", "working")
+                            ),
+                        )
+                        .values(materialization_status="working", materialization_updated_at=now)
                     )
+                    if result.rowcount != 1:
+                        raise _error(
+                            "proposal_materialization_conflict",
+                            "Materialization attempt is no longer active.",
+                        )
                 connection.execute(
                     update(AgentCanvasChatTurnRow)
                     .where(AgentCanvasChatTurnRow.turn_id == envelope.action_turn_id)
@@ -2120,13 +2353,244 @@ def _affected_sequence_ids(after: AgentWorkingDocumentV2) -> tuple[str, ...]:
     return tuple(segment.sequence_id for segment in after.content.segments)
 
 
+def _insert_materialized_node(
+    connection: Connection,
+    *,
+    node: CanvasNodeV2,
+    bindings: tuple[CanvasBindingV2, ...],
+    creative_direction_snapshot_id: str | None,
+    skill_refs: tuple[dict[str, str], ...],
+    now: str,
+) -> str:
+    snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
+    connection.execute(
+        insert(AgentCanvasNodeRow).values(
+            node_id=node.node_id,
+            workflow_id=node.workflow_id,
+            node_type=node.node_type,
+            creative_role=node.creative_role,
+            role_contract_version=node.role_contract_version,
+            title=node.title,
+            status=node.status,
+            summary_prompt=node.summary_prompt,
+            generation_prompt=node.generation_prompt,
+            structured_content_json=_dump(node.structured_content),
+            model_selection_mode=node.model_selection_mode,
+            model_ref=node.model_ref,
+            parameters_json=_dump(node.parameters),
+            metadata_json=_dump(node.metadata),
+            parameter_provenance_json=_dump(
+                {
+                    field: provenance.model_dump(mode="json")
+                    for field, provenance in node.parameter_provenance.items()
+                }
+            ),
+            prompt_context_snapshot_id=snapshot_id,
+            output_asset_id=node.output_asset_id,
+            position_x=node.position.x,
+            position_y=node.position.y,
+            revision=node.revision,
+            error_json=None,
+            prompt_preparation_json=_dump(node.prompt_preparation.model_dump(mode="json")),
+            created_at=node.created_at.isoformat(),
+            updated_at=node.updated_at.isoformat(),
+        )
+    )
+    for binding in bindings:
+        connection.execute(
+            insert(AgentCanvasBindingRow).values(
+                binding_id=binding.binding_id,
+                workflow_id=binding.workflow_id,
+                source_kind=binding.source.kind,
+                source_node_id=(
+                    binding.source.source_node_id if binding.source.kind == "node_output" else None
+                ),
+                source_asset_id=(
+                    binding.source.asset_id if binding.source.kind == "image_asset" else None
+                ),
+                target_node_id=binding.target_node_id,
+                input_role=binding.input_role,
+                required=binding.required,
+                enabled=binding.enabled,
+                order_index=binding.order,
+                label=binding.label,
+                metadata_json=_dump(binding.metadata),
+                created_at=binding.created_at.isoformat(),
+                updated_at=binding.updated_at.isoformat(),
+            )
+        )
+    connection.execute(
+        insert(AgentCanvasPromptContextSnapshotRow).values(
+            snapshot_id=snapshot_id,
+            workflow_id=node.workflow_id,
+            target_node_id=node.node_id,
+            inputs_json=_dump(_materialization_text_snapshots(connection, bindings)),
+            creative_direction_snapshot_id=creative_direction_snapshot_id,
+            skill_refs_json=_dump(skill_refs),
+            content_digest=hashlib.sha256(
+                _dump(
+                    {
+                        "generation_prompt": node.generation_prompt,
+                        "structured_content": node.structured_content,
+                        "skill_refs": skill_refs,
+                    }
+                ).encode("utf-8")
+            ).hexdigest(),
+            created_at=now,
+        )
+    )
+    return snapshot_id
+
+
+def _insert_materialization_document(
+    connection: Connection,
+    *,
+    plan: MaterializationPlanV1,
+    guidance_session_id: str,
+    document_write: MaterializationDocumentWriteV1,
+) -> None:
+    if document_write.document_type != "agent_working_document":
+        raise _error(
+            "materialization_document_invalid",
+            "Materialization document type is not supported.",
+        )
+    if document_write.payload is None:
+        raise _error(
+            "materialization_document_invalid",
+            "Materialization document create payload is missing.",
+        )
+    try:
+        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+    except ValueError as error:
+        raise _error(
+            "materialization_document_invalid",
+            "Materialization document payload is invalid.",
+        ) from error
+    if (
+        document.document_id != document_write.document_id
+        or document.workflow_id != plan.workflow_id
+        or document.guidance_session_id != guidance_session_id
+    ):
+        raise _error(
+            "materialization_document_invalid",
+            "Materialization document scope is inconsistent.",
+        )
+    connection.execute(
+        insert(AgentWorkingDocumentRow).values(
+            document_id=document.document_id,
+            workflow_id=document.workflow_id,
+            guidance_session_id=document.guidance_session_id,
+            document_kind=document.kind,
+            title=document.title,
+            revision=document.revision,
+            content_schema_version=document.content_schema_version,
+            content_digest=document.content_digest,
+            content_json=_dump(document.content.model_dump(mode="json")),
+            created_by_agent_run_id=document.created_by_agent_run_id,
+            updated_by_agent_run_id=document.updated_by_agent_run_id,
+            created_at=document.created_at.isoformat(),
+            updated_at=document.updated_at.isoformat(),
+        )
+    )
+
+
+def _materialization_text_snapshots(
+    connection: Connection,
+    bindings: tuple[CanvasBindingV2, ...],
+) -> list[dict[str, object]]:
+    snapshots: list[dict[str, object]] = []
+    for binding in sorted(
+        bindings,
+        key=lambda item: (item.display_order, item.binding_id),
+    ):
+        if binding.input_role != "text_context" or binding.source.kind != "node_output":
+            continue
+        source = (
+            connection.execute(
+                select(AgentCanvasNodeRow).where(
+                    AgentCanvasNodeRow.node_id == binding.source.node_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+        structured_content = json.loads(str(source["structured_content_json"]))
+        content = str(structured_content.get("content", ""))
+        snapshot = ResolvedTextInputSnapshotV2(
+            source_node_id=str(source["node_id"]),
+            source_node_revision=int(source["revision"]),
+            binding_kind="text_context",
+            document_kind=("script" if str(source["node_type"]) == "script" else "text"),
+            content=content[:16_000],
+            content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            source_semantic_role=str(source["creative_role"]),
+            binding_metadata=binding.metadata,
+            source_structured_content=structured_content,
+            binding_id=binding.binding_id,
+            input_role="text_context",
+            required=binding.required,
+            display_order=binding.display_order,
+        )
+        snapshots.append(snapshot.model_dump(mode="json"))
+    return snapshots
+
+
+def _require_current_derivative_parent(
+    connection: Connection,
+    plan: MaterializationPlanV1,
+) -> None:
+    if plan.operation_kind != "derivative" or plan.parent_snapshot is None:
+        return
+    parent_snapshot = plan.parent_snapshot
+    parent = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.node_id == parent_snapshot.node_id,
+                AgentCanvasNodeRow.workflow_id == plan.workflow_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if parent is None:
+        raise _error(
+            "parent_materialization_missing",
+            "The derivative parent is not available in this Workflow.",
+        )
+    expected_role = "character" if parent_snapshot.semantic_role == "character_main" else "product"
+    content = json.loads(str(parent["structured_content_json"]))
+    expected_asset_kind = (
+        content.get("character_asset_kind") == "identity_master"
+        if expected_role == "character"
+        else content.get("asset_kind") == "main"
+    )
+    if str(parent["creative_role"]) != expected_role or not expected_asset_kind:
+        raise _error(
+            "role_reference_mismatch",
+            "The derivative parent does not match the authoritative role policy.",
+        )
+    prompt_preparation = json.loads(str(parent["prompt_preparation_json"]))
+    prompt_operation_id = parent_snapshot.prompt_preparation_operation_id
+    revision_matches = int(parent["revision"]) == parent_snapshot.node_revision or (
+        prompt_operation_id is not None
+        and int(parent["revision"]) > parent_snapshot.node_revision
+        and prompt_preparation.get("operation_id") == prompt_operation_id
+        and prompt_preparation.get("status") == "ready"
+    )
+    if not revision_matches:
+        raise _error(
+            "parent_materialization_revision_stale",
+            "The derivative parent revision is stale.",
+        )
+
+
 def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
     value = connection.execute(
         select(AgentCanvasGuidanceSessionRow.response_locale).where(
             AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
         )
     ).scalar_one_or_none()
-    return str(value or "und")
+    return ResponseLocaleResolverV1().resolve(str(value or "und"))
 
 
 def _guided_submission_context(
@@ -2189,7 +2653,7 @@ def _guided_submission_context(
             "Guided interaction changed before Materialization.",
         )
     if (
-        not isinstance(request, GuidedConceptSubmitV1)
+        not isinstance(request, GuidedConceptSubmitV2)
         or content.get("proposal_id") != proposal_id
         or (request.action == "select" and request.option_id != option_id)
     ):

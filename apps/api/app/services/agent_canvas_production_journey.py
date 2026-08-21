@@ -2,374 +2,459 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
+
+from pydantic import ValidationError
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import CreativeElementDecisionV2
 from app.schemas.agent_canvas_production_journey import (
-    FoundationJourneyItemV1,
-    GuidedProductionJourneyV1,
-    JourneyActionProjectionV1,
-    JourneyEvidenceV1,
-    JourneyPolicyContextV1,
-    JourneyPolicyResultV1,
-    JourneyStageV1,
+    GuidedProductionJourneyV2,
+    JourneyActionProjectionV2,
+    JourneyElementDecisionV2,
+    JourneyEvidenceV2,
+    JourneyPolicyContextV2,
+    JourneyPolicyResultV2,
+    JourneyStageV2,
 )
 
 
-_FOUNDATION_ORDER = ("product", "prop", "character", "scene")
-_FOUNDATION_CAPABILITY: dict[str, CapabilityIdV1] = {
-    "product": "product_design",
-    "prop": "prop_design",
-    "character": "character_design",
-    "scene": "scene_design",
-}
-_STAGE_EVIDENCE: dict[str, tuple[str, ...]] = {
-    "intake": ("creative_goal_validated",),
-    "clarification": ("clarification_completed",),
-    "world_setting": (
-        "world_setting_selected",
-        "world_setting_deferred",
-        "world_setting_excluded",
+@dataclass(frozen=True, slots=True)
+class FixedJourneyStageDescriptorV2:
+    stage: JourneyStageV2
+    successor: JourneyStageV2 | None
+    capability_id: CapabilityIdV1 | None
+    optional: bool
+    element_kind: str | None
+    evidence_kinds: tuple[str, ...]
+
+
+FIXED_JOURNEY_STAGE_DESCRIPTORS: dict[JourneyStageV2, FixedJourneyStageDescriptorV2] = {
+    "intake": FixedJourneyStageDescriptorV2(
+        "intake",
+        "world_view",
+        None,
+        False,
+        None,
+        ("creative_goal_validated", "clarification_completed"),
     ),
-    "narrative_direction": ("narrative_direction_selected",),
-    "style_lock": ("style_locked",),
-    "storyboard_plan": ("storyboard_plan_accepted",),
-    "storyboard_grids": ("storyboard_grids_prepared",),
-    "video_segments": ("video_segments_prepared",),
-    "bgm": ("bgm_prepared", "bgm_deferred", "bgm_excluded"),
-    "editing_ready": ("editing_prepared",),
+    "world_view": FixedJourneyStageDescriptorV2(
+        "world_view",
+        "product",
+        "world_setting",
+        True,
+        "world_setting",
+        ("world_view_selected", "world_view_delegated", "world_view_excluded"),
+    ),
+    "product": FixedJourneyStageDescriptorV2(
+        "product",
+        "props",
+        "product_design",
+        False,
+        "product",
+        ("product_materialized", "product_delegated"),
+    ),
+    "props": FixedJourneyStageDescriptorV2(
+        "props",
+        "character",
+        "prop_design",
+        True,
+        "prop",
+        ("props_materialized", "props_delegated", "props_excluded"),
+    ),
+    "character": FixedJourneyStageDescriptorV2(
+        "character",
+        "scene",
+        "character_design",
+        True,
+        "character",
+        ("character_materialized", "character_delegated", "character_excluded"),
+    ),
+    "scene": FixedJourneyStageDescriptorV2(
+        "scene",
+        "narrative_direction",
+        "scene_design",
+        False,
+        "scene",
+        ("scene_materialized", "scene_delegated"),
+    ),
+    "narrative_direction": FixedJourneyStageDescriptorV2(
+        "narrative_direction",
+        "style_lock",
+        "script_authoring",
+        False,
+        "narrative_direction",
+        ("narrative_direction_accepted",),
+    ),
+    "style_lock": FixedJourneyStageDescriptorV2(
+        "style_lock",
+        "storyboard_plan",
+        "script_authoring",
+        False,
+        "style_lock",
+        ("style_lock_accepted",),
+    ),
+    "storyboard_plan": FixedJourneyStageDescriptorV2(
+        "storyboard_plan",
+        "storyboard_grids",
+        "script_authoring",
+        False,
+        "storyboard_plan",
+        ("storyboard_plan_accepted",),
+    ),
+    "storyboard_grids": FixedJourneyStageDescriptorV2(
+        "storyboard_grids",
+        "videos",
+        "storyboard_design",
+        False,
+        "storyboard",
+        ("storyboard_grids_prepared",),
+    ),
+    "videos": FixedJourneyStageDescriptorV2(
+        "videos",
+        "bgm",
+        "video_direction",
+        False,
+        "video",
+        ("videos_prepared",),
+    ),
+    "bgm": FixedJourneyStageDescriptorV2(
+        "bgm",
+        "editing",
+        "bgm_direction",
+        True,
+        "audio",
+        ("bgm_prepared", "bgm_delegated", "bgm_excluded"),
+    ),
+    "editing": FixedJourneyStageDescriptorV2(
+        "editing",
+        "completed",
+        None,
+        False,
+        None,
+        ("editing_prepared", "editing_export_completed"),
+    ),
+    "completed": FixedJourneyStageDescriptorV2("completed", None, None, False, None, ()),
 }
-
-
-def build_foundation_queue(
-    decisions: tuple[CreativeElementDecisionV2, ...],
-) -> tuple[FoundationJourneyItemV1, ...]:
-    by_kind = {decision.element_kind: decision for decision in decisions}
-    result: list[FoundationJourneyItemV1] = []
-    for kind in _FOUNDATION_ORDER:
-        decision = by_kind.get(kind)
-        if decision is None or decision.presence != "include":
-            continue
-        raw_count = decision.requirements.get("count", 1)
-        count = raw_count if isinstance(raw_count, int) and not isinstance(raw_count, bool) else 1
-        count = min(max(count, 1), 32)
-        source = "delegated" if decision.source == "delegated_to_agent" else "explicit_user"
-        for occurrence_index in range(1, count + 1):
-            result.append(
-                FoundationJourneyItemV1(
-                    item_id=f"foundation:{kind}:{occurrence_index}",
-                    kind=kind,
-                    occurrence_index=occurrence_index,
-                    requirement_source=source,
-                    required=decision.authority == "user",
-                )
-            )
-    return tuple(result)
 
 
 def initial_production_journey(
     decisions: tuple[CreativeElementDecisionV2, ...],
-) -> GuidedProductionJourneyV1:
-    return GuidedProductionJourneyV1(
-        foundation_queue=build_foundation_queue(decisions),
-    )
+) -> GuidedProductionJourneyV2:
+    """Create the clean-cut fixed journey without constructing hidden stage topology."""
+
+    occurrences: list[JourneyElementDecisionV2] = []
+    by_kind: dict[str, int] = {}
+    for decision in decisions:
+        count_value = decision.requirements.get("count", 1)
+        count = (
+            count_value if isinstance(count_value, int) and not isinstance(count_value, bool) else 1
+        )
+        count = min(max(count, 1), 32)
+        for _ in range(count):
+            occurrence_index = by_kind.get(decision.element_kind, 0) + 1
+            by_kind[decision.element_kind] = occurrence_index
+            occurrences.append(
+                JourneyElementDecisionV2(
+                    decision_id=f"decision:{decision.element_kind}:{occurrence_index}",
+                    element_kind=decision.element_kind,
+                    occurrence_id=f"occurrence:{decision.element_kind}:{occurrence_index}",
+                    occurrence_index=occurrence_index,
+                    outcome={
+                        "include": "include",
+                        "exclude": "exclude",
+                        "unspecified": "unresolved",
+                    }[decision.presence],
+                    source=("delegated" if decision.source == "delegated_to_agent" else "user"),
+                    source_revision=1,
+                    requirements=decision.requirements,
+                )
+            )
+    return GuidedProductionJourneyV2(decisions=tuple(occurrences))
+
+
+def parse_production_journey(payload: str) -> GuidedProductionJourneyV2:
+    """Read only the clean-cut journey policy from persisted JSON."""
+
+    try:
+        return GuidedProductionJourneyV2.model_validate_json(payload)
+    except ValidationError as error:
+        code = (
+            "journey_policy_unsupported"
+            if "fixed_ad_production_v1" in payload
+            else "journey_state_invalid"
+        )
+        raise _error(code, "Persisted journey authority is not supported.") from error
 
 
 class GuidedProductionJourneyPolicyService:
-    """Evaluate and apply one bounded deterministic journey transition."""
+    """Apply the closed fixed-ad stage table without model or runtime dependencies."""
 
-    def evaluate(self, context: JourneyPolicyContextV1) -> JourneyPolicyResultV1:
-        journey = context.journey
-        evidence = {
-            *context.completed_evidence_kinds,
-            *(item.evidence_kind for item in journey.transition_evidence),
-        }
-        if journey.active_action is not None:
-            return self._result(journey, "wait_for_user")
-        if journey.suspended_action is not None:
-            return self._result(journey, "wait_for_user")
+    def evaluate(
+        self,
+        context: JourneyPolicyContextV2 | GuidedProductionJourneyV2,
+    ) -> JourneyPolicyResultV2:
+        journey = context.journey if isinstance(context, JourneyPolicyContextV2) else context
+        descriptor = FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage]
         if journey.stage == "completed":
-            return self._result(journey, "complete")
-        if journey.stage == "foundation_design":
-            return self._foundation_action(journey)
-        if journey.stage == "editing_ready" and "editing_prepared" in evidence:
-            return self._result(journey, "wait_for_user")
-
-        accepted = _STAGE_EVIDENCE.get(journey.stage, ())
-        if any(item in evidence for item in accepted):
-            return self._result(
-                journey,
-                "advance_stage",
-                next_stage=self._next_stage(context),
-            )
-        return self._pending_action(context)
+            return _result(journey, "complete")
+        if journey.active_action is not None or journey.suspended_action is not None:
+            return _result(journey, "wait_for_user")
+        if journey.stage == "editing":
+            return _result(journey, "prepare_editing")
+        if descriptor.capability_id is None:
+            return _result(journey, "wait_for_user")
+        occurrence_id = journey.active_occurrence_id or self._next_occurrence(journey, descriptor)
+        action = (
+            "invoke_internal_checkpoint"
+            if journey.stage in {"narrative_direction", "style_lock", "storyboard_plan"}
+            else "invoke_capability"
+        )
+        return _result(
+            journey,
+            action,
+            capability_id=descriptor.capability_id,
+            occurrence_id=occurrence_id,
+        )
 
     def apply_evidence(
         self,
-        context: JourneyPolicyContextV1,
-        evidence: JourneyEvidenceV1,
+        context: JourneyPolicyContextV2 | GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
         *,
         recorded_at: datetime | None = None,
-    ) -> GuidedProductionJourneyV1:
-        journey = context.journey
+    ) -> GuidedProductionJourneyV2:
+        journey = context.journey if isinstance(context, JourneyPolicyContextV2) else context
         if any(item.evidence_id == evidence.evidence_id for item in journey.transition_evidence):
             return journey
+        self._require_current_evidence(journey, evidence)
         if evidence.evidence_kind == "stage_failed":
-            return journey.model_copy(
-                update={
-                    "stage_status": "failed",
-                    "active_action": None,
-                    "transition_evidence": (
-                        *journey.transition_evidence,
-                        evidence.as_transition(recorded_at=recorded_at),
-                    ),
-                }
-            )
-        if evidence.evidence_kind == "targeted_action_started":
-            if journey.suspended_action is not None or evidence.action_id is None:
-                raise _error("journey_action_in_progress", "A journey action is already active.")
-            return journey.model_copy(
-                update={
-                    "suspended_action": JourneyActionProjectionV1(
-                        action_id=evidence.action_id,
-                        action_kind="targeted_authoring",
-                        stage=journey.stage,
-                        status="working",
-                    ),
-                    "transition_evidence": (
-                        *journey.transition_evidence,
-                        evidence.as_transition(recorded_at=recorded_at),
-                    ),
-                }
-            )
-        if evidence.evidence_kind == "targeted_action_finished":
-            if (
-                journey.suspended_action is None
-                or evidence.action_id != journey.suspended_action.action_id
-            ):
-                raise _error("journey_evidence_invalid", "Targeted action evidence is stale.")
-            return journey.model_copy(
-                update={
-                    "suspended_action": None,
-                    "transition_evidence": (
-                        *journey.transition_evidence,
-                        evidence.as_transition(recorded_at=recorded_at),
-                    ),
-                }
-            )
-        if journey.stage == "foundation_design":
-            return self._apply_foundation_evidence(
-                context,
+            return self._record_without_advancing(
+                journey,
                 evidence,
                 recorded_at=recorded_at,
+                stage_status="failed",
+                active_action=None,
             )
+        if evidence.evidence_kind == "targeted_action_started":
+            return self._start_targeted_action(journey, evidence, recorded_at=recorded_at)
+        if evidence.evidence_kind == "targeted_action_finished":
+            return self._finish_targeted_action(journey, evidence, recorded_at=recorded_at)
 
-        allowed = _STAGE_EVIDENCE.get(journey.stage, ())
-        if evidence.evidence_kind not in allowed:
+        descriptor = FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage]
+        if evidence.evidence_kind not in descriptor.evidence_kinds:
+            if str(evidence.evidence_kind).endswith("_excluded") and not descriptor.optional:
+                raise _error(
+                    "journey_stage_exclusion_not_allowed",
+                    "The current fixed journey stage cannot be excluded.",
+                )
             raise _error(
-                "journey_transition_invalid",
+                "journey_stage_action_mismatch",
                 "Journey evidence does not match the current stage.",
             )
-        next_context = context.model_copy(
-            update={
-                "journey": journey.model_copy(update={"active_action": None}),
-                "completed_evidence_kinds": (
-                    *context.completed_evidence_kinds,
-                    evidence.evidence_kind,
-                ),
-            }
-        )
-        result = self.evaluate(next_context)
-        if result.action != "advance_stage" or result.next_stage is None:
-            raise _error("journey_transition_invalid", "Journey cannot advance.")
-        return self._advance(
-            journey,
-            result.next_stage,
-            evidence,
-            recorded_at=recorded_at,
-        )
+        if descriptor.successor is None:
+            raise _error("journey_stage_action_mismatch", "Journey stage cannot advance.")
 
-    def _apply_foundation_evidence(
-        self,
-        context: JourneyPolicyContextV1,
-        evidence: JourneyEvidenceV1,
-        *,
-        recorded_at: datetime | None,
-    ) -> GuidedProductionJourneyV1:
-        status_by_kind = {
-            "foundation_item_selected": "selected",
-            "foundation_item_deferred": "deferred",
-            "foundation_item_excluded": "excluded",
-        }
-        status = status_by_kind.get(evidence.evidence_kind)
-        journey = context.journey
-        cursor = journey.foundation_cursor
-        if status is None or cursor is None or evidence.foundation_item_id is None:
-            raise _error("journey_transition_invalid", "Foundation evidence is invalid.")
-        current = journey.foundation_queue[cursor]
-        if current.item_id != evidence.foundation_item_id:
-            raise _error("journey_evidence_invalid", "Foundation evidence targets another item.")
-        queue = list(journey.foundation_queue)
-        queue[cursor] = current.model_copy(update={"status": status})
-        next_cursor = next(
-            (index for index in range(cursor + 1, len(queue)) if queue[index].status == "pending"),
-            None,
-        )
-        transition = evidence.as_transition(recorded_at=recorded_at)
-        if next_cursor is not None:
-            queue[next_cursor] = queue[next_cursor].model_copy(update={"status": "active"})
+        decisions = self._apply_occurrence_outcome(journey, evidence)
+        if evidence.occurrence_id is not None and self._has_unresolved_occurrence(
+            decisions, descriptor
+        ):
+            transition = evidence.as_transition(
+                stage=journey.stage,
+                stage_revision=journey.stage_revision,
+                recorded_at=recorded_at,
+            )
             return journey.model_copy(
                 update={
-                    "foundation_queue": tuple(queue),
-                    "foundation_cursor": next_cursor,
+                    "decisions": decisions,
+                    "active_occurrence_id": self._next_occurrence_from(decisions, descriptor),
                     "active_action": None,
                     "transition_evidence": (*journey.transition_evidence, transition),
                 }
             )
-        advanced = journey.model_copy(
-            update={"foundation_queue": tuple(queue), "foundation_cursor": None}
-        )
-        return self._advance(
-            advanced,
-            "narrative_direction",
-            evidence,
+
+        transition = evidence.as_transition(
+            stage=journey.stage,
+            stage_revision=journey.stage_revision,
             recorded_at=recorded_at,
         )
-
-    def _next_stage(self, context: JourneyPolicyContextV1) -> JourneyStageV1:
-        stage = context.journey.stage
-        decisions = {item.element_kind: item.presence for item in context.element_decisions}
-        if stage == "intake":
-            if context.clarification_required:
-                return "clarification"
-            return self._first_included_stage(context)
-        if stage == "clarification":
-            return self._first_included_stage(context)
-        if stage == "world_setting":
-            return (
-                "foundation_design" if context.journey.foundation_queue else "narrative_direction"
-            )
-        if stage == "narrative_direction":
-            return "style_lock"
-        if stage == "style_lock":
-            return "storyboard_plan"
-        if stage == "storyboard_plan":
-            return "storyboard_grids"
-        if stage == "storyboard_grids":
-            return "video_segments"
-        if stage == "video_segments":
-            return "bgm" if decisions.get("audio") == "include" else "editing_ready"
-        if stage == "bgm":
-            return "editing_ready"
-        if stage == "editing_ready":
-            return "completed"
-        raise _error("journey_transition_invalid", "Journey stage cannot advance.")
-
-    def _first_included_stage(self, context: JourneyPolicyContextV1) -> JourneyStageV1:
-        decisions = {item.element_kind: item.presence for item in context.element_decisions}
-        if decisions.get("world_setting") == "include":
-            return "world_setting"
-        if context.journey.foundation_queue:
-            return "foundation_design"
-        return "narrative_direction"
-
-    def _foundation_action(
-        self,
-        journey: GuidedProductionJourneyV1,
-    ) -> JourneyPolicyResultV1:
-        cursor = journey.foundation_cursor
-        if cursor is None:
-            cursor = next(
-                (
-                    index
-                    for index, item in enumerate(journey.foundation_queue)
-                    if item.status == "pending"
-                ),
-                None,
-            )
-        if cursor is None:
-            return self._result(journey, "advance_stage", next_stage="narrative_direction")
-        item = journey.foundation_queue[cursor]
-        return self._result(
-            journey,
-            "invoke_capability",
-            capability_id=_FOUNDATION_CAPABILITY[item.kind],
-            foundation_item_id=item.item_id,
-        )
-
-    def _pending_action(self, context: JourneyPolicyContextV1) -> JourneyPolicyResultV1:
-        capability_by_stage: dict[str, CapabilityIdV1] = {
-            "world_setting": "world_setting",
-            "narrative_direction": "script_authoring",
-            "storyboard_plan": "storyboard_design",
-            "bgm": "bgm_direction",
-        }
-        if context.journey.stage == "editing_ready":
-            return self._result(context.journey, "prepare_editing")
-        capability = capability_by_stage.get(context.journey.stage)
-        if capability is not None:
-            return self._result(
-                context.journey,
-                "invoke_capability",
-                capability_id=capability,
-            )
-        return self._result(context.journey, "wait_for_user")
-
-    @staticmethod
-    def _advance(
-        journey: GuidedProductionJourneyV1,
-        next_stage: JourneyStageV1,
-        evidence: JourneyEvidenceV1,
-        *,
-        recorded_at: datetime | None = None,
-    ) -> GuidedProductionJourneyV1:
-        queue = journey.foundation_queue
-        cursor = journey.foundation_cursor
-        if next_stage == "foundation_design" and queue:
-            cursor = next(
-                (index for index, item in enumerate(queue) if item.status == "pending"),
-                None,
-            )
-            if cursor is not None:
-                mutable = list(queue)
-                mutable[cursor] = mutable[cursor].model_copy(update={"status": "active"})
-                queue = tuple(mutable)
         return journey.model_copy(
             update={
-                "stage": next_stage,
-                "stage_status": "completed" if next_stage == "completed" else "ready",
+                "stage": descriptor.successor,
+                "stage_status": ("completed" if descriptor.successor == "completed" else "ready"),
                 "stage_revision": journey.stage_revision + 1,
-                "foundation_queue": queue,
-                "foundation_cursor": cursor,
+                "decisions": decisions,
+                "active_occurrence_id": None,
                 "active_action": None,
-                "transition_evidence": (
-                    *journey.transition_evidence,
-                    evidence.as_transition(recorded_at=recorded_at),
-                ),
+                "transition_evidence": (*journey.transition_evidence, transition),
             }
         )
 
     @staticmethod
-    def _result(
-        journey: GuidedProductionJourneyV1,
-        action: str,
+    def _require_current_evidence(
+        journey: GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
+    ) -> None:
+        if evidence.stage is not None and evidence.stage != journey.stage:
+            raise _error("journey_stage_action_mismatch", "Evidence targets another stage.")
+        if (
+            evidence.stage_revision is not None
+            and evidence.stage_revision != journey.stage_revision
+        ):
+            raise _error(
+                "journey_stage_action_mismatch",
+                "Evidence targets another stage revision.",
+            )
+
+    def _start_targeted_action(
+        self,
+        journey: GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
         *,
-        next_stage: JourneyStageV1 | None = None,
-        capability_id: CapabilityIdV1 | None = None,
-        foundation_item_id: str | None = None,
-    ) -> JourneyPolicyResultV1:
-        return JourneyPolicyResultV1.model_validate(
-            {
-                "action": action,
-                "expected_stage_revision": journey.stage_revision,
-                "next_stage": next_stage,
-                "capability_id": capability_id,
-                "foundation_item_id": foundation_item_id,
-                "requires_model_call": False,
+        recorded_at: datetime | None,
+    ) -> GuidedProductionJourneyV2:
+        if (
+            evidence.action_id is None
+            or journey.active_action is None
+            or journey.suspended_action is not None
+        ):
+            raise _error("journey_action_in_progress", "A journey action cannot be suspended.")
+        targeted = JourneyActionProjectionV2(
+            action_id=evidence.action_id,
+            action_kind="targeted_authoring",
+            stage=journey.stage,
+            stage_revision=journey.stage_revision,
+            status="working",
+            occurrence_id=evidence.occurrence_id,
+        )
+        return self._record_without_advancing(
+            journey,
+            evidence,
+            recorded_at=recorded_at,
+            active_action=targeted,
+            suspended_action=journey.active_action,
+        )
+
+    def _finish_targeted_action(
+        self,
+        journey: GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
+        *,
+        recorded_at: datetime | None,
+    ) -> GuidedProductionJourneyV2:
+        if (
+            journey.active_action is None
+            or journey.active_action.action_id != evidence.action_id
+            or journey.suspended_action is None
+        ):
+            raise _error("journey_stage_action_mismatch", "Targeted action evidence is stale.")
+        return self._record_without_advancing(
+            journey,
+            evidence,
+            recorded_at=recorded_at,
+            active_action=journey.suspended_action,
+            suspended_action=None,
+        )
+
+    @staticmethod
+    def _record_without_advancing(
+        journey: GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
+        *,
+        recorded_at: datetime | None,
+        **updates: object,
+    ) -> GuidedProductionJourneyV2:
+        transition = evidence.as_transition(
+            stage=journey.stage,
+            stage_revision=journey.stage_revision,
+            recorded_at=recorded_at,
+        )
+        return journey.model_copy(
+            update={
+                **updates,
+                "transition_evidence": (*journey.transition_evidence, transition),
             }
         )
+
+    @staticmethod
+    def _apply_occurrence_outcome(
+        journey: GuidedProductionJourneyV2,
+        evidence: JourneyEvidenceV2,
+    ) -> tuple[JourneyElementDecisionV2, ...]:
+        if evidence.occurrence_id is None:
+            return journey.decisions
+        outcome = (
+            "exclude"
+            if str(evidence.evidence_kind).endswith("_excluded")
+            else "delegate"
+            if str(evidence.evidence_kind).endswith("_delegated")
+            else "include"
+        )
+        found = False
+        updated: list[JourneyElementDecisionV2] = []
+        for decision in journey.decisions:
+            if decision.occurrence_id == evidence.occurrence_id:
+                found = True
+                updated.append(decision.model_copy(update={"outcome": outcome}))
+            else:
+                updated.append(decision)
+        if not found:
+            raise _error(
+                "journey_stage_action_mismatch",
+                "Evidence targets an unknown journey occurrence.",
+            )
+        return tuple(updated)
+
+    @staticmethod
+    def _has_unresolved_occurrence(
+        decisions: tuple[JourneyElementDecisionV2, ...],
+        descriptor: FixedJourneyStageDescriptorV2,
+    ) -> bool:
+        return any(
+            item.element_kind == descriptor.element_kind and item.outcome == "unresolved"
+            for item in decisions
+        )
+
+    @staticmethod
+    def _next_occurrence_from(
+        decisions: tuple[JourneyElementDecisionV2, ...],
+        descriptor: FixedJourneyStageDescriptorV2,
+    ) -> str | None:
+        return next(
+            (
+                item.occurrence_id
+                for item in decisions
+                if item.element_kind == descriptor.element_kind and item.outcome == "unresolved"
+            ),
+            None,
+        )
+
+    def _next_occurrence(
+        self,
+        journey: GuidedProductionJourneyV2,
+        descriptor: FixedJourneyStageDescriptorV2,
+    ) -> str | None:
+        return self._next_occurrence_from(journey.decisions, descriptor)
+
+
+def _result(
+    journey: GuidedProductionJourneyV2,
+    action: str,
+    *,
+    capability_id: CapabilityIdV1 | None = None,
+    occurrence_id: str | None = None,
+) -> JourneyPolicyResultV2:
+    return JourneyPolicyResultV2.model_validate(
+        {
+            "action": action,
+            "expected_stage_revision": journey.stage_revision,
+            "capability_id": capability_id,
+            "occurrence_id": occurrence_id,
+            "requires_model_call": False,
+        }
+    )
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

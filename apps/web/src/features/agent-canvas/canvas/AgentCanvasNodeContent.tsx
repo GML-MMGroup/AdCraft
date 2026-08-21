@@ -26,7 +26,7 @@ function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
   }
   if (node.node_type === "image" || node.node_type === "video") {
     const preparation = promptPreparationForNode(node);
-    return preparation.status === "ready"
+    return preparation?.status === "ready"
       ? nonEmptyString(node.generation_prompt)
       : nonEmptyString(node.summary_prompt);
   }

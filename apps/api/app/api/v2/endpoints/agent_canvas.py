@@ -62,6 +62,12 @@ from app.persistence.agent_canvas_decision_bundle_repository import (
 from app.persistence.agent_canvas_capability_proposal_repository import (
     AgentCanvasCapabilityProposalRepository,
 )
+from app.persistence.agent_canvas_capability_supersession_repository import (
+    AgentCanvasCapabilitySupersessionRepository,
+)
+from app.services.agent_canvas_internal_document_checkpoint import (
+    AgentCanvasInternalDocumentCheckpointPublisher,
+)
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
@@ -151,8 +157,8 @@ from app.schemas.agent_canvas_decision_bundles import (
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_guided_interactions import (
     GuidedAcceptedReferenceV1,
-    GuidedConceptChoiceV1,
-    GuidedConceptSubmitV1,
+    GuidedConceptChoiceV2,
+    GuidedConceptSubmitV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
@@ -1187,7 +1193,15 @@ def create_agent_canvas_runtime(
             database,
             event_repository,
         ).publish,
+        internal_document_publisher=AgentCanvasInternalDocumentCheckpointPublisher(
+            database,
+            event_repository,
+        ).publish,
         direct_materializer=materialize_explicit_direction,
+    )
+    capability_supersession = AgentCanvasCapabilitySupersessionRepository(
+        database,
+        event_repository,
     )
     durable_next_action = DurableNextActionExecutionService(
         workflows=workflow_repository,
@@ -1294,6 +1308,14 @@ def create_agent_canvas_runtime(
         next_action=durable_next_action.execute,
         capability_command=capability_execution.execute,
         replace_superseded_capability=(durable_next_action.requeue_superseded_capability),
+        supersede_capability=lambda continuation_id, worker_id, lease_generation: (
+            capability_supersession.publish(
+                continuation_id,
+                worker_id=worker_id,
+                lease_generation=lease_generation,
+                now=datetime.now(timezone.utc),
+            )
+        ),
         capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
@@ -2266,7 +2288,10 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    if not accepted.replayed:
+    if (
+        not accepted.replayed
+        and runtime.conversations.get_turn(accepted.turn_id).status == "queued"
+    ):
         background_tasks.add_task(
             runtime.accepted_background.run,
             AcceptedBackgroundWork(
@@ -2571,7 +2596,7 @@ def act_on_chat_proposal(
         interaction = runtime.guided_interactions.get_current(workflow_id)
         if (
             interaction is not None
-            and isinstance(interaction.content, GuidedConceptChoiceV1)
+            and isinstance(interaction.content, GuidedConceptChoiceV2)
             and interaction.content.proposal_id == proposal_id
             and isinstance(
                 request,
@@ -2586,7 +2611,7 @@ def act_on_chat_proposal(
             accepted_interaction = runtime.guided_interactions.submit_interaction(
                 workflow_id,
                 interaction.interaction_id,
-                GuidedConceptSubmitV1(
+                GuidedConceptSubmitV2(
                     submission_kind="concept_choice",
                     expected_interaction_revision=interaction.revision,
                     expected_session_revision=request.expected_session_revision,
@@ -3267,7 +3292,11 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guidance_revision_conflict": 409,
         "journey_transition_invalid": 422,
         "journey_revision_conflict": 409,
-        "journey_foundation_queue_invalid": 422,
+        "journey_policy_unsupported": 409,
+        "journey_state_invalid": 422,
+        "journey_stage_action_mismatch": 409,
+        "journey_stage_exclusion_not_allowed": 422,
+        "journey_custom_input_invalid": 422,
         "journey_action_in_progress": 409,
         "journey_evidence_invalid": 422,
         "guidance_goal_required": 422,

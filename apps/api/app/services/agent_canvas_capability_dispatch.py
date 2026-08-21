@@ -46,7 +46,8 @@ from app.services.agent_canvas_requirement_projection import requirement_project
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
+from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.language import BCP47Tag
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -139,6 +140,8 @@ class CapabilityDispatchService:
         expected_session_revision: int | None = None,
         allow_completed_source_replacement: bool = False,
         source_reply: SourceTurnReplyPublicationV1 | None = None,
+        publication_kind: str = "proposal",
+        journey_stage: JourneyStageV2 | None = None,
     ) -> CapabilityDispatchReceiptV1:
         if command.definition is None or command.command.capability_id is None:
             raise ValueError("Capability dispatch requires an invoke-capability command.")
@@ -150,6 +153,8 @@ class CapabilityDispatchService:
             objective,
             context_snapshot.digest,
             str(expected_session_revision or source_turn.guidance_session_revision or ""),
+            publication_kind,
+            journey_stage or "",
         )
         envelope_id = f"envelope_{identity[:32]}"
         capability_turn_id = f"turn_{identity[32:]}"
@@ -162,6 +167,9 @@ class CapabilityDispatchService:
             projection,
             default_candidate_count=command.definition.default_candidate_count,
         )
+        candidate_count = (
+            1 if publication_kind == "internal_document" else interaction_policy.candidate_count
+        )
         envelope = CapabilityCommandEnvelopeV2(
             envelope_id=envelope_id,
             workflow_id=source_turn.workflow_id,
@@ -173,6 +181,8 @@ class CapabilityDispatchService:
                 expected_session_revision or source_turn.guidance_session_revision
             ),
             capability_id=capability_id,
+            publication_kind=publication_kind,
+            journey_stage=journey_stage,
             source_action=command.source_action,
             objective=objective,
             context_snapshot_id=context_snapshot.snapshot_id,
@@ -186,7 +196,7 @@ class CapabilityDispatchService:
             capability_context=context_snapshot.capability_context,
             style_projection=context_snapshot.style_projection,
             result_contract_name=command.definition.result_contract_name,
-            candidate_count=interaction_policy.candidate_count,
+            candidate_count=candidate_count,
             reference_allowlist=context_snapshot.approved_reference_ids,
             reference_plan=context_snapshot.reference_plan,
             agent_request_identity=f"capability:{identity}",
@@ -481,7 +491,7 @@ def _retry_snapshot_json(
         # Unguided compatibility dispatches remain executable but are deliberately
         # ineligible for typed explicit retry because no journey authority exists.
         return "{}"
-    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+    journey = parse_production_journey(str(session["journey_state_json"]))
     active_action = journey.active_action
     logical_action_id = (
         active_action.action_id

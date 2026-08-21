@@ -17,6 +17,7 @@ from pydantic import (
 
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
@@ -600,6 +601,8 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     session_id: str | None = Field(default=None, max_length=160)
     expected_session_revision: int | None = Field(default=None, ge=1)
     capability_id: CapabilityIdV1
+    publication_kind: Literal["proposal", "internal_document"] = "proposal"
+    journey_stage: JourneyStageV2 | None = None
     source_action: GuidanceSourceActionV1 | None = None
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
@@ -621,6 +624,22 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     response_locale: BCP47Tag = "und"
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_publication_boundary(self) -> "CapabilityCommandEnvelopeV2":
+        internal_stages = {"narrative_direction", "style_lock", "storyboard_plan"}
+        if self.publication_kind == "proposal":
+            if self.journey_stage is not None:
+                raise ValueError("Proposal commands cannot own an internal journey stage.")
+            return self
+        if (
+            self.capability_id != "script_authoring"
+            or self.journey_stage not in internal_stages
+            or self.result_contract_name != "ScriptMaterializationResultV1"
+            or self.candidate_count != 1
+        ):
+            raise ValueError("Internal document commands require one fixed Script checkpoint.")
+        return self
 
 
 class NextActionEnvelopeV1(_CapabilityModel):
@@ -651,8 +670,19 @@ class CapabilityExecutionResultV1(_CapabilityModel):
     envelope_id: str
     capability_id: CapabilityIdV1
     result_contract_name: str
-    proposal_id: str
+    publication_kind: Literal["proposal", "internal_document"] = "proposal"
+    proposal_id: str | None = None
+    document_receipt_id: str | None = None
     repaired: bool = False
+
+    @model_validator(mode="after")
+    def validate_publication_result(self) -> "CapabilityExecutionResultV1":
+        if self.publication_kind == "proposal":
+            if self.proposal_id is None or self.document_receipt_id is not None:
+                raise ValueError("Proposal execution requires only a Proposal identity.")
+        elif self.document_receipt_id is None or self.proposal_id is not None:
+            raise ValueError("Internal execution requires only a document receipt identity.")
+        return self
 
 
 class _OptionBaseV1(_CapabilityModel):
@@ -702,39 +732,39 @@ class QuickMediaProposalOptionV1(_OptionBaseV1):
 
 
 class WorldSettingProposalResultV1(_CapabilityModel):
-    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class ProductProposalResultV1(_CapabilityModel):
-    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class PropProposalResultV1(_CapabilityModel):
-    options: tuple[PropProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[PropProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class CharacterProposalResultV1(_CapabilityModel):
-    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class SceneProposalResultV1(_CapabilityModel):
-    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class ScriptProposalResultV1(_CapabilityModel):
-    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class StoryboardProposalResultV1(_CapabilityModel):
-    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class VideoProposalResultV1(_CapabilityModel):
-    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class BgmProposalResultV1(_CapabilityModel):
-    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=1, max_length=3)
+    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=3, max_length=3)
 
 
 class QuickMediaProposalResultV1(_CapabilityModel):

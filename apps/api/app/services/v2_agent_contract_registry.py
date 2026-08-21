@@ -41,7 +41,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceOutlineDraftV2,
 )
-from app.schemas.agent_canvas_video_parameters import VideoParameterIntentV2
+from app.schemas.agent_canvas_video_parameters import VideoParameterIntentV3
 from app.schemas.agent_capabilities import VideoAgentOperationDefinitionV1
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.v2_agent_conversations import (
@@ -106,7 +106,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     AgentCanvasScriptOutput,
     AgentCanvasTextOutput,
     AgentCommandPlanDraftV2,
-    VideoParameterIntentV2,
+    VideoParameterIntentV3,
     CompactTurnIntentDecisionV3,
     TurnIntentDecisionV2,
     NextActionCommandV1,

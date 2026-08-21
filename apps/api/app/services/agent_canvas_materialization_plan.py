@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
+from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
 
@@ -58,7 +59,7 @@ class CapabilityMaterializationPlanCompiler:
         )
         if (
             envelope.capability_id == "storyboard_design"
-            and snapshot.current_journey.stage == "storyboard_plan"
+            and snapshot.current_journey.stage == "storyboard_grids"
             and not storyboard_draft_preparation_queued
         ):
             raise ValueError(
@@ -79,11 +80,13 @@ class CapabilityMaterializationPlanCompiler:
             "workflow_id": envelope.workflow_id,
             "proposal_id": envelope.proposal_id,
             "option_id": envelope.selected_option.option_id,
+            "custom_text": envelope.selected_option.custom_text,
             "action_turn_id": envelope.action_turn_id,
             "proposal_action": envelope.action,
             "selection_actor": envelope.selection_actor,
             "expected_workflow_revision": snapshot.workflow_revision,
             "expected_session_revision": snapshot.session_revision,
+            "stage_revision": envelope.stage_revision,
             "expected_proposal_revision": snapshot.proposal_revision,
             "expected_target_node_revision": snapshot.target_node_revision,
             "nodes": nodes,
@@ -93,6 +96,9 @@ class CapabilityMaterializationPlanCompiler:
             "receipt": receipt,
             "continuation": continuation,
             "prompt_preparations": preparations,
+            "operation_kind": envelope.operation_kind,
+            "parent_snapshot": envelope.parent_snapshot,
+            "derivative_intent": bundle.derivative_intent,
             "journey_event": _journey_event(
                 envelope,
                 snapshot,
@@ -109,6 +115,10 @@ def _continuation(
     envelope: ProposalApplicationEnvelopeV1,
     snapshot: MaterializationAuthoringSnapshotV1,
 ) -> ContinuationCommitV2 | None:
+    if envelope.operation_kind == "parent":
+        # Parent-derived work is queued by ParentDerivedMaterializationCoordinator
+        # after the parent authority transaction commits.
+        return None
     if not (
         envelope.target_node_id is not None
         or envelope.capability_id == "quick_media"
@@ -143,7 +153,11 @@ def _receipt(
         proposal_action=envelope.action,
         actor_kind=envelope.selection_actor,
         status="applied",
-        summary="The selected concept is now an editable Draft.",
+        summary=(
+            "The selected direction is now an authoritative working document."
+            if not nodes
+            else "The selected concept is now an editable Draft."
+        ),
         created_node_ids=tuple(node.node_id for node in nodes),
         created_binding_ids=tuple(binding.binding_id for binding in bindings),
         workflow_revision=snapshot.workflow_revision + 1,
@@ -175,28 +189,37 @@ def _journey_event(
 ) -> StageMaterializedJourneyEventV1 | TargetedActionCompletedJourneyEventV1 | None:
     journey = snapshot.current_journey
     if journey.suspended_action is not None:
+        if journey.active_action is None:
+            return None
         return TargetedActionCompletedJourneyEventV1(
             evidence_id=f"targeted-finish:{envelope.materialization_id}",
             source_id=envelope.materialization_id,
-            action_id=journey.suspended_action.action_id,
+            action_id=journey.active_action.action_id,
             recorded_at=envelope.created_at,
         )
     if envelope.capability_id == "quick_media" or journey.active_action is None:
         return None
+    if envelope.operation_kind == "parent" and envelope.capability_id in {
+        "product_design",
+        "character_design",
+    }:
+        # Pair completion belongs to the derivative commit, not parent presence.
+        return None
     evidence_kind_by_stage = {
-        "world_setting": "world_setting_selected",
-        "narrative_direction": "narrative_direction_selected",
+        "world_view": "world_view_selected",
+        "product": "product_materialized",
+        "props": "props_materialized",
+        "character": "character_materialized",
+        "scene": "scene_materialized",
+        "narrative_direction": "narrative_direction_accepted",
+        "style_lock": "style_lock_accepted",
         "storyboard_plan": "storyboard_plan_accepted",
         "storyboard_grids": "storyboard_grids_prepared",
-        "video_segments": "video_segments_prepared",
+        "videos": "videos_prepared",
         "bgm": "bgm_prepared",
     }
-    foundation_item_id = None
-    if journey.stage == "foundation_design":
-        evidence_kind = "foundation_item_selected"
-        foundation_item_id = journey.active_action.foundation_item_id
-    else:
-        evidence_kind = evidence_kind_by_stage.get(journey.stage)
+    occurrence_id = journey.active_action.occurrence_id
+    evidence_kind = evidence_kind_by_stage.get(journey.stage)
     if evidence_kind is None:
         return None
     return StageMaterializedJourneyEventV1.model_validate(
@@ -204,7 +227,7 @@ def _journey_event(
             "evidence_id": f"materialization:{envelope.materialization_id}",
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
-            "foundation_item_id": foundation_item_id,
+            "occurrence_id": occurrence_id,
             "storyboard_draft_preparation_queued": storyboard_draft_preparation_queued,
             "recorded_at": envelope.created_at,
         }
@@ -230,8 +253,16 @@ def _has_storyboard_draft_preparation_evidence(
     prepared_node_ids = {item.node_id for item in preparations}
     has_plan = any(
         item.document_type == "agent_working_document"
-        and item.payload is not None
-        and item.payload.get("kind") == "storyboard_production_plan"
+        and (
+            (item.payload is not None and item.payload.get("kind") == "storyboard_production_plan")
+            or (
+                item.mutation_plan is not None
+                and isinstance(
+                    item.mutation_plan.next_content,
+                    StoryboardProductionPlanContentV3,
+                )
+            )
+        )
         for item in documents
     )
     return bool(grid_node_ids and grid_node_ids <= prepared_node_ids and has_plan)

@@ -17,9 +17,14 @@ from app.schemas.agent_canvas_conversation import (
 from app.schemas.agent_canvas_draft_seeds import AcceptedProposalCommitmentV1
 from app.schemas.agent_working_documents import AgentDocumentMutationPlanV3
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyEvidenceKindV1,
-    JourneyStageV1,
+    GuidedProductionJourneyV2,
+    JourneyEvidenceKindV2,
+    JourneyStageV2,
+)
+from app.schemas.agent_canvas_materialization import (
+    MaterializationOperationKindV1,
+    ParentDerivedMaterializationIntentV1,
+    ParentNodeSnapshotV1,
 )
 
 
@@ -32,15 +37,15 @@ class MaterializationAuthoringSnapshotV1(_MaterializationCommitModel):
     session_revision: int = Field(ge=1)
     proposal_revision: int = Field(ge=1)
     target_node_revision: int | None = Field(default=None, ge=1)
-    current_journey: GuidedProductionJourneyV1
+    current_journey: GuidedProductionJourneyV2
 
 
 class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     event_type: Literal["stage_materialized"] = "stage_materialized"
     evidence_id: str = Field(min_length=1, max_length=160)
-    evidence_kind: JourneyEvidenceKindV1
+    evidence_kind: JourneyEvidenceKindV2
     source_id: str = Field(min_length=1, max_length=160)
-    foundation_item_id: str | None = Field(default=None, max_length=160)
+    occurrence_id: str | None = Field(default=None, max_length=160)
     storyboard_draft_preparation_queued: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -52,12 +57,12 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
 
     @model_validator(mode="after")
     def validate_storyboard_checkpoint(self) -> "StageMaterializedJourneyEventV1":
-        if (
-            self.storyboard_draft_preparation_queued
-            and self.evidence_kind != "storyboard_plan_accepted"
-        ):
+        if self.storyboard_draft_preparation_queued and self.evidence_kind not in {
+            "storyboard_plan_accepted",
+            "storyboard_grids_prepared",
+        }:
             raise ValueError(
-                "Storyboard Draft preparation evidence requires storyboard plan acceptance."
+                "Storyboard Draft preparation evidence requires storyboard plan or grid preparation."
             )
         return self
 
@@ -131,14 +136,21 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     proposal_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
+    custom_text: str | None = Field(default=None, max_length=2_048)
     action_turn_id: str = Field(min_length=1, max_length=160)
-    proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    proposal_action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     selection_actor: Literal["user", "agent"]
     expected_workflow_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
+    stage_revision: int = Field(default=1, ge=1)
     expected_proposal_revision: int = Field(ge=1)
     expected_target_node_revision: int | None = Field(default=None, ge=1)
-    nodes: tuple[CanvasNodeV2, ...] = Field(min_length=1, max_length=32)
+    nodes: tuple[CanvasNodeV2, ...] = Field(default=(), max_length=32)
     bindings: tuple[CanvasBindingV2, ...] = Field(default=(), max_length=128)
     document_writes: tuple[MaterializationDocumentWriteV1, ...] = Field(default=(), max_length=32)
     requirement_commitments: tuple[AcceptedProposalCommitmentV1, ...] = Field(
@@ -149,11 +161,26 @@ class MaterializationPlanV1(_MaterializationCommitModel):
     prompt_preparations: tuple[NodePromptPreparationIntentV1, ...] = Field(
         default=(), max_length=32
     )
+    operation_kind: MaterializationOperationKindV1 = "standalone"
+    parent_snapshot: ParentNodeSnapshotV1 | None = None
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None = None
     journey_event: MaterializationJourneyEventV1 | None = None
     payload_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_plan_integrity(self) -> "MaterializationPlanV1":
+        if self.operation_kind == "standalone" and (
+            self.parent_snapshot is not None or self.derivative_intent is not None
+        ):
+            raise ValueError("Standalone plans cannot include parent-derived fields.")
+        if self.operation_kind == "parent" and (
+            self.parent_snapshot is not None or self.derivative_intent is None
+        ):
+            raise ValueError("Parent plans require a derivative intent only.")
+        if self.operation_kind == "derivative" and (
+            self.parent_snapshot is None or self.derivative_intent is not None
+        ):
+            raise ValueError("Derivative plans require one parent snapshot only.")
         node_ids = tuple(node.node_id for node in self.nodes)
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("Node IDs must be unique.")
@@ -194,7 +221,7 @@ class MaterializationOutcomeV1(_MaterializationCommitModel):
     receipt_id: str | None = Field(default=None, max_length=160)
     workflow_revision: int = Field(ge=1)
     session_revision: int = Field(ge=1)
-    journey_stage: JourneyStageV1
+    journey_stage: JourneyStageV2
     replayed: bool = False
 
 

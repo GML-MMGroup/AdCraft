@@ -15,18 +15,21 @@ from app.schemas.agent_canvas import CanvasNodeV2, ResolvedTextBindingInputV2
 from app.schemas.agent_canvas_runtime import CanvasProviderModelCapabilityV2
 from app.schemas.agent_canvas_video_parameters import (
     CompiledVideoParametersV2,
+    VideoParameterCandidateV2,
     VideoParameterCompilationSnapshotV2,
-    VideoParameterIntentV2,
+    VideoParameterIntentV3,
     VideoParameterSourceSnapshotV2,
 )
 from app.schemas.agent_operation_contexts import (
     VideoParameterCapabilityContextV2,
-    VideoParameterIntentContextV2,
-    VideoParameterTextSourceV2,
+    VideoParameterIntentContextV3,
+    VideoParameterTextSourceV3,
 )
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
+from app.services.agent_canvas_parameter_policy import NON_PROVIDER_NODE_PARAMETER_KEYS
+from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
@@ -34,13 +37,13 @@ from app.services.v2_structured_generation_runtime import (
 )
 
 
-_CONTRACT_VERSION = "video_agent.compile_video_parameters.v1"
-_PROMPT_DESCRIPTOR = "adcraft.video_agent.compile_video_parameters.v1"
+_CONTRACT_VERSION = "video_agent.compile_video_parameters.v3"
+_PROMPT_DESCRIPTOR = "adcraft.video_agent.compile_video_parameters.v3"
 
 
 @dataclass(frozen=True, slots=True)
 class VideoParameterIntentGatewayResult:
-    intent: VideoParameterIntentV2
+    intent: VideoParameterIntentV3
     agent_run_id: str
     output_digest: str
 
@@ -48,7 +51,7 @@ class VideoParameterIntentGatewayResult:
 class VideoParameterIntentGateway(Protocol):
     def extract(
         self,
-        context: VideoParameterIntentContextV2,
+        context: VideoParameterIntentContextV3,
     ) -> VideoParameterIntentGatewayResult: ...
 
 
@@ -60,23 +63,25 @@ class PiVideoParameterIntentGateway:
 
     def extract(
         self,
-        context: VideoParameterIntentContextV2,
+        context: VideoParameterIntentContextV3,
     ) -> VideoParameterIntentGatewayResult:
         try:
             result = self._runtime.run(
                 StructuredGenerationSpec(
                     stage_name="compile_video_parameters",
-                    contract_name="VideoParameterIntentV2",
+                    contract_name="VideoParameterIntentV3",
                     model_id="video-agent",
                     system_prompt=("Use the registered Video Agent parameter compilation prompt."),
                     input_payload=context.model_dump(mode="json"),
-                    output_model=VideoParameterIntentV2,
+                    output_model=VideoParameterIntentV3,
                     trace_metadata={
-                        "workflow_id": context.workflow_id,
-                        "node_id": context.target_node_id,
-                        "expected_target_revision": context.target_node_revision,
+                        "unresolved_fields": list(context.unresolved_fields),
                     },
-                    validation_profile="video_parameter_intent_v1",
+                    validation_profile="video_parameter_intent_v3",
+                    validation_context={
+                        "unresolved_fields": list(context.unresolved_fields),
+                        "source_refs": [source.source_ref for source in context.sources],
+                    },
                     agent_name="video_agent",
                     operation="compile_video_parameters",
                     tool_mode="structured_only",
@@ -102,14 +107,35 @@ class DeterministicVideoParameterIntentGateway:
 
     def extract(
         self,
-        context: VideoParameterIntentContextV2,
+        context: VideoParameterIntentContextV3,
     ) -> VideoParameterIntentGatewayResult:
-        intent = VideoParameterIntentV2(status="no_explicit_controls")
+        intent = VideoParameterIntentV3(status="no_explicit_controls")
         return VideoParameterIntentGatewayResult(
             intent=intent,
-            agent_run_id=f"fake_video_parameters_{context.target_node_id}",
+            agent_run_id="fake_video_parameters",
             output_digest=_digest(intent.model_dump(mode="json")),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class VideoParameterSemanticSourceV3:
+    source_ref: str
+    source_kind: str
+    source_node_id: str
+    source_revision: int
+    binding_id: str | None
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class VideoParameterCompilationPlanV3:
+    unresolved_fields: tuple[str, ...]
+    sources: tuple[VideoParameterSemanticSourceV3, ...]
+    trusted_parameters: dict[str, object]
+
+    @property
+    def semantic_extraction_required(self) -> bool:
+        return bool(self.unresolved_fields and self.sources)
 
 
 class AgentCanvasVideoParameterCompiler:
@@ -140,21 +166,26 @@ class AgentCanvasVideoParameterCompiler:
         model_defaults: dict[str, object],
         now: datetime,
     ) -> CompiledVideoParametersV2:
-        sources = _text_sources(node, direct_text_inputs)
-        context = VideoParameterIntentContextV2(
-            context_kind="video_parameter_intent",
-            workflow_id=node.workflow_id,
-            target_node_id=node.node_id,
-            target_node_revision=node.revision,
-            selected_model_ref=selected_model_ref,
-            sources=sources,
-            capability=_capability_context(capability, model_defaults),
-        )
-        gateway_result = self._gateway.extract(context)
+        plan = _compilation_plan(node, direct_text_inputs, capability)
+        gateway_result: VideoParameterIntentGatewayResult | None = None
+        candidates: tuple[VideoParameterCandidateV2, ...] = ()
+        if plan.semantic_extraction_required:
+            context = VideoParameterIntentContextV3(
+                context_kind="video_parameter_intent_v3",
+                unresolved_fields=cast(tuple, plan.unresolved_fields),
+                sources=tuple(
+                    VideoParameterTextSourceV3(source_ref=item.source_ref, text=item.text)
+                    for item in plan.sources
+                ),
+                capability=_capability_context(capability, model_defaults),
+            )
+            gateway_result = self._gateway.extract(context)
+            candidates = _map_intent(gateway_result.intent, plan)
         try:
             compiled = self._resolver.resolve_video(
                 node,
-                intent=gateway_result.intent,
+                candidates=candidates,
+                trusted_parameters=plan.trusted_parameters,
                 direct_text_inputs=direct_text_inputs,
                 capability=capability,
                 model_defaults=model_defaults,
@@ -181,14 +212,15 @@ class AgentCanvasVideoParameterCompiler:
             field: cast(object, compiled.authoring_parameters[field])
             for field in derived_provenance
         }
-        self._authoring.replace_derived_video_parameters(
-            node.workflow_id,
-            node.node_id,
-            expected_node_revision=node.revision,
-            derived_parameters=derived_parameters,
-            derived_provenance=derived_provenance,
-            now=now,
-        )
+        if derived_parameters:
+            self._authoring.replace_derived_video_parameters(
+                node.workflow_id,
+                node.node_id,
+                expected_node_revision=node.revision,
+                derived_parameters=derived_parameters,
+                derived_provenance=derived_provenance,
+                now=now,
+            )
         snapshot = _snapshot(
             node=node,
             selected_model_ref=selected_model_ref,
@@ -207,32 +239,135 @@ class AgentCanvasVideoParameterCompiler:
         )
 
 
-def _text_sources(
+def _compilation_plan(
     node: CanvasNodeV2,
     direct_text_inputs: tuple[ResolvedTextBindingInputV2, ...],
-) -> tuple[VideoParameterTextSourceV2, ...]:
-    sources: list[VideoParameterTextSourceV2] = []
-    if node.generation_prompt and node.generation_prompt.strip():
+    capability: CanvasProviderModelCapabilityV2,
+) -> VideoParameterCompilationPlanV3:
+    trusted_parameters = {
+        field: cast(object, value)
+        for field, value in node.parameters.items()
+        if field not in NON_PROVIDER_NODE_PARAMETER_KEYS
+        and field in capability.supported_parameters
+        and _is_trusted_prompt_parameter(node, field, value)
+    }
+    resolved_fields = {
+        field
+        for field, value in node.parameters.items()
+        if field not in NON_PROVIDER_NODE_PARAMETER_KEYS
+        and field in capability.supported_parameters
+        and _is_authoritative_parameter(node, field, value)
+    }
+    unresolved = tuple(sorted(set(capability.supported_parameters) - resolved_fields))
+    sources: list[VideoParameterSemanticSourceV3] = []
+    prompt = (node.generation_prompt or "").strip()
+    if prompt and _target_prompt_is_semantic_source(node):
         sources.append(
-            VideoParameterTextSourceV2(
+            VideoParameterSemanticSourceV3(
+                source_ref="source_1",
                 source_kind="node_prompt",
                 source_node_id=node.node_id,
                 source_revision=node.revision,
-                text=node.generation_prompt.strip(),
+                binding_id=None,
+                text=prompt,
             )
         )
-    sources.extend(
-        VideoParameterTextSourceV2(
-            source_kind="binding",
-            source_node_id=item.source_node_id,
-            source_revision=item.source_node_revision,
-            binding_id=item.binding_id,
-            text=item.content,
+    for item in direct_text_inputs:
+        if not item.content.strip():
+            continue
+        sources.append(
+            VideoParameterSemanticSourceV3(
+                source_ref=f"source_{len(sources) + 1}",
+                source_kind="binding",
+                source_node_id=item.source_node_id,
+                source_revision=item.source_node_revision,
+                binding_id=item.binding_id,
+                text=item.content,
+            )
         )
-        for item in direct_text_inputs
-        if item.content.strip()
+    return VideoParameterCompilationPlanV3(
+        unresolved_fields=unresolved,
+        sources=tuple(sources),
+        trusted_parameters=trusted_parameters,
     )
-    return tuple(sources)
+
+
+def _is_authoritative_parameter(node: CanvasNodeV2, field: str, value: object) -> bool:
+    provenance = node.parameter_provenance.get(field)
+    if provenance is None or provenance.origin == "manual":
+        return True
+    return _is_trusted_prompt_parameter(node, field, value)
+
+
+def _is_trusted_prompt_parameter(node: CanvasNodeV2, field: str, value: object) -> bool:
+    provenance = node.parameter_provenance.get(field)
+    if provenance is None or provenance.origin == "manual":
+        return False
+    return _prompt_preparation_is_current(node) and any(
+        origin.name == field and origin.value == value
+        for origin in node.prompt_preparation.parameter_origins
+    )
+
+
+def _prompt_preparation_is_current(node: CanvasNodeV2) -> bool:
+    preparation = node.prompt_preparation
+    if preparation.status != "ready" or preparation.role_variant is None:
+        return False
+    try:
+        recipe = RolePromptRecipeRegistry().resolve(preparation.role_variant)
+    except V2PersistenceError:
+        return False
+    prompt = (node.generation_prompt or "").strip()
+    return (
+        preparation.context_snapshot_id is not None
+        and node.metadata.get("prompt_context_digest") == preparation.context_snapshot_id
+        and preparation.recipe_id == recipe.recipe_id
+        and preparation.recipe_version == recipe.recipe_version
+        and preparation.recipe_digest == recipe.recipe_digest
+        and preparation.prompt_digest == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    )
+
+
+def _target_prompt_is_semantic_source(node: CanvasNodeV2) -> bool:
+    if node.prompt_preparation.role_variant is None:
+        return True
+    return not _prompt_preparation_is_current(node)
+
+
+def _map_intent(
+    intent: VideoParameterIntentV3,
+    plan: VideoParameterCompilationPlanV3,
+) -> tuple[VideoParameterCandidateV2, ...]:
+    source_map = {item.source_ref: item for item in plan.sources}
+    candidates: list[VideoParameterCandidateV2] = []
+    for candidate in intent.candidates:
+        if candidate.field not in plan.unresolved_fields:
+            raise _compilation_error(candidate.field, "field_already_resolved")
+        source = source_map.get(candidate.source_ref)
+        if source is None:
+            raise _compilation_error(candidate.field, "source_ref_not_allowed")
+        candidates.append(
+            VideoParameterCandidateV2(
+                field=candidate.field,
+                value=candidate.value,
+                source_kind=cast(object, source.source_kind),
+                source_node_id=(source.source_node_id if source.source_kind == "binding" else None),
+                binding_id=source.binding_id,
+                source_revision=(
+                    source.source_revision if source.source_kind == "binding" else None
+                ),
+            )
+        )
+    return tuple(candidates)
+
+
+def _compilation_error(field: str, reason: str) -> V2PersistenceError:
+    return V2PersistenceError(
+        "node_parameter_compilation_failed",
+        "Video parameter semantic result is outside the frozen compilation plan.",
+        stage="parameter_compilation",
+        details={"field": field, "reason": reason, "retryable": True},
+    )
 
 
 def _capability_context(
@@ -262,7 +397,7 @@ def _snapshot(
     member_id: str,
     model_defaults: dict[str, object],
     compiled: CompiledVideoParametersV2,
-    gateway_result: VideoParameterIntentGatewayResult,
+    gateway_result: VideoParameterIntentGatewayResult | None,
     now: datetime,
 ) -> VideoParameterCompilationSnapshotV2:
     sources: list[VideoParameterSourceSnapshotV2] = []
@@ -302,7 +437,11 @@ def _snapshot(
         "source_snapshots": [item.model_dump(mode="json") for item in sources],
         "manual_parameters": manual,
         "model_defaults": model_defaults,
-        "intent": gateway_result.intent.model_dump(mode="json"),
+        "intent": (
+            gateway_result.intent.model_dump(mode="json")
+            if gateway_result is not None
+            else "not_required"
+        ),
         "requested_parameters": compiled.requested_parameters,
         "effective_parameters": compiled.effective_parameters,
     }
@@ -325,10 +464,11 @@ def _snapshot(
         effective_parameters=compiled.effective_parameters,
         parameter_provenance=compiled.parameter_provenance,
         normalizations=compiled.normalizations,
-        agent_run_id=gateway_result.agent_run_id,
+        semantic_extraction="agent" if gateway_result is not None else "not_required",
+        agent_run_id=gateway_result.agent_run_id if gateway_result is not None else None,
         contract_version=_CONTRACT_VERSION,
         prompt_descriptor=_PROMPT_DESCRIPTOR,
-        output_digest=gateway_result.output_digest,
+        output_digest=gateway_result.output_digest if gateway_result is not None else None,
         created_at=now,
     )
 

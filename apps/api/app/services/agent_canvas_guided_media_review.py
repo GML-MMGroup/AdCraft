@@ -12,12 +12,12 @@ from app.persistence.agent_canvas_guided_media_resume_repository import (
     queued_guided_media_resume_delivery,
 )
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingResumeProofV1,
+    GuidanceAwaitingResumeProofV2,
     GuidedInteractionAcceptedV1,
     GuidedInteractionV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
-    GuidanceAwaitingV1,
+    GuidanceAwaitingV2,
 )
 from app.schemas.agent_canvas import (
     CanvasVariationDraftUpsertV2,
@@ -75,13 +75,18 @@ class GuidedMediaReviewCoordinator:
         self._node_resolver = node_resolver
 
     def on_node_ready(self, node) -> tuple[str, ...]:
-        return self._on_node_ready(node, reconcile_current=True)
+        return self._on_node_ready(
+            node,
+            reconcile_current=True,
+            require_terminal_wait=True,
+        )
 
     def _on_node_ready(
         self,
         node,
         *,
         reconcile_current: bool,
+        require_terminal_wait: bool,
     ) -> tuple[str, ...]:
         session = self._conversations.get_guidance_session_or_none(node.workflow_id)
         if session is None or node.output_asset_id is None:
@@ -93,6 +98,35 @@ class GuidedMediaReviewCoordinator:
             "bgm",
         }:
             return ()
+        review_revision = getattr(node, "metadata", {}).get("guided_review_node_revision")
+        if review_revision is None:
+            if record.node_revision != node.revision:
+                return ()
+        elif review_revision != node.revision:
+            return ()
+        current_awaiting = getattr(session, "awaiting", None)
+        if require_terminal_wait:
+            if (
+                current_awaiting is None
+                or current_awaiting.kind != "manual_node_run"
+                or current_awaiting.resume_policy != "node_terminal"
+                or node.node_id not in current_awaiting.node_ids
+                or not self._manual_wait_is_ready(
+                    node.workflow_id,
+                    current_awaiting.node_ids,
+                )
+            ):
+                return ()
+            self._interactions.resume_awaiting(
+                node.workflow_id,
+                GuidanceAwaitingResumeProofV2(
+                    awaiting_id=current_awaiting.awaiting_id,
+                    expected_session_revision=session.revision,
+                    evidence_kind="node_terminal",
+                    node_ids=current_awaiting.node_ids,
+                ),
+            )
+            session = self._conversations.get_guidance_session(node.workflow_id)
         asset = self._assets(node.output_asset_id)
         logical_identity = ":".join(
             (
@@ -134,25 +168,6 @@ class GuidedMediaReviewCoordinator:
                 )
             return created_node_ids
 
-        current_awaiting = getattr(session, "awaiting", None)
-        if (
-            current_awaiting is not None
-            and current_awaiting.kind == "manual_node_run"
-            and node.node_id in current_awaiting.node_ids
-        ):
-            if not self._manual_wait_is_ready(node.workflow_id, current_awaiting.node_ids):
-                return ()
-            self._interactions.resume_awaiting(
-                node.workflow_id,
-                GuidanceAwaitingResumeProofV1(
-                    awaiting_id=current_awaiting.awaiting_id,
-                    expected_session_revision=session.revision,
-                    evidence_kind="node_terminal",
-                    node_ids=current_awaiting.node_ids,
-                ),
-            )
-            session = self._conversations.get_guidance_session(node.workflow_id)
-
         interaction_id = f"interaction_media_{review_id}"
         now = datetime.now(timezone.utc)
         actions = (
@@ -170,14 +185,14 @@ class GuidedMediaReviewCoordinator:
             response_locale=session.response_locale,
             expected_session_revision=session.revision,
             revision=1,
-            title=f"Review {node.title}",
-            context="Review the exact current media result before guided production continues.",
+            title=node.title,
+            context=node.title,
             content=GuidedMediaReviewV1(
                 node_id=node.node_id,
                 node_revision=node.revision,
                 asset_id=asset.asset_id,
                 asset_version_id=asset.version_id or "",
-                summary=f"{node.title} is ready for review.",
+                summary=node.title,
             ),
             allowed_actions=actions,
             submit_path=(
@@ -188,7 +203,7 @@ class GuidedMediaReviewCoordinator:
         )
         self._interactions.open_with_awaiting(
             interaction,
-            GuidanceAwaitingV1(
+            GuidanceAwaitingV2(
                 awaiting_id=f"awaiting_media_{review_id}",
                 workflow_id=node.workflow_id,
                 session_id=session.session_id,
@@ -253,7 +268,13 @@ class GuidedMediaReviewCoordinator:
                     asset=asset,
                 ):
                     continue
-                created_node_ids.extend(self._on_node_ready(node, reconcile_current=False))
+                created_node_ids.extend(
+                    self._on_node_ready(
+                        node,
+                        reconcile_current=False,
+                        require_terminal_wait=False,
+                    )
+                )
                 if not (
                     session.creative_authority is not None
                     and session.creative_authority.authority == "director"

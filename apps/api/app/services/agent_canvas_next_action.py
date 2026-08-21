@@ -35,7 +35,6 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
@@ -151,17 +150,6 @@ class DurableNextActionExecutionService:
         turn = self._conversations.mark_turn_running(envelope.next_action_turn_id)
         journey_action = None
         if session.journey.stage != "intake":
-            if session.journey.stage == "style_lock":
-                session = self._journey.apply_evidence(
-                    envelope.workflow_id,
-                    evidence=JourneyEvidenceV1(
-                        evidence_id=f"style-lock:{envelope.next_action_turn_id}",
-                        evidence_kind="style_locked",
-                        source_id=envelope.next_action_turn_id,
-                    ),
-                    expected_session_revision=session.revision,
-                    idempotency_key=f"style-lock:{envelope.envelope_id}",
-                )
             session, journey_action = self._journey.reserve_next_action(
                 envelope.workflow_id,
                 action_id=f"journey-action:{envelope.next_action_turn_id}",
@@ -219,7 +207,8 @@ class DurableNextActionExecutionService:
                 session=session,
                 journey_capability=(
                     journey_action.capability_id
-                    if journey_action is not None and journey_action.action == "invoke_capability"
+                    if journey_action is not None
+                    and journey_action.action in {"invoke_capability", "invoke_internal_checkpoint"}
                     else None
                 ),
                 open_proposal_capabilities=tuple(
@@ -239,7 +228,10 @@ class DurableNextActionExecutionService:
             )
         )
         lease_guard()
-        if journey_action is not None and journey_action.action == "invoke_capability":
+        if journey_action is not None and journey_action.action in {
+            "invoke_capability",
+            "invoke_internal_checkpoint",
+        }:
             assert journey_action.capability_id is not None
             command = self._policy.validate_next_action(
                 NextActionCommandV1(
@@ -249,6 +241,10 @@ class DurableNextActionExecutionService:
                 ),
                 policy,
             )
+            if journey_action.action == "invoke_internal_checkpoint":
+                command = command.model_copy(
+                    update={"definition": self._policy.internal_script_checkpoint_definition()}
+                )
         else:
             command = self._next_action.execute(
                 NextActionContextV1(
@@ -329,6 +325,18 @@ class DurableNextActionExecutionService:
                 ),
                 session_id=session.session_id,
                 expected_session_revision=session.revision,
+                publication_kind=(
+                    "internal_document"
+                    if journey_action is not None
+                    and journey_action.action == "invoke_internal_checkpoint"
+                    else "proposal"
+                ),
+                journey_stage=(
+                    session.journey.stage
+                    if journey_action is not None
+                    and journey_action.action == "invoke_internal_checkpoint"
+                    else None
+                ),
             )
             return command
         if command.command.action == "finish":

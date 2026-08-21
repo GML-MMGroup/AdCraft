@@ -174,6 +174,15 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
         style_projection_role="storyboard",
         display_name="Storyboard Artist",
     ),
+    _definition(
+        "author_guided_script_checkpoint",
+        "CapabilityInvocationContextV2",
+        "ScriptMaterializationResultV1",
+        capability_id="script_authoring",
+        internal_skill_id="video_agent_script_authoring",
+        style_projection_role="script",
+        display_name="Script Writer",
+    ),
     *_capability_definitions(),
     _definition(
         "free_image",
@@ -223,8 +232,8 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "compile_video_parameters",
-        "VideoParameterIntentContextV2",
-        "VideoParameterIntentV2",
+        "VideoParameterIntentContextV3",
+        "VideoParameterIntentV3",
         capability_id="video_direction",
         internal_skill_id="video_agent_video_direction",
         style_projection_role="video",

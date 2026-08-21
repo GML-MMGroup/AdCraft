@@ -10,7 +10,6 @@ import type {
   ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
-  GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -68,7 +67,10 @@ describe("AgentWorkingRow", () => {
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
+    const loader = document.querySelector<HTMLElement>('.agent-chat__working-loader[data-variant="halo"]');
+    expect(loader).toBeTruthy();
+    expect(loader?.style.getPropertyValue("--il-size")).toBe("20px");
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
   });
 
   it("announces model waiting as a non-terminal Agent activity", () => {
@@ -76,7 +78,8 @@ describe("AgentWorkingRow", () => {
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is waiting for the model" })).toBeTruthy();
     expect(screen.getByText("Waiting for model")).toBeTruthy();
-    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
+    expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
   });
 });
 
@@ -143,36 +146,6 @@ const proposalCard: ChatProposalCardV2 = {
   created_at: "2026-08-04T00:00:00Z",
 };
 
-const proposalInteraction: GuidedInteractionV1 = {
-  interaction_id: "interaction-proposal-1",
-  workflow_id: "workflow-1",
-  session_id: "guidance-1",
-  checkpoint_id: "checkpoint-1",
-  kind: "concept_choice",
-  status: "open",
-  response_locale: "en",
-  expected_session_revision: 7,
-  revision: 3,
-  title: "Choose a character",
-  context: "Choose the direction to use.",
-  content: {
-    content_kind: "concept_choice",
-    proposal_id: "proposal-1",
-    options: [{
-      option_id: "option-1",
-      title: "Hero",
-      summary: "A focused campaign hero",
-      difference_tags: [],
-      recommended: true,
-      reference_preview: [],
-    }],
-  },
-  allowed_actions: ["select", "revise", "defer", "exclude", "delegate"],
-  submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-proposal-1/submit",
-  created_at: "2026-08-17T00:00:00Z",
-  updated_at: "2026-08-17T00:00:00Z",
-};
-
 describe("ProposalCard", () => {
   afterEach(() => cleanup());
 
@@ -197,36 +170,98 @@ describe("ProposalCard", () => {
       "option-1",
       [],
     );
-    expect(screen.getByText("Contemporary wardrobe")).toBeTruthy();
-    expect(screen.getByText("Confident posture")).toBeTruthy();
+    expect(screen.queryByText("Contemporary wardrobe")).toBeNull();
+    expect(screen.queryByText("Confident posture")).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate now" })).toBeNull();
   });
 
-  it("submits the active interaction from the Timeline proposal card", () => {
-    const onSubmitInteraction = vi.fn().mockResolvedValue(true);
+  it("keeps the Timeline proposal as concise read-only history", () => {
     render(
       <ProposalCard
         card={proposalCard}
         pending={false}
-        interaction={proposalInteraction}
-        onSubmitInteraction={onSubmitInteraction}
+        readOnly
       />,
     );
 
-    fireEvent.click(screen.getByText("Hero").closest("button")!);
-    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getByText("A focused campaign hero")).toBeTruthy();
+    expect(screen.queryByText("Contemporary wardrobe")).toBeNull();
+    expect(screen.queryByText("Confident posture")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revise options" })).toBeNull();
+  });
 
-    expect(onSubmitInteraction).toHaveBeenCalledWith({
-      submission_kind: "concept_choice",
-      expected_interaction_revision: 3,
-      expected_session_revision: 7,
-      action: "select",
-      option_id: "option-1",
-      custom_value: null,
-      accepted_references: [],
-    });
-    expect(document.querySelectorAll(".agent-chat__proposal")).toHaveLength(1);
-    expect(document.querySelector(".agent-chat__guided-interaction")).toBeNull();
+  it("renders an applied Timeline proposal as a non-interactive option preview", () => {
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            availability: "applied",
+            options: [
+              proposalCard.proposal.options[0]!,
+              {
+                option_id: "option-2",
+                title: "Everyday warmth",
+                public_summary: "A familiar family moment with a calm domestic tone.",
+                key_decisions: [],
+              },
+              {
+                option_id: "option-3",
+                title: "Natural sanctuary",
+                public_summary: "A gentle world shaped by forests and morning light.",
+                key_decisions: [],
+              },
+            ],
+            application_count: 1,
+            latest_application: {
+              application_id: "application-1",
+              option_id: "option-3",
+              action: "select_option",
+              receipt_id: "receipt-1",
+              created_node_ids: ["node-character-1"],
+              queued_execution_ids: [],
+              created_at: "2026-08-04T00:01:00Z",
+            },
+            materialization: {
+              materialization_id: "materialization-1",
+              option_id: "option-1",
+              turn_id: "turn-materialization-1",
+              status: "completed",
+              attempt_no: 1,
+              retryable: false,
+              error: null,
+              created_at: "2026-08-04T00:01:00Z",
+              updated_at: "2026-08-04T00:01:01Z",
+            },
+          },
+        }}
+        pending={false}
+        readOnly
+      />,
+    );
+
+    const selectedOption = screen.getByRole("article", { name: "Selected option: Natural sanctuary" });
+    expect(selectedOption).toBeTruthy();
+    expect(selectedOption.textContent).not.toContain("Selected");
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("B")).toBeTruthy();
+    expect(screen.getByText("C")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Natural sanctuary/ })).toBeNull();
+    expect(screen.queryByText(/Applied 1 time/)).toBeNull();
+    expect(screen.queryByRole("status", { name: "Proposal materialization completed" })).toBeNull();
+  });
+
+  it("renders historical option markers without circular chrome", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const markerRule = css.match(/\.agent-chat__historical-option-marker\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(markerRule).toBeTruthy();
+    expect(markerRule).not.toContain("border:");
+    expect(markerRule).not.toContain("border-radius:");
+    expect(markerRule).toContain("font-size: 11px");
   });
 
   it.each(["queued", "working"] as const)(
@@ -411,6 +446,31 @@ describe("ProposalCard", () => {
     }
   });
 
+  it("does not expose legacy custom-direction actions on Timeline history", () => {
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            actions: [
+              ...proposalCard.proposal.actions,
+              proposalAction(
+                "custom_direction",
+                "Use a custom direction",
+              ),
+            ],
+          },
+        }}
+        pending={false}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "Custom creative direction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use a custom direction" })).toBeNull();
+  });
+
   it("keeps applied proposal content visible but disables all stale actions", () => {
     render(
       <ProposalCard
@@ -577,21 +637,21 @@ describe("progress and action cards", () => {
         matching_asset_ids: [],
       },
       journey: {
-        policy_version: "fixed_ad_production_v1",
-        stage: "foundation_design",
+        policy_version: "fixed_ad_production_v2",
+        stage: "scene",
         stage_status: "waiting_user",
         stage_revision: 4,
-        foundation_queue: [{
-          item_id: "scene-1",
-          kind: "scene",
+        decisions: [{
+          decision_id: "decision:scene:1",
+          element_kind: "scene",
+          occurrence_id: "occurrence:scene:1",
           occurrence_index: 1,
-          requirement_source: "explicit_user",
-          required: true,
-          status: "active",
-          topic_id: "topic-scene",
-          selected_node_ids: [],
+          outcome: "unresolved",
+          source: "user",
+          source_revision: 1,
+          requirements: {},
         }],
-        foundation_cursor: 0,
+        active_occurrence_id: "occurrence:scene:1",
         active_action: null,
         suspended_action: null,
         transition_evidence: [],
@@ -603,14 +663,14 @@ describe("progress and action cards", () => {
     render(<GuidanceSessionProgress session={session} />);
 
     expect(screen.getByText("Create a launch film.")).toBeTruthy();
-    expect(screen.getByText("Lead character")).toBeTruthy();
-    expect(screen.getByText("Scene direction")).toBeTruthy();
+    expect(screen.getByText("Scene")).toBeTruthy();
+    expect(screen.getByText("6/14")).toBeTruthy();
     expect(screen.getByText("Authoring: not ready")).toBeTruthy();
     expect(screen.getByText("Delivery: not ready")).toBeTruthy();
     expect(screen.getByText("Direction: You")).toBeTruthy();
-    expect(screen.getByText("Checkpoint: scene · waiting user")).toBeTruthy();
-    expect(screen.getByText("Stage: foundation design · waiting user")).toBeTruthy();
-    expect(screen.getByText("Foundation item: scene 1")).toBeTruthy();
+    expect(screen.queryByText("Checkpoint: scene · waiting user")).toBeNull();
+    expect(screen.getByText("Stage: Scene · waiting user")).toBeTruthy();
+    expect(screen.getByText("Current decision: scene 1 · unresolved")).toBeTruthy();
   });
 
   it("renders only current stop or resume guidance actions", () => {
@@ -775,6 +835,33 @@ describe("command and receipt cards", () => {
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
+  it("shows a superseded capability as replaced progress rather than a failure", () => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-storyboard-1",
+      turn_id: "turn-storyboard-1",
+      capability_id: "storyboard_design",
+      capability_display_name: "Storyboard Artist",
+      status: "superseded",
+      sequence: 43,
+      started_at: "2026-08-21T06:17:00Z",
+      finished_at: "2026-08-21T06:18:00Z",
+      message: null,
+      error_code: "guidance_revision_conflict",
+      elapsed_ms: 60000,
+      attempt_stage: "initial",
+      retryable: true,
+      validation_paths: [],
+      suggested_actions: ["retry", "revise_request"],
+      completion_mode: null,
+      warning_code: null,
+    }} onRetry={vi.fn()} onReviseRequest={vi.fn()} />);
+
+    expect(screen.getByText("Storyboard Artist was superseded by later progress")).toBeTruthy();
+    expect(screen.queryByText(/failed/i)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("shows bounded recovery actions for a backend-owned capability failure", () => {
     const onRetry = vi.fn();
     const onReviseRequest = vi.fn();
@@ -906,6 +993,20 @@ describe("AgentCanvasChatPanel Style integration", () => {
 
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Style: Platform Default" })).toBeTruthy();
+  });
+
+  it("pins the current review outside history immediately above the composer", () => {
+    const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
+    const panelSource = readFileSync(panelPath, "utf8");
+    const timelineItemsIndex = panelSource.indexOf("{chat.state.items.map((item) => {");
+    const timelineShellIndex = panelSource.indexOf('<div className="agent-chat__timeline-shell">');
+    const pinnedInteractionIndex = panelSource.indexOf('<div className="agent-chat__current-interaction"');
+    const composerIndex = panelSource.indexOf('<div className="agent-chat__composer">');
+
+    expect(timelineItemsIndex).toBeGreaterThan(-1);
+    expect(pinnedInteractionIndex).toBeGreaterThan(timelineShellIndex);
+    expect(pinnedInteractionIndex).toBeGreaterThan(timelineItemsIndex);
+    expect(composerIndex).toBeGreaterThan(pinnedInteractionIndex);
   });
 
   it("uses an opaque edge-aligned chat rail with plain Agent replies", () => {

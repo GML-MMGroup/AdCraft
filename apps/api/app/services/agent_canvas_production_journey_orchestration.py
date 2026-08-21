@@ -5,23 +5,23 @@ from __future__ import annotations
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
-from app.schemas.agent_canvas_creative_session import (
-    CreativeElementDecisionV2,
-    GuidedSessionStateV2,
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
 )
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_production_journey import (
-    GuidedProductionJourneyV1,
-    JourneyActionProjectionV1,
-    JourneyEvidenceV1,
-    JourneyPolicyContextV1,
-    JourneyPolicyResultV1,
+    GuidedProductionJourneyV2,
+    JourneyActionProjectionV2,
+    JourneyEvidenceV2,
+    JourneyPolicyContextV2,
+    JourneyPolicyResultV2,
 )
-from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV1
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
-    build_foundation_queue,
 )
 
 
@@ -37,14 +37,17 @@ class GuidedProductionJourneyService:
         self._conversations = conversations
         self._policy = policy or GuidedProductionJourneyPolicyService()
         self._awaiting = awaiting
+        self._requirements = AgentCanvasRequirementRepository(conversations.database)
+        self._duration_authority = GuidedDurationAuthorityPolicy()
 
     def next_action(
         self,
         workflow_id: str,
         *,
         clarification_required: bool = False,
-    ) -> JourneyPolicyResultV1:
+    ) -> JourneyPolicyResultV2:
         session = self._conversations.get_guidance_session(workflow_id)
+        self._require_stage_duration(workflow_id, session.journey.stage)
         return self._policy.evaluate(
             _context(session, clarification_required=clarification_required)
         )
@@ -57,22 +60,28 @@ class GuidedProductionJourneyService:
         turn_id: str,
         expected_session_revision: int,
         idempotency_key: str,
-    ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV1]:
+    ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
+        self._require_stage_duration(workflow_id, session.journey.stage)
         result = self._policy.evaluate(_context(session))
-        if result.action not in {"invoke_capability", "prepare_editing"}:
+        if result.action not in {
+            "invoke_capability",
+            "invoke_internal_checkpoint",
+            "prepare_editing",
+        }:
             return session, result
-        projection = JourneyActionProjectionV1(
+        projection = JourneyActionProjectionV2(
             action_id=action_id,
             action_kind=(
-                f"invoke_capability:{result.capability_id}"
+                f"{result.action}:{result.capability_id}"
                 if result.capability_id is not None
                 else result.action
             ),
             stage=session.journey.stage,
+            stage_revision=session.journey.stage_revision,
             status="reserved",
             turn_id=turn_id,
-            foundation_item_id=result.foundation_item_id,
+            occurrence_id=result.occurrence_id,
         )
         journey = session.journey.model_copy(update={"active_action": projection})
         updated = self._conversations.replace_guidance_journey(
@@ -84,10 +93,16 @@ class GuidedProductionJourneyService:
             event_payload={
                 "action_id": action_id,
                 "action_kind": projection.action_kind,
-                "foundation_item_id": result.foundation_item_id,
+                "occurrence_id": result.occurrence_id,
             },
         )
         return updated, result
+
+    def _require_stage_duration(self, workflow_id: str, stage) -> None:
+        self._duration_authority.require_for_stage(
+            self._requirements.get_current(workflow_id),
+            stage,
+        )
 
     def require_current_awaiting(self, workflow_id: str) -> None:
         """Require typed waiting authority for the current Journey revision."""
@@ -113,7 +128,7 @@ class GuidedProductionJourneyService:
         self,
         workflow_id: str,
         *,
-        evidence: JourneyEvidenceV1,
+        evidence: JourneyEvidenceV2,
         expected_session_revision: int,
         idempotency_key: str,
         clarification_required: bool = False,
@@ -145,7 +160,7 @@ class GuidedProductionJourneyService:
                 "evidence_id": evidence.evidence_id,
                 "evidence_kind": evidence.evidence_kind,
                 "action_id": evidence.action_id,
-                "foundation_item_id": evidence.foundation_item_id,
+                "occurrence_id": evidence.occurrence_id,
             },
         )
 
@@ -153,11 +168,18 @@ class GuidedProductionJourneyService:
         self,
         session: GuidedSessionStateV2,
         *,
-        evidence: JourneyEvidenceV1,
+        evidence: JourneyEvidenceV2,
         clarification_required: bool = False,
-    ) -> GuidedProductionJourneyV1:
+    ) -> GuidedProductionJourneyV2:
         """Project deterministic journey evidence without persisting it."""
 
+        if evidence.stage is None or evidence.stage_revision is None:
+            evidence = evidence.model_copy(
+                update={
+                    "stage": session.journey.stage,
+                    "stage_revision": session.journey.stage_revision,
+                }
+            )
         return self._policy.apply_evidence(
             _context(session, clarification_required=clarification_required),
             evidence,
@@ -180,7 +202,7 @@ class GuidedProductionJourneyService:
                 raise ValueError("Guidance awaiting authority is required to resume Node work.")
             self._awaiting.resume(
                 workflow_id,
-                GuidanceAwaitingResumeProofV1(
+                GuidanceAwaitingResumeProofV2(
                     awaiting_id=current_awaiting.awaiting_id,
                     expected_session_revision=session.revision,
                     evidence_kind="node_terminal",
@@ -190,13 +212,13 @@ class GuidedProductionJourneyService:
             session = self._conversations.get_guidance_session(workflow_id)
         evidence_by_stage = {
             "storyboard_grids": "storyboard_grids_prepared",
-            "video_segments": "video_segments_prepared",
+            "videos": "videos_prepared",
         }
         while session.journey.stage in evidence_by_stage:
             evidence_kind = evidence_by_stage[session.journey.stage]
             session = self.apply_evidence(
                 workflow_id,
-                evidence=JourneyEvidenceV1(
+                evidence=JourneyEvidenceV2(
                     evidence_id=f"{evidence_kind}:{source_id}",
                     evidence_kind=evidence_kind,
                     source_id=source_id,
@@ -206,54 +228,13 @@ class GuidedProductionJourneyService:
             )
         return session
 
-    def amend_foundation_queue(
-        self,
-        workflow_id: str,
-        *,
-        element_decisions: tuple[CreativeElementDecisionV2, ...],
-        expected_session_revision: int,
-        idempotency_key: str,
-    ) -> GuidedSessionStateV2:
-        session = self._conversations.get_guidance_session(workflow_id)
-        existing = {item.item_id: item for item in session.journey.foundation_queue}
-        queue = tuple(
-            existing.get(item.item_id, item) for item in build_foundation_queue(element_decisions)
-        )
-        evidence = JourneyEvidenceV1(
-            evidence_id=f"queue-amendment:{idempotency_key}",
-            evidence_kind="foundation_queue_amended",
-            source_id=idempotency_key,
-        )
-        journey = session.journey.model_copy(
-            update={
-                "foundation_queue": queue,
-                "transition_evidence": (
-                    *session.journey.transition_evidence,
-                    evidence.as_transition(),
-                ),
-            }
-        )
-        return self._conversations.replace_guidance_journey(
-            session.session_id,
-            journey=journey,
-            expected_session_revision=expected_session_revision,
-            idempotency_key=idempotency_key,
-            event_type="journey_stage_changed",
-            event_payload={
-                "evidence_id": evidence.evidence_id,
-                "evidence_kind": evidence.evidence_kind,
-                "foundation_item_ids": [item.item_id for item in queue],
-            },
-        )
-
 
 def _context(
     session: GuidedSessionStateV2,
     *,
     clarification_required: bool = False,
-) -> JourneyPolicyContextV1:
-    return JourneyPolicyContextV1(
+) -> JourneyPolicyContextV2:
+    return JourneyPolicyContextV2(
         journey=session.journey,
-        element_decisions=session.element_decisions,
         clarification_required=clarification_required,
     )

@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.language import BCP47Tag
 
 
@@ -36,13 +36,19 @@ class GuidedAcceptedReferenceV1(_GuidedInteractionModel):
 
 class GuidedChoiceOptionV1(_GuidedInteractionModel):
     option_id: str = Field(min_length=1, max_length=160)
-    title: str = Field(min_length=1, max_length=120)
-    summary: str = Field(min_length=1, max_length=512)
+    title: str = Field(min_length=1, max_length=64)
+    summary: str = Field(min_length=1, max_length=240)
     difference_tags: tuple[Annotated[str, Field(min_length=1, max_length=80)], ...] = Field(
         default=(), max_length=6
     )
     recommended: bool = False
     reference_preview: tuple[GuidedReferencePreviewV1, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="after")
+    def validate_summary_sentence_budget(self) -> "GuidedChoiceOptionV1":
+        if sum(character in ".!?。！？" for character in self.summary) > 2:
+            raise ValueError("A guided choice summary cannot exceed two sentences.")
+        return self
 
 
 class GuidedQuestionV1(_GuidedInteractionModel):
@@ -74,15 +80,24 @@ class GuidedQuestionnaireV1(_GuidedInteractionModel):
         return self
 
 
-class GuidedConceptChoiceV1(_GuidedInteractionModel):
+class GuidedConceptChoiceV2(_GuidedInteractionModel):
     content_kind: Literal["concept_choice"] = "concept_choice"
     proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
-    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=2, max_length=3)
+    stage: JourneyStageV2
+    stage_revision: int = Field(ge=1)
+    action_id: str = Field(min_length=1, max_length=160)
+    occurrence_id: str | None = Field(default=None, max_length=160)
+    capability_id: str = Field(min_length=1, max_length=80)
+    options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=3)
+    allow_custom: Literal[True] = True
+    allow_exclusion: bool
 
     @model_validator(mode="after")
-    def validate_option_ids(self) -> "GuidedConceptChoiceV1":
+    def validate_option_ids(self) -> "GuidedConceptChoiceV2":
         if len({option.option_id for option in self.options}) != len(self.options):
             raise ValueError("Guided concept option IDs must be unique.")
+        if sum(option.recommended for option in self.options) != 1:
+            raise ValueError("A guided concept requires exactly one recommended option.")
         return self
 
 
@@ -96,7 +111,7 @@ class GuidedMediaReviewV1(_GuidedInteractionModel):
 
 
 GuidedInteractionContentV1: TypeAlias = Annotated[
-    GuidedQuestionnaireV1 | GuidedConceptChoiceV1 | GuidedMediaReviewV1,
+    GuidedQuestionnaireV1 | GuidedConceptChoiceV2 | GuidedMediaReviewV1,
     Field(discriminator="content_kind"),
 ]
 
@@ -183,23 +198,28 @@ class GuidedQuestionnaireSubmitV1(_GuidedInteractionModel):
     answers: tuple[GuidedAnswerV1, ...] = Field(min_length=1, max_length=4)
 
 
-class GuidedConceptSubmitV1(_GuidedInteractionModel):
+class GuidedConceptSubmitV2(_GuidedInteractionModel):
     submission_kind: Literal["concept_choice"]
     expected_interaction_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
-    action: Literal["select", "custom", "revise", "defer", "exclude", "delegate"]
+    action: Literal["select", "custom", "defer", "exclude", "delegate"]
     option_id: str | None = Field(default=None, min_length=1, max_length=160)
-    custom_value: str | None = Field(default=None, min_length=1, max_length=2_048)
+    custom_text: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=2_048,
+        validation_alias=AliasChoices("custom_text", "custom_value"),
+    )
     accepted_references: tuple[GuidedAcceptedReferenceV1, ...] = Field(default=(), max_length=64)
 
     @model_validator(mode="after")
-    def validate_action_fields(self) -> "GuidedConceptSubmitV1":
+    def validate_action_fields(self) -> "GuidedConceptSubmitV2":
         if self.action == "select" and self.option_id is None:
             raise ValueError("Selecting a guided concept requires an option ID.")
-        if self.action == "custom" and self.custom_value is None:
+        if self.action == "custom" and self.custom_text is None:
             raise ValueError("A custom guided concept requires a value.")
         if self.action not in {"select", "custom"} and (
-            self.option_id is not None or self.custom_value is not None
+            self.option_id is not None or self.custom_text is not None
         ):
             raise ValueError("This guided concept action does not accept a value.")
         return self
@@ -214,7 +234,7 @@ class GuidedMediaReviewSubmitV1(_GuidedInteractionModel):
 
 
 GuidedInteractionSubmitRequestV1: TypeAlias = Annotated[
-    GuidedQuestionnaireSubmitV1 | GuidedConceptSubmitV1 | GuidedMediaReviewSubmitV1,
+    GuidedQuestionnaireSubmitV1 | GuidedConceptSubmitV2 | GuidedMediaReviewSubmitV1,
     Field(discriminator="submission_kind"),
 ]
 
@@ -234,7 +254,7 @@ class GuidedInteractionAcceptedV1(_GuidedInteractionModel):
     replayed: bool = False
 
 
-class GuidanceAwaitingV1(_GuidedInteractionModel):
+class GuidanceAwaitingV2(_GuidedInteractionModel):
     awaiting_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     session_id: str = Field(min_length=1, max_length=160)
@@ -255,12 +275,12 @@ class GuidanceAwaitingV1(_GuidedInteractionModel):
     ]
     interaction_id: str | None = Field(default=None, min_length=1, max_length=160)
     node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    stage: JourneyStageV1
+    stage: JourneyStageV2
     stage_revision: int = Field(ge=1)
     created_at: datetime
 
     @model_validator(mode="after")
-    def validate_resume_evidence(self) -> "GuidanceAwaitingV1":
+    def validate_resume_evidence(self) -> "GuidanceAwaitingV2":
         interaction_kinds = {"clarification", "concept_selection", "media_review"}
         if self.kind in interaction_kinds:
             if (
@@ -288,7 +308,7 @@ class GuidanceAwaitingV1(_GuidedInteractionModel):
         return self
 
 
-class GuidanceAwaitingResumeProofV1(_GuidedInteractionModel):
+class GuidanceAwaitingResumeProofV2(_GuidedInteractionModel):
     awaiting_id: str = Field(min_length=1, max_length=160)
     expected_session_revision: int = Field(ge=1)
     evidence_kind: Literal[
@@ -302,7 +322,7 @@ class GuidanceAwaitingResumeProofV1(_GuidedInteractionModel):
     source_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
 
     @model_validator(mode="after")
-    def validate_evidence_shape(self) -> "GuidanceAwaitingResumeProofV1":
+    def validate_evidence_shape(self) -> "GuidanceAwaitingResumeProofV2":
         if self.evidence_kind == "submit_interaction":
             if self.interaction_id is None or self.node_ids or self.source_turn_id is not None:
                 raise ValueError("Submit evidence requires only an interaction ID.")

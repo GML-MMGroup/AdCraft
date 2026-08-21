@@ -5,7 +5,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
 import type {
@@ -16,7 +16,9 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
+import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
+import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
   agentCanvasNodeSize,
@@ -67,12 +69,15 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
+  workbenchActive?: boolean;
   disabled?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
 }
 
 export type AgentCanvasFlowNode = Node<AgentCanvasNodeData, "agentCanvas">;
+
+type AgentCanvasNodeRendererProps = NodeProps<AgentCanvasFlowNode>;
 
 interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   node: CanvasNodeV2;
@@ -210,7 +215,7 @@ export function AgentCanvasNodeCard({
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
     || Boolean(runtime?.blocked_by_node_ids.length);
   const promptPreparation = promptPreparationForNode(node);
-  const hasPromptPreparationFailure = promptPreparation.status === "failed";
+  const hasPromptPreparationFailure = promptPreparation?.status === "failed";
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
 
@@ -240,7 +245,9 @@ export function AgentCanvasNodeCard({
           onMediaDimensionsResolved={onMediaDimensionsResolved}
           onScriptContentHeightResolved={onScriptContentHeightResolved}
         />
-        {status === "working" && node.node_type !== "audio" ? (
+        {status === "working" && (node.node_type === "image" || node.node_type === "video") ? (
+          <AgentCanvasMediaGenerationLoader mediaType={node.node_type} />
+        ) : status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
@@ -273,12 +280,12 @@ export function AgentCanvasNodeCard({
   );
 }
 
-export function AgentCanvasNodeRenderer({
+function AgentCanvasNodeRendererComponent({
   id,
   data,
   selected,
   isConnectable,
-}: NodeProps<AgentCanvasFlowNode>) {
+}: AgentCanvasNodeRendererProps) {
   const updateNodeInternals = useUpdateNodeInternals();
   const [intrinsicDimensions, setIntrinsicDimensions] = useState<(
     AgentCanvasMediaDimensions & { assetId: string | null }
@@ -357,3 +364,8 @@ export function AgentCanvasNodeRenderer({
     </div>
   );
 }
+
+export const AgentCanvasNodeRenderer = memo(
+  AgentCanvasNodeRendererComponent,
+  areAgentCanvasNodePropsEqual,
+);

@@ -20,7 +20,7 @@ describe("AgentCanvasPage chrome", () => {
     );
 
     expect(source).toContain(
-      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}`}',
+      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}${canvasInteracting ? " is-interacting" : ""}`}',
     );
     expect(source).toContain('onContextMenu={(event) => event.preventDefault()}');
     expect(source).toContain("onPaneContextMenu={(event) => {");
@@ -103,7 +103,7 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("<AgentCanvasLayoutConfirmation");
     expect(source).toContain("nodesDraggable={!layoutPreview.active}");
     expect(source).toContain(
-      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}`}',
+      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}${canvasInteracting ? " is-interacting" : ""}`}',
     );
     expect(source).toContain("<LayoutIcon />");
     expect(source).toContain('aria-label="Organize canvas"');
@@ -123,5 +123,86 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board\.is-layout-previewing \.react-flow__node[\s\S]*?transition: none;/,
     );
+  });
+
+  it("defers runtime node replacement until drag stop rebuilds the complete snapshot", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("latestPresentedNodesRef");
+    expect(source).toContain("pendingPresentedNodesRef");
+    expect(source).toContain("deferNodeSnapshotDuringDrag(");
+    expect(source).toContain("finishNodeDrag(");
+    expect(source).toMatch(
+      /const handleNodeChanges = useCallback\([\s\S]*?applyNodeChanges\(changes, current\)[\s\S]*?flowNodesRef\.current = next;[\s\S]*?return next;/,
+    );
+    expect(source).toMatch(
+      /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
+    );
+  });
+
+  it("cleans interrupted drag sessions and recovers failed layout persistence", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("beginNodeDrag(");
+    expect(source).toContain("cancelNodeDrag(");
+    expect(source).toContain('window.addEventListener("blur", handleWindowBlur)');
+    expect(source).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
+    expect(source).toContain("pointerSpotlight.onPointerCancel(event);");
+    expect(source).toContain("clearCanvasInteractions();");
+    expect(source).toContain("cancelActiveNodeDrag();");
+    expect(source).toContain("dragCancellationPendingRef.current = true;");
+    expect(source).toMatch(
+      /onNodeDragStop=\{\(_event, node, draggedNodes\) => \{[\s\S]*?if \(dragCancellationPendingRef\.current\) \{[\s\S]*?dragCancellationPendingRef\.current = false;[\s\S]*?return;/,
+    );
+    expect(source).toMatch(
+      /updateNodePositions\(dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
+    );
+  });
+
+  it("culls nodes outside the viewport and memoizes node card rendering", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+    const nodeSource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("onlyRenderVisibleElements");
+    expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
+    expect(nodeSource).toMatch(
+      /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,
+    );
+  });
+
+  it("uses a lightweight visual mode only while the canvas is moving", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain('canvasInteracting ? " is-interacting" : ""');
+    expect(source).toContain('beginCanvasInteraction("viewport")');
+    expect(source).toContain('endCanvasInteraction("viewport")');
+    expect(source).toContain('beginCanvasInteraction("node-drag")');
+    expect(source).toContain('endCanvasInteraction("node-drag")');
+    expect(canvasCss).toContain(".agent-canvas-board.is-interacting .agent-canvas-node");
+    expect(canvasCss).toContain(".agent-canvas-board.is-interacting .react-flow__edge-path");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board\.is-interacting \.react-flow__edge\.selected \.react-flow__edge-path,[\s\S]*?filter: none;[\s\S]*?animation-play-state: paused;/,
+    );
+    expect(canvasCss).toContain("animation-play-state: paused");
+    expect(canvasCss).toContain("backdrop-filter: none");
   });
 });

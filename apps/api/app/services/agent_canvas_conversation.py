@@ -84,7 +84,7 @@ from app.schemas.agent_canvas_creative_session import (
     SpecialistDraftV2,
     StyleGuidanceContextV2,
 )
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
+from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
@@ -98,6 +98,7 @@ from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
 from app.services.agent_run_context_registry import (
+    AGENT_RUN_CONTEXT_REGISTRY,
     validate_video_agent_context_parity,
     validate_video_agent_operation_context,
 )
@@ -136,7 +137,11 @@ from app.services.agent_canvas_materialization_submission import (
 )
 from app.services.agent_canvas_turn_intent import TurnIntentService
 from app.services.agent_canvas_user_presentation import AgentCanvasTimelinePresentation
+from app.services.agent_canvas_public_concept_projection import (
+    AgentCanvasPublicConceptProjector,
+)
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -380,7 +385,9 @@ class DeterministicVideoAgentGateway:
         repair_error: str | None,
     ) -> BaseModel:
         contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
-        return contract.model_validate(_deterministic_materialization_result(capability_id))
+        return contract.model_validate(
+            _deterministic_materialization_result(capability_id, context=context)
+        )
 
 
 class PiVideoAgentGateway:
@@ -570,7 +577,11 @@ class PiVideoAgentGateway:
         repair_error: str | None,
     ) -> BaseModel:
         contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
-        invocation = CapabilityMaterializationContextV1.model_validate(context)
+        operation_definition = self._operation_registry.resolve(operation)
+        context_model = AGENT_RUN_CONTEXT_REGISTRY.resolve(
+            operation_definition.context_contract_name
+        )
+        invocation = context_model.model_validate({**context, "repair_error": repair_error})
         completed = self._run_structured(
             operation=operation,
             context=invocation,
@@ -753,7 +764,8 @@ def _deterministic_capability_result(
     capability_id: str,
     candidate_count: int,
 ) -> dict[str, object]:
-    count = max(2, candidate_count) if capability_id == "world_setting" else candidate_count
+    del candidate_count
+    count = 1 if capability_id == "quick_media" else 3
     options: list[dict[str, object]] = []
     for index in range(1, count + 1):
         summary = f"Deterministic {capability_id} option {index}."
@@ -770,7 +782,11 @@ def _deterministic_capability_result(
     return {"options": options}
 
 
-def _deterministic_materialization_result(capability_id: str) -> dict[str, object]:
+def _deterministic_materialization_result(
+    capability_id: str,
+    *,
+    context: Mapping[str, object],
+) -> dict[str, object]:
     summary = f"Deterministic {capability_id} materialization."
     if capability_id == "world_setting":
         return {
@@ -803,12 +819,38 @@ def _deterministic_materialization_result(capability_id: str) -> dict[str, objec
         "video_direction": "video",
         "bgm_direction": "bgm",
     }[capability_id]
-    return {
+    result: dict[str, object] = {
         "title": f"{proposal_kind.title()} Draft",
         "summary_prompt": summary,
         **({} if proposal_kind == "script" else {"generation_prompt": summary}),
         "structured_content": _structured_content_for_proposal(proposal_kind, summary),
     }
+    if proposal_kind == "script":
+        requirement_projection = context.get("requirement_projection")
+        hard_controls = (
+            requirement_projection.get("hard_controls")
+            if isinstance(requirement_projection, Mapping)
+            else None
+        )
+        duration_seconds = (
+            next(
+                (
+                    control.get("value")
+                    for control in hard_controls
+                    if isinstance(control, Mapping) and control.get("control") == "duration_seconds"
+                ),
+                None,
+            )
+            if isinstance(hard_controls, list)
+            else None
+        )
+        if not isinstance(duration_seconds, (int, float)) or isinstance(duration_seconds, bool):
+            raise ValueError("Canonical production duration is required.")
+        result["structured_content"] = {
+            **dict(result["structured_content"]),
+            "total_duration_seconds": duration_seconds,
+        }
+    return result
 
 
 def _style_skill_lineage(context: object) -> dict[str, str | None] | None:
@@ -1029,14 +1071,14 @@ class SpecialistDraftValidationService:
 
 
 def _journey_state_action_evidence(stage: str, action: str) -> str | None:
-    suffix = "deferred" if action == "defer_topic" else "excluded"
-    if stage == "world_setting":
-        return f"world_setting_{suffix}"
-    if stage == "foundation_design":
-        return f"foundation_item_{suffix}"
-    if stage == "bgm":
-        return f"bgm_{suffix}"
-    return None
+    if action == "defer_topic":
+        return None
+    return {
+        "world_view": "world_view_excluded",
+        "props": "props_excluded",
+        "character": "character_excluded",
+        "bgm": "bgm_excluded",
+    }.get(stage)
 
 
 class AgentConversationService:
@@ -1124,6 +1166,7 @@ class AgentConversationService:
             AgentCanvasRequirementRepository(workflows.database),
             EventRepository(workflows.database),
         )
+        self._duration_authority = GuidedDurationAuthorityPolicy()
         self._next_actions = NextActionExecutionService(gateway)
         self._journey = production_journey or GuidedProductionJourneyService(conversations)
         self._decision_bundles = DecisionBundleAuthoringService(
@@ -1157,6 +1200,28 @@ class AgentConversationService:
         video_skill_run_id: str | None = None,
     ) -> ChatTurnAcceptedV2:
         self._workflows.get_workflow(workflow_id)
+        current_session = self._conversations.get_guidance_session_or_none(workflow_id)
+        if (
+            current_session is not None
+            and current_session.interaction is not None
+            and current_session.interaction.kind == "media_review"
+            and current_session.interaction.status == "open"
+            and current_session.awaiting is not None
+            and current_session.awaiting.kind == "media_review"
+            and current_session.awaiting.interaction_id
+            == current_session.interaction.interaction_id
+        ):
+            return self._conversations.create_media_review_wait_turn(
+                workflow_id,
+                text=text,
+                mentioned_node_ids=mentioned_node_ids,
+                mentioned_image_asset_ids=mentioned_image_asset_ids,
+                video_skill_run_id=video_skill_run_id,
+                idempotency_key=idempotency_key,
+                interaction=current_session.interaction,
+                awaiting=current_session.awaiting,
+                expected_session_revision=current_session.revision,
+            )
         if video_skill_run_id is None:
             video_skill_run_id = self._conversations.get_active_style_skill_run(
                 workflow_id
@@ -1482,27 +1547,79 @@ class AgentConversationService:
                 ),
                 response_locale=intent.response_locale,
             )
+        duration_questionnaire = self._duration_authority.questionnaire(
+            requirements,
+            response_locale=session.response_locale,
+        )
+        if (
+            intent.mode == "guided_production"
+            and requirement_changed
+            and not requirements.ledger.unresolved_conflicts
+            and session.journey.stage == "intake"
+            and session.awaiting is None
+            and duration_questionnaire is not None
+        ):
+            duration_evidence = JourneyEvidenceV2(
+                evidence_id=f"creative-goal-validated:{turn_id}",
+                evidence_kind="creative_goal_validated",
+                source_id=turn_id,
+                source_revision=requirements.revision_no,
+            )
+            duration_journey = session.journey.model_copy(
+                update={
+                    "stage_status": "waiting_user",
+                    "stage_revision": session.journey.stage_revision + 1,
+                    "transition_evidence": (
+                        *session.journey.transition_evidence,
+                        duration_evidence.as_transition(
+                            stage=session.journey.stage,
+                            stage_revision=session.journey.stage_revision,
+                        ),
+                    ),
+                }
+            )
+            return self._conversations.complete_turn_with_clarification(
+                turn_id,
+                expected_session_revision=session.revision,
+                journey=duration_journey,
+                assistant_message="Choose the total advertisement duration to continue.",
+                transition_key=(
+                    f"intake-duration:{turn_id}:requirements:{requirements.revision_id}"
+                ),
+                questionnaire=duration_questionnaire,
+                checkpoint_id=f"duration:{turn_id}",
+                interaction_title="Choose production duration",
+                interaction_context=(
+                    "Confirm the total duration before time-dependent authoring begins."
+                ),
+            )
         clarification_required = bool(requirements.ledger.unresolved_conflicts) or (
             intent.mode == "guided_production"
             and not requirement_changed
             and intent.assistant_message is not None
         )
-        if clarification_required and session.journey.stage in {"intake", "clarification"}:
-            if session.journey.stage == "intake":
-                evidence = JourneyEvidenceV1(
-                    evidence_id=f"journey-goal:{turn_id}",
+        if clarification_required and session.journey.stage == "intake":
+            if session.journey.stage_status == "waiting_user" and session.awaiting is not None:
+                clarification_journey = session.journey
+            else:
+                clarification_evidence = JourneyEvidenceV2(
+                    evidence_id=f"creative-goal-validated:{turn_id}",
                     evidence_kind="creative_goal_validated",
                     source_id=turn_id,
                     source_revision=requirements.revision_no,
                 )
-                clarification_journey = self._journey.project_evidence(
-                    session,
-                    evidence=evidence,
-                    clarification_required=True,
-                ).model_copy(update={"stage_status": "waiting_user"})
-            else:
                 clarification_journey = session.journey.model_copy(
-                    update={"stage_status": "waiting_user"}
+                    update={
+                        "stage_status": "waiting_user",
+                        "stage_revision": session.journey.stage_revision + 1,
+                        "transition_evidence": (
+                            *session.journey.transition_evidence,
+                            clarification_evidence.as_transition(
+                                stage=session.journey.stage,
+                                stage_revision=session.journey.stage_revision,
+                            ),
+                        ),
+                    }
                 )
             return self._conversations.complete_turn_with_clarification(
                 turn_id,
@@ -1526,12 +1643,12 @@ class AgentConversationService:
             intent.mode == "guided_production"
             and not requirement_changed
             and intent.assistant_message is not None
-            and session.journey.stage in {"intake", "clarification"}
+            and session.journey.stage == "intake"
         ):
             return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
         if (
             intent.mode == "guided_production"
-            and session.journey.stage == "clarification"
+            and session.journey.stage == "intake"
             and requirement_changed
         ):
             self._conversations.close_current_clarification(
@@ -1541,7 +1658,7 @@ class AgentConversationService:
             )
             session = self._journey.apply_evidence(
                 turn.workflow_id,
-                evidence=JourneyEvidenceV1(
+                evidence=JourneyEvidenceV2(
                     evidence_id=f"clarification-completed:{turn_id}",
                     evidence_kind="clarification_completed",
                     source_id=turn_id,
@@ -1552,10 +1669,14 @@ class AgentConversationService:
                     f"clarification-completed:{turn_id}:requirements:{requirements.revision_id}"
                 ),
             )
-        if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
+        if (
+            intent.mode == "targeted_authoring"
+            and session.journey.active_action is not None
+            and session.journey.suspended_action is None
+        ):
             session = self._journey.apply_evidence(
                 turn.workflow_id,
-                evidence=JourneyEvidenceV1(
+                evidence=JourneyEvidenceV2(
                     evidence_id=f"targeted-start:{turn_id}",
                     evidence_kind="targeted_action_started",
                     source_id=turn_id,
@@ -1564,12 +1685,18 @@ class AgentConversationService:
                 expected_session_revision=session.revision,
                 idempotency_key=f"targeted-start:{turn_id}",
             )
+        if intent.mode == "guided_production" and session.awaiting is not None:
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                "Please complete the current guided interaction before continuing production.",
+            )
         journey_capability = None
         if intent.mode == "guided_production":
             if session.journey.stage == "intake":
                 session = self._journey.apply_evidence(
                     turn.workflow_id,
-                    evidence=JourneyEvidenceV1(
+                    evidence=JourneyEvidenceV2(
                         evidence_id=f"journey-goal:{turn_id}",
                         evidence_kind="creative_goal_validated",
                         source_id=turn_id,
@@ -1577,17 +1704,6 @@ class AgentConversationService:
                     ),
                     expected_session_revision=session.revision,
                     idempotency_key=f"creative-goal:{turn_id}",
-                )
-            elif session.journey.stage == "style_lock":
-                session = self._journey.apply_evidence(
-                    turn.workflow_id,
-                    evidence=JourneyEvidenceV1(
-                        evidence_id=f"style-lock:{turn_id}",
-                        evidence_kind="style_locked",
-                        source_id=turn_id,
-                    ),
-                    expected_session_revision=session.revision,
-                    idempotency_key=f"style-lock:{turn_id}",
                 )
             session, journey_action = self._journey.reserve_next_action(
                 turn.workflow_id,
@@ -1844,12 +1960,12 @@ class AgentConversationService:
                 if evidence_kind is not None:
                     self._journey.apply_evidence(
                         turn.workflow_id,
-                        evidence=JourneyEvidenceV1(
+                        evidence=JourneyEvidenceV2(
                             evidence_id=f"proposal-action:{action.action_id}",
                             evidence_kind=evidence_kind,
                             source_id=turn_id,
-                            foundation_item_id=(
-                                session.journey.active_action.foundation_item_id
+                            occurrence_id=(
+                                session.journey.active_action.occurrence_id
                                 if session.journey.active_action is not None
                                 else None
                             ),
@@ -2040,7 +2156,11 @@ class AgentConversationService:
                 "Concept proposal was not found.",
                 stage="agent_conversation_service",
             )
-        return proposal
+        session = self._conversations.get_guidance_session(workflow_id)
+        return AgentCanvasPublicConceptProjector().project_proposal(
+            proposal,
+            response_locale=session.response_locale,
+        )
 
     def _revise_capability_proposal(
         self,

@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
 from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
@@ -33,6 +34,7 @@ from app.services.agent_trace import V2AgentTraceWriter
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
+_GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
 
 
 class NodePromptPreparationService:
@@ -132,13 +134,33 @@ class NodePromptPreparationService:
                     "status": "ready" if working.node_type == "text" else working.status,
                     "metadata": {
                         **working.metadata,
+                        **(
+                            {"guided_review_node_revision": working.revision + 1}
+                            if working.creative_role in _GUIDED_REVIEW_ROLES
+                            else {}
+                        ),
                         "prompt_context_digest": snapshot_digest,
                         "prompt_digest": digest,
                         "prompt_recipe_id": recipe.recipe_id,
                         "prompt_recipe_version": recipe.recipe_version,
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
+                        "role_reference_policy_version": (
+                            compiled_prompt.role_reference_policy_version
+                        ),
                         "prompt_style_projection_digest": (compiled_prompt.style_projection_digest),
+                        "prompt_assertion_policy_ref": (
+                            compiled_prompt.assertion_evidence.policy_ref
+                        ),
+                        "prompt_assertion_policy_digest": (
+                            compiled_prompt.assertion_evidence.policy_digest
+                        ),
+                        "prompt_assertion_evidence_digest": (
+                            compiled_prompt.assertion_evidence.evidence_digest
+                        ),
+                        "prepared_reference_snapshots": [
+                            item.model_dump(mode="json") for item in role_context.bindings
+                        ],
                     },
                     "revision": working.revision + 1,
                     "updated_at": _now(),
@@ -159,6 +181,7 @@ class NodePromptPreparationService:
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
                         parameter_origins=compiled_prompt.parameters,
+                        assertion_evidence=compiled_prompt.assertion_evidence,
                         attempt_stage="completed",
                         updated_at=_now(),
                     ),
@@ -252,6 +275,11 @@ class NodePromptPreparationService:
                 "parameter_origins": [
                     item.model_dump(mode="json") for item in preparation.parameter_origins
                 ],
+                **(
+                    safe_prompt_assertion_metadata(preparation.assertion_evidence)
+                    if preparation.assertion_evidence is not None
+                    else {}
+                ),
                 "error_code": error,
             },
         )
@@ -282,7 +310,7 @@ class NodePromptPreparationService:
             requirement_revision_id=requirement_revision_id,
             requirement_revision_no=context.session_revision,
             document_revisions={
-                item.document_id: item.revision for item in context.working_document_excerpts
+                item.document_kind: item.revision for item in context.working_document_excerpts
             },
             bindings=bindings,
             model_policy_revision=(
@@ -290,6 +318,12 @@ class NodePromptPreparationService:
             ),
             explicit_controls=controls,
             bound_text_controls=self._bound_text_controls(node),
+            storyboard_parameters={
+                "sequence_id": node.metadata.get("source_sequence_id"),
+                "storyboard_production_plan_id": node.metadata.get("source_agent_document_id"),
+            }
+            if node.metadata.get("source_sequence_id")
+            else {},
         )
 
     def _bound_text_controls(
@@ -361,6 +395,12 @@ class NodePromptPreparationService:
                     asset_id=asset_id,
                     asset_version_id=version_id,
                     reference_purpose=_reference_purpose(node, source_node),
+                    source_sequence_id=(
+                        str(source_node.metadata["source_sequence_id"])
+                        if source_node is not None
+                        and source_node.metadata.get("source_sequence_id")
+                        else None
+                    ),
                     display_order=binding.order,
                 )
             )

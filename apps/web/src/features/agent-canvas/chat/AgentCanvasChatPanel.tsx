@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { InlineLoader } from "generative-loaders";
+import "generative-loaders/styles.css";
 
 import {
   AssetsIcon,
@@ -21,8 +23,6 @@ import type {
   ChatCapabilityActivityV2,
   ChatProposalCardV2,
   CapabilityProposalOptionV2,
-  GuidedInteractionSubmitRequestV1,
-  GuidedInteractionV1,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -45,11 +45,18 @@ import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.t
 import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
 import {
-  interactionForTimelineProposal,
+  guidedInteractionContentVersion,
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
-import { TimelineProposalInteractionActions } from "./TimelineProposalInteractionActions.tsx";
+import {
+  guidedInteractionReferenceMediaUrls,
+  guidedInteractionReferences,
+} from "./guidedInteractionReferences.ts";
+import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
+import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import "./agent-canvas-chat.css";
+
+export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 
 export function AgentCanvasChatPanel({
   workflow,
@@ -60,6 +67,7 @@ export function AgentCanvasChatPanel({
   onFocusNode,
   onActionReceipt,
   onWorkflowRefresh,
+  onRuntimeRefresh,
   onCollapsedChange,
 }: {
   workflow: AgentCanvasWorkflowV2;
@@ -70,6 +78,7 @@ export function AgentCanvasChatPanel({
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
+  onRuntimeRefresh?: () => Promise<void> | void;
   onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const chat = useAgentCanvasChat({
@@ -78,6 +87,7 @@ export function AgentCanvasChatPanel({
     chatEvents,
     onActionReceipt,
     onWorkflowRefresh,
+    onRuntimeRefresh,
   });
   const [draft, setDraft] = useState("");
   const [collapsed, setCollapsed] = useState(false);
@@ -102,16 +112,30 @@ export function AgentCanvasChatPanel({
     [chat.state.continuations],
   );
   const standaloneGuidedInteraction = chat.state.guidedInteraction
-    && shouldRenderStandaloneInteraction(chat.state.guidedInteraction, chat.state.items)
+    && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const standaloneGuidedReferences = useMemo(() => (
+    standaloneGuidedInteraction
+      ? guidedInteractionReferences(standaloneGuidedInteraction, chat.state.items)
+      : []
+  ), [chat.state.items, standaloneGuidedInteraction]);
+  const standaloneGuidedReferenceMediaUrls = useMemo(() => (
+    guidedInteractionReferenceMediaUrls(standaloneGuidedReferences ?? [], workflow)
+  ), [standaloneGuidedReferences, workflow]);
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
       .map((action) => `${action.action_id}:${action.state}`)
       .join(",");
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${sessionActions}:${chat.state.agentWorking}`;
-  }, [chat.state.agentWorking, chat.state.currentSessionActions, chat.state.items]);
+    const interactionVersion = guidedInteractionContentVersion(chat.state.guidedInteraction);
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${chat.state.agentWorking}`;
+  }, [
+    chat.state.agentWorking,
+    chat.state.currentSessionActions,
+    chat.state.guidedInteraction,
+    chat.state.items,
+  ]);
   const timelineScroll = useChatTimelineScroll({
     contentVersion: timelineContentVersion,
     resetKey: workflow.workflow_id,
@@ -230,15 +254,6 @@ export function AgentCanvasChatPanel({
             {chat.state.guidanceSession ? (
               <GuidanceSessionProgress session={chat.state.guidanceSession} />
             ) : null}
-            {standaloneGuidedInteraction ? (
-              <GuidedInteractionCard
-                interaction={standaloneGuidedInteraction}
-                pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
-                onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
-              />
-            ) : !chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
-              <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
-            ) : null}
             {chat.state.items.map((item) => {
               if (item.item_type === "message") {
                 return (
@@ -330,34 +345,23 @@ export function AgentCanvasChatPanel({
                   />
                 );
               }
-              const interaction = interactionForTimelineProposal(
-                chat.state.guidedInteraction,
-                item,
-              );
               return (
                 <ProposalCard
                   key={`proposal-${item.proposal.proposal_id}`}
                   card={item}
-                  pending={Boolean(
-                    interaction
-                    && chat.state.actingInteractionId === interaction.interaction_id
-                  )}
-                  interaction={interaction}
-                  onSubmitInteraction={interaction
-                    ? (request) => chat.actions.submitGuidedInteraction(interaction, request)
-                    : undefined}
-                  onRetryMaterialization={item.proposal.materialization
-                    ? () => chat.actions.retryProposalMaterialization(item.proposal.materialization!)
-                    : undefined}
+                  pending={false}
                   retryingMaterialization={Boolean(
                     item.proposal.materialization
                     && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
                   )}
-                  readOnly={!interaction}
+                  readOnly
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
             })}
+            {!chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
+              <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
+            ) : null}
             {chat.state.currentSessionActions.length ? (
               <GuidedActionsCard
                 actions={chat.state.currentSessionActions}
@@ -407,6 +411,19 @@ export function AgentCanvasChatPanel({
           <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
             <CloseIcon />
           </button>
+        </div>
+      ) : null}
+
+      {standaloneGuidedInteraction ? (
+        <div className="agent-chat__current-interaction" aria-live="polite">
+          <GuidedInteractionCard
+            key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
+            interaction={standaloneGuidedInteraction}
+            pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            proposalReferences={standaloneGuidedReferences}
+            referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
+            onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
+          />
         </div>
       ) : null}
 
@@ -531,8 +548,12 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
         ? "AdCraft Video Agent is waiting for the model"
         : "AdCraft Video Agent is working"}
     >
+      <InlineLoader
+        variant="halo"
+        size={20}
+        className="agent-chat__working-loader"
+      />
       <span>{label}</span>
-      <i className="agent-chat__working-spinner" aria-hidden="true" />
     </div>
   );
 }
@@ -560,7 +581,9 @@ export function CapabilityActivityRow({
     ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
     : activity.status === "completed"
       ? `${activity.capability_display_name} finished`
-      : `${activity.capability_display_name} failed`;
+      : activity.status === "superseded"
+        ? `${activity.capability_display_name} was superseded by later progress`
+        : `${activity.capability_display_name} failed`;
   const label = activity.presentation_text ?? fallbackLabel;
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>
@@ -651,60 +674,6 @@ export function GuidanceAwaitingRow({
   return <div className="agent-chat__activity agent-chat__awaiting" role="status"><i aria-hidden="true" /><span>{label}</span></div>;
 }
 
-export function GuidanceSessionProgress({
-  session,
-}: {
-  session: GuidedSessionStateV2;
-}) {
-  const journey = session.journey;
-  const activeFoundationItem = journey.foundation_cursor === null
-    ? null
-    : journey.foundation_queue[journey.foundation_cursor] ?? null;
-  return (
-    <section className="agent-chat__recipe" aria-label="Guidance progress">
-      <header>
-        <strong>{session.goal.summary}</strong>
-        <span>Stage revision {journey.stage_revision}</span>
-      </header>
-      {session.topics.length ? (
-        <ol>
-          {session.topics.map((topic) => (
-            <li
-              key={topic.topic_id}
-              className={`is-${topic.status}${topic.topic_id === session.current_topic_id ? " is-current" : ""}`}
-            >
-              <i aria-hidden="true" />
-              <span>{topic.title}</span>
-              <small>{topic.status.replaceAll("_", " ")}</small>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p>The agent is preparing the next creative decision.</p>
-      )}
-      <div className="agent-chat__completion" aria-label="Guidance completion">
-        <span>
-          Stage: {journey.stage.replaceAll("_", " ")} · {journey.stage_status.replaceAll("_", " ")}
-        </span>
-        {activeFoundationItem ? (
-          <span>Foundation item: {activeFoundationItem.kind} {activeFoundationItem.occurrence_index}</span>
-        ) : null}
-        {session.creative_authority ? (
-          <span>Direction: {session.creative_authority.authority === "user" ? "You" : "Director"}</span>
-        ) : null}
-        {session.current_checkpoint ? (
-          <span>
-            Checkpoint: {session.current_checkpoint.stage_kind?.replaceAll("_", " ") ?? "planning"}
-            {` · ${session.current_checkpoint.status.replaceAll("_", " ")}`}
-          </span>
-        ) : null}
-        <span>Authoring: {session.completion.authoring.replaceAll("_", " ")}</span>
-        <span>Delivery: {session.completion.delivery.replaceAll("_", " ")}</span>
-      </div>
-    </section>
-  );
-}
-
 export function CommandPlanCard({
   card,
   pending,
@@ -786,8 +755,6 @@ export function ProposalCard({
   onSelect,
   onRevise,
   onApplyAction,
-  interaction = null,
-  onSubmitInteraction,
   onRetryMaterialization,
   retryingMaterialization = false,
   issue,
@@ -807,8 +774,6 @@ export function ProposalCard({
     instruction: string,
   ) => Promise<void>;
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
-  interaction?: GuidedInteractionV1 | null;
-  onSubmitInteraction?: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   onRetryMaterialization?: (turnId: string) => Promise<boolean>;
   retryingMaterialization?: boolean;
   issue?: string;
@@ -816,8 +781,9 @@ export function ProposalCard({
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
+  const appliedOptionId = proposal.latest_application?.option_id ?? materialization?.option_id ?? null;
   const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(() => (
-    proposal.options.find((option) => option.option_id === materialization?.option_id) ?? null
+    proposal.options.find((option) => option.option_id === appliedOptionId) ?? null
   ));
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
@@ -837,25 +803,11 @@ export function ProposalCard({
     || action.action === "delegate_choice"
     || action.action === "reuse_direction"
   ));
-  const activeInteraction = interaction?.status === "open"
-    && interaction.content.content_kind === "concept_choice"
-    && interaction.content.proposal_id === proposal.proposal_id
-    ? interaction
-    : null;
-  const interactionOptionIds = new Set(
-    activeInteraction?.content.content_kind === "concept_choice"
-      ? activeInteraction.content.options.map((option) => option.option_id)
-      : [],
-  );
-  const canSelect = activeInteraction
-    ? activeInteraction.allowed_actions.includes("select")
-      && !materializationLocked
-    : !readOnly && isOpen
+  const displayOptions = proposal.options;
+  const canSelect = !readOnly && isOpen
     && Boolean(selectAction?.enabled)
     && !materializationLocked;
-  const canRevise = activeInteraction
-    ? activeInteraction.allowed_actions.includes("revise") && !materializationLocked
-    : !readOnly && Boolean(reviseAction?.enabled)
+  const canRevise = !readOnly && Boolean(reviseAction?.enabled)
     && (isOpen || isSuperseded)
     && !materializationLocked;
   const availableReferences = proposal.proposed_references;
@@ -864,10 +816,10 @@ export function ProposalCard({
   );
 
   useEffect(() => {
-    if (!materialization?.option_id) return;
-    const materializedOption = proposal.options.find((option) => option.option_id === materialization.option_id);
-    if (materializedOption) setSelected(materializedOption);
-  }, [materialization?.option_id, proposal.options]);
+    if (!appliedOptionId) return;
+    const appliedOption = proposal.options.find((option) => option.option_id === appliedOptionId);
+    if (appliedOption) setSelected(appliedOption);
+  }, [appliedOptionId, proposal.options]);
 
   useEffect(() => {
     const revisionChanged = referencesRevisionRef.current !== proposal.proposal_revision;
@@ -897,33 +849,35 @@ export function ProposalCard({
   }
 
   return (
-    <article className="agent-chat__proposal">
+    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
         <strong>{proposal.capability_display_name}</strong>
-        <span>{proposal.availability}</span>
+        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
       </header>
-      <div className="agent-chat__options">
-        {proposal.options.map((option) => (
-          <button
-            type="button"
-            key={option.option_id}
-            className={selected?.option_id === option.option_id ? "is-selected" : ""}
-            disabled={!canSelect || pending || Boolean(
-              activeInteraction && !interactionOptionIds.has(option.option_id)
-            )}
-            onClick={() => setSelected(option)}
-          >
-            <strong>{option.title}</strong>
-            <span>{option.public_summary}</span>
-            <ul>
-              {option.key_decisions.map((decision, index) => (
-                <li key={`${option.option_id}:${index}`}>{decision}</li>
-              ))}
-            </ul>
-          </button>
-        ))}
-      </div>
-      {acceptedReferences.length || selectAction || activeInteraction?.allowed_actions.includes("select") ? (
+      {readOnly ? (
+        <HistoricalProposalOptions
+          options={displayOptions}
+          selectedOptionId={appliedOptionId}
+        />
+      ) : (
+        <div className="agent-chat__options">
+          {displayOptions.map((option) => (
+            <button
+              type="button"
+              key={option.option_id}
+              className={selected?.option_id === option.option_id ? "is-selected" : ""}
+              disabled={!canSelect || pending}
+              onClick={() => setSelected(option)}
+            >
+              <strong>
+                {option.title}
+              </strong>
+              <span>{option.public_summary}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {!readOnly && (acceptedReferences.length || selectAction) ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
             <strong>References</strong>
@@ -1008,7 +962,7 @@ export function ProposalCard({
           ) : null}
         </section>
       ) : null}
-      {proposal.application_count > 0 ? (
+      {!readOnly && proposal.application_count > 0 ? (
         <p className="agent-chat__proposal-history">
           Applied {proposal.application_count} {proposal.application_count === 1 ? "time" : "times"}
           {proposal.latest_application
@@ -1016,7 +970,7 @@ export function ProposalCard({
             : ""}
         </p>
       ) : null}
-      {materialization ? (
+      {materialization && (!readOnly || materialization.status === "failed") ? (
         <ProposalMaterializationStatus
           materialization={materialization}
           retrying={retryingMaterialization}
@@ -1028,16 +982,7 @@ export function ProposalCard({
           {issue}
         </p>
       ) : null}
-      {activeInteraction && onSubmitInteraction ? (
-        <TimelineProposalInteractionActions
-          acceptedReferences={acceptedReferences}
-          interaction={activeInteraction}
-          materializationBusy={materializationLocked}
-          onSubmit={onSubmitInteraction}
-          pending={pending}
-          selectedOptionId={canSelect ? selected?.option_id ?? null : null}
-        />
-      ) : !readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
+      {!readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
           {isOpen && selected && selectAction ? (
             <button

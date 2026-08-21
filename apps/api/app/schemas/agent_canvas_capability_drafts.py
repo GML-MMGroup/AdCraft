@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
 from app.schemas.agent_canvas_materialization_commit import NodePromptPreparationIntentV1
+from app.schemas.agent_canvas_materialization import ParentDerivedMaterializationIntentV1
 
 
 class CapabilityDraftBundleV1(BaseModel):
@@ -16,3 +17,4 @@ class CapabilityDraftBundleV1(BaseModel):
     nodes: tuple[CanvasNodeV2, ...]
     bindings: tuple[CanvasBindingV2, ...]
     prompt_preparations: tuple[NodePromptPreparationIntentV1, ...]
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None = None

@@ -29,7 +29,7 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardPanelV2,
     VisualStyleContractV2,
 )
-from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
 )
@@ -44,6 +44,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationDocumentWriteV1,
 )
 from app.schemas.agent_working_documents import (
+    AgentAnchorRoleSourceV3,
     AgentAnchorNodeSourceV3,
     AgentAnchorSkillSnapshotSourceV3,
     AgentAnchorV3,
@@ -52,17 +53,23 @@ from app.schemas.agent_working_documents import (
     AnchorAcceptanceEvidenceV1,
     AnchorRegistryContentV3,
     StoryboardPlannedNodeV3,
+    StoryboardNarrativeSegmentV2,
+    StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
 )
 from app.services.agent_canvas_conversation import (
     VideoAgentGateway,
 )
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_materialization_runtime import (
     materialization_context_from_state,
     validate_materialization_reference_snapshots,
 )
 from app.services.agent_canvas_materialization_normalizer import (
     CapabilityMaterializationNormalizer,
+)
+from app.services.agent_canvas_parent_derived_materialization import (
+    ParentDerivedMaterializationCoordinator,
 )
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
@@ -75,9 +82,6 @@ from app.services.agent_canvas_production_journey_reducer import (
 )
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
-)
-from app.services.agent_canvas_storyboard_sequence_windows import (
-    StoryboardSequenceWindowPlanner,
 )
 from app.services.agent_canvas_capability_draft_bundle import (
     stage_definitions,
@@ -107,12 +111,22 @@ class CapabilityMaterializationPublicationService:
         storyboard_gateway: VideoAgentGateway | None = None,
         storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
         prompt_ready_activation: Callable[..., object] | None = None,
+        parent_derived: ParentDerivedMaterializationCoordinator | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
+        materialization_repository = AgentCanvasMaterializationRepository(
+            workflows.database,
+            conversations.events,
+        )
         self._commit_service = commit_service or AgentCanvasMaterializationCommitService(
-            AgentCanvasMaterializationRepository(workflows.database, conversations.events),
+            materialization_repository,
             GuidedProductionJourneyReducer(),
+        )
+        self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
+            workflows=workflows,
+            conversations=conversations,
+            materializations=materialization_repository,
         )
         self._plan_compiler = CapabilityMaterializationPlanCompiler()
         self._asset_resolver = asset_resolver
@@ -123,6 +137,7 @@ class CapabilityMaterializationPublicationService:
             conversations.events,
         )
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
+        self._duration_authority = GuidedDurationAuthorityPolicy()
         self._prompt_ready_activation = prompt_ready_activation
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
@@ -145,7 +160,7 @@ class CapabilityMaterializationPublicationService:
         envelope: ProposalApplicationEnvelopeV1,
         result: BaseModel,
         lease_guard: Callable[[], None],
-    ) -> str:
+    ) -> str | None:
         recovered = self.resume_committed(envelope, lease_guard)
         if recovered is not None:
             return recovered
@@ -191,6 +206,12 @@ class CapabilityMaterializationPublicationService:
                 materialization_context,
                 session.session_id,
             )
+        authority_documents += self._prepare_guided_document_stage(
+            envelope,
+            normalization,
+            materialization_context,
+            session.session_id,
+        )
         preview_bundle = self._plan_compiler.compile_draft_bundle(envelope, normalization)
         authority_documents += self._prepare_bgm_plan(
             envelope,
@@ -232,8 +253,8 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
             session_revision=session.revision,
             stage=session.journey.stage,
-            foundation_item_id=(
-                session.journey.active_action.foundation_item_id
+            occurrence_id=(
+                session.journey.active_action.occurrence_id
                 if session.journey.active_action is not None
                 else None
             ),
@@ -248,13 +269,146 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if not outcome.node_ids:
+        if envelope.operation_kind == "parent":
+            self._parent_derived.queue_after_parent(envelope, lease_guard=lease_guard)
+        return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _prepare_guided_document_stage(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+        context: CapabilityMaterializationContextV1,
+        session_id: str,
+    ) -> tuple[MaterializationDocumentWriteV1, ...]:
+        if envelope.capability_id != "script_authoring":
+            return ()
+        stage = self._conversations.get_guidance_session(envelope.workflow_id).journey.stage
+        if stage not in {"narrative_direction", "style_lock", "storyboard_plan"}:
             raise V2PersistenceError(
-                "materialization_outcome_invalid",
-                "Materialization did not create a Draft Node.",
+                "guided_document_stage_invalid",
+                "Script Writer can author only the fixed document stages.",
                 stage="capability_materialization_publication",
             )
-        return outcome.node_ids[0]
+        text = _document_authoring_text(envelope, normalization)
+        if not text:
+            raise V2PersistenceError(
+                "guided_document_content_invalid",
+                "Document-only guided authorship requires non-empty accepted content.",
+                stage="capability_materialization_publication",
+            )
+        requirement = self._requirements.get_current(envelope.workflow_id)
+        current = self._working_documents.get_by_kind(
+            envelope.workflow_id,
+            session_id,
+            "storyboard_production_plan",
+        )
+        if current is None:
+            authority_plan = self._duration_authority.plan_sequences(
+                requirement,
+                aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
+                explicit_sequence_count=context.explicit_constraints.get(
+                    "storyboard_sequence_count"
+                ),
+            )
+            segments = tuple(
+                StoryboardNarrativeSegmentV2(
+                    sequence_id=f"sequence-{window.order}",
+                    order=window.order,
+                    start_seconds=window.start_seconds,
+                    end_seconds=window.end_seconds,
+                    narrative_goal=text,
+                    start_state=(
+                        "Opening state" if window.order == 1 else "Continue prior sequence."
+                    ),
+                    end_state=(
+                        "Close the authored direction."
+                        if window.order == len(authority_plan.windows)
+                        else "Hand off to the next sequence."
+                    ),
+                    continuity_from_previous=(
+                        None if window.order == 1 else "Continue from the prior sequence."
+                    ),
+                    terminal_policy=(
+                        "close" if window.order == len(authority_plan.windows) else "continue"
+                    ),
+                )
+                for window in authority_plan.windows
+            )
+            content = StoryboardProductionPlanContentV3(
+                narrative_outline=text,
+                requirement_revision_id=requirement.revision_id,
+                requirement_revision_no=requirement.revision_no,
+                global_parameters=StoryboardPlanGlobalParametersV2(
+                    aspect_ratio=authority_plan.aspect_ratio,
+                    total_duration_seconds=authority_plan.total_duration_seconds,
+                    segment_count=len(authority_plan.windows),
+                ),
+                segments=segments,
+                rows=(),
+            )
+            document_id = (
+                "adoc_" + _digest(f"{envelope.workflow_id}:{session_id}:storyboard-plan")[:32]
+            )
+            document = AgentWorkingDocumentV2(
+                document_id=document_id,
+                workflow_id=envelope.workflow_id,
+                guidance_session_id=session_id,
+                kind="storyboard_production_plan",
+                title="Storyboard Production Plan",
+                revision=1,
+                content_schema_version=3,
+                content_digest=self._working_documents.digest_content(content),
+                content=content,
+                created_by_agent_run_id=envelope.materialization_id,
+                updated_by_agent_run_id=envelope.materialization_id,
+                created_at=envelope.created_at,
+                updated_at=envelope.created_at,
+            )
+            return (
+                MaterializationDocumentWriteV1(
+                    document_type="agent_working_document",
+                    document_id=document_id,
+                    payload=document.model_dump(mode="json"),
+                    relation_metadata={"guided_stage": stage},
+                ),
+            )
+        if not isinstance(current.content, StoryboardProductionPlanContentV3):
+            raise V2PersistenceError(
+                "agent_storyboard_plan_invalid",
+                "The guided document stage requires the authoritative V3 Storyboard Plan.",
+                stage="capability_materialization_publication",
+            )
+        self._duration_authority.validate_plan(requirement, current.content)
+        outline = (
+            f"{current.content.narrative_outline}\nStyle lock: {text}"
+            if stage == "style_lock"
+            else text
+        )
+        next_content = current.content.model_copy(update={"narrative_outline": outline})
+        operation = f"accept_{stage}"
+        request_digest = self._working_documents.digest_mutation(
+            document_id=current.document_id,
+            expected_revision=current.revision,
+            operation=operation,
+            content=next_content,
+            agent_run_id=envelope.materialization_id,
+        )
+        return (
+            MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=current.document_id,
+                mutation_plan=AgentDocumentMutationPlanV3(
+                    document_id=current.document_id,
+                    expected_revision=current.revision,
+                    next_revision=current.revision + 1,
+                    operation=operation,
+                    idempotency_key=f"guided-document:{envelope.materialization_id}",
+                    request_digest=request_digest,
+                    next_content=next_content,
+                ),
+                relation_metadata={"guided_stage": stage},
+            ),
+        )
 
     def _prepare_bgm_plan(
         self,
@@ -277,6 +431,8 @@ class CapabilityMaterializationPublicationService:
                 "BGM planning requires the authoritative V3 Storyboard Plan.",
                 stage="capability_materialization_publication",
             )
+        requirement = self._requirements.get_current(envelope.workflow_id)
+        self._duration_authority.validate_plan(requirement, current.content)
         bgm_node = next(
             (node for node in nodes if node.node_type == "audio" and node.creative_role == "bgm"),
             None,
@@ -357,6 +513,7 @@ class CapabilityMaterializationPublicationService:
                 "Accepted identity materialization did not plan its source Node.",
                 stage="capability_materialization_publication",
             )
+        requirement = self._requirements.get_current(envelope.workflow_id)
         current = self._working_documents.get_by_kind(
             envelope.workflow_id,
             session_id,
@@ -368,7 +525,6 @@ class CapabilityMaterializationPublicationService:
                 "The current Anchor Registry is not authoritative V3 content.",
                 stage="capability_materialization_publication",
             )
-        requirement = self._requirements.get_current(envelope.workflow_id)
         next_revision = 1 if current is None else current.revision + 1
         existing_content = (
             AnchorRegistryContentV3(schema_version="3") if current is None else current.content
@@ -376,44 +532,119 @@ class CapabilityMaterializationPublicationService:
         anchors = existing_content.anchors
         affected_aliases: list[str] = []
         replaced = False
+        attached_derived = False
         if semantic_role is not None and source_node is not None:
             current_anchor = existing_content.current_anchor(semantic_role)
-            if current_anchor is not None:
+            source = AgentAnchorNodeSourceV3(
+                workflow_id=envelope.workflow_id,
+                node_id=source_node.node_id,
+                node_revision=source_node.revision,
+            )
+            materialized_role = _anchor_materialized_role(envelope)
+            if envelope.operation_kind == "derivative":
+                if current_anchor is None or envelope.parent_snapshot is None:
+                    raise V2PersistenceError(
+                        "parent_materialization_missing",
+                        "The accepted parent identity is not available in the Anchor Registry.",
+                        stage="capability_materialization_publication",
+                    )
+                expected_parent_role = (
+                    "character_main" if semantic_role == "character" else "product_main"
+                )
+                if (
+                    not isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
+                    or current_anchor.source.node_id != envelope.parent_snapshot.node_id
+                    or current_anchor.source.node_revision != envelope.parent_snapshot.node_revision
+                    or envelope.parent_snapshot.semantic_role != expected_parent_role
+                ):
+                    raise V2PersistenceError(
+                        "parent_materialization_revision_stale",
+                        "The Anchor Registry parent identity no longer matches the derivative.",
+                        stage="capability_materialization_publication",
+                    )
+                role_sources = current_anchor.role_sources or (
+                    AgentAnchorRoleSourceV3(
+                        role=expected_parent_role,
+                        source=current_anchor.source,
+                    ),
+                )
+                existing_role = next(
+                    (item for item in role_sources if item.role == materialized_role),
+                    None,
+                )
+                if existing_role is not None and existing_role.source != source:
+                    raise V2PersistenceError(
+                        "derived_materialization_conflict",
+                        "The derived identity role is already attached to another Node.",
+                        stage="capability_materialization_publication",
+                    )
+                next_anchor = current_anchor.model_copy(
+                    update={
+                        "role_sources": (
+                            role_sources
+                            if existing_role is not None
+                            else (
+                                *role_sources,
+                                AgentAnchorRoleSourceV3(role=materialized_role, source=source),
+                            )
+                        ),
+                        "acceptance_evidence": (
+                            *current_anchor.acceptance_evidence,
+                            _anchor_acceptance(
+                                envelope,
+                                requirement_revision_id=requirement.revision_id,
+                                requirement_revision_no=requirement.revision_no,
+                                document_revision=next_revision,
+                                evidence_scope=materialized_role,
+                                node_revision=source_node.revision,
+                            ),
+                        ),
+                    }
+                )
                 anchors = tuple(
-                    anchor.model_copy(update={"lifecycle": "retired"})
-                    if anchor.alias == current_anchor.alias
-                    else anchor
+                    next_anchor if anchor.alias == current_anchor.alias else anchor
                     for anchor in anchors
                 )
-                replaced = True
-            alias = _next_authoritative_alias(semantic_role, anchors)
-            affected_aliases.append(alias)
-            anchors += (
-                AgentAnchorV3(
-                    alias=alias,
-                    identity_id="identity_"
-                    + _digest(f"{envelope.materialization_id}:{semantic_role}")[:32],
-                    semantic_role=semantic_role,
-                    display_name=envelope.selected_option.title,
-                    summary=envelope.selected_option.public_summary,
-                    lifecycle=("active" if semantic_role == "world_setting" else "planned"),
-                    source=AgentAnchorNodeSourceV3(
-                        workflow_id=envelope.workflow_id,
-                        node_id=source_node.node_id,
-                        node_revision=source_node.revision,
-                    ),
-                    acceptance_evidence=(
-                        _anchor_acceptance(
-                            envelope,
-                            requirement_revision_id=requirement.revision_id,
-                            requirement_revision_no=requirement.revision_no,
-                            document_revision=next_revision,
-                            evidence_scope=semantic_role,
-                            node_revision=source_node.revision,
+                affected_aliases.append(current_anchor.alias)
+                attached_derived = True
+            else:
+                if current_anchor is not None:
+                    anchors = tuple(
+                        anchor.model_copy(update={"lifecycle": "retired"})
+                        if anchor.alias == current_anchor.alias
+                        else anchor
+                        for anchor in anchors
+                    )
+                    replaced = True
+                alias = _next_authoritative_alias(semantic_role, anchors)
+                affected_aliases.append(alias)
+                anchors += (
+                    AgentAnchorV3(
+                        alias=alias,
+                        identity_id="identity_"
+                        + _digest(f"{envelope.materialization_id}:{semantic_role}")[:32],
+                        semantic_role=semantic_role,
+                        display_name=envelope.selected_option.title,
+                        summary=envelope.selected_option.public_summary,
+                        lifecycle=("active" if semantic_role == "world_setting" else "planned"),
+                        source=source,
+                        role_sources=(
+                            (AgentAnchorRoleSourceV3(role=materialized_role, source=source),)
+                            if materialized_role is not None
+                            else ()
+                        ),
+                        acceptance_evidence=(
+                            _anchor_acceptance(
+                                envelope,
+                                requirement_revision_id=requirement.revision_id,
+                                requirement_revision_no=requirement.revision_no,
+                                document_revision=next_revision,
+                                evidence_scope=semantic_role,
+                                node_revision=source_node.revision,
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
         if envelope.style_skill_run_id is not None:
             snapshot = self._conversations.get_active_creative_direction_snapshot(
                 envelope.workflow_id
@@ -499,7 +730,9 @@ class CapabilityMaterializationPublicationService:
                 ),
             )
         operation = (
-            "replace_anchor"
+            "attach_derived_anchor_role"
+            if attached_derived
+            else "replace_anchor"
             if replaced
             else (
                 "register_planned_anchor" if semantic_role is not None else "activate_style_anchor"
@@ -542,12 +775,6 @@ class CapabilityMaterializationPublicationService:
         )
         if outcome is None:
             return None
-        if not outcome.node_ids:
-            raise V2PersistenceError(
-                "materialization_outcome_invalid",
-                "Materialization did not create a Draft Node.",
-                stage="capability_materialization_publication",
-            )
         pending_preparations = tuple(
             (node_id, operation_id)
             for node_id, operation_id in zip(
@@ -576,7 +803,7 @@ class CapabilityMaterializationPublicationService:
                 session_id=session.session_id,
                 session_revision=outcome.session_revision,
                 stage=outcome.journey_stage,
-                foundation_item_id=None,
+                occurrence_id=None,
                 node_ids=tuple(item[0] for item in pending_preparations),
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,
@@ -588,7 +815,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        return outcome.node_ids[0]
+        return outcome.node_ids[0] if outcome.node_ids else None
 
     def _activate_prompt_ready_media(
         self,
@@ -687,35 +914,58 @@ class CapabilityMaterializationPublicationService:
         ):
             return normalization, ()
 
-        authority_plan = StoryboardSequenceWindowPlanner.plan(
-            total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
-            aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
-            explicit_sequence_count=context.explicit_constraints.get("storyboard_sequence_count"),
-        )
-        context = context.model_copy(
-            update={
-                "capability_facts": {
-                    **context.capability_facts,
-                    "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
-                }
-            }
-        )
-        outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
-            context,
-            request_identity=f"{envelope.materialization_id}:outline",
-        )
-        legacy_outline = self._storyboard_authoring.build_outline_content(outline, authority_plan)
         requirement = self._requirements.get_current(envelope.workflow_id)
-        content = StoryboardProductionPlanContentV3(
-            schema_version="3",
-            narrative_outline=legacy_outline.narrative_outline,
-            requirement_revision_id=requirement.revision_id,
-            requirement_revision_no=requirement.revision_no,
-            global_parameters=legacy_outline.global_parameters,
-            segments=legacy_outline.segments,
-            rows=(),
+        current = self._working_documents.get_by_kind(
+            envelope.workflow_id,
+            session_id,
+            "storyboard_production_plan",
         )
-        document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
+        if current is not None:
+            if not isinstance(current.content, StoryboardProductionPlanContentV3):
+                raise V2PersistenceError(
+                    "agent_storyboard_plan_invalid",
+                    "Storyboard Grid preparation requires the authoritative V3 Storyboard Plan.",
+                    stage="capability_materialization_publication",
+                )
+            content = current.content
+            self._duration_authority.validate_plan(requirement, content)
+            document_id = current.document_id
+            document_revision = current.revision
+        else:
+            authority_plan = self._duration_authority.plan_sequences(
+                requirement,
+                aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
+                explicit_sequence_count=context.explicit_constraints.get(
+                    "storyboard_sequence_count"
+                ),
+            )
+            context = context.model_copy(
+                update={
+                    "capability_facts": {
+                        **context.capability_facts,
+                        "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
+                    }
+                }
+            )
+            outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
+                context,
+                request_identity=f"{envelope.materialization_id}:outline",
+            )
+            legacy_outline = self._storyboard_authoring.build_outline_content(
+                outline,
+                authority_plan,
+            )
+            content = StoryboardProductionPlanContentV3(
+                schema_version="3",
+                narrative_outline=legacy_outline.narrative_outline,
+                requirement_revision_id=requirement.revision_id,
+                requirement_revision_no=requirement.revision_no,
+                global_parameters=legacy_outline.global_parameters,
+                segments=legacy_outline.segments,
+                rows=(),
+            )
+            document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
+            document_revision = 1
         node_id = "node_" + _digest(envelope.materialization_id)[:32]
         segment_drafts: dict[str, StoryboardSegmentMaterializationDraftV2] = {}
         for sequence in content.segments:
@@ -723,7 +973,7 @@ class CapabilityMaterializationPublicationService:
             segment_context = self._storyboard_authoring.build_segment_context_from_content(
                 envelope.workflow_id,
                 document_id,
-                1,
+                document_revision,
                 AgentWorkingDocumentRepository.digest_content(content),
                 content,
                 sequence_id,
@@ -750,21 +1000,55 @@ class CapabilityMaterializationPublicationService:
                     else None
                 ),
             )
-        document = AgentWorkingDocumentV2(
-            document_id=document_id,
-            workflow_id=envelope.workflow_id,
-            guidance_session_id=session_id,
-            kind="storyboard_production_plan",
-            title="Storyboard Production Plan",
-            revision=1,
-            content_schema_version=3,
-            content_digest=AgentWorkingDocumentRepository.digest_content(content),
-            content=content,
-            created_by_agent_run_id=envelope.materialization_id,
-            updated_by_agent_run_id=envelope.materialization_id,
-            created_at=envelope.created_at,
-            updated_at=envelope.created_at,
-        )
+        if current is None:
+            document_write = MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=document_id,
+                payload=AgentWorkingDocumentV2(
+                    document_id=document_id,
+                    workflow_id=envelope.workflow_id,
+                    guidance_session_id=session_id,
+                    kind="storyboard_production_plan",
+                    title="Storyboard Production Plan",
+                    revision=1,
+                    content_schema_version=3,
+                    content_digest=AgentWorkingDocumentRepository.digest_content(content),
+                    content=content,
+                    created_by_agent_run_id=envelope.materialization_id,
+                    updated_by_agent_run_id=envelope.materialization_id,
+                    created_at=envelope.created_at,
+                    updated_at=envelope.created_at,
+                ).model_dump(mode="json"),
+                relation_metadata={
+                    "node_id": node_id,
+                    "sequence_id": content.segments[0].sequence_id,
+                },
+            )
+        else:
+            operation = "materialize_storyboard_grids"
+            document_write = MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=document_id,
+                mutation_plan=AgentDocumentMutationPlanV3(
+                    document_id=document_id,
+                    expected_revision=current.revision,
+                    next_revision=current.revision + 1,
+                    operation=operation,
+                    idempotency_key=f"storyboard-grids:{envelope.materialization_id}",
+                    request_digest=self._working_documents.digest_mutation(
+                        document_id=document_id,
+                        expected_revision=current.revision,
+                        operation=operation,
+                        content=content,
+                        agent_run_id=envelope.materialization_id,
+                    ),
+                    next_content=content,
+                ),
+                relation_metadata={
+                    "node_id": node_id,
+                    "sequence_id": content.segments[0].sequence_id,
+                },
+            )
         original = StoryboardMaterializationResultV1.model_validate(normalization.result)
         sequence = content.segments[0]
         sequence_id = sequence.sequence_id
@@ -807,17 +1091,7 @@ class CapabilityMaterializationPublicationService:
                     },
                 }
             ),
-            (
-                MaterializationDocumentWriteV1(
-                    document_type="agent_working_document",
-                    document_id=document_id,
-                    payload=document.model_dump(mode="json"),
-                    relation_metadata={
-                        "node_id": node_id,
-                        "sequence_id": sequence_id,
-                    },
-                ),
-            ),
+            (document_write,),
         )
 
     def _prepare_prompts(
@@ -827,8 +1101,8 @@ class CapabilityMaterializationPublicationService:
         *,
         session_id: str,
         session_revision: int,
-        stage: JourneyStageV1,
-        foundation_item_id: str | None,
+        stage: JourneyStageV2,
+        occurrence_id: str | None,
         node_ids: tuple[str, ...],
         operation_ids: tuple[str, ...],
         lease_guard: Callable[[], None],
@@ -840,7 +1114,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session_id,
             session_revision=session_revision,
             stage=stage,
-            foundation_item_id=foundation_item_id,
+            occurrence_id=occurrence_id,
             references=envelope.reference_plan.references,
         )
         prompt_service = NodePromptPreparationService(self._workflows)
@@ -882,6 +1156,25 @@ class CapabilityMaterializationPublicationService:
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _document_authoring_text(
+    envelope: ProposalApplicationEnvelopeV1,
+    normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+) -> str:
+    if isinstance(normalization, MaterializationNormalizationV1):
+        structured = normalization.result.structured_content
+        content = getattr(structured, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return "\n".join(
+        item.strip()
+        for item in (
+            envelope.selected_option.public_summary,
+            *envelope.selected_option.key_decisions,
+        )
+        if item and item.strip()
+    )[:16_384]
 
 
 def _sha256_digest(value: str) -> str:
@@ -940,3 +1233,15 @@ def _next_authoritative_alias(semantic_role: str, anchors: tuple[AgentAnchorV3, 
         "The Anchor Registry alias range is exhausted.",
         stage="capability_materialization_publication",
     )
+
+
+def _anchor_materialized_role(
+    envelope: ProposalApplicationEnvelopeV1,
+) -> str | None:
+    if envelope.capability_id == "product_design":
+        return "product_multiview" if envelope.operation_kind == "derivative" else "product_main"
+    if envelope.capability_id == "character_design":
+        return (
+            "character_turnaround" if envelope.operation_kind == "derivative" else "character_main"
+        )
+    return None

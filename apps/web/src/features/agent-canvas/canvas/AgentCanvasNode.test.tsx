@@ -14,8 +14,10 @@ import type {
 import {
   AgentCanvasNodeCard,
   AgentCanvasNodeRenderer,
+  type AgentCanvasFlowNode,
   type AgentCanvasNodeData,
 } from "./AgentCanvasNode.tsx";
+import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 
 const updateNodeInternals = vi.hoisted(() => vi.fn());
 
@@ -247,7 +249,23 @@ describe("AgentCanvasNodeCard", () => {
       "A smooth cinematic camera move.",
     ],
   ] as const)("replaces the centered %s icon with saved node content", (nodeType, overrides, copy) => {
-    const node = { ...makeNode(nodeType), ...overrides } as CanvasNodeV2;
+    const node = {
+      ...makeNode(nodeType),
+      ...overrides,
+      ...(nodeType === "image" || nodeType === "video"
+        ? {
+            prompt_preparation: {
+              status: "ready" as const,
+              operation_id: "prompt-operation-1",
+              attempt_no: 1,
+              context_snapshot_id: "prompt-context-1",
+              prompt_digest: "prompt-digest-1",
+              error: null,
+              updated_at: "2026-08-04T00:00:00Z",
+            },
+          }
+        : {}),
+    } as CanvasNodeV2;
 
     render(<AgentCanvasNodeCard node={node} />);
 
@@ -350,7 +368,18 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it("uses the glass player title instead of audio artwork or a status pill", () => {
-    const node = makeNode("audio");
+    const node = {
+      ...makeNode("audio"),
+      prompt_preparation: {
+        status: "ready",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "prompt-context-1",
+        prompt_digest: "prompt-digest-1",
+        error: null,
+        updated_at: "2026-08-04T00:00:00Z",
+      },
+    } satisfies CanvasNodeV2;
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
@@ -479,20 +508,27 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByText("Failed")).toBeTruthy();
   });
 
-  it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
-    const node = makeNode("image", "draft");
-    render(
-      <AgentCanvasNodeCard
-        node={node}
-        runtime={makeRuntime("working")}
-        onRun={vi.fn()}
-      />,
-    );
+  it.each<"image" | "video">(["image", "video"])(
+    "uses the diffusion loader while a %s node is generating",
+    (nodeType) => {
+      const node = makeNode(nodeType, "draft");
+      const { container } = render(
+        <AgentCanvasNodeCard
+          node={node}
+          runtime={makeRuntime("working")}
+          onRun={vi.fn()}
+        />,
+      );
 
-    expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.getByLabelText("image node is working").classList.contains("agent-canvas-node__working")).toBe(true);
-    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
-  });
+      expect(screen.getByText("Working")).toBeTruthy();
+      const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
+      expect(loader.getAttribute("data-variant")).toBe("diffusion");
+      expect((loader as HTMLElement).style.getPropertyValue("--iml-size")).toBe("100%");
+      expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
+      expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
+      expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
+    },
+  );
 
   it("contains complete image outputs while keeping video frames full-bleed", () => {
     const imageView = render(
@@ -700,6 +736,72 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
+  function rendererProps(
+    data: AgentCanvasNodeData,
+    selected = false,
+  ): Parameters<typeof areAgentCanvasNodePropsEqual>[0] {
+    return {
+      id: data.node.node_id,
+      data,
+      type: "agentCanvas",
+      selected,
+      dragging: false,
+      draggable: true,
+      selectable: true,
+      deletable: true,
+      isConnectable: true,
+      zIndex: 0,
+      positionAbsoluteX: 0,
+      positionAbsoluteY: 0,
+    } as Parameters<typeof areAgentCanvasNodePropsEqual>[0] & AgentCanvasFlowNode;
+  }
+
+  it("skips rerendering unchanged unselected nodes after object hydration", () => {
+    const runtime = makeRuntime("working");
+    const previous = rendererProps({
+      node: makeNode("image", "working"),
+      asset: makeAsset("image"),
+      runtime,
+      workbenchActive: false,
+      renderWorkbench: vi.fn(),
+    });
+    const next = rendererProps({
+      node: { ...previous.data.node },
+      asset: { ...previous.data.asset! },
+      runtime: { ...runtime, updated_at: "2026-07-28T09:00:10Z" },
+      workbenchActive: false,
+      renderWorkbench: vi.fn(),
+    });
+
+    expect(areAgentCanvasNodePropsEqual(previous, next)).toBe(true);
+  });
+
+  it("rerenders changed node revisions and active workbench runtime", () => {
+    const runtime = makeRuntime("working");
+    const previous = rendererProps({
+      node: makeNode("script", "working"),
+      runtime,
+      workbenchActive: true,
+      renderWorkbench: vi.fn(),
+    }, true);
+    const changedNode = rendererProps({
+      ...previous.data,
+      node: { ...previous.data.node, revision: previous.data.node.revision + 1 },
+    }, true);
+    const changedRuntime = rendererProps({
+      ...previous.data,
+      runtime: { ...runtime, attempt_no: runtime.attempt_no + 1 },
+    }, true);
+    const changedWorkflow = rendererProps({
+      ...previous.data,
+      node: { ...previous.data.node, workflow_id: "workflow-2" },
+    }, true);
+
+    expect(areAgentCanvasNodePropsEqual(previous, changedNode)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(previous, changedRuntime)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(previous, changedWorkflow)).toBe(false);
+  });
+
   it("renders hover-revealed gray connection rings instead of default React Flow dots", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");

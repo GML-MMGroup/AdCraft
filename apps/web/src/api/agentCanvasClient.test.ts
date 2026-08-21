@@ -303,6 +303,17 @@ describe("Agent Canvas client", () => {
             anchor_node_id: readyNode.node_id,
             group_key: null,
           },
+          created_node_ids: ["node-image-sibling", "node-image-sibling-detail"],
+          created_binding_ids: ["binding-sibling-detail"],
+          placement_hints: [{
+            intent: "right_sibling",
+            anchor_node_id: readyNode.node_id,
+            group_key: "variation-pair-1",
+          }, {
+            intent: "right_sibling",
+            anchor_node_id: "node-image-sibling",
+            group_key: "variation-pair-1",
+          }],
         }, { status: 202, etag: '"workflow:workflow-1:revision:9"' });
       }
       if (url.endsWith("/variation-draft") && init?.method === "DELETE") {
@@ -327,7 +338,7 @@ describe("Agent Canvas client", () => {
       model_id: null,
       parameters: {},
     });
-    await v2Api.materializeAgentCanvasVariationDraft(
+    const materialized = await v2Api.materializeAgentCanvasVariationDraft(
       "workflow-1",
       readyNode.node_id,
       { action: "create_draft" },
@@ -336,6 +347,12 @@ describe("Agent Canvas client", () => {
     await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(materialized.created_node_ids).toEqual([
+      "node-image-sibling",
+      "node-image-sibling-detail",
+    ]);
+    expect(materialized.created_binding_ids).toEqual(["binding-sibling-detail"]);
+    expect(materialized.placement_hints).toHaveLength(2);
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:10"');
   });
 

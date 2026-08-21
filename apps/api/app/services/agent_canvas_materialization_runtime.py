@@ -108,7 +108,7 @@ class QuickMediaMaterializationRunner:
             [CapabilityMaterializationEnvelopeV1], CapabilityMaterializationContextV1
         ],
         publisher: Callable[
-            [CapabilityMaterializationEnvelopeV1, BaseModel, Callable[[], None]], str
+            [CapabilityMaterializationEnvelopeV1, BaseModel, Callable[[], None]], str | None
         ],
         normalizer: CapabilityMaterializationNormalizer | None = None,
     ) -> None:

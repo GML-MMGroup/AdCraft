@@ -100,7 +100,7 @@ class ChatTurnV2(_ConversationModel):
     turn_id: str
     workflow_id: str
     conversation_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "superseded"]
     turn_kind: Literal[
         "message",
         "proposal_action",
@@ -123,6 +123,12 @@ class ChatTurnV2(_ConversationModel):
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_terminal_retryability(self) -> "ChatTurnV2":
+        if self.status == "superseded" and self.retryable:
+            raise ValueError("Superseded turns are terminal and non-retryable.")
+        return self
 
 
 class ChatTimelineEntryV2(_ConversationModel):
@@ -178,7 +184,7 @@ class ConceptOptionRecordV2(_ConversationModel):
     title: str = Field(min_length=1, max_length=256)
     public_summary: str = Field(min_length=1, max_length=8_192)
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
-        min_length=1, max_length=6
+        default=(), max_length=6
     )
 
 
@@ -212,7 +218,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
         "bgm",
     ]
     capability_id: CapabilityIdV1
-    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=4)
+    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=3, max_length=3)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
         max_length=64,
@@ -237,8 +243,6 @@ class _ConceptProposalBaseV2(_ConversationModel):
         option_ids = tuple(option.option_id for option in self.options)
         if len(set(option_ids)) != len(option_ids):
             raise ValueError("Concept option IDs must be unique within a proposal.")
-        if self.proposal_kind == "world_setting" and len(self.options) not in {1, 2, 3}:
-            raise ValueError("World Setting proposals require one to three options.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
         return self
@@ -253,6 +257,7 @@ ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]
 
 ProposalActionTypeV2 = Literal[
     "select_option",
+    "custom_direction",
     "revise_options",
     "defer_topic",
     "exclude_element",
@@ -289,6 +294,11 @@ class SelectOptionActionV2(_ProposalActionBaseV2):
     )
 
 
+class CustomDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["custom_direction"]
+    custom_text: str = Field(min_length=1, max_length=2_048)
+
+
 class ReviseOptionsActionV2(_ProposalActionBaseV2):
     action: Literal["revise_options"]
     instruction: str = Field(min_length=1, max_length=8_192)
@@ -319,6 +329,7 @@ class ReviseDirectionActionV2(_ProposalActionBaseV2):
 
 ProposalActionRequestV2 = Annotated[
     SelectOptionActionV2
+    | CustomDirectionActionV2
     | ReviseOptionsActionV2
     | DeferTopicActionV2
     | ExcludeElementActionV2
@@ -332,7 +343,12 @@ ProposalActionRequestV2 = Annotated[
 class ProposalApplicationSummaryV2(_ConversationModel):
     application_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     receipt_id: str = Field(min_length=1, max_length=160)
     created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     queued_execution_ids: tuple[str, ...] = Field(default=(), max_length=32)

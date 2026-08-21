@@ -21,7 +21,10 @@ from app.schemas.agent_canvas_creative_session import (
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
     CharacterMaterializationResultV1,
+    ParentDerivedMaterializationIntentV1,
+    ParentNodeSnapshotV1,
     MaterializationNormalizationV1,
+    ProductMaterializationResultV1,
     ProposalApplicationEnvelopeV1,
     QuickMediaMaterializationResultV1,
     WorldSettingMaterializationResultV1,
@@ -36,6 +39,9 @@ from app.schemas.agent_canvas_world_setting import (
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 _MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a seamless light-neutral design background with no environmental objects. Use only a subtle grounding shadow. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
@@ -49,6 +55,7 @@ _PROVENANCE_KEYS = {
     "normalization_mode",
     "normalization_warnings",
     "character_pair_id",
+    "product_pair_id",
     "character_asset_kind",
     "source_agent_document_id",
     "source_sequence_id",
@@ -72,17 +79,25 @@ class CapabilityDraftBundleBuilder:
         envelope: ProposalApplicationEnvelopeV1,
         context: CapabilityMaterializationContextV1,
     ) -> CapabilityDraftBundleV1:
-        definitions = stage_definitions(envelope.capability_id)
+        definitions = stage_definitions(envelope.capability_id, envelope.operation_kind)
         node_ids = tuple(
-            f"node_{_digest(f'{envelope.materialization_id}:{draft_key}')[:32]}"
+            f"node_{_digest(f'{envelope.materialization_id}:{_pair_node_suffix(envelope, draft_key)}')[:32]}"
             for draft_key, *_ in definitions
         )
-        references = _reference_intents(envelope)
-        character_pair_id = (
-            f"pair_{_digest(envelope.materialization_id)[:32]}"
-            if envelope.capability_id == "character_design"
+        references = (
+            ()
+            if envelope.operation_kind == "derivative"
+            and envelope.capability_id in {"product_design", "character_design"}
+            else _reference_intents(envelope)
+        )
+        pair_id = (
+            f"pair_{_digest(envelope.parent_snapshot.node_id)[:32]}"
+            if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None
+            else f"pair_{_digest(node_ids[0])[:32]}"
+            if envelope.capability_id in {"product_design", "character_design"}
             else None
         )
+        character_pair_id = pair_id if envelope.capability_id == "character_design" else None
         drafts: list[SpecialistDraftV2] = []
         for draft_key, node_type, role, title_suffix, identity in definitions:
             if (
@@ -94,6 +109,8 @@ class CapabilityDraftBundleBuilder:
             parameters = _stage_parameters(envelope.capability_id, draft_key, context)
             if character_pair_id is not None:
                 parameters["character_pair_id"] = character_pair_id
+            elif pair_id is not None:
+                parameters["product_pair_id"] = pair_id
             drafts.append(
                 SpecialistDraftV2(
                     title=_bounded_title(envelope.selected_option.title, title_suffix),
@@ -118,10 +135,24 @@ class CapabilityDraftBundleBuilder:
             nodes=nodes,
             character_pair_id=character_pair_id,
         )
+        derivative_intent = _derivative_intent(
+            envelope,
+            nodes=nodes,
+            capability_id=envelope.capability_id,
+            pair_id=pair_id,
+        )
+        bindings = (*external, *internal)
+        if envelope.operation_kind == "derivative":
+            AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+                envelope.parent_snapshot,
+                nodes,
+                bindings,
+            )
         return CapabilityDraftBundleV1(
             nodes=nodes,
-            bindings=(*external, *internal),
+            bindings=bindings,
             prompt_preparations=preparations,
+            derivative_intent=derivative_intent,
         )
 
     def _build_normalized(
@@ -129,6 +160,12 @@ class CapabilityDraftBundleBuilder:
         envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1,
     ) -> CapabilityDraftBundleV1:
+        if envelope.capability_id == "script_authoring":
+            return CapabilityDraftBundleV1(
+                nodes=(),
+                bindings=(),
+                prompt_preparations=(),
+            )
         result = normalization.result
         if envelope.capability_id == "world_setting":
             return CapabilityDraftBundleV1(
@@ -136,6 +173,8 @@ class CapabilityDraftBundleBuilder:
                 bindings=(),
                 prompt_preparations=(),
             )
+        if envelope.capability_id == "product_design":
+            return _normalized_product_bundle(envelope, normalization)
         if envelope.capability_id == "character_design":
             return _normalized_character_bundle(envelope, normalization)
         if envelope.capability_id == "quick_media":
@@ -187,36 +226,57 @@ class CapabilityDraftBundleBuilder:
         )
 
 
-def stage_definitions(capability_id: str) -> tuple[tuple[str, str, str, str, dict], ...]:
+def stage_definitions(
+    capability_id: str,
+    operation_kind: str = "standalone",
+) -> tuple[tuple[str, str, str, str, dict], ...]:
+    if capability_id in {"product_design", "character_design"} and operation_kind not in {
+        "parent",
+        "derivative",
+    }:
+        raise ValueError("parent_derived_operation_required")
+    if (
+        capability_id not in {"product_design", "character_design"}
+        and operation_kind != "standalone"
+    ):
+        raise ValueError("operation_kind_not_supported")
+    if capability_id == "script_authoring":
+        return ()
     definitions = {
         "world_setting": (("world-setting", "text", "world_setting", "World Setting", {}),),
-        "product_design": (
-            ("product-main", "image", "product", "Main", {"asset_kind": "main"}),
-            (
-                "product-multi-view",
-                "image",
-                "product",
-                "Multi-view",
-                {"asset_kind": "multi_view"},
+        "product_design": {
+            "parent": (("product-main", "image", "product", "Main", {"asset_kind": "main"}),),
+            "derivative": (
+                (
+                    "product-multi-view",
+                    "image",
+                    "product",
+                    "Multi-view",
+                    {"asset_kind": "multi_view"},
+                ),
             ),
-        ),
+        },
         "prop_design": (("prop", "image", "prop", "Prop", {"asset_kind": "main"}),),
-        "character_design": (
-            (
-                "character-main",
-                "image",
-                "character",
-                "Main",
-                {"character_asset_kind": "identity_master"},
+        "character_design": {
+            "parent": (
+                (
+                    "character-main",
+                    "image",
+                    "character",
+                    "Main",
+                    {"character_asset_kind": "identity_master"},
+                ),
             ),
-            (
-                "character-three-view",
-                "image",
-                "character",
-                "Three-view",
-                {"character_asset_kind": "turnaround"},
+            "derivative": (
+                (
+                    "character-three-view",
+                    "image",
+                    "character",
+                    "Three-view",
+                    {"character_asset_kind": "turnaround"},
+                ),
             ),
-        ),
+        },
         "scene_design": (
             (
                 "scene-reference-board",
@@ -248,7 +308,10 @@ def stage_definitions(capability_id: str) -> tuple[tuple[str, str, str, str, dic
         "bgm_direction": (("bgm", "audio", "bgm", "BGM", {}),),
     }
     try:
-        return definitions[capability_id]
+        definition = definitions[capability_id]
+        if isinstance(definition, dict):
+            return definition[operation_kind]
+        return definition
     except KeyError as error:
         raise ValueError("stage_content_mismatch") from error
 
@@ -263,6 +326,17 @@ def stage_draft_parameters(
 
 def stage_draft_title(base: str, suffix: str) -> str:
     return _bounded_title(base, suffix)
+
+
+def _pair_node_suffix(
+    envelope: ProposalApplicationEnvelopeV1,
+    draft_key: str,
+) -> str:
+    if envelope.capability_id == "product_design":
+        return "main" if envelope.operation_kind == "parent" else "multi-view"
+    if envelope.capability_id == "character_design":
+        return "main" if envelope.operation_kind == "parent" else "turnaround"
+    return draft_key
 
 
 def character_turnaround_prompt(
@@ -280,9 +354,13 @@ def _normalized_character_bundle(
     normalization: MaterializationNormalizationV1,
 ) -> CapabilityDraftBundleV1:
     result = CharacterMaterializationResultV1.model_validate(normalization.result)
-    pair_id = f"pair_{_digest(envelope.materialization_id)[:32]}"
     main_node_id = f"node_{_digest(f'{envelope.materialization_id}:main')[:32]}"
     turnaround_node_id = f"node_{_digest(f'{envelope.materialization_id}:turnaround')[:32]}"
+    pair_id = (
+        f"pair_{_digest(envelope.parent_snapshot.node_id)[:32]}"
+        if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None
+        else f"pair_{_digest(main_node_id)[:32]}"
+    )
     common_parameters = {
         **normalization.parameters,
         "normalization_mode": normalization.mode,
@@ -301,7 +379,7 @@ def _normalized_character_bundle(
         title=result.title,
         summary_prompt=result.summary_prompt,
         generation_prompt=f"{_MAIN_PROMPT}\n\nIdentity direction: {result.generation_prompt}",
-        structured_content=main_content,
+        structured_content=_model_payload(main_content),
         parameters={**common_parameters, "character_asset_kind": "identity_master"},
         parameter_provenance=normalization.parameter_provenance,
         prompt_context_snapshot_id=envelope.context_snapshot_id,
@@ -321,17 +399,124 @@ def _normalized_character_bundle(
         parameter_provenance=normalization.parameter_provenance,
         prompt_context_snapshot_id=envelope.context_snapshot_id,
     )
-    nodes, external, preparations = _draft_nodes(
-        envelope,
-        (main, turnaround),
-        (main_node_id, turnaround_node_id),
+    if envelope.operation_kind == "parent":
+        nodes, external, preparations = _draft_nodes(
+            envelope,
+            (main,),
+            (main_node_id,),
+        )
+        return CapabilityDraftBundleV1(
+            nodes=nodes,
+            bindings=external,
+            prompt_preparations=preparations,
+            derivative_intent=_derivative_intent(
+                envelope,
+                nodes=nodes,
+                capability_id="character_design",
+                pair_id=pair_id,
+            ),
+        )
+    if envelope.operation_kind == "derivative":
+        nodes, external, preparations = _draft_nodes(
+            envelope,
+            (turnaround,),
+            (turnaround_node_id,),
+        )
+        internal = _pair_binding(envelope, nodes=nodes, character_pair_id=pair_id)
+        bindings = (*external, *internal)
+        AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+            envelope.parent_snapshot,
+            nodes,
+            bindings,
+        )
+        return CapabilityDraftBundleV1(
+            nodes=nodes,
+            bindings=bindings,
+            prompt_preparations=preparations,
+        )
+    raise ValueError("parent_derived_operation_required")
+
+
+def _normalized_product_bundle(
+    envelope: ProposalApplicationEnvelopeV1,
+    normalization: MaterializationNormalizationV1,
+) -> CapabilityDraftBundleV1:
+    result = ProductMaterializationResultV1.model_validate(normalization.result)
+    main_node_id = f"node_{_digest(f'{envelope.materialization_id}:main')[:32]}"
+    derivative_node_id = f"node_{_digest(f'{envelope.materialization_id}:multi-view')[:32]}"
+    pair_id = (
+        f"pair_{_digest(envelope.parent_snapshot.node_id)[:32]}"
+        if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None
+        else f"pair_{_digest(main_node_id)[:32]}"
     )
-    internal = _pair_binding(envelope, nodes=nodes, character_pair_id=pair_id)
-    return CapabilityDraftBundleV1(
-        nodes=nodes,
-        bindings=(*external, *internal),
-        prompt_preparations=preparations,
+    common_parameters = {
+        **normalization.parameters,
+        "normalization_mode": normalization.mode,
+        "normalization_warnings": list(normalization.warnings),
+        "product_pair_id": pair_id,
+    }
+    main_content = result.structured_content.model_copy(update={"asset_kind": "main"})
+    derivative_content = result.structured_content.model_copy(update={"asset_kind": "multi_view"})
+    main = SpecialistDraftV2(
+        node_type="image",
+        creative_role="product",
+        title=result.title,
+        summary_prompt=result.summary_prompt,
+        generation_prompt=result.generation_prompt,
+        structured_content=_model_payload(main_content),
+        parameters={**common_parameters, "asset_kind": "main"},
+        parameter_provenance=normalization.parameter_provenance,
+        prompt_context_snapshot_id=envelope.context_snapshot_id,
+        reference_intents=_reference_intents(envelope),
     )
+    derivative = SpecialistDraftV2(
+        node_type="image",
+        creative_role="product",
+        title=_suffixed_title(result.title, "Multi-view"),
+        summary_prompt=f"Multi-view identity sheet for {result.title}.",
+        generation_prompt=(
+            "Use the bound Product Main image as the sole identity master. "
+            "Render front, side, rear, and useful detail views of the same object "
+            "with no people, application scene, labels, or unrelated props.\n\n"
+            f"Identity: {main_content.subject_identity}. Design: {main_content.design_summary}."
+        ),
+        structured_content=_model_payload(derivative_content),
+        parameters={**common_parameters, "asset_kind": "multi_view"},
+        parameter_provenance=normalization.parameter_provenance,
+        prompt_context_snapshot_id=envelope.context_snapshot_id,
+    )
+    if envelope.operation_kind == "parent":
+        nodes, external, preparations = _draft_nodes(envelope, (main,), (main_node_id,))
+        return CapabilityDraftBundleV1(
+            nodes=nodes,
+            bindings=external,
+            prompt_preparations=preparations,
+            derivative_intent=_derivative_intent(
+                envelope,
+                nodes=nodes,
+                capability_id="product_design",
+                pair_id=pair_id,
+            ),
+        )
+    if envelope.operation_kind == "derivative":
+        nodes, external, preparations = _draft_nodes(
+            envelope,
+            (derivative,),
+            (derivative_node_id,),
+        )
+        internal = _pair_binding(envelope, nodes=nodes, character_pair_id=pair_id)
+        bindings = (*external, *internal)
+        AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+            envelope.parent_snapshot,
+            nodes,
+            bindings,
+        )
+        return CapabilityDraftBundleV1(
+            nodes=nodes,
+            bindings=bindings,
+            prompt_preparations=preparations,
+        )
+    raise ValueError("parent_derived_operation_required")
 
 
 def _draft_nodes(
@@ -350,6 +535,11 @@ def _draft_nodes(
         provenance = {
             key: value for key, value in draft.parameters.items() if key in _PROVENANCE_KEYS
         }
+        if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None:
+            provenance["derived_parent_snapshot"] = envelope.parent_snapshot.model_dump(mode="json")
+            provenance["role_reference_policy_version"] = (
+                AgentCanvasRoleReferencePolicyService.policy_version
+            )
         if draft.prompt_context_snapshot_id is not None:
             provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
         nodes.append(
@@ -442,6 +632,15 @@ def _pair_binding(
 ) -> tuple[CanvasBindingV2, ...]:
     if envelope.capability_id not in {"product_design", "character_design"}:
         return ()
+    if envelope.operation_kind != "derivative" or envelope.parent_snapshot is None:
+        return ()
+    expected_role = (
+        "character_main" if envelope.capability_id == "character_design" else "product_main"
+    )
+    if envelope.parent_snapshot.semantic_role != expected_role:
+        raise ValueError("parent_materialization_role_invalid")
+    if len(nodes) != 1:
+        raise ValueError("derivative_materialization_shape_invalid")
     semantics = AgentCanvasReferenceSemanticPolicy()
     is_character = envelope.capability_id == "character_design"
     metadata = (
@@ -454,8 +653,8 @@ def _pair_binding(
         CanvasBindingV2(
             binding_id=f"binding_{_digest(f'{envelope.materialization_id}:{suffix}')[:32]}",
             workflow_id=envelope.workflow_id,
-            source=CanvasBindingSourceNodeV2(source_node_id=nodes[0].node_id),
-            target_node_id=nodes[1].node_id,
+            source=CanvasBindingSourceNodeV2(source_node_id=envelope.parent_snapshot.node_id),
+            target_node_id=nodes[0].node_id,
             input_role="image_reference",
             required=True,
             enabled=True,
@@ -464,6 +663,45 @@ def _pair_binding(
             metadata=metadata,
             created_at=envelope.created_at,
             updated_at=envelope.created_at,
+        ),
+    )
+
+
+def _derivative_intent(
+    envelope: ProposalApplicationEnvelopeV1,
+    *,
+    nodes: tuple[CanvasNodeV2, ...],
+    capability_id: str,
+    pair_id: str | None,
+) -> ParentDerivedMaterializationIntentV1 | None:
+    if envelope.operation_kind != "parent" or capability_id not in {
+        "product_design",
+        "character_design",
+    }:
+        return None
+    if not nodes or pair_id is None:
+        raise ValueError("parent_materialization_missing")
+    node = nodes[0]
+    prompt_operation_id = node.prompt_preparation.operation_id
+    if prompt_operation_id is None:
+        raise ValueError("parent_prompt_preparation_identity_missing")
+    is_character = capability_id == "character_design"
+    derivative_role = "character_turnaround" if is_character else "product_multiview"
+    return ParentDerivedMaterializationIntentV1(
+        intent_id="derivative_" + _digest(f"{envelope.materialization_id}:{derivative_role}")[:32],
+        workflow_id=envelope.workflow_id,
+        stage_revision=envelope.stage_revision,
+        occurrence_id="character-1" if is_character else "product-1",
+        parent=ParentNodeSnapshotV1(
+            node_id=node.node_id,
+            node_revision=node.revision,
+            semantic_role="character_main" if is_character else "product_main",
+            prompt_preparation_operation_id=prompt_operation_id,
+        ),
+        derivative_role=derivative_role,
+        payload_digest=_digest(
+            f"{envelope.workflow_id}:{node.node_id}:{node.revision}:"
+            f"{prompt_operation_id}:{derivative_role}"
         ),
     )
 

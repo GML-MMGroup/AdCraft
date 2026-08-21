@@ -71,7 +71,7 @@ class GuidanceAuthorityConsistencyValidator:
             if element is not None
         }
         selected.update(
-            item.kind for item in session.journey.foundation_queue if item.status == "selected"
+            item.element_kind for item in session.journey.decisions if item.outcome == "include"
         )
         conflicts = tuple(
             sorted(

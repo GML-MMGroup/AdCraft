@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   actOnAgentCanvasDecisionBundle: vi.fn(),
   actOnAgentCanvasCommandPlan: vi.fn(),
   applyAgentCanvasGuidedAction: vi.fn(),
+  submitAgentCanvasGuidedInteraction: vi.fn(),
 }));
 
 vi.mock("../../../api/v2Client.ts", () => ({
@@ -75,10 +76,10 @@ function guidanceAdvancePrecondition(authorityDigest = "sha256:aaaaaaaaaaaaaaaaa
     session_id: "guidance-1",
     session_revision: 8,
     session_status: "active",
-    journey_stage: "foundation_design",
+    journey_stage: "scene",
     journey_stage_status: "working",
     journey_stage_revision: 4,
-    source_id: "stage:foundation_design:4",
+    source_id: "stage:scene:4",
     requirement_revision_id: "requirement-1",
     requirement_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     active_action_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -147,12 +148,12 @@ function guidedSession(stageRevision = 4, revision = 8): GuidedSessionStateV2 {
       matching_asset_ids: [],
     },
     journey: {
-      policy_version: "fixed_ad_production_v1",
-      stage: "foundation_design",
+      policy_version: "fixed_ad_production_v2",
+      stage: "scene",
       stage_status: "waiting_user",
       stage_revision: stageRevision,
-      foundation_queue: [],
-      foundation_cursor: null,
+      decisions: [],
+      active_occurrence_id: null,
       active_action: null,
       suspended_action: null,
       transition_evidence: [],
@@ -372,6 +373,47 @@ describe("useAgentCanvasChat", () => {
     expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
   });
 
+  it.each(["media_review", "manual_node_run"] as const)(
+    "does not Advance while typed awaiting is %s",
+    async (kind) => {
+      api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+        guidanceSession: {
+          ...guidedSession(),
+          interaction: null,
+          awaiting: {
+            awaiting_id: `awaiting-${kind}`,
+            workflow_id: "workflow-1",
+            session_id: "guidance-1",
+            checkpoint_id: "checkpoint-1",
+            kind,
+            requires_user_action: kind === "media_review",
+            resume_policy: kind === "media_review" ? "submit_interaction" : "node_terminal",
+            interaction_id: kind === "media_review" ? "interaction-1" : null,
+            node_ids: ["node-1"],
+            stage: "videos",
+            stage_revision: 6,
+            created_at: "2026-08-20T00:00:00Z",
+          },
+        },
+        guidanceAdvancePrecondition: guidanceAdvancePrecondition(),
+      }));
+
+      renderHook(() => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision: 0,
+        chatEvents: [],
+      }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(80);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+    },
+  );
+
   it("waits for post-ready completion then retries the exact same guidance command once", async () => {
     const precondition = guidanceAdvancePrecondition();
     api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
@@ -440,6 +482,75 @@ describe("useAgentCanvasChat", () => {
       api.advanceAgentCanvasGuidance.mock.calls[0]?.[2],
     );
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a completed post-ready Advance after typed media review becomes authoritative", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
+    api.advanceAgentCanvasGuidance.mockRejectedValueOnce({
+      code: "guidance_post_ready_pending",
+      message: "Document persistence is still running.",
+      status: 409,
+      details: {
+        checkpoint_id: "checkpoint-1",
+        execution_id: "execution-1",
+        retry_after_seconds: 1,
+      },
+    });
+    api.agentCanvasPostReadyCheckpoint
+      .mockResolvedValueOnce(postReadyCheckpoint("pending"))
+      .mockResolvedValueOnce(postReadyCheckpoint("completed"));
+
+    const { rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: {
+        ...guidedSession(),
+        awaiting: {
+          awaiting_id: "awaiting-media-review",
+          workflow_id: "workflow-1",
+          session_id: "guidance-1",
+          checkpoint_id: "checkpoint-media-review",
+          kind: "media_review",
+          requires_user_action: true,
+          resume_policy: "submit_interaction",
+          interaction_id: "interaction-media-review",
+          node_ids: ["node-video-1"],
+          stage: "videos",
+          stage_revision: 6,
+          created_at: "2026-08-20T00:00:00Z",
+        },
+      },
+      guidanceAdvancePrecondition: null,
+    }));
+    rerender({ chatRevision: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasPostReadyCheckpoint).toHaveBeenCalledTimes(2);
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the guidance checkpoint visible and does not retry when post-ready work fails", async () => {
@@ -666,6 +777,90 @@ describe("useAgentCanvasChat", () => {
       item_type: "message",
       text: "正在规划下一项创作操作。",
     }]);
+  });
+
+  it("refreshes Timeline, Session, Graph, and Runtime in order after a typed submit", async () => {
+    const order: string[] = [];
+    api.agentCanvasChatTimeline.mockImplementation(async () => {
+      order.push("timeline");
+      return emptyTimeline();
+    });
+    api.agentCanvasCreativeSession.mockImplementation(async () => {
+      order.push("session");
+      return null;
+    });
+    api.submitAgentCanvasGuidedInteraction.mockImplementation(async () => {
+      order.push("submit");
+      return {
+        workflow_id: "workflow-1",
+        interaction_id: "interaction-review-1",
+        submission_id: "submission-review-1",
+        receipt_id: "receipt-review-1",
+        created_node_ids: ["node-video-1"],
+        created_binding_ids: [],
+        document_revisions: {},
+        continuation_id: "continuation-review-1",
+        automatic_run_command_ids: [],
+        resulting_session_revision: 9,
+        events_cursor: 21,
+        replayed: false,
+      };
+    });
+    const onWorkflowRefresh = vi.fn(async () => { order.push("graph"); });
+    const onRuntimeRefresh = vi.fn(async () => { order.push("runtime"); });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+      onWorkflowRefresh,
+      onRuntimeRefresh,
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    order.length = 0;
+    api.agentCanvasChatTimeline.mockClear();
+    api.agentCanvasCreativeSession.mockClear();
+
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction({
+        interaction_id: "interaction-review-1",
+        workflow_id: "workflow-1",
+        session_id: "guidance-1",
+        checkpoint_id: "checkpoint-review-1",
+        kind: "media_review",
+        status: "open",
+        response_locale: "en-US",
+        expected_session_revision: 8,
+        revision: 3,
+        title: "Review Storyboard Grid 1",
+        context: "Choose how to continue.",
+        content: {
+          content_kind: "media_review",
+          node_id: "node-storyboard-1",
+          node_revision: 4,
+          asset_id: "asset-grid-1",
+          asset_version_id: "version-grid-1",
+          summary: "Review the generated grid.",
+        },
+        allowed_actions: ["accept", "retry", "replace"],
+        submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-review-1/submit",
+        created_at: "2026-08-20T10:00:00Z",
+        updated_at: "2026-08-20T10:00:00Z",
+      }, {
+        submission_kind: "media_review",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        action: "accept",
+        instruction: null,
+      });
+    });
+
+    expect(order).toEqual(["submit", "timeline", "session", "graph", "runtime"]);
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
   });
 
   it("uses backend content when a presentation message key or locale is unsupported", async () => {
@@ -954,12 +1149,12 @@ describe("useAgentCanvasChat", () => {
           matching_asset_ids: [],
         },
         journey: {
-          policy_version: "fixed_ad_production_v1",
-          stage: "foundation_design",
+          policy_version: "fixed_ad_production_v2",
+          stage: "scene",
           stage_status: "waiting_user",
           stage_revision: 4,
-          foundation_queue: [],
-          foundation_cursor: null,
+          decisions: [],
+          active_occurrence_id: null,
           active_action: null,
           suspended_action: null,
           transition_evidence: [],
@@ -1141,6 +1336,246 @@ describe("useAgentCanvasChat", () => {
       expect.stringContaining("decision-bundle-skip_bundle"),
     );
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("reuses pointer hydration while refreshing the same timeline twice", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [
+        {
+          item_type: "proposal_pointer",
+          proposal_id: "proposal-cache-1",
+          sequence: 1,
+          created_at: "2026-08-20T00:00:00Z",
+        },
+        {
+          item_type: "decision_bundle_pointer",
+          bundle_id: "bundle-cache-1",
+          sequence: 2,
+          created_at: "2026-08-20T00:00:01Z",
+        },
+        {
+          item_type: "expert_activity",
+          activity_id: "activity-cache-1",
+          turn_id: "turn-cache-1",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
+          status: "completed",
+          sequence: 3,
+          started_at: "2026-08-20T00:00:02Z",
+          finished_at: "2026-08-20T00:00:03Z",
+          message: null,
+          error_code: null,
+          elapsed_ms: 1_000,
+          attempt_stage: "initial",
+          retryable: false,
+          validation_paths: [],
+          suggested_actions: [],
+          completion_mode: null,
+          warning_code: null,
+        },
+        {
+          item_type: "expert_activity",
+          activity_id: "activity-cache-failed-1",
+          turn_id: "turn-cache-failed-1",
+          capability_id: "storyboard_design",
+          capability_display_name: "Storyboard Artist",
+          status: "failed",
+          sequence: 4,
+          started_at: "2026-08-20T00:00:04Z",
+          finished_at: "2026-08-20T00:00:05Z",
+          message: null,
+          error_code: "provider_error",
+          elapsed_ms: 1_000,
+          attempt_stage: "initial",
+          retryable: true,
+          validation_paths: [],
+          suggested_actions: [],
+          completion_mode: null,
+          warning_code: null,
+        },
+      ],
+      next_cursor: 4,
+    }));
+    api.agentCanvasProposal.mockResolvedValue({ proposal_id: "proposal-cache-1" });
+    api.agentCanvasDecisionBundle.mockResolvedValue({ bundle_id: "bundle-cache-1" });
+    api.agentCanvasChatTurn.mockImplementation((_workflowId: string, turnId: string) => Promise.resolve({
+      turn_id: turnId,
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: turnId === "turn-cache-failed-1" ? "failed" : "completed",
+      turn_kind: "capability",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      created_at: "2026-08-20T00:00:02Z",
+      updated_at: "2026-08-20T00:00:03Z",
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await result.current.actions.refresh();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasProposal).toHaveBeenCalledOnce();
+    expect(api.agentCanvasDecisionBundle).toHaveBeenCalledOnce();
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(2);
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-1");
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-failed-1");
+  });
+
+  it("keeps successful capability hydration when a sibling turn lookup fails", async () => {
+    const activity = (turnId: string, sequence: number) => ({
+      item_type: "expert_activity" as const,
+      activity_id: `activity-${turnId}`,
+      turn_id: turnId,
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      status: "completed" as const,
+      sequence,
+      started_at: "2026-08-20T00:00:02Z",
+      finished_at: "2026-08-20T00:00:03Z",
+      message: null,
+      error_code: null,
+      elapsed_ms: 1_000,
+      attempt_stage: "initial" as const,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    });
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [activity("turn-success-1", 1), activity("turn-retry-1", 2)],
+      next_cursor: 2,
+    }));
+    let retryAttempts = 0;
+    api.agentCanvasChatTurn.mockImplementation((_workflowId: string, turnId: string) => {
+      if (turnId === "turn-retry-1" && retryAttempts++ === 0) {
+        return Promise.reject(new Error("temporary turn lookup failure"));
+      }
+      return Promise.resolve({
+        turn_id: turnId,
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        status: "completed",
+        turn_kind: "capability",
+        request: {},
+        error_code: null,
+        error_message: null,
+        creation_mode: null,
+        guidance_session_revision: null,
+        continuation: null,
+        created_at: "2026-08-20T00:00:02Z",
+        updated_at: "2026-08-20T00:00:03Z",
+      });
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.state.turnsById["turn-success-1"]?.status).toBe("completed");
+    expect(result.current.state.turnsById["turn-retry-1"]).toBeUndefined();
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(3);
+    expect(result.current.state.turnsById["turn-retry-1"]?.status).toBe("completed");
+  });
+
+  it("reuses proposal data without retaining stale pointer placement metadata", async () => {
+    let pointerSequence = 1;
+    api.agentCanvasChatTimeline.mockImplementation(() => Promise.resolve(emptyTimeline({
+      items: [{
+          item_type: "proposal_pointer",
+          proposal_id: "proposal-moving-1",
+          sequence: pointerSequence,
+          created_at: pointerSequence === 1
+            ? "2026-08-20T00:00:00Z"
+            : "2026-08-20T00:05:00Z",
+      }],
+      next_cursor: pointerSequence,
+    })));
+    api.agentCanvasProposal.mockResolvedValue({ proposal_id: "proposal-moving-1" });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+    expect(result.current.state.items[0]?.sequence).toBe(1);
+    pointerSequence = 8;
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(api.agentCanvasProposal).toHaveBeenCalledOnce();
+    expect(result.current.state.items[0]).toMatchObject({
+      item_type: "proposal",
+      sequence: 8,
+      created_at: "2026-08-20T00:05:00Z",
+    });
+  });
+
+  it("invalidates mutable pointer payloads when the chat revision advances", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "proposal_pointer",
+        proposal_id: "proposal-revision-1",
+        sequence: 1,
+        created_at: "2026-08-20T00:00:00Z",
+      }],
+      next_cursor: 1,
+    }));
+    api.agentCanvasProposal
+      .mockResolvedValueOnce({ proposal_id: "proposal-revision-1", proposal_revision: 1 })
+      .mockResolvedValue({ proposal_id: "proposal-revision-1", proposal_revision: 2 });
+    const { result, rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+    expect(api.agentCanvasProposal).toHaveBeenCalledOnce();
+
+    rerender({ chatRevision: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+
+    expect(api.agentCanvasProposal).toHaveBeenCalledTimes(2);
+    expect(result.current.state.items[0]).toMatchObject({
+      item_type: "proposal",
+      proposal: { proposal_revision: 2 },
+    });
   });
 
   it("accepts a queued proposal materialization turn without assuming a synchronous node", async () => {

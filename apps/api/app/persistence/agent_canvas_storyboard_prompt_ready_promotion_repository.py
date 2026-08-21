@@ -33,7 +33,7 @@ from app.schemas.agent_canvas_guided_checkpoint import (
     guided_checkpoint_id,
 )
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
-from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.services.agent_canvas_production_journey import parse_production_journey
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptReadyPromotionCommandV1,
@@ -102,9 +102,7 @@ class StoryboardPromptReadyPromotionRepository:
                         raise _stale("workflow_revision")
                     if int(session["revision"]) != command.expected_session_revision:
                         raise _stale("session_revision")
-                    journey = GuidedProductionJourneyV1.model_validate_json(
-                        str(session["journey_state_json"])
-                    )
+                    journey = parse_production_journey(str(session["journey_state_json"]))
                     if (
                         journey.stage != "storyboard_grids"
                         or journey.stage_status != "working"
@@ -137,6 +135,7 @@ class StoryboardPromptReadyPromotionRepository:
                     for pair, row in zip(command.preparations, node_rows, strict=True):
                         metadata = json.loads(str(row["metadata_json"]))
                         metadata["guided_checkpoint"] = origin.model_dump(mode="json")
+                        metadata["guided_review_node_revision"] = pair.expected_node_revision + 1
                         updated = connection.execute(
                             update(AgentCanvasNodeRow)
                             .where(
@@ -208,7 +207,7 @@ class StoryboardPromptReadyPromotionRepository:
                                 node_id=item.node_id,
                                 now=now,
                             ).command_id
-                            for item in command.preparations
+                            for item in command.execution_preparations
                         )
                     self._fault("awaiting_or_command")
 
@@ -542,7 +541,7 @@ class StoryboardPromptReadyPromotionRepository:
             for row in node_rows
         ):
             return None
-        journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+        journey = parse_production_journey(str(session["journey_state_json"]))
         awaiting_id: str | None = None
         automatic_ids: tuple[str, ...] = ()
         if command.execution_mode == "manual":
@@ -577,7 +576,7 @@ class StoryboardPromptReadyPromotionRepository:
                     )
                 ).scalars()
             )
-            if len(automatic_ids) != len(command.preparations):
+            if len(automatic_ids) != len(command.execution_preparations):
                 raise _invalid("replay_automatic_command")
         workflow_revision = connection.execute(
             select(AgentCanvasWorkflowRow.revision).where(

@@ -26,6 +26,10 @@ import {
   type AgentCanvasMediaDimensions,
   type AgentCanvasNodeSize,
 } from "./nodeGeometry.ts";
+import {
+  sameAgentCanvasAssetPresentation,
+  sameAgentCanvasRuntimeCardPresentation,
+} from "./agentCanvasNodeRenderModel.ts";
 
 type PlacementNode = Pick<CanvasNodeV2, "node_type" | "output_asset_id" | "position">;
 
@@ -38,6 +42,11 @@ export interface FindAvailableCanvasPositionOptions {
   assets?: ProjectAssetSummaryV2[];
   candidateNodeType?: CanvasNodeTypeV2;
   candidateDimensions?: AgentCanvasMediaDimensions | null;
+}
+
+export interface ToAgentCanvasFlowNodesOptions {
+  previousNodes?: readonly AgentCanvasFlowNode[];
+  activeWorkbenchNodeId?: string | null;
 }
 
 export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasBindingInputRoleV2 {
@@ -132,27 +141,74 @@ export function toAgentCanvasFlowNodes(
   workflow: AgentCanvasWorkflowV2,
   runtime: CanvasRuntimeSnapshotV2 | null,
   callbacks: AgentCanvasNodeCallbacks,
+  options: ToAgentCanvasFlowNodesOptions = {},
 ): AgentCanvasFlowNode[] {
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
+  const previousNodes = new Map((options.previousNodes ?? []).map((node) => [node.id, node]));
   return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
     const asset = node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null;
+    const nodeRuntime = runtime?.node_runtime[node.node_id] ?? null;
     const dimensions = asset ? { width: asset.width, height: asset.height } : null;
     const size = agentCanvasNodeSize(node.node_type, dimensions);
+    const style = node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions)
+      ? size
+      : undefined;
+    const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
+    const previous = previousNodes.get(node.node_id);
+    if (previous && canReuseFlowNode(
+      previous,
+      node,
+      asset,
+      nodeRuntime,
+      callbacks,
+      style,
+      workbenchActive,
+    )) {
+      return previous;
+    }
     return {
       id: node.node_id,
       type: "agentCanvas" as const,
       position: node.position,
-      style: node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions)
-        ? size
-        : undefined,
+      style,
       data: {
         node,
         asset,
-        runtime: runtime?.node_runtime[node.node_id] ?? null,
+        runtime: nodeRuntime,
+        workbenchActive,
         ...callbacks,
       },
     };
   });
+}
+
+function canReuseFlowNode(
+  previous: AgentCanvasFlowNode,
+  node: CanvasNodeV2,
+  asset: ProjectAssetSummaryV2 | null,
+  runtime: CanvasRuntimeSnapshotV2["node_runtime"][string] | null,
+  callbacks: AgentCanvasNodeCallbacks,
+  style: AgentCanvasNodeSize | undefined,
+  workbenchActive: boolean,
+): boolean {
+  const previousData = previous.data;
+  const previousStyle = previous.style as AgentCanvasNodeSize | undefined;
+  return previous.position.x === node.position.x
+    && previous.position.y === node.position.y
+    && previousData.node.node_id === node.node_id
+    && previousData.node.workflow_id === node.workflow_id
+    && previousData.node.revision === node.revision
+    && previousData.node.status === node.status
+    && previousData.node.output_asset_id === node.output_asset_id
+    && sameAgentCanvasAssetPresentation(previousData.asset, asset)
+    && (workbenchActive
+      ? previousData.runtime === runtime
+      : sameAgentCanvasRuntimeCardPresentation(previousData.runtime, runtime))
+    && previousData.workbenchActive === workbenchActive
+    && (!workbenchActive || previousData.renderWorkbench === callbacks.renderWorkbench)
+    && previousData.onOpenVideoPreview === callbacks.onOpenVideoPreview
+    && previousStyle?.width === style?.width
+    && previousStyle?.height === style?.height;
 }
 
 function sizeForPlacementNode(

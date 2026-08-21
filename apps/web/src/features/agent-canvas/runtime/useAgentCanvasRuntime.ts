@@ -27,6 +27,10 @@ import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
 import { modelResolutionFromEvent } from "./modelResolution.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
+import {
+  runtimeRefreshIdentity,
+  sameRuntimePresentation,
+} from "./runtimeRefreshIdentity.ts";
 
 type RuntimeCallbacks = {
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
@@ -71,6 +75,7 @@ export function useAgentCanvasRuntime(
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
   const seenTransitionKeysRef = useRef<Set<string>>(new Set());
+  const lastRuntimeRefreshIdentityRef = useRef<string | null>(null);
 
   const workflowId = workflow?.workflow_id ?? null;
   const activeWorkflowIdRef = useRef<string | null>(workflowId);
@@ -85,6 +90,7 @@ export function useAgentCanvasRuntime(
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
     seenTransitionKeysRef.current.clear();
+    lastRuntimeRefreshIdentityRef.current = null;
   }
 
   useEffect(() => {
@@ -113,7 +119,9 @@ export function useAgentCanvasRuntime(
         try {
           const next = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (activeWorkflowIdRef.current !== workflowId) return;
-          setRuntime(next);
+          setRuntime((current) => (
+            sameRuntimePresentation(current, next) ? current : next
+          ));
           setRuntimeError(null);
         } catch (error) {
           if (activeWorkflowIdRef.current !== workflowId) return;
@@ -122,6 +130,7 @@ export function useAgentCanvasRuntime(
             setRuntimeError("Agent Canvas runtime requires the matching backend update.");
             return;
           }
+          lastRuntimeRefreshIdentityRef.current = null;
           setRuntimeError(error instanceof Error ? error.message : "Runtime refresh failed.");
         }
       } while (
@@ -242,7 +251,13 @@ export function useAgentCanvasRuntime(
       }));
     }
     const policy = runtimeEventPolicy(event);
-    if (policy.refreshRuntime) void refreshRuntime();
+    if (policy.refreshRuntime) {
+      const refreshIdentity = runtimeRefreshIdentity(event);
+      if (lastRuntimeRefreshIdentityRef.current !== refreshIdentity) {
+        lastRuntimeRefreshIdentityRef.current = refreshIdentity;
+        void refreshRuntime();
+      }
+    }
     if (policy.refreshWorkflow) void refreshWorkflow();
     if (policy.refreshAssets) void refreshAssets(event);
     if (policy.refreshChat) {
@@ -313,7 +328,9 @@ export function useAgentCanvasRuntime(
         if (cursorRef.current === 0) {
           const baselineRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
-          setRuntime(baselineRuntime);
+          setRuntime((current) => (
+            sameRuntimePresentation(current, baselineRuntime) ? current : baselineRuntime
+          ));
           cursorRef.current = baselineRuntime.events_cursor;
           setRuntimeError(null);
         }
@@ -358,7 +375,9 @@ export function useAgentCanvasRuntime(
           try {
             const latestRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
             if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
-            setRuntime(latestRuntime);
+            setRuntime((current) => (
+              sameRuntimePresentation(current, latestRuntime) ? current : latestRuntime
+            ));
             cursorRef.current = latestRuntime.events_cursor;
             setRuntimeError(null);
             await refreshWorkflow();

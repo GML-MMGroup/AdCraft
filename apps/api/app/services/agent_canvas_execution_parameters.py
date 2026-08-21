@@ -13,7 +13,6 @@ from app.schemas.agent_canvas_video_parameters import (
     CanvasParameterProvenanceV2,
     CompiledVideoParametersV2,
     VideoParameterCandidateV2,
-    VideoParameterIntentV2,
     VideoParameterNormalizationV2,
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
@@ -70,7 +69,8 @@ class AgentCanvasExecutionParameterResolver:
         self,
         node: CanvasNodeV2,
         *,
-        intent: VideoParameterIntentV2,
+        candidates: tuple[VideoParameterCandidateV2, ...],
+        trusted_parameters: dict[str, object] | None = None,
         direct_text_inputs: tuple[ResolvedTextBindingInputV2, ...],
         capability: CanvasProviderModelCapabilityV2,
         model_defaults: dict[str, object],
@@ -92,21 +92,43 @@ class AgentCanvasExecutionParameterResolver:
         }
         candidates = tuple(
             _validated_candidate(candidate, capability, allowed_bindings)
-            for candidate in intent.candidates
+            for candidate in candidates
         )
         manual_values, manual_provenance = _manual_parameters(node)
         authoring: dict[str, object] = dict(manual_values)
         requested: dict[str, object] = {}
         provenance: dict[str, CanvasParameterProvenanceV2] = dict(manual_provenance)
+        for field, raw_value in (trusted_parameters or {}).items():
+            if field in manual_values:
+                continue
+            value = _validated_platform_value(field, raw_value)
+            item = node.parameter_provenance.get(field)
+            if item is None:
+                raise _error(
+                    "node_parameter_compilation_failed",
+                    "Trusted Video parameter authority requires durable provenance.",
+                    details={"field": field, "reason": "trusted_provenance_missing"},
+                )
+            authoring[field] = value
+            requested[field] = value
+            provenance[field] = item.model_copy(
+                update={"requested_value": value, "effective_value": value}
+            )
         accepted: list[VideoParameterCandidateV2] = []
         rejected: list[VideoParameterCandidateV2] = []
 
         fields = (
-            set(model_defaults) | {candidate.field for candidate in candidates} | set(manual_values)
+            set(model_defaults)
+            | {candidate.field for candidate in candidates}
+            | set(manual_values)
+            | set(trusted_parameters or {})
         )
         for field in sorted(fields):
             if field in manual_values:
                 requested[field] = manual_values[field]
+                rejected.extend(candidate for candidate in candidates if candidate.field == field)
+                continue
+            if field in (trusted_parameters or {}):
                 rejected.extend(candidate for candidate in candidates if candidate.field == field)
                 continue
             field_candidates = tuple(
@@ -139,7 +161,14 @@ class AgentCanvasExecutionParameterResolver:
                 )
                 continue
             if field in model_defaults:
-                requested[field] = _validated_platform_value(field, model_defaults[field])
+                value = _validated_platform_value(field, model_defaults[field])
+                authoring[field] = value
+                requested[field] = value
+                provenance[field] = CanvasParameterProvenanceV2(
+                    origin="role_default",
+                    requested_value=value,
+                    effective_value=value,
+                )
 
         effective, normalizations = _normalize_video_parameters(
             requested,

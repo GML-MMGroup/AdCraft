@@ -10,8 +10,8 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingResumeProofV1,
-    GuidanceAwaitingV1,
+    GuidanceAwaitingResumeProofV2,
+    GuidanceAwaitingV2,
 )
 
 
@@ -27,15 +27,15 @@ class GuidanceAwaitingService:
             raise ValueError("Guidance awaiting repositories must share one database.")
         self._interactions = interactions
 
-    def inspect(self, workflow_id: str) -> GuidanceAwaitingV1 | None:
+    def inspect(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
         return self._interactions.get_awaiting(workflow_id)
 
     def enter(
         self,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
         *,
         expected_session_revision: int,
-    ) -> GuidanceAwaitingV1:
+    ) -> GuidanceAwaitingV2:
         return self._interactions.enter_awaiting(
             awaiting,
             expected_session_revision=expected_session_revision,
@@ -43,12 +43,12 @@ class GuidanceAwaitingService:
 
     def enter_manual_node_run(
         self,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
         *,
         expected_session_revision: int,
         next_action_requires_ready_media: bool,
         user_requested_pause: bool,
-    ) -> GuidanceAwaitingV1:
+    ) -> GuidanceAwaitingV2:
         if awaiting.kind != "manual_node_run" or not (
             next_action_requires_ready_media or user_requested_pause
         ):
@@ -63,14 +63,14 @@ class GuidanceAwaitingService:
 
     def enter_milestone_idle(
         self,
-        awaiting: GuidanceAwaitingV1,
+        awaiting: GuidanceAwaitingV2,
         *,
         expected_session_revision: int,
         requested_scope_completed: bool,
         full_ad_goal: bool,
         user_paused_or_narrowed: bool,
         automatic_progress_owned: bool,
-    ) -> GuidanceAwaitingV1:
+    ) -> GuidanceAwaitingV2:
         legal_idle = (
             awaiting.kind == "milestone_idle"
             and requested_scope_completed
@@ -90,7 +90,7 @@ class GuidanceAwaitingService:
     def resume(
         self,
         workflow_id: str,
-        proof: GuidanceAwaitingResumeProofV1,
+        proof: GuidanceAwaitingResumeProofV2,
     ) -> None:
         self._interactions.resume_awaiting(workflow_id, proof)
 

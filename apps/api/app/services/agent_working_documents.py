@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import Callable, cast
 
 from sqlalchemy import select
@@ -46,6 +47,7 @@ from app.schemas.agent_working_documents import (
     ReplaceNarrativeSegmentPatchV2,
     ReplaceStoryboardRowsPatchV2,
     StoryboardNodeRecordV2,
+    StoryboardPlannedNodeV3,
     StoryboardProductionPlanContentV2,
     StoryboardProductionPlanContentV3,
     UpsertAnchorPatchV2,
@@ -370,8 +372,31 @@ class AgentWorkingDocumentService:
             )
             if not aliases:
                 raise _patch_error("Anchor context selector is empty.")
-            content = cast(AnchorRegistryContentV2, document.content)
-            anchors_by_alias = {anchor.alias: anchor for anchor in content.anchors}
+            content = document.content
+            if isinstance(content, AnchorRegistryContentV3):
+                all_anchors_by_alias = {anchor.alias: anchor for anchor in content.anchors}
+                if any(
+                    alias in all_anchors_by_alias
+                    and all_anchors_by_alias[alias].lifecycle not in {"planned", "active"}
+                    for alias in aliases
+                ):
+                    raise _error(
+                        "agent_document_anchor_retired",
+                        "Anchor context cannot use a retired identity.",
+                    )
+                anchors_by_alias = {
+                    anchor.alias: anchor
+                    for anchor in content.anchors
+                    if anchor.lifecycle in {"planned", "active"}
+                }
+            else:
+                anchors_by_alias = {
+                    alias: anchor
+                    for alias, anchor in (
+                        (anchor.alias, anchor)
+                        for anchor in cast(AnchorRegistryContentV2, content).anchors
+                    )
+                }
             if any(alias not in anchors_by_alias for alias in aliases):
                 raise _patch_error("Anchor context selector is invalid.")
             excerpt = {
@@ -564,9 +589,22 @@ class AgentWorkingDocumentService:
                 AttachEditingNodePatchV2,
             ),
         ):
-            next_content = self._attach_node(current.workflow_id, content, patch)
+            if isinstance(current.content, StoryboardProductionPlanContentV3):
+                next_content = self._attach_v3_node(current.workflow_id, content, patch)
+            else:
+                next_content = self._attach_node(current.workflow_id, content, patch)
         else:
             raise _patch_error("Agent document patch operation is unsupported.")
+        if isinstance(current.content, StoryboardProductionPlanContentV3):
+            validated_v3 = StoryboardProductionPlanContentV3.model_validate(
+                next_content.model_dump(mode="json")
+            )
+            self._validate_storyboard_content(
+                current.workflow_id,
+                current.guidance_session_id,
+                validated_v3,
+            )
+            return validated_v3
         validated = StoryboardProductionPlanContentV2.model_validate(
             next_content.model_dump(mode="json")
         )
@@ -576,6 +614,73 @@ class AgentWorkingDocumentService:
             validated,
         )
         return _with_computed_cursor(validated)
+
+    def _attach_v3_node(
+        self,
+        workflow_id: str,
+        content: StoryboardProductionPlanContentV3,
+        patch: AttachStoryboardNodePatchV2
+        | AttachVideoNodePatchV2
+        | AttachAudioNodePatchV2
+        | AttachEditingNodePatchV2,
+    ) -> StoryboardProductionPlanContentV3:
+        if isinstance(patch, AttachStoryboardNodePatchV2):
+            node_role = "storyboard_grid"
+            expected_type = "image"
+            expected_creative_role = "storyboard_sequence"
+            sequence_id: str | None = patch.sequence_id
+        elif isinstance(patch, AttachVideoNodePatchV2):
+            node_role = "video_segment"
+            expected_type = "video"
+            expected_creative_role = "storyboard_video"
+            sequence_id = patch.sequence_id
+        elif isinstance(patch, AttachAudioNodePatchV2):
+            node_role = "bgm"
+            expected_type = "audio"
+            expected_creative_role = "bgm"
+            sequence_id = None
+        else:
+            node_role = "editing"
+            expected_type = "editing"
+            expected_creative_role = "editing"
+            sequence_id = None
+
+        sequence_ids = {segment.sequence_id for segment in content.segments}
+        if sequence_id is not None and sequence_id not in sequence_ids:
+            raise _sequence_error("Storyboard sequence was not found.")
+        owner = self._node_owner(patch.node_id)
+        if owner is None:
+            raise _sequence_error("Storyboard linked Node was not found.")
+        if owner[0] != workflow_id:
+            raise _cross_workflow_error()
+        if owner[1:] != (expected_type, expected_creative_role):
+            raise _sequence_error("Storyboard linked Node has the wrong type.")
+        existing = next(
+            (
+                item
+                for item in content.planned_nodes
+                if (item.sequence_id, item.node_role) == (sequence_id, node_role)
+            ),
+            None,
+        )
+        if existing is not None:
+            if existing.node_id == patch.node_id:
+                return content
+            raise _sequence_error("Storyboard scope already owns another linked Node.")
+        node = self._workflows.get_node(workflow_id, patch.node_id)
+        planned = StoryboardPlannedNodeV3(
+            sequence_id=sequence_id,
+            node_role=node_role,
+            node_id=node.node_id,
+            node_revision=node.revision,
+            materialization_id=(
+                "materialization_"
+                + sha256(
+                    f"{content.requirement_revision_id}:{sequence_id}:{node_role}:{node.node_id}".encode()
+                ).hexdigest()[:32]
+            ),
+        )
+        return content.model_copy(update={"planned_nodes": content.planned_nodes + (planned,)})
 
     def _validate_anchor_source(self, workflow_id: str, anchor: AgentAnchorV2) -> None:
         if anchor.source_id is None:
