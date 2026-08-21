@@ -27,6 +27,10 @@ import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
 import { modelResolutionFromEvent } from "./modelResolution.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
+import {
+  runtimeRefreshIdentity,
+  sameRuntimePresentation,
+} from "./runtimeRefreshIdentity.ts";
 
 type RuntimeCallbacks = {
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
@@ -71,6 +75,7 @@ export function useAgentCanvasRuntime(
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
   const seenTransitionKeysRef = useRef<Set<string>>(new Set());
+  const seenRuntimeRefreshIdentitiesRef = useRef<Set<string>>(new Set());
 
   const workflowId = workflow?.workflow_id ?? null;
   const activeWorkflowIdRef = useRef<string | null>(workflowId);
@@ -85,6 +90,7 @@ export function useAgentCanvasRuntime(
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
     seenTransitionKeysRef.current.clear();
+    seenRuntimeRefreshIdentitiesRef.current.clear();
   }
 
   useEffect(() => {
@@ -113,7 +119,9 @@ export function useAgentCanvasRuntime(
         try {
           const next = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (activeWorkflowIdRef.current !== workflowId) return;
-          setRuntime(next);
+          setRuntime((current) => (
+            sameRuntimePresentation(current, next) ? current : next
+          ));
           setRuntimeError(null);
         } catch (error) {
           if (activeWorkflowIdRef.current !== workflowId) return;
@@ -242,7 +250,17 @@ export function useAgentCanvasRuntime(
       }));
     }
     const policy = runtimeEventPolicy(event);
-    if (policy.refreshRuntime) void refreshRuntime();
+    if (policy.refreshRuntime) {
+      const refreshIdentity = runtimeRefreshIdentity(event);
+      if (!seenRuntimeRefreshIdentitiesRef.current.has(refreshIdentity)) {
+        seenRuntimeRefreshIdentitiesRef.current.add(refreshIdentity);
+        if (seenRuntimeRefreshIdentitiesRef.current.size > 500) {
+          const oldest = seenRuntimeRefreshIdentitiesRef.current.values().next().value;
+          if (typeof oldest === "string") seenRuntimeRefreshIdentitiesRef.current.delete(oldest);
+        }
+        void refreshRuntime();
+      }
+    }
     if (policy.refreshWorkflow) void refreshWorkflow();
     if (policy.refreshAssets) void refreshAssets(event);
     if (policy.refreshChat) {

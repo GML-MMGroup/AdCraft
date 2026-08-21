@@ -702,4 +702,67 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalled();
     expect(result.current.state.runtime?.ready_node_ids).toEqual([]);
   });
+
+  it("deduplicates repeated runtime events and retains the runtime reference for timestamp-only snapshots", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const timestampOnlyRuntime = {
+      ...runtime,
+      events_cursor: 43,
+      updated_at: "2026-07-28T00:01:00Z",
+    };
+    api.agentCanvasRuntime
+      .mockReset()
+      .mockResolvedValueOnce(runtime)
+      .mockResolvedValueOnce(timestampOnlyRuntime)
+      .mockResolvedValue({
+        ...runtime,
+        events_cursor: 44,
+        updated_at: "2026-07-28T00:02:00Z",
+      });
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    await waitFor(() => expect(result.current.state.runtime).not.toBeNull());
+    const presentedRuntime = result.current.state.runtime;
+    api.agentCanvasRuntime.mockClear();
+
+    const waitingEvent = (sequence_no: number) => ({
+      sequence_no,
+      workflow_id: "workflow-1",
+      event_type: "node_generation_waiting",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "node-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: null,
+      attempt: 1,
+      created_at: "2026-07-28T00:02:00Z",
+      payload: { waiting_reason: "provider_queue" },
+    });
+    eventSource.emit("node_generation_waiting", waitingEvent(43));
+    eventSource.emit("node_generation_waiting", waitingEvent(44));
+
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+
+    expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
+    expect(result.current.state.runtime).toBe(presentedRuntime);
+  });
 });
