@@ -53,6 +53,13 @@ class CapabilityGateway(Protocol):
     ) -> Mapping[str, object] | BaseModel: ...
 
 
+class _CapabilityResultValidationError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 def capability_context_from_envelope(
     envelope: CapabilityCommandEnvelopeV2,
 ) -> Mapping[str, object]:
@@ -132,6 +139,7 @@ class CapabilityExecutionService:
             if envelope.publication_kind == "internal_document"
             else CAPABILITY_RESULT_CONTRACTS[envelope.capability_id]
         )
+        canonical_script_duration = self._canonical_script_duration(envelope)
         context = self._context_loader(envelope)
         repaired = False
         lease_guard()
@@ -161,8 +169,13 @@ class CapabilityExecutionService:
             ) from error
         lease_guard()
         try:
-            result = contract.model_validate(raw)
-        except ValidationError:
+            result = self._validate_result(
+                envelope,
+                contract,
+                raw,
+                canonical_script_duration=canonical_script_duration,
+            )
+        except _CapabilityResultValidationError as initial_error:
             repaired = True
             lease_guard()
             try:
@@ -170,14 +183,19 @@ class CapabilityExecutionService:
                     envelope,
                     definition.operation,
                     context,
-                    repair_error="capability_contract_invalid",
+                    repair_error=initial_error.code,
                 )
                 lease_guard()
-                result = contract.model_validate(repaired_raw)
-            except (ValidationError, ValueError, TypeError) as error:
+                result = self._validate_result(
+                    envelope,
+                    contract,
+                    repaired_raw,
+                    canonical_script_duration=canonical_script_duration,
+                )
+            except _CapabilityResultValidationError as error:
                 raise V2PersistenceError(
-                    "capability_contract_invalid",
-                    "Capability result remained invalid after one repair.",
+                    error.code,
+                    error.message,
                     stage="capability_execution",
                 ) from error
         lease_guard()
@@ -215,6 +233,50 @@ class CapabilityExecutionService:
             document_receipt_id=document_receipt_id,
             repaired=repaired,
         )
+
+    @staticmethod
+    def _canonical_script_duration(
+        envelope: CapabilityCommandEnvelopeV2,
+    ) -> float | None:
+        if not (
+            envelope.publication_kind == "internal_document"
+            and envelope.capability_id == "script_authoring"
+        ):
+            return None
+        for control in envelope.requirement_projection.hard_controls:
+            if control.control == "duration_seconds":
+                return float(control.value)
+        raise V2PersistenceError(
+            "production_duration_required",
+            "Canonical production duration is required before Script authoring.",
+            stage="capability_execution",
+        )
+
+    @staticmethod
+    def _validate_result(
+        envelope: CapabilityCommandEnvelopeV2,
+        contract: type[BaseModel],
+        raw: Mapping[str, object] | BaseModel,
+        *,
+        canonical_script_duration: float | None,
+    ) -> BaseModel:
+        try:
+            result = contract.model_validate(raw)
+        except (ValidationError, ValueError, TypeError) as error:
+            raise _CapabilityResultValidationError(
+                "capability_contract_invalid",
+                "Capability result remained invalid after one repair.",
+            ) from error
+        if canonical_script_duration is None:
+            return result
+        structured_content = getattr(result, "structured_content", None)
+        result_duration = getattr(structured_content, "total_duration_seconds", None)
+        if result_duration is None or float(result_duration) != canonical_script_duration:
+            raise _CapabilityResultValidationError(
+                "script_duration_contract_invalid",
+                "Script result remained inconsistent with canonical duration after one repair.",
+            )
+        return result
 
     def _validate_frozen_state(self, envelope: CapabilityCommandEnvelopeV2) -> None:
         if envelope.expected_session_revision is None:

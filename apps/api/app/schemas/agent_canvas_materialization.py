@@ -16,10 +16,8 @@ from app.schemas.agent_canvas_ad_media import (
     VideoSegmentContentV2,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_creative_session import (
-    ProposedDraftReferenceV2,
-    ScriptDraftContentV2,
-)
+from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
+from app.schemas.agent_canvas_requirements import DurationSecondsValueV1
 from app.schemas.agent_canvas_world_setting import WorldSettingCoreV2
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.language import BCP47Tag
@@ -261,8 +259,13 @@ class WorldSettingMaterializationResultV1(_MaterializationResultBaseV1):
     structured_content: WorldSettingMaterializationContentV1
 
 
+class ScriptMaterializationContentV1(_MaterializationModel):
+    content: str = Field(min_length=1, max_length=32_768)
+    total_duration_seconds: DurationSecondsValueV1
+
+
 class ScriptMaterializationResultV1(_MaterializationResultBaseV1):
-    structured_content: ScriptDraftContentV2
+    structured_content: ScriptMaterializationContentV1
 
 
 class ProductMaterializationResultV1(_MaterializationResultBaseV1):

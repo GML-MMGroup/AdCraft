@@ -81,6 +81,11 @@ class AgentCanvasResultCommitRepository:
                                 "execution_result_payload_conflict",
                                 "Execution result identity is immutable.",
                             )
+                        self._assert_effect_replay_matches(
+                            connection,
+                            command,
+                            commit_id=receipt.commit_id,
+                        )
                         connection.commit()
                         return receipt
                     self._assert_current_lease(connection, command)
@@ -479,6 +484,48 @@ class AgentCanvasResultCommitRepository:
                     created_at=command.committed_at.isoformat(),
                     updated_at=command.committed_at.isoformat(),
                 )
+            )
+
+    @staticmethod
+    def _assert_effect_replay_matches(connection, command, *, commit_id: str) -> None:
+        prepared = command.prepared_result
+        expected_effects = (
+            prepared.post_ready_effects
+            if command.outcome == "succeeded" and prepared is not None
+            else ()
+        )
+        persisted = (
+            connection.execute(
+                select(AgentCanvasPostReadyEffectRow)
+                .where(AgentCanvasPostReadyEffectRow.source_commit_id == commit_id)
+                .order_by(AgentCanvasPostReadyEffectRow.effect_id.asc())
+            )
+            .mappings()
+            .all()
+        )
+        expected = sorted(
+            (
+                "effect_"
+                + hashlib.sha256(
+                    f"{commit_id}:{effect.effect_type}:{ordinal}".encode("utf-8")
+                ).hexdigest()[:32],
+                effect.effect_type,
+                _digest(effect.payload),
+            )
+            for ordinal, effect in enumerate(expected_effects)
+        )
+        actual = [
+            (
+                str(row["effect_id"]),
+                str(row["effect_type"]),
+                str(row["payload_digest"]),
+            )
+            for row in persisted
+        ]
+        if actual != expected:
+            raise _error(
+                "execution_result_payload_conflict",
+                "Execution result post-ready effects are immutable.",
             )
 
 

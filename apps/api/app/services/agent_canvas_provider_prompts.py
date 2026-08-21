@@ -23,11 +23,16 @@ from app.schemas.agent_canvas_ad_media import (
     resolve_visual_style,
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
+from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_prompt_assertion_policy import (
+    PromptAssertionEvidenceValidator,
+    PromptAssertionPolicyRegistry,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +154,48 @@ class AgentCanvasProviderPromptCompiler:
                 "provider_prompt_contract_failed",
                 "Provider prompt registration is missing.",
             )
+        assertion_evidence = None
+        preparation = node.prompt_preparation
+        if preparation.role_variant is not None or preparation.recipe_id is not None:
+            if preparation.recipe_id is None or preparation.recipe_version is None:
+                raise _error(
+                    "node_prompt_assertion_contract_invalid",
+                    "Guided prompt recipe identity is incomplete.",
+                )
+            evidence = preparation.assertion_evidence
+            if evidence is None:
+                raise _error(
+                    "node_prompt_assertion_evidence_missing",
+                    "Current prompt assertion evidence is required.",
+                )
+            policy = PromptAssertionPolicyRegistry().resolve(
+                preparation.recipe_id, preparation.recipe_version
+            )
+            PromptAssertionEvidenceValidator().validate_preparation(
+                policy=policy,
+                prompt_digest=hashlib.sha256(
+                    str(node.generation_prompt).encode("utf-8")
+                ).hexdigest(),
+                evidence=evidence,
+                current_sources=evidence.source_snapshots,
+                current_document_revisions=evidence.document_revisions,
+                current_sequence_id=evidence.sequence_id,
+            )
+            if str(node.generation_prompt).count(policy.assertion_block) != 1:
+                raise _error(
+                    "node_prompt_assertion_contract_invalid",
+                    "Canonical prompt assertion block is missing or duplicated.",
+                )
+            if (
+                node.metadata.get("prompt_assertion_policy_ref") != policy.policy_ref
+                or node.metadata.get("prompt_assertion_policy_digest") != policy.policy_digest
+                or node.metadata.get("prompt_assertion_evidence_digest") != evidence.evidence_digest
+                or not _reference_evidence_matches(evidence.source_snapshots, reference_bundle)
+            ):
+                raise _error(
+                    "node_prompt_assertion_contract_invalid",
+                    "Prompt assertion evidence does not match provider input authority.",
+                )
         if creative_direction_projection is not None:
             CreativeDirectionService().validate_role_projection(
                 _STYLE_ROLE_BY_SEMANTIC_ROLE[node.semantic_role],
@@ -249,18 +296,64 @@ class AgentCanvasProviderPromptCompiler:
                 else None
             ),
         }
+        final_prompt_digest = hashlib.sha256(prompt.encode()).hexdigest()
+        if preparation.assertion_evidence is not None:
+            evidence = preparation.assertion_evidence
+            assertion_evidence = ProviderPromptAssertionEvidenceV1(
+                policy_ref=evidence.policy_ref,
+                policy_version=evidence.policy_version,
+                policy_digest=evidence.policy_digest,
+                recipe_id=evidence.recipe_id,
+                recipe_version=evidence.recipe_version,
+                assertion_ids=evidence.assertion_ids,
+                preparation_evidence_digest=evidence.evidence_digest,
+                assertion_block_digest=evidence.assertion_block_digest,
+                prepared_prompt_digest=evidence.prepared_prompt_digest,
+                provider_prompt_digest=final_prompt_digest,
+            )
         return CompiledProviderPromptV2(
             semantic_role=node.semantic_role,
             prompt_registry_ref=registration.registry_ref,
             prompt_registry_digest=registry_digest,
             render_context_digest=_digest(context),
-            prompt_digest=hashlib.sha256(prompt.encode()).hexdigest(),
+            prompt_digest=final_prompt_digest,
             reference_bundle_digest=reference_bundle.bundle_digest,
             style_source=style.source,
             prompt=prompt,
             negative_prompt=negative,
             provider_parameters=_provider_parameters(node.semantic_role),
+            assertion_evidence=assertion_evidence,
         )
+
+
+def _reference_evidence_matches(source_snapshots, reference_bundle: AdReferenceBundleV2) -> bool:
+    expected = tuple(item for item in source_snapshots if item.source_kind == "binding")
+    expected_by_binding = {item.binding_id: item for item in expected}
+    if None in expected_by_binding or len(expected_by_binding) != len(expected):
+        return False
+    actual_binding_ids: set[str] = set()
+    for reference in reference_bundle.references:
+        snapshot = expected_by_binding.get(reference.binding_id)
+        if snapshot is None or reference.binding_id in actual_binding_ids:
+            return False
+        actual_binding_ids.add(reference.binding_id)
+        if (
+            snapshot.binding_revision != reference.binding_revision
+            or snapshot.source_node_id != reference.source_node_id
+            or snapshot.source_node_revision != reference.source_node_revision
+            or snapshot.sequence_id != reference.source_sequence_id
+        ):
+            return False
+        if snapshot.asset_id is not None and (
+            snapshot.asset_id != reference.asset_id
+            or snapshot.asset_version_id != reference.asset_version_id
+        ):
+            return False
+    return all(
+        snapshot.binding_id in actual_binding_ids
+        for snapshot in expected
+        if snapshot.asset_id is not None
+    )
 
 
 def _registration(

@@ -47,9 +47,7 @@ from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
     parse_production_journey,
 )
-from app.services.agent_canvas_storyboard_sequence_windows import (
-    StoryboardSequenceWindowPlanner,
-)
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
@@ -72,6 +70,7 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
         self._requirements = AgentCanvasRequirementRepository(database)
         self._conversations = AgentCanvasConversationRepository(database, events)
         self._journey_policy = GuidedProductionJourneyPolicyService()
+        self._duration_authority = GuidedDurationAuthorityPolicy()
         self._locale_resolver = ResponseLocaleResolverV1()
 
     def publish(self, envelope: CapabilityCommandEnvelopeV2, result: BaseModel) -> str:
@@ -322,6 +321,11 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
                     "agent_storyboard_plan_invalid",
                     "The internal checkpoint requires the authoritative Storyboard Plan.",
                 )
+            requirement = self._requirements.get_current_in_transaction(
+                connection,
+                envelope.workflow_id,
+            )
+            self._duration_authority.validate_plan(requirement, current.content)
             label = "Style lock" if stage == "style_lock" else "Storyboard plan"
             outline = f"{current.content.narrative_outline}\n{label}: {authored_text}"
             return current.content.model_copy(update={"narrative_outline": outline})
@@ -338,8 +342,8 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
         constraints.update(
             {control.control: control.value for control in requirement.ledger.hard_controls}
         )
-        authority_plan = StoryboardSequenceWindowPlanner.plan(
-            total_duration_seconds=constraints.get("duration_seconds", 15),
+        authority_plan = self._duration_authority.plan_sequences(
+            requirement,
             aspect_ratio=constraints.get("aspect_ratio", "16:9"),
             explicit_sequence_count=constraints.get("storyboard_sequence_count"),
         )

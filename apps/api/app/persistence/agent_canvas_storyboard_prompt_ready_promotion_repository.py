@@ -135,6 +135,7 @@ class StoryboardPromptReadyPromotionRepository:
                     for pair, row in zip(command.preparations, node_rows, strict=True):
                         metadata = json.loads(str(row["metadata_json"]))
                         metadata["guided_checkpoint"] = origin.model_dump(mode="json")
+                        metadata["guided_review_node_revision"] = pair.expected_node_revision + 1
                         updated = connection.execute(
                             update(AgentCanvasNodeRow)
                             .where(

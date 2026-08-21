@@ -141,6 +141,7 @@ from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
 )
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -384,7 +385,9 @@ class DeterministicVideoAgentGateway:
         repair_error: str | None,
     ) -> BaseModel:
         contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
-        return contract.model_validate(_deterministic_materialization_result(capability_id))
+        return contract.model_validate(
+            _deterministic_materialization_result(capability_id, context=context)
+        )
 
 
 class PiVideoAgentGateway:
@@ -779,7 +782,11 @@ def _deterministic_capability_result(
     return {"options": options}
 
 
-def _deterministic_materialization_result(capability_id: str) -> dict[str, object]:
+def _deterministic_materialization_result(
+    capability_id: str,
+    *,
+    context: Mapping[str, object],
+) -> dict[str, object]:
     summary = f"Deterministic {capability_id} materialization."
     if capability_id == "world_setting":
         return {
@@ -812,12 +819,38 @@ def _deterministic_materialization_result(capability_id: str) -> dict[str, objec
         "video_direction": "video",
         "bgm_direction": "bgm",
     }[capability_id]
-    return {
+    result: dict[str, object] = {
         "title": f"{proposal_kind.title()} Draft",
         "summary_prompt": summary,
         **({} if proposal_kind == "script" else {"generation_prompt": summary}),
         "structured_content": _structured_content_for_proposal(proposal_kind, summary),
     }
+    if proposal_kind == "script":
+        requirement_projection = context.get("requirement_projection")
+        hard_controls = (
+            requirement_projection.get("hard_controls")
+            if isinstance(requirement_projection, Mapping)
+            else None
+        )
+        duration_seconds = (
+            next(
+                (
+                    control.get("value")
+                    for control in hard_controls
+                    if isinstance(control, Mapping) and control.get("control") == "duration_seconds"
+                ),
+                None,
+            )
+            if isinstance(hard_controls, list)
+            else None
+        )
+        if not isinstance(duration_seconds, (int, float)) or isinstance(duration_seconds, bool):
+            raise ValueError("Canonical production duration is required.")
+        result["structured_content"] = {
+            **dict(result["structured_content"]),
+            "total_duration_seconds": duration_seconds,
+        }
+    return result
 
 
 def _style_skill_lineage(context: object) -> dict[str, str | None] | None:
@@ -1133,6 +1166,7 @@ class AgentConversationService:
             AgentCanvasRequirementRepository(workflows.database),
             EventRepository(workflows.database),
         )
+        self._duration_authority = GuidedDurationAuthorityPolicy()
         self._next_actions = NextActionExecutionService(gateway)
         self._journey = production_journey or GuidedProductionJourneyService(conversations)
         self._decision_bundles = DecisionBundleAuthoringService(
@@ -1512,6 +1546,52 @@ class AgentConversationService:
                     else None
                 ),
                 response_locale=intent.response_locale,
+            )
+        duration_questionnaire = self._duration_authority.questionnaire(
+            requirements,
+            response_locale=session.response_locale,
+        )
+        if (
+            intent.mode == "guided_production"
+            and requirement_changed
+            and not requirements.ledger.unresolved_conflicts
+            and session.journey.stage == "intake"
+            and session.awaiting is None
+            and duration_questionnaire is not None
+        ):
+            duration_evidence = JourneyEvidenceV2(
+                evidence_id=f"creative-goal-validated:{turn_id}",
+                evidence_kind="creative_goal_validated",
+                source_id=turn_id,
+                source_revision=requirements.revision_no,
+            )
+            duration_journey = session.journey.model_copy(
+                update={
+                    "stage_status": "waiting_user",
+                    "stage_revision": session.journey.stage_revision + 1,
+                    "transition_evidence": (
+                        *session.journey.transition_evidence,
+                        duration_evidence.as_transition(
+                            stage=session.journey.stage,
+                            stage_revision=session.journey.stage_revision,
+                        ),
+                    ),
+                }
+            )
+            return self._conversations.complete_turn_with_clarification(
+                turn_id,
+                expected_session_revision=session.revision,
+                journey=duration_journey,
+                assistant_message="Choose the total advertisement duration to continue.",
+                transition_key=(
+                    f"intake-duration:{turn_id}:requirements:{requirements.revision_id}"
+                ),
+                questionnaire=duration_questionnaire,
+                checkpoint_id=f"duration:{turn_id}",
+                interaction_title="Choose production duration",
+                interaction_context=(
+                    "Confirm the total duration before time-dependent authoring begins."
+                ),
             )
         clarification_required = bool(requirements.ledger.unresolved_conflicts) or (
             intent.mode == "guided_production"

@@ -51,6 +51,7 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
     EditingNodeContentV2,
@@ -840,6 +841,13 @@ class AgentCanvasWorkflowRepository:
                                     "recipe_digest": node.prompt_preparation.recipe_digest,
                                     "prompt_digest": node.prompt_preparation.prompt_digest,
                                     "binding_digest": node.prompt_preparation.binding_digest,
+                                    **(
+                                        safe_prompt_assertion_metadata(
+                                            node.prompt_preparation.assertion_evidence
+                                        )
+                                        if node.prompt_preparation.assertion_evidence is not None
+                                        else {}
+                                    ),
                                     "error_code": (
                                         node.prompt_preparation.error.code
                                         if node.prompt_preparation.error is not None

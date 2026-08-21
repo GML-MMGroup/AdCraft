@@ -5,6 +5,9 @@ from __future__ import annotations
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV2,
@@ -16,6 +19,7 @@ from app.schemas.agent_canvas_production_journey import (
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
 )
@@ -33,6 +37,8 @@ class GuidedProductionJourneyService:
         self._conversations = conversations
         self._policy = policy or GuidedProductionJourneyPolicyService()
         self._awaiting = awaiting
+        self._requirements = AgentCanvasRequirementRepository(conversations.database)
+        self._duration_authority = GuidedDurationAuthorityPolicy()
 
     def next_action(
         self,
@@ -41,6 +47,7 @@ class GuidedProductionJourneyService:
         clarification_required: bool = False,
     ) -> JourneyPolicyResultV2:
         session = self._conversations.get_guidance_session(workflow_id)
+        self._require_stage_duration(workflow_id, session.journey.stage)
         return self._policy.evaluate(
             _context(session, clarification_required=clarification_required)
         )
@@ -55,6 +62,7 @@ class GuidedProductionJourneyService:
         idempotency_key: str,
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
+        self._require_stage_duration(workflow_id, session.journey.stage)
         result = self._policy.evaluate(_context(session))
         if result.action not in {
             "invoke_capability",
@@ -89,6 +97,12 @@ class GuidedProductionJourneyService:
             },
         )
         return updated, result
+
+    def _require_stage_duration(self, workflow_id: str, stage) -> None:
+        self._duration_authority.require_for_stage(
+            self._requirements.get_current(workflow_id),
+            stage,
+        )
 
     def require_current_awaiting(self, workflow_id: str) -> None:
         """Require typed waiting authority for the current Journey revision."""

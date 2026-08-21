@@ -370,6 +370,10 @@ class AgentCanvasConversationRepository:
         journey: GuidedProductionJourneyV2,
         assistant_message: str,
         transition_key: str,
+        questionnaire: GuidedQuestionnaireV1 | None = None,
+        checkpoint_id: str | None = None,
+        interaction_title: str | None = None,
+        interaction_context: str | None = None,
     ) -> ChatTurnV2:
         """Atomically publish clarification authority and complete its source Turn."""
 
@@ -464,6 +468,10 @@ class AgentCanvasConversationRepository:
                         expected_session_revision=next_revision,
                         journey=journey,
                         assistant_message=assistant_message,
+                        questionnaire=questionnaire,
+                        checkpoint_id=checkpoint_id,
+                        interaction_title=interaction_title,
+                        interaction_context=interaction_context,
                         now=now,
                     )
                     evidence = next(
@@ -4979,15 +4987,19 @@ def _upsert_clarification_authority(
     expected_session_revision: int,
     journey: GuidedProductionJourneyV2,
     assistant_message: str,
+    questionnaire: GuidedQuestionnaireV1 | None,
+    checkpoint_id: str | None,
+    interaction_title: str | None,
+    interaction_context: str | None,
     now: str,
 ) -> None:
-    checkpoint_id = f"clarification:{journey.stage_revision}"
+    checkpoint_id = checkpoint_id or f"clarification:{journey.stage_revision}"
     identity = hashlib.sha256(
         f"{workflow_id}:{session_id}:{checkpoint_id}".encode("utf-8")
     ).hexdigest()[:32]
     interaction_id = f"interaction_{identity}"
     awaiting_id = f"awaiting_{identity}"
-    content = GuidedQuestionnaireV1(
+    content = questionnaire or GuidedQuestionnaireV1(
         questions=(
             GuidedQuestionV1(
                 question_id=f"question_{identity}",
@@ -5067,10 +5079,15 @@ def _upsert_clarification_authority(
         response_locale=response_locale,
         expected_session_revision=expected_session_revision,
         revision=1,
-        title="Clarify campaign requirements",
-        context="Answer the current clarification before guided production continues.",
+        title=interaction_title or "Clarify campaign requirements",
+        context=(
+            interaction_context
+            or "Answer the current clarification before guided production continues."
+        ),
         content=content,
-        allowed_actions=("answer", "custom", "skip"),
+        allowed_actions=(
+            ("answer", "custom") if questionnaire is not None else ("answer", "custom", "skip")
+        ),
         submit_path=(f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"),
         created_at=now,
         updated_at=now,

@@ -1436,6 +1436,11 @@ class AgentCanvasCommandRepository:
                         str(source["creative_role"]) == "character"
                         and source_content.get("character_asset_kind") == "identity_master"
                     )
+                    storyboard_video_sequence_id = (
+                        source_metadata.get("source_sequence_id")
+                        if str(source["creative_role"]) == "storyboard_video"
+                        else None
+                    )
                     variation = (
                         connection.execute(
                             select(AgentCanvasVariationDraftRow).where(
@@ -1474,7 +1479,12 @@ class AgentCanvasCommandRepository:
                         metadata=(
                             {**source_metadata, "character_pair_id": character_pair_id}
                             if character_pair_id is not None
-                            else {}
+                            else (
+                                {"source_sequence_id": storyboard_video_sequence_id}
+                                if isinstance(storyboard_video_sequence_id, str)
+                                and storyboard_video_sequence_id
+                                else {}
+                            )
                         ),
                         prompt_context_snapshot_id=None,
                         output_asset_id=None,

@@ -171,6 +171,7 @@ class GuidedInteractionService:
                 request,
                 submission_id=submission_id,
                 idempotency_key=idempotency_key,
+                continuation_writer=self._conversations.insert_continuation_in_transaction,
             )
         if not isinstance(request, GuidedConceptSubmitV2) or not isinstance(
             interaction.content, GuidedConceptChoiceV2

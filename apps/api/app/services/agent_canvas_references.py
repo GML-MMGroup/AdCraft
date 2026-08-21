@@ -104,8 +104,15 @@ class AdReferenceBundleResolver:
                 source_role = asset.source_semantic_role
             resolved = ResolvedAdReferenceV2(
                 binding_id=binding.binding_id,
+                binding_revision=int(binding.metadata.get("revision") or 1),
                 source_kind=binding.source.kind,
                 source_node_id=source_node_id,
+                source_node_revision=(source.revision if source_node_id is not None else None),
+                source_sequence_id=(
+                    str(source.metadata["source_sequence_id"])
+                    if source_node_id is not None and source.metadata.get("source_sequence_id")
+                    else None
+                ),
                 source_semantic_role=source_role,
                 semantic_reference_role=binding.metadata.get("semantic_reference_role"),
                 storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),

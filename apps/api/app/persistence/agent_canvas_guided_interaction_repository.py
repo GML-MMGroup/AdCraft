@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Literal, Mapping, cast
@@ -22,6 +23,7 @@ from app.persistence.agent_canvas_guided_media_resume_repository import (
 )
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
+    AgentCanvasChatTurnRow,
     AgentCanvasConceptProposalRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
@@ -30,7 +32,7 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionSubmissionRow,
     AgentCanvasWorkflowRow,
 )
-from app.schemas.agent_canvas_conversation import AgentActionReceiptV2
+from app.schemas.agent_canvas_conversation import AgentActionReceiptV2, ContinuationCommitV2
 from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
     CreativeGoalV2,
@@ -61,6 +63,7 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyContextV2,
 )
 from app.schemas.agent_canvas_requirements import (
+    DurationSecondsControlV1,
     RequirementDirectiveV1,
     RequirementElementPresenceV1,
 )
@@ -74,6 +77,10 @@ from app.services.agent_canvas_requirement_directives import (
 )
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
+)
+from app.services.agent_canvas_guided_duration import (
+    DURATION_QUESTION_ID,
+    GuidedDurationAuthorityPolicy,
 )
 
 
@@ -393,16 +400,26 @@ class AgentCanvasGuidedInteractionRepository:
         *,
         submission_id: str,
         idempotency_key: str,
+        continuation_writer: Callable[..., None] | None = None,
     ) -> GuidedInteractionAcceptedV1:
         if not isinstance(interaction.content, GuidedQuestionnaireV1):
             raise _error(
                 "guided_interaction_action_not_allowed",
                 "This guided interaction is not a questionnaire.",
             )
-        directives = _questionnaire_directives(
-            interaction,
-            request,
-            submission_id=submission_id,
+        duration_answer = (
+            GuidedDurationAuthorityPolicy().resolve_answer(interaction.content, request)
+            if _is_duration_questionnaire(interaction.content)
+            else None
+        )
+        directives = (
+            ()
+            if duration_answer is not None
+            else _questionnaire_directives(
+                interaction,
+                request,
+                submission_id=submission_id,
+            )
         )
         request_json = request.model_dump_json()
         request_digest = sha256(request_json.encode("utf-8")).hexdigest()
@@ -481,8 +498,20 @@ class AgentCanvasGuidedInteractionRepository:
                     requirement_head.ledger.active_directives,
                     stored,
                 )
+                controls = {item.control: item for item in requirement_head.ledger.hard_controls}
+                if duration_answer is not None:
+                    controls["duration_seconds"] = DurationSecondsControlV1(
+                        value=duration_answer.effect.value,
+                        source_kind="decision_bundle_answer",
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=DURATION_QUESTION_ID,
+                        source_option_id=duration_answer.source_option_id,
+                        source_text=duration_answer.source_text,
+                        created_revision_no=revision_no,
+                    )
                 next_ledger = requirement_head.ledger.model_copy(
                     update={
+                        "hard_controls": tuple(controls[key] for key in sorted(controls)),
                         "active_directives": canonical.active_directives,
                         "unresolved_conflicts": (),
                     }
@@ -549,6 +578,46 @@ class AgentCanvasGuidedInteractionRepository:
                         "guidance_revision_conflict",
                         "Guidance session changed before questionnaire Submit.",
                     )
+                continuation_id = None
+                if duration_answer is not None:
+                    if continuation_writer is None:
+                        raise _error(
+                            "guidance_continuation_unavailable",
+                            "Duration acceptance cannot publish its continuation.",
+                        )
+                    source_turn_id = _duration_source_turn_id(interaction)
+                    source_turn = (
+                        connection.execute(
+                            select(AgentCanvasChatTurnRow).where(
+                                AgentCanvasChatTurnRow.turn_id == source_turn_id,
+                                AgentCanvasChatTurnRow.workflow_id == interaction.workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if source_turn is None:
+                        raise _error(
+                            "guidance_resume_evidence_missing",
+                            "Duration acceptance source Turn is unavailable.",
+                        )
+                    identity = sha256(
+                        f"duration-next-action:{submission_id}".encode("utf-8")
+                    ).hexdigest()
+                    continuation_id = f"continuation_{identity[:24]}"
+                    continuation_writer(
+                        connection,
+                        workflow_id=interaction.workflow_id,
+                        conversation_id=str(source_turn["conversation_id"]),
+                        continuation=ContinuationCommitV2(
+                            continuation_id=continuation_id,
+                            continuation_turn_id=f"turn_{identity[24:56]}",
+                            source_turn_id=source_turn_id,
+                            source_action_id=interaction.interaction_id,
+                            idempotency_key=f"duration-next-action:{submission_id}",
+                        ),
+                        now=now,
+                    )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
@@ -579,6 +648,9 @@ class AgentCanvasGuidedInteractionRepository:
                             "digest": requirement_revision.digest,
                             "source_kind": "decision_bundle_answer",
                             "added_directive_ids": list(canonical.added_directive_ids),
+                            "changed_control_names": (
+                                ["duration_seconds"] if duration_answer is not None else []
+                            ),
                             "refresh": ["requirements"],
                         },
                     ),
@@ -622,6 +694,7 @@ class AgentCanvasGuidedInteractionRepository:
                     interaction_id=interaction.interaction_id,
                     submission_id=submission_id,
                     receipt_id=f"receipt_{submission_id}",
+                    continuation_id=continuation_id,
                     resulting_session_revision=next_session_revision,
                     events_cursor=final_event.seq,
                 )
@@ -1632,6 +1705,26 @@ def _questionnaire_directives(
             )
         )
     return tuple(directives)
+
+
+def _is_duration_questionnaire(content: GuidedQuestionnaireV1) -> bool:
+    return len(content.questions) == 1 and content.questions[0].question_id == DURATION_QUESTION_ID
+
+
+def _duration_source_turn_id(interaction: GuidedInteractionV1) -> str:
+    prefix = "duration:"
+    if not interaction.checkpoint_id.startswith(prefix):
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Duration interaction does not identify its source Turn.",
+        )
+    source_turn_id = interaction.checkpoint_id[len(prefix) :]
+    if not source_turn_id:
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Duration interaction does not identify its source Turn.",
+        )
+    return source_turn_id
 
 
 def _dump(value: object) -> str:

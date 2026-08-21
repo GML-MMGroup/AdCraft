@@ -60,6 +60,7 @@ from app.schemas.agent_working_documents import (
 from app.services.agent_canvas_conversation import (
     VideoAgentGateway,
 )
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_materialization_runtime import (
     materialization_context_from_state,
     validate_materialization_reference_snapshots,
@@ -81,9 +82,6 @@ from app.services.agent_canvas_production_journey_reducer import (
 )
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
-)
-from app.services.agent_canvas_storyboard_sequence_windows import (
-    StoryboardSequenceWindowPlanner,
 )
 from app.services.agent_canvas_capability_draft_bundle import (
     stage_definitions,
@@ -139,6 +137,7 @@ class CapabilityMaterializationPublicationService:
             conversations.events,
         )
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
+        self._duration_authority = GuidedDurationAuthorityPolicy()
         self._prompt_ready_activation = prompt_ready_activation
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
@@ -304,8 +303,8 @@ class CapabilityMaterializationPublicationService:
             "storyboard_production_plan",
         )
         if current is None:
-            authority_plan = StoryboardSequenceWindowPlanner.plan(
-                total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
+            authority_plan = self._duration_authority.plan_sequences(
+                requirement,
                 aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
                 explicit_sequence_count=context.explicit_constraints.get(
                     "storyboard_sequence_count"
@@ -379,6 +378,7 @@ class CapabilityMaterializationPublicationService:
                 "The guided document stage requires the authoritative V3 Storyboard Plan.",
                 stage="capability_materialization_publication",
             )
+        self._duration_authority.validate_plan(requirement, current.content)
         outline = (
             f"{current.content.narrative_outline}\nStyle lock: {text}"
             if stage == "style_lock"
@@ -431,6 +431,8 @@ class CapabilityMaterializationPublicationService:
                 "BGM planning requires the authoritative V3 Storyboard Plan.",
                 stage="capability_materialization_publication",
             )
+        requirement = self._requirements.get_current(envelope.workflow_id)
+        self._duration_authority.validate_plan(requirement, current.content)
         bgm_node = next(
             (node for node in nodes if node.node_type == "audio" and node.creative_role == "bgm"),
             None,
@@ -511,6 +513,7 @@ class CapabilityMaterializationPublicationService:
                 "Accepted identity materialization did not plan its source Node.",
                 stage="capability_materialization_publication",
             )
+        requirement = self._requirements.get_current(envelope.workflow_id)
         current = self._working_documents.get_by_kind(
             envelope.workflow_id,
             session_id,
@@ -522,7 +525,6 @@ class CapabilityMaterializationPublicationService:
                 "The current Anchor Registry is not authoritative V3 content.",
                 stage="capability_materialization_publication",
             )
-        requirement = self._requirements.get_current(envelope.workflow_id)
         next_revision = 1 if current is None else current.revision + 1
         existing_content = (
             AnchorRegistryContentV3(schema_version="3") if current is None else current.content
@@ -912,6 +914,7 @@ class CapabilityMaterializationPublicationService:
         ):
             return normalization, ()
 
+        requirement = self._requirements.get_current(envelope.workflow_id)
         current = self._working_documents.get_by_kind(
             envelope.workflow_id,
             session_id,
@@ -925,11 +928,12 @@ class CapabilityMaterializationPublicationService:
                     stage="capability_materialization_publication",
                 )
             content = current.content
+            self._duration_authority.validate_plan(requirement, content)
             document_id = current.document_id
             document_revision = current.revision
         else:
-            authority_plan = StoryboardSequenceWindowPlanner.plan(
-                total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
+            authority_plan = self._duration_authority.plan_sequences(
+                requirement,
                 aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
                 explicit_sequence_count=context.explicit_constraints.get(
                     "storyboard_sequence_count"
@@ -951,7 +955,6 @@ class CapabilityMaterializationPublicationService:
                 outline,
                 authority_plan,
             )
-            requirement = self._requirements.get_current(envelope.workflow_id)
             content = StoryboardProductionPlanContentV3(
                 schema_version="3",
                 narrative_outline=legacy_outline.narrative_outline,

@@ -261,7 +261,10 @@ def _render_result(
         return ScriptMaterializationResultV1(
             title="Script Draft",
             summary_prompt=_join(seed.premise, seed.audience_objective),
-            structured_content={"content": content},
+            structured_content={
+                "content": content,
+                "total_duration_seconds": seed.duration_seconds,
+            },
         )
     if isinstance(seed, StoryboardDraftSeedV1):
         panels = tuple(panel.model_dump(mode="json") for panel in seed.panel_beats)

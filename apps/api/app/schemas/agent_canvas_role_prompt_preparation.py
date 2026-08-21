@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 
 
 RolePromptVariantV2 = Literal[
@@ -50,6 +51,7 @@ class RoleBindingSnapshotV2(_RolePromptModel):
     asset_id: str | None = Field(default=None, min_length=1, max_length=160)
     asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
     reference_purpose: str = Field(min_length=1, max_length=80)
+    source_sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
     display_order: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -320,3 +322,4 @@ class CompiledNodePromptV2(_RolePromptModel):
     parameters: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
     reference_purposes: tuple[str, ...] = Field(default=(), max_length=32)
     role_reference_policy_version: str | None = Field(default=None, max_length=64)
+    assertion_evidence: PromptAssertionEvidenceV1
