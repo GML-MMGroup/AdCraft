@@ -765,4 +765,52 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
     expect(result.current.state.runtime).toBe(presentedRuntime);
   });
+
+  it("retries a duplicate runtime event after a transient refresh failure", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(result.current.state.runtime).not.toBeNull());
+    api.agentCanvasRuntime.mockReset()
+      .mockRejectedValueOnce(new Error("temporary runtime failure"))
+      .mockResolvedValueOnce({ ...runtime, events_cursor: 44 });
+    const waitingEvent = (sequence_no: number) => ({
+      sequence_no,
+      workflow_id: "workflow-1",
+      event_type: "node_generation_waiting",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "node-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: null,
+      attempt: 1,
+      created_at: "2026-07-28T00:02:00Z",
+      payload: { waiting_reason: "provider_queue" },
+    });
+
+    eventSource.emit("node_generation_waiting", waitingEvent(43));
+    await waitFor(() => expect(result.current.state.runtimeError).toBe("temporary runtime failure"));
+    eventSource.emit("node_generation_waiting", waitingEvent(44));
+
+    await waitFor(() => expect(api.agentCanvasRuntime).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.state.runtimeError).toBeNull());
+  });
 });

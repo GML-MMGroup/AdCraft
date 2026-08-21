@@ -130,6 +130,7 @@ export function useAgentCanvasRuntime(
             setRuntimeError("Agent Canvas runtime requires the matching backend update.");
             return;
           }
+          seenRuntimeRefreshIdentitiesRef.current.clear();
           setRuntimeError(error instanceof Error ? error.message : "Runtime refresh failed.");
         }
       } while (
@@ -331,7 +332,9 @@ export function useAgentCanvasRuntime(
         if (cursorRef.current === 0) {
           const baselineRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
-          setRuntime(baselineRuntime);
+          setRuntime((current) => (
+            sameRuntimePresentation(current, baselineRuntime) ? current : baselineRuntime
+          ));
           cursorRef.current = baselineRuntime.events_cursor;
           setRuntimeError(null);
         }
@@ -376,7 +379,9 @@ export function useAgentCanvasRuntime(
           try {
             const latestRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
             if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
-            setRuntime(latestRuntime);
+            setRuntime((current) => (
+              sameRuntimePresentation(current, latestRuntime) ? current : latestRuntime
+            ));
             cursorRef.current = latestRuntime.events_cursor;
             setRuntimeError(null);
             await refreshWorkflow();
