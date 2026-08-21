@@ -53,6 +53,10 @@ from app.services.v2_provider_reference_input_delivery import (
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.tools.mock_media_fixtures import (
+    MockMediaFixtureError,
+    deterministic_mock_media_bytes,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -867,7 +871,21 @@ def build_default_node_dispatcher(
                 if fake_media_bytes_override is not None
                 else None
             )
-            content = overridden_content or signature + b"ADCRAFT_FAKE_MEDIA\n" + seed
+            try:
+                content = overridden_content or (
+                    deterministic_mock_media_bytes(
+                        "audio",
+                        data_dir=settings.media_data_dir,
+                        ffmpeg_path=settings.ffmpeg_path,
+                    )
+                    if context.node.node_type == "audio"
+                    else signature + b"ADCRAFT_FAKE_MEDIA\n" + seed
+                )
+            except MockMediaFixtureError as error:
+                raise _error(
+                    "mock_media_fixture_unavailable",
+                    "Deterministic Mock media could not be created.",
+                ) from error
             outcome = NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
                     content=content,
