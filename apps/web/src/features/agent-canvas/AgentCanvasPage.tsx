@@ -143,6 +143,7 @@ export function AgentCanvasPage() {
   const {
     cancelRun,
     clearAutoRunNotice,
+    refreshRuntime,
     refreshWorkflow,
     runAll,
     runNode,
@@ -1024,6 +1025,7 @@ export function AgentCanvasPage() {
         onFocusNode={focusNode}
         onActionReceipt={placeReceiptNodes}
         onWorkflowRefresh={refreshWorkflow}
+        onRuntimeRefresh={refreshRuntime}
         onCollapsedChange={setChatCollapsed}
       />
     </div>

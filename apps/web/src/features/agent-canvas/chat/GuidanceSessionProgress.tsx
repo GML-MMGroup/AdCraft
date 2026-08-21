@@ -70,12 +70,6 @@ export function GuidanceSessionProgress({ session }: { session: GuidedSessionSta
         {session.creative_authority ? (
           <span>Direction: {session.creative_authority.authority === "user" ? "You" : "Director"}</span>
         ) : null}
-        {session.current_checkpoint ? (
-          <span>
-            Checkpoint: {session.current_checkpoint.stage_kind?.replaceAll("_", " ") ?? "planning"}
-            {` · ${session.current_checkpoint.status.replaceAll("_", " ")}`}
-          </span>
-        ) : null}
         <span>Authoring: {session.completion.authoring.replaceAll("_", " ")}</span>
         <span>Delivery: {session.completion.delivery.replaceAll("_", " ")}</span>
       </div>

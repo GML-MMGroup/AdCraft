@@ -74,4 +74,33 @@ describe("GuidedInteractionCard", () => {
     expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "exclude" }));
     expect(submit).toHaveBeenCalledTimes(1);
   });
+
+  it("shows only concise public option content", () => {
+    render(<GuidedInteractionCard
+      interaction={{
+        ...interaction,
+        content: interaction.content.content_kind === "concept_choice"
+          ? {
+              ...interaction.content,
+              options: interaction.content.options.map((option, index) => ({
+                ...option,
+                difference_tags: [`internal-decision-${index + 1}`],
+                reference_preview: [{
+                  source_kind: "image_asset" as const,
+                  source_id: `asset-${index + 1}`,
+                  display_name: `Internal reference ${index + 1}`,
+                  media_type: "image" as const,
+                }],
+              })),
+            }
+          : interaction.content,
+      }}
+      pending={false}
+      onSubmit={vi.fn().mockResolvedValue(true)}
+    />);
+
+    expect(screen.getAllByRole("button", { name: /Warm|Precise|Playful/ })).toHaveLength(3);
+    expect(screen.queryByText("internal-decision-1")).toBeNull();
+    expect(screen.queryByText("Internal reference 1")).toBeNull();
+  });
 });

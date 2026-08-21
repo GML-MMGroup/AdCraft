@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChatProposalCardV2, GuidedInteractionV1 } from "../../../types-v2.ts";
+import type { GuidedInteractionV1 } from "../../../types-v2.ts";
 import {
   guidedInteractionContentVersion,
-  interactionForTimelineProposal,
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
 
@@ -26,15 +25,9 @@ const interaction: GuidedInteractionV1 = {
   updated_at: "2026-08-17T00:00:00Z",
 };
 
-const timelineProposal = {
-  item_type: "proposal",
-  proposal: { proposal_id: "proposal-1" },
-} as ChatProposalCardV2;
-
 describe("guided interaction placement", () => {
-  it("attaches a matching open concept interaction to its Timeline proposal", () => {
-    expect(interactionForTimelineProposal(interaction, timelineProposal)).toBe(interaction);
-    expect(shouldRenderStandaloneInteraction(interaction, [timelineProposal])).toBe(false);
+  it("keeps the current interaction standalone even when Timeline contains its proposal", () => {
+    expect(shouldRenderStandaloneInteraction(interaction)).toBe(true);
   });
 
   it("keeps non-proposal interactions in the standalone interaction area", () => {
@@ -44,8 +37,14 @@ describe("guided interaction placement", () => {
       content: { content_kind: "questionnaire", questions: [] },
     };
 
-    expect(interactionForTimelineProposal(questionnaire, timelineProposal)).toBeNull();
-    expect(shouldRenderStandaloneInteraction(questionnaire, [timelineProposal])).toBe(true);
+    expect(shouldRenderStandaloneInteraction(questionnaire)).toBe(true);
+  });
+
+  it("does not pin interactions that are no longer open", () => {
+    expect(shouldRenderStandaloneInteraction({
+      ...interaction,
+      status: "submitted",
+    })).toBe(false);
   });
 
   it("changes the timeline content version when the active review changes", () => {
