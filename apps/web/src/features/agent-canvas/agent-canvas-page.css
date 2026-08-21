@@ -76,6 +76,49 @@
   animation: agent-canvas-selected-edge-flow 760ms linear infinite;
 }
 
+.agent-canvas-board.is-interacting .react-flow__edge-path {
+  filter: none;
+  transition: none;
+}
+
+.agent-canvas-board.is-interacting .react-flow__edge.selected .react-flow__edge-path,
+.agent-canvas-board.is-interacting .react-flow__edge.is-node-related .react-flow__edge-path {
+  filter: none;
+  transition: none;
+  animation-play-state: paused;
+}
+
+.agent-canvas-board.is-interacting .agent-canvas-node {
+  box-shadow: none;
+  transition: none;
+}
+
+.agent-canvas-board.is-interacting :is(
+  .agent-canvas-node__type-label,
+  .agent-canvas-node__video-play,
+  .agent-canvas-audio-player,
+  .agent-canvas-node__status,
+  .agent-canvas-node__fallback-warning,
+  .agent-canvas-node__error
+) {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.agent-canvas-board.is-interacting :is(
+  .agent-canvas-audio-player__waveform i,
+  .agent-canvas-node__working-orbit,
+  .agent-canvas-node__working-sheen
+) {
+  animation-play-state: paused;
+}
+
+.agent-canvas-board.is-interacting .agent-canvas-node__center-icon img,
+.agent-canvas-board.is-interacting .agent-canvas-pointer-dot {
+  filter: none;
+}
+
 @keyframes agent-canvas-selected-edge-flow {
   to {
     stroke-dashoffset: -14;

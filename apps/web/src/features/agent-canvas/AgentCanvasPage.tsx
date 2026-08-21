@@ -106,6 +106,8 @@ import "./agent-canvas-page.css";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
 
+type CanvasInteractionReason = "viewport" | "node-drag";
+
 export function AgentCanvasPage() {
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
@@ -156,6 +158,7 @@ export function AgentCanvasPage() {
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [canvasInteracting, setCanvasInteracting] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [videoPreview, setVideoPreview] = useState<{
     asset: ProjectAssetSummaryV2;
@@ -174,19 +177,43 @@ export function AgentCanvasPage() {
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
+  const workflowNodesRef = useRef(workflow?.nodes ?? []);
+  const canonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const installedViewportWorkflowIdRef = useRef<string | null>(null);
   const viewportInstallFrameRef = useRef<number | null>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
+  const canvasInteractionReasonsRef = useRef(new Set<CanvasInteractionReason>());
   const dragCancellationPendingRef = useRef(false);
   const latestPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
+  workflowNodesRef.current = workflow?.nodes ?? [];
   useEffect(() => {
     flowNodesRef.current = nodes;
   }, [nodes]);
+  const setCanvasInteractionReason = useCallback((
+    reason: CanvasInteractionReason,
+    active: boolean,
+  ) => {
+    const reasons = canvasInteractionReasonsRef.current;
+    if (active) reasons.add(reason);
+    else reasons.delete(reason);
+    const nextInteracting = reasons.size > 0;
+    setCanvasInteracting((current) => current === nextInteracting ? current : nextInteracting);
+  }, []);
+  const beginCanvasInteraction = useCallback((reason: CanvasInteractionReason) => {
+    setCanvasInteractionReason(reason, true);
+  }, [setCanvasInteractionReason]);
+  const endCanvasInteraction = useCallback((reason: CanvasInteractionReason) => {
+    setCanvasInteractionReason(reason, false);
+  }, [setCanvasInteractionReason]);
+  const clearCanvasInteractions = useCallback(() => {
+    canvasInteractionReasonsRef.current.clear();
+    setCanvasInteracting(false);
+  }, []);
   const scheduleLayoutButtonFocus = useCallback(() => {
     window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
   }, []);
@@ -344,30 +371,36 @@ export function AgentCanvasPage() {
     );
   }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
 
+  const openNodeVideoPreview = useCallback((nodeId: string, asset: ProjectAssetSummaryV2) => {
+    const node = workflowNodesRef.current.find((candidate) => candidate.node_id === nodeId);
+    setVideoPreview({
+      asset,
+      title: asset.display_name || node?.title || "Video preview",
+    });
+  }, []);
+
   const nodeCallbacks = useMemo<AgentCanvasNodeCallbacks>(() => ({
     onRun: (nodeId) => runNodeById(nodeId, false),
     onRetry: (nodeId) => runNodeById(nodeId, true),
     onExport: openEditing,
-    onOpenVideoPreview: (nodeId, asset) => {
-      const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
-      setVideoPreview({
-        asset,
-        title: asset.display_name || node?.title || "Video preview",
-      });
-    },
+    onOpenVideoPreview: openNodeVideoPreview,
     renderWorkbench,
     onOpenConnectedNodeMenu: (nodeId, direction, point) => {
       setSelectedNodeId(nodeId);
       setConnectedNodeMenu({ anchorNodeId: nodeId, direction, point });
     },
-  }), [openEditing, renderWorkbench, runNodeById, setSelectedNodeId, workflow?.nodes]);
+  }), [openEditing, openNodeVideoPreview, renderWorkbench, runNodeById, setSelectedNodeId]);
 
-  const canonicalNodes = useMemo(
-    () => workflow
-      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks)
-      : [],
-    [live.state.runtime, nodeCallbacks, workflow],
-  );
+  const canonicalNodes = useMemo(() => {
+    const nextNodes = workflow
+      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks, {
+          previousNodes: canonicalNodesRef.current,
+          activeWorkbenchNodeId: session.state.selectedNodeId,
+        })
+      : [];
+    canonicalNodesRef.current = nextNodes;
+    return nextNodes;
+  }, [live.state.runtime, nodeCallbacks, session.state.selectedNodeId, workflow]);
   const presentedNodes = useMemo<AgentCanvasFlowNode[]>(
     () => overlayLayoutPreview(canonicalNodes) as AgentCanvasFlowNode[],
     [canonicalNodes, overlayLayoutPreview],
@@ -395,6 +428,7 @@ export function AgentCanvasPage() {
   }, [presentedNodes, setNodes]);
 
   const cancelActiveNodeDrag = useCallback(() => {
+    endCanvasInteraction("node-drag");
     if (!activeDraggedNodeIdsRef.current.size) return;
     dragCancellationPendingRef.current = true;
     const nextNodes = cancelNodeDrag(
@@ -405,22 +439,26 @@ export function AgentCanvasPage() {
     pendingPresentedNodesRef.current = null;
     flowNodesRef.current = nextNodes;
     setNodes(nextNodes);
-  }, [setNodes]);
+  }, [endCanvasInteraction, setNodes]);
 
   useEffect(() => {
     const activeDraggedNodeIds = activeDraggedNodeIdsRef.current;
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") cancelActiveNodeDrag();
+    const handleWindowBlur = () => {
+      clearCanvasInteractions();
+      cancelActiveNodeDrag();
     };
-    window.addEventListener("blur", cancelActiveNodeDrag);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") handleWindowBlur();
+    };
+    window.addEventListener("blur", handleWindowBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener("blur", cancelActiveNodeDrag);
+      window.removeEventListener("blur", handleWindowBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       activeDraggedNodeIds.clear();
       pendingPresentedNodesRef.current = null;
     };
-  }, [cancelActiveNodeDrag]);
+  }, [cancelActiveNodeDrag, clearCanvasInteractions]);
 
   useEffect(() => {
     setEdges((current) => reconcileSelectableCanvasEdges(presentedEdges, current));
@@ -792,12 +830,13 @@ export function AgentCanvasPage() {
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}
-        className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}`}
+        className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}${canvasInteracting ? " is-interacting" : ""}`}
         onContextMenu={(event) => event.preventDefault()}
         onPointerMove={pointerSpotlight.onPointerMove}
         onPointerLeave={pointerSpotlight.onPointerLeave}
         onPointerCancel={(event) => {
           pointerSpotlight.onPointerCancel(event);
+          clearCanvasInteractions();
           cancelActiveNodeDrag();
         }}
         onDoubleClick={(event) => {
@@ -819,6 +858,7 @@ export function AgentCanvasPage() {
           panOnScroll
           zoomOnDoubleClick={false}
           selectionOnDrag
+          onlyRenderVisibleElements
           nodesDraggable={!layoutPreview.active}
           onInit={initializeFlow}
           onEdgesChange={onEdgesChange}
@@ -836,6 +876,7 @@ export function AgentCanvasPage() {
             focusCanvasNode(node.id);
           }}
           onNodeDragStart={(_event, node, draggedNodes) => {
+            beginCanvasInteraction("node-drag");
             dragCancellationPendingRef.current = false;
             beginNodeDrag(
               activeDraggedNodeIdsRef.current,
@@ -844,6 +885,7 @@ export function AgentCanvasPage() {
             );
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
+            endCanvasInteraction("node-drag");
             if (dragCancellationPendingRef.current) {
               dragCancellationPendingRef.current = false;
               return;
@@ -878,7 +920,9 @@ export function AgentCanvasPage() {
             setConnectedNodeMenu(null);
             setContextMenu(null);
           }}
+          onMoveStart={() => beginCanvasInteraction("viewport")}
           onMoveEnd={(_event, viewport) => {
+            endCanvasInteraction("viewport");
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {
               writeAgentCanvasViewport(workflow.workflow_id, viewport);
             }

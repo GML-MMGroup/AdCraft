@@ -14,8 +14,10 @@ import type {
 import {
   AgentCanvasNodeCard,
   AgentCanvasNodeRenderer,
+  type AgentCanvasFlowNode,
   type AgentCanvasNodeData,
 } from "./AgentCanvasNode.tsx";
+import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 
 const updateNodeInternals = vi.hoisted(() => vi.fn());
 
@@ -734,6 +736,72 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
+  function rendererProps(
+    data: AgentCanvasNodeData,
+    selected = false,
+  ): Parameters<typeof areAgentCanvasNodePropsEqual>[0] {
+    return {
+      id: data.node.node_id,
+      data,
+      type: "agentCanvas",
+      selected,
+      dragging: false,
+      draggable: true,
+      selectable: true,
+      deletable: true,
+      isConnectable: true,
+      zIndex: 0,
+      positionAbsoluteX: 0,
+      positionAbsoluteY: 0,
+    } as Parameters<typeof areAgentCanvasNodePropsEqual>[0] & AgentCanvasFlowNode;
+  }
+
+  it("skips rerendering unchanged unselected nodes after object hydration", () => {
+    const runtime = makeRuntime("working");
+    const previous = rendererProps({
+      node: makeNode("image", "working"),
+      asset: makeAsset("image"),
+      runtime,
+      workbenchActive: false,
+      renderWorkbench: vi.fn(),
+    });
+    const next = rendererProps({
+      node: { ...previous.data.node },
+      asset: { ...previous.data.asset! },
+      runtime: { ...runtime, updated_at: "2026-07-28T09:00:10Z" },
+      workbenchActive: false,
+      renderWorkbench: vi.fn(),
+    });
+
+    expect(areAgentCanvasNodePropsEqual(previous, next)).toBe(true);
+  });
+
+  it("rerenders changed node revisions and active workbench runtime", () => {
+    const runtime = makeRuntime("working");
+    const previous = rendererProps({
+      node: makeNode("script", "working"),
+      runtime,
+      workbenchActive: true,
+      renderWorkbench: vi.fn(),
+    }, true);
+    const changedNode = rendererProps({
+      ...previous.data,
+      node: { ...previous.data.node, revision: previous.data.node.revision + 1 },
+    }, true);
+    const changedRuntime = rendererProps({
+      ...previous.data,
+      runtime: { ...runtime, attempt_no: runtime.attempt_no + 1 },
+    }, true);
+    const changedWorkflow = rendererProps({
+      ...previous.data,
+      node: { ...previous.data.node, workflow_id: "workflow-2" },
+    }, true);
+
+    expect(areAgentCanvasNodePropsEqual(previous, changedNode)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(previous, changedRuntime)).toBe(false);
+    expect(areAgentCanvasNodePropsEqual(previous, changedWorkflow)).toBe(false);
+  });
+
   it("renders hover-revealed gray connection rings instead of default React Flow dots", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");

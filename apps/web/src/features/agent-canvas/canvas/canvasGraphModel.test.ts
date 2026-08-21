@@ -156,6 +156,77 @@ describe("canvasGraphModel", () => {
     });
   });
 
+  it("reuses unchanged flow node and data objects across canonical refreshes", () => {
+    const callbacks = {
+      onOpenVideoPreview: vi.fn(),
+      renderWorkbench: vi.fn(),
+    };
+    const first = toAgentCanvasFlowNodes(workflow, runtime, callbacks);
+    const refreshedWorkflow = {
+      ...workflow,
+      nodes: workflow.nodes.map((item) => ({ ...item })),
+      assets: workflow.assets.map((item) => ({ ...item })),
+    };
+    const refreshedRuntime = {
+      ...runtime,
+      node_runtime: Object.fromEntries(Object.entries(runtime.node_runtime).map(([nodeId, item]) => [
+        nodeId,
+        { ...item },
+      ])),
+    };
+
+    const refreshed = toAgentCanvasFlowNodes(
+      refreshedWorkflow,
+      refreshedRuntime,
+      { ...callbacks, renderWorkbench: vi.fn() },
+      { previousNodes: first, activeWorkbenchNodeId: null },
+    );
+
+    expect(refreshed[0]).toBe(first[0]);
+    expect(refreshed[0]?.data).toBe(first[0]?.data);
+    expect(refreshed[1]).toBe(first[1]);
+  });
+
+  it("rebuilds only the changed node and the active workbench node", () => {
+    const firstWorkbench = vi.fn();
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {
+      renderWorkbench: firstWorkbench,
+    });
+    const changedWorkflow = {
+      ...workflow,
+      nodes: workflow.nodes.map((item, index) => index === 0
+        ? { ...item, revision: item.revision + 1 }
+        : { ...item }),
+    };
+
+    const refreshed = toAgentCanvasFlowNodes(
+      changedWorkflow,
+      runtime,
+      { renderWorkbench: vi.fn() },
+      { previousNodes: first, activeWorkbenchNodeId: "video-1" },
+    );
+
+    expect(refreshed[0]).not.toBe(first[0]);
+    expect(refreshed[1]).not.toBe(first[1]);
+  });
+
+  it("does not reuse matching node ids across workflows", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const otherWorkflow = {
+      ...workflow,
+      workflow_id: "workflow-2",
+      nodes: workflow.nodes.map((item) => ({ ...item, workflow_id: "workflow-2" })),
+    };
+    const refreshed = toAgentCanvasFlowNodes(
+      otherWorkflow,
+      null,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]).not.toBe(first[0]);
+  });
+
   it("keeps canonical node dimensions and data independent from viewport focus", () => {
     const focusedWorkflow = {
       ...workflow,
