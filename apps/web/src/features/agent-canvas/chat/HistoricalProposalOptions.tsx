@@ -26,7 +26,6 @@ export function HistoricalProposalOptions({
               <strong>{option.title}</strong>
               <span>{option.public_summary}</span>
             </span>
-            {selected ? <em>Selected</em> : null}
           </article>
         );
       })}

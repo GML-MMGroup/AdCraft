@@ -824,8 +824,8 @@
 .agent-chat__historical-option {
   position: relative;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  gap: 9px;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
   min-width: 0;
   padding: 10px 11px 10px 9px;
@@ -842,19 +842,14 @@
 }
 
 .agent-chat__historical-option-marker {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border: 1px solid rgb(255 255 255 / 11%);
-  border-radius: 50%;
+  display: block;
+  padding-top: 2px;
   color: rgb(255 255 255 / 52%);
   font-size: 9px;
   font-weight: 650;
 }
 
 .agent-chat__historical-option.is-selected .agent-chat__historical-option-marker {
-  border-color: rgb(157 175 230 / 60%);
   color: #d9dff5;
 }
 
@@ -875,17 +870,6 @@
   color: rgb(255 255 255 / 52%);
   font-size: 11px;
   line-height: 1.45;
-}
-
-.agent-chat__historical-option > em {
-  align-self: center;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgb(157 175 230 / 13%);
-  color: #b9c5ed;
-  font-size: 8px;
-  font-style: normal;
-  font-weight: 650;
 }
 
 .agent-chat__options {
