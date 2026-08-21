@@ -124,4 +124,22 @@ describe("AgentCanvasPage chrome", () => {
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board\.is-layout-previewing \.react-flow__node[\s\S]*?transition: none;/,
     );
   });
+
+  it("defers runtime node replacement until drag stop rebuilds the complete snapshot", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("latestPresentedNodesRef");
+    expect(source).toContain("pendingPresentedNodesRef");
+    expect(source).toContain("deferNodeSnapshotDuringDrag(");
+    expect(source).toContain("finishNodeDrag(");
+    expect(source).toMatch(
+      /const handleNodeChanges = useCallback\([\s\S]*?applyNodeChanges\(changes, current\)[\s\S]*?flowNodesRef\.current = next;[\s\S]*?return next;/,
+    );
+    expect(source).toMatch(
+      /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
+    );
+  });
 });

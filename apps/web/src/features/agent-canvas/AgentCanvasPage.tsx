@@ -1,4 +1,5 @@
 import {
+  applyNodeChanges,
   Controls,
   ReactFlow,
   type Connection,
@@ -61,7 +62,8 @@ import {
   writeAgentCanvasViewport,
 } from "./canvas/agentCanvasViewport.ts";
 import {
-  reconcileDragAwareNodes,
+  deferNodeSnapshotDuringDrag,
+  finishNodeDrag,
   setDraggedNodeIds,
 } from "./canvas/draggingNodeState.ts";
 import {
@@ -148,7 +150,7 @@ export function AgentCanvasPage() {
     runAll,
     runNode,
   } = live.actions;
-  const [nodes, setNodes, onNodesChange] = useNodesState<AgentCanvasFlowNode>([]);
+  const [nodes, setNodes] = useNodesState<AgentCanvasFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -175,8 +177,12 @@ export function AgentCanvasPage() {
   const viewportInstallFrameRef = useRef<number | null>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
+  const latestPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
+  const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
+  const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
+  flowNodesRef.current = nodes;
   const scheduleLayoutButtonFocus = useCallback(() => {
     window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
   }, []);
@@ -372,13 +378,16 @@ export function AgentCanvasPage() {
   );
 
   useEffect(() => {
-    setNodes((current) => {
-      return reconcileDragAwareNodes(
-        presentedNodes,
-        current,
-        activeDraggedNodeIdsRef.current,
-      );
-    });
+    latestPresentedNodesRef.current = presentedNodes;
+    const deferred = deferNodeSnapshotDuringDrag(
+      presentedNodes,
+      flowNodesRef.current,
+      activeDraggedNodeIdsRef.current,
+    );
+    pendingPresentedNodesRef.current = deferred.pendingNodes;
+    if (!deferred.nodes) return;
+    flowNodesRef.current = deferred.nodes;
+    setNodes(deferred.nodes);
   }, [presentedNodes, setNodes]);
 
   useEffect(() => {
@@ -408,8 +417,12 @@ export function AgentCanvasPage() {
   }, [canonicalNodes, exitCanvasNodeFocus, focusedNodeId]);
 
   const handleNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
-    onNodesChange(changes);
-  }, [onNodesChange]);
+    setNodes((current) => {
+      const next = applyNodeChanges(changes, current);
+      flowNodesRef.current = next;
+      return next;
+    });
+  }, [setNodes]);
 
   const connect = useCallback(async (connection: Connection) => {
     if (!workflow || !connectionPolicy || !connection.source || !connection.target || connection.source === connection.target) {
@@ -797,17 +810,18 @@ export function AgentCanvasPage() {
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
             const changed = draggedNodes.length ? draggedNodes : [node];
-            setDraggedNodeIds(
+            const dragResult = finishNodeDrag(
+              pendingPresentedNodesRef.current ?? latestPresentedNodesRef.current,
+              flowNodesRef.current,
               activeDraggedNodeIdsRef.current,
-              node.id,
-              changed.map((item) => item.id),
-              false,
+              changed,
             );
-            void updateNodePositions(changed.map((item) => ({
-              node_id: item.id,
-              x: item.position.x,
-              y: item.position.y,
-            }))).catch(() => {});
+            pendingPresentedNodesRef.current = null;
+            flowNodesRef.current = dragResult.nodes;
+            setNodes(dragResult.nodes);
+            if (dragResult.positions.length) {
+              void updateNodePositions(dragResult.positions).catch(() => {});
+            }
           }}
           onNodesDelete={deleteNodes}
           onConnect={(connection) => void connect(connection)}
