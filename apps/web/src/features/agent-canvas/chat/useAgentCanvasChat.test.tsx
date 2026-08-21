@@ -1338,6 +1338,79 @@ describe("useAgentCanvasChat", () => {
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
   });
 
+  it("reuses pointer hydration while refreshing the same timeline twice", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [
+        {
+          item_type: "proposal_pointer",
+          proposal_id: "proposal-cache-1",
+          sequence: 1,
+          created_at: "2026-08-20T00:00:00Z",
+        },
+        {
+          item_type: "decision_bundle_pointer",
+          bundle_id: "bundle-cache-1",
+          sequence: 2,
+          created_at: "2026-08-20T00:00:01Z",
+        },
+        {
+          item_type: "expert_activity",
+          activity_id: "activity-cache-1",
+          turn_id: "turn-cache-1",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
+          status: "completed",
+          sequence: 3,
+          started_at: "2026-08-20T00:00:02Z",
+          finished_at: "2026-08-20T00:00:03Z",
+          message: null,
+          error_code: null,
+          elapsed_ms: 1_000,
+          attempt_stage: "initial",
+          retryable: false,
+          validation_paths: [],
+          suggested_actions: [],
+          completion_mode: null,
+          warning_code: null,
+        },
+      ],
+      next_cursor: 3,
+    }));
+    api.agentCanvasProposal.mockResolvedValue({ proposal_id: "proposal-cache-1" });
+    api.agentCanvasDecisionBundle.mockResolvedValue({ bundle_id: "bundle-cache-1" });
+    api.agentCanvasChatTurn.mockResolvedValue({
+      turn_id: "turn-cache-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "capability",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      created_at: "2026-08-20T00:00:02Z",
+      updated_at: "2026-08-20T00:00:03Z",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await result.current.actions.refresh();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasProposal).toHaveBeenCalledOnce();
+    expect(api.agentCanvasDecisionBundle).toHaveBeenCalledOnce();
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledOnce();
+  });
+
   it("accepts a queued proposal materialization turn without assuming a synchronous node", async () => {
     const select = descriptor("select_option", "action-select-1");
     const reference = {

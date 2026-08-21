@@ -213,6 +213,10 @@ export function useAgentCanvasChat({
   const deliveredReceiptIdsRef = useRef(new Set<string>());
   const retryingSourceTurnIdsRef = useRef(new Set<string>());
   const presentationItemsByKeyRef = useRef(new Map<string, ChatTimelinePresentationViewItemV2>());
+  const proposalPointerHydrationsRef = useRef(new Map<string, Promise<ChatTimelineItemV2>>());
+  const decisionBundlePointerHydrationsRef = useRef(new Map<string, Promise<ChatTimelineItemV2>>());
+  const capabilityTurnHydrationsRef = useRef(new Map<string, Promise<AgentCanvasChatTurnV2>>());
+  const completedCapabilityTurnIdsRef = useRef(new Set<string>());
   const submittedGuidanceAuthorityDigestsRef = useRef(new Set<string>());
   const guidanceAdvanceInFlightRef = useRef<string | null>(null);
   const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
@@ -301,20 +305,35 @@ export function useAgentCanvasChat({
   ) => {
     if (!workflowId) return;
     const turnIds = [...new Set(items.flatMap((item) => (
-      item.item_type === "expert_activity" ? [item.turn_id] : []
+      item.item_type === "expert_activity" && !completedCapabilityTurnIdsRef.current.has(item.turn_id)
+        ? [item.turn_id]
+        : []
     )))];
     if (!turnIds.length) return;
-    void Promise.all(turnIds.map(async (turnId) => {
-      try {
-        return await agentCanvasApi.agentCanvasChatTurn(workflowId, turnId);
-      } catch {
-        return null;
-      }
-    })).then((turns) => {
+    const hydrateTurn = (turnId: string) => {
+      const cached = capabilityTurnHydrationsRef.current.get(turnId);
+      if (cached) return cached;
+      const hydration = agentCanvasApi.agentCanvasChatTurn(workflowId, turnId).then((turn) => {
+        if (turn.status === "completed") completedCapabilityTurnIdsRef.current.add(turnId);
+        return turn;
+      });
+      capabilityTurnHydrationsRef.current.set(turnId, hydration);
+      void hydration.finally(() => {
+        if (capabilityTurnHydrationsRef.current.get(turnId) === hydration) {
+          capabilityTurnHydrationsRef.current.delete(turnId);
+        }
+      }).catch(() => {
+        // Failed turn hydration must be retried by the next timeline refresh.
+      });
+      return hydration;
+    };
+    void Promise.all(turnIds.map(hydrateTurn)).then((turns) => {
       if (generation !== refreshGenerationRef.current) return;
       turns.forEach((turn) => {
-        if (turn) applyTurnProjection(turn);
+        applyTurnProjection(turn);
       });
+    }).catch(() => {
+      // Failed turn hydration is deliberately not cached and retries on the next refresh.
     });
   }, [applyTurnProjection, workflowId]);
 
@@ -342,22 +361,38 @@ export function useAgentCanvasChat({
         });
         const hydrateTimelineItem = async (item: ChatTimelineItemV2): Promise<ChatTimelineItemV2> => {
           if (item.item_type === "proposal_pointer") {
-            const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
-            return {
-              item_type: "proposal",
+            const cached = proposalPointerHydrationsRef.current.get(item.proposal_id);
+            if (cached) return cached;
+            const hydration = agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id).then((proposal) => ({
+              item_type: "proposal" as const,
               proposal,
               sequence: item.sequence,
               created_at: item.created_at,
-            };
+            }));
+            proposalPointerHydrationsRef.current.set(item.proposal_id, hydration);
+            void hydration.catch(() => {
+              if (proposalPointerHydrationsRef.current.get(item.proposal_id) === hydration) {
+                proposalPointerHydrationsRef.current.delete(item.proposal_id);
+              }
+            });
+            return hydration;
           }
           if (item.item_type === "decision_bundle_pointer") {
-            const decisionBundle = await agentCanvasApi.agentCanvasDecisionBundle(workflowId, item.bundle_id);
-            return {
-              item_type: "decision_bundle",
+            const cached = decisionBundlePointerHydrationsRef.current.get(item.bundle_id);
+            if (cached) return cached;
+            const hydration = agentCanvasApi.agentCanvasDecisionBundle(workflowId, item.bundle_id).then((decisionBundle) => ({
+              item_type: "decision_bundle" as const,
               decision_bundle: decisionBundle,
               sequence: item.sequence,
               created_at: item.created_at,
-            };
+            }));
+            decisionBundlePointerHydrationsRef.current.set(item.bundle_id, hydration);
+            void hydration.catch(() => {
+              if (decisionBundlePointerHydrationsRef.current.get(item.bundle_id) === hydration) {
+                decisionBundlePointerHydrationsRef.current.delete(item.bundle_id);
+              }
+            });
+            return hydration;
           }
           return item;
         };
@@ -533,6 +568,10 @@ export function useAgentCanvasChat({
     deliveredReceiptIdsRef.current.clear();
     retryingSourceTurnIdsRef.current.clear();
     presentationItemsByKeyRef.current.clear();
+    proposalPointerHydrationsRef.current.clear();
+    decisionBundlePointerHydrationsRef.current.clear();
+    capabilityTurnHydrationsRef.current.clear();
+    completedCapabilityTurnIdsRef.current.clear();
     submittedGuidanceAuthorityDigestsRef.current.clear();
     guidanceAdvanceInFlightRef.current = null;
     postReadyBarrierRef.current = null;
