@@ -10,6 +10,7 @@ type PresentationMessageKey =
   | "expert_activity.completed"
   | "expert_activity.failed"
   | "draft.materialized"
+  | "media_review.pending_action"
   | "action.topic_deferred"
   | "action.element_excluded";
 
@@ -30,6 +31,7 @@ const EN_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
     const count = positiveIntegerArgument(args, "created_node_count");
     return count === null ? null : `${count} Draft node${count === 1 ? "" : "s"} created.`;
   },
+  "media_review.pending_action": (args) => mediaReviewMessage(args, "en"),
   "action.topic_deferred": () => "This topic was deferred.",
   "action.element_excluded": () => "This element was excluded.",
 };
@@ -47,9 +49,55 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
     const count = positiveIntegerArgument(args, "created_node_count");
     return count === null ? null : `已创建 ${count} 个草稿节点。`;
   },
+  "media_review.pending_action": (args) => mediaReviewMessage(args, "zh"),
   "action.topic_deferred": () => "该主题已暂缓处理。",
   "action.element_excluded": () => "该元素已排除。",
 };
+
+const MEDIA_REVIEW_ACTION_LABELS = {
+  en: {
+    accept: "Accept",
+    retry: "Retry",
+    replace: "Replace",
+    exclude: "Exclude",
+  },
+  zh: {
+    accept: "接受",
+    retry: "重试",
+    replace: "替换",
+    exclude: "排除",
+  },
+} as const;
+
+function mediaReviewMessage(
+  args: Record<string, unknown>,
+  locale: keyof typeof MEDIA_REVIEW_ACTION_LABELS,
+): string | null {
+  const mediaTitle = args.media_title;
+  const allowedActions = args.allowed_actions;
+  if (typeof mediaTitle !== "string" || !mediaTitle.trim() || !Array.isArray(allowedActions)) {
+    return null;
+  }
+  const labels = allowedActions.map((action) => (
+    typeof action === "string"
+      ? MEDIA_REVIEW_ACTION_LABELS[locale][action as keyof typeof MEDIA_REVIEW_ACTION_LABELS[typeof locale]]
+      : undefined
+  ));
+  if (!labels.length || labels.some((label) => !label)) return null;
+  const actionList = localizedList(labels as string[], locale);
+  return locale === "zh"
+    ? `${mediaTitle.trim()} 正在等待审核。可用操作：${actionList}。`
+    : `${mediaTitle.trim()} is waiting for review. Available actions: ${actionList}.`;
+}
+
+function localizedList(values: string[], locale: "en" | "zh"): string {
+  if (values.length === 1) return values[0]!;
+  const finalValue = values[values.length - 1]!;
+  const leadingValues = values.slice(0, -1);
+  if (locale === "zh") return `${leadingValues.join("、")}和${finalValue}`;
+  if (values.length === 2) return `${leadingValues[0]} and ${finalValue}`;
+  return `${leadingValues.join(", ")}, and ${finalValue}`;
+}
 
 function positiveIntegerArgument(
   args: Record<string, unknown>,

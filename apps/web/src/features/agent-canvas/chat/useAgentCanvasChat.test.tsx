@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   actOnAgentCanvasDecisionBundle: vi.fn(),
   actOnAgentCanvasCommandPlan: vi.fn(),
   applyAgentCanvasGuidedAction: vi.fn(),
+  submitAgentCanvasGuidedInteraction: vi.fn(),
 }));
 
 vi.mock("../../../api/v2Client.ts", () => ({
@@ -776,6 +777,90 @@ describe("useAgentCanvasChat", () => {
       item_type: "message",
       text: "正在规划下一项创作操作。",
     }]);
+  });
+
+  it("refreshes Timeline, Session, Graph, and Runtime in order after a typed submit", async () => {
+    const order: string[] = [];
+    api.agentCanvasChatTimeline.mockImplementation(async () => {
+      order.push("timeline");
+      return emptyTimeline();
+    });
+    api.agentCanvasCreativeSession.mockImplementation(async () => {
+      order.push("session");
+      return null;
+    });
+    api.submitAgentCanvasGuidedInteraction.mockImplementation(async () => {
+      order.push("submit");
+      return {
+        workflow_id: "workflow-1",
+        interaction_id: "interaction-review-1",
+        submission_id: "submission-review-1",
+        receipt_id: "receipt-review-1",
+        created_node_ids: ["node-video-1"],
+        created_binding_ids: [],
+        document_revisions: {},
+        continuation_id: "continuation-review-1",
+        automatic_run_command_ids: [],
+        resulting_session_revision: 9,
+        events_cursor: 21,
+        replayed: false,
+      };
+    });
+    const onWorkflowRefresh = vi.fn(async () => { order.push("graph"); });
+    const onRuntimeRefresh = vi.fn(async () => { order.push("runtime"); });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+      onWorkflowRefresh,
+      onRuntimeRefresh,
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    order.length = 0;
+    api.agentCanvasChatTimeline.mockClear();
+    api.agentCanvasCreativeSession.mockClear();
+
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction({
+        interaction_id: "interaction-review-1",
+        workflow_id: "workflow-1",
+        session_id: "guidance-1",
+        checkpoint_id: "checkpoint-review-1",
+        kind: "media_review",
+        status: "open",
+        response_locale: "en-US",
+        expected_session_revision: 8,
+        revision: 3,
+        title: "Review Storyboard Grid 1",
+        context: "Choose how to continue.",
+        content: {
+          content_kind: "media_review",
+          node_id: "node-storyboard-1",
+          node_revision: 4,
+          asset_id: "asset-grid-1",
+          asset_version_id: "version-grid-1",
+          summary: "Review the generated grid.",
+        },
+        allowed_actions: ["accept", "retry", "replace"],
+        submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-review-1/submit",
+        created_at: "2026-08-20T10:00:00Z",
+        updated_at: "2026-08-20T10:00:00Z",
+      }, {
+        submission_kind: "media_review",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        action: "accept",
+        instruction: null,
+      });
+    });
+
+    expect(order).toEqual(["submit", "timeline", "session", "graph", "runtime"]);
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
   });
 
   it("uses backend content when a presentation message key or locale is unsupported", async () => {

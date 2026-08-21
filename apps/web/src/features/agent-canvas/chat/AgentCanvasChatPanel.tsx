@@ -21,8 +21,6 @@ import type {
   ChatCapabilityActivityV2,
   ChatProposalCardV2,
   CapabilityProposalOptionV2,
-  GuidedInteractionSubmitRequestV1,
-  GuidedInteractionV1,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -46,10 +44,8 @@ import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
 import {
   guidedInteractionContentVersion,
-  interactionForTimelineProposal,
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
-import { TimelineProposalInteractionActions } from "./TimelineProposalInteractionActions.tsx";
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import "./agent-canvas-chat.css";
 
@@ -64,6 +60,7 @@ export function AgentCanvasChatPanel({
   onFocusNode,
   onActionReceipt,
   onWorkflowRefresh,
+  onRuntimeRefresh,
   onCollapsedChange,
 }: {
   workflow: AgentCanvasWorkflowV2;
@@ -74,6 +71,7 @@ export function AgentCanvasChatPanel({
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
+  onRuntimeRefresh?: () => Promise<void> | void;
   onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const chat = useAgentCanvasChat({
@@ -82,6 +80,7 @@ export function AgentCanvasChatPanel({
     chatEvents,
     onActionReceipt,
     onWorkflowRefresh,
+    onRuntimeRefresh,
   });
   const [draft, setDraft] = useState("");
   const [collapsed, setCollapsed] = useState(false);
@@ -106,7 +105,7 @@ export function AgentCanvasChatPanel({
     [chat.state.continuations],
   );
   const standaloneGuidedInteraction = chat.state.guidedInteraction
-    && shouldRenderStandaloneInteraction(chat.state.guidedInteraction, chat.state.items)
+    && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
   const timelineContentVersion = useMemo(() => {
@@ -331,42 +330,21 @@ export function AgentCanvasChatPanel({
                   />
                 );
               }
-              const interaction = interactionForTimelineProposal(
-                chat.state.guidedInteraction,
-                item,
-              );
               return (
                 <ProposalCard
                   key={`proposal-${item.proposal.proposal_id}`}
                   card={item}
-                  pending={Boolean(
-                    interaction
-                    && chat.state.actingInteractionId === interaction.interaction_id
-                  )}
-                  interaction={interaction}
-                  onSubmitInteraction={interaction
-                    ? (request) => chat.actions.submitGuidedInteraction(interaction, request)
-                    : undefined}
-                  onRetryMaterialization={item.proposal.materialization
-                    ? () => chat.actions.retryProposalMaterialization(item.proposal.materialization!)
-                    : undefined}
+                  pending={false}
                   retryingMaterialization={Boolean(
                     item.proposal.materialization
                     && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
                   )}
-                  readOnly={!interaction}
+                  readOnly
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
             })}
-            {standaloneGuidedInteraction ? (
-              <GuidedInteractionCard
-                key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
-                interaction={standaloneGuidedInteraction}
-                pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
-                onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
-              />
-            ) : !chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
+            {!chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
               <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
             ) : null}
             {chat.state.currentSessionActions.length ? (
@@ -418,6 +396,17 @@ export function AgentCanvasChatPanel({
           <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
             <CloseIcon />
           </button>
+        </div>
+      ) : null}
+
+      {standaloneGuidedInteraction ? (
+        <div className="agent-chat__current-interaction" aria-live="polite">
+          <GuidedInteractionCard
+            key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
+            interaction={standaloneGuidedInteraction}
+            pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
+          />
         </div>
       ) : null}
 
@@ -743,8 +732,6 @@ export function ProposalCard({
   onSelect,
   onRevise,
   onApplyAction,
-  interaction = null,
-  onSubmitInteraction,
   onRetryMaterialization,
   retryingMaterialization = false,
   issue,
@@ -764,8 +751,6 @@ export function ProposalCard({
     instruction: string,
   ) => Promise<void>;
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
-  interaction?: GuidedInteractionV1 | null;
-  onSubmitInteraction?: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   onRetryMaterialization?: (turnId: string) => Promise<boolean>;
   retryingMaterialization?: boolean;
   issue?: string;
@@ -794,35 +779,11 @@ export function ProposalCard({
     || action.action === "delegate_choice"
     || action.action === "reuse_direction"
   ));
-  const activeInteraction = interaction?.status === "open"
-    && interaction.content.content_kind === "concept_choice"
-    && interaction.content.proposal_id === proposal.proposal_id
-    ? interaction
-    : null;
-  const displayOptions: CapabilityProposalOptionV2[] = activeInteraction?.content.content_kind === "concept_choice"
-    ? activeInteraction.content.options.map((option) => ({
-        option_id: option.option_id,
-        title: option.title,
-        public_summary: option.summary,
-        key_decisions: [],
-      }))
-    : proposal.options;
-  const recommendedInteractionOptionIds = new Set(
-    activeInteraction?.content.content_kind === "concept_choice"
-      ? activeInteraction.content.options
-        .filter((option) => option.recommended)
-        .map((option) => option.option_id)
-      : [],
-  );
-  const canSelect = activeInteraction
-    ? activeInteraction.allowed_actions.includes("select")
-      && !materializationLocked
-    : !readOnly && isOpen
+  const displayOptions = proposal.options;
+  const canSelect = !readOnly && isOpen
     && Boolean(selectAction?.enabled)
     && !materializationLocked;
-  const canRevise = activeInteraction
-    ? activeInteraction.allowed_actions.includes("revise") && !materializationLocked
-    : !readOnly && Boolean(reviseAction?.enabled)
+  const canRevise = !readOnly && Boolean(reviseAction?.enabled)
     && (isOpen || isSuperseded)
     && !materializationLocked;
   const availableReferences = proposal.proposed_references;
@@ -880,18 +841,12 @@ export function ProposalCard({
           >
             <strong>
               {option.title}
-              {recommendedInteractionOptionIds.has(option.option_id) ? <em>Recommended</em> : null}
             </strong>
             <span>{option.public_summary}</span>
-            <ul>
-              {option.key_decisions.map((decision, index) => (
-                <li key={`${option.option_id}:${index}`}>{decision}</li>
-              ))}
-            </ul>
           </button>
         ))}
       </div>
-      {acceptedReferences.length || selectAction || activeInteraction?.allowed_actions.includes("select") ? (
+      {!readOnly && (acceptedReferences.length || selectAction) ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
             <strong>References</strong>
@@ -996,17 +951,7 @@ export function ProposalCard({
           {issue}
         </p>
       ) : null}
-      {activeInteraction && onSubmitInteraction ? (
-        <TimelineProposalInteractionActions
-          key={`${activeInteraction.interaction_id}:${activeInteraction.revision}`}
-          acceptedReferences={acceptedReferences}
-          interaction={activeInteraction}
-          materializationBusy={materializationLocked}
-          onSubmit={onSubmitInteraction}
-          pending={pending}
-          selectedOptionId={canSelect ? selected?.option_id ?? null : null}
-        />
-      ) : !readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
+      {!readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
           {isOpen && selected && selectAction ? (
             <button

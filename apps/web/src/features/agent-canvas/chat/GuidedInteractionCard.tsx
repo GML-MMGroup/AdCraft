@@ -181,8 +181,6 @@ function ConceptInteraction({ interaction, pending, onSubmit }: {
         {options.map((option) => (
           <button type="button" key={option.option_id} disabled={pending} className={optionId === option.option_id ? "is-selected" : ""} onClick={() => setOptionId(option.option_id)}>
             <strong>{option.title}{option.recommended ? <em>Recommended</em> : null}</strong><span>{option.summary}</span>
-            {option.difference_tags.length ? <small>{option.difference_tags.join(" · ")}</small> : null}
-            {option.reference_preview.length ? <em>{option.reference_preview.map((reference) => reference.display_name).join(" · ")}</em> : null}
           </button>
         ))}
       </div>

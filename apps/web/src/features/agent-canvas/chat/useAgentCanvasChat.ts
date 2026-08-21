@@ -172,12 +172,14 @@ export function useAgentCanvasChat({
   chatEvents,
   onActionReceipt,
   onWorkflowRefresh,
+  onRuntimeRefresh,
 }: {
   workflow: AgentCanvasWorkflowV2 | null;
   chatRevision: number;
   chatEvents: CanvasRuntimeEventV2[];
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
+  onRuntimeRefresh?: () => Promise<void> | void;
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
@@ -329,11 +331,6 @@ export function useAgentCanvasChat({
       let nextGuidanceAdvancePrecondition: GuidanceAdvancePreconditionV1 | null = null;
       let nextCurrentSessionActions: GuidanceSessionActionV2[] = [];
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
-      try {
-        nextGuidanceSession = await agentCanvasApi.agentCanvasCreativeSession(workflowId);
-      } catch {
-        // The timeline remains a compatible read model while a direct session read is unavailable.
-      }
       let cursor = 0;
       for (;;) {
         const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
@@ -381,6 +378,14 @@ export function useAgentCanvasChat({
         }
         if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
         cursor = timeline.next_cursor;
+      }
+      try {
+        nextGuidanceSession = mergeGuidedSessionState(
+          nextGuidanceSession,
+          await agentCanvasApi.agentCanvasCreativeSession(workflowId),
+        );
+      } catch {
+        // The timeline remains a compatible read model while a direct session read is unavailable.
       }
       if (generation !== refreshGenerationRef.current) return;
       setGuidanceSession((current) => mergeGuidedSessionState(current, nextGuidanceSession));
@@ -1107,7 +1112,9 @@ export function useAgentCanvasChat({
       );
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       setNotice(accepted.replayed ? "The existing submission is still being processed." : null);
-      await Promise.all([refresh(), onWorkflowRefresh?.()]);
+      await refresh();
+      await onWorkflowRefresh?.();
+      await onRuntimeRefresh?.();
       return true;
     } catch (interactionError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
@@ -1120,7 +1127,14 @@ export function useAgentCanvasChat({
         setActingInteractionId(null);
       }
     }
-  }, [actingInteractionId, handleStructuredActionError, onWorkflowRefresh, refresh, workflowId]);
+  }, [
+    actingInteractionId,
+    handleStructuredActionError,
+    onRuntimeRefresh,
+    onWorkflowRefresh,
+    refresh,
+    workflowId,
+  ]);
 
   const retryTurn = useCallback(async (turnId: string, retryable: boolean) => {
     if (

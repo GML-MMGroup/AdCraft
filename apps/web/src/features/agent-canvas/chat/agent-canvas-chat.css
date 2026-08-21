@@ -1209,6 +1209,26 @@
   background: #222222;
 }
 
+.agent-chat__current-interaction {
+  max-height: min(46vh, 420px);
+  margin: 0 12px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgb(157 175 230 / 38%) transparent;
+  scrollbar-width: thin;
+}
+
+.agent-chat__current-interaction::-webkit-scrollbar {
+  width: 8px;
+}
+
+.agent-chat__current-interaction::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(157 175 230 / 38%);
+  background-clip: padding-box;
+}
+
 :root .agent-chat__composer {
   background: #222222;
 }

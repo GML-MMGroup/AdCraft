@@ -10,7 +10,6 @@ import type {
   ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
-  GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -143,61 +142,6 @@ const proposalCard: ChatProposalCardV2 = {
   created_at: "2026-08-04T00:00:00Z",
 };
 
-const proposalInteraction: GuidedInteractionV1 = {
-  interaction_id: "interaction-proposal-1",
-  workflow_id: "workflow-1",
-  session_id: "guidance-1",
-  checkpoint_id: "checkpoint-1",
-  kind: "concept_choice",
-  status: "open",
-  response_locale: "en",
-  expected_session_revision: 7,
-  revision: 3,
-  title: "Choose a character",
-  context: "Choose the direction to use.",
-  content: {
-    content_kind: "concept_choice",
-    proposal_id: "proposal-1",
-    stage: "character",
-    stage_revision: 4,
-    action_id: "action-character-1",
-    occurrence_id: "occurrence:character:1",
-    capability_id: "character_design",
-    allow_custom: true,
-    allow_exclusion: true,
-    options: [
-      {
-        option_id: "option-1",
-        title: "Hero",
-        summary: "A focused campaign hero",
-        difference_tags: [],
-        recommended: true,
-        reference_preview: [],
-      },
-      {
-        option_id: "option-2",
-        title: "Maker",
-        summary: "A grounded craft-led character",
-        difference_tags: [],
-        recommended: false,
-        reference_preview: [],
-      },
-      {
-        option_id: "option-3",
-        title: "Explorer",
-        summary: "An energetic outdoor lead",
-        difference_tags: [],
-        recommended: false,
-        reference_preview: [],
-      },
-    ],
-  },
-  allowed_actions: ["select", "custom", "defer", "exclude", "delegate"],
-  submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-proposal-1/submit",
-  created_at: "2026-08-17T00:00:00Z",
-  updated_at: "2026-08-17T00:00:00Z",
-};
-
 describe("ProposalCard", () => {
   afterEach(() => cleanup());
 
@@ -222,39 +166,25 @@ describe("ProposalCard", () => {
       "option-1",
       [],
     );
-    expect(screen.getByText("Contemporary wardrobe")).toBeTruthy();
-    expect(screen.getByText("Confident posture")).toBeTruthy();
+    expect(screen.queryByText("Contemporary wardrobe")).toBeNull();
+    expect(screen.queryByText("Confident posture")).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate now" })).toBeNull();
   });
 
-  it("submits the active interaction from the Timeline proposal card", () => {
-    const onSubmitInteraction = vi.fn().mockResolvedValue(true);
+  it("keeps the Timeline proposal as concise read-only history", () => {
     render(
       <ProposalCard
         card={proposalCard}
         pending={false}
-        interaction={proposalInteraction}
-        onSubmitInteraction={onSubmitInteraction}
+        readOnly
       />,
     );
 
-    fireEvent.click(screen.getByText("Hero").closest("button")!);
-    expect(screen.getAllByText("Recommended")).toHaveLength(1);
-    expect(screen.getByText("A grounded craft-led character")).toBeTruthy();
+    expect(screen.getByText("A focused campaign hero")).toBeTruthy();
     expect(screen.queryByText("Contemporary wardrobe")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-
-    expect(onSubmitInteraction).toHaveBeenCalledWith({
-      submission_kind: "concept_choice",
-      expected_interaction_revision: 3,
-      expected_session_revision: 7,
-      action: "select",
-      option_id: "option-1",
-      custom_text: null,
-      accepted_references: [],
-    });
-    expect(document.querySelectorAll(".agent-chat__proposal")).toHaveLength(1);
-    expect(document.querySelector(".agent-chat__guided-interaction")).toBeNull();
+    expect(screen.queryByText("Confident posture")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revise options" })).toBeNull();
   });
 
   it.each(["queued", "working"] as const)(
@@ -439,9 +369,7 @@ describe("ProposalCard", () => {
     }
   });
 
-  it("uses the canonical guided interaction to submit a proposal custom direction", () => {
-    const onSubmitInteraction = vi.fn().mockResolvedValue(true);
-    const onApplyAction = vi.fn().mockResolvedValue(undefined);
+  it("does not expose legacy custom-direction actions on Timeline history", () => {
     render(
       <ProposalCard
         card={{
@@ -458,28 +386,12 @@ describe("ProposalCard", () => {
           },
         }}
         pending={false}
-        interaction={proposalInteraction}
-        onSelect={vi.fn()}
-        onRevise={vi.fn()}
-        onApplyAction={onApplyAction}
-        onSubmitInteraction={onSubmitInteraction}
+        readOnly
       />,
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Custom creative direction" }), {
-      target: { value: "Follow the product through a quiet morning routine." },
-    });
-    expect(onSubmitInteraction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-
-    expect(onSubmitInteraction).toHaveBeenCalledWith(expect.objectContaining({
-      submission_kind: "concept_choice",
-      action: "custom",
-      custom_text: "Follow the product through a quiet morning routine.",
-      expected_interaction_revision: 3,
-      expected_session_revision: 7,
-    }));
-    expect(onApplyAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Custom creative direction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use a custom direction" })).toBeNull();
   });
 
   it("keeps applied proposal content visible but disables all stale actions", () => {
@@ -679,7 +591,7 @@ describe("progress and action cards", () => {
     expect(screen.getByText("Authoring: not ready")).toBeTruthy();
     expect(screen.getByText("Delivery: not ready")).toBeTruthy();
     expect(screen.getByText("Direction: You")).toBeTruthy();
-    expect(screen.getByText("Checkpoint: scene · waiting user")).toBeTruthy();
+    expect(screen.queryByText("Checkpoint: scene · waiting user")).toBeNull();
     expect(screen.getByText("Stage: Scene · waiting user")).toBeTruthy();
     expect(screen.getByText("Current decision: scene 1 · unresolved")).toBeTruthy();
   });
@@ -979,14 +891,18 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(screen.getByRole("button", { name: "Style: Platform Default" })).toBeTruthy();
   });
 
-  it("renders a standalone review after the current conversation items", () => {
+  it("pins the current review outside history immediately above the composer", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");
     const timelineItemsIndex = panelSource.indexOf("{chat.state.items.map((item) => {");
-    const standaloneInteractionIndex = panelSource.indexOf("{standaloneGuidedInteraction ? (");
+    const timelineShellIndex = panelSource.indexOf('<div className="agent-chat__timeline-shell">');
+    const pinnedInteractionIndex = panelSource.indexOf('<div className="agent-chat__current-interaction"');
+    const composerIndex = panelSource.indexOf('<div className="agent-chat__composer">');
 
     expect(timelineItemsIndex).toBeGreaterThan(-1);
-    expect(standaloneInteractionIndex).toBeGreaterThan(timelineItemsIndex);
+    expect(pinnedInteractionIndex).toBeGreaterThan(timelineShellIndex);
+    expect(pinnedInteractionIndex).toBeGreaterThan(timelineItemsIndex);
+    expect(composerIndex).toBeGreaterThan(pinnedInteractionIndex);
   });
 
   it("uses an opaque edge-aligned chat rail with plain Agent replies", () => {
