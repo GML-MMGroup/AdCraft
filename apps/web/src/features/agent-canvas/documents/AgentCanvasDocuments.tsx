@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
-import { CloseIcon, DocumentIcon } from "../../../icons.tsx";
+import { ChevronRightIcon, DocumentIcon } from "../../../icons.tsx";
 import type {
   AgentWorkingDocumentKindV2,
   AgentWorkingDocumentV2,
   CanvasRuntimeEventV2,
   ChatAgentDocumentReferenceV2,
 } from "../../../types-v2.ts";
+import { AgentDocumentDialogShell } from "./AgentDocumentDialogShell.tsx";
 import "./agent-canvas-documents.css";
 
 function documentError(error: unknown): string {
@@ -40,6 +40,10 @@ function nodeRoleLabel(role: string): string {
 
 function seconds(value: number): string {
   return Number.isInteger(value) ? `${value}s` : `${value.toFixed(1)}s`;
+}
+
+function documentKindLabel(kind: AgentWorkingDocumentKindV2): string {
+  return kind === "anchor_registry" ? "Anchor Registry" : "Storyboard Production Plan";
 }
 
 function AgentCanvasDocumentContent({
@@ -200,38 +204,92 @@ export function AgentCanvasDocumentReferenceCard({
   documentEvents: CanvasRuntimeEventV2[];
   onFocusNode: (nodeId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [document, setDocument] = useState<AgentWorkingDocumentV2 | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const latestEventRevision = useMemo(
     () => documentEventRevision(documentEvents, reference.document_id),
     [documentEvents, reference.document_id],
   );
+  const requiredRevision = Math.max(reference.revision, latestEventRevision);
+  const hasCurrentDocument = Boolean(
+    document
+    && document.document_id === reference.document_id
+    && document.revision >= requiredRevision,
+  );
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const next = await agentCanvasApi.agentCanvasDocument(workflowId, reference.document_id);
       setDocument(next);
-      setError(null);
     } catch (loadError) {
       setError(documentError(loadError));
+    } finally {
+      setLoading(false);
     }
   }, [reference.document_id, workflowId]);
 
   useEffect(() => {
-    if (!document || reference.revision > document.revision || latestEventRevision > document.revision) {
+    if (open && (
+      !document
+      || document.document_id !== reference.document_id
+      || requiredRevision > document.revision
+    )) {
       void load();
     }
-  }, [document, latestEventRevision, load, reference.revision]);
+  }, [document, load, open, reference.document_id, requiredRevision]);
 
-  if (error) {
-    return (
-      <button type="button" className="agent-document-card__error" onClick={() => void load()}>
-        {error} Retry
+  const close = useCallback(() => setOpen(false), []);
+  const focusNode = useCallback((nodeId: string) => {
+    setOpen(false);
+    onFocusNode(nodeId);
+  }, [onFocusNode]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="agent-document-reference"
+        aria-label={`Open ${reference.title}`}
+        onClick={() => setOpen(true)}
+      >
+        <span className="agent-document-reference__icon" aria-hidden="true"><DocumentIcon /></span>
+        <span className="agent-document-reference__copy">
+          <strong>{reference.title}</strong>
+          <small>{documentKindLabel(reference.document_kind)} · revision {reference.revision}</small>
+        </span>
+        <ChevronRightIcon aria-hidden="true" />
       </button>
-    );
-  }
-  if (!document) return <div className="agent-document-card__loading">Loading {reference.title}...</div>;
-  return <AgentCanvasDocumentContent document={document} onFocusNode={onFocusNode} />;
+      {open ? (
+        <AgentDocumentDialogShell
+          ariaLabel={reference.title}
+          title="Agent Document"
+          subtitle={`${documentKindLabel(reference.document_kind)} · revision ${reference.revision}`}
+          returnFocusRef={triggerRef}
+          onClose={close}
+        >
+          <div className="agent-document-browser__content agent-document-browser__content--single">
+            {loading || (!error && !hasCurrentDocument) ? (
+              <p className="agent-document-card__loading">Loading {reference.title}...</p>
+            ) : null}
+            {!loading && error ? (
+              <button type="button" className="agent-document-card__error" onClick={() => void load()}>
+                {error} Retry
+              </button>
+            ) : null}
+            {!loading && !error && hasCurrentDocument && document ? (
+              <AgentCanvasDocumentContent document={document} onFocusNode={focusNode} />
+            ) : null}
+          </div>
+        </AgentDocumentDialogShell>
+      ) : null}
+    </>
+  );
 }
 
 export function AgentCanvasDocumentBrowser({
@@ -274,51 +332,20 @@ export function AgentCanvasDocumentBrowser({
     if (open) void load(undefined, false);
   }, [eventRevision, load, open]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    const trigger = triggerRef.current;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-      trigger?.focus();
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  const focusNode = useCallback((nodeId: string) => {
+    setOpen(false);
+    onFocusNode(nodeId);
+  }, [onFocusNode]);
 
   const dialog = open ? (
-    <div className="agent-document-browser__overlay">
-      <button
-        type="button"
-        className="agent-document-browser__backdrop"
-        aria-label="Close Agent Documents"
-        tabIndex={-1}
-        onClick={() => setOpen(false)}
-      />
-      <section
-        className="agent-document-browser__panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Agent Documents"
-      >
-        <header>
-          <div>
-            <strong>Agent Documents</strong>
-            <small>Read-only production records</small>
-          </div>
-          <button
-            type="button"
-            aria-label="Close Agent Documents"
-            autoFocus
-            onClick={() => setOpen(false)}
-          >
-            <CloseIcon />
-          </button>
-        </header>
+    <AgentDocumentDialogShell
+      ariaLabel="Agent Documents"
+      title="Agent Documents"
+      subtitle="Read-only production records"
+      returnFocusRef={triggerRef}
+      onClose={close}
+    >
         <div className="agent-document-browser__filters" role="group" aria-label="Document type">
           <button type="button" className={!kind ? "is-selected" : ""} onClick={() => setKind(undefined)}>All</button>
           <button
@@ -343,7 +370,7 @@ export function AgentCanvasDocumentBrowser({
             <AgentCanvasDocumentContent
               key={document.document_id}
               document={document}
-              onFocusNode={onFocusNode}
+              onFocusNode={focusNode}
             />
           ))}
           {!loading && !items.length && !error ? (
@@ -363,8 +390,7 @@ export function AgentCanvasDocumentBrowser({
             Load more
           </button>
         ) : null}
-      </section>
-    </div>
+    </AgentDocumentDialogShell>
   ) : null;
 
   return (
@@ -379,7 +405,7 @@ export function AgentCanvasDocumentBrowser({
       >
         <DocumentIcon />
       </button>
-      {dialog && typeof document !== "undefined" ? createPortal(dialog, document.body) : null}
+      {dialog}
     </div>
   );
 }
