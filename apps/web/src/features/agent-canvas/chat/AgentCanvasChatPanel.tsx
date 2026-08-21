@@ -550,7 +550,7 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
     >
       <InlineLoader
         variant="halo"
-        size={24}
+        size={20}
         className="agent-chat__working-loader"
       />
       <span>{label}</span>
