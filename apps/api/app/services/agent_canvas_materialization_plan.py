@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
+from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
 
@@ -252,8 +253,16 @@ def _has_storyboard_draft_preparation_evidence(
     prepared_node_ids = {item.node_id for item in preparations}
     has_plan = any(
         item.document_type == "agent_working_document"
-        and item.payload is not None
-        and item.payload.get("kind") == "storyboard_production_plan"
+        and (
+            (item.payload is not None and item.payload.get("kind") == "storyboard_production_plan")
+            or (
+                item.mutation_plan is not None
+                and isinstance(
+                    item.mutation_plan.next_content,
+                    StoryboardProductionPlanContentV3,
+                )
+            )
+        )
         for item in documents
     )
     return bool(grid_node_ids and grid_node_ids <= prepared_node_ids and has_plan)

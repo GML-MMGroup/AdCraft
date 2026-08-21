@@ -133,7 +133,7 @@ class CapabilityReferencePlanner:
         target_type = self._target_node_type(capability_id)
         role_policy = (
             self._role_references.for_capability(capability_id)
-            if bool(getattr(session, "is_new_guided_production", False))
+            if session.journey.policy_version == "fixed_ad_production_v2"
             else None
         )
         nodes = {node.node_id: node for node in workflow.nodes}
@@ -329,14 +329,12 @@ class CapabilityReferencePlanner:
         required: bool,
         target_role: str | None = None,
     ) -> PlannedCapabilityReferenceV1 | None:
-        if target_role is not None:
+        if target_role is not None and not explicit:
             source_role = _policy_source_role(node)
             if (
                 source_role is None
                 or self._role_references.resolve(target_role).rule_for(source_role) is None
             ):
-                if explicit:
-                    raise _error("Mentioned Node is not allowed by the role reference policy.")
                 return None
         input_role = (
             "text_context"

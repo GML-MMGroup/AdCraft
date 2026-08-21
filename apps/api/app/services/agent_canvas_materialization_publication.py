@@ -912,35 +912,57 @@ class CapabilityMaterializationPublicationService:
         ):
             return normalization, ()
 
-        authority_plan = StoryboardSequenceWindowPlanner.plan(
-            total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
-            aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
-            explicit_sequence_count=context.explicit_constraints.get("storyboard_sequence_count"),
+        current = self._working_documents.get_by_kind(
+            envelope.workflow_id,
+            session_id,
+            "storyboard_production_plan",
         )
-        context = context.model_copy(
-            update={
-                "capability_facts": {
-                    **context.capability_facts,
-                    "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
+        if current is not None:
+            if not isinstance(current.content, StoryboardProductionPlanContentV3):
+                raise V2PersistenceError(
+                    "agent_storyboard_plan_invalid",
+                    "Storyboard Grid preparation requires the authoritative V3 Storyboard Plan.",
+                    stage="capability_materialization_publication",
+                )
+            content = current.content
+            document_id = current.document_id
+            document_revision = current.revision
+        else:
+            authority_plan = StoryboardSequenceWindowPlanner.plan(
+                total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
+                aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
+                explicit_sequence_count=context.explicit_constraints.get(
+                    "storyboard_sequence_count"
+                ),
+            )
+            context = context.model_copy(
+                update={
+                    "capability_facts": {
+                        **context.capability_facts,
+                        "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
+                    }
                 }
-            }
-        )
-        outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
-            context,
-            request_identity=f"{envelope.materialization_id}:outline",
-        )
-        legacy_outline = self._storyboard_authoring.build_outline_content(outline, authority_plan)
-        requirement = self._requirements.get_current(envelope.workflow_id)
-        content = StoryboardProductionPlanContentV3(
-            schema_version="3",
-            narrative_outline=legacy_outline.narrative_outline,
-            requirement_revision_id=requirement.revision_id,
-            requirement_revision_no=requirement.revision_no,
-            global_parameters=legacy_outline.global_parameters,
-            segments=legacy_outline.segments,
-            rows=(),
-        )
-        document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
+            )
+            outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
+                context,
+                request_identity=f"{envelope.materialization_id}:outline",
+            )
+            legacy_outline = self._storyboard_authoring.build_outline_content(
+                outline,
+                authority_plan,
+            )
+            requirement = self._requirements.get_current(envelope.workflow_id)
+            content = StoryboardProductionPlanContentV3(
+                schema_version="3",
+                narrative_outline=legacy_outline.narrative_outline,
+                requirement_revision_id=requirement.revision_id,
+                requirement_revision_no=requirement.revision_no,
+                global_parameters=legacy_outline.global_parameters,
+                segments=legacy_outline.segments,
+                rows=(),
+            )
+            document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
+            document_revision = 1
         node_id = "node_" + _digest(envelope.materialization_id)[:32]
         segment_drafts: dict[str, StoryboardSegmentMaterializationDraftV2] = {}
         for sequence in content.segments:
@@ -948,7 +970,7 @@ class CapabilityMaterializationPublicationService:
             segment_context = self._storyboard_authoring.build_segment_context_from_content(
                 envelope.workflow_id,
                 document_id,
-                1,
+                document_revision,
                 AgentWorkingDocumentRepository.digest_content(content),
                 content,
                 sequence_id,
@@ -975,21 +997,55 @@ class CapabilityMaterializationPublicationService:
                     else None
                 ),
             )
-        document = AgentWorkingDocumentV2(
-            document_id=document_id,
-            workflow_id=envelope.workflow_id,
-            guidance_session_id=session_id,
-            kind="storyboard_production_plan",
-            title="Storyboard Production Plan",
-            revision=1,
-            content_schema_version=3,
-            content_digest=AgentWorkingDocumentRepository.digest_content(content),
-            content=content,
-            created_by_agent_run_id=envelope.materialization_id,
-            updated_by_agent_run_id=envelope.materialization_id,
-            created_at=envelope.created_at,
-            updated_at=envelope.created_at,
-        )
+        if current is None:
+            document_write = MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=document_id,
+                payload=AgentWorkingDocumentV2(
+                    document_id=document_id,
+                    workflow_id=envelope.workflow_id,
+                    guidance_session_id=session_id,
+                    kind="storyboard_production_plan",
+                    title="Storyboard Production Plan",
+                    revision=1,
+                    content_schema_version=3,
+                    content_digest=AgentWorkingDocumentRepository.digest_content(content),
+                    content=content,
+                    created_by_agent_run_id=envelope.materialization_id,
+                    updated_by_agent_run_id=envelope.materialization_id,
+                    created_at=envelope.created_at,
+                    updated_at=envelope.created_at,
+                ).model_dump(mode="json"),
+                relation_metadata={
+                    "node_id": node_id,
+                    "sequence_id": content.segments[0].sequence_id,
+                },
+            )
+        else:
+            operation = "materialize_storyboard_grids"
+            document_write = MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=document_id,
+                mutation_plan=AgentDocumentMutationPlanV3(
+                    document_id=document_id,
+                    expected_revision=current.revision,
+                    next_revision=current.revision + 1,
+                    operation=operation,
+                    idempotency_key=f"storyboard-grids:{envelope.materialization_id}",
+                    request_digest=self._working_documents.digest_mutation(
+                        document_id=document_id,
+                        expected_revision=current.revision,
+                        operation=operation,
+                        content=content,
+                        agent_run_id=envelope.materialization_id,
+                    ),
+                    next_content=content,
+                ),
+                relation_metadata={
+                    "node_id": node_id,
+                    "sequence_id": content.segments[0].sequence_id,
+                },
+            )
         original = StoryboardMaterializationResultV1.model_validate(normalization.result)
         sequence = content.segments[0]
         sequence_id = sequence.sequence_id
@@ -1032,17 +1088,7 @@ class CapabilityMaterializationPublicationService:
                     },
                 }
             ),
-            (
-                MaterializationDocumentWriteV1(
-                    document_type="agent_working_document",
-                    document_id=document_id,
-                    payload=document.model_dump(mode="json"),
-                    relation_metadata={
-                        "node_id": node_id,
-                        "sequence_id": sequence_id,
-                    },
-                ),
-            ),
+            (document_write,),
         )
 
     def _prepare_prompts(

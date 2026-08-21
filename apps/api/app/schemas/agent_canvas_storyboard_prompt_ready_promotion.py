@@ -52,10 +52,6 @@ class StoryboardPromptReadyPromotionCommandV1(_PromotionModel):
         execution_by_node = {item.node_id: item for item in self.execution_preparations}
         if any(execution_by_node.get(item.node_id) != item for item in self.preparations):
             raise ValueError("Storyboard execution preparations must contain every promoted Grid.")
-        if self.execution_mode == "automatic" and (
-            self.execution_preparations != self.preparations
-        ):
-            raise ValueError("Automatic Storyboard promotion executes only the promoted Grid set.")
         return self
 
 
@@ -68,7 +64,7 @@ class StoryboardPromptReadyPromotionResultV1(_PromotionModel):
     session_revision: int = Field(ge=1)
     stage_revision: int = Field(ge=1)
     awaiting_id: str | None = Field(default=None, max_length=160)
-    automatic_run_command_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    automatic_run_command_ids: tuple[str, ...] = Field(default=(), max_length=64)
     replayed: bool = False
 
     @model_validator(mode="after")

@@ -206,7 +206,7 @@ class StoryboardPromptReadyPromotionRepository:
                                 node_id=item.node_id,
                                 now=now,
                             ).command_id
-                            for item in command.preparations
+                            for item in command.execution_preparations
                         )
                     self._fault("awaiting_or_command")
 
@@ -575,7 +575,7 @@ class StoryboardPromptReadyPromotionRepository:
                     )
                 ).scalars()
             )
-            if len(automatic_ids) != len(command.preparations):
+            if len(automatic_ids) != len(command.execution_preparations):
                 raise _invalid("replay_automatic_command")
         workflow_revision = connection.execute(
             select(AgentCanvasWorkflowRow.revision).where(
