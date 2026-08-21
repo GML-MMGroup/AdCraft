@@ -331,10 +331,12 @@ class CapabilityReferencePlanner:
     ) -> PlannedCapabilityReferenceV1 | None:
         if target_role is not None and not explicit:
             source_role = _policy_source_role(node)
-            if (
-                source_role is None
-                or self._role_references.resolve(target_role).rule_for(source_role) is None
-            ):
+            rule = (
+                self._role_references.resolve(target_role).rule_for(source_role)
+                if source_role is not None
+                else None
+            )
+            if rule is None or not rule.default_included:
                 return None
         input_role = (
             "text_context"

@@ -142,6 +142,9 @@ class NodePromptPreparationService:
                             compiled_prompt.role_reference_policy_version
                         ),
                         "prompt_style_projection_digest": (compiled_prompt.style_projection_digest),
+                        "prepared_reference_snapshots": [
+                            item.model_dump(mode="json") for item in role_context.bindings
+                        ],
                     },
                     "revision": working.revision + 1,
                     "updated_at": _now(),

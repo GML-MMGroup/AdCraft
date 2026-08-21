@@ -50,6 +50,9 @@ from app.services.v2_provider_reference_input_delivery import (
     V2ProviderReferenceDeliveryError,
     V2ProviderReferenceInputDeliveryService,
 )
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,13 +401,17 @@ class MediaNodeExecutor:
         if context.node.node_type not in {"image", "video", "audio"}:
             return context
         _require_character_identity_master_input(context)
+        media_inputs = tuple(
+            item for item in context.inputs if isinstance(item, ResolvedMediaInputSnapshotV2)
+        )
+        AgentCanvasRoleReferencePolicyService().require_derivative_runtime_inputs(
+            context.node,
+            media_inputs,
+        )
         if context.node.node_type == "video" and context.seedance_manifest is not None:
             return context
         if context.node.node_type != "video" and context.delivered_references:
             return context
-        media_inputs = tuple(
-            item for item in context.inputs if isinstance(item, ResolvedMediaInputSnapshotV2)
-        )
         delivery = None
         if media_inputs:
             if context.model_resolution is None:

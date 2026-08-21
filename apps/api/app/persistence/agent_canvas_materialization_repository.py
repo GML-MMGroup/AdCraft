@@ -278,6 +278,10 @@ class AgentCanvasMaterializationRepository:
                         return MaterializationOutcomeV1.model_validate_json(
                             str(existing_commit["outcome_json"])
                         ).model_copy(update={"replayed": True})
+                    _require_current_derivative_parent(
+                        connection,
+                        materialization_plan,
+                    )
                     current = connection.execute(
                         select(AgentCanvasWorkflowRow.revision).where(
                             AgentCanvasWorkflowRow.workflow_id == proposal.workflow_id
@@ -2528,6 +2532,55 @@ def _materialization_text_snapshots(
         )
         snapshots.append(snapshot.model_dump(mode="json"))
     return snapshots
+
+
+def _require_current_derivative_parent(
+    connection: Connection,
+    plan: MaterializationPlanV1,
+) -> None:
+    if plan.operation_kind != "derivative" or plan.parent_snapshot is None:
+        return
+    parent_snapshot = plan.parent_snapshot
+    parent = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.node_id == parent_snapshot.node_id,
+                AgentCanvasNodeRow.workflow_id == plan.workflow_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if parent is None:
+        raise _error(
+            "parent_materialization_missing",
+            "The derivative parent is not available in this Workflow.",
+        )
+    expected_role = "character" if parent_snapshot.semantic_role == "character_main" else "product"
+    content = json.loads(str(parent["structured_content_json"]))
+    expected_asset_kind = (
+        content.get("character_asset_kind") == "identity_master"
+        if expected_role == "character"
+        else content.get("asset_kind") == "main"
+    )
+    if str(parent["creative_role"]) != expected_role or not expected_asset_kind:
+        raise _error(
+            "role_reference_mismatch",
+            "The derivative parent does not match the authoritative role policy.",
+        )
+    prompt_preparation = json.loads(str(parent["prompt_preparation_json"]))
+    prompt_operation_id = parent_snapshot.prompt_preparation_operation_id
+    revision_matches = int(parent["revision"]) == parent_snapshot.node_revision or (
+        prompt_operation_id is not None
+        and int(parent["revision"]) > parent_snapshot.node_revision
+        and prompt_preparation.get("operation_id") == prompt_operation_id
+        and prompt_preparation.get("status") == "ready"
+    )
+    if not revision_matches:
+        raise _error(
+            "parent_materialization_revision_stale",
+            "The derivative parent revision is stale.",
+        )
 
 
 def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:

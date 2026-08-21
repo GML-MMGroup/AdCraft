@@ -39,6 +39,9 @@ from app.schemas.agent_canvas_world_setting import (
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 _MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a seamless light-neutral design background with no environmental objects. Use only a subtle grounding shadow. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
@@ -81,7 +84,12 @@ class CapabilityDraftBundleBuilder:
             f"node_{_digest(f'{envelope.materialization_id}:{_pair_node_suffix(envelope, draft_key)}')[:32]}"
             for draft_key, *_ in definitions
         )
-        references = _reference_intents(envelope)
+        references = (
+            ()
+            if envelope.operation_kind == "derivative"
+            and envelope.capability_id in {"product_design", "character_design"}
+            else _reference_intents(envelope)
+        )
         pair_id = (
             f"pair_{_digest(envelope.parent_snapshot.node_id)[:32]}"
             if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None
@@ -133,9 +141,16 @@ class CapabilityDraftBundleBuilder:
             capability_id=envelope.capability_id,
             pair_id=pair_id,
         )
+        bindings = (*external, *internal)
+        if envelope.operation_kind == "derivative":
+            AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+                envelope.parent_snapshot,
+                nodes,
+                bindings,
+            )
         return CapabilityDraftBundleV1(
             nodes=nodes,
-            bindings=(*external, *internal),
+            bindings=bindings,
             prompt_preparations=preparations,
             derivative_intent=derivative_intent,
         )
@@ -408,9 +423,15 @@ def _normalized_character_bundle(
             (turnaround_node_id,),
         )
         internal = _pair_binding(envelope, nodes=nodes, character_pair_id=pair_id)
+        bindings = (*external, *internal)
+        AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+            envelope.parent_snapshot,
+            nodes,
+            bindings,
+        )
         return CapabilityDraftBundleV1(
             nodes=nodes,
-            bindings=(*external, *internal),
+            bindings=bindings,
             prompt_preparations=preparations,
         )
     raise ValueError("parent_derived_operation_required")
@@ -484,9 +505,15 @@ def _normalized_product_bundle(
             (derivative_node_id,),
         )
         internal = _pair_binding(envelope, nodes=nodes, character_pair_id=pair_id)
+        bindings = (*external, *internal)
+        AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+            envelope.parent_snapshot,
+            nodes,
+            bindings,
+        )
         return CapabilityDraftBundleV1(
             nodes=nodes,
-            bindings=(*external, *internal),
+            bindings=bindings,
             prompt_preparations=preparations,
         )
     raise ValueError("parent_derived_operation_required")
@@ -508,6 +535,11 @@ def _draft_nodes(
         provenance = {
             key: value for key, value in draft.parameters.items() if key in _PROVENANCE_KEYS
         }
+        if envelope.operation_kind == "derivative" and envelope.parent_snapshot is not None:
+            provenance["derived_parent_snapshot"] = envelope.parent_snapshot.model_dump(mode="json")
+            provenance["role_reference_policy_version"] = (
+                AgentCanvasRoleReferencePolicyService.policy_version
+            )
         if draft.prompt_context_snapshot_id is not None:
             provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
         nodes.append(

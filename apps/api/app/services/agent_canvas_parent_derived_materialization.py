@@ -15,6 +15,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_materialization import (
     ParentDerivedMaterializationIntentV1,
     ProposalPublicationEnvelopeV1,
+    ProposalReferencePlanV1,
 )
 
 
@@ -84,6 +85,7 @@ class ParentDerivedMaterializationCoordinator:
                 stage="parent_derived_materialization",
             )
         materialization_id = "materialization_" + _digest(intent.intent_id)[:32]
+        reference_plan_identity = f"{intent.intent_id}:parent-only-references"
         return ProposalPublicationEnvelopeV1(
             envelope_id="envelope_" + _digest(materialization_id)[:32],
             materialization_id=materialization_id,
@@ -97,7 +99,12 @@ class ParentDerivedMaterializationCoordinator:
             selection_reason="Continue the accepted identity as its derived reference.",
             capability_id=parent.capability_id,
             selected_option=parent.selected_option,
-            reference_plan=parent.reference_plan,
+            reference_plan=ProposalReferencePlanV1(
+                plan_id="reference_plan_" + _digest(reference_plan_identity)[:32],
+                references=(),
+                source_snapshots=(),
+                digest=_digest(reference_plan_identity),
+            ),
             expected_session_revision=expected_session_revision,
             stage_revision=intent.stage_revision,
             target_node_id=None,

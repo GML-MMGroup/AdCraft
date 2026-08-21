@@ -6,8 +6,17 @@ from collections import Counter
 from types import MappingProxyType
 
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import (
+    CanvasBindingV2,
+    CanvasNodeV2,
+    ResolvedMediaInputSnapshotV2,
+)
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_role_prompt_preparation import RolePromptVariantV2
+from app.schemas.agent_canvas_materialization import ParentNodeSnapshotV1
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    RoleBindingSnapshotV2,
+    RolePromptVariantV2,
+)
 from app.schemas.agent_canvas_role_reference_policy import (
     RoleReferencePolicyV1,
     RoleReferenceRuleV1,
@@ -102,6 +111,15 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 canonical_order=3,
             ),
             _rule("scene_board", "image", 1, 1, required=True, canonical_order=4),
+            _rule(
+                "character_main",
+                "image",
+                0,
+                1,
+                required=False,
+                default_included=False,
+                canonical_order=5,
+            ),
         ),
     ),
     "bgm": RoleReferencePolicyV1(
@@ -208,6 +226,170 @@ class AgentCanvasRoleReferencePolicyService:
                 "role_reference_policy_invalid",
                 "Role references do not satisfy the authoritative policy.",
                 details={"policy_version": self.policy_version, "violations": list(errors)},
+            )
+
+    def require_derivative_bindings(
+        self,
+        parent: ParentNodeSnapshotV1 | None,
+        nodes: tuple[CanvasNodeV2, ...],
+        bindings: tuple[CanvasBindingV2, ...],
+    ) -> None:
+        """Require the closed parent-only topology for one guided derivative."""
+
+        violations: list[str] = []
+        if parent is None or len(nodes) != 1:
+            violations.append("derivative_shape_invalid")
+        if len(bindings) != 1:
+            violations.append("derivative_binding_cardinality_invalid")
+        if parent is not None and len(nodes) == 1:
+            node = nodes[0]
+            target_role = (
+                "product_multiview"
+                if node.creative_role == "product"
+                and node.structured_content.get("asset_kind") == "multi_view"
+                else "character_turnaround"
+                if node.creative_role == "character"
+                and node.structured_content.get("character_asset_kind") == "turnaround"
+                else None
+            )
+            expected_parent_role = (
+                "product_main"
+                if target_role == "product_multiview"
+                else "character_main"
+                if target_role == "character_turnaround"
+                else None
+            )
+            if target_role is None or parent.semantic_role != expected_parent_role:
+                violations.append("derivative_role_invalid")
+            if len(bindings) == 1:
+                binding = bindings[0]
+                if (
+                    binding.workflow_id != node.workflow_id
+                    or binding.target_node_id != node.node_id
+                    or binding.source.kind != "node_output"
+                    or binding.source.source_node_id != parent.node_id
+                    or binding.input_role != "image_reference"
+                    or not binding.required
+                    or not binding.enabled
+                    or binding.order != 0
+                ):
+                    violations.append("derivative_parent_binding_invalid")
+                elif target_role is not None:
+                    policy_violations = self.validate(
+                        target_role,
+                        (parent.semantic_role,),
+                    )
+                    violations.extend(policy_violations)
+        if violations:
+            raise self._error(
+                "role_reference_mismatch",
+                "Derivative references do not match the authoritative parent-only policy.",
+                details={
+                    "policy_version": self.policy_version,
+                    "violations": list(dict.fromkeys(violations)),
+                },
+            )
+
+    def require_derivative_prompt_bindings(
+        self,
+        role_variant: RolePromptVariantV2,
+        bindings: tuple[RoleBindingSnapshotV2, ...],
+    ) -> None:
+        expected = {
+            "product_multiview": ("product", "product_main_identity", "product_main"),
+            "character_turnaround": (
+                "character",
+                "character_main_identity",
+                "character_main",
+            ),
+        }.get(role_variant)
+        if expected is None:
+            return
+        source_role, purpose, policy_source_role = expected
+        valid = len(bindings) == 1
+        if valid:
+            binding = bindings[0]
+            valid = bool(
+                binding.source_node_id
+                and binding.source_node_revision is not None
+                and binding.source_role == source_role
+                and bool(binding.asset_id) == bool(binding.asset_version_id)
+                and binding.reference_purpose == purpose
+                and binding.display_order == 0
+            )
+        target_role = (
+            "product_multiview" if role_variant == "product_multiview" else "character_turnaround"
+        )
+        if valid:
+            valid = not self.validate(target_role, (policy_source_role,))
+        if not valid:
+            raise self._error(
+                "role_reference_mismatch",
+                "Derivative prompt references do not match the parent-only policy.",
+                details={"policy_version": self.policy_version},
+            )
+
+    def require_derivative_runtime_inputs(
+        self,
+        node: CanvasNodeV2,
+        inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+    ) -> None:
+        target_role = (
+            "product_multiview"
+            if node.creative_role == "product"
+            and node.structured_content.get("asset_kind") == "multi_view"
+            else "character_turnaround"
+            if node.creative_role == "character"
+            and node.structured_content.get("character_asset_kind") == "turnaround"
+            else None
+        )
+        if target_role is None:
+            return
+        expected_source_role = "product" if target_role == "product_multiview" else "character"
+        policy_source_role = (
+            "product_main" if target_role == "product_multiview" else "character_main"
+        )
+        valid = len(inputs) == 1
+        if valid:
+            item = inputs[0]
+            valid = bool(
+                item.source_kind == "node_output"
+                and item.source_node_id
+                and item.source_node_revision is not None
+                and item.source_semantic_role == expected_source_role
+                and item.binding_kind == "image_reference"
+                and item.input_role == "image_reference"
+                and item.required
+                and item.display_order == 0
+                and item.media_type == "image"
+                and item.asset_version_id
+            )
+            parent_snapshot = node.metadata.get("derived_parent_snapshot")
+            if valid and isinstance(parent_snapshot, dict):
+                valid = item.source_node_id == parent_snapshot.get("node_id")
+            prepared_snapshots = node.metadata.get("prepared_reference_snapshots")
+            if valid and isinstance(prepared_snapshots, list):
+                prepared = prepared_snapshots[0] if len(prepared_snapshots) == 1 else None
+                valid = isinstance(prepared, dict) and all(
+                    (
+                        item.binding_id == prepared.get("binding_id"),
+                        item.source_node_id == prepared.get("source_node_id"),
+                        item.source_node_revision == prepared.get("source_node_revision"),
+                        prepared.get("asset_id") in {None, item.asset_id},
+                        prepared.get("asset_version_id") in {None, item.asset_version_id},
+                        item.display_order == prepared.get("display_order"),
+                    )
+                )
+        if valid:
+            valid = not self.validate(target_role, (policy_source_role,))
+        if not valid:
+            raise self._error(
+                "role_reference_mismatch",
+                "Derivative runtime references do not match the parent-only policy.",
+                details={
+                    "policy_version": self.policy_version,
+                    "target_node_id": node.node_id,
+                },
             )
 
     @staticmethod

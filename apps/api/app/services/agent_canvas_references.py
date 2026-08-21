@@ -163,7 +163,11 @@ class AdReferenceBundleResolver:
             )
             if violations:
                 raise _error(
-                    "role_reference_policy_invalid",
+                    (
+                        "role_reference_mismatch"
+                        if policy.target_role in {"product_multiview", "character_turnaround"}
+                        else "role_reference_policy_invalid"
+                    ),
                     "Resolved references do not satisfy the role reference policy.",
                     details={
                         "target_role": policy.target_role,
@@ -270,6 +274,16 @@ def _error(
 
 
 def _target_role_policy(node: CanvasNodeV2, policy_service: AgentCanvasRoleReferencePolicyService):
+    if (
+        node.creative_role == "product"
+        and node.structured_content.get("asset_kind") == "multi_view"
+    ):
+        return policy_service.resolve("product_multiview")
+    if (
+        node.creative_role == "character"
+        and node.structured_content.get("character_asset_kind") == "turnaround"
+    ):
+        return policy_service.resolve("character_turnaround")
     if node.creative_role == "storyboard_sequence":
         sequence_order = node.metadata.get("sequence_order")
         return policy_service.resolve(
@@ -287,7 +301,11 @@ def _target_role_policy(node: CanvasNodeV2, policy_service: AgentCanvasRoleRefer
 
 
 def _is_guided_node(node: CanvasNodeV2) -> bool:
-    return bool(node.metadata.get("guided_checkpoint") or node.metadata.get("guided_origin"))
+    return bool(
+        node.metadata.get("guided_checkpoint")
+        or node.metadata.get("guided_origin")
+        or node.metadata.get("derived_parent_snapshot")
+    )
 
 
 def _policy_source_role(node: CanvasNodeV2) -> str:

@@ -14,6 +14,9 @@ from app.schemas.agent_canvas_materialization_commit import (
 from app.services.agent_canvas_production_journey_reducer import (
     GuidedProductionJourneyReducer,
 )
+from app.services.agent_canvas_role_reference_policy import (
+    AgentCanvasRoleReferencePolicyService,
+)
 
 
 class AgentCanvasMaterializationCommitService:
@@ -33,6 +36,12 @@ class AgentCanvasMaterializationCommitService:
                 "materialization_payload_invalid",
                 "Materialization plan digest is invalid.",
                 stage="materialization_commit",
+            )
+        if plan.operation_kind == "derivative":
+            AgentCanvasRoleReferencePolicyService().require_derivative_bindings(
+                plan.parent_snapshot,
+                plan.nodes,
+                plan.bindings,
             )
         return self._repository.commit(plan, reducer=self._reducer)
 

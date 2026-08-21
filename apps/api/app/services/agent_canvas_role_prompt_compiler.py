@@ -119,6 +119,10 @@ class AgentCanvasRolePromptCompiler:
             _validate_role_prompt_text(context.role_variant, context.style_projection)
             prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
         self._validate_required_references(recipe.reference_purposes, context)
+        self._reference_policy.require_derivative_prompt_bindings(
+            context.role_variant,
+            context.bindings,
+        )
         if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         structured = _structured_content(concrete_brief, context)
