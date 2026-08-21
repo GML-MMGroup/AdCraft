@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -142,5 +145,37 @@ describe("Agent Canvas Documents", () => {
       cursor: undefined,
       limit: 20,
     }));
+  });
+
+  it("opens Agent Documents in a viewport portal and closes it with Escape", async () => {
+    vi.spyOn(agentCanvasApi, "listAgentCanvasDocuments")
+      .mockResolvedValue({ items: [storyboardDocument], next_cursor: null });
+    const { container } = render(
+      <AgentCanvasDocumentBrowser
+        workflowId="workflow-1"
+        documentEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Agent Documents" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Agent Documents" });
+    expect(container.contains(dialog)).toBe(false);
+    expect(document.body.querySelector(".agent-document-browser__overlay")?.contains(dialog)).toBe(true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Agent Documents" })).toBeNull();
+  });
+
+  it("centers the Agent Documents overlay in the viewport", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/documents/agent-canvas-documents.css");
+    const css = readFileSync(cssPath, "utf8");
+    const overlayRule = css.match(/\.agent-document-browser__overlay\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(overlayRule).toBeTruthy();
+    expect(overlayRule).toContain("position: fixed");
+    expect(overlayRule).toContain("inset: 0");
+    expect(overlayRule).toContain("place-items: center");
   });
 });
