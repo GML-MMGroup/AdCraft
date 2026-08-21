@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GuidedInteractionV1 } from "../../../types-v2.ts";
+import type { GuidedInteractionV1, ProposedDraftReferenceV2 } from "../../../types-v2.ts";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
 
 const interaction: GuidedInteractionV1 = {
@@ -27,6 +27,28 @@ const interaction: GuidedInteractionV1 = {
   created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
 };
 
+const proposalReferences: ProposedDraftReferenceV2[] = [{
+  source_kind: "node",
+  source_id: "node-character-turnaround",
+  binding_kind: "image_reference",
+  input_role: "visual_reference",
+  required: true,
+  display_order: 0,
+  semantic_reference_role: "subject_reference",
+  display_name: "Soft Guardian Mother - Three-view",
+  media_type: "image",
+}, {
+  source_kind: "node",
+  source_id: "node-scene-board",
+  binding_kind: "image_reference",
+  input_role: "visual_reference",
+  required: true,
+  display_order: 1,
+  semantic_reference_role: "environment_reference",
+  display_name: "Dawn Forest Edge Reference Board",
+  media_type: "image",
+}];
+
 afterEach(cleanup);
 
 describe("GuidedInteractionCard", () => {
@@ -44,6 +66,71 @@ describe("GuidedInteractionCard", () => {
       option_id: "option-a",
       custom_text: null,
     });
+  });
+
+  it("shows required Proposal references and submits them with the selected option", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <GuidedInteractionCard
+        interaction={{
+          ...interaction,
+          content: interaction.content.content_kind === "concept_choice"
+            ? { ...interaction.content, proposal_id: "proposal-storyboard-1" }
+            : interaction.content,
+        }}
+        pending={false}
+        proposalReferences={proposalReferences}
+        referenceMediaUrls={{
+          "node:node-character-turnaround": "/api/v2/assets/asset-character/content",
+          "node:node-scene-board": "/api/v2/assets/asset-scene/content",
+        }}
+        onSubmit={submit}
+      />,
+    );
+
+    expect(screen.getByText("Soft Guardian Mother - Three-view")).toBeTruthy();
+    expect(screen.getByText("Dawn Forest Edge Reference Board")).toBeTruthy();
+    expect(screen.getAllByText("Required")).toHaveLength(2);
+    expect(screen.getByRole("img", {
+      name: "Soft Guardian Mother - Three-view",
+    }).getAttribute("src")).toBe("/api/v2/assets/asset-character/content");
+
+    fireEvent.click(screen.getByRole("button", { name: /Warm/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(submit).toHaveBeenCalledWith({
+      submission_kind: "concept_choice",
+      expected_interaction_revision: 2,
+      expected_session_revision: 4,
+      action: "select",
+      option_id: "option-a",
+      custom_text: null,
+      accepted_references: proposalReferences,
+    });
+  });
+
+  it("does not submit a selected option before its Proposal references are available", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <GuidedInteractionCard
+        interaction={{
+          ...interaction,
+          content: interaction.content.content_kind === "concept_choice"
+            ? { ...interaction.content, proposal_id: "proposal-storyboard-1" }
+            : interaction.content,
+        }}
+        pending={false}
+        proposalReferences={null}
+        onSubmit={submit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Warm/i }));
+
+    expect(screen.getByRole("status", { name: "Loading proposal references" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("shows the backend recommendation and submits a custom choice only from the shared Submit", () => {

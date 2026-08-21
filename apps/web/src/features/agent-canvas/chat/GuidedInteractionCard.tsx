@@ -1,11 +1,14 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type {
   GuidedInteractionActionV1,
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
+  ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { ConceptChoiceSubmitControls } from "./ConceptChoiceSubmitControls.tsx";
+import { GuidedInteractionReferences } from "./GuidedInteractionReferences.tsx";
+import { guidedReferenceKey } from "./guidedInteractionReferences.ts";
 
 const ACTION_LABELS: Record<GuidedInteractionActionV1, string> = {
   answer: "Submit answers",
@@ -28,10 +31,14 @@ function isAllowed(interaction: GuidedInteractionV1, action: GuidedInteractionAc
 export function GuidedInteractionCard({
   interaction,
   pending,
+  proposalReferences,
+  referenceMediaUrls = {},
   onSubmit,
 }: {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  proposalReferences?: ProposedDraftReferenceV2[] | null;
+  referenceMediaUrls?: Record<string, string>;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }) {
   if (interaction.status !== "open") return null;
@@ -39,7 +46,18 @@ export function GuidedInteractionCard({
     return <QuestionnaireInteraction interaction={interaction} pending={pending} onSubmit={onSubmit} />;
   }
   if (interaction.content.content_kind === "concept_choice") {
-    return <ConceptInteraction interaction={interaction} pending={pending} onSubmit={onSubmit} />;
+    const references = proposalReferences === undefined
+      ? interaction.content.proposal_id ? null : []
+      : proposalReferences;
+    return (
+      <ConceptInteraction
+        interaction={interaction}
+        pending={pending}
+        proposalReferences={references}
+        referenceMediaUrls={referenceMediaUrls}
+        onSubmit={onSubmit}
+      />
+    );
   }
   return <MediaReviewInteraction interaction={interaction} pending={pending} onSubmit={onSubmit} />;
 }
@@ -153,19 +171,41 @@ function QuestionnaireInteraction({
   );
 }
 
-function ConceptInteraction({ interaction, pending, onSubmit }: {
+function ConceptInteraction({
+  interaction,
+  pending,
+  proposalReferences,
+  referenceMediaUrls,
+  onSubmit,
+}: {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  proposalReferences: ProposedDraftReferenceV2[] | null;
+  referenceMediaUrls: Record<string, string>;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }) {
   const content = interaction.content.content_kind === "concept_choice" ? interaction.content : null;
   const options = content?.options ?? [];
   const [optionId, setOptionId] = useState<string | null>(null);
+  const [excludedOptionalReferenceKeys, setExcludedOptionalReferenceKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const referenceSignature = useMemo(() => proposalReferences?.map((reference) => (
+    `${guidedReferenceKey(reference)}:${reference.required}:${reference.display_order}`
+  )).join("|") ?? "pending", [proposalReferences]);
+  useEffect(() => {
+    setExcludedOptionalReferenceKeys(new Set());
+  }, [referenceSignature]);
+  const acceptedReferences = useMemo(() => (
+    proposalReferences?.filter((reference) => (
+      reference.required || !excludedOptionalReferenceKeys.has(guidedReferenceKey(reference))
+    )).map((reference, index) => ({ ...reference, display_order: index })) ?? []
+  ), [excludedOptionalReferenceKeys, proposalReferences]);
   const submit = (
     action: "select" | "custom" | "defer" | "exclude" | "delegate",
     customText: string | null,
   ) => {
-    if (action === "select" && !optionId) return;
+    if (action === "select" && (!optionId || proposalReferences === null)) return;
     void onSubmit({
       submission_kind: "concept_choice",
       expected_interaction_revision: interaction.revision,
@@ -173,6 +213,9 @@ function ConceptInteraction({ interaction, pending, onSubmit }: {
       action,
       option_id: action === "select" ? optionId : null,
       custom_text: action === "custom" ? customText : null,
+      ...(action === "select" && content?.proposal_id
+        ? { accepted_references: acceptedReferences }
+        : {}),
     });
   };
   return (
@@ -184,11 +227,28 @@ function ConceptInteraction({ interaction, pending, onSubmit }: {
           </button>
         ))}
       </div>
+      {content?.proposal_id ? (
+        <GuidedInteractionReferences
+          references={proposalReferences}
+          mediaUrls={referenceMediaUrls}
+          excludedOptionalReferenceKeys={excludedOptionalReferenceKeys}
+          disabled={pending}
+          onOptionalReferenceChange={(referenceKey, accepted) => {
+            setExcludedOptionalReferenceKeys((current) => {
+              const next = new Set(current);
+              if (accepted) next.delete(referenceKey);
+              else next.add(referenceKey);
+              return next;
+            });
+          }}
+        />
+      ) : null}
       <ConceptChoiceSubmitControls
         allowedActions={interaction.allowed_actions}
         allowCustom={content?.allow_custom ?? false}
         allowExclusion={content?.allow_exclusion ?? false}
         busy={pending}
+        selectReady={proposalReferences !== null}
         selectedOptionId={optionId}
         onSubmit={submit}
       />
