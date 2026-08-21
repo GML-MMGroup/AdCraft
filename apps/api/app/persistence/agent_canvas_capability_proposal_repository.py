@@ -13,13 +13,15 @@ from sqlalchemy import func, insert, select, update
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_expert_activity_terminal_publication import (
+    publish_expert_activity_terminal_in_transaction,
+)
 from app.persistence.models import (
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasConceptOptionRow,
     AgentCanvasConceptProposalRow,
     AgentCanvasContinuationOutboxRow,
-    AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
@@ -339,11 +341,20 @@ class AgentCanvasCapabilityProposalRepository:
                         updated_at=timestamp,
                     )
                 )
-                connection.execute(
-                    update(AgentCanvasExpertActivityRow)
-                    .where(AgentCanvasExpertActivityRow.turn_id == envelope.capability_turn_id)
-                    .values(status="completed", updated_at=timestamp)
+                activity_publication = publish_expert_activity_terminal_in_transaction(
+                    connection,
+                    self._events,
+                    turn_id=envelope.capability_turn_id,
+                    status="completed",
+                    response_locale=envelope.response_locale,
+                    now=timestamp,
                 )
+                if not activity_publication.changed:
+                    raise V2PersistenceError(
+                        "expert_activity_terminal",
+                        "Expert activity already reached a terminal state.",
+                        stage="capability_publication",
+                    )
                 connection.execute(
                     update(AgentCanvasContinuationOutboxRow)
                     .where(
@@ -446,13 +457,6 @@ class AgentCanvasCapabilityProposalRepository:
                     )
                 publication_events.extend(
                     [
-                        (
-                            "expert_activity_completed",
-                            {
-                                "capability_id": envelope.capability_id,
-                                "status": "completed",
-                            },
-                        ),
                         (
                             "agent_command_completed",
                             {

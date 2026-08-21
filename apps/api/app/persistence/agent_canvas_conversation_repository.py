@@ -32,6 +32,9 @@ from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_expert_activity_terminal_publication import (
+    publish_expert_activity_terminal_in_transaction,
+)
 from app.persistence.agent_canvas_guided_interaction_repository import (
     guidance_awaiting_from_row,
     guided_interaction_from_row,
@@ -4157,89 +4160,18 @@ class AgentCanvasConversationRepository:
         now = _now()
         try:
             with self._database.engine.begin() as connection:
-                row = (
-                    connection.execute(
-                        select(AgentCanvasExpertActivityRow).where(
-                            AgentCanvasExpertActivityRow.activity_id == activity_id
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if row is None:
-                    raise _error("expert_activity_not_found", "Expert activity was not found.")
-                current_status = str(row["status"])
-                if current_status in {"completed", "failed"}:
-                    if current_status == status:
-                        return _expert_activity(row)
-                    raise _error(
-                        "expert_activity_terminal",
-                        "Expert activity already reached a terminal state.",
-                    )
-                connection.execute(
-                    update(AgentCanvasExpertActivityRow)
-                    .where(AgentCanvasExpertActivityRow.activity_id == activity_id)
-                    .values(
-                        status=status,
-                        error_code=error_code,
-                        error_message=error_message,
-                        updated_at=now,
-                    )
-                )
-                turn = _require_turn(connection, str(row["turn_id"]))
-                self._events.append_in_transaction(
+                publication = publish_expert_activity_terminal_in_transaction(
                     connection,
-                    V2EventInsert(
-                        workflow_id=str(row["workflow_id"]),
-                        event_type=f"expert_activity_{status}",
-                        created_at=now,
-                        payload={
-                            "activity_id": activity_id,
-                            "workflow_id": str(row["workflow_id"]),
-                            "turn_id": str(row["turn_id"]),
-                            "capability_id": str(row["capability_id"]),
-                            "operation": str(row["operation"]),
-                            "status": status,
-                            "capability_display_name": str(row["display_name"]),
-                            "error_code": error_code,
-                            "conversation_id": str(turn["conversation_id"]),
-                            "created_at": now,
-                            **(event_details or {}),
-                        },
-                    ),
+                    self._events,
+                    activity_id=activity_id,
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    event_details=event_details,
+                    now=now,
                 )
-                _append_timeline_entry(
-                    connection,
-                    conversation_id=str(turn["conversation_id"]),
-                    workflow_id=str(row["workflow_id"]),
-                    entry_type="expert_activity",
-                    content=str(row["display_name"]),
-                    metadata=build_presentation_metadata(
-                        message_key=(
-                            "expert_activity.completed"
-                            if status == "completed"
-                            else "expert_activity.failed"
-                        ),
-                        message_args={
-                            "capability_display_name": str(row["display_name"]),
-                        },
-                        response_locale=_guidance_response_locale(
-                            connection,
-                            str(row["workflow_id"]),
-                        ),
-                        presentation_key=f"activity:{activity_id}",
-                        base={
-                            "activity_id": activity_id,
-                            "capability_id": str(row["capability_id"]),
-                            "operation": str(row["operation"]),
-                            "capability_display_name": str(row["display_name"]),
-                            "status": status,
-                            "error_code": error_code,
-                            **(event_details or {}),
-                        },
-                    ),
-                    created_at=now,
-                )
+                if not publication.changed:
+                    return publication.activity
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
