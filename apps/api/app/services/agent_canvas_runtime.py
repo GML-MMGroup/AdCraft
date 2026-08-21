@@ -717,7 +717,9 @@ class DynamicCanvasScheduler:
             ]
         if prepared.optional_input_omissions:
             prompt_metadata["optional_input_omissions"] = list(prepared.optional_input_omissions)
-        if effective_parameters is not None and effective_parameters.normalizations:
+        if effective_parameters is not None and (
+            effective_parameters.normalizations or parameter_compilation_snapshot is not None
+        ):
             self._runtime.update_member(
                 execution_id,
                 node_id,
