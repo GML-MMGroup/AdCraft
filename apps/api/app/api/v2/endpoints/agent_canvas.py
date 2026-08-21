@@ -2273,7 +2273,10 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    if not accepted.replayed:
+    if (
+        not accepted.replayed
+        and runtime.conversations.get_turn(accepted.turn_id).status == "queued"
+    ):
         background_tasks.add_task(
             runtime.accepted_background.run,
             AcceptedBackgroundWork(

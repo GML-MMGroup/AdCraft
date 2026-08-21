@@ -1553,6 +1553,216 @@ class AgentCanvasConversationRepository:
             user_message=text,
         )
 
+    def create_media_review_wait_turn(
+        self,
+        workflow_id: str,
+        *,
+        text: str,
+        mentioned_node_ids: tuple[str, ...],
+        mentioned_image_asset_ids: tuple[str, ...],
+        video_skill_run_id: str | None,
+        idempotency_key: str,
+        interaction: GuidedInteractionV1,
+        awaiting: GuidanceAwaitingV2,
+        expected_session_revision: int,
+    ) -> ChatTurnAcceptedV2:
+        """Persist one informational message while typed media review owns progress."""
+
+        request = {
+            "text": text,
+            "mentioned_node_ids": list(mentioned_node_ids),
+            "mentioned_image_asset_ids": list(mentioned_image_asset_ids),
+            "video_skill_run_id": video_skill_run_id,
+        }
+        request_json = _dump(request)
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasChatTurnRow).where(
+                                AgentCanvasChatTurnRow.idempotency_key == idempotency_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is not None:
+                        if (
+                            str(existing["workflow_id"]) != workflow_id
+                            or str(existing["request_json"]) != request_json
+                        ):
+                            raise _error("idempotency_conflict", "Idempotency key was reused.")
+                        cursor = int(
+                            connection.execute(
+                                select(func.coalesce(func.max(WorkflowEventRow.seq), 0)).where(
+                                    WorkflowEventRow.workflow_id == workflow_id,
+                                )
+                            ).scalar_one()
+                        )
+                        result = ChatTurnAcceptedV2(
+                            workflow_id=workflow_id,
+                            conversation_id=str(existing["conversation_id"]),
+                            message_id=self._message_id_for_turn(
+                                connection, str(existing["turn_id"])
+                            ),
+                            turn_id=str(existing["turn_id"]),
+                            events_cursor=cursor,
+                            replayed=True,
+                        )
+                        connection.commit()
+                        return result
+
+                    session = _require_guidance_session_row_by_workflow(
+                        connection,
+                        workflow_id,
+                    )
+                    current_interaction = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    current_awaiting = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if (
+                        int(session["revision"]) != expected_session_revision
+                        or current_interaction is None
+                        or str(current_interaction["interaction_id"]) != interaction.interaction_id
+                        or int(current_interaction["revision"]) != interaction.revision
+                        or str(current_interaction["kind"]) != "media_review"
+                        or current_awaiting is None
+                        or str(current_awaiting["awaiting_id"]) != awaiting.awaiting_id
+                        or str(current_awaiting["interaction_id"]) != interaction.interaction_id
+                        or str(current_awaiting["kind"]) != "media_review"
+                    ):
+                        raise _error(
+                            "guided_interaction_stale",
+                            "Media review authority changed before the message was recorded.",
+                        )
+
+                    conversation_id = _ensure_conversation(connection, workflow_id, now)
+                    turn_id = f"turn_{uuid4().hex}"
+                    message_id = f"msg_{uuid4().hex}"
+                    connection.execute(
+                        insert(AgentCanvasChatEntryRow).values(
+                            entry_id=message_id,
+                            conversation_id=conversation_id,
+                            workflow_id=workflow_id,
+                            sequence_no=_next_chat_sequence(connection, conversation_id),
+                            entry_type="message",
+                            speaker="user",
+                            content=text,
+                            metadata_json=_dump({"turn_id": turn_id}),
+                            created_at=now,
+                        )
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            event_type="chat_message_created",
+                            created_at=now,
+                            payload={
+                                "message_id": message_id,
+                                "turn_id": turn_id,
+                                "speaker": "user",
+                            },
+                        ),
+                    )
+                    connection.execute(
+                        insert(AgentCanvasChatTurnRow).values(
+                            turn_id=turn_id,
+                            conversation_id=conversation_id,
+                            workflow_id=workflow_id,
+                            turn_kind="message",
+                            status="completed",
+                            request_json=request_json,
+                            idempotency_key=idempotency_key,
+                            retry_of_turn_id=None,
+                            retry_attempt_no=1,
+                            retryable=False,
+                            operation_stage="completed",
+                            operation_failure_json=None,
+                            retry_snapshot_json="{}",
+                            error_code=None,
+                            error_message=None,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    turn = _require_turn(connection, turn_id)
+                    allowed_actions = list(interaction.allowed_actions)
+                    fallback = (
+                        f"{interaction.title} is waiting for review. "
+                        f"Use {', '.join(allowed_actions)} to continue."
+                    )
+                    _publish_assistant_message_in_transaction(
+                        connection,
+                        events=self._events,
+                        turn=turn,
+                        assistant_message=fallback,
+                        now=now,
+                        entry_id=f"msg_{uuid4().hex}",
+                        metadata=build_presentation_metadata(
+                            message_key="media_review.pending_action",
+                            message_args={
+                                "allowed_actions": allowed_actions,
+                                "media_title": interaction.title,
+                            },
+                            response_locale=str(session["response_locale"]),
+                            presentation_key=f"turn:{turn_id}:media-review-wait",
+                        ),
+                    )
+                    completed = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            event_type="chat_turn_completed",
+                            transition_key=f"conversation:{turn_id}:chat_turn_completed",
+                            created_at=now,
+                            payload={
+                                "turn_id": turn_id,
+                                "completion_kind": "typed_wait_information",
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return ChatTurnAcceptedV2(
+                        workflow_id=workflow_id,
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        turn_id=turn_id,
+                        events_cursor=completed.seq,
+                        replayed=False,
+                    )
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+
     def create_action_turn(
         self,
         workflow_id: str,
@@ -4375,13 +4585,12 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         items = tuple(_timeline_entry(row) for row in rows)
-        return ChatTimelineListResponseV2(
-            workflow_id=workflow_id,
-            conversation_id=str(conversation_id),
-            guidance_session=authority.session,
-            guidance_advance_precondition=authority.precondition,
-            continuations=tuple(_continuation_delivery(row) for row in continuation_rows),
-            current_session_actions=tuple(
+        current_session_actions = (
+            ()
+            if authority.session is not None
+            and authority.session.awaiting is not None
+            and authority.session.awaiting.requires_user_action
+            else tuple(
                 sorted(
                     (_guidance_session_action(row) for row in current_action_rows),
                     key=lambda action: (
@@ -4389,7 +4598,15 @@ class AgentCanvasConversationRepository:
                         action.action_id,
                     ),
                 )
-            ),
+            )
+        )
+        return ChatTimelineListResponseV2(
+            workflow_id=workflow_id,
+            conversation_id=str(conversation_id),
+            guidance_session=authority.session,
+            guidance_advance_precondition=authority.precondition,
+            continuations=tuple(_continuation_delivery(row) for row in continuation_rows),
+            current_session_actions=current_session_actions,
             items=items,
             next_cursor=items[-1].sequence_no if items else after_seq,
         )

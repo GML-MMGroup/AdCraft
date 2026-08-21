@@ -1161,6 +1161,28 @@ class AgentConversationService:
         video_skill_run_id: str | None = None,
     ) -> ChatTurnAcceptedV2:
         self._workflows.get_workflow(workflow_id)
+        current_session = self._conversations.get_guidance_session_or_none(workflow_id)
+        if (
+            current_session is not None
+            and current_session.interaction is not None
+            and current_session.interaction.kind == "media_review"
+            and current_session.interaction.status == "open"
+            and current_session.awaiting is not None
+            and current_session.awaiting.kind == "media_review"
+            and current_session.awaiting.interaction_id
+            == current_session.interaction.interaction_id
+        ):
+            return self._conversations.create_media_review_wait_turn(
+                workflow_id,
+                text=text,
+                mentioned_node_ids=mentioned_node_ids,
+                mentioned_image_asset_ids=mentioned_image_asset_ids,
+                video_skill_run_id=video_skill_run_id,
+                idempotency_key=idempotency_key,
+                interaction=current_session.interaction,
+                awaiting=current_session.awaiting,
+                expected_session_revision=current_session.revision,
+            )
         if video_skill_run_id is None:
             video_skill_run_id = self._conversations.get_active_style_skill_run(
                 workflow_id

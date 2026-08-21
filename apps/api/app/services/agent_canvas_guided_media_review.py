@@ -170,14 +170,14 @@ class GuidedMediaReviewCoordinator:
             response_locale=session.response_locale,
             expected_session_revision=session.revision,
             revision=1,
-            title=f"Review {node.title}",
-            context="Review the exact current media result before guided production continues.",
+            title=node.title,
+            context=node.title,
             content=GuidedMediaReviewV1(
                 node_id=node.node_id,
                 node_revision=node.revision,
                 asset_id=asset.asset_id,
                 asset_version_id=asset.version_id or "",
-                summary=f"{node.title} is ready for review.",
+                summary=node.title,
             ),
             allowed_actions=actions,
             submit_path=(
