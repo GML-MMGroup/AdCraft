@@ -62,9 +62,10 @@ import {
   writeAgentCanvasViewport,
 } from "./canvas/agentCanvasViewport.ts";
 import {
+  beginNodeDrag,
+  cancelNodeDrag,
   deferNodeSnapshotDuringDrag,
   finishNodeDrag,
-  setDraggedNodeIds,
 } from "./canvas/draggingNodeState.ts";
 import {
   findAvailableCanvasPosition,
@@ -182,7 +183,9 @@ export function AgentCanvasPage() {
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
-  flowNodesRef.current = nodes;
+  useEffect(() => {
+    flowNodesRef.current = nodes;
+  }, [nodes]);
   const scheduleLayoutButtonFocus = useCallback(() => {
     window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
   }, []);
@@ -389,6 +392,32 @@ export function AgentCanvasPage() {
     flowNodesRef.current = deferred.nodes;
     setNodes(deferred.nodes);
   }, [presentedNodes, setNodes]);
+
+  const cancelActiveNodeDrag = useCallback(() => {
+    if (!activeDraggedNodeIdsRef.current.size) return;
+    const nextNodes = cancelNodeDrag(
+      pendingPresentedNodesRef.current ?? latestPresentedNodesRef.current,
+      flowNodesRef.current,
+      activeDraggedNodeIdsRef.current,
+    );
+    pendingPresentedNodesRef.current = null;
+    flowNodesRef.current = nextNodes;
+    setNodes(nextNodes);
+  }, [setNodes]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") cancelActiveNodeDrag();
+    };
+    window.addEventListener("blur", cancelActiveNodeDrag);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", cancelActiveNodeDrag);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      activeDraggedNodeIdsRef.current.clear();
+      pendingPresentedNodesRef.current = null;
+    };
+  }, [cancelActiveNodeDrag]);
 
   useEffect(() => {
     setEdges((current) => reconcileSelectableCanvasEdges(presentedEdges, current));
@@ -764,7 +793,10 @@ export function AgentCanvasPage() {
         onContextMenu={(event) => event.preventDefault()}
         onPointerMove={pointerSpotlight.onPointerMove}
         onPointerLeave={pointerSpotlight.onPointerLeave}
-        onPointerCancel={pointerSpotlight.onPointerCancel}
+        onPointerCancel={(event) => {
+          pointerSpotlight.onPointerCancel(event);
+          cancelActiveNodeDrag();
+        }}
         onDoubleClick={(event) => {
           const target = event.target;
           if (target instanceof Element && target.classList.contains("react-flow__pane")) {
@@ -801,11 +833,10 @@ export function AgentCanvasPage() {
             focusCanvasNode(node.id);
           }}
           onNodeDragStart={(_event, node, draggedNodes) => {
-            setDraggedNodeIds(
+            beginNodeDrag(
               activeDraggedNodeIdsRef.current,
               node.id,
               draggedNodes.map((item) => item.id),
-              true,
             );
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
@@ -820,7 +851,9 @@ export function AgentCanvasPage() {
             flowNodesRef.current = dragResult.nodes;
             setNodes(dragResult.nodes);
             if (dragResult.positions.length) {
-              void updateNodePositions(dragResult.positions).catch(() => {});
+              void updateNodePositions(dragResult.positions).catch(() => {
+                void refreshWorkflow().catch(() => {});
+              });
             }
           }}
           onNodesDelete={deleteNodes}

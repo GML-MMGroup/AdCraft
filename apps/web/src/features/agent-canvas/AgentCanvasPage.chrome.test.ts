@@ -142,4 +142,21 @@ describe("AgentCanvasPage chrome", () => {
       /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
     );
   });
+
+  it("cleans interrupted drag sessions and recovers failed layout persistence", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("beginNodeDrag(");
+    expect(source).toContain("cancelNodeDrag(");
+    expect(source).toContain('window.addEventListener("blur", cancelActiveNodeDrag)');
+    expect(source).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
+    expect(source).toContain("pointerSpotlight.onPointerCancel(event);");
+    expect(source).toContain("cancelActiveNodeDrag();");
+    expect(source).toMatch(
+      /updateNodePositions\(dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
+    );
+  });
 });
