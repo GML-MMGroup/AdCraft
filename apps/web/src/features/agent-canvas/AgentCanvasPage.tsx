@@ -178,6 +178,7 @@ export function AgentCanvasPage() {
   const viewportInstallFrameRef = useRef<number | null>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
+  const dragCancellationPendingRef = useRef(false);
   const latestPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
@@ -395,6 +396,7 @@ export function AgentCanvasPage() {
 
   const cancelActiveNodeDrag = useCallback(() => {
     if (!activeDraggedNodeIdsRef.current.size) return;
+    dragCancellationPendingRef.current = true;
     const nextNodes = cancelNodeDrag(
       pendingPresentedNodesRef.current ?? latestPresentedNodesRef.current,
       flowNodesRef.current,
@@ -834,6 +836,7 @@ export function AgentCanvasPage() {
             focusCanvasNode(node.id);
           }}
           onNodeDragStart={(_event, node, draggedNodes) => {
+            dragCancellationPendingRef.current = false;
             beginNodeDrag(
               activeDraggedNodeIdsRef.current,
               node.id,
@@ -841,6 +844,10 @@ export function AgentCanvasPage() {
             );
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
+            if (dragCancellationPendingRef.current) {
+              dragCancellationPendingRef.current = false;
+              return;
+            }
             const changed = draggedNodes.length ? draggedNodes : [node];
             const dragResult = finishNodeDrag(
               pendingPresentedNodesRef.current ?? latestPresentedNodesRef.current,

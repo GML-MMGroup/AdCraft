@@ -335,13 +335,13 @@ export function useAgentCanvasChat({
       });
       return hydration;
     };
-    void Promise.all(turnIds.map(hydrateTurn)).then((turns) => {
-      if (generation !== refreshGenerationRef.current) return;
-      turns.forEach((turn) => {
+    turnIds.forEach((turnId) => {
+      void hydrateTurn(turnId).then((turn) => {
+        if (generation !== refreshGenerationRef.current) return;
         applyTurnProjection(turn);
+      }).catch(() => {
+        // Failed turn hydration is deliberately not cached and retries on the next refresh.
       });
-    }).catch(() => {
-      // Failed turn hydration is deliberately not cached and retries on the next refresh.
     });
   }, [applyTurnProjection, workflowId]);
 

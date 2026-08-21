@@ -75,7 +75,7 @@ export function useAgentCanvasRuntime(
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
   const seenTransitionKeysRef = useRef<Set<string>>(new Set());
-  const seenRuntimeRefreshIdentitiesRef = useRef<Set<string>>(new Set());
+  const lastRuntimeRefreshIdentityRef = useRef<string | null>(null);
 
   const workflowId = workflow?.workflow_id ?? null;
   const activeWorkflowIdRef = useRef<string | null>(workflowId);
@@ -90,7 +90,7 @@ export function useAgentCanvasRuntime(
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
     seenTransitionKeysRef.current.clear();
-    seenRuntimeRefreshIdentitiesRef.current.clear();
+    lastRuntimeRefreshIdentityRef.current = null;
   }
 
   useEffect(() => {
@@ -130,7 +130,7 @@ export function useAgentCanvasRuntime(
             setRuntimeError("Agent Canvas runtime requires the matching backend update.");
             return;
           }
-          seenRuntimeRefreshIdentitiesRef.current.clear();
+          lastRuntimeRefreshIdentityRef.current = null;
           setRuntimeError(error instanceof Error ? error.message : "Runtime refresh failed.");
         }
       } while (
@@ -253,12 +253,8 @@ export function useAgentCanvasRuntime(
     const policy = runtimeEventPolicy(event);
     if (policy.refreshRuntime) {
       const refreshIdentity = runtimeRefreshIdentity(event);
-      if (!seenRuntimeRefreshIdentitiesRef.current.has(refreshIdentity)) {
-        seenRuntimeRefreshIdentitiesRef.current.add(refreshIdentity);
-        if (seenRuntimeRefreshIdentitiesRef.current.size > 500) {
-          const oldest = seenRuntimeRefreshIdentitiesRef.current.values().next().value;
-          if (typeof oldest === "string") seenRuntimeRefreshIdentitiesRef.current.delete(oldest);
-        }
+      if (lastRuntimeRefreshIdentityRef.current !== refreshIdentity) {
+        lastRuntimeRefreshIdentityRef.current = refreshIdentity;
         void refreshRuntime();
       }
     }

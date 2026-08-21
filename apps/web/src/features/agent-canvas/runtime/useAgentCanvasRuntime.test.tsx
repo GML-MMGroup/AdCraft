@@ -764,6 +764,14 @@ describe("useAgentCanvasRuntime", () => {
 
     expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
     expect(result.current.state.runtime).toBe(presentedRuntime);
+
+    eventSource.emit("node_generation_started", {
+      ...waitingEvent(45),
+      event_type: "node_generation_started",
+    });
+    await waitFor(() => expect(api.agentCanvasRuntime).toHaveBeenCalledTimes(2));
+    eventSource.emit("node_generation_waiting", waitingEvent(46));
+    await waitFor(() => expect(api.agentCanvasRuntime).toHaveBeenCalledTimes(3));
   });
 
   it("retries a duplicate runtime event after a transient refresh failure", async () => {

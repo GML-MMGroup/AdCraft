@@ -1433,6 +1433,75 @@ describe("useAgentCanvasChat", () => {
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-failed-1");
   });
 
+  it("keeps successful capability hydration when a sibling turn lookup fails", async () => {
+    const activity = (turnId: string, sequence: number) => ({
+      item_type: "expert_activity" as const,
+      activity_id: `activity-${turnId}`,
+      turn_id: turnId,
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      status: "completed" as const,
+      sequence,
+      started_at: "2026-08-20T00:00:02Z",
+      finished_at: "2026-08-20T00:00:03Z",
+      message: null,
+      error_code: null,
+      elapsed_ms: 1_000,
+      attempt_stage: "initial" as const,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    });
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [activity("turn-success-1", 1), activity("turn-retry-1", 2)],
+      next_cursor: 2,
+    }));
+    let retryAttempts = 0;
+    api.agentCanvasChatTurn.mockImplementation((_workflowId: string, turnId: string) => {
+      if (turnId === "turn-retry-1" && retryAttempts++ === 0) {
+        return Promise.reject(new Error("temporary turn lookup failure"));
+      }
+      return Promise.resolve({
+        turn_id: turnId,
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        status: "completed",
+        turn_kind: "capability",
+        request: {},
+        error_code: null,
+        error_message: null,
+        creation_mode: null,
+        guidance_session_revision: null,
+        continuation: null,
+        created_at: "2026-08-20T00:00:02Z",
+        updated_at: "2026-08-20T00:00:03Z",
+      });
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.state.turnsById["turn-success-1"]?.status).toBe("completed");
+    expect(result.current.state.turnsById["turn-retry-1"]).toBeUndefined();
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(3);
+    expect(result.current.state.turnsById["turn-retry-1"]?.status).toBe("completed");
+  });
+
   it("reuses proposal data without retaining stale pointer placement metadata", async () => {
     let pointerSequence = 1;
     api.agentCanvasChatTimeline.mockImplementation(() => Promise.resolve(emptyTimeline({

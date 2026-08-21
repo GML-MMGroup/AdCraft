@@ -2208,6 +2208,41 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it.each(["schema_version", "source_snapshots", "document_revisions"])(
+    "rejects prompt assertion evidence without required %s",
+    (missingField) => {
+      const assertionEvidence: Record<string, unknown> = {
+        schema_version: "1",
+        policy_ref: "adcraft.prompt-policy",
+        policy_version: "1",
+        policy_digest: "sha256:" + "a".repeat(64),
+        recipe_id: "recipe-character",
+        recipe_version: "1",
+        assertion_ids: ["preserve-character-identity"],
+        assertion_block_digest: "sha256:" + "b".repeat(64),
+        prepared_prompt_digest: "c".repeat(64),
+        source_snapshots: [],
+        document_revisions: {},
+        sequence_id: null,
+        engine_owned_fields_digest: "sha256:" + "d".repeat(64),
+        evidence_digest: "sha256:" + "e".repeat(64),
+      };
+      delete assertionEvidence[missingField];
+
+      expect(() => normalizeCanvasNodeV2({
+        ...validWorkflowPayload().nodes[1],
+        prompt_preparation: {
+          status: "ready",
+          attempt_no: 1,
+          prompt_digest: "f".repeat(64),
+          assertion_evidence: assertionEvidence,
+          error: null,
+          updated_at: "2026-08-15T10:00:00Z",
+        },
+      })).toThrowError(new RegExp(`assertion_evidence\\.${missingField}`));
+    },
+  );
+
   it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {
     expect(() => normalizeCanvasNodeV2({
       ...validWorkflowPayload().nodes[1],

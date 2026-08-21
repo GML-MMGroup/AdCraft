@@ -801,7 +801,7 @@ function normalizePromptAssertionSourceSnapshotV1(
       : expectPositiveInteger(record[field], `${path}.${field}`)
   );
   return {
-    schema_version: expectLiteral(record.schema_version ?? "1", new Set(["1"]), `${path}.schema_version`),
+    schema_version: expectLiteral(record.schema_version, new Set(["1"]), `${path}.schema_version`),
     source_kind: expectLiteral(
       record.source_kind,
       new Set<PromptAssertionSourceSnapshotV1["source_kind"]>(["binding", "document", "sequence"]),
@@ -851,7 +851,7 @@ function normalizePromptAssertionEvidenceV1(
   const assertionIds = expectStringArray(record.assertion_ids, `${path}.assertion_ids`);
   if (!assertionIds.length) fail(`${path}.assertion_ids`, "expected at least one assertion identifier");
   return {
-    schema_version: expectLiteral(record.schema_version ?? "1", new Set(["1"]), `${path}.schema_version`),
+    schema_version: expectLiteral(record.schema_version, new Set(["1"]), `${path}.schema_version`),
     policy_ref: expectNonEmptyString(record.policy_ref, `${path}.policy_ref`),
     policy_version: expectNonEmptyString(record.policy_version, `${path}.policy_version`),
     policy_digest: requiredDigest(record.policy_digest, `${path}.policy_digest`),
@@ -863,13 +863,13 @@ function normalizePromptAssertionEvidenceV1(
       `${path}.assertion_block_digest`,
     ),
     prepared_prompt_digest: preparedPromptDigest,
-    source_snapshots: expectArray(record.source_snapshots ?? [], `${path}.source_snapshots`)
+    source_snapshots: expectArray(record.source_snapshots, `${path}.source_snapshots`)
       .map((item, index) => normalizePromptAssertionSourceSnapshotV1(
         item,
         `${path}.source_snapshots[${index}]`,
       )),
     document_revisions: normalizeDocumentRevisions(
-      record.document_revisions,
+      expectRecord(record.document_revisions, `${path}.document_revisions`),
       `${path}.document_revisions`,
     ),
     sequence_id: nullableStringWithDefault(record.sequence_id, `${path}.sequence_id`),

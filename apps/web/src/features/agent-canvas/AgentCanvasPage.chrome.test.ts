@@ -155,6 +155,10 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
     expect(source).toContain("pointerSpotlight.onPointerCancel(event);");
     expect(source).toContain("cancelActiveNodeDrag();");
+    expect(source).toContain("dragCancellationPendingRef.current = true;");
+    expect(source).toMatch(
+      /onNodeDragStop=\{\(_event, node, draggedNodes\) => \{[\s\S]*?if \(dragCancellationPendingRef\.current\) \{[\s\S]*?dragCancellationPendingRef\.current = false;[\s\S]*?return;/,
+    );
     expect(source).toMatch(
       /updateNodePositions\(dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
     );

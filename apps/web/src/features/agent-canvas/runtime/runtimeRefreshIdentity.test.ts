@@ -77,6 +77,14 @@ describe("runtimeRefreshIdentity", () => {
       runtimeRefreshIdentity(event("node_ready", 15)),
     );
   });
+
+  it("ignores provider polling counters that do not change presentation", () => {
+    expect(runtimeRefreshIdentity(event("provider_task_polled", 12, {
+      payload: { progress: 25, poll_count: 3, elapsed_ms: 1_000 },
+    }))).toBe(runtimeRefreshIdentity(event("provider_task_polled", 13, {
+      payload: { progress: 25, poll_count: 4, elapsed_ms: 2_000 },
+    })));
+  });
 });
 
 describe("sameRuntimePresentation", () => {

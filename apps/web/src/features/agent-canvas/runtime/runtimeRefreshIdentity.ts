@@ -19,6 +19,18 @@ const TERMINAL_RUNTIME_EVENTS = new Set([
   "provider_result_download_failed",
   "node_output_published",
   "execution_member_skipped_dependency",
+  "runtime_snapshot_updated",
+]);
+
+const PRESENTATION_PAYLOAD_KEYS = new Set([
+  "progress",
+  "progress_percent",
+  "status",
+  "state",
+  "phase",
+  "waiting_reason",
+  "queue_status",
+  "download_status",
 ]);
 
 function stableValue(value: unknown): unknown {
@@ -37,6 +49,13 @@ function stableJson(value: unknown): string {
   return JSON.stringify(stableValue(value));
 }
 
+function presentationPayload(payload: CanvasRuntimeEventV2["payload"]): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const entries = Object.entries(payload)
+    .filter(([key]) => PRESENTATION_PAYLOAD_KEYS.has(key));
+  return entries.length ? Object.fromEntries(entries) : null;
+}
+
 export function runtimeRefreshIdentity(event: CanvasRuntimeEventV2): string {
   return stableJson({
     workflow_id: event.workflow_id,
@@ -44,7 +63,7 @@ export function runtimeRefreshIdentity(event: CanvasRuntimeEventV2): string {
     node_id: event.node_id,
     event_type: event.event_type,
     attempt: event.attempt ?? null,
-    payload: event.payload,
+    payload: presentationPayload(event.payload),
     seq: TERMINAL_RUNTIME_EVENTS.has(event.event_type) ? event.seq : null,
   });
 }
