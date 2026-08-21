@@ -136,6 +136,9 @@ from app.services.agent_canvas_materialization_submission import (
 )
 from app.services.agent_canvas_turn_intent import TurnIntentService
 from app.services.agent_canvas_user_presentation import AgentCanvasTimelinePresentation
+from app.services.agent_canvas_public_concept_projection import (
+    AgentCanvasPublicConceptProjector,
+)
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -2046,7 +2049,11 @@ class AgentConversationService:
                 "Concept proposal was not found.",
                 stage="agent_conversation_service",
             )
-        return proposal
+        session = self._conversations.get_guidance_session(workflow_id)
+        return AgentCanvasPublicConceptProjector().project_proposal(
+            proposal,
+            response_locale=session.response_locale,
+        )
 
     def _revise_capability_proposal(
         self,

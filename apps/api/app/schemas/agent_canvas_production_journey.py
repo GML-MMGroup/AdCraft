@@ -21,6 +21,7 @@ JourneyStageStatusV2 = Literal[
 JourneyActionKindV2 = Literal[
     "wait_for_user",
     "invoke_capability",
+    "invoke_internal_checkpoint",
     "materialize_selected_option",
     "advance_stage",
     "prepare_editing",
@@ -194,7 +195,9 @@ class JourneyPolicyResultV2(_JourneyModel):
     def validate_action_shape(self) -> "JourneyPolicyResultV2":
         if self.action == "advance_stage" and self.next_stage is None:
             raise ValueError("Stage advancement requires the next stage.")
-        if self.action == "invoke_capability" and self.capability_id is None:
+        if self.action in {"invoke_capability", "invoke_internal_checkpoint"} and (
+            self.capability_id is None
+        ):
             raise ValueError("Capability invocation requires a capability ID.")
         return self
 

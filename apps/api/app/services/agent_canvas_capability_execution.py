@@ -17,6 +17,9 @@ from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
     CapabilityExecutionResultV1,
 )
+from app.schemas.agent_canvas_materialization import (
+    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+)
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
@@ -30,6 +33,17 @@ class CapabilityGateway(Protocol):
         operation: str,
         result_contract_name: str,
         candidate_count: int,
+        context: Mapping[str, object],
+        repair_error: str | None,
+    ) -> Mapping[str, object] | BaseModel: ...
+
+    def run_materialization(
+        self,
+        *,
+        request_identity: str,
+        capability_id: str,
+        operation: str,
+        result_contract_name: str,
         context: Mapping[str, object],
         repair_error: str | None,
     ) -> Mapping[str, object] | BaseModel: ...
@@ -67,6 +81,9 @@ class CapabilityExecutionService:
         context_loader: Callable[[CapabilityCommandEnvelopeV2], Mapping[str, object]],
         current_session_revision: Callable[[CapabilityCommandEnvelopeV2], int | None],
         publisher: Callable[[CapabilityCommandEnvelopeV2, BaseModel], str],
+        internal_document_publisher: (
+            Callable[[CapabilityCommandEnvelopeV2, BaseModel], str] | None
+        ) = None,
         direct_materializer: Callable[[str], object] | None = None,
     ) -> None:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(database)
@@ -74,6 +91,7 @@ class CapabilityExecutionService:
         self._context_loader = context_loader
         self._current_session_revision = current_session_revision
         self._publisher = publisher
+        self._internal_document_publisher = internal_document_publisher
         self._direct_materializer = direct_materializer
         self._policy = CapabilityPolicyService()
 
@@ -90,14 +108,22 @@ class CapabilityExecutionService:
                 stage="capability_execution",
             )
         self._validate_frozen_state(envelope)
-        definition = self._policy.definition(envelope.capability_id)
+        definition = (
+            self._policy.internal_script_checkpoint_definition()
+            if envelope.publication_kind == "internal_document"
+            else self._policy.definition(envelope.capability_id)
+        )
         if definition.result_contract_name != envelope.result_contract_name:
             raise V2PersistenceError(
                 "capability_contract_invalid",
                 "Capability result contract conflicts with its immutable policy.",
                 stage="capability_execution",
             )
-        contract = CAPABILITY_RESULT_CONTRACTS[envelope.capability_id]
+        contract = (
+            CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[envelope.capability_id]
+            if envelope.publication_kind == "internal_document"
+            else CAPABILITY_RESULT_CONTRACTS[envelope.capability_id]
+        )
         context = self._context_loader(envelope)
         repaired = False
         lease_guard()
@@ -140,15 +166,33 @@ class CapabilityExecutionService:
                     stage="capability_execution",
                 ) from error
         lease_guard()
-        proposal_id = self._publisher(envelope, result)
-        if envelope.candidate_count == 1 and self._direct_materializer is not None:
+        proposal_id: str | None = None
+        document_receipt_id: str | None = None
+        if envelope.publication_kind == "internal_document":
+            if self._internal_document_publisher is None:
+                raise V2PersistenceError(
+                    "capability_publication_mode_invalid",
+                    "Internal document publication is not configured.",
+                    stage="capability_execution",
+                )
+            document_receipt_id = self._internal_document_publisher(envelope, result)
+        else:
+            proposal_id = self._publisher(envelope, result)
+        if (
+            envelope.publication_kind == "proposal"
+            and envelope.candidate_count == 1
+            and self._direct_materializer is not None
+        ):
             lease_guard()
+            assert proposal_id is not None
             self._direct_materializer(proposal_id)
         return CapabilityExecutionResultV1(
             envelope_id=envelope.envelope_id,
             capability_id=envelope.capability_id,
             result_contract_name=envelope.result_contract_name,
+            publication_kind=envelope.publication_kind,
             proposal_id=proposal_id,
+            document_receipt_id=document_receipt_id,
             repaired=repaired,
         )
 
@@ -171,6 +215,15 @@ class CapabilityExecutionService:
         *,
         repair_error: str | None,
     ) -> Mapping[str, object] | BaseModel:
+        if envelope.publication_kind == "internal_document":
+            return self._gateway.run_materialization(
+                request_identity=envelope.agent_request_identity,
+                capability_id=envelope.capability_id,
+                operation=operation,
+                result_contract_name=envelope.result_contract_name,
+                context=context,
+                repair_error=repair_error,
+            )
         return self._gateway.run_capability(
             request_identity=envelope.agent_request_identity,
             capability_id=envelope.capability_id,

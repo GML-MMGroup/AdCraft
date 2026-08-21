@@ -159,6 +159,99 @@ class AgentWorkingDocumentRepository:
             raise _unavailable_error() from error
         return document
 
+    def create_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        guidance_session_id: str,
+        kind: AgentWorkingDocumentKindV2,
+        title: str,
+        content: AgentWorkingDocumentContentV2 | dict[str, Any],
+        agent_run_id: str,
+        idempotency_key: str,
+        request_digest: str,
+        now: datetime,
+        document_id: str,
+    ) -> AgentWorkingDocumentV2:
+        """Create one document and its replay receipt in an owning transaction."""
+
+        receipt = (
+            connection.execute(
+                select(AgentWorkingDocumentPatchReceiptRow).where(
+                    AgentWorkingDocumentPatchReceiptRow.document_id == document_id,
+                    AgentWorkingDocumentPatchReceiptRow.idempotency_key == idempotency_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if receipt is not None:
+            if str(receipt["request_digest"]) != request_digest:
+                raise _error(
+                    "agent_document_idempotency_conflict",
+                    "The patch key was already used for another request.",
+                )
+            return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+        existing = connection.execute(
+            select(AgentWorkingDocumentRow.document_id).where(
+                AgentWorkingDocumentRow.workflow_id == workflow_id,
+                AgentWorkingDocumentRow.guidance_session_id == guidance_session_id,
+                AgentWorkingDocumentRow.document_kind == kind,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise _error(
+                "agent_document_kind_conflict",
+                "A working document already exists for this session and kind.",
+            )
+
+        typed_content = _typed_content(kind, content)
+        document = AgentWorkingDocumentV2(
+            document_id=document_id,
+            workflow_id=workflow_id,
+            guidance_session_id=guidance_session_id,
+            kind=kind,
+            title=title,
+            revision=1,
+            content_schema_version=_content_schema_version(typed_content),
+            content_digest=self.digest_content(typed_content),
+            content=typed_content,
+            created_by_agent_run_id=agent_run_id,
+            updated_by_agent_run_id=agent_run_id,
+            created_at=now,
+            updated_at=now,
+        )
+        connection.execute(insert(AgentWorkingDocumentRow).values(**_document_values(document)))
+        connection.execute(
+            insert(AgentWorkingDocumentPatchReceiptRow).values(
+                receipt_id=f"adoc_patch_{uuid4().hex}",
+                document_id=document_id,
+                idempotency_key=idempotency_key,
+                operation="create_guided_document",
+                request_digest=request_digest,
+                before_revision=0,
+                after_revision=1,
+                result_digest=document.content_digest,
+                result_json=document.model_dump_json(),
+                created_at=_iso(now),
+            )
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(document, event_type="agent_document_created"),
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(
+                document,
+                event_type="agent_document_revision_created",
+                transition_key=f"agent-document-revision:{document_id}:1",
+            ),
+        )
+        _append_timeline_reference(connection, document)
+        return document
+
     def get(self, document_id: str) -> AgentWorkingDocumentV2 | None:
         try:
             with self._database.engine.connect() as connection:

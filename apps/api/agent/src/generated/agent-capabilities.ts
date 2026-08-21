@@ -6,6 +6,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "name": "video_agent",
       "operations": [
         "author_decision_bundle",
+        "author_guided_script_checkpoint",
         "author_role_brief",
         "bgm_expert_brief",
         "bgm_prompt",

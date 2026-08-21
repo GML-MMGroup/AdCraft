@@ -56,12 +56,16 @@ class GuidedProductionJourneyService:
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
         result = self._policy.evaluate(_context(session))
-        if result.action not in {"invoke_capability", "prepare_editing"}:
+        if result.action not in {
+            "invoke_capability",
+            "invoke_internal_checkpoint",
+            "prepare_editing",
+        }:
             return session, result
         projection = JourneyActionProjectionV2(
             action_id=action_id,
             action_kind=(
-                f"invoke_capability:{result.capability_id}"
+                f"{result.action}:{result.capability_id}"
                 if result.capability_id is not None
                 else result.action
             ),

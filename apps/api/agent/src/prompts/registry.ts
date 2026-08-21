@@ -154,6 +154,13 @@ function instructionForOperation(operation: string): string {
   if (operation === "materialize_storyboard_segment") {
     return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
   }
+  if (operation === "author_guided_script_checkpoint") {
+    return [
+      "Author only the internal document checkpoint named by capability_context.journey_stage.",
+      "Return one complete ScriptMaterializationResultV1 without alternatives, platform identifiers, Canvas Nodes, Bindings, or user-choice copy.",
+      "Preserve the supplied duration, sequence count, accepted creative facts, and response locale.",
+    ].join(" ");
+  }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
       "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",

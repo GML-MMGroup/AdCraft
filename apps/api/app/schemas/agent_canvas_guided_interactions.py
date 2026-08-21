@@ -36,13 +36,19 @@ class GuidedAcceptedReferenceV1(_GuidedInteractionModel):
 
 class GuidedChoiceOptionV1(_GuidedInteractionModel):
     option_id: str = Field(min_length=1, max_length=160)
-    title: str = Field(min_length=1, max_length=120)
-    summary: str = Field(min_length=1, max_length=512)
+    title: str = Field(min_length=1, max_length=64)
+    summary: str = Field(min_length=1, max_length=240)
     difference_tags: tuple[Annotated[str, Field(min_length=1, max_length=80)], ...] = Field(
         default=(), max_length=6
     )
     recommended: bool = False
     reference_preview: tuple[GuidedReferencePreviewV1, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="after")
+    def validate_summary_sentence_budget(self) -> "GuidedChoiceOptionV1":
+        if sum(character in ".!?。！？" for character in self.summary) > 2:
+            raise ValueError("A guided choice summary cannot exceed two sentences.")
+        return self
 
 
 class GuidedQuestionV1(_GuidedInteractionModel):

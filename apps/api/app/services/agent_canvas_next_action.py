@@ -207,7 +207,8 @@ class DurableNextActionExecutionService:
                 session=session,
                 journey_capability=(
                     journey_action.capability_id
-                    if journey_action is not None and journey_action.action == "invoke_capability"
+                    if journey_action is not None
+                    and journey_action.action in {"invoke_capability", "invoke_internal_checkpoint"}
                     else None
                 ),
                 open_proposal_capabilities=tuple(
@@ -227,7 +228,10 @@ class DurableNextActionExecutionService:
             )
         )
         lease_guard()
-        if journey_action is not None and journey_action.action == "invoke_capability":
+        if journey_action is not None and journey_action.action in {
+            "invoke_capability",
+            "invoke_internal_checkpoint",
+        }:
             assert journey_action.capability_id is not None
             command = self._policy.validate_next_action(
                 NextActionCommandV1(
@@ -237,6 +241,10 @@ class DurableNextActionExecutionService:
                 ),
                 policy,
             )
+            if journey_action.action == "invoke_internal_checkpoint":
+                command = command.model_copy(
+                    update={"definition": self._policy.internal_script_checkpoint_definition()}
+                )
         else:
             command = self._next_action.execute(
                 NextActionContextV1(
@@ -317,6 +325,18 @@ class DurableNextActionExecutionService:
                 ),
                 session_id=session.session_id,
                 expected_session_revision=session.revision,
+                publication_kind=(
+                    "internal_document"
+                    if journey_action is not None
+                    and journey_action.action == "invoke_internal_checkpoint"
+                    else "proposal"
+                ),
+                journey_stage=(
+                    session.journey.stage
+                    if journey_action is not None
+                    and journey_action.action == "invoke_internal_checkpoint"
+                    else None
+                ),
             )
             return command
         if command.command.action == "finish":

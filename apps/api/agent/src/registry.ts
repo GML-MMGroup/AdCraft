@@ -115,6 +115,9 @@ metadata.set("plan_storyboard_sequence_outline", creativeMetadata(
 metadata.set("materialize_storyboard_segment", creativeMetadata(
   "storyboard_design", "StoryboardSegmentMaterializationDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist", "StoryboardSegmentAuthoringContextV2",
 ));
+metadata.set("author_guided_script_checkpoint", creativeMetadata(
+  "script_authoring", "ScriptMaterializationResultV1", "video_agent_script_authoring", "script", "Script Writer", "CapabilityInvocationContextV2",
+));
 metadata.set("execute_canvas_text", { context_contract_name: "AgentRunContext", result_contract_name: "AgentCanvasTextOutput" });
 metadata.set("execute_canvas_script", creativeMetadata(
   "script_authoring", "AgentCanvasScriptOutput", "video_agent_script_authoring", "script", "Script Writer",

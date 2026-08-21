@@ -62,6 +62,9 @@ from app.persistence.agent_canvas_decision_bundle_repository import (
 from app.persistence.agent_canvas_capability_proposal_repository import (
     AgentCanvasCapabilityProposalRepository,
 )
+from app.services.agent_canvas_internal_document_checkpoint import (
+    AgentCanvasInternalDocumentCheckpointPublisher,
+)
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
@@ -1184,6 +1187,10 @@ def create_agent_canvas_runtime(
             else None
         ),
         publisher=AgentCanvasCapabilityProposalRepository(
+            database,
+            event_repository,
+        ).publish,
+        internal_document_publisher=AgentCanvasInternalDocumentCheckpointPublisher(
             database,
             event_repository,
         ).publish,

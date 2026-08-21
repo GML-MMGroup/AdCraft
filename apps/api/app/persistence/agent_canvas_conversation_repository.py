@@ -121,6 +121,10 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
+from app.services.agent_canvas_public_concept_projection import (
+    AgentCanvasPublicConceptProjector,
+    public_option_metadata,
+)
 from app.services.agent_canvas_production_journey import (
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
     initial_production_journey,
@@ -3327,6 +3331,7 @@ class AgentCanvasConversationRepository:
                     )
                 )
                 reserved_option_ids: set[str] = set()
+                persisted_option_ids: list[str] = []
                 for order, option in enumerate(proposal.options):
                     option_id = _available_option_id(
                         connection,
@@ -3335,6 +3340,7 @@ class AgentCanvasConversationRepository:
                         reserved_ids=reserved_option_ids,
                     )
                     reserved_option_ids.add(option_id)
+                    persisted_option_ids.append(option_id)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -3348,6 +3354,12 @@ class AgentCanvasConversationRepository:
                             draft_seed_digest=None,
                         )
                     )
+                public_projection = AgentCanvasPublicConceptProjector().project(
+                    options=proposal.options,
+                    option_ids=persisted_option_ids,
+                    response_locale=str(session_row["response_locale"]),
+                    recommended_option_id=persisted_option_ids[0],
+                )
                 _append_timeline_entry(
                     connection,
                     conversation_id=str(turn["conversation_id"]),
@@ -3357,7 +3369,7 @@ class AgentCanvasConversationRepository:
                     metadata=build_presentation_metadata(
                         message_key="concept_proposal.review",
                         message_args={"option_count": len(proposal.options)},
-                        response_locale=str(session_row["response_locale"]),
+                        response_locale=public_projection.response_locale,
                         presentation_key=f"proposal:{proposal_id}",
                         base={
                             "proposal_id": proposal_id,
@@ -3373,13 +3385,8 @@ class AgentCanvasConversationRepository:
                             "creative_direction_snapshot_id": creative_direction_snapshot_id,
                             "proposal_revision": 1,
                             "options": [
-                                {
-                                    "option_id": option.option_id,
-                                    "title": option.title,
-                                    "public_summary": option.public_summary,
-                                    "key_decisions": list(option.key_decisions),
-                                }
-                                for option in proposal.options
+                                public_option_metadata(option)
+                                for option in public_projection.options
                             ],
                             "proposed_references": [
                                 reference.model_dump(mode="json")

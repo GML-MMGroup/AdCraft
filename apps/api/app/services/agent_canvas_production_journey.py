@@ -207,9 +207,14 @@ class GuidedProductionJourneyPolicyService:
         if descriptor.capability_id is None:
             return _result(journey, "wait_for_user")
         occurrence_id = journey.active_occurrence_id or self._next_occurrence(journey, descriptor)
+        action = (
+            "invoke_internal_checkpoint"
+            if journey.stage in {"narrative_direction", "style_lock", "storyboard_plan"}
+            else "invoke_capability"
+        )
         return _result(
             journey,
-            "invoke_capability",
+            action,
             capability_id=descriptor.capability_id,
             occurrence_id=occurrence_id,
         )

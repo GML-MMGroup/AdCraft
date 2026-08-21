@@ -6186,10 +6186,47 @@
           "default": null,
           "title": "Expected Session Revision"
         },
+        "journey_stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm",
+                "character",
+                "completed",
+                "editing",
+                "intake",
+                "narrative_direction",
+                "product",
+                "props",
+                "scene",
+                "storyboard_grids",
+                "storyboard_plan",
+                "style_lock",
+                "videos",
+                "world_view"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Stage"
+        },
         "objective": {
           "maxLength": 4096,
           "minLength": 1,
           "title": "Objective",
+          "type": "string"
+        },
+        "publication_kind": {
+          "default": "proposal",
+          "enum": [
+            "internal_document",
+            "proposal"
+          ],
+          "title": "Publication Kind",
           "type": "string"
         },
         "reference_allowlist": {
@@ -6574,12 +6611,41 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "document_receipt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Receipt Id"
+        },
         "envelope_id": {
           "title": "Envelope Id",
           "type": "string"
         },
         "proposal_id": {
-          "title": "Proposal Id",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Id"
+        },
+        "publication_kind": {
+          "default": "proposal",
+          "enum": [
+            "internal_document",
+            "proposal"
+          ],
+          "title": "Publication Kind",
           "type": "string"
         },
         "repaired": {
@@ -6595,7 +6661,6 @@
       "required": [
         "capability_id",
         "envelope_id",
-        "proposal_id",
         "result_contract_name"
       ],
       "title": "CapabilityExecutionResultV1",
@@ -12127,13 +12192,13 @@
           "type": "array"
         },
         "summary": {
-          "maxLength": 512,
+          "maxLength": 240,
           "minLength": 1,
           "title": "Summary",
           "type": "string"
         },
         "title": {
-          "maxLength": 120,
+          "maxLength": 64,
           "minLength": 1,
           "title": "Title",
           "type": "string"
@@ -14614,6 +14679,7 @@
             "advance_stage",
             "complete",
             "invoke_capability",
+            "invoke_internal_checkpoint",
             "materialize_selected_option",
             "prepare_editing",
             "wait_for_user"
@@ -26277,6 +26343,17 @@
       "operation": "materialize_storyboard_segment",
       "result_contract_name": "StoryboardSegmentMaterializationDraftV2",
       "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "author_guided_script_checkpoint",
+      "result_contract_name": "ScriptMaterializationResultV1",
+      "style_projection_role": "script"
     },
     {
       "capability_id": "world_setting",

@@ -178,7 +178,7 @@ class ConceptOptionRecordV2(_ConversationModel):
     title: str = Field(min_length=1, max_length=256)
     public_summary: str = Field(min_length=1, max_length=8_192)
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
-        min_length=1, max_length=6
+        default=(), max_length=6
     )
 
 

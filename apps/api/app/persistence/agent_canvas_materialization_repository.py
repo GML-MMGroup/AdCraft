@@ -114,6 +114,7 @@ from app.services.agent_canvas_user_presentation import build_presentation_metad
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
+from app.services.response_locale_resolver import ResponseLocaleResolverV1
 from app.services.agent_canvas_production_journey_reducer import (
     GuidedProductionJourneyReducer,
 )
@@ -1658,7 +1659,7 @@ class AgentCanvasMaterializationRepository:
                             content="The selected direction is being prepared as an editable Draft.",
                             metadata_json=json.dumps(
                                 build_presentation_metadata(
-                                    message_key=None,
+                                    message_key="planning_progress.next_action",
                                     message_args={},
                                     response_locale=_guidance_response_locale(
                                         connection,
@@ -2589,7 +2590,7 @@ def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
             AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
         )
     ).scalar_one_or_none()
-    return str(value or "und")
+    return ResponseLocaleResolverV1().resolve(str(value or "und"))
 
 
 def _guided_submission_context(
