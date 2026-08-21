@@ -49,6 +49,29 @@
           "guidance_advance"
         ]
       }
+    },
+    "CanvasParameterProvenanceV2": {
+      "properties": [
+        "origin",
+        "source_node_id",
+        "binding_id",
+        "source_revision",
+        "requested_value",
+        "effective_value",
+        "normalization_code"
+      ],
+      "enums": {
+        "origin": [
+          "manual",
+          "node_prompt",
+          "binding",
+          "user_explicit",
+          "structured_content",
+          "guidance_default",
+          "role_default",
+          "provider_clamp"
+        ]
+      }
     }
   }
 }

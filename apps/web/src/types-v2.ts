@@ -1604,7 +1604,15 @@ export interface CanvasModelSummaryV2 {
   catalog_revision: number;
 }
 
-export type CanvasParameterOriginV2 = "manual" | "node_prompt" | "binding";
+export type CanvasParameterOriginV2 =
+  | "manual"
+  | "node_prompt"
+  | "binding"
+  | "user_explicit"
+  | "structured_content"
+  | "guidance_default"
+  | "role_default"
+  | "provider_clamp";
 export type CanvasParameterScalarV2 = string | number | boolean;
 
 export interface CanvasParameterProvenanceV2 {

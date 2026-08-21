@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "../api/client";
 import { createOperationKey } from "../api/operationKey.ts";
+import { isV2ContractValidationError } from "../api/v2ContractValidationError.ts";
 import {
   V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
   V2_AUTHORING_DRAFT_DISCARDED_EVENT,
@@ -311,7 +312,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     async function hydrateBackendWorkspace() {
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
-        const { v2Api, isV2ApiError } = await import("../api/v2Client");
+        const { v2Api, isV2ApiError, isNetworkError } = await import("../api/v2Client");
         await refreshProjects();
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
         const storedProjectId = loadActiveProjectId(window.localStorage);
@@ -331,7 +332,13 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
             return;
           } catch (error) {
             if (!isV2ApiError(error) || error.code !== "project_not_found") {
-              setWorkspaceRestoreError("The backend project could not be restored. Your project selection was preserved; retry when the service is available.");
+              if (isV2ContractValidationError(error)) {
+                setWorkspaceRestoreError("The backend workflow data does not match this frontend. Your project selection was preserved; update the frontend and refresh the page.");
+              } else if (isNetworkError(error)) {
+                setWorkspaceRestoreError("The backend could not be reached. Your project selection was preserved; retry when the service is available.");
+              } else {
+                setWorkspaceRestoreError("The backend project could not be restored. Your project selection was preserved; retry when the service is available.");
+              }
               setWorkspaceHydrated(true);
               return;
             }
