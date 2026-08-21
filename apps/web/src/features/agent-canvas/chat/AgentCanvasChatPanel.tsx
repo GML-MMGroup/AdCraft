@@ -46,6 +46,10 @@ import {
   guidedInteractionContentVersion,
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
+import {
+  guidedInteractionReferenceMediaUrls,
+  guidedInteractionReferences,
+} from "./guidedInteractionReferences.ts";
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import "./agent-canvas-chat.css";
 
@@ -108,6 +112,14 @@ export function AgentCanvasChatPanel({
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const standaloneGuidedReferences = useMemo(() => (
+    standaloneGuidedInteraction
+      ? guidedInteractionReferences(standaloneGuidedInteraction, chat.state.items)
+      : []
+  ), [chat.state.items, standaloneGuidedInteraction]);
+  const standaloneGuidedReferenceMediaUrls = useMemo(() => (
+    guidedInteractionReferenceMediaUrls(standaloneGuidedReferences ?? [], workflow)
+  ), [standaloneGuidedReferences, workflow]);
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
@@ -405,6 +417,8 @@ export function AgentCanvasChatPanel({
             key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
             interaction={standaloneGuidedInteraction}
             pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            proposalReferences={standaloneGuidedReferences}
+            referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
             onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
           />
         </div>

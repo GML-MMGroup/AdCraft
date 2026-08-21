@@ -15,6 +15,7 @@ export function ConceptChoiceSubmitControls({
   allowCustom,
   allowExclusion,
   busy,
+  selectReady,
   selectedOptionId,
   onSubmit,
 }: {
@@ -22,6 +23,7 @@ export function ConceptChoiceSubmitControls({
   allowCustom: boolean;
   allowExclusion: boolean;
   busy: boolean;
+  selectReady: boolean;
   selectedOptionId: string | null;
   onSubmit: (action: ConceptChoiceAction, customText: string | null) => void;
 }) {
@@ -48,7 +50,7 @@ export function ConceptChoiceSubmitControls({
       ? canCustom
       : action !== null && secondaryActions.includes(action as typeof secondaryActions[number]);
   const canSubmit = !busy && actionAllowed && (
-    action !== "select" || Boolean(selectedOptionId)
+    action !== "select" || (Boolean(selectedOptionId) && selectReady)
   ) && (
     action !== "custom" || Boolean(trimmedCustomText)
   );
