@@ -67,7 +67,9 @@ describe("AgentWorkingRow", () => {
 
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
+    const loader = document.querySelector<HTMLElement>('.agent-chat__working-loader[data-variant="halo"]');
+    expect(loader).toBeTruthy();
+    expect(loader?.style.getPropertyValue("--il-size")).toBe("20px");
     expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
   });
 
