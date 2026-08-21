@@ -758,6 +758,33 @@ describe("command and receipt cards", () => {
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
+  it("shows a superseded capability as replaced progress rather than a failure", () => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-storyboard-1",
+      turn_id: "turn-storyboard-1",
+      capability_id: "storyboard_design",
+      capability_display_name: "Storyboard Artist",
+      status: "superseded",
+      sequence: 43,
+      started_at: "2026-08-21T06:17:00Z",
+      finished_at: "2026-08-21T06:18:00Z",
+      message: null,
+      error_code: "guidance_revision_conflict",
+      elapsed_ms: 60000,
+      attempt_stage: "initial",
+      retryable: true,
+      validation_paths: [],
+      suggested_actions: ["retry", "revise_request"],
+      completion_mode: null,
+      warning_code: null,
+    }} onRetry={vi.fn()} onReviseRequest={vi.fn()} />);
+
+    expect(screen.getByText("Storyboard Artist was superseded by later progress")).toBeTruthy();
+    expect(screen.queryByText(/failed/i)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("shows bounded recovery actions for a backend-owned capability failure", () => {
     const onRetry = vi.fn();
     const onReviseRequest = vi.fn();

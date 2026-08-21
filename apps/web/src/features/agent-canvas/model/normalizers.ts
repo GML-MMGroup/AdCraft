@@ -391,7 +391,12 @@ const CREATIVE_ELEMENT_KIND_VALUES = {
 const CREATIVE_ELEMENT_KINDS = new Set<CreativeElementDecisionV2["element_kind"]>(
   Object.keys(CREATIVE_ELEMENT_KIND_VALUES) as CreativeElementDecisionV2["element_kind"][],
 );
-const CAPABILITY_ACTIVITY_STATUSES = new Set<ChatCapabilityActivityV2["status"]>(["working", "completed", "failed"]);
+const CAPABILITY_ACTIVITY_STATUSES = new Set<ChatCapabilityActivityV2["status"]>([
+  "working",
+  "completed",
+  "failed",
+  "superseded",
+]);
 const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queued", "exporting", "completed", "failed", "cancelled"]);
 const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
   "source_not_ready",
@@ -3504,7 +3509,7 @@ export function normalizeAgentCanvasChatTimelineV2(
         const rawStatus = entry.metadata.status ?? "working";
         const status = expectLiteral(
           rawStatus,
-          new Set(["working", "completed", "failed"] as const),
+          new Set(["working", "completed", "failed", "superseded"] as const),
           `${path}.items.metadata.status`,
         );
         const capabilityDisplayName = expectNonEmptyString(

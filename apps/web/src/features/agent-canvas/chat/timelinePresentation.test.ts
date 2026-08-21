@@ -32,6 +32,41 @@ function mediaReviewPresentation(
   };
 }
 
+function supersededActivityPresentation(
+  responseLocale: string,
+): ChatTimelinePresentationViewItemV2 {
+  return {
+    presentation_key: "activity:storyboard-1:superseded",
+    presentation_revision: 1,
+    source_entry_ids: ["activity-entry-43"],
+    message_key: "expert_activity.superseded",
+    message_args: {
+      capability_display_name: "Storyboard Artist",
+    },
+    response_locale: responseLocale,
+    item: {
+      item_type: "expert_activity",
+      activity_id: "activity-storyboard-1",
+      turn_id: "turn-storyboard-1",
+      capability_id: "storyboard_design",
+      capability_display_name: "Storyboard Artist",
+      status: "superseded",
+      sequence: 43,
+      started_at: "2026-08-21T06:17:00Z",
+      finished_at: "2026-08-21T06:18:00Z",
+      message: null,
+      error_code: "guidance_revision_conflict",
+      elapsed_ms: 60000,
+      attempt_stage: "initial",
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    },
+  };
+}
+
 describe("media review timeline presentation", () => {
   it("localizes the pending review title and canonical actions in English", () => {
     expect(localizeTimelinePresentationItem(
@@ -57,6 +92,18 @@ describe("media review timeline presentation", () => {
     )).toMatchObject({
       item_type: "message",
       text: "Backend fallback content",
+    });
+  });
+});
+
+describe("expert activity timeline presentation", () => {
+  it("localizes expert_activity_superseded without failure semantics", () => {
+    expect(localizeTimelinePresentationItem(
+      supersededActivityPresentation("zh-CN"),
+    )).toMatchObject({
+      item_type: "expert_activity",
+      status: "superseded",
+      presentation_text: "Storyboard Artist 任务已被后续进度取代。",
     });
   });
 });
