@@ -21,6 +21,9 @@ from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_capability_supersession import (
+    CapabilitySupersessionClassifier,
+)
 from app.services.agent_run_context_registry import AgentRunContextRegistryError
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
@@ -98,6 +101,7 @@ class CapabilityExecutionService:
         self._internal_document_publisher = internal_document_publisher
         self._direct_materializer = direct_materializer
         self._policy = CapabilityPolicyService()
+        self._supersession = CapabilitySupersessionClassifier(database)
 
     def execute(
         self,
@@ -188,7 +192,12 @@ class CapabilityExecutionService:
                 )
             document_receipt_id = self._internal_document_publisher(envelope, result)
         else:
-            proposal_id = self._publisher(envelope, result)
+            try:
+                proposal_id = self._publisher(envelope, result)
+            except V2PersistenceError as error:
+                if error.code == "guidance_revision_conflict":
+                    self._raise_if_superseded(envelope)
+                raise
         if (
             envelope.publication_kind == "proposal"
             and envelope.candidate_count == 1
@@ -212,11 +221,30 @@ class CapabilityExecutionService:
             return
         current = self._current_session_revision(envelope)
         if current != envelope.expected_session_revision:
+            self._raise_if_superseded(envelope)
             raise V2PersistenceError(
                 "guidance_revision_conflict",
                 "Guidance state changed before capability execution.",
                 stage="capability_execution",
             )
+
+    def _raise_if_superseded(self, envelope: CapabilityCommandEnvelopeV2) -> None:
+        decision = self._supersession.classify(envelope)
+        if decision.outcome != "superseded":
+            return
+        raise V2PersistenceError(
+            "guided_capability_superseded",
+            "Guided capability work was superseded by later Journey authority.",
+            stage="capability_execution",
+            details={
+                "capability_id": envelope.capability_id,
+                "envelope_stage": decision.envelope_stage,
+                "current_stage": decision.current_stage,
+                "expected_session_revision": envelope.expected_session_revision,
+                "current_session_revision": decision.current_session_revision,
+                "retryable": False,
+            },
+        )
 
     def _invoke(
         self,

@@ -100,7 +100,7 @@ class ChatTurnV2(_ConversationModel):
     turn_id: str
     workflow_id: str
     conversation_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "superseded"]
     turn_kind: Literal[
         "message",
         "proposal_action",
@@ -123,6 +123,12 @@ class ChatTurnV2(_ConversationModel):
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_terminal_retryability(self) -> "ChatTurnV2":
+        if self.status == "superseded" and self.retryable:
+            raise ValueError("Superseded turns are terminal and non-retryable.")
+        return self
 
 
 class ChatTimelineEntryV2(_ConversationModel):

@@ -46,6 +46,7 @@ class AgentCanvasContinuationWorker:
         next_action: Callable[[str, Callable[[], None]], object],
         capability_command: Callable[[str, Callable[[], None]], object],
         replace_superseded_capability: Callable[[str], object] | None = None,
+        supersede_capability: Callable[[str, str, int], object] | None = None,
         capability_materialization: Callable[[str, Callable[[], None]], object] | None = None,
         clock: Callable[[], datetime] | None = None,
         worker_id: str,
@@ -64,6 +65,7 @@ class AgentCanvasContinuationWorker:
         }
         self._capability_materialization = capability_materialization
         self._replace_superseded_capability = replace_superseded_capability
+        self._supersede_capability = supersede_capability
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._worker_id = worker_id
         self._batch_limit = batch_limit
@@ -161,6 +163,27 @@ class AgentCanvasContinuationWorker:
                     )
                     if self._replace_superseded_capability is not None:
                         self._replace_superseded_capability(delivery.envelope_id)
+                    return "completed"
+                except Exception as stale_error:  # noqa: BLE001 - fenced stale outcome.
+                    if _is_stale_lease(stale_error):
+                        return "lease_lost"
+                    raise
+            if (
+                isinstance(error, V2PersistenceError)
+                and error.code == "guided_capability_superseded"
+            ):
+                try:
+                    lease_scope.assert_owned()
+                    if self._supersede_capability is None:
+                        raise V2PersistenceError(
+                            "guided_capability_supersession_unavailable",
+                            "Guided capability supersession publisher is unavailable.",
+                        )
+                    self._supersede_capability(
+                        delivery.continuation_id,
+                        self._worker_id,
+                        delivery.lease_generation,
+                    )
                     return "completed"
                 except Exception as stale_error:  # noqa: BLE001 - fenced stale outcome.
                     if _is_stale_lease(stale_error):

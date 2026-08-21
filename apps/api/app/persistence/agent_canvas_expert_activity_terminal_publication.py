@@ -24,7 +24,7 @@ from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
-TerminalExpertActivityStatus = Literal["completed", "failed"]
+TerminalExpertActivityStatus = Literal["completed", "failed", "superseded"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +63,7 @@ def publish_expert_activity_terminal_in_transaction(
     if row is None:
         raise _error("expert_activity_not_found", "Expert activity was not found.")
     current_status = str(row["status"])
-    if current_status in {"completed", "failed"}:
+    if current_status in {"completed", "failed", "superseded"}:
         if current_status == status:
             return ExpertActivityTerminalPublication(
                 activity=_activity(row),

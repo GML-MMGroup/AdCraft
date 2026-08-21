@@ -412,7 +412,7 @@ class ExpertActivityV2(_CreativeSessionModel):
     capability_id: CapabilityIdV1
     capability_display_name: str = Field(min_length=1, max_length=160)
     operation: str = Field(min_length=1, max_length=160)
-    status: Literal["working", "completed", "failed"]
+    status: Literal["working", "completed", "failed", "superseded"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
     created_at: datetime

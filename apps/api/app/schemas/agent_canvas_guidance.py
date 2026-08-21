@@ -110,6 +110,15 @@ class GuidanceAdvanceRequestSnapshotV1(_PrivateGuidanceAuthorityModel):
     precondition: GuidanceAdvancePreconditionV1
 
 
+class GuidedMediaResumeOwnerV1(_PrivateGuidanceAuthorityModel):
+    """Bounded private ownership for one accepted-media resume delivery."""
+
+    delivery_id: str = Field(min_length=1, max_length=160)
+    status: Literal["queued", "running"]
+    submission_id: str = Field(min_length=1, max_length=160)
+    confirmation_id: str = Field(min_length=1, max_length=160)
+
+
 class GuidanceAdvanceAuthoritySnapshotV1(_PrivateGuidanceAuthorityModel):
     """One transactionally coherent view of Guidance command authority."""
 
@@ -121,6 +130,7 @@ class GuidanceAdvanceAuthoritySnapshotV1(_PrivateGuidanceAuthorityModel):
     open_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
     open_decision_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
     active_continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    guided_media_resume_owner: GuidedMediaResumeOwnerV1 | None = None
     execution_leaf: GuidedActionExecutionLeafV1 | None = None
     post_ready_owner: dict[str, JsonValue] | None = None
     source_id: str | None = Field(default=None, min_length=1, max_length=160)

@@ -1539,6 +1539,10 @@ class AgentCanvasChatEntryRow(Base):
 class AgentCanvasChatTurnRow(Base):
     __tablename__ = "agent_canvas_chat_turns"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','completed','failed','superseded')",
+            name="ck_agent_canvas_chat_turns_status",
+        ),
         Index(
             "uq_agent_canvas_chat_turn_active_retry",
             "retry_of_turn_id",

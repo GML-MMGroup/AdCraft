@@ -20,6 +20,7 @@ PresentationMessageKey = Literal[
     "expert_activity.working",
     "expert_activity.completed",
     "expert_activity.failed",
+    "expert_activity.superseded",
     "draft.materialized",
     "media_review.pending_action",
     "action.topic_deferred",

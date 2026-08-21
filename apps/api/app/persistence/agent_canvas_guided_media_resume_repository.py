@@ -27,6 +27,7 @@ from app.schemas.agent_canvas_guided_media_resume import (
     GuidedMediaConfirmationResumeDeliveryV1,
     guided_media_resume_delivery_id,
 )
+from app.schemas.agent_canvas_guidance import GuidedMediaResumeOwnerV1
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -192,6 +193,38 @@ class AgentCanvasGuidedMediaResumeRepository:
         except SQLAlchemyError as error:
             raise _unavailable() from error
         return _delivery(row) if row is not None else None
+
+    def current_owner_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> GuidedMediaResumeOwnerV1 | None:
+        """Return the sole nonterminal delivery owner without choosing ambiguously."""
+
+        rows = (
+            connection.execute(
+                select(AgentCanvasGuidedMediaResumeDeliveryRow).where(
+                    AgentCanvasGuidedMediaResumeDeliveryRow.workflow_id == workflow_id,
+                    AgentCanvasGuidedMediaResumeDeliveryRow.status.in_(("queued", "running")),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > 1:
+            raise _error(
+                "guided_media_resume_authority_conflict",
+                "Multiple accepted-media resume deliveries claim Guidance progression.",
+            )
+        if not rows:
+            return None
+        row = rows[0]
+        return GuidedMediaResumeOwnerV1(
+            delivery_id=str(row["delivery_id"]),
+            status=cast(str, row["status"]),
+            submission_id=str(row["submission_id"]),
+            confirmation_id=str(row["confirmation_id"]),
+        )
 
     def claim_due(
         self,

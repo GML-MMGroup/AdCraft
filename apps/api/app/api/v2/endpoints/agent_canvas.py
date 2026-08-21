@@ -62,6 +62,9 @@ from app.persistence.agent_canvas_decision_bundle_repository import (
 from app.persistence.agent_canvas_capability_proposal_repository import (
     AgentCanvasCapabilityProposalRepository,
 )
+from app.persistence.agent_canvas_capability_supersession_repository import (
+    AgentCanvasCapabilitySupersessionRepository,
+)
 from app.services.agent_canvas_internal_document_checkpoint import (
     AgentCanvasInternalDocumentCheckpointPublisher,
 )
@@ -1196,6 +1199,10 @@ def create_agent_canvas_runtime(
         ).publish,
         direct_materializer=materialize_explicit_direction,
     )
+    capability_supersession = AgentCanvasCapabilitySupersessionRepository(
+        database,
+        event_repository,
+    )
     durable_next_action = DurableNextActionExecutionService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1301,6 +1308,14 @@ def create_agent_canvas_runtime(
         next_action=durable_next_action.execute,
         capability_command=capability_execution.execute,
         replace_superseded_capability=(durable_next_action.requeue_superseded_capability),
+        supersede_capability=lambda continuation_id, worker_id, lease_generation: (
+            capability_supersession.publish(
+                continuation_id,
+                worker_id=worker_id,
+                lease_generation=lease_generation,
+                now=datetime.now(timezone.utc),
+            )
+        ),
         capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,

@@ -10993,6 +10993,7 @@
           "enum": [
             "completed",
             "failed",
+            "superseded",
             "working"
           ],
           "title": "Status",

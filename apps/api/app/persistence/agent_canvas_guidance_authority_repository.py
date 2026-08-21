@@ -12,6 +12,10 @@ from sqlalchemy.engine import Connection, RowMapping
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    AgentCanvasGuidedMediaResumeRepository,
+)
+from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
@@ -75,6 +79,10 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
     def __init__(self, requirements: AgentCanvasRequirementRepository) -> None:
         self._requirements = requirements
         self._envelopes = AgentCanvasOperationEnvelopeRepository(requirements.database)
+        self._guided_media_resume = AgentCanvasGuidedMediaResumeRepository(
+            requirements.database,
+            EventRepository(requirements.database),
+        )
 
     def read_in_transaction(
         self,
@@ -183,6 +191,10 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
         post_ready_owner = (
             _post_ready_owner(connection, workflow_id, session) if session is not None else None
         )
+        guided_media_resume_owner = self._guided_media_resume.current_owner_in_transaction(
+            connection,
+            workflow_id,
+        )
         owner_state: dict[str, JsonValue] = {
             "conversation_id": str(conversation_id) if conversation_id is not None else None,
             "awaiting": (
@@ -208,6 +220,11 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
                 execution_leaf.model_dump(mode="json") if execution_leaf is not None else None
             ),
             "post_ready": post_ready_owner,
+            "guided_media_resume": (
+                guided_media_resume_owner.model_dump(mode="json")
+                if guided_media_resume_owner is not None
+                else None
+            ),
         }
         active_action = (
             session.journey.active_action.model_dump(mode="json")
@@ -256,6 +273,7 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
             active_continuation_id=(
                 str(active_continuations[0]["continuation_id"]) if active_continuations else None
             ),
+            guided_media_resume_owner=guided_media_resume_owner,
             execution_leaf=execution_leaf,
             post_ready_owner=post_ready_owner,
             source_id=source_id,
@@ -430,6 +448,16 @@ def _guidance_advance_blocker(
             "active_continuation_conflict",
             "Another continuation already owns this workflow.",
             stage="guidance_advance_service",
+        )
+    if snapshot.guided_media_resume_owner is not None:
+        return V2PersistenceError(
+            "guidance_advance_not_available",
+            "Accepted-media resume work currently owns Guidance progression.",
+            stage="guidance_advance_service",
+            details={
+                "owner_kind": "guided_media_resume",
+                "retry_after_seconds": 1,
+            },
         )
     leaf = snapshot.execution_leaf
     if leaf is not None and (
