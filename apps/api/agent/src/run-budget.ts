@@ -5,7 +5,7 @@ export type RunBudgetCode =
   | "agent_deadline_exceeded";
 
 const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
-  decide_turn_intent: 180,
+  decide_turn_intent: 300,
   decide_next_action: 180,
   command_replan: 180,
   compile_video_parameters: 180,
@@ -25,6 +25,33 @@ const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
 
 export function operationDeadlineSeconds(operation: string): number {
   return OPERATION_DEADLINES_SECONDS[operation] ?? 300;
+}
+
+export type ModelAttemptStage =
+  | "initial"
+  | "transport_retry"
+  | "structured_repair";
+
+export function modelAttemptTimeoutMs(
+  policy: {
+    readonly primary_timeout_seconds: number;
+    readonly recovery_timeout_seconds: number;
+    readonly persistence_reserve_seconds: number;
+  },
+  hardDeadlineEpochMs: number,
+  stage: ModelAttemptStage,
+  nowEpochMs: number,
+): number {
+  const partitionSeconds =
+    stage === "initial"
+      ? policy.primary_timeout_seconds
+      : policy.recovery_timeout_seconds;
+  const persistenceBoundary =
+    hardDeadlineEpochMs - policy.persistence_reserve_seconds * 1_000;
+  return Math.max(
+    0,
+    Math.min(partitionSeconds * 1_000, persistenceBoundary - nowEpochMs),
+  );
 }
 
 export class RunBudgetFailure extends Error {

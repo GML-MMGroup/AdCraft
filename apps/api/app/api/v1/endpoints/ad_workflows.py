@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.dependencies import (
     get_ad_workflow_plan_service,
     get_media_task_service,
+    require_v1_workflow_authority,
 )
 from app.schemas.ad_workflow import AdWorkflowGenerateRequest, AdWorkflowResponse
 from app.schemas.media_tasks import MediaPollRequest, MediaStatusResponse
@@ -31,7 +32,11 @@ def plan_ad_workflow(
         ) from exc
 
 
-@router.get("/{workflow_id}/media-status", response_model=MediaStatusResponse)
+@router.get(
+    "/{workflow_id}/media-status",
+    response_model=MediaStatusResponse,
+    dependencies=[Depends(require_v1_workflow_authority)],
+)
 def get_ad_workflow_media_status(
     workflow_id: str,
     service: Annotated[MediaTaskService, Depends(get_media_task_service)],
@@ -39,7 +44,11 @@ def get_ad_workflow_media_status(
     return service.refresh_media_status(workflow_id)
 
 
-@router.post("/{workflow_id}/media/poll", response_model=MediaStatusResponse)
+@router.post(
+    "/{workflow_id}/media/poll",
+    response_model=MediaStatusResponse,
+    dependencies=[Depends(require_v1_workflow_authority)],
+)
 def poll_ad_workflow_media(
     workflow_id: str,
     request: MediaPollRequest,

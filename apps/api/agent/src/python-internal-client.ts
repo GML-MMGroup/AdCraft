@@ -113,7 +113,12 @@ export class PythonInternalClient {
   }
 }
 
-const OPERATION_CLASSES = new Set(["routing", "proposal", "long_form"]);
+const OPERATION_CLASSES = new Set([
+  "routing",
+  "proposal",
+  "materialization",
+  "long_form",
+]);
 const THINKING_FORMATS = new Set(["zai", "qwen", "none"]);
 const REASONING_CONTROLS = new Set([
   "provider_default",
@@ -124,6 +129,7 @@ const REASONING_CONTROLS = new Set([
 const STRUCTURED_TRANSPORTS = new Set([
   "streamed_tool_call",
   "non_streaming_tool_call",
+  "non_streaming_json_object",
   "json_object",
 ]);
 
@@ -145,14 +151,49 @@ function isExecutionPolicy(
     !THINKING_FORMATS.has(policy.thinking_format) ||
     typeof policy.reasoning_control !== "string" ||
     !REASONING_CONTROLS.has(policy.reasoning_control) ||
+    (policy.reasoning_mode !== "low" && policy.reasoning_mode !== "deep") ||
+    typeof policy.enable_thinking !== "boolean" ||
+    !isThinkingBudget(policy.thinking_budget_tokens) ||
     typeof policy.structured_transport !== "string" ||
     !STRUCTURED_TRANSPORTS.has(policy.structured_transport) ||
     policy.supports_tool_calls !== supportsToolCalls ||
     policy.supports_streamed_tool_calls !== supportsStreamedToolCalls ||
     !isPositiveInteger(policy.deadline_seconds) ||
+    !isPositiveInteger(policy.primary_timeout_seconds) ||
+    !isNonNegativeInteger(policy.recovery_timeout_seconds) ||
+    !isPositiveInteger(policy.persistence_reserve_seconds) ||
+    policy.primary_timeout_seconds +
+        policy.recovery_timeout_seconds +
+        policy.persistence_reserve_seconds !==
+      policy.deadline_seconds ||
+    (policy.max_model_submissions !== 1 && policy.max_model_submissions !== 2) ||
+    (policy.recovery_mode !== "none" &&
+      policy.recovery_mode !== "structured_repair_only" &&
+      policy.recovery_mode !== "transport_retry_or_structured_repair") ||
     !isPositiveInteger(policy.max_output_tokens) ||
     !isBoundedAttempt(policy.transport_retry_limit) ||
     !isBoundedAttempt(policy.structured_repair_limit)
+  ) {
+    return false;
+  }
+  if (
+    (policy.max_model_submissions === 1 &&
+      (policy.recovery_mode !== "none" ||
+        policy.recovery_timeout_seconds !== 0 ||
+        policy.transport_retry_limit !== 0 ||
+        policy.structured_repair_limit !== 0)) ||
+    (policy.max_model_submissions === 2 &&
+      (policy.recovery_mode === "none" || policy.recovery_timeout_seconds < 1)) ||
+    (policy.recovery_mode === "structured_repair_only" &&
+      (policy.transport_retry_limit !== 0 || policy.structured_repair_limit !== 1))
+  ) {
+    return false;
+  }
+  if (
+    (policy.reasoning_mode === "low" &&
+      (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
+    (policy.reasoning_mode === "deep" &&
+      (!policy.enable_thinking || policy.thinking_budget_tokens === null))
   ) {
     return false;
   }
@@ -175,8 +216,16 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
 function isBoundedAttempt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1;
+}
+
+function isThinkingBudget(value: unknown): value is number | null {
+  return value === null || isPositiveInteger(value);
 }
 
 async function boundedJson(response: Response): Promise<Record<string, unknown>> {

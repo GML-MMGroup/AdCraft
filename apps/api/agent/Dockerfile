@@ -2,7 +2,8 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 COPY agent/package.json agent/package-lock.json ./
-RUN npm ci --ignore-scripts
+COPY agent/patches ./patches
+RUN npm ci --ignore-scripts && npx patch-package
 COPY agent/src ./src
 COPY agent/skills ./skills
 COPY agent/scripts/verify-skills.ts ./scripts/verify-skills.ts

@@ -24,7 +24,6 @@ class AgentInvocation:
     parent_run_id: str
     deadline_at: datetime
     timeout_seconds: float
-    model_policy_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +77,6 @@ class V2PiPlanningSession:
             parent_run_id=self.parent_run_id,
             deadline_at=self.deadline_at,
             timeout_seconds=timeout_seconds,
-            model_policy_id=f"{agent_name}.{operation}.v1",
         )
 
     def remaining_model_seconds(self, *, now: datetime | None = None) -> float:

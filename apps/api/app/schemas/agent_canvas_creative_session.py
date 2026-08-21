@@ -27,6 +27,12 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV2
+from app.schemas.language import BCP47Tag
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV2,
+    GuidedInteractionV1,
+)
 
 
 CreationModeV2 = Literal[
@@ -138,8 +144,23 @@ class GuidanceTopicStateV2(_CreativeSessionModel):
 class GuidanceCompletionProjectionV2(_CreativeSessionModel):
     authoring: Literal["not_ready", "ready"] = "not_ready"
     delivery: Literal["not_ready", "ready"] = "not_ready"
+    plan_document_id: str | None = Field(default=None, max_length=160)
+    plan_revision: int | None = Field(default=None, ge=1)
     editing_preparation: Literal["not_ready", "prepared"] = "not_ready"
     editing_node_id: str | None = Field(default=None, max_length=160)
+    preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    manifest_revision: int | None = Field(default=None, ge=1)
+    export_status: Literal[
+        "not_started",
+        "queued",
+        "exporting",
+        "completed",
+        "failed",
+        "cancelled",
+    ] = "not_started"
+    export_id: str | None = Field(default=None, max_length=160)
+    final_completion_receipt_id: str | None = Field(default=None, max_length=160)
+    final_asset_id: str | None = Field(default=None, max_length=160)
     matching_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
 
@@ -212,8 +233,12 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     completion: GuidanceCompletionProjectionV2 = Field(
         default_factory=GuidanceCompletionProjectionV2
     )
+    interaction: GuidedInteractionV1 | None = None
+    awaiting: GuidanceAwaitingV2 | None = None
+    journey: GuidedProductionJourneyV2
     revision: int = Field(ge=1)
     updated_at: datetime
+    response_locale: BCP47Tag = "und"
 
 
 class DelegatedProposalChoiceV2(_CreativeSessionModel):
@@ -387,7 +412,7 @@ class ExpertActivityV2(_CreativeSessionModel):
     capability_id: CapabilityIdV1
     capability_display_name: str = Field(min_length=1, max_length=160)
     operation: str = Field(min_length=1, max_length=160)
-    status: Literal["working", "completed", "failed"]
+    status: Literal["working", "completed", "failed", "superseded"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
     created_at: datetime

@@ -11,8 +11,8 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
-from app.schemas.agent_canvas_draft_seeds import DraftSeedPersistenceRecordV1
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
+from app.schemas.agent_canvas_continuation import ContinuationOperationV2
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
     CreativeAuthorityV2,
@@ -25,6 +25,8 @@ from app.schemas.agent_runtime import (
     AgentOperationResultV2,
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
+from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_guidance import GuidanceAdvancePreconditionV1
 
 
 class _ConversationModel(BaseModel):
@@ -45,6 +47,14 @@ class ChatTurnAcceptedV2(_ConversationModel):
     turn_id: str
     status: Literal["queued"] = "queued"
     events_cursor: int = Field(ge=0)
+    retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    retry_attempt_no: int = Field(default=1, ge=1)
+    replayed: bool = False
+
+
+class ChatTurnRetryRequestV1(_ConversationModel):
+    expected_session_revision: int = Field(ge=0)
+    expected_workflow_revision: int = Field(ge=1)
 
 
 class ContinuationDeliveryV2(_ConversationModel):
@@ -53,11 +63,7 @@ class ContinuationDeliveryV2(_ConversationModel):
     conversation_id: str
     source_turn_id: str
     continuation_turn_id: str
-    operation: Literal[
-        "next_action",
-        "capability_command",
-        "capability_materialization",
-    ]
+    operation: ContinuationOperationV2
     envelope_id: str = Field(exclude=True)
     payload_digest: str
     status: Literal[
@@ -94,7 +100,7 @@ class ChatTurnV2(_ConversationModel):
     turn_id: str
     workflow_id: str
     conversation_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "superseded"]
     turn_kind: Literal[
         "message",
         "proposal_action",
@@ -102,15 +108,27 @@ class ChatTurnV2(_ConversationModel):
         "guided_action",
         "capability",
         "next_action",
+        "guidance_advance",
     ]
     request: dict[str, JsonValue]
     creation_mode: CreationModeDecisionV2 | None = None
     guidance_session_revision: int | None = Field(default=None, ge=1)
     continuation: ContinuationDeliveryV2 | None = None
+    retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    retry_attempt_no: int = Field(default=1, ge=1)
+    retryable: bool = False
+    operation_stage: str | None = Field(default=None, min_length=1, max_length=120)
+    operation_failure: AgentOperationFailureV2 | None = None
     error_code: str | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_terminal_retryability(self) -> "ChatTurnV2":
+        if self.status == "superseded" and self.retryable:
+            raise ValueError("Superseded turns are terminal and non-retryable.")
+        return self
 
 
 class ChatTimelineEntryV2(_ConversationModel):
@@ -127,6 +145,7 @@ class ChatTimelineEntryV2(_ConversationModel):
         "command_plan",
         "action_receipt",
         "agent_document_reference",
+        "decision_bundle",
     ]
     speaker: Literal["user", "adcraft_video_agent"] | None
     content: str
@@ -134,6 +153,15 @@ class ChatTimelineEntryV2(_ConversationModel):
     command_plan: AgentCommandPlanV2 | None = None
     action_receipt: "AgentActionReceiptV2 | None" = None
     created_at: datetime
+
+
+class ChatTimelinePresentationItemV2(ChatTimelineEntryV2):
+    presentation_key: str = Field(min_length=1, max_length=320)
+    presentation_revision: int = Field(ge=1)
+    source_entry_ids: tuple[str, ...] = Field(min_length=1, max_length=256)
+    message_key: str | None = Field(default=None, min_length=1, max_length=160)
+    message_args: dict[str, JsonValue] = Field(default_factory=dict)
+    response_locale: str = Field(default="und", min_length=2, max_length=64)
 
 
 class ChatTimelineListResponseV2(_ConversationModel):
@@ -145,7 +173,9 @@ class ChatTimelineListResponseV2(_ConversationModel):
         default=(),
         max_length=2,
     )
+    guidance_advance_precondition: GuidanceAdvancePreconditionV1 | None = None
     items: tuple[ChatTimelineEntryV2, ...] = ()
+    presentation_items: tuple[ChatTimelinePresentationItemV2, ...] = ()
     next_cursor: int = Field(ge=0)
 
 
@@ -154,7 +184,7 @@ class ConceptOptionRecordV2(_ConversationModel):
     title: str = Field(min_length=1, max_length=256)
     public_summary: str = Field(min_length=1, max_length=8_192)
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
-        min_length=1, max_length=6
+        default=(), max_length=6
     )
 
 
@@ -188,7 +218,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
         "bgm",
     ]
     capability_id: CapabilityIdV1
-    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=4)
+    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=3, max_length=3)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
         max_length=64,
@@ -213,31 +243,13 @@ class _ConceptProposalBaseV2(_ConversationModel):
         option_ids = tuple(option.option_id for option in self.options)
         if len(set(option_ids)) != len(option_ids):
             raise ValueError("Concept option IDs must be unique within a proposal.")
-        if self.proposal_kind == "world_setting" and len(self.options) not in {2, 3}:
-            raise ValueError("World Setting proposals require two or three options.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
         return self
 
 
 class ConceptProposalCreateV2(_ConceptProposalBaseV2):
-    draft_seeds: tuple[DraftSeedPersistenceRecordV1, ...] = Field(
-        default=(),
-        max_length=4,
-        exclude=True,
-        repr=False,
-    )
-
-    @model_validator(mode="after")
-    def validate_draft_seeds(self) -> "ConceptProposalCreateV2":
-        option_ids = tuple(option.option_id for option in self.options)
-        seed_option_ids = tuple(record.option_id for record in self.draft_seeds)
-        if self.capability_id == "quick_media":
-            if seed_option_ids:
-                raise ValueError("Quick Media proposals do not use private Draft Seeds.")
-        elif seed_option_ids != option_ids:
-            raise ValueError("Every Proposal option requires one ordered private Draft Seed.")
-        return self
+    pass
 
 
 ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]
@@ -245,6 +257,7 @@ ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]
 
 ProposalActionTypeV2 = Literal[
     "select_option",
+    "custom_direction",
     "revise_options",
     "defer_topic",
     "exclude_element",
@@ -281,6 +294,11 @@ class SelectOptionActionV2(_ProposalActionBaseV2):
     )
 
 
+class CustomDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["custom_direction"]
+    custom_text: str = Field(min_length=1, max_length=2_048)
+
+
 class ReviseOptionsActionV2(_ProposalActionBaseV2):
     action: Literal["revise_options"]
     instruction: str = Field(min_length=1, max_length=8_192)
@@ -311,6 +329,7 @@ class ReviseDirectionActionV2(_ProposalActionBaseV2):
 
 ProposalActionRequestV2 = Annotated[
     SelectOptionActionV2
+    | CustomDirectionActionV2
     | ReviseOptionsActionV2
     | DeferTopicActionV2
     | ExcludeElementActionV2
@@ -324,7 +343,12 @@ ProposalActionRequestV2 = Annotated[
 class ProposalApplicationSummaryV2(_ConversationModel):
     application_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice", "reuse_direction"]
+    action: Literal[
+        "select_option",
+        "custom_direction",
+        "delegate_choice",
+        "reuse_direction",
+    ]
     receipt_id: str = Field(min_length=1, max_length=160)
     created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     queued_execution_ids: tuple[str, ...] = Field(default=(), max_length=32)

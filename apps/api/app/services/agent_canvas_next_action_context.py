@@ -31,6 +31,7 @@ def assemble_capability_policy_context(
     open_proposal_capabilities: tuple[CapabilityIdV1, ...] = (),
     active_materialization_capabilities: tuple[CapabilityIdV1, ...] = (),
     targeted_capability: CapabilityIdV1 | None = None,
+    journey_capability: CapabilityIdV1 | None = None,
     is_new_guided_production: bool = False,
 ) -> CapabilityPolicyContextV1:
     """Derive policy facts from canonical Nodes, session decisions, and topics."""
@@ -54,6 +55,7 @@ def assemble_capability_policy_context(
         is_new_guided_production=is_new_guided_production,
         world_setting_selected="world_setting" in completed,
         targeted_capability=targeted_capability,
+        journey_capability=journey_capability,
         completed_capabilities=completed,
         excluded_capabilities=excluded,
         open_proposal_capabilities=tuple(dict.fromkeys(open_proposal_capabilities)),

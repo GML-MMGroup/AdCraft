@@ -297,6 +297,31 @@ class VideoParameterIntentContextV2(_PlanningContextModel):
     capability: VideoParameterCapabilityContextV2
 
 
+class VideoParameterTextSourceV3(_PlanningContextModel):
+    source_ref: str = Field(min_length=1, max_length=80, pattern=r"^source_[1-9][0-9]*$")
+    text: str = Field(min_length=1, max_length=32_768)
+
+
+class VideoParameterIntentContextV3(_PlanningContextModel):
+    context_kind: Literal["video_parameter_intent_v3"]
+    unresolved_fields: tuple[
+        Literal["duration_seconds", "resolution", "aspect_ratio", "generate_audio"], ...
+    ] = Field(min_length=1, max_length=4)
+    sources: tuple[VideoParameterTextSourceV3, ...] = Field(min_length=1, max_length=129)
+    capability: VideoParameterCapabilityContextV2
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "VideoParameterIntentContextV3":
+        if len(self.unresolved_fields) != len(set(self.unresolved_fields)):
+            raise ValueError("Unresolved Video parameter fields must be unique.")
+        if not set(self.unresolved_fields).issubset(set(self.capability.supported_parameters)):
+            raise ValueError("Unresolved fields must be supported by the selected capability.")
+        refs = tuple(source.source_ref for source in self.sources)
+        if len(refs) != len(set(refs)):
+            raise ValueError("Video parameter source refs must be unique.")
+        return self
+
+
 class DirectorTurnContextV2(_PlanningContextModel):
     context_kind: Literal["director_turn"]
     workflow_id: str = Field(min_length=1, max_length=160)
@@ -405,7 +430,7 @@ PlanningAgentContext = Annotated[
         ConversationSummaryAgentContext,
         DirectorTurnContextV2,
         AgentCommandReplanContextV2,
-        VideoParameterIntentContextV2,
+        VideoParameterIntentContextV3,
     ],
     Field(discriminator="context_kind"),
 ]

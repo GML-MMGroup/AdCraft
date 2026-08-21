@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
@@ -13,12 +14,28 @@ from uuid import uuid4
 
 import httpx
 
+from app.core.evidence_paths import (
+    new_adcraft_evidence_directory,
+    validate_adcraft_evidence_path,
+)
+
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_FIXTURE = "core_av_canary"
 DEFAULT_TIMEOUT_SECONDS = 7200.0
 DEFAULT_POLL_INTERVAL_SECONDS = 2.0
 TERMINAL_LIFECYCLES = {"completed", "blocked", "failed", "cancelled"}
+
+
+@dataclass(frozen=True, slots=True)
+class GoldenJourneyConfig:
+    mode: str
+    evidence_root: Path
+    paid_authorized: bool
+    timeout_seconds: int
+
+
+GoldenRunner = Callable[[GoldenJourneyConfig], int]
 
 
 def run_cli(
@@ -28,8 +45,28 @@ def run_cli(
     now: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     stdout: TextIO = sys.stdout,
+    golden_runner: GoldenRunner | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
+    if args.mode is not None:
+        if args.mode == "paid" and not args.acknowledge_paid:
+            print("Paid mode requires explicit acknowledgement.", file=stdout)
+            return 2
+        try:
+            evidence_root = validate_adcraft_evidence_path(
+                args.evidence_root or _default_evidence_root(),
+                require_unified_root=True,
+            )
+        except ValueError as error:
+            print(str(error), file=stdout)
+            return 2
+        config = GoldenJourneyConfig(
+            mode=args.mode,
+            evidence_root=evidence_root,
+            paid_authorized=args.acknowledge_paid,
+            timeout_seconds=int(args.timeout_seconds),
+        )
+        return (golden_runner or _run_golden_journey)(config)
     idempotency_key = args.idempotency_key or _generated_idempotency_key()
     endpoint = "/api/v2/production-acceptance-runs"
     try:
@@ -82,6 +119,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--idempotency-key")
+    parser.add_argument("--mode", choices=("fake", "agent-real", "paid"))
+    parser.add_argument("--acknowledge-paid", action="store_true")
+    parser.add_argument("--evidence-root", type=Path)
     parser.add_argument(
         "--timeout-seconds",
         type=_positive_float,
@@ -171,6 +211,16 @@ def _required_text(payload: dict[str, Any], key: str) -> str:
 def _generated_idempotency_key() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"acceptance-{stamp}-{uuid4().hex}"
+
+
+def _default_evidence_root() -> Path:
+    return new_adcraft_evidence_directory("adcraft-golden-journey")
+
+
+def _run_golden_journey(config: GoldenJourneyConfig) -> int:
+    from scripts.golden_journey_acceptance import run_golden_journey
+
+    return run_golden_journey(config)
 
 
 def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:

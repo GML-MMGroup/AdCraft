@@ -196,16 +196,12 @@ class V2IntentPlanner:
             if planning_session
             else None
         )
-        agent_context = (
-            IntentContractAgentContext(
-                context_kind="intent_contract",
-                user_input=request.prompt,
-                workflow_id=planning_session.workflow_id,
-                frozen_facts=frozen_facts or FrozenPlanningFacts(),
-                ad_request_summary=_bounded_context_summary(payload),
-            )
-            if planning_session
-            else None
+        agent_context = IntentContractAgentContext(
+            context_kind="intent_contract",
+            user_input=request.prompt,
+            workflow_id=(planning_session.workflow_id if planning_session else workflow_id_seed),
+            frozen_facts=frozen_facts or FrozenPlanningFacts(),
+            ad_request_summary=_bounded_context_summary(payload),
         )
         spec = StructuredGenerationSpec[V2IntentPlan](
             stage_name="intent_contract_planner",

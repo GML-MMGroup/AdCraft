@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const agentRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = resolve(agentRoot, "..");
+const repositoryRoot = resolve(agentRoot, "../../..");
 
 describe("Skill bundle packaging", () => {
   it("provides a verifier command and runs it before the Docker build", async () => {
@@ -33,10 +33,10 @@ describe("Skill bundle packaging", () => {
     );
 
     expect(attributes).toContain(
-      "agent/skills/**/SKILL.md text eol=lf",
+      "apps/api/agent/skills/**/SKILL.md text eol=lf",
     );
     expect(attributes).toContain(
-      "agent/skills/manifest.json text eol=lf",
+      "apps/api/agent/skills/manifest.json text eol=lf",
     );
   });
 });

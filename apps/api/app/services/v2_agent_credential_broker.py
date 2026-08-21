@@ -9,12 +9,14 @@ from app.core.config import Settings
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRecord, ProviderModelRepository
 from app.schemas.agent_capabilities import AgentCapabilityV1
+from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1, AgentName
 from app.services.agent_model_execution_policy import (
     AgentModelExecutionPolicyError,
     resolve_agent_model_execution_policy,
 )
 from app.services.provider_credentials import CredentialSettingsError, ProviderCredentialRegistry
+from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
 
 
@@ -76,12 +78,14 @@ class V2AgentCredentialBroker:
         operation: str,
         model_policy_id: str,
         model_ref: str | None,
+        operation_policy: AgentOperationPolicyV2,
     ) -> AgentCredentialSnapshot:
         self._authorize(
             credential_ref,
             agent_name=agent_name,
             operation=operation,
             model_policy_id=model_policy_id,
+            operation_policy=operation_policy,
         )
         if model_ref is None:
             raise AgentCredentialError(
@@ -89,10 +93,10 @@ class V2AgentCredentialBroker:
                 "Agent runtime did not supply a frozen model reference.",
             )
         record = self._record(model_ref)
-        self._validate_model(record, operation=operation)
+        self._validate_model(record)
         try:
-            definition = self._credential_registry.get(record.provider_id)
-            binding = definition.binding_for_capability("text")
+            provider_definition = self._credential_registry.get(record.provider_id)
+            binding = provider_definition.binding_for_capability("text")
         except CredentialSettingsError as error:
             raise AgentCredentialError(
                 "provider_credentials_missing",
@@ -109,14 +113,14 @@ class V2AgentCredentialBroker:
         try:
             execution_policy = resolve_agent_model_execution_policy(
                 model_ref=record.model_ref,
-                operation=operation,
+                operation_policy=operation_policy,
                 capability_metadata=metadata,
             )
         except AgentModelExecutionPolicyError as error:
             raise AgentCredentialError(error.code, str(error)) from error
         return AgentCredentialSnapshot(
             protocol_version=self._settings.agent_runtime_protocol_version,
-            provider=definition.display_name,
+            provider=provider_definition.display_name,
             model_ref=record.model_ref,
             model_id=record.provider_model_id,
             model_policy_id=model_policy_id,
@@ -139,6 +143,7 @@ class V2AgentCredentialBroker:
         agent_name: AgentName,
         operation: str,
         model_policy_id: str,
+        operation_policy: AgentOperationPolicyV2,
     ) -> None:
         if credential_ref != "llm-default":
             raise AgentCredentialError(
@@ -156,7 +161,12 @@ class V2AgentCredentialBroker:
                 "agent_operation_not_allowed",
                 "Agent runtime operation is not registered for this Agent.",
             )
-        expected_policy_id = f"{agent_name}.{operation}.v1"
+        if operation_policy.agent_name != agent_name or operation_policy.operation != operation:
+            raise AgentCredentialError(
+                "agent_model_policy_mismatch",
+                "Agent runtime operation policy does not match the requested run.",
+            )
+        expected_policy_id = operation_policy.policy_id
         if model_policy_id != expected_policy_id:
             raise AgentCredentialError(
                 "agent_model_policy_mismatch",
@@ -168,7 +178,7 @@ class V2AgentCredentialBroker:
         database: V2Database | None = None
         if repository is None:
             database = create_v2_database(self._settings.media_data_dir)
-            repository = ProviderModelRepository(database)
+            repository = ProviderModelCatalogService(ProviderModelRepository(database))
         try:
             record = repository.get_model(model_ref)
         except ValueError as error:
@@ -182,7 +192,7 @@ class V2AgentCredentialBroker:
         return record
 
     @staticmethod
-    def _validate_model(record: ProviderModelRecord, *, operation: str) -> None:
+    def _validate_model(record: ProviderModelRecord) -> None:
         if record.availability != "available":
             raise AgentCredentialError(
                 "agent_model_unavailable",

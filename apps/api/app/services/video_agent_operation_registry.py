@@ -97,6 +97,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
 
 def _definition(
     operation: str,
+    context_contract_name: str,
     result_contract_name: str,
     *,
     capability_id: CapabilityIdV1 | None = None,
@@ -109,6 +110,7 @@ def _definition(
         capability_id=capability_id,
         internal_skill_id=internal_skill_id,
         style_projection_role=style_projection_role,
+        context_contract_name=context_contract_name,
         result_contract_name=result_contract_name,
         display_name=display_name,
     )
@@ -121,6 +123,7 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
             definitions.append(
                 _definition(
                     f"{prefix}_{operation_stem}_options",
+                    "CapabilityInvocationContextV2",
                     contract,
                     capability_id=capability_id,
                     internal_skill_id=skill,
@@ -132,14 +135,58 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
 
 
 _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
-    _definition("decide_turn_intent", "TurnIntentDecisionV1"),
-    _definition("decide_next_action", "NextActionCommandV1"),
-    _definition("command_replan", "AgentCommandPlanDraftV2"),
-    _definition("workflow_conversation", "WorkflowConversationReply"),
-    _definition("conversation_summary", "ConversationSummaryResult"),
+    _definition("decide_turn_intent", "TurnIntentContextV2", "CompactTurnIntentDecisionV3"),
+    _definition("decide_next_action", "NextActionContextV1", "NextActionCommandV1"),
+    _definition("command_replan", "AgentCommandReplanContextV2", "AgentCommandPlanDraftV2"),
+    _definition(
+        "workflow_conversation",
+        "WorkflowConversationAgentContext",
+        "WorkflowConversationReply",
+    ),
+    _definition(
+        "conversation_summary",
+        "ConversationSummaryAgentContext",
+        "ConversationSummaryResult",
+    ),
+    _definition("author_decision_bundle", "NextActionContextV1", "DecisionBundleDraftV1"),
+    _definition(
+        "author_role_brief",
+        "RolePromptPreparationContextV2",
+        "RoleCreativeBriefV2",
+        internal_skill_id="video_agent_role_prompt_authoring",
+        display_name="Role Prompt Author",
+    ),
+    _definition(
+        "plan_storyboard_sequence_outline",
+        "CapabilityMaterializationContextV1",
+        "StoryboardSequenceOutlineDraftV2",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
+    _definition(
+        "materialize_storyboard_segment",
+        "StoryboardSegmentAuthoringContextV2",
+        "StoryboardSegmentMaterializationDraftV2",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
+    _definition(
+        "author_guided_script_checkpoint",
+        "CapabilityInvocationContextV2",
+        "ScriptMaterializationResultV1",
+        capability_id="script_authoring",
+        internal_skill_id="video_agent_script_authoring",
+        style_projection_role="script",
+        display_name="Script Writer",
+    ),
     *_capability_definitions(),
     _definition(
         "free_image",
+        "QuickMediaAgentContext",
         "V2QuickMediaPromptPlan",
         capability_id="quick_media",
         internal_skill_id="video_agent_quick_media",
@@ -148,6 +195,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "free_video",
+        "QuickMediaAgentContext",
         "V2QuickMediaPromptPlan",
         capability_id="quick_media",
         internal_skill_id="video_agent_quick_media",
@@ -156,6 +204,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "free_audio",
+        "QuickMediaAgentContext",
         "V2QuickMediaPromptPlan",
         capability_id="quick_media",
         internal_skill_id="video_agent_quick_media",
@@ -164,15 +213,17 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "materialize_quick_media",
+        "CapabilityMaterializationContextV1",
         "QuickMediaMaterializationResultV1",
         capability_id="quick_media",
         internal_skill_id="video_agent_quick_media",
         style_projection_role="quick_media",
         display_name="Quick Media",
     ),
-    _definition("execute_canvas_text", "AgentCanvasTextOutput"),
+    _definition("execute_canvas_text", "AgentRunContext", "AgentCanvasTextOutput"),
     _definition(
         "execute_canvas_script",
+        "AgentRunContext",
         "AgentCanvasScriptOutput",
         capability_id="script_authoring",
         internal_skill_id="video_agent_script_authoring",
@@ -181,16 +232,18 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "compile_video_parameters",
-        "VideoParameterIntentV2",
+        "VideoParameterIntentContextV3",
+        "VideoParameterIntentV3",
         capability_id="video_direction",
         internal_skill_id="video_agent_video_direction",
         style_projection_role="video",
         display_name="Video Director",
     ),
-    _definition("workflow_creation", "FrontDeskIntentOutput"),
-    _definition("intent_contract_planner", "V2IntentPlan"),
+    _definition("workflow_creation", "FrontDeskIntentAgentContext", "FrontDeskIntentOutput"),
+    _definition("intent_contract_planner", "IntentContractAgentContext", "V2IntentPlan"),
     _definition(
         "script_writer",
+        "ScriptWriterAgentContext",
         "V2ScriptPlanV2",
         capability_id="script_authoring",
         internal_skill_id="video_agent_script_authoring",
@@ -199,6 +252,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "script_edit_normalization",
+        "AgentRunContext",
         "V2EditableScriptDocument",
         capability_id="script_authoring",
         internal_skill_id="video_agent_script_authoring",
@@ -207,6 +261,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "product_expert_brief",
+        "ProductExpertAgentContext",
         "V2ProductExpertPlan",
         capability_id="product_design",
         internal_skill_id="video_agent_product_design",
@@ -215,6 +270,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "character_expert_brief",
+        "CharacterExpertAgentContext",
         "V2CharacterExpertPlan",
         capability_id="character_design",
         internal_skill_id="video_agent_character_design",
@@ -223,6 +279,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "scene_expert_brief",
+        "SceneExpertAgentContext",
         "V2SceneExpertPlan",
         capability_id="scene_design",
         internal_skill_id="video_agent_scene_design",
@@ -231,6 +288,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "bgm_expert_brief",
+        "BgmExpertAgentContext",
         "V2BgmExpertPlan",
         capability_id="bgm_direction",
         internal_skill_id="video_agent_bgm_direction",
@@ -239,6 +297,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "product_prompt",
+        "AgentRunContext",
         "V2ProductPromptPlan",
         capability_id="product_design",
         internal_skill_id="video_agent_product_design",
@@ -247,6 +306,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "character_prompt",
+        "AgentRunContext",
         "V2CharacterPromptPlan",
         capability_id="character_design",
         internal_skill_id="video_agent_character_design",
@@ -255,6 +315,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "scene_prompt",
+        "AgentRunContext",
         "V2ScenePromptPlan",
         capability_id="scene_design",
         internal_skill_id="video_agent_scene_design",
@@ -263,6 +324,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "storyboard_prompt",
+        "AgentRunContext",
         "V2ShotCellPromptPlan",
         capability_id="storyboard_design",
         internal_skill_id="video_agent_storyboard_design",
@@ -271,6 +333,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "storyboard_detail",
+        "AgentRunContext",
         "V2StoryboardDetailPlan",
         capability_id="storyboard_design",
         internal_skill_id="video_agent_storyboard_design",
@@ -279,6 +342,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "shot_video_prompt",
+        "AgentRunContext",
         "V2ShotVideoPromptPlan",
         capability_id="video_direction",
         internal_skill_id="video_agent_video_direction",
@@ -287,6 +351,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "bgm_prompt",
+        "AgentRunContext",
         "V2BgmPromptPlan",
         capability_id="bgm_direction",
         internal_skill_id="video_agent_bgm_direction",
@@ -295,6 +360,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "visual_style_scope_repair",
+        "AgentRunContext",
         "V2VisualStyleScopeRepairOutput",
         capability_id="world_setting",
         internal_skill_id="video_agent_world_setting",
@@ -303,6 +369,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "revise_character_asset",
+        "AgentRunContext",
         "SpecialistResult",
         capability_id="character_design",
         internal_skill_id="video_agent_character_design",
@@ -311,6 +378,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "revise_scene_asset",
+        "AgentRunContext",
         "SpecialistResult",
         capability_id="scene_design",
         internal_skill_id="video_agent_scene_design",

@@ -14,6 +14,8 @@ Use the typed creative objective, audience needs, campaign appeal, explicit user
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Keep premise, era, place, spatial logic, and world rules internally consistent.
 - Express visual continuity as stable facts rather than camera or provider instructions.
 - Connect the setting to the audience motivation and product appeal without inventing claims.

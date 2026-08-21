@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 from typing import Any
+import unicodedata
 
 from pydantic import ValidationError
 
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.schemas.agent_runtime import (
+    AgentStructuredNormalizationAuditV1,
     AgentStructuredSubmission,
     AgentStructuredValidationResult,
     StructuredViolation,
 )
-from app.services.v2_agent_contract_registry import validate_agent_contract
+from app.schemas.agent_canvas_storyboard_sequences import (
+    StoryboardSequenceAuthorityPlanV2,
+)
+from app.services.v2_agent_contract_registry import (
+    AgentStructuredContractRegistryError,
+    validate_agent_contract,
+)
+from app.services.v2_agent_structured_normalization import (
+    AGENT_STRUCTURED_NORMALIZATION_REGISTRY,
+    AgentStructuredNormalizationResult,
+)
 
 
 class V2AgentStructuredValidationService:
@@ -30,25 +42,31 @@ class V2AgentStructuredValidationService:
         identity_violations = _identity_violations(run, submission)
         if identity_violations:
             return _rejected(submission, identity_violations)
+        raw_semantic_violations = self._raw_semantic_violations(
+            run,
+            submission.value,
+        )
+        normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+            run.contract_name or "",
+            submission.value,
+        )
+        if normalization.violations:
+            return _rejected(
+                submission,
+                normalization.violations + raw_semantic_violations,
+            )
 
         try:
             normalized = validate_agent_contract(
                 run.contract_name or "",
-                submission.value,
+                normalization.value,
             )
         except ValidationError as error:
             return _rejected(
                 submission,
-                tuple(
-                    StructuredViolation(
-                        code=str(item["type"]),
-                        message=str(item["msg"]),
-                        field_path=".".join(str(part) for part in item["loc"]) or None,
-                    )
-                    for item in error.errors()
-                ),
+                _project_validation_errors(error) + raw_semantic_violations,
             )
-        except ValueError:
+        except AgentStructuredContractRegistryError:
             return _rejected(
                 submission,
                 (
@@ -58,12 +76,16 @@ class V2AgentStructuredValidationService:
                         field_path="contract_name",
                     ),
                 ),
+                repair_allowed=False,
             )
 
         normalized_value = _canonicalize_profile_value(
             run.validation_profile,
             run.validation_context,
-            normalized.model_dump(mode="json"),
+            normalized.model_dump(
+                mode="json",
+                exclude_unset=run.contract_name == "CompactTurnIntentDecisionV3",
+            ),
         )
         if run.validation_profile == "canary_reject_first_v1":
             if submission.attempt == 1:
@@ -81,20 +103,60 @@ class V2AgentStructuredValidationService:
                 normalized_result_id=submission.submission_id,
                 normalized_value=normalized_value,
                 repair_allowed=False,
+                normalization_audit=_normalization_audit(
+                    run,
+                    submission,
+                    normalization,
+                ),
             )
-        semantic_violations = _semantic_violations(
+        semantic_violations = raw_semantic_violations + _semantic_violations(
             run.validation_profile,
             run.validation_context,
             normalized_value,
         )
         if semantic_violations:
-            return _rejected(submission, semantic_violations)
+            return _rejected(
+                submission,
+                semantic_violations,
+                repair_allowed=(
+                    False
+                    if any(
+                        item.code == "agent_validation_context_invalid"
+                        for item in semantic_violations
+                    )
+                    else None
+                ),
+            )
         return AgentStructuredValidationResult(
             accepted=True,
             normalized_result_id=submission.submission_id,
             normalized_value=normalized_value,
             repair_allowed=False,
+            normalization_audit=_normalization_audit(
+                run,
+                submission,
+                normalization,
+            ),
         )
+
+    def _raw_semantic_violations(
+        self,
+        run: AgentRunRecord,
+        value: dict[str, Any],
+    ) -> tuple[StructuredViolation, ...]:
+        if run.validation_profile != "agent_intake_source_quotes_v1":
+            return ()
+        source_turn_id = run.validation_context.get("source_turn_id")
+        if not isinstance(source_turn_id, str) or not source_turn_id:
+            return (_invalid_intake_validation_context(),)
+        source_message = self._repository.load_validation_source_message(
+            workflow_id=run.workflow_id,
+            conversation_id=run.conversation_id,
+            turn_id=source_turn_id,
+        )
+        if source_message is None:
+            return (_invalid_intake_validation_context(),)
+        return _intake_source_quote_violations(source_message, value)
 
 
 def _identity_violations(
@@ -122,15 +184,38 @@ def _identity_violations(
     return ()
 
 
+def _normalization_audit(
+    run: AgentRunRecord,
+    submission: AgentStructuredSubmission,
+    normalization: AgentStructuredNormalizationResult,
+) -> AgentStructuredNormalizationAuditV1 | None:
+    if not normalization.rule_ids:
+        return None
+    return AgentStructuredNormalizationAuditV1(
+        contract_name=run.contract_name or "",
+        rule_ids=normalization.rule_ids,
+        normalized_path_count=normalization.normalized_path_count,
+        submission_attempt=submission.attempt,
+    )
+
+
 def _semantic_violations(
     profile: str | None,
     context: dict[str, Any],
     value: dict[str, Any],
 ) -> tuple[StructuredViolation, ...]:
-    if profile in {None, "schema_only_v1", "video_parameter_intent_v1"}:
+    if profile in {
+        None,
+        "schema_only_v1",
+        "agent_intake_source_quotes_v1",
+    }:
         return ()
+    if profile == "video_parameter_intent_v3":
+        return _video_parameter_intent_v3_violations(context, value)
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
+    if profile == "storyboard_sequence_window_parity_v1":
+        return _storyboard_sequence_window_violations(context, value)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -164,6 +249,210 @@ def _semantic_violations(
                 )
             )
     return tuple(violations)
+
+
+def _storyboard_sequence_window_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    try:
+        authority = StoryboardSequenceAuthorityPlanV2.model_validate(context)
+    except (ValidationError, ValueError, TypeError):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The persisted Storyboard Sequence authority plan is invalid.",
+                field_path="validation_context",
+            ),
+        )
+
+    violations: list[StructuredViolation] = []
+    for field_name, expected in (
+        ("aspect_ratio", authority.aspect_ratio),
+        ("total_duration_seconds", authority.total_duration_seconds),
+    ):
+        actual = value.get(field_name)
+        if actual != expected:
+            violations.append(
+                StructuredViolation(
+                    code="storyboard_sequence_parameter_mismatch",
+                    message="The Storyboard outline changed a frozen sequence parameter.",
+                    field_path=field_name,
+                    expected=expected,
+                    actual=actual,
+                )
+            )
+
+    segments = value.get("segments")
+    if not isinstance(segments, list):
+        return tuple(violations)
+    if len(segments) != len(authority.windows):
+        violations.append(
+            StructuredViolation(
+                code="storyboard_sequence_count_mismatch",
+                message="The Storyboard outline changed the frozen sequence count.",
+                field_path="segments",
+                expected=len(authority.windows),
+                actual=len(segments),
+            )
+        )
+
+    for index, (segment, window) in enumerate(zip(segments, authority.windows)):
+        if not isinstance(segment, dict):
+            continue
+        if segment.get("order") != window.order:
+            violations.append(
+                StructuredViolation(
+                    code="storyboard_sequence_order_mismatch",
+                    message="The Storyboard outline changed a frozen sequence order.",
+                    field_path=f"segments.{index}.order",
+                    expected=window.order,
+                    actual=segment.get("order"),
+                )
+            )
+        for field_name, expected in (
+            ("start_seconds", window.start_seconds),
+            ("end_seconds", window.end_seconds),
+        ):
+            actual = segment.get(field_name)
+            if actual != expected:
+                violations.append(
+                    StructuredViolation(
+                        code="storyboard_sequence_timing_mismatch",
+                        message="The Storyboard outline changed a frozen sequence boundary.",
+                        field_path=f"segments.{index}.{field_name}",
+                        expected=expected,
+                        actual=actual,
+                    )
+                )
+    return tuple(violations)
+
+
+def _invalid_intake_validation_context() -> StructuredViolation:
+    return StructuredViolation(
+        code="agent_validation_context_invalid",
+        message="The persisted Agent validation context is incomplete.",
+        field_path="source_turn_id",
+    )
+
+
+def _safe_violation_value(value: Any, *, depth: int = 0) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value[:2_048]
+    if isinstance(value, BaseException):
+        return str(value)[:1_024]
+    if depth >= 4:
+        return type(value).__name__
+    if isinstance(value, dict):
+        return {
+            str(key)[:160]: _safe_violation_value(item, depth=depth + 1)
+            for key, item in tuple(value.items())[:16]
+        }
+    if isinstance(value, (list, tuple)):
+        return [_safe_violation_value(item, depth=depth + 1) for item in value[:16]]
+    return type(value).__name__
+
+
+def _project_validation_errors(
+    error: ValidationError,
+) -> tuple[StructuredViolation, ...]:
+    errors = error.errors()
+    retained = tuple(item for item in errors if not _is_derived_too_short(item, errors))
+    return tuple(
+        StructuredViolation(
+            code=str(item["type"]),
+            message=str(item["msg"]),
+            field_path=".".join(str(part) for part in item["loc"]) or None,
+            expected=_project_expected_value(item.get("ctx")),
+            actual=_safe_violation_value(item.get("input")),
+        )
+        for item in retained
+    )
+
+
+def _is_derived_too_short(
+    item: dict[str, Any],
+    errors: list[dict[str, Any]],
+) -> bool:
+    if item.get("type") != "too_short":
+        return False
+    raw_collection = item.get("input")
+    context = item.get("ctx")
+    if not isinstance(raw_collection, (list, tuple)) or not isinstance(context, dict):
+        return False
+    minimum = context.get("min_length")
+    if not isinstance(minimum, int) or len(raw_collection) < minimum:
+        return False
+    location = tuple(item.get("loc") or ())
+    return any(
+        other is not item
+        and len(tuple(other.get("loc") or ())) > len(location)
+        and tuple(other.get("loc") or ())[: len(location)] == location
+        for other in errors
+    )
+
+
+def _project_expected_value(context: Any) -> Any:
+    if isinstance(context, dict) and "expected" in context:
+        return _safe_violation_value(context["expected"])
+    return _safe_violation_value(context)
+
+
+def _intake_source_quote_violations(
+    source_message: str,
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    normalized_message = unicodedata.normalize("NFKC", source_message)
+    violations: list[StructuredViolation] = []
+    for field_path, quote in _intake_source_quotes(value):
+        if unicodedata.normalize("NFKC", quote) in normalized_message:
+            continue
+        violations.append(
+            StructuredViolation(
+                code="requirement_source_quote_invalid",
+                message="Requirement evidence must quote the current user message exactly.",
+                field_path=field_path,
+                expected="exact substring of the current user message",
+                actual=quote,
+            )
+        )
+    return tuple(violations)
+
+
+def _intake_source_quotes(value: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    quotes: list[tuple[str, str]] = []
+    requirement_patch = value.get("requirement_patch")
+    if isinstance(requirement_patch, dict):
+        controls = requirement_patch.get("controls_to_set")
+        if isinstance(controls, dict):
+            for control_name, control in controls.items():
+                if isinstance(control, dict) and isinstance(control.get("source_quote"), str):
+                    quotes.append(
+                        (
+                            f"requirement_patch.controls_to_set.{control_name}.source_quote",
+                            control["source_quote"],
+                        )
+                    )
+        directives = requirement_patch.get("directives_to_add")
+        if isinstance(directives, list):
+            quotes.extend(
+                (
+                    f"requirement_patch.directives_to_add.{index}.source_quote",
+                    directive["source_quote"],
+                )
+                for index, directive in enumerate(directives)
+                if isinstance(directive, dict) and isinstance(directive.get("source_quote"), str)
+            )
+    explicit_elements = value.get("explicit_elements")
+    if isinstance(explicit_elements, dict):
+        quotes.extend(
+            (f"explicit_elements.{element_kind}.source_quote", element["source_quote"])
+            for element_kind, element in explicit_elements.items()
+            if isinstance(element, dict) and isinstance(element.get("source_quote"), str)
+        )
+    return tuple(quotes)
 
 
 def _canonicalize_profile_value(
@@ -219,6 +508,40 @@ def _front_desk_core_violations(
     return tuple(violations)
 
 
+def _video_parameter_intent_v3_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    unresolved = set(context.get("unresolved_fields") or ())
+    source_refs = set(context.get("source_refs") or ())
+    violations: list[StructuredViolation] = []
+    candidates = value.get("candidates")
+    if not isinstance(candidates, list):
+        return ()
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        field = candidate.get("field")
+        source_ref = candidate.get("source_ref")
+        if field not in unresolved:
+            violations.append(
+                StructuredViolation(
+                    code="field_already_resolved",
+                    message="The candidate field is not unresolved in this request.",
+                    field_path=f"candidates.{index}.field",
+                )
+            )
+        if source_ref not in source_refs:
+            violations.append(
+                StructuredViolation(
+                    code="source_ref_not_allowed",
+                    message="The candidate source_ref was not supplied in this request.",
+                    field_path=f"candidates.{index}.source_ref",
+                )
+            )
+    return tuple(violations)
+
+
 def _value_at_path(value: dict[str, Any], field_path: str) -> Any:
     current: Any = value
     for part in field_path.split("."):
@@ -231,9 +554,11 @@ def _value_at_path(value: dict[str, Any], field_path: str) -> Any:
 def _rejected(
     submission: AgentStructuredSubmission,
     violations: tuple[StructuredViolation, ...],
+    *,
+    repair_allowed: bool | None = None,
 ) -> AgentStructuredValidationResult:
     return AgentStructuredValidationResult(
         accepted=False,
         violations=violations,
-        repair_allowed=submission.attempt < 2,
+        repair_allowed=(submission.attempt < 2 if repair_allowed is None else repair_allowed),
     )

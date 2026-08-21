@@ -9,9 +9,15 @@ from datetime import datetime
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import CanvasBindingSourceNodeV2, CanvasNodeV2
+from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
+    CanvasBindingSourceImageAssetV2,
+    CanvasBindingSourceNodeV2,
+    CanvasNodeV2,
+)
 from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, NodeRunIntentSnapshotV2
+from app.schemas.agent_canvas_runtime_authority import CanvasExecutionMemberIntentV2
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
@@ -34,6 +40,54 @@ class AgentCanvasRunIntentSnapshotService:
         self._runtime = runtime
         self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
         self._bindings = bindings
+
+    def prepare_member_intents(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        nodes: tuple[CanvasNodeV2, ...],
+    ) -> tuple[CanvasExecutionMemberIntentV2, ...]:
+        """Build immutable snapshot bodies before the admission transaction."""
+
+        workflow_nodes = {node.node_id: node for node in workflow.nodes}
+        workflow_assets = {asset.asset_id: asset for asset in workflow.assets}
+        intents: list[CanvasExecutionMemberIntentV2] = []
+        for member_order, node in enumerate(nodes):
+            frozen_node, normalizations = self._execution_parameters.freeze_node(node)
+            binding_snapshots = _binding_snapshots(workflow, frozen_node, workflow_nodes)
+            source_asset_digests: dict[str, str] = {}
+            for binding in binding_snapshots:
+                if binding.source_kind != "image_asset":
+                    continue
+                asset = workflow_assets.get(binding.source_id)
+                if asset is None:
+                    raise V2PersistenceError(
+                        "run_intent_stale",
+                        "A bound source Asset is unavailable.",
+                        stage="agent_canvas_run_snapshots",
+                    )
+                source_asset_digests[asset.asset_id] = asset.checksum
+            semantic = {
+                "workflow_id": workflow.workflow_id,
+                "workflow_revision": workflow.revision,
+                "node": frozen_node.model_dump(mode="json"),
+                "bindings": [item.model_dump(mode="json") for item in binding_snapshots],
+                "source_asset_digests": source_asset_digests,
+            }
+            digest = _digest(semantic)
+            intents.append(
+                CanvasExecutionMemberIntentV2(
+                    node_id=frozen_node.node_id,
+                    node_revision=frozen_node.revision,
+                    member_order=member_order,
+                    frozen_node=frozen_node.model_dump(mode="json"),
+                    binding_snapshots=binding_snapshots,
+                    snapshot_id=f"run_intent_{digest[:24]}",
+                    snapshot_digest=digest,
+                    expected_source_asset_digests=source_asset_digests,
+                    parameter_normalizations=tuple(str(item) for item in normalizations),
+                )
+            )
+        return tuple(intents)
 
     def freeze_members(
         self,
@@ -212,3 +266,52 @@ def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
+
+
+def _binding_snapshots(
+    workflow: AgentCanvasWorkflowV2,
+    node: CanvasNodeV2,
+    workflow_nodes: dict[str, CanvasNodeV2],
+) -> tuple[NodeRunBindingSnapshotV2, ...]:
+    bindings = tuple(
+        sorted(
+            (
+                item
+                for item in workflow.bindings
+                if item.target_node_id == node.node_id and item.enabled
+            ),
+            key=lambda item: (item.order, item.binding_id),
+        )
+    )
+    return tuple(
+        NodeRunBindingSnapshotV2(
+            binding_id=binding.binding_id,
+            input_role=binding.input_role,
+            order=binding.order,
+            required=binding.required,
+            source_kind=binding.source.kind,
+            source_id=(
+                binding.source.source_node_id
+                if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                else binding.source.source_asset_id
+            ),
+            source_node_revision=(
+                workflow_nodes[binding.source.source_node_id].revision
+                if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                and binding.source.source_node_id in workflow_nodes
+                else None
+            ),
+            source_semantic_role=(
+                workflow_nodes[binding.source.source_node_id].semantic_role
+                if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                and binding.source.source_node_id in workflow_nodes
+                else None
+            ),
+            binding_metadata=binding.metadata,
+        )
+        for binding in bindings
+        if isinstance(
+            binding.source,
+            (CanvasBindingSourceNodeV2, CanvasBindingSourceImageAssetV2),
+        )
+    )

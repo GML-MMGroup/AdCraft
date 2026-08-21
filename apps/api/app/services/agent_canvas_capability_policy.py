@@ -201,7 +201,36 @@ class CapabilityPolicyService:
     def definition(self, capability_id: CapabilityIdV1) -> CapabilityDefinitionV1:
         return self._definitions[capability_id]
 
+    @staticmethod
+    def internal_script_checkpoint_definition() -> CapabilityDefinitionV1:
+        return CapabilityDefinitionV1(
+            capability_id="script_authoring",
+            display_name="Script Writer",
+            operation="author_guided_script_checkpoint",
+            result_contract_name="ScriptMaterializationResultV1",
+            node_type=None,
+            creative_role=None,
+            default_candidate_count=1,
+            allowed_reference_roles=("world_setting_reference",),
+        )
+
     def evaluate(self, context: CapabilityPolicyContextV1) -> CapabilityPolicyResultV1:
+        if context.journey_capability is not None:
+            unavailable = {
+                *context.open_proposal_capabilities,
+                *context.active_materialization_capabilities,
+            }
+            allowed = (
+                () if context.journey_capability in unavailable else (context.journey_capability,)
+            )
+            return CapabilityPolicyResultV1(
+                allowed_capabilities=allowed,
+                recommended_capabilities=allowed,
+                completion_allowed=False,
+                blocking_facts=(
+                    () if allowed else (f"journey_capability_busy:{context.journey_capability}",)
+                ),
+            )
         if context.targeted_capability is not None:
             hard_unavailable = {
                 *context.completed_capabilities,
@@ -290,10 +319,6 @@ class CapabilityPolicyService:
                 objective=(
                     "Revisit this deferred capability because it remains required "
                     "by the accepted brief."
-                ),
-                message=(
-                    "This deferred topic remains required by the accepted brief, "
-                    "so it is being revisited before completion."
                 ),
             )
             return ValidatedNextActionV1(

@@ -107,6 +107,8 @@ class PiAgentRuntimeClient:
         terminal_count = 0
         last_seq = 0
         terminal: AgentRuntimeEvent | None = None
+        runtime_response_received = False
+        runtime_stream_accepted = False
         try:
             with self._client.stream(
                 "POST",
@@ -119,7 +121,9 @@ class PiAgentRuntimeClient:
                 },
                 timeout=self._run_timeout_seconds,
             ) as response:
+                runtime_response_received = True
                 response.raise_for_status()
+                runtime_stream_accepted = True
                 for line in response.iter_lines():
                     line_bytes = line.encode("utf-8")
                     total_bytes += len(line_bytes) + 1
@@ -153,10 +157,18 @@ class PiAgentRuntimeClient:
         except PiAgentRuntimeError:
             raise
         except (httpx.HTTPError, OSError) as error:
+            if terminal_count == 1 and terminal is not None:
+                return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
             raise PiAgentRuntimeError(
                 "agent_runtime_unavailable",
                 "Agent runtime is unavailable.",
                 retryable=True,
+                details=_runtime_unavailable_details(
+                    request,
+                    response_received=runtime_response_received,
+                    stream_accepted=runtime_stream_accepted,
+                    last_event_seq=last_seq,
+                ),
             ) from error
         if terminal_count != 1 or terminal is None:
             raise _protocol_error()
@@ -197,3 +209,33 @@ def _protocol_error() -> PiAgentRuntimeError:
         "agent_protocol_mismatch",
         "Agent runtime protocol validation failed.",
     )
+
+
+def _runtime_unavailable_details(
+    request: AgentRunRequest,
+    *,
+    response_received: bool,
+    stream_accepted: bool,
+    last_event_seq: int,
+) -> dict[str, Any]:
+    if not response_received:
+        failure_boundary = "runtime_process"
+    elif not stream_accepted:
+        failure_boundary = "runtime_http"
+    else:
+        failure_boundary = "runtime_stream"
+    details: dict[str, Any] = {
+        "attempt_stage": "runtime_request",
+        "failure_boundary": failure_boundary,
+        "operation": request.operation,
+        "retryable": True,
+        "terminal_code": "agent_runtime_unavailable",
+    }
+    if not stream_accepted or last_event_seq == 0:
+        details.update(
+            {
+                "model_submission_count": 0,
+                "response_activity_observed": False,
+            }
+        )
+    return details

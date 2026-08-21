@@ -18,8 +18,9 @@ const descriptors = Object.freeze(
     const systemPrompt = [
       videoAgentBasePolicy,
       instructionForOperation(operation.operation),
-      `Return exactly the ${operation.result_contract_name} contract by calling submit_structured_result.`,
-      "If Python rejects the first submission, repair only the reported structured violations and submit once more. A second rejection is terminal.",
+      localeInstructionForOperation(operation.operation),
+      `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
+      "If Python rejects the first result, repair only the reported structured violations once. A second rejection is terminal.",
     ].join("\n\n");
     return Object.freeze({
       prompt_id: `adcraft.video_agent.${operation.operation}.v1`,
@@ -82,22 +83,40 @@ function instructionForOperation(operation: string): string {
   if (operation === "decide_turn_intent") {
     return [
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
-      "Return only creative intent, explicit element presence, explicit constraints, and an optional bounded assistant message.",
+      "ordinary_conversation is for greetings, informational questions, explanations, and messages that request no authoring or Canvas work.",
+      "guided_production is for a request to create, plan, or continue an advertising production.",
+      "targeted_authoring is for authoring or revising a specifically referenced Node or image Asset.",
+      "quick_media is for one bounded media output through the Quick Media boundary.",
+      "Missing, ambiguous, or contradictory creative details do not change guided_production; ask a focused clarification while preserving guided intent.",
+      'For example, "Create an advertisement." is guided_production, while "What makes an advertisement effective?" is ordinary_conversation.',
+      "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "For every authoring mode that can continue automatically, return a non-empty assistant_message that acknowledges the request and confirms the next production work is starting.",
+      "When deterministic policy can continue, acknowledge that production will continue and must not ask the user to choose a creative stage.",
+      "The deterministic Python journey policy is the sole authority for the next stage; never encode or infer stage selection through assistant prose.",
+      "Represent explicit_elements as one strict object with only the optional product, prop, character, scene, world_setting, script, storyboard, video, and audio keys. Every present key must contain presence and an exact source_quote.",
+      "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
+      "Represent each directive as either scope_kind global without capability_id or scope_kind capability with exactly one registered capability_id.",
+      "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
+      "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
+      "Use requirement_patch only for durable creative or output facts supported by exact current-message quotes. Never emit continue, pause, skip, defer, resume, hold, reuse-existing-Drafts, stage-ordering, execution-timing, retry, or export mechanics as Requirement directives; express transient intent through routing or objective, or leave it to the supplied typed action.",
       "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",
     ].join(" ");
   }
   if (operation === "decide_next_action") {
     return [
-      "Choose exactly one next action from ask_user, invoke_capability, reply, or finish.",
+      "Choose exactly one next action from ask_user, author_decision_bundle, invoke_capability, reply, or finish.",
+      "Use author_decision_bundle with one bounded objective when several independent creative decisions should be answered together.",
       "When invoking, copy one capability_id from context.policy.allowed_capabilities and provide one bounded objective.",
       "Treat recommended_capabilities as advice and do not invent an unavailable capability.",
     ].join(" ");
   }
   if (operation === "compile_video_parameters") {
     return [
-      "Extract only explicit technical video controls from the supplied target prompt and direct Text or Script Binding sources.",
-      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, limited by the supplied capability contract.",
-      "Copy source identity exactly. Return no_explicit_controls when no supplied source explicitly states a control.",
+      "Extract only the declared unresolved technical video controls from the supplied target prompt and direct Text or Script Binding projections, identified by opaque source references.",
+      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, further limited by unresolved_fields and the capability contract.",
+      "Return each supplied source_ref exactly. Never emit Node IDs, Binding IDs, revisions, provider payloads, paths, URLs, or credentials.",
+      "A request that excludes BGM does not disable native video dialogue, ambience, or synchronized effects. Return generate_audio=false only when all native video audio is explicitly disabled.",
+      "Return no_explicit_controls when no supplied source explicitly states an unresolved control.",
       "Do not infer controls from creative wording, defaults, sibling nodes, or transitive nodes.",
     ].join(" ");
   }
@@ -110,17 +129,50 @@ function instructionForOperation(operation: string): string {
   if (operation === "conversation_summary") {
     return "Summarize only durable facts and unresolved objectives needed by a later turn. Exclude private reasoning and unrelated history.";
   }
+  if (operation === "author_decision_bundle") {
+    return [
+      "Author one adaptive Decision Bundle containing one to five independent questions and two to six options per question.",
+      "Use only creative_directive, set_control, or set_element_presence effects and only canonical values available in the supplied context.",
+      "Return wording and bounded effects only. Never author Bundle, question, option, Node, Binding, persistence, provider, path, credential, revision, or platform identities.",
+    ].join(" ");
+  }
+  if (operation === "author_role_brief") {
+    return [
+      "Author only the typed creative brief for the current role variant.",
+      "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
+    ].join(" ");
+  }
+  if (operation === "plan_storyboard_sequence_outline") {
+    return [
+      "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
+      "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered 3x3 storyboard grid, not one shot, camera setup, panel, or story beat.",
+      "When deterministic context supplies an exact sequence count or timing windows, preserve them exactly.",
+      "Otherwise use the minimum sequence count required by the total duration and the 15-second maximum; group multiple ordered shots and beats inside each sequence.",
+      "Cover the total duration with contiguous, non-overlapping sequences and preserve the narrative handoff between adjacent sequences.",
+      "Do not author panel rows, provider prompts, or platform identifiers.",
+    ].join(" ");
+  }
+  if (operation === "materialize_storyboard_segment") {
+    return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
+  }
+  if (operation === "author_guided_script_checkpoint") {
+    return [
+      "Author only the internal document checkpoint named by capability_context.journey_stage.",
+      "Return one complete ScriptMaterializationResultV1 without alternatives, platform identifiers, Canvas Nodes, Bindings, or user-choice copy.",
+      "Preserve the supplied duration, sequence count, accepted creative facts, and response locale.",
+    ].join(" ");
+  }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return concise creative options with title, public_summary, one to six key_decisions, and one matching private_draft_seed per option.",
-      "The private_draft_seed contains only the capability-specific creative facts required by the typed result contract.",
-      "Do not place platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, or credentials in the Seed.",
+      "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",
+      "Render all option display text in the supplied response_locale.",
+      "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
     return [
-      "Revise only the supplied capability options and return replacement typed options with one matching private_draft_seed per option.",
-      "Keep each Seed limited to capability-specific creative facts; exclude platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, and credentials.",
+      "Revise only the supplied capability options and return concise replacement typed options.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
   }
@@ -141,4 +193,17 @@ function instructionForOperation(operation: string): string {
     return "Return one complete editable Script Node result under the supplied contract and deterministic timing constraints.";
   }
   return `Perform only the ${operation} operation using its typed context, trusted internal Skill when declared, approved references, and exact result schema.`;
+}
+
+function localeInstructionForOperation(operation: string): string {
+  if (operation === "decide_turn_intent") {
+    return [
+      "Treat current_response_locale as prior conversation state, not as a command to render in an unresolved locale.",
+      "When current_response_locale is und and the current message clearly establishes a language, return its canonical BCP 47 response_locale and render assistant_message in that language.",
+      "For Simplified Chinese, prefer zh-CN as response_locale.",
+      "When the current message does not establish a language change, preserve an existing resolved locale or leave the fresh locale unresolved.",
+      "Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English.",
+    ].join(" ");
+  }
+  return "Render every model-owned user-visible or audible field in the supplied response_locale. Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English. Style guidance never overrides response_locale.";
 }

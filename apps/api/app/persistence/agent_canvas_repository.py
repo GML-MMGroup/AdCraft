@@ -13,6 +13,9 @@ from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
@@ -47,6 +50,7 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
     EditingNodeContentV2,
@@ -54,6 +58,9 @@ from app.schemas.agent_canvas_editing import (
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.workflow_v2_projects import ProjectCreate
+from app.services.agent_canvas_requirements import (
+    update_requirement_compatibility_projection_in_transaction,
+)
 
 
 class AgentCanvasWorkflowRepository:
@@ -70,10 +77,25 @@ class AgentCanvasWorkflowRepository:
         self._database = database
         self._projects = projects
         self._events = events
+        self._requirements = AgentCanvasRequirementRepository(database)
 
     @property
     def database(self) -> V2Database:
         return self._database
+
+    def exists(self, workflow_id: str) -> bool:
+        """Return whether SQLite owns the workflow without loading its graph."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                workflow = connection.execute(
+                    select(AgentCanvasWorkflowRow.workflow_id)
+                    .where(AgentCanvasWorkflowRow.workflow_id == workflow_id)
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            raise _unavailable_error() from exc
+        return workflow is not None
 
     def create_empty(
         self,
@@ -114,6 +136,11 @@ class AgentCanvasWorkflowRepository:
                             created_at=now,
                             updated_at=now,
                         )
+                    )
+                    self._requirements.initialize_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        created_at=now,
                     )
                     conversation_id = f"conversation_{workflow_id}"
                     connection.execute(
@@ -690,6 +717,13 @@ class AgentCanvasWorkflowRepository:
                     )
                     if updated.rowcount != 1:
                         raise _node_not_found_error()
+                    _invalidate_prompt_preparations_for_source(
+                        connection,
+                        events=self._events,
+                        workflow_id=node.workflow_id,
+                        source_node_id=node.node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -718,6 +752,112 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def update_node_prompt_preparation(
+        self,
+        node: CanvasNodeV2,
+        *,
+        expected_node_revision: int,
+        expected_workflow_revision: int,
+    ) -> CanvasNodeV2:
+        """Compare-and-swap one prompt operation while tolerating exact replay."""
+
+        if node.revision != expected_node_revision + 1:
+            raise _prompt_preparation_conflict()
+        now = node.updated_at.isoformat()
+        values = _node_values(node)
+        values.pop("node_id")
+        values.pop("workflow_id")
+        replayed = False
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _node_not_found_error()
+                    current = _node_from_row(row)
+                    if current.revision != expected_node_revision:
+                        if _prompt_preparation_replays(current, node):
+                            replayed = True
+                            connection.commit()
+                        else:
+                            raise _prompt_preparation_conflict()
+                    else:
+                        current_workflow_revision = _require_workflow_revision_at_least(
+                            connection,
+                            node.workflow_id,
+                            expected_workflow_revision,
+                        )
+                        updated = connection.execute(
+                            update(AgentCanvasNodeRow)
+                            .where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                                AgentCanvasNodeRow.revision == expected_node_revision,
+                            )
+                            .values(**values)
+                        )
+                        if updated.rowcount != 1:
+                            raise _prompt_preparation_conflict()
+                        _advance_workflow_revision(
+                            connection,
+                            workflow_id=node.workflow_id,
+                            current_revision=current_workflow_revision,
+                            updated_at=now,
+                        )
+                        event_type = {
+                            "working": "node_prompt_preparation_started",
+                            "ready": "node_prompt_preparation_ready",
+                            "failed": "node_prompt_preparation_failed",
+                            "queued": "node_prompt_preparation_queued",
+                            "superseded": "node_prompt_preparation_superseded",
+                        }[node.prompt_preparation.status]
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                event_type=event_type,
+                                created_at=now,
+                                payload={
+                                    "node_revision": node.revision,
+                                    "workflow_revision": current_workflow_revision + 1,
+                                    "creative_role": node.creative_role,
+                                    "prompt_preparation_status": (node.prompt_preparation.status),
+                                    "operation_id": node.prompt_preparation.operation_id,
+                                    "recipe_id": node.prompt_preparation.recipe_id,
+                                    "recipe_version": node.prompt_preparation.recipe_version,
+                                    "recipe_digest": node.prompt_preparation.recipe_digest,
+                                    "prompt_digest": node.prompt_preparation.prompt_digest,
+                                    "binding_digest": node.prompt_preparation.binding_digest,
+                                    "error_code": (
+                                        node.prompt_preparation.error.code
+                                        if node.prompt_preparation.error is not None
+                                        else None
+                                    ),
+                                },
+                            ),
+                        )
+                        connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        restored = self.get_node(node.workflow_id, node.node_id)
+        return restored if replayed else restored
 
     def replace_derived_video_parameters(
         self,
@@ -1096,12 +1236,70 @@ class AgentCanvasWorkflowRepository:
                         connection, workflow_id, expected_revision
                     )
                     _require_node(connection, workflow_id, node_id)
+                    requirement_head = self._requirements.get_current_in_transaction(
+                        connection,
+                        workflow_id,
+                    )
+                    retained_directives = []
+                    requirement_changed = False
+                    for directive in requirement_head.ledger.active_directives:
+                        if directive.scope_kind != "node" or (
+                            node_id not in directive.target_node_ids
+                            and directive.source_node_id != node_id
+                        ):
+                            retained_directives.append(directive)
+                            continue
+                        requirement_changed = True
+                        remaining_targets = tuple(
+                            target_id
+                            for target_id in directive.target_node_ids
+                            if target_id != node_id
+                        )
+                        if remaining_targets and directive.source_node_id != node_id:
+                            retained_directives.append(
+                                directive.model_copy(update={"target_node_ids": remaining_targets})
+                            )
                     connection.execute(
                         delete(AgentCanvasDocumentRow).where(
                             AgentCanvasDocumentRow.workflow_id == workflow_id,
                             AgentCanvasDocumentRow.node_id == node_id,
                         )
                     )
+                    if requirement_changed:
+                        requirement_revision = self._requirements.append_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            expected_revision_no=requirement_head.revision_no,
+                            next_ledger=requirement_head.ledger.model_copy(
+                                update={"active_directives": tuple(retained_directives)}
+                            ),
+                            source_kind="node_deletion",
+                            source_node_id=node_id,
+                            created_at=now,
+                        )
+                        update_requirement_compatibility_projection_in_transaction(
+                            connection,
+                            workflow_id,
+                            requirement_revision.ledger,
+                            now,
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                node_id=node_id,
+                                event_type="requirement_ledger_updated",
+                                created_at=now,
+                                payload={
+                                    "revision_id": requirement_revision.revision_id,
+                                    "revision_no": requirement_revision.revision_no,
+                                    "digest": requirement_revision.digest,
+                                    "source_kind": "node_deletion",
+                                    "source_node_id": node_id,
+                                    "refresh": ["requirements"],
+                                },
+                            ),
+                        )
                     removed_bindings = connection.execute(
                         delete(AgentCanvasBindingRow).where(
                             AgentCanvasBindingRow.workflow_id == workflow_id,
@@ -1184,6 +1382,13 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=binding.workflow_id,
@@ -1264,6 +1469,13 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=workflow_id,
@@ -1331,6 +1543,13 @@ class AgentCanvasWorkflowRepository:
                         target_node_id=binding.target_node_id,
                         prioritized_binding_id=binding.binding_id,
                         requested_order=binding.display_order,
+                    )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
                     )
                     _advance_workflow_revision(
                         connection,
@@ -1636,6 +1855,10 @@ class AgentCanvasDocumentRepository:
         skill_refs: tuple[dict[str, str], ...] = (),
         memory_digest: str | None = None,
         upstream_summary_digest: str | None = None,
+        requirement_revision_id: str | None = None,
+        requirement_revision_no: int | None = None,
+        requirement_digest: str | None = None,
+        requirement_projection_digest: str | None = None,
         byte_estimate: int = 0,
         token_estimate: int = 0,
         content_digest: str | None = None,
@@ -1660,6 +1883,10 @@ class AgentCanvasDocumentRepository:
                         skill_refs_json=_json_dump(skill_refs),
                         memory_digest=memory_digest,
                         upstream_summary_digest=upstream_summary_digest,
+                        requirement_revision_id=requirement_revision_id,
+                        requirement_revision_no=requirement_revision_no,
+                        requirement_digest=requirement_digest,
+                        requirement_projection_digest=requirement_projection_digest,
                         byte_estimate=byte_estimate,
                         token_estimate=token_estimate,
                         content_digest=content_digest,
@@ -1692,6 +1919,10 @@ class AgentCanvasDocumentRepository:
             skill_refs=skill_refs,
             memory_digest=memory_digest,
             upstream_summary_digest=upstream_summary_digest,
+            requirement_revision_id=requirement_revision_id,
+            requirement_revision_no=requirement_revision_no,
+            requirement_digest=requirement_digest,
+            requirement_projection_digest=requirement_projection_digest,
             byte_estimate=byte_estimate,
             token_estimate=token_estimate,
             content_digest=content_digest,
@@ -1736,6 +1967,17 @@ class AgentCanvasDocumentRepository:
             skill_refs=tuple(json.loads(str(row["skill_refs_json"]))),
             memory_digest=cast(str | None, row["memory_digest"]),
             upstream_summary_digest=cast(str | None, row["upstream_summary_digest"]),
+            requirement_revision_id=cast(str | None, row["requirement_revision_id"]),
+            requirement_revision_no=(
+                int(row["requirement_revision_no"])
+                if row["requirement_revision_no"] is not None
+                else None
+            ),
+            requirement_digest=cast(str | None, row["requirement_digest"]),
+            requirement_projection_digest=cast(
+                str | None,
+                row["requirement_projection_digest"],
+            ),
             byte_estimate=int(row["byte_estimate"]),
             token_estimate=int(row["token_estimate"]),
             content_digest=cast(str | None, row["content_digest"]),
@@ -1833,6 +2075,24 @@ def _require_workflow_revision(
             "Workflow revision does not match the current revision.",
             stage="agent_canvas_workflow_repository",
         )
+    return current
+
+
+def _require_workflow_revision_at_least(
+    connection: Connection,
+    workflow_id: str,
+    expected_revision: int,
+) -> int:
+    revision = connection.execute(
+        select(AgentCanvasWorkflowRow.revision).where(
+            AgentCanvasWorkflowRow.workflow_id == workflow_id
+        )
+    ).scalar_one_or_none()
+    if revision is None:
+        raise _workflow_not_found_error()
+    current = int(revision)
+    if current < expected_revision:
+        raise _prompt_preparation_conflict()
     return current
 
 
@@ -1976,9 +2236,120 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "position_y": node.position.y,
         "revision": node.revision,
         "error_json": node.error.model_dump_json() if node.error is not None else None,
+        "prompt_preparation_json": node.prompt_preparation.model_dump_json(),
         "created_at": node.created_at.isoformat(),
         "updated_at": node.updated_at.isoformat(),
     }
+
+
+def _invalidate_target_prompt_preparation(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    target_node_id: str,
+    updated_at: str,
+) -> None:
+    row = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id == target_node_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _node_not_found_error()
+    node = _node_from_row(row)
+    if (
+        node.status != "draft"
+        or node.prompt_preparation.status == "queued"
+        or node.prompt_preparation.recipe_id is None
+    ):
+        return
+    queued = NodePromptPreparationV1(
+        status="queued",
+        operation_id=None,
+        attempt_no=node.prompt_preparation.attempt_no,
+        context_snapshot_id=None,
+        prompt_digest=None,
+        error=None,
+        updated_at=updated_at,
+    )
+    connection.execute(
+        update(AgentCanvasNodeRow)
+        .where(
+            AgentCanvasNodeRow.workflow_id == workflow_id,
+            AgentCanvasNodeRow.node_id == target_node_id,
+            AgentCanvasNodeRow.revision == node.revision,
+        )
+        .values(
+            prompt_preparation_json=queued.model_dump_json(),
+            revision=node.revision + 1,
+            updated_at=updated_at,
+        )
+    )
+    safe_payload = {
+        "node_revision": node.revision + 1,
+        "creative_role": node.creative_role,
+        "previous_operation_id": node.prompt_preparation.operation_id,
+        "previous_prompt_digest": node.prompt_preparation.prompt_digest,
+    }
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            node_id=target_node_id,
+            event_type="node_prompt_preparation_superseded",
+            created_at=updated_at,
+            payload=safe_payload,
+        ),
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            node_id=target_node_id,
+            event_type="node_prompt_preparation_queued",
+            created_at=updated_at,
+            payload={
+                "node_revision": node.revision + 1,
+                "creative_role": node.creative_role,
+            },
+        ),
+    )
+
+
+def _invalidate_prompt_preparations_for_source(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    source_node_id: str,
+    updated_at: str,
+) -> None:
+    target_node_ids = tuple(
+        connection.scalars(
+            select(AgentCanvasBindingRow.target_node_id)
+            .where(
+                AgentCanvasBindingRow.workflow_id == workflow_id,
+                AgentCanvasBindingRow.source_kind == "node_output",
+                AgentCanvasBindingRow.source_node_id == source_node_id,
+                AgentCanvasBindingRow.enabled.is_(True),
+            )
+            .distinct()
+        )
+    )
+    for target_node_id in target_node_ids:
+        _invalidate_target_prompt_preparation(
+            connection,
+            events=events,
+            workflow_id=workflow_id,
+            target_node_id=target_node_id,
+            updated_at=updated_at,
+        )
 
 
 def _node_from_row(
@@ -2019,6 +2390,9 @@ def _node_from_row(
             if error_json is not None
             else None
         ),
+        prompt_preparation=NodePromptPreparationV1.model_validate_json(
+            str(row["prompt_preparation_json"])
+        ),
         variation_draft=(_variation_from_row(variation) if variation is not None else None),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
@@ -2044,6 +2418,17 @@ def _parameter_provenance_from_row(
         for field, value in parameters.items()
         if isinstance(value, (str, int, float, bool))
     }
+
+
+def _prompt_preparation_replays(current: CanvasNodeV2, requested: CanvasNodeV2) -> bool:
+    return (
+        current.revision == requested.revision
+        and current.prompt_preparation == requested.prompt_preparation
+        and current.generation_prompt == requested.generation_prompt
+        and current.structured_content == requested.structured_content
+        and current.parameters == requested.parameters
+        and current.prompt_context_snapshot_id == requested.prompt_context_snapshot_id
+    )
 
 
 def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
@@ -2214,6 +2599,14 @@ def _node_not_found_error() -> V2PersistenceError:
         "node_not_found",
         "Canvas node was not found.",
         stage="agent_canvas_workflow_repository",
+    )
+
+
+def _prompt_preparation_conflict() -> V2PersistenceError:
+    return V2PersistenceError(
+        "prompt_preparation_revision_conflict",
+        "Node prompt preparation changed before this operation committed.",
+        stage="prompt_preparation",
     )
 
 

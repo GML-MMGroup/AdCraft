@@ -15,6 +15,62 @@ class _StoryboardSequenceModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class _FrozenStoryboardSequenceModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoryboardSequenceWindowV2(_FrozenStoryboardSequenceModel):
+    order: int = Field(ge=1, le=128)
+    start_seconds: float = Field(ge=0, le=3_600)
+    end_seconds: float = Field(gt=0, le=3_600)
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "StoryboardSequenceWindowV2":
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("Storyboard sequence window end must follow its start.")
+        if (
+            round(self.start_seconds, 3) != self.start_seconds
+            or round(self.end_seconds, 3) != self.end_seconds
+        ):
+            raise ValueError("Storyboard sequence windows require millisecond precision.")
+        return self
+
+
+class StoryboardSequenceAuthorityPlanV2(_FrozenStoryboardSequenceModel):
+    aspect_ratio: str = Field(min_length=1, max_length=32)
+    total_duration_seconds: float = Field(gt=0, le=3_600)
+    max_sequence_duration_seconds: float = Field(default=15, gt=0, le=15)
+    windows: tuple[StoryboardSequenceWindowV2, ...] = Field(
+        min_length=1,
+        max_length=128,
+    )
+
+    @model_validator(mode="after")
+    def validate_windows(self) -> "StoryboardSequenceAuthorityPlanV2":
+        if self.aspect_ratio != self.aspect_ratio.strip():
+            raise ValueError("Storyboard aspect ratio must be normalized.")
+        if round(self.total_duration_seconds, 3) != self.total_duration_seconds:
+            raise ValueError("Storyboard duration requires millisecond precision.")
+        if self.max_sequence_duration_seconds != 15:
+            raise ValueError("Storyboard sequence duration policy must be 15 seconds.")
+        if [window.order for window in self.windows] != list(range(1, len(self.windows) + 1)):
+            raise ValueError("Storyboard sequence window order must be contiguous.")
+        expected_start = 0.0
+        count = len(self.windows)
+        for index, window in enumerate(self.windows, start=1):
+            expected_end = (
+                self.total_duration_seconds
+                if index == count
+                else round(self.total_duration_seconds * index / count, 3)
+            )
+            if window.start_seconds != expected_start or window.end_seconds != expected_end:
+                raise ValueError("Storyboard sequence windows must be equal and contiguous.")
+            if window.end_seconds - window.start_seconds > self.max_sequence_duration_seconds:
+                raise ValueError("Storyboard sequence window exceeds the duration policy.")
+            expected_start = expected_end
+        return self
+
+
 class StoryboardSequenceRowDraftV2(_StoryboardSequenceModel):
     panel_index: int = Field(ge=1, le=9)
     content_beat: str = Field(min_length=1, max_length=4_096)
@@ -58,6 +114,51 @@ class StoryboardSequencePlanDraftV2(_StoryboardSequenceModel):
         if len(sequence_ids) != len(set(sequence_ids)):
             raise ValueError("Storyboard sequence ids must be unique.")
         return self
+
+
+class StoryboardOutlineSegmentDraftV2(_StoryboardSequenceModel):
+    order: int = Field(ge=1, le=128)
+    start_seconds: float = Field(ge=0, le=3_600)
+    end_seconds: float = Field(gt=0, le=3_600)
+    narrative_goal: str = Field(min_length=1, max_length=4_096)
+    start_state: str = Field(min_length=1, max_length=2_048)
+    end_state: str = Field(min_length=1, max_length=2_048)
+    continuity_from_previous: str | None = Field(default=None, max_length=2_048)
+
+    @model_validator(mode="after")
+    def validate_timing(self) -> "StoryboardOutlineSegmentDraftV2":
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("Storyboard outline segment end must follow its start.")
+        return self
+
+
+class StoryboardSequenceOutlineDraftV2(_StoryboardSequenceModel):
+    narrative_outline: str = Field(min_length=1, max_length=16_384)
+    aspect_ratio: str = Field(min_length=1, max_length=32)
+    total_duration_seconds: float = Field(gt=0, le=3_600)
+    segments: tuple[StoryboardOutlineSegmentDraftV2, ...] = Field(min_length=1, max_length=128)
+
+
+class StoryboardSegmentMaterializationDraftV2(_StoryboardSequenceModel):
+    rows: tuple[StoryboardSequenceRowDraftV2, ...] = Field(min_length=9, max_length=9)
+    generation_prompt: str = Field(min_length=1, max_length=16_384)
+
+    @model_validator(mode="after")
+    def validate_rows(self) -> "StoryboardSegmentMaterializationDraftV2":
+        if [row.panel_index for row in self.rows] != list(range(1, 10)):
+            raise ValueError("Storyboard segment panels must be ordered from 1 through 9.")
+        return self
+
+
+class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    plan_document_id: str = Field(min_length=1, max_length=160)
+    plan_revision: int = Field(ge=1)
+    plan_content_digest: str = Field(pattern=r"^sha256:[0-9a-zA-Z_-]+$")
+    sequence: StoryboardNarrativeSegmentV2
+    prior_end_state: str | None = Field(default=None, max_length=2_048)
+    anchors: tuple[AgentAnchorV2, ...] = Field(default=(), max_length=64)
+    style_excerpt: str | None = Field(default=None, max_length=8_192)
 
 
 class StoryboardGridAuthoringContextV2(_StoryboardSequenceModel):

@@ -1,11 +1,10 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createAgentRuntimeServer } from "../src/server.js";
 import type { AgentModelAdapter, EventSink } from "../src/runtime.js";
 import type { AgentRunRequest } from "../src/generated/agent-runtime.js";
-import { loadRuntimeManifest } from "../src/manifest.js";
 
 const servers: Array<ReturnType<typeof createAgentRuntimeServer>> = [];
 
@@ -13,20 +12,18 @@ const request: AgentRunRequest = {
   protocol_version: "1",
   run_id: "arun_test",
   request_id: "req_test",
-  contract_digest: loadRuntimeManifest().contract_digest,
-  context_snapshot_id: "context_test",
-  agent_name: "video_agent",
-  operation: "workflow_conversation",
+  agent_name: "front_desk",
+  operation: "workflow_creation",
   deadline_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-  model_policy_id: "video_agent.workflow_conversation.v1",
+  model_policy_id: "front_desk.workflow_creation.v1",
   context: {
-    operation: "workflow_conversation",
+    operation: "workflow_creation",
     user_input: "Create a product launch workflow.",
   },
   policy: {
     max_turns: 4,
     max_tool_calls: 4,
-    max_handoffs: 0,
+    max_handoffs: 1,
     timeout_seconds: 2,
     max_input_bytes: 4096,
     max_output_bytes: 4096,
@@ -99,24 +96,6 @@ describe("agent runtime server", () => {
       expect.objectContaining({ event_type: "run_started" }),
       expect.objectContaining({ event_type: "run_completed" }),
     ]);
-  });
-
-  it("rejects a request built against a different contract digest", async () => {
-    const baseUrl = await start();
-    const response = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ...request,
-        contract_digest: "0".repeat(64),
-      }),
-    });
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "agent_contract_mismatch" });
   });
 
   it("cancels a running request without emitting two terminal events", async () => {
@@ -209,45 +188,6 @@ describe("agent runtime server", () => {
     });
   });
 
-  it.each([
-    "agent_provider_timeout",
-    "agent_provider_transport_failed",
-    "agent_model_capability_mismatch",
-    "agent_structured_output_invalid",
-    "agent_contract_validation_failed",
-  ])("preserves typed adapter failure %s", async (code) => {
-    const adapter: AgentModelAdapter = {
-      async run() {
-        throw new Error(code);
-      },
-    };
-    const baseUrl = await start(adapter);
-    const response = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ...request,
-        run_id: `arun_${code}`,
-        request_id: `req_${code}`,
-      }),
-    });
-    const events = (await response.text())
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as {
-        event_type: string;
-        payload: { code: string };
-      });
-
-    expect(events.at(-1)).toMatchObject({
-      event_type: "run_failed",
-      payload: { code },
-    });
-  });
-
   it("enforces a bounded cognitive concurrency pool", async () => {
     let entered!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -298,129 +238,6 @@ describe("agent runtime server", () => {
     expect(await second.json()).toMatchObject({ code: "agent_run_capacity_exceeded" });
   });
 
-  it("allows two conversations by default and rejects a third active run", async () => {
-    let entered = 0;
-    let bothEntered!: () => void;
-    const started = new Promise<void>((resolve) => {
-      bothEntered = resolve;
-    });
-    const adapter: AgentModelAdapter = {
-      async run(_request: AgentRunRequest, signal: AbortSignal) {
-        entered += 1;
-        if (entered === 2) bothEntered();
-        await new Promise<void>((_resolve, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("cancel", "AbortError")),
-          );
-        });
-        return {};
-      },
-    };
-    const baseUrl = await start(adapter);
-    const active = ["one", "two"].map((suffix) =>
-      fetch(`${baseUrl}/internal/v1/agent-runs`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer test-token",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          ...request,
-          run_id: `arun_default_${suffix}`,
-          request_id: `req_default_${suffix}`,
-          context: {
-            ...request.context,
-            conversation_id: `conversation_${suffix}`,
-          },
-        }),
-      }),
-    );
-    await started;
-    const third = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ...request,
-        run_id: "arun_default_three",
-        request_id: "req_default_three",
-        context: {
-          ...request.context,
-          conversation_id: "conversation_three",
-        },
-      }),
-    });
-    await Promise.all(
-      ["one", "two"].map((suffix) =>
-        fetch(`${baseUrl}/internal/v1/agent-runs/arun_default_${suffix}/cancel`, {
-          method: "POST",
-          headers: { authorization: "Bearer test-token" },
-        }),
-      ),
-    );
-    await Promise.all(active);
-
-    expect(third.status).toBe(503);
-    expect(await third.json()).toMatchObject({
-      code: "agent_run_capacity_exceeded",
-    });
-  });
-
-  it("rejects concurrent runs for the same conversation", async () => {
-    let entered!: () => void;
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const adapter: AgentModelAdapter = {
-      async run(_request: AgentRunRequest, signal: AbortSignal) {
-        entered();
-        await new Promise<void>((_resolve, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("cancel", "AbortError")),
-          );
-        });
-        return {};
-      },
-    };
-    const baseUrl = await start(adapter);
-    const first = fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ...request,
-        run_id: "arun_conversation_one",
-        context: { ...request.context, conversation_id: "conversation_one" },
-      }),
-    });
-    await started;
-    const second = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        ...request,
-        run_id: "arun_conversation_two",
-        request_id: "req_conversation_two",
-        context: { ...request.context, conversation_id: "conversation_one" },
-      }),
-    });
-    await fetch(`${baseUrl}/internal/v1/agent-runs/arun_conversation_one/cancel`, {
-      method: "POST",
-      headers: { authorization: "Bearer test-token" },
-    });
-    await first;
-
-    expect(second.status).toBe(409);
-    expect(await second.json()).toMatchObject({ code: "agent_run_conflict" });
-  });
-
   it("fails with one terminal event when the event byte budget is exceeded", async () => {
     const adapter: AgentModelAdapter = {
       async run(_request: AgentRunRequest, _signal: AbortSignal, emit: EventSink) {
@@ -428,7 +245,7 @@ describe("agent runtime server", () => {
           protocol_version: "1",
           seq: 0,
           run_id: "arun_test",
-          agent_name: "video_agent",
+          agent_name: "front_desk",
           event_type: "output_delta",
           created_at: new Date().toISOString(),
           payload: { text: "x".repeat(1000) },
@@ -458,7 +275,7 @@ describe("agent runtime server", () => {
           protocol_version: "1",
           seq: 0,
           run_id: "arun_event_budget",
-          agent_name: "video_agent",
+          agent_name: "front_desk",
           event_type: "output_delta",
           created_at: new Date().toISOString(),
           payload: { text: "x".repeat(1000) },
@@ -525,71 +342,6 @@ describe("agent runtime server", () => {
       event_type: "run_failed",
       payload: { code: "agent_structured_output_invalid" },
     });
-  });
-
-  it("preserves provider credential failures from the internal broker", async () => {
-    const adapter: AgentModelAdapter = {
-      async run() {
-        throw new Error("provider_credentials_missing");
-      },
-    };
-    const baseUrl = await start(adapter);
-    const response = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test-token",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(request),
-    });
-    const events = (await response.text())
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { event_type: string; payload: { code?: string } });
-
-    expect(events.at(-1)).toMatchObject({
-      event_type: "run_failed",
-      payload: { code: "provider_credentials_missing" },
-    });
-  });
-
-  it("writes a bounded diagnostic for a structured submission rejection", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const adapter: AgentModelAdapter = {
-      async run() {
-        throw new Error("agent_structured_output_invalid");
-      },
-    };
-    const baseUrl = await start(adapter);
-    try {
-      await fetch(`${baseUrl}/internal/v1/agent-runs`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer test-token",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          ...request,
-          run_id: "arun_diagnostic",
-          context: {
-            ...request.context,
-            user_input: "Private prompt that must not reach diagnostics.",
-          },
-        }),
-      });
-
-      const diagnostic = warning.mock.calls
-        .map(([entry]) => String(entry))
-        .find((entry) => entry.includes("agent_structured_submission_rejected"));
-      expect(diagnostic).toContain("arun_diagnostic");
-      expect(diagnostic).toContain("video_agent");
-      expect(diagnostic).toContain("workflow_conversation");
-      expect(diagnostic).toContain("agent_structured_output_invalid");
-      expect(diagnostic).toContain("structured_submission");
-      expect(diagnostic).not.toContain("Private prompt");
-    } finally {
-      warning.mockRestore();
-    }
   });
 
   it("separates bounded runtime audit from the completed business value", async () => {

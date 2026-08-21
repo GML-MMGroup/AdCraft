@@ -34,7 +34,8 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeError,
 )
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
-from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
+from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
@@ -595,9 +596,6 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
     VideoAgentOperationRegistry().resolve(operation)
     invocation = spec.invocation
     agent_name: AgentName = "video_agent"
-    model_policy_id = f"{agent_name}.{operation}.v1"
-    if invocation is not None and invocation.model_policy_id != model_policy_id:
-        raise ValueError("agent_model_policy_mismatch")
     context = spec.agent_context or AgentRunContext(
         operation=operation,
         user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
@@ -605,6 +603,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         input_payload=payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
+    validate_video_agent_operation_context(operation, context)
     identity = None
     action_id = str(spec.trace_metadata.get("action_id") or "").strip()
     if invocation is None and action_id:
@@ -635,12 +634,12 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         if identity is not None
         else f"arun_{uuid4().hex}"
     )
-    policy = (
-        AgentRunPolicy(timeout_seconds=invocation.timeout_seconds)
+    deadline_cap = (
+        invocation.deadline_at
         if invocation
-        else spec.policy or AgentRunPolicy(timeout_seconds=timeout_seconds)
-    ).model_copy(update={"max_handoffs": 0})
-    return AgentRunRequest(
+        else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    )
+    return AgentRunRequestFactory().build(
         run_id=run_id,
         request_id=(
             invocation.request_id
@@ -649,30 +648,19 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             if identity is not None
             else f"req_{uuid4().hex}"
         ),
-        **agent_run_envelope_fields(context),
         parent_run_id=invocation.parent_run_id if invocation else None,
         agent_name=agent_name,
         operation=operation,
-        deadline_at=(
-            invocation.deadline_at
-            if invocation
-            else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
-        ),
-        model_policy_id=model_policy_id,
+        deadline_cap=deadline_cap,
         contract_name=spec.contract_name,
         validation_profile=spec.validation_profile,
         validation_context=sanitize_context_for_llm_text(spec.validation_context),
         context=context,
-        policy=policy,
         credential_ref="llm-default",
         audit_metadata={
             "stage_name": spec.stage_name,
             "contract_name": spec.contract_name,
             "workflow_id": workflow_id,
-            "model_policy_id": model_policy_id,
-            "result_contract_name": spec.contract_name,
-            "context_snapshot_id": agent_run_envelope_fields(context)["context_snapshot_id"],
-            "max_handoffs": policy.max_handoffs,
             **({"tool_mode": spec.tool_mode} if spec.tool_mode != "default" else {}),
             **(
                 {"expected_target_revision": int(expected_target_revision)}

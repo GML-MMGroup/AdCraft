@@ -12,6 +12,9 @@ from app.persistence.agent_canvas_repository import (
     AgentCanvasDocumentRepository,
     AgentCanvasWorkflowRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingCreateRequestV2,
@@ -34,7 +37,7 @@ from app.services.agent_canvas_authoring_validation import (
     validate_ready_node_input_history,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
-from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
+from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +69,8 @@ class AgentCanvasBindingService:
         self._asset_version_resolver = asset_version_resolver
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
-        self._world_setting_policy = WorldSettingBindingPolicy()
+        self._reference_semantics = AgentCanvasReferenceSemanticPolicy()
+        self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
     def create(
         self,
@@ -82,8 +86,10 @@ class AgentCanvasBindingService:
             binding for binding in workflow.bindings if binding.target_node_id == target.node_id
         )
         world_setting_source = False
+        source_node = None
         if isinstance(request.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, request.source.node_id)
+            source_node = source
             world_setting_source = source.creative_role == "world_setting"
             validate_node_binding(
                 bindings=tuple(
@@ -122,6 +128,21 @@ class AgentCanvasBindingService:
             )
         if not policy_decision.accepted or request.input_role != policy_decision.input_role:
             raise _media_incompatible_error()
+        _validate_storyboard_visual_anchor_binding(
+            request,
+            source_node=source_node,
+            target_node=target,
+        )
+        if request.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor":
+            if any(
+                binding.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor"
+                for binding in incoming
+            ):
+                raise V2PersistenceError(
+                    "storyboard_visual_anchor_invalid",
+                    "A storyboard grid cannot have more than one sequence visual anchor.",
+                    stage="agent_canvas_binding_service",
+                )
         if self._binding_capability_validator is not None and target.node_type in {
             "image",
             "video",
@@ -143,6 +164,12 @@ class AgentCanvasBindingService:
                 reference_count,
             )
             if not getattr(capability_decision, "accepted", False):
+                if request.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor":
+                    raise V2PersistenceError(
+                        "guided_reference_model_incompatible",
+                        "The selected model cannot consume the required sequence visual anchor.",
+                        stage="agent_canvas_binding_service",
+                    )
                 raise _binding_model_incompatible_error(capability_decision)
         now = datetime.now(timezone.utc)
         binding = CanvasBindingV2(
@@ -158,13 +185,10 @@ class AgentCanvasBindingService:
                 len(incoming),
             ),
             label=request.label,
-            metadata=(
-                self._world_setting_policy.metadata_for_target(
-                    target.creative_role,
-                    request.metadata,
-                )
-                if world_setting_source
-                else request.metadata
+            metadata=self._reference_semantics.external_metadata(
+                source_role="world_setting" if world_setting_source else None,
+                target_role=target.creative_role,
+                metadata=request.metadata,
             ),
             created_at=now,
             updated_at=now,
@@ -271,9 +295,11 @@ class AgentCanvasBindingService:
         target_role: str,
         metadata: dict[str, object],
     ) -> dict[str, object]:
-        if source_role != "world_setting":
-            return metadata
-        return self._world_setting_policy.metadata_for_target(target_role, metadata)
+        return self._reference_semantics.external_metadata(
+            source_role=source_role,
+            target_role=target_role,
+            metadata=metadata,
+        )
 
     def snapshot_prompt_context(
         self,
@@ -342,15 +368,22 @@ class AgentCanvasBindingService:
         result = tuple(
             sorted(snapshots, key=lambda item: (item.display_order, item.binding_id or ""))
         )
+        content_digest = hashlib.sha256(
+            "\n".join(item.content_hash for item in result).encode()
+        ).hexdigest()
+        requirement_lineage = self._requirement_lineage(
+            workflow_id,
+            target_node_id=target_node_id,
+            content_digest=content_digest,
+        )
         return self._documents.put_prompt_context_snapshot(
             workflow_id=workflow_id,
             target_node_id=target_node_id,
             inputs=result,
             operation=node_run_id,
             binding_ids=tuple(item.binding_id for item in result if item.binding_id is not None),
-            content_digest=hashlib.sha256(
-                "\n".join(item.content_hash for item in result).encode()
-            ).hexdigest(),
+            content_digest=content_digest,
+            **requirement_lineage,
         )
 
     def resolve_run_inputs(
@@ -626,15 +659,21 @@ class AgentCanvasBindingService:
             )
 
         if existing is None:
+            content_digest = hashlib.sha256(
+                "\n".join(item.content_hash for item in text_inputs).encode()
+            ).hexdigest()
             text_snapshot = self._documents.put_prompt_context_snapshot(
                 workflow_id=workflow_id,
                 target_node_id=target_node_id,
                 inputs=tuple(text_inputs),
                 operation=node_run_id,
                 binding_ids=tuple(item.binding_id for item in text_inputs if item.binding_id),
-                content_digest=hashlib.sha256(
-                    "\n".join(item.content_hash for item in text_inputs).encode()
-                ).hexdigest(),
+                content_digest=content_digest,
+                **self._requirement_lineage(
+                    workflow_id,
+                    target_node_id=target_node_id,
+                    content_digest=content_digest,
+                ),
             )
         else:
             text_snapshot = existing
@@ -668,6 +707,24 @@ class AgentCanvasBindingService:
             )
         return snapshot
 
+    def _requirement_lineage(
+        self,
+        workflow_id: str,
+        *,
+        target_node_id: str,
+        content_digest: str,
+    ) -> dict[str, object]:
+        revision = self._requirements.get_current(workflow_id)
+        projection_digest = hashlib.sha256(
+            f"{revision.digest}:{target_node_id}:{content_digest}".encode("utf-8")
+        ).hexdigest()
+        return {
+            "requirement_revision_id": revision.revision_id,
+            "requirement_revision_no": revision.revision_no,
+            "requirement_digest": revision.digest,
+            "requirement_projection_digest": projection_digest,
+        }
+
     def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
         return self._resolve_asset(asset_id)
 
@@ -678,6 +735,35 @@ def _media_incompatible_error() -> V2PersistenceError:
         "Binding kind is incompatible with the source media.",
         stage="agent_canvas_binding_service",
     )
+
+
+def _validate_storyboard_visual_anchor_binding(
+    request: CanvasBindingCreateRequestV2,
+    *,
+    source_node: object | None,
+    target_node: object,
+) -> None:
+    purpose = request.metadata.get("storyboard_reference_purpose")
+    if purpose is None:
+        return
+    valid = (
+        purpose == "sequence_visual_anchor"
+        and request.metadata.get("semantic_reference_role") == "storyboard_visual_reference"
+        and source_node is not None
+        and getattr(source_node, "node_type", None) == "image"
+        and getattr(source_node, "creative_role", None) == "storyboard_sequence"
+        and getattr(target_node, "node_type", None) == "image"
+        and getattr(target_node, "creative_role", None) == "storyboard_sequence"
+        and request.input_role == "image_reference"
+        and request.required
+        and request.enabled
+    )
+    if not valid:
+        raise V2PersistenceError(
+            "storyboard_visual_anchor_invalid",
+            "Storyboard visual-anchor Binding metadata is invalid.",
+            stage="agent_canvas_binding_service",
+        )
 
 
 def _binding_input_type(binding_kind: str) -> str:

@@ -30,6 +30,12 @@ BoundedTextV1 = Annotated[str, Field(min_length=1, max_length=8_192)]
 BoundedItemV1 = Annotated[str, Field(min_length=1, max_length=2_048)]
 
 
+class AcceptedProposalCommitmentV1(_DraftSeedModel):
+    normalized_meaning: str = Field(min_length=1, max_length=512)
+    source_fragment: str = Field(min_length=1, max_length=512)
+    strength: Literal["preference"] = "preference"
+
+
 class WorldSettingDraftSeedV1(_DraftSeedModel):
     seed_kind: Literal["world_setting"]
     premise: BoundedTextV1
@@ -180,6 +186,10 @@ class DraftSeedEnvelopeV1(_DraftSeedModel):
     schema_version: Literal["1"] = "1"
     capability_id: DraftSeedCapabilityIdV1
     seed: DraftSeedV1
+    accepted_commitments: tuple[AcceptedProposalCommitmentV1, ...] = Field(
+        min_length=1,
+        max_length=16,
+    )
 
     @model_validator(mode="after")
     def validate_capability_match(self) -> "DraftSeedEnvelopeV1":

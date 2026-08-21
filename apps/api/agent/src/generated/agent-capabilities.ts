@@ -5,6 +5,9 @@ export const AGENT_CAPABILITY_CONTRACT = {
     {
       "name": "video_agent",
       "operations": [
+        "author_decision_bundle",
+        "author_guided_script_checkpoint",
+        "author_role_brief",
         "bgm_expert_brief",
         "bgm_prompt",
         "character_expert_brief",
@@ -21,6 +24,8 @@ export const AGENT_CAPABILITY_CONTRACT = {
         "free_video",
         "intent_contract_planner",
         "materialize_quick_media",
+        "materialize_storyboard_segment",
+        "plan_storyboard_sequence_outline",
         "product_expert_brief",
         "product_prompt",
         "propose_bgm_options",

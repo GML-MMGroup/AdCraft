@@ -178,13 +178,14 @@ class AgentCanvasProviderPromptCompiler:
         )
         references = "\n".join(
             (
-                f"- {item.binding_id}: asset={item.asset_id}; "
+                f"- Image {index}: binding={item.binding_id}; asset={item.asset_id}; "
                 f"media={item.media_type}; semantic_reference_role="
                 f"{item.semantic_reference_role or 'unspecified'}; "
                 f"url={item.access_descriptor.media_url}"
             )
-            for item in reference_bundle.references
+            for index, item in enumerate(reference_bundle.references, start=1)
         )
+        storyboard_anchor_clause = _storyboard_visual_anchor_clause(reference_bundle)
         is_video = node.semantic_role in {"storyboard_video", "general_video"}
         style_clause = (
             f"Authoritative target output style ({style.source}):\n{style.style_prompt}"
@@ -197,6 +198,7 @@ class AgentCanvasProviderPromptCompiler:
             f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
             f"Structured role content:\n{body}",
             reference_identities,
+            storyboard_anchor_clause,
             (
                 _render_world_setting(world_setting)
                 if world_setting is not None and node.semantic_role != "character"
@@ -275,6 +277,28 @@ def _registration(
         registry_digest=hashlib.sha256(
             f"{registry_ref}\n{boundary}\n{negative}".encode()
         ).hexdigest(),
+    )
+
+
+def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> str:
+    anchors = tuple(
+        (index, item)
+        for index, item in enumerate(reference_bundle.references, start=1)
+        if item.storyboard_reference_purpose == "sequence_visual_anchor"
+    )
+    if not anchors:
+        return ""
+    if len(anchors) != 1:
+        raise _error(
+            "storyboard_visual_anchor_invalid",
+            "A later storyboard grid requires exactly one sequence visual anchor.",
+        )
+    index, _ = anchors[0]
+    return (
+        f"Image {index} is the authoritative sequence visual anchor. Preserve its "
+        "character identity, product identity, environment, palette, composition "
+        "language, and rendering style while following only this Node's own nine-panel "
+        "storyboard prompt."
     )
 
 
