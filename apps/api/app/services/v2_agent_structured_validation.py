@@ -207,10 +207,11 @@ def _semantic_violations(
     if profile in {
         None,
         "schema_only_v1",
-        "video_parameter_intent_v1",
         "agent_intake_source_quotes_v1",
     }:
         return ()
+    if profile == "video_parameter_intent_v3":
+        return _video_parameter_intent_v3_violations(context, value)
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
     if profile == "storyboard_sequence_window_parity_v1":
@@ -502,6 +503,40 @@ def _front_desk_core_violations(
                     code="front_desk_core_field_missing",
                     message="Workflow creation is missing required advertising information.",
                     field_path=f"ad_request.{field_name}",
+                )
+            )
+    return tuple(violations)
+
+
+def _video_parameter_intent_v3_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    unresolved = set(context.get("unresolved_fields") or ())
+    source_refs = set(context.get("source_refs") or ())
+    violations: list[StructuredViolation] = []
+    candidates = value.get("candidates")
+    if not isinstance(candidates, list):
+        return ()
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        field = candidate.get("field")
+        source_ref = candidate.get("source_ref")
+        if field not in unresolved:
+            violations.append(
+                StructuredViolation(
+                    code="field_already_resolved",
+                    message="The candidate field is not unresolved in this request.",
+                    field_path=f"candidates.{index}.field",
+                )
+            )
+        if source_ref not in source_refs:
+            violations.append(
+                StructuredViolation(
+                    code="source_ref_not_allowed",
+                    message="The candidate source_ref was not supplied in this request.",
+                    field_path=f"candidates.{index}.source_ref",
                 )
             )
     return tuple(violations)

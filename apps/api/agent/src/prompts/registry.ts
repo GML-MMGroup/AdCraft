@@ -112,9 +112,11 @@ function instructionForOperation(operation: string): string {
   }
   if (operation === "compile_video_parameters") {
     return [
-      "Extract only explicit technical video controls from the supplied target prompt and direct Text or Script Binding sources.",
-      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, limited by the supplied capability contract.",
-      "Copy source identity exactly. Return no_explicit_controls when no supplied source explicitly states a control.",
+      "Extract only the declared unresolved technical video controls from the supplied target prompt and direct Text or Script Binding projections, identified by opaque source references.",
+      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, further limited by unresolved_fields and the capability contract.",
+      "Return each supplied source_ref exactly. Never emit Node IDs, Binding IDs, revisions, provider payloads, paths, URLs, or credentials.",
+      "A request that excludes BGM does not disable native video dialogue, ambience, or synchronized effects. Return generate_audio=false only when all native video audio is explicitly disabled.",
+      "Return no_explicit_controls when no supplied source explicitly states an unresolved control.",
       "Do not infer controls from creative wording, defaults, sibling nodes, or transitive nodes.",
     ].join(" ");
   }

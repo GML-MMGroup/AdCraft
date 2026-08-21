@@ -232,8 +232,8 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition(
         "compile_video_parameters",
-        "VideoParameterIntentContextV2",
-        "VideoParameterIntentV2",
+        "VideoParameterIntentContextV3",
+        "VideoParameterIntentV3",
         capability_id="video_direction",
         internal_skill_id="video_agent_video_direction",
         style_projection_role="video",

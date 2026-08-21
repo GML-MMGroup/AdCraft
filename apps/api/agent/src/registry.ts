@@ -123,7 +123,7 @@ metadata.set("execute_canvas_script", creativeMetadata(
   "script_authoring", "AgentCanvasScriptOutput", "video_agent_script_authoring", "script", "Script Writer",
 ));
 metadata.set("compile_video_parameters", creativeMetadata(
-  "video_direction", "VideoParameterIntentV2", "video_agent_video_direction", "video", "Video Director", "VideoParameterIntentContextV2",
+  "video_direction", "VideoParameterIntentV3", "video_agent_video_direction", "video", "Video Director", "VideoParameterIntentContextV3",
 ));
 metadata.set("workflow_creation", { context_contract_name: "FrontDeskIntentAgentContext", result_contract_name: "FrontDeskIntentOutput" });
 metadata.set("intent_contract_planner", { context_contract_name: "IntentContractAgentContext", result_contract_name: "V2IntentPlan" });

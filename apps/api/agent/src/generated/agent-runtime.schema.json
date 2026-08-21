@@ -2893,7 +2893,7 @@
                   "quick_media": "#/$defs/QuickMediaAgentContext",
                   "scene_expert": "#/$defs/SceneExpertAgentContext",
                   "script_writer": "#/$defs/ScriptWriterAgentContext",
-                  "video_parameter_intent": "#/$defs/VideoParameterIntentContextV2",
+                  "video_parameter_intent_v3": "#/$defs/VideoParameterIntentContextV3",
                   "workflow_conversation": "#/$defs/WorkflowConversationAgentContext"
                 },
                 "propertyName": "context_kind"
@@ -2939,7 +2939,7 @@
                   "$ref": "#/$defs/AgentCommandReplanContextV2"
                 },
                 {
-                  "$ref": "#/$defs/VideoParameterIntentContextV2"
+                  "$ref": "#/$defs/VideoParameterIntentContextV3"
                 }
               ]
             },
@@ -24856,57 +24856,10 @@
       "title": "VideoMaterializationResultV1",
       "type": "object"
     },
-    "VideoParameterCandidateV2": {
+    "VideoParameterCandidateV3": {
       "additionalProperties": false,
-      "allOf": [
-        {
-          "else": {
-            "properties": {
-              "binding_id": {
-                "type": "null"
-              },
-              "source_node_id": {
-                "type": "null"
-              },
-              "source_revision": {
-                "type": "null"
-              }
-            }
-          },
-          "if": {
-            "properties": {
-              "source_kind": {
-                "const": "binding"
-              }
-            },
-            "required": [
-              "source_kind"
-            ]
-          },
-          "then": {
-            "required": [
-              "binding_id",
-              "source_node_id",
-              "source_revision"
-            ]
-          }
-        }
-      ],
+      "description": "One semantic value attributed to an opaque request-scoped source.",
       "properties": {
-        "binding_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Binding Id"
-        },
         "field": {
           "enum": [
             "aspect_ratio",
@@ -24917,40 +24870,12 @@
           "title": "Field",
           "type": "string"
         },
-        "source_kind": {
-          "enum": [
-            "binding",
-            "node_prompt"
-          ],
-          "title": "Source Kind",
+        "source_ref": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^source_[1-9][0-9]*$",
+          "title": "Source Ref",
           "type": "string"
-        },
-        "source_node_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Node Id"
-        },
-        "source_revision": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Revision"
         },
         "value": {
           "anyOf": [
@@ -24972,10 +24897,10 @@
       },
       "required": [
         "field",
-        "source_kind",
+        "source_ref",
         "value"
       ],
-      "title": "VideoParameterCandidateV2",
+      "title": "VideoParameterCandidateV3",
       "type": "object"
     },
     "VideoParameterCapabilityContextV2": {
@@ -25055,62 +24980,52 @@
       "title": "VideoParameterCapabilityContextV2",
       "type": "object"
     },
-    "VideoParameterIntentContextV2": {
+    "VideoParameterIntentContextV3": {
       "additionalProperties": false,
       "properties": {
         "capability": {
           "$ref": "#/$defs/VideoParameterCapabilityContextV2"
         },
         "context_kind": {
-          "const": "video_parameter_intent",
+          "const": "video_parameter_intent_v3",
           "title": "Context Kind",
           "type": "string"
         },
-        "selected_model_ref": {
-          "maxLength": 320,
-          "minLength": 3,
-          "title": "Selected Model Ref",
-          "type": "string"
-        },
         "sources": {
-          "default": [],
           "items": {
-            "$ref": "#/$defs/VideoParameterTextSourceV2"
+            "$ref": "#/$defs/VideoParameterTextSourceV3"
           },
           "maxItems": 129,
+          "minItems": 1,
           "title": "Sources",
           "type": "array"
         },
-        "target_node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Target Node Id",
-          "type": "string"
-        },
-        "target_node_revision": {
-          "minimum": 1,
-          "title": "Target Node Revision",
-          "type": "integer"
-        },
-        "workflow_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Workflow Id",
-          "type": "string"
+        "unresolved_fields": {
+          "items": {
+            "enum": [
+              "aspect_ratio",
+              "duration_seconds",
+              "generate_audio",
+              "resolution"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Unresolved Fields",
+          "type": "array"
         }
       },
       "required": [
         "capability",
         "context_kind",
-        "selected_model_ref",
-        "target_node_id",
-        "target_node_revision",
-        "workflow_id"
+        "sources",
+        "unresolved_fields"
       ],
-      "title": "VideoParameterIntentContextV2",
+      "title": "VideoParameterIntentContextV3",
       "type": "object"
     },
-    "VideoParameterIntentV2": {
+    "VideoParameterIntentV3": {
       "additionalProperties": false,
       "allOf": [
         {
@@ -25144,7 +25059,7 @@
         "candidates": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/VideoParameterCandidateV2"
+            "$ref": "#/$defs/VideoParameterCandidateV3"
           },
           "maxItems": 32,
           "title": "Candidates",
@@ -25162,44 +25077,18 @@
       "required": [
         "status"
       ],
-      "title": "VideoParameterIntentV2",
+      "title": "VideoParameterIntentV3",
       "type": "object"
     },
-    "VideoParameterTextSourceV2": {
+    "VideoParameterTextSourceV3": {
       "additionalProperties": false,
       "properties": {
-        "binding_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Binding Id"
-        },
-        "source_kind": {
-          "enum": [
-            "binding",
-            "node_prompt"
-          ],
-          "title": "Source Kind",
-          "type": "string"
-        },
-        "source_node_id": {
-          "maxLength": 160,
+        "source_ref": {
+          "maxLength": 80,
           "minLength": 1,
-          "title": "Source Node Id",
+          "pattern": "^source_[1-9][0-9]*$",
+          "title": "Source Ref",
           "type": "string"
-        },
-        "source_revision": {
-          "minimum": 1,
-          "title": "Source Revision",
-          "type": "integer"
         },
         "text": {
           "maxLength": 32768,
@@ -25209,12 +25098,10 @@
         }
       },
       "required": [
-        "source_kind",
-        "source_node_id",
-        "source_revision",
+        "source_ref",
         "text"
       ],
-      "title": "VideoParameterTextSourceV2",
+      "title": "VideoParameterTextSourceV3",
       "type": "object"
     },
     "VideoProposalOptionV1": {
@@ -26174,7 +26061,7 @@
     "ConversationSummaryAgentContext",
     "DirectorTurnContextV2",
     "AgentCommandReplanContextV2",
-    "VideoParameterIntentContextV2",
+    "VideoParameterIntentContextV3",
     "TurnIntentContextV2",
     "NextActionContextV1",
     "CapabilityInvocationContextV2",
@@ -26188,7 +26075,7 @@
     "AgentCanvasScriptOutput",
     "AgentCanvasTextOutput",
     "AgentCommandPlanDraftV2",
-    "VideoParameterIntentV2",
+    "VideoParameterIntentV3",
     "CompactTurnIntentDecisionV3",
     "TurnIntentDecisionV2",
     "NextActionCommandV1",
@@ -26621,13 +26508,13 @@
     },
     {
       "capability_id": "video_direction",
-      "context_contract_name": "VideoParameterIntentContextV2",
+      "context_contract_name": "VideoParameterIntentContextV3",
       "display_name": "Video Director",
       "internal_skill_id": "video_agent_video_direction",
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "compile_video_parameters",
-      "result_contract_name": "VideoParameterIntentV2",
+      "result_contract_name": "VideoParameterIntentV3",
       "style_projection_role": "video"
     },
     {

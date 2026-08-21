@@ -30,7 +30,7 @@ from app.schemas.agent_operation_contexts import (
     QuickMediaAgentContext,
     SceneExpertAgentContext,
     ScriptWriterAgentContext,
-    VideoParameterIntentContextV2,
+    VideoParameterIntentContextV3,
     WorkflowConversationAgentContext,
 )
 from app.schemas.agent_runtime import AgentRunContext, AgentRunRequest
@@ -75,7 +75,7 @@ _EXPLICIT_CONTEXT_MODELS: tuple[type[BaseModel], ...] = (
     ConversationSummaryAgentContext,
     DirectorTurnContextV2,
     AgentCommandReplanContextV2,
-    VideoParameterIntentContextV2,
+    VideoParameterIntentContextV3,
     TurnIntentContextV2,
     NextActionContextV1,
     CapabilityInvocationContextV2,
