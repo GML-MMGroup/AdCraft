@@ -2478,7 +2478,7 @@ export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   item_type: "expert_activity";
   activity_id: string;
   turn_id: string;
-  status: "working" | "completed" | "failed";
+  status: "working" | "completed" | "failed" | "superseded";
   sequence: number;
   started_at: string;
   finished_at: string | null;

@@ -259,6 +259,81 @@ function progressiveGuidanceSessionPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("accepts expert_activity_superseded in the canonical chat timeline", () => {
+    const timeline = normalizeChatTimelineListResponseV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_advance_precondition: null,
+      items: [{
+        item_type: "expert_activity",
+        activity_id: "activity-storyboard-1",
+        turn_id: "turn-storyboard-1",
+        capability_id: "storyboard_design",
+        capability_display_name: "Storyboard Artist",
+        status: "superseded",
+        sequence: 43,
+        started_at: "2026-08-21T06:17:00Z",
+        finished_at: "2026-08-21T06:18:00Z",
+        message: null,
+        error_code: "guidance_revision_conflict",
+        elapsed_ms: 60000,
+        attempt_stage: "initial",
+        retryable: false,
+        validation_paths: [],
+        suggested_actions: [],
+        completion_mode: null,
+        warning_code: null,
+      }],
+      next_after_seq: 43,
+    });
+
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "expert_activity",
+      status: "superseded",
+    });
+  });
+
+  it("projects expert_activity_superseded from persisted timeline entries", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: null,
+      guidance_advance_precondition: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [{
+        entry_id: "activity-entry-43",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 43,
+        entry_type: "expert_activity",
+        speaker: null,
+        content: "Storyboard Artist",
+        metadata: {
+          activity_id: "activity-storyboard-1",
+          turn_id: "turn-storyboard-1",
+          capability_id: "storyboard_design",
+          capability_display_name: "Storyboard Artist",
+          status: "superseded",
+          message_key: "expert_activity.superseded",
+          error_code: "guidance_revision_conflict",
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-21T06:18:00Z",
+      }],
+      presentation_items: [],
+      next_cursor: 43,
+    });
+
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "expert_activity",
+      activity_id: "activity-storyboard-1",
+      status: "superseded",
+      message: null,
+    });
+  });
+
   it("rejects the retired fixed Journey V1 projection instead of migrating it in the browser", () => {
     const payload = progressiveGuidanceSessionPayload();
 

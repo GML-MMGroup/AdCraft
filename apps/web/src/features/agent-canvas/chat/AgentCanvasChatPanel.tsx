@@ -574,7 +574,9 @@ export function CapabilityActivityRow({
     ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
     : activity.status === "completed"
       ? `${activity.capability_display_name} finished`
-      : `${activity.capability_display_name} failed`;
+      : activity.status === "superseded"
+        ? `${activity.capability_display_name} was superseded by later progress`
+        : `${activity.capability_display_name} failed`;
   const label = activity.presentation_text ?? fallbackLabel;
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>

@@ -9,6 +9,7 @@ type PresentationMessageKey =
   | "expert_activity.working"
   | "expert_activity.completed"
   | "expert_activity.failed"
+  | "expert_activity.superseded"
   | "draft.materialized"
   | "media_review.pending_action"
   | "action.topic_deferred"
@@ -27,6 +28,7 @@ const EN_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   "expert_activity.working": (args) => capabilityLabel(args, "is working."),
   "expert_activity.completed": (args) => capabilityLabel(args, "finished."),
   "expert_activity.failed": (args) => capabilityLabel(args, "failed."),
+  "expert_activity.superseded": (args) => capabilityLabel(args, "was superseded by later progress."),
   "draft.materialized": (args) => {
     const count = positiveIntegerArgument(args, "created_node_count");
     return count === null ? null : `${count} Draft node${count === 1 ? "" : "s"} created.`;
@@ -45,6 +47,7 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   "expert_activity.working": (args) => capabilityLabel(args, "正在工作。"),
   "expert_activity.completed": (args) => capabilityLabel(args, "已完成。"),
   "expert_activity.failed": (args) => capabilityLabel(args, "失败。"),
+  "expert_activity.superseded": (args) => capabilityLabel(args, "任务已被后续进度取代。"),
   "draft.materialized": (args) => {
     const count = positiveIntegerArgument(args, "created_node_count");
     return count === null ? null : `已创建 ${count} 个草稿节点。`;
