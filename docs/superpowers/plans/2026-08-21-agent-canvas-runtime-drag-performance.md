@@ -65,7 +65,7 @@
 
 - [ ] Write a failing hook test that refreshes the same timeline twice and expects one proposal, one decision-bundle, and one completed-turn request.
 - [ ] Run the focused chat test and verify the repeated calls fail the assertion.
-- [ ] Implement promise-aware immutable pointer caches and completed-turn hydration tracking.
+- [ ] Implement promise-aware, revision-scoped pointer caches and terminal-turn hydration tracking.
 - [ ] Clear all hydration caches on workflow changes and avoid caching failures.
 - [ ] Run the chat tests and confirm they pass.
 

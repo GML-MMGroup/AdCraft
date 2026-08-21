@@ -24,7 +24,7 @@ Node reconciliation will retain existing node object references when the canonic
 
 ## Chat Hydration
 
-Proposal and decision-bundle pointers are immutable within one workflow and will be cached by identifier. Capability turns that have already been hydrated will not be fetched again by every full timeline refresh; live turn events remain authoritative for later status changes. All caches are cleared when the workflow changes.
+Proposal and decision-bundle entity reads are reused by identifier while the chat revision is unchanged. The current pointer's sequence and timestamp are always retained, and mutable entity caches are invalidated after local actions or a new chat revision. Terminal capability turns that have already been hydrated will not be fetched again by every full timeline refresh; live turn events remain authoritative for later status changes. All caches are cleared when the workflow changes.
 
 ## Failure Handling
 
