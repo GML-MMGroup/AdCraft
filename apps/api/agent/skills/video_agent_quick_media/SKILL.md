@@ -14,6 +14,8 @@ Use only the current user objective, media kind, approved references, and determ
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Keep the idea concrete, visually or audibly clear, and directly tied to the objective.
 - Preserve identity and brand constraints from approved references.
 - Include only details relevant to the requested media kind.

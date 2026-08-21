@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from hashlib import sha256
+import json
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -11,11 +13,13 @@ from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas import CanvasCreativeRoleV2, ModelSelectionModeV1
 from app.schemas.agent_canvas_capabilities import (
-    CapabilityInvocationContextV1,
+    CapabilityInvocationContextV2,
     NextActionContextV1,
-    TurnIntentContextV1,
+    TurnIntentContextV2,
 )
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
+from app.schemas.agent_canvas_storyboard_sequences import StoryboardSegmentAuthoringContextV2
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
@@ -48,6 +52,7 @@ _SAFE_TOKEN_METADATA_KEYS = {
     "max_output_tokens",
     "output_tokens",
     "reasoning_tokens",
+    "thinking_budget_tokens",
 }
 
 
@@ -181,9 +186,55 @@ class AgentRunPolicy(_StrictModel):
     max_tool_calls: int = Field(default=16, ge=0, le=128)
     max_handoffs: Literal[0] = 0
     timeout_seconds: float = Field(default=120.0, gt=0, le=900)
+    primary_timeout_seconds: int | None = Field(default=None, ge=1, le=900)
+    recovery_timeout_seconds: int | None = Field(default=None, ge=0, le=900)
+    persistence_reserve_seconds: int | None = Field(default=None, ge=1, le=900)
+    max_model_submissions: Literal[1, 2] | None = None
+    recovery_mode: (
+        Literal[
+            "none",
+            "structured_repair_only",
+            "transport_retry_or_structured_repair",
+        ]
+        | None
+    ) = None
+    max_output_tokens: int | None = Field(default=None, ge=1, le=65_536)
+    reasoning_mode: Literal["low", "deep"] | None = None
+    enable_thinking: bool | None = None
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
     max_event_bytes: int = Field(default=65_536, ge=1, le=1_048_576)
+
+    @model_validator(mode="after")
+    def validate_recovery_policy(self) -> "AgentRunPolicy":
+        if self.max_model_submissions is None:
+            return self
+        partitions = (
+            self.primary_timeout_seconds,
+            self.recovery_timeout_seconds,
+            self.persistence_reserve_seconds,
+        )
+        if (
+            any(value is None for value in partitions)
+            or sum(int(value) for value in partitions if value is not None) != self.timeout_seconds
+        ):
+            raise ValueError("Agent run policy partitions must equal its deadline.")
+        if self.max_model_submissions == 1:
+            if (
+                self.recovery_mode != "none"
+                or self.recovery_timeout_seconds != 0
+                or self.transport_retry_limit != 0
+                or self.structured_repair_limit != 0
+            ):
+                raise ValueError("Single-submission Agent run cannot configure recovery.")
+        elif not self.recovery_timeout_seconds or self.recovery_mode == "none":
+            raise ValueError("Two-submission Agent run requires bounded recovery.")
+        elif self.recovery_mode == "structured_repair_only" and (
+            self.transport_retry_limit != 0 or self.structured_repair_limit != 1
+        ):
+            raise ValueError("Structured-repair-only Agent run cannot retry transport.")
+        return self
 
 
 class AgentModelExecutionPolicyV1(_StrictModel):
@@ -191,7 +242,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
 
     model_ref: str = Field(min_length=1, max_length=320)
     operation: str = Field(min_length=1, max_length=120)
-    operation_class: Literal["routing", "proposal", "long_form"]
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"]
     thinking_format: Literal["zai", "qwen", "none"]
     reasoning_control: Literal[
         "provider_default",
@@ -199,17 +250,82 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "reasoning_effort",
         "none",
     ]
+    reasoning_mode: Literal["low", "deep"]
+    enable_thinking: bool
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     structured_transport: Literal[
         "streamed_tool_call",
         "non_streaming_tool_call",
+        "non_streaming_json_object",
         "json_object",
     ]
     supports_tool_calls: bool
     supports_streamed_tool_calls: bool
     deadline_seconds: int = Field(ge=1, le=900)
+    primary_timeout_seconds: int = Field(ge=1, le=900)
+    recovery_timeout_seconds: int = Field(ge=0, le=900)
+    persistence_reserve_seconds: int = Field(ge=1, le=900)
+    max_model_submissions: Literal[1, 2]
+    recovery_mode: Literal[
+        "none",
+        "structured_repair_only",
+        "transport_retry_or_structured_repair",
+    ]
     max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: int = Field(ge=0, le=1)
     structured_repair_limit: int = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if (
+            self.primary_timeout_seconds
+            + self.recovery_timeout_seconds
+            + self.persistence_reserve_seconds
+            != self.deadline_seconds
+        ):
+            raise ValueError("Model policy partitions must equal its deadline.")
+        if self.max_model_submissions == 1:
+            if (
+                self.recovery_mode != "none"
+                or self.recovery_timeout_seconds != 0
+                or self.transport_retry_limit != 0
+                or self.structured_repair_limit != 0
+            ):
+                raise ValueError("Single-submission model policy cannot configure recovery.")
+        elif self.recovery_timeout_seconds == 0 or self.recovery_mode == "none":
+            raise ValueError("Two-submission model policy requires bounded recovery.")
+        elif self.recovery_mode == "structured_repair_only" and (
+            self.transport_retry_limit != 0 or self.structured_repair_limit != 1
+        ):
+            raise ValueError("Structured-repair-only model policy cannot retry transport.")
+        return self
+
+
+class AgentStructuredValidationAttemptAuditV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempt: Literal[1, 2]
+    attempt_stage: Literal["initial", "structured_repair"]
+    violation_count: int = Field(ge=1, le=128)
+    validation_paths: tuple[Annotated[str, Field(min_length=1, max_length=512)], ...] = Field(
+        max_length=32
+    )
+    violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
+        min_length=1, max_length=32
+    )
+    repair_allowed: bool
+    truncated: bool
+
+    @model_validator(mode="after")
+    def validate_ordered_unique_evidence(self) -> "AgentStructuredValidationAttemptAuditV1":
+        if len(self.validation_paths) != len(set(self.validation_paths)):
+            raise ValueError("Validation paths must be ordered and unique.")
+        if len(self.violation_codes) != len(set(self.violation_codes)):
+            raise ValueError("Violation codes must be ordered and unique.")
+        expected_stage = "initial" if self.attempt == 1 else "structured_repair"
+        if self.attempt_stage != expected_stage:
+            raise ValueError("Validation attempt stage must match its attempt number.")
+        return self
 
 
 class AgentTransportAttemptMetadataV1(_StrictModel):
@@ -220,6 +336,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     structured_transport: Literal[
         "streamed_tool_call",
         "non_streaming_tool_call",
+        "non_streaming_json_object",
         "json_object",
     ]
     thinking_format: Literal["zai", "qwen", "none"]
@@ -229,19 +346,43 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "reasoning_effort",
         "none",
     ]
+    reasoning_mode: Literal["low", "deep"]
+    enable_thinking: bool
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     deadline_seconds: int = Field(ge=1, le=900)
     max_output_tokens: int = Field(ge=1, le=65_536)
+    operation_policy_id: str = Field(min_length=1, max_length=160)
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"]
+    effective_timeout_ms: int = Field(ge=0, le=900_000)
+    request_bytes: int = Field(ge=0, le=4_194_304)
+    schema_bytes: int = Field(ge=0, le=4_194_304)
+    response_activity_observed: bool
+    attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
     started_at: datetime
     first_response_at: datetime | None = None
     last_activity_at: datetime | None = None
     finished_at: datetime
+    duration_ms: int = Field(ge=0, le=900_000)
     finish_reason: str | None = Field(default=None, max_length=120)
     provider_trace_id: str | None = Field(default=None, max_length=320)
+    safe_exception_class: str | None = Field(default=None, max_length=160)
+    safe_error_code: str | None = Field(default=None, max_length=120)
+    http_status: int | None = Field(default=None, ge=100, le=599)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     reasoning_tokens: int | None = Field(default=None, ge=0)
     transport_retry_count: int = Field(ge=0, le=1)
     structured_attempt_count: int = Field(ge=1, le=2)
+    structured_validation_attempts: tuple[AgentStructuredValidationAttemptAuditV1, ...] = Field(
+        default=(), max_length=2
+    )
+
+    @model_validator(mode="after")
+    def validate_structured_validation_attempt_order(self) -> "AgentTransportAttemptMetadataV1":
+        attempts = tuple(item.attempt for item in self.structured_validation_attempts)
+        if attempts != tuple(range(1, len(attempts) + 1)):
+            raise ValueError("Structured validation attempts must use ordered identities.")
+        return self
 
 
 class AgentRunRequest(_StrictModel):
@@ -259,10 +400,12 @@ class AgentRunRequest(_StrictModel):
     context: (
         PlanningAgentContext
         | AgentRunContext
-        | TurnIntentContextV1
+        | TurnIntentContextV2
         | NextActionContextV1
-        | CapabilityInvocationContextV1
+        | CapabilityInvocationContextV2
         | CapabilityMaterializationContextV1
+        | StoryboardSegmentAuthoringContextV2
+        | RolePromptPreparationContextV2
     )
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)
@@ -271,6 +414,34 @@ class AgentRunRequest(_StrictModel):
     validation_profile: str | None = Field(default=None, max_length=160)
     validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
+    payload = json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(payload).hexdigest()}"
+
+
+class AgentProviderConformanceInputV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1"] = "1"
+    frozen_agent_request: AgentRunRequest
+    frozen_agent_request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    diagnostic_case_budget: int = Field(default=6, ge=1, le=6)
+    evidence_destination_id: str = Field(min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_frozen_request_digest(self) -> "AgentProviderConformanceInputV1":
+        if self.frozen_agent_request_digest != canonical_agent_run_request_digest(
+            self.frozen_agent_request
+        ):
+            raise ValueError("Frozen Agent request digest does not match the request.")
+        return self
 
 
 class AgentRuntimeEvent(_StrictModel):
@@ -360,6 +531,13 @@ class StructuredViolation(_StrictModel):
     actual: Any | None = None
 
 
+class AgentStructuredNormalizationAuditV1(_StrictModel):
+    contract_name: str = Field(min_length=1, max_length=160)
+    rule_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+    normalized_path_count: int = Field(ge=1, le=128)
+    submission_attempt: int = Field(ge=1, le=2)
+
+
 class AgentStructuredValidationResult(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     accepted: bool
@@ -367,6 +545,7 @@ class AgentStructuredValidationResult(_StrictModel):
     normalized_value: dict[str, Any] | None = None
     violations: tuple[StructuredViolation, ...] = Field(default=(), max_length=128)
     repair_allowed: bool = False
+    normalization_audit: AgentStructuredNormalizationAuditV1 | None = None
 
 
 class AgentRuntimeHealth(_StrictModel):

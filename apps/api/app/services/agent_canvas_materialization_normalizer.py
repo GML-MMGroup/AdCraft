@@ -77,7 +77,7 @@ class CapabilityMaterializationNormalizer:
             mode = "deterministic_fallback"
             warnings = tuple(dict.fromkeys(violations))
         explicit_constraints = context.explicit_constraints if context is not None else {}
-        creative_role = _creative_role(capability_id, typed)
+        creative_role = _creative_role(capability_id, typed, context)
         compiled = self._compiler.compile(
             capability_id=capability_id,
             creative_role=creative_role,
@@ -167,13 +167,26 @@ def _fallback_prompt(capability_id: CapabilityIdV1, result: BaseModel) -> str | 
     return None
 
 
-def _creative_role(capability_id: CapabilityIdV1, result: BaseModel) -> str:
+def _creative_role(
+    capability_id: CapabilityIdV1,
+    result: BaseModel,
+    context: CapabilityMaterializationContextV1,
+) -> str:
     if capability_id == "quick_media":
         return {
             "image": "general_image",
             "video": "general_video",
             "audio": "general_audio",
         }[result.structured_content.media_type]
+    if capability_id == "video_direction":
+        return (
+            "storyboard_video"
+            if any(
+                item.get("semantic_reference_role") == "storyboard_visual_reference"
+                for item in context.reference_summaries
+            )
+            else "general_video"
+        )
     return {
         "world_setting": "world_setting",
         "product_design": "product",
@@ -182,7 +195,6 @@ def _creative_role(capability_id: CapabilityIdV1, result: BaseModel) -> str:
         "scene_design": "scene",
         "script_authoring": "script",
         "storyboard_design": "storyboard_sequence",
-        "video_direction": "storyboard_video",
         "bgm_direction": "bgm",
     }[capability_id]
 

@@ -19,20 +19,28 @@ import {
   PythonInternalClient,
   type AgentCredentialSnapshot,
 } from "./python-internal-client.js";
-import { runWithOneTransportRetry } from "./operation-recovery.js";
-import { PiStructuredTransportRouter } from "./pi-structured-transport.js";
 import {
-  structuredRepairPrompt,
-  structuredSubmissionPrompt,
-} from "./prompts/agents.js";
+  AgentOperationFailure,
+  runWithOneTransportRetry,
+} from "./operation-recovery.js";
+import { PiStructuredTransportRouter } from "./pi-structured-transport.js";
 import { getPromptDescriptor } from "./prompts/registry.js";
 import {
-  getAgentDefinition,
-  getOperationDescriptor,
   toolsForOperation,
   type AgentToolName,
 } from "./registry.js";
-import { loadRequiredSkills, type LoadedSkill } from "./skills.js";
+import type { LoadedSkill } from "./skills.js";
+import {
+  contractSchemaForRequest,
+  prepareStructuredModelInput,
+  promptInputForRequest,
+  validateCredentialExecutionPolicy,
+} from "./structured-model-input.js";
+
+export {
+  promptInputForRequest,
+  validateCredentialExecutionPolicy,
+} from "./structured-model-input.js";
 
 const structuredValueSchema = Type.Record(Type.String(), Type.Unknown());
 
@@ -49,35 +57,19 @@ export class PiModelAdapter implements AgentModelAdapter {
     budget?: RunBudget,
   ): Promise<Record<string, unknown>> {
     budget?.consumeTurn();
-    const definition = getAgentDefinition(request.agent_name);
-    if (!definition.operations.includes(request.operation)) {
-      throw new Error("agent_operation_not_allowed");
-    }
-    const promptDescriptor = getPromptDescriptor(
-      request.operation,
-      request.contract_name ?? "",
-    );
-    if (!request.model_ref) throw new Error("agent_protocol_mismatch");
-    const credential = await this.python.credential(
-      request.credential_ref ?? "llm-default",
-      request.run_id,
-      request.agent_name,
-      request.operation,
-      request.model_policy_id,
-      request.model_ref,
-    );
-    const operationDescriptor = getOperationDescriptor(request.operation);
-    const skills = await loadRequiredSkills(operationDescriptor);
-    const skillContext = skills
-      .map(
-        (skill) =>
-          `Skill: ${skill.skill_id}\nDigest: ${skill.sha256}\n\n${skill.content}`,
-      )
-      .join("\n\n---\n\n");
+    const prepared = await prepareStructuredModelInput(request, this.python);
+    const {
+      credential,
+      loadedSkills: skills,
+      schema,
+      systemPrompt,
+      userPrompt,
+    } = prepared;
     let acceptedResult: Record<string, unknown> | undefined;
     let attempts = 0;
-    const maximumStructuredAttempts =
-      1 + credential.execution_policy.structured_repair_limit;
+    let modelSubmissions = 0;
+    const maximumModelSubmissions = credential.execution_policy.max_model_submissions;
+    const maximumStructuredAttempts = 1 + credential.execution_policy.structured_repair_limit;
     const submitStructured = async (
       params: Readonly<Record<string, unknown>>,
       attempt: number,
@@ -112,22 +104,17 @@ export class PiModelAdapter implements AgentModelAdapter {
       );
       return result;
     };
-    const systemPrompt = [
-      promptDescriptor.system_prompt,
-      skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
-      structuredSubmissionPrompt,
-      structuredRepairPrompt,
-      `Required contract: ${request.contract_name ?? "SpecialistDraft"}.`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    if (credential.execution_policy.structured_transport === "non_streaming_tool_call") {
+    if (
+      isNonStreamingStructuredTransport(
+        credential.execution_policy.structured_transport,
+      )
+    ) {
       const result = await this.structuredTransport.run({
         credential,
         request,
         systemPrompt,
-        userPrompt: promptInputForRequest(request),
-        schema: contractSchema(request),
+        userPrompt,
+        schema,
         signal,
         submit: submitStructured,
       });
@@ -200,6 +187,15 @@ export class PiModelAdapter implements AgentModelAdapter {
           tools,
         },
         streamFn: (selectedModel, context, options) => {
+          modelSubmissions += 1;
+          if (modelSubmissions > maximumModelSubmissions) {
+            throw new AgentOperationFailure(
+              "agent_structured_output_invalid",
+              "Agent operation exhausted its model submission budget.",
+              false,
+              "structured_repair",
+            );
+          }
           const streamOptions = {
             ...options,
             apiKey: credential.api_key,
@@ -222,7 +218,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       try {
         let promptError: unknown;
         try {
-          await agent.prompt(promptInputForRequest(request));
+          await agent.prompt(userPrompt);
         } catch (error) {
           promptError = error;
         }
@@ -235,6 +231,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     await runWithOneTransportRetry(runAttempt, {
       deadlineEpochMs: Date.parse(request.deadline_at),
+      canRetry: () => modelSubmissions < maximumModelSubmissions,
     });
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
@@ -248,6 +245,15 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
   }
 
+}
+
+export function isNonStreamingStructuredTransport(
+  transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
+): boolean {
+  return (
+    transport === "non_streaming_tool_call" ||
+    transport === "non_streaming_json_object"
+  );
 }
 
 export function thinkingFormatForCredential(
@@ -369,71 +375,13 @@ export function acceptedStructuredValue(
 export function structuredToolParameters(
   request: AgentRunRequest,
 ): typeof structuredValueSchema {
-  const schema = contractSchema(request);
+  const schema = contractSchemaForRequest(request);
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return structuredValueSchema;
   }
   return Type.Unsafe<Record<string, unknown>>(
     schema,
   ) as unknown as typeof structuredValueSchema;
-}
-
-function contractSchema(request: AgentRunRequest): Readonly<Record<string, unknown>> {
-  if (
-    request.contract_schema &&
-    typeof request.contract_schema === "object" &&
-    !Array.isArray(request.contract_schema)
-  ) {
-    return request.contract_schema;
-  }
-  return "contract_schema" in request.context &&
-    request.context.contract_schema &&
-    typeof request.context.contract_schema === "object" &&
-    !Array.isArray(request.context.contract_schema)
-    ? request.context.contract_schema
-    : {};
-}
-
-export function promptInputForRequest(request: AgentRunRequest): string {
-  const context = request.context as Readonly<Record<string, unknown>>;
-  let primaryInput = [
-    "user_input",
-    "user_instruction",
-    "original_user_intent",
-    "objective",
-    "creative_goal",
-  ]
-    .map((key) => context[key])
-    .find((value): value is string => typeof value === "string" && value.length > 0);
-  if (
-    !primaryInput &&
-    context.context_kind === "video_parameter_intent" &&
-    Array.isArray(context.sources)
-  ) {
-    primaryInput = context.sources
-      .map((source) =>
-        source && typeof source === "object" && "text" in source
-          ? (source as Readonly<Record<string, unknown>>).text
-          : undefined,
-      )
-      .filter((value): value is string => typeof value === "string" && value.length > 0)
-      .join("\n\n");
-  }
-  if (!primaryInput) throw new Error("agent_context_input_missing");
-  const hasTypedOperationContext =
-    "context_kind" in request.context ||
-    "session_exists" in request.context ||
-    "capability_id" in request.context ||
-    "policy" in request.context;
-  if (!hasTypedOperationContext) return primaryInput;
-
-  const typedContext = Object.fromEntries(
-    Object.entries(request.context).filter(([key]) => key !== "contract_schema"),
-  );
-  return [
-    `User request:\n${primaryInput}`,
-    `Validated typed operation context:\n${JSON.stringify(typedContext)}`,
-  ].join("\n\n");
 }
 
 async function projectOutputDelta(

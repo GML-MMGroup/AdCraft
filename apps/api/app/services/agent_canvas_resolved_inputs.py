@@ -50,6 +50,7 @@ class AgentCanvasResolvedInputCompiler:
         binding_snapshots: tuple[NodeRunBindingSnapshotV2, ...] | None = None,
     ) -> ResolvedNodeInputManifestV2:
         workflow = self._bindings.get_workflow(workflow_id)
+        _require_explicit_document_source_bindings(workflow, target_node_id)
         if binding_snapshots is None:
             text_snapshot = self._bindings.capture_prompt_context_snapshot(
                 workflow_id,
@@ -255,6 +256,31 @@ class AgentCanvasResolvedInputCompiler:
 
 def _missing_binding_id(identity: str) -> str:
     return f"binding_{hashlib.sha256(identity.encode()).hexdigest()[:16]}"
+
+
+def _require_explicit_document_source_bindings(
+    workflow: AgentCanvasWorkflowV2,
+    target_node_id: str,
+) -> None:
+    target = workflow.nodes[_node_index(workflow, target_node_id)]
+    required_sources = target.metadata.get("required_agent_document_source_node_ids", ())
+    if not isinstance(required_sources, (list, tuple)) or not all(
+        isinstance(item, str) and item for item in required_sources
+    ):
+        return
+    bound_sources = {
+        binding.source.source_node_id
+        for binding in workflow.bindings
+        if binding.target_node_id == target_node_id and binding.source.kind == "node_output"
+    }
+    missing = tuple(source_id for source_id in required_sources if source_id not in bound_sources)
+    if missing:
+        raise V2PersistenceError(
+            "agent_document_binding_required",
+            "A required Agent document source has no persisted Canvas Binding.",
+            stage="agent_canvas_resolved_input_compiler",
+            details={"missing_source_node_ids": list(missing)},
+        )
 
 
 def _node_index(workflow: AgentCanvasWorkflowV2, node_id: str) -> int:

@@ -8,13 +8,11 @@ import {
   buildRuntimeManifest,
   generateRuntimeManifest,
 } from "../scripts/generate-runtime-manifest.js";
-import { AGENT_CAPABILITY_CONTRACT } from "../src/generated/agent-capabilities.js";
 
 const inputs = {
   runtimeVersion: "1.0.0",
   protocolVersion: "1" as const,
   contract: { title: "AgentRunRequest", type: "object" },
-  capabilities: AGENT_CAPABILITY_CONTRACT,
   prompts: [
     { prompt_id: "prompt.b", prompt_version: "1", prompt_digest: "b".repeat(64) },
     { prompt_id: "prompt.a", prompt_version: "1", prompt_digest: "a".repeat(64) },
@@ -42,29 +40,10 @@ describe("runtime manifest", () => {
       ...inputs,
       prompts: [...inputs.prompts].reverse(),
       skills: [...inputs.skills].reverse(),
-      capabilities: {
-        ...inputs.capabilities,
-        agents: [...inputs.capabilities.agents]
-          .reverse()
-          .map((agent) => ({ ...agent, operations: [...agent.operations].reverse() })),
-      },
     });
 
     expect(reordered).toEqual(first);
     expect(first).not.toHaveProperty("generated_at");
-    expect(
-      buildRuntimeManifest({
-        ...inputs,
-        capabilities: {
-          ...inputs.capabilities,
-          agents: inputs.capabilities.agents.map((agent) =>
-            agent.name === "video_agent"
-              ? { ...agent, operations: [...agent.operations, "new_operation"] }
-              : agent,
-          ),
-        },
-      }).capability_digest,
-    ).not.toBe(first.capability_digest);
     expect(
       buildRuntimeManifest({ ...inputs, contract: { ...inputs.contract, minimum: 1 } })
         .contract_digest,
@@ -89,10 +68,6 @@ describe("runtime manifest", () => {
     const second = join(directory, "second.json");
     await writeFile(join(directory, "schema.json"), JSON.stringify(inputs.contract));
     await writeFile(
-      join(directory, "capabilities.json"),
-      JSON.stringify(inputs.capabilities),
-    );
-    await writeFile(
       join(directory, "skills.json"),
       JSON.stringify({ version: "1", skills: inputs.skills }),
     );
@@ -100,7 +75,6 @@ describe("runtime manifest", () => {
     await generateRuntimeManifest({
       outputPath: first,
       schemaPath: join(directory, "schema.json"),
-      capabilityPath: join(directory, "capabilities.json"),
       skillManifestPath: join(directory, "skills.json"),
       runtimeVersion: inputs.runtimeVersion,
       prompts: inputs.prompts,
@@ -108,7 +82,6 @@ describe("runtime manifest", () => {
     await generateRuntimeManifest({
       outputPath: second,
       schemaPath: join(directory, "schema.json"),
-      capabilityPath: join(directory, "capabilities.json"),
       skillManifestPath: join(directory, "skills.json"),
       runtimeVersion: inputs.runtimeVersion,
       prompts: [...inputs.prompts].reverse(),

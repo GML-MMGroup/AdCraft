@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from typing import Any, Literal
 
@@ -11,7 +12,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
-from app.persistence.models import AgentRunRow
+from app.persistence.models import AgentCanvasChatTurnRow, AgentRunRow
 from app.schemas.agent_runtime import AgentRunRequest
 
 
@@ -25,6 +26,7 @@ _SAFE_TOKEN_METADATA_KEYS = {
     "max_output_tokens",
     "output_tokens",
     "reasoning_tokens",
+    "thinking_budget_tokens",
 }
 _UNSAFE_CONTENT_KEYS = (
     "function_arguments",
@@ -66,6 +68,13 @@ class AgentRunRecord:
     terminal_result: dict[str, Any] | None
     tool_results: dict[str, Any]
     safe_error_code: str | None
+    frozen_policy_digest: str
+    frozen_input_digest: str
+    retry_attempt_no: int
+    attempt_metadata: dict[str, Any]
+    safe_failure: dict[str, Any]
+    operation_stage: str
+    completed_result_identity: str | None
     audit_metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
@@ -77,6 +86,32 @@ class AgentRunRepository:
 
     def __init__(self, database: V2Database) -> None:
         self._database = database
+
+    def load_validation_source_message(
+        self,
+        *,
+        workflow_id: str | None,
+        conversation_id: str | None,
+        turn_id: str,
+    ) -> str | None:
+        if workflow_id is None or conversation_id is None:
+            return None
+        with self._database.engine.connect() as connection:
+            request_json = connection.execute(
+                select(AgentCanvasChatTurnRow.request_json).where(
+                    AgentCanvasChatTurnRow.workflow_id == workflow_id,
+                    AgentCanvasChatTurnRow.conversation_id == conversation_id,
+                    AgentCanvasChatTurnRow.turn_id == turn_id,
+                )
+            ).scalar_one_or_none()
+        if request_json is None:
+            return None
+        try:
+            request = json.loads(request_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        source_message = request.get("text") if isinstance(request, dict) else None
+        return source_message if isinstance(source_message, str) and source_message else None
 
     def create_or_load(
         self,
@@ -112,6 +147,13 @@ class AgentRunRepository:
             "terminal_result_json": None,
             "tool_results_json": "{}",
             "safe_error_code": None,
+            "frozen_policy_digest": _frozen_policy_digest(request),
+            "frozen_input_digest": _frozen_input_digest(request),
+            "retry_attempt_no": _retry_attempt_no(request),
+            "attempt_metadata_json": "{}",
+            "safe_failure_json": "{}",
+            "operation_stage": "running",
+            "completed_result_identity": None,
             "audit_metadata_json": _json(request.audit_metadata),
             "created_at": _iso(timestamp),
             "updated_at": _iso(timestamp),
@@ -217,6 +259,11 @@ class AgentRunRepository:
                     )
                     .values(
                         status="running",
+                        operation_stage=(
+                            "publishing"
+                            if row["completed_result_identity"] is not None
+                            else "running"
+                        ),
                         lease_owner_id=lease_owner_id,
                         lease_generation=int(row["lease_generation"]) + 1,
                         lease_expires_at=_iso(lease_expiry),
@@ -246,6 +293,7 @@ class AgentRunRepository:
         lease_owner_id: str,
         lease_generation: int,
         seq: int,
+        operation_stage: str | None = None,
         now: datetime | None = None,
     ) -> AgentRunRecord:
         timestamp = _utc(now)
@@ -268,7 +316,11 @@ class AgentRunRepository:
                 connection.execute(
                     update(AgentRunRow)
                     .where(AgentRunRow.run_id == run_id)
-                    .values(last_event_seq=seq, updated_at=_iso(timestamp))
+                    .values(
+                        last_event_seq=seq,
+                        operation_stage=operation_stage or row["operation_stage"],
+                        updated_at=_iso(timestamp),
+                    )
                 )
                 updated = _get_row(connection, run_id)
         except AgentRunRepositoryError:
@@ -316,10 +368,121 @@ class AgentRunRepository:
                         lease_owner_id=None,
                         lease_expires_at=None,
                         terminal_result_json=_json(terminal_result),
+                        completed_result_identity=(
+                            row["completed_result_identity"]
+                            or (_digest(terminal_result) if status == "completed" else None)
+                        ),
                         audit_metadata_json=_json(merged_audit),
+                        attempt_metadata_json=_json(audit_metadata or {}),
                         safe_error_code=safe_error_code,
+                        safe_failure_json=(
+                            "{}" if status == "completed" else _json(terminal_result)
+                        ),
+                        operation_stage=status,
                         updated_at=_iso(timestamp),
                         finished_at=_iso(timestamp),
+                    )
+                )
+                updated = _get_row(connection, run_id)
+        except AgentRunRepositoryError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _record(updated)
+
+    def stage_completed_result(
+        self,
+        run_id: str,
+        *,
+        lease_owner_id: str,
+        lease_generation: int,
+        seq: int,
+        terminal_result: dict[str, Any],
+        attempt_metadata: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> AgentRunRecord:
+        """Persist a validated result before any external publication side effect."""
+
+        timestamp = _utc(now)
+        if seq < 1:
+            raise _error("agent_event_sequence_invalid", "Agent event sequence must be positive.")
+        _validate_safe_json(terminal_result, maximum_bytes=_MAX_TOOL_RESULTS_BYTES)
+        _validate_metadata(attempt_metadata or {})
+        result_identity = _digest(terminal_result)
+        try:
+            with self._database.engine.begin() as connection:
+                row = _get_owned_row(
+                    connection,
+                    run_id,
+                    lease_owner_id,
+                    lease_generation,
+                    timestamp,
+                )
+                existing_identity = row["completed_result_identity"]
+                if existing_identity is not None and existing_identity != result_identity:
+                    raise _error(
+                        "agent_completed_result_conflict",
+                        "Agent run already staged a different completed result.",
+                    )
+                if seq < int(row["last_event_seq"]):
+                    raise _error(
+                        "agent_event_sequence_invalid",
+                        "Agent event sequence cannot move backwards.",
+                    )
+                connection.execute(
+                    update(AgentRunRow)
+                    .where(AgentRunRow.run_id == run_id)
+                    .values(
+                        terminal_result_json=_json(terminal_result),
+                        completed_result_identity=result_identity,
+                        attempt_metadata_json=_json(attempt_metadata or {}),
+                        operation_stage="publishing",
+                        last_event_seq=seq,
+                        updated_at=_iso(timestamp),
+                    )
+                )
+                updated = _get_row(connection, run_id)
+        except AgentRunRepositoryError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _record(updated)
+
+    def release_for_recovery(
+        self,
+        run_id: str,
+        *,
+        lease_owner_id: str,
+        lease_generation: int,
+        safe_error_code: str,
+        now: datetime | None = None,
+    ) -> AgentRunRecord:
+        """Release an owned staged result so another worker can replay publication."""
+
+        timestamp = _utc(now)
+        try:
+            with self._database.engine.begin() as connection:
+                row = _get_owned_row(
+                    connection,
+                    run_id,
+                    lease_owner_id,
+                    lease_generation,
+                    timestamp,
+                )
+                if row["completed_result_identity"] is None:
+                    raise _error(
+                        "agent_completed_result_missing",
+                        "Agent run has no completed result to recover.",
+                    )
+                connection.execute(
+                    update(AgentRunRow)
+                    .where(AgentRunRow.run_id == run_id)
+                    .values(
+                        lease_owner_id=None,
+                        lease_expires_at=None,
+                        operation_stage="publishing",
+                        safe_error_code=safe_error_code,
+                        updated_at=_iso(timestamp),
                     )
                 )
                 updated = _get_row(connection, run_id)
@@ -460,6 +623,13 @@ def _record(row: Any) -> AgentRunRecord:
         ),
         tool_results=_object(row["tool_results_json"]),
         safe_error_code=row["safe_error_code"],
+        frozen_policy_digest=row["frozen_policy_digest"],
+        frozen_input_digest=row["frozen_input_digest"],
+        retry_attempt_no=int(row["retry_attempt_no"]),
+        attempt_metadata=_object(row["attempt_metadata_json"]),
+        safe_failure=_object(row["safe_failure_json"]),
+        operation_stage=row["operation_stage"],
+        completed_result_identity=row["completed_result_identity"],
         audit_metadata=_object(row["audit_metadata_json"]),
         created_at=_required_datetime(row["created_at"]),
         updated_at=_required_datetime(row["updated_at"]),
@@ -491,6 +661,14 @@ def _validate_matching_request(
         or record.validation_profile != request.validation_profile
         or record.expected_target_revision != expected_revision
         or (
+            bool(record.frozen_policy_digest)
+            and record.frozen_policy_digest != _frozen_policy_digest(request)
+        )
+        or (
+            bool(record.frozen_input_digest)
+            and record.frozen_input_digest != _frozen_input_digest(request)
+        )
+        or (
             stored_digest is not None
             and request_digest is not None
             and stored_digest != request_digest
@@ -510,6 +688,31 @@ def _expected_target_revision(request: AgentRunRequest) -> int | None:
         else request.audit_metadata.get("expected_target_revision")
     )
     return int(value) if value is not None else None
+
+
+def _frozen_policy_digest(request: AgentRunRequest) -> str:
+    policy = request.audit_metadata.get("agent_operation_policy")
+    return _digest(policy if isinstance(policy, dict) else request.policy.model_dump(mode="json"))
+
+
+def _frozen_input_digest(request: AgentRunRequest) -> str:
+    return _digest(
+        {
+            "context": request.context.model_dump(mode="json"),
+            "context_snapshot_id": request.context_snapshot_id,
+            "contract_digest": request.contract_digest,
+            "validation_context": request.validation_context,
+        }
+    )
+
+
+def _retry_attempt_no(request: AgentRunRequest) -> int:
+    value = request.audit_metadata.get("retry_attempt_no", 1)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else 1
+
+
+def _digest(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
 def _validate_validation_context(context: dict[str, Any]) -> None:

@@ -1,19 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentRunRequest } from "../src/generated/agent-runtime.js";
-import { loadRuntimeManifest } from "../src/manifest.js";
 import { validateAgentRunRequest } from "../src/protocol-validator.js";
 
 const request: AgentRunRequest = {
   protocol_version: "1",
   run_id: "arun_protocol",
   request_id: "req_protocol",
-  contract_digest: loadRuntimeManifest().contract_digest,
-  context_snapshot_id: "context_protocol",
-  agent_name: "video_agent",
-  operation: "workflow_conversation",
+  agent_name: "front_desk",
+  operation: "workflow_creation",
   deadline_at: "2026-07-24T12:10:00Z",
-  model_policy_id: "video_agent.workflow_conversation.v1",
+  model_policy_id: "front_desk.workflow_creation.v1",
   context: {
     operation: "workflow_creation",
     user_input: "Create a product launch workflow.",
@@ -21,7 +18,7 @@ const request: AgentRunRequest = {
   policy: {
     max_turns: 4,
     max_tool_calls: 4,
-    max_handoffs: 0,
+    max_handoffs: 1,
     timeout_seconds: 2,
     max_input_bytes: 4096,
     max_output_bytes: 4096,
@@ -39,10 +36,6 @@ describe("AgentRunRequest protocol validation", () => {
     ["unknown field", { ...request, unexpected: true }],
     ["protocol mismatch", { ...request, protocol_version: "2" }],
     ["policy bound", { ...request, policy: { ...request.policy, max_turns: 0 } }],
-    [
-      "handoff policy",
-      { ...request, policy: { ...request.policy, max_handoffs: 1 } },
-    ],
     [
       "missing nested input",
       { ...request, context: { ...request.context, user_input: undefined } },

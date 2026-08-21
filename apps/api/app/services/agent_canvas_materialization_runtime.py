@@ -12,6 +12,9 @@ from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
@@ -105,7 +108,7 @@ class QuickMediaMaterializationRunner:
             [CapabilityMaterializationEnvelopeV1], CapabilityMaterializationContextV1
         ],
         publisher: Callable[
-            [CapabilityMaterializationEnvelopeV1, BaseModel, Callable[[], None]], str
+            [CapabilityMaterializationEnvelopeV1, BaseModel, Callable[[], None]], str | None
         ],
         normalizer: CapabilityMaterializationNormalizer | None = None,
     ) -> None:
@@ -241,19 +244,27 @@ def materialization_context_from_state(
     conversations: AgentCanvasConversationRepository,
     workflows: AgentCanvasWorkflowRepository,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
+    validate_references: bool = True,
 ) -> CapabilityMaterializationContextV1:
     """Project safe current facts for the selected capability only."""
 
-    validate_materialization_reference_snapshots(
-        envelope,
-        workflows=workflows,
-        asset_resolver=asset_resolver,
-    )
+    if validate_references:
+        validate_materialization_reference_snapshots(
+            envelope,
+            workflows=workflows,
+            asset_resolver=asset_resolver,
+        )
 
     proposal = conversations.get_proposal(envelope.proposal_id)
     session = conversations.get_guidance_session(envelope.workflow_id)
     memory = conversations.get_creative_memory(envelope.workflow_id)
     workflow = workflows.get_workflow(envelope.workflow_id)
+    requirement_head = AgentCanvasRequirementRepository(workflows.database).get_current(
+        envelope.workflow_id
+    )
+    requirement_controls = {
+        control.control: control.value for control in requirement_head.ledger.hard_controls
+    }
     bound_reference_ids: dict[str, tuple[str, ...]] = {}
     if envelope.target_node_id is not None:
         for binding in workflow.bindings:
@@ -278,7 +289,7 @@ def materialization_context_from_state(
             "required": reference.required,
             "display_order": reference.display_order,
         }
-        if reference.source_kind == "node":
+        if reference.source_kind == "node" and validate_references:
             node = workflows.get_node(envelope.workflow_id, reference.source_id)
             summary.update(
                 {
@@ -299,7 +310,7 @@ def materialization_context_from_state(
             source_identity_facts = canonical_node_reference_facts(node)
             if source_identity_facts:
                 summary["source_identity_facts"] = source_identity_facts
-        elif asset_resolver is not None:
+        elif reference.source_kind != "node" and asset_resolver is not None and validate_references:
             asset = asset_resolver(reference.source_id)
             summary.update(
                 {
@@ -337,8 +348,8 @@ def materialization_context_from_state(
     return CapabilityMaterializationContextAssembler(
         proposal_context=lambda _: {
             "creative_goal": proposal.proposal_purpose or session.goal.summary,
-            "explicit_constraints": session.goal.explicit_constraints,
-            "shared_summary": session.goal.summary,
+            "explicit_constraints": requirement_controls,
+            "shared_summary": "",
             "capability_facts": {
                 "approved_node_ids": list(
                     memory.approved_node_ids.get(_creative_role(envelope.capability_id), ())
@@ -348,6 +359,7 @@ def materialization_context_from_state(
             "reference_summaries": reference_summaries,
             "style_projection": style_projection,
             "target_node_summary": target_summary,
+            "response_locale": session.response_locale,
         }
     ).assemble(envelope)
 

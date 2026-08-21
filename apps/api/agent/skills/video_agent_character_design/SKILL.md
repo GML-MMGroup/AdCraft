@@ -14,6 +14,8 @@ Use the audience, campaign tone, script context, explicit character constraints,
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Return one lean identity-master design result for Character materialization.
 - Python derives the Turnaround companion from the validated identity master.
 - Make character descriptions stable enough for consistent image and video generation.

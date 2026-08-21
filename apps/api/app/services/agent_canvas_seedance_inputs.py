@@ -10,6 +10,7 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_runtime import EffectiveMediaParameterSnapshotV2
+from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
 from app.schemas.seedance_inputs import (
     SeedanceDeliveredMediaInputV1,
     SeedanceInputManifestAuditV1,
@@ -80,7 +81,7 @@ class AgentCanvasSeedanceInputCompiler:
         self,
         requested_value: object,
         effective_value: object,
-        normalizations: tuple[str, ...],
+        normalizations: tuple[str | VideoParameterNormalizationV2, ...],
     ) -> tuple[int, int, tuple[str, ...]]:
         requested = (
             self._default_duration_seconds
@@ -92,10 +93,17 @@ class AgentCanvasSeedanceInputCompiler:
         effective = requested if effective_value is None else _integer_duration(effective_value)
         if effective < 1:
             raise ValueError("duration_seconds must be at least 1")
+        normalization_codes = tuple(
+            item.normalization_code if isinstance(item, VideoParameterNormalizationV2) else item
+            for item in normalizations
+        )
         if effective > 15:
             effective = 15
-            normalizations = (*normalizations, "duration_clamped_to_provider_limit")
-        return requested, effective, tuple(dict.fromkeys(normalizations))
+            normalization_codes = (
+                *normalization_codes,
+                "duration_clamped_to_provider_limit",
+            )
+        return requested, effective, tuple(dict.fromkeys(normalization_codes))
 
     @staticmethod
     def _compile_text_inputs(

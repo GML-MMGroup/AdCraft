@@ -14,6 +14,8 @@ Use the owning shot, its selected storyboard references, product and identity co
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Preserve storyboard order and define clear subject action, camera motion, framing, and transition intent.
 - Keep camera motion limited and legible within each segment.
 - Preserve product, character, scene, lighting, and timing continuity across adjacent shots.

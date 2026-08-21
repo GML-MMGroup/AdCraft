@@ -14,6 +14,8 @@ Use the World Setting, script needs, product use case, explicit scene constraint
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Specify architecture, layout, light, color, atmosphere, and important spatial anchors.
 - Keep the environment reusable and open enough for later product and character placement.
 - Preserve spatial structure, palette, and lighting across requested viewpoints.

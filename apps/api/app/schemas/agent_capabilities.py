@@ -48,6 +48,7 @@ class VideoAgentOperationDefinitionV1(_CapabilityModel):
     capability_id: CapabilityIdV1 | None = None
     internal_skill_id: str | None = Field(default=None, min_length=1, max_length=160)
     style_projection_role: str | None = Field(default=None, min_length=1, max_length=160)
+    context_contract_name: str = Field(min_length=1, max_length=160)
     result_contract_name: str = Field(min_length=1, max_length=160)
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     max_skill_context_bytes: int = Field(default=8_192, ge=1, le=32_768)

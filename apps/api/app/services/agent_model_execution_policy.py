@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1
 from app.services.video_agent_operation_registry import (
     VideoAgentOperationRegistry,
@@ -19,29 +20,19 @@ class AgentModelExecutionPolicyError(ValueError):
         super().__init__(message)
 
 
-_LONG_FORM_OPERATIONS = frozenset(
-    {
-        "execute_canvas_script",
-        "script_writer",
-        "script_edit_normalization",
-        "storyboard_prompt",
-        "storyboard_detail",
-    }
-)
-
-
 def resolve_agent_model_execution_policy(
     *,
     model_ref: str,
-    operation: str,
+    operation_policy: AgentOperationPolicyV2,
     capability_metadata: Mapping[str, object],
 ) -> AgentModelExecutionPolicyV1:
+    if not isinstance(operation_policy, AgentOperationPolicyV2):
+        raise _mismatch("The Agent operation policy is invalid.")
     try:
-        VideoAgentOperationRegistry().resolve(operation)
+        VideoAgentOperationRegistry().resolve(operation_policy.operation)
     except VideoAgentOperationRegistryError as error:
         raise _mismatch("The Agent operation has no registered model policy.") from error
 
-    operation_class, deadline_seconds, token_ceiling = _operation_budget(operation)
     thinking_format = _enum(
         capability_metadata,
         "thinking_format",
@@ -55,12 +46,21 @@ def resolve_agent_model_execution_policy(
     structured_transport = _enum(
         capability_metadata,
         "structured_transport",
-        {"streamed_tool_call", "non_streaming_tool_call", "json_object"},
+        {
+            "streamed_tool_call",
+            "non_streaming_tool_call",
+            "non_streaming_json_object",
+            "json_object",
+        },
     )
     supports_tool_calls = _flag(capability_metadata, "supports_tool_calls")
     supports_streamed_tool_calls = _flag(
         capability_metadata,
         "supports_streamed_tool_calls",
+    )
+    supports_reasoning_controls = _flag(
+        capability_metadata,
+        "supports_reasoning_controls",
     )
     model_token_ceiling = _positive_int(
         capability_metadata,
@@ -74,29 +74,39 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("The selected model does not support streamed tool calls.")
     if reasoning_control == "none" and thinking_format != "none":
         raise _mismatch("A disabled reasoning policy cannot select a thinking format.")
+    if reasoning_control == "enable_thinking" and not supports_reasoning_controls:
+        raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
+    if reasoning_control not in {"none", "enable_thinking"}:
+        raise _mismatch("The selected model uses an unsupported reasoning control.")
+
+    enable_thinking = (
+        operation_policy.enable_thinking if reasoning_control == "enable_thinking" else False
+    )
+    thinking_budget_tokens = operation_policy.thinking_budget_tokens if enable_thinking else None
+    reasoning_mode = operation_policy.reasoning_mode if enable_thinking else "low"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,
-        operation=operation,
-        operation_class=operation_class,
+        operation=operation_policy.operation,
+        operation_class=operation_policy.policy_class,
         thinking_format=thinking_format,
         reasoning_control=reasoning_control,
+        reasoning_mode=reasoning_mode,
+        enable_thinking=enable_thinking,
+        thinking_budget_tokens=thinking_budget_tokens,
         structured_transport=structured_transport,
         supports_tool_calls=supports_tool_calls,
         supports_streamed_tool_calls=supports_streamed_tool_calls,
-        deadline_seconds=deadline_seconds,
-        max_output_tokens=min(token_ceiling, model_token_ceiling),
-        transport_retry_limit=1,
-        structured_repair_limit=1,
+        deadline_seconds=operation_policy.hard_deadline_seconds,
+        primary_timeout_seconds=operation_policy.primary_timeout_seconds,
+        recovery_timeout_seconds=operation_policy.recovery_timeout_seconds,
+        persistence_reserve_seconds=operation_policy.persistence_reserve_seconds,
+        max_model_submissions=operation_policy.max_model_submissions,
+        recovery_mode=operation_policy.recovery_mode,
+        max_output_tokens=min(operation_policy.max_output_tokens, model_token_ceiling),
+        transport_retry_limit=operation_policy.transport_retry_limit,
+        structured_repair_limit=operation_policy.structured_repair_limit,
     )
-
-
-def _operation_budget(operation: str) -> tuple[str, int, int]:
-    if operation.startswith(("propose_", "revise_")) and operation.endswith("_options"):
-        return "proposal", 300, 3_072
-    if operation in _LONG_FORM_OPERATIONS:
-        return "long_form", 600, 8_192
-    return "routing", 120, 1_024
 
 
 def _enum(

@@ -12,7 +12,6 @@ wheels/
 
 # env
 .env
-.env.credentials.lock
 
 # Tool
 .codegraph/
@@ -37,75 +36,6 @@ data/
 /data/v2/adcraft.sqlite3
 /data/v2/adcraft.sqlite3-*
 /data/v2/.persistence.lock
-
-# Test-generated media artifacts
-tests/data/*
-!tests/data/storyboards/
-!tests/data/videos/
-!tests/data/audio/
-!tests/data/subtitles/
-!tests/data/final/
-!tests/data/runs/
-!tests/data/workflows/
-!tests/data/v2/
-!tests/data/characters/
-!tests/data/scenes/
-!tests/data/assets/
-!tests/data/asset_library/
-!tests/data/agent_conversations/
-tests/data/v2/*
-!tests/data/v2/workflows/
-!tests/data/v2/runs/
-tests/data/v2/workflows/*
-!tests/data/v2/workflows/.gitkeep
-tests/data/v2/runs/*
-!tests/data/v2/runs/.gitkeep
-tests/data/storyboards/*
-!tests/data/storyboards/.gitkeep
-tests/data/videos/*
-!tests/data/videos/.gitkeep
-tests/data/audio/*
-!tests/data/audio/.gitkeep
-tests/data/subtitles/*
-!tests/data/subtitles/.gitkeep
-tests/data/final/*
-!tests/data/final/.gitkeep
-tests/data/runs/*
-!tests/data/runs/.gitkeep
-tests/data/workflows/*
-!tests/data/workflows/.gitkeep
-tests/data/characters/*
-!tests/data/characters/.gitkeep
-tests/data/scenes/*
-!tests/data/scenes/.gitkeep
-tests/data/asset_library/*
-!tests/data/asset_library/.gitkeep
-tests/data/agent_conversations/*
-!tests/data/agent_conversations/.gitkeep
-!tests/data/assets/images/
-!tests/data/assets/videos/
-!tests/data/assets/originals/
-!tests/data/assets/generated/
-!tests/data/assets/thumbnails/
-!tests/data/assets/proxies/
-!tests/data/assets/renditions/
-!tests/data/assets/metadata/
-tests/data/assets/images/*
-!tests/data/assets/images/.gitkeep
-tests/data/assets/videos/*
-!tests/data/assets/videos/.gitkeep
-tests/data/assets/originals/*
-!tests/data/assets/originals/.gitkeep
-tests/data/assets/generated/*
-!tests/data/assets/generated/.gitkeep
-tests/data/assets/thumbnails/*
-!tests/data/assets/thumbnails/.gitkeep
-tests/data/assets/proxies/*
-!tests/data/assets/proxies/.gitkeep
-tests/data/assets/renditions/*
-!tests/data/assets/renditions/.gitkeep
-tests/data/assets/metadata/*
-!tests/data/assets/metadata/.gitkeep
 
 docs/
 change-logs/

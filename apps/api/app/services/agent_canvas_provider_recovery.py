@@ -5,24 +5,37 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
     ResolvedModelExecutionV1,
     EffectiveMediaParameterSnapshotV2,
 )
+from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
     NodeExecutionContext,
+    NodeExecutionOutcome,
 )
-from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
+from app.services.agent_canvas_execution_state import (
+    AgentCanvasExecutionStateMachine,
+    safe_execution_error,
+)
+from app.services.agent_canvas_fenced_lease import NodeLeaseService
+from app.services.agent_canvas_provider_submission import ProviderSubmissionIntentService
+from app.services.agent_canvas_execution_result_commit import (
+    AgentCanvasExecutionResultCommitService,
+)
+from app.services.agent_canvas_output_preparation import AgentCanvasOutputPreparationService
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -39,6 +52,7 @@ Poller = Callable[[CanvasProviderTaskV2], ProviderPollResult]
 Downloader = Callable[[CanvasProviderTaskV2], GeneratedMediaPayload]
 Publisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], str]
 BatchCallback = Callable[[tuple[str, ...]], None]
+NodeReadyCallback = Callable[[CanvasNodeV2], tuple[str, ...] | None]
 
 
 class ProviderTaskRecoveryService:
@@ -53,7 +67,10 @@ class ProviderTaskRecoveryService:
         downloader: Downloader,
         media_publisher: Publisher,
         on_batch_reconciled: BatchCallback | None = None,
+        on_node_ready: NodeReadyCallback | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
+        output_preparer: AgentCanvasOutputPreparationService | None = None,
+        result_committer: AgentCanvasExecutionResultCommitService | None = None,
         owner_id: str = "provider-recovery",
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -63,9 +80,14 @@ class ProviderTaskRecoveryService:
         self._downloader = downloader
         self._media_publisher = media_publisher
         self._on_batch_reconciled = on_batch_reconciled
+        self._on_node_ready = on_node_ready
         self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id
         self._clock = clock
+        self._leases = NodeLeaseService(runtime, clock=clock)
+        self._submission_intents = ProviderSubmissionIntentService(runtime)
+        self._output_preparer = output_preparer
+        self._result_committer = result_committer
 
     def recover_due_tasks(self) -> tuple[str, ...]:
         reconciled: list[str] = []
@@ -98,7 +120,8 @@ class ProviderTaskRecoveryService:
         )
         if lease is None:
             return False
-        poll = self._poller(task)
+        guard = self._leases.guard(lease)
+        poll = guard.run(lambda: self._poller(task))
         remote_task_id = poll.remote_task_id or task.remote_task_id
         result_descriptor = _merge_result_descriptor(task, poll)
         if poll.status in {"submitted", "waiting", "running"}:
@@ -160,7 +183,27 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(current, now=now):
             self._runtime.complete_lease(lease, now=now)
             return False
-        payload = self._downloader(current)
+        self._runtime.record_provider_task_event(
+            current,
+            event_type="provider_result_download_waiting",
+            now=now,
+            payload={"status": "recovering"},
+        )
+        try:
+            payload = guard.run(lambda: self._downloader(current))
+        except Exception as error:
+            source_code = getattr(error, "code", None)
+            code = "provider_result_download_failed"
+            if isinstance(error, TimeoutError) or source_code == (
+                "provider_result_download_timeout"
+            ):
+                code = "provider_result_download_timeout"
+            raise V2PersistenceError(
+                code,
+                "Provider result download did not complete.",
+                stage="provider_result_download",
+                details={"source_code": str(source_code)} if source_code else None,
+            ) from error
         node = self._workflows.get_node(task.workflow_id, task.node_id)
         member = next(
             item
@@ -204,7 +247,44 @@ class ProviderTaskRecoveryService:
             effective_parameters=effective_parameters,
         )
         fingerprint = f"provider-task:{task.task_id}"
-        asset_id = self._media_publisher(context, payload, fingerprint)
+        if self._output_preparer is not None and self._result_committer is not None:
+            prepared = guard.run(
+                lambda: self._output_preparer.prepare(
+                    context,
+                    NodeExecutionOutcome(
+                        media=payload,
+                        provider_task_id=task.task_id,
+                        remote_task_id=remote_task_id,
+                        provider=task.provider,
+                        result_descriptor=result_descriptor,
+                        submission_intent_id=task.submission_intent_id,
+                    ),
+                    fingerprint=fingerprint,
+                )
+            )
+            self._result_committer.commit(
+                CanvasExecutionResultCommitCommandV2(
+                    workflow_id=task.workflow_id,
+                    execution_id=task.execution_id,
+                    member_id=member.member_id,
+                    node_id=task.node_id,
+                    lease_owner_id=lease.owner_id,
+                    lease_generation=lease.generation,
+                    logical_result_key=prepared.logical_result_key,
+                    payload_digest=prepared.payload_digest,
+                    provider_task_id=task.task_id,
+                    outcome="succeeded",
+                    prepared_result=prepared,
+                    committed_at=now,
+                )
+            )
+            if task.submission_intent_id is not None:
+                self._submission_intents.complete(
+                    self._runtime.get_submission_intent(task.submission_intent_id),
+                    now=now,
+                )
+            return True
+        asset_id = guard.run(lambda: self._media_publisher(context, payload, fingerprint))
         if not self._state_machine.transition_member(
             self._runtime,
             member,
@@ -216,13 +296,16 @@ class ProviderTaskRecoveryService:
         ):
             self._runtime.complete_lease(lease, now=now)
             return False
-        self._workflows.publish_node_output(
+        published_node = self._workflows.publish_node_output(
             task.workflow_id,
             task.node_id,
             execution_id=task.execution_id,
             updated_at=now,
             output_asset_id=asset_id,
         )
+        if self._on_node_ready is not None:
+            created_node_ids = self._on_node_ready(published_node) or ()
+            self._runtime.add_members(task.execution_id, created_node_ids, now=now)
         completed = current.model_copy(
             update={
                 "status": "succeeded",
@@ -233,6 +316,17 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(completed, now=now):
             self._runtime.complete_lease(lease, now=now)
             return False
+        self._runtime.record_provider_task_event(
+            completed,
+            event_type="provider_result_download_completed",
+            now=now,
+            payload={"asset_id": asset_id},
+        )
+        if completed.submission_intent_id is not None:
+            self._submission_intents.complete(
+                self._runtime.get_submission_intent(completed.submission_intent_id),
+                now=now,
+            )
         self._runtime.complete_lease(lease, now=now)
         return True
 
@@ -252,6 +346,37 @@ class ProviderTaskRecoveryService:
             message=message,
             retryable=False,
         )
+        member = next(
+            item
+            for item in self._runtime.list_members(task.execution_id)
+            if item.node_id == task.node_id
+        )
+        if self._result_committer is not None:
+            digest = hashlib.sha256(error.model_dump_json().encode()).hexdigest()
+            self._result_committer.commit(
+                CanvasExecutionResultCommitCommandV2(
+                    workflow_id=task.workflow_id,
+                    execution_id=task.execution_id,
+                    member_id=member.member_id,
+                    node_id=task.node_id,
+                    lease_owner_id=lease.owner_id,
+                    lease_generation=lease.generation,
+                    logical_result_key=(
+                        f"provider-task:{task.task_id}:{lease.generation}:{status}"
+                    ),
+                    payload_digest=digest,
+                    provider_task_id=task.task_id,
+                    outcome=("cancelled" if status == "cancelled" else "failed"),
+                    error=error,
+                    committed_at=now,
+                )
+            )
+            if task.submission_intent_id is not None:
+                self._submission_intents.complete(
+                    self._runtime.get_submission_intent(task.submission_intent_id),
+                    now=now,
+                )
+            return
         failed = task.model_copy(
             update={
                 "remote_task_id": remote_task_id,
@@ -264,11 +389,6 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(failed, now=now):
             self._runtime.complete_lease(lease, now=now)
             return
-        member = next(
-            item
-            for item in self._runtime.list_members(task.execution_id)
-            if item.node_id == task.node_id
-        )
         if member.state == "succeeded" or not self._state_machine.transition_member(
             self._runtime,
             member,
@@ -302,11 +422,7 @@ class ProviderTaskRecoveryService:
         current = self._runtime.get_provider_task(task.task_id)
         if current.status in {"succeeded", "failed", "cancelled"}:
             return
-        detail = CanvasNodeErrorV2(
-            code=getattr(error, "code", "provider_recovery_failed"),
-            message=str(error),
-            retryable=True,
-        )
+        detail = safe_execution_error(error, default_code="provider_recovery_failed")
         recovering = current.model_copy(
             update={
                 "status": "recovering",
@@ -316,6 +432,16 @@ class ProviderTaskRecoveryService:
         )
         if not self._runtime.put_provider_task(recovering, now=now):
             return
+        if detail.code.startswith("provider_result_download_"):
+            self._runtime.record_provider_task_event(
+                recovering,
+                event_type="provider_result_download_failed",
+                now=now,
+                payload={
+                    "code": detail.code,
+                    "retryable": True,
+                },
+            )
         self._runtime.update_member(
             task.execution_id,
             task.node_id,

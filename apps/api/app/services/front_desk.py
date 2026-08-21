@@ -99,16 +99,12 @@ class FrontDeskService:
                 if planning_session
                 else None
             )
-            agent_context = (
-                FrontDeskIntentAgentContext(
-                    context_kind="front_desk_intent",
-                    user_input=request.message,
-                    workflow_id=planning_session.workflow_id,
-                    frozen_facts=FrozenPlanningFacts(),
-                    conversation_summary=_conversation_summary(request),
-                )
-                if planning_session
-                else None
+            agent_context = FrontDeskIntentAgentContext(
+                context_kind="front_desk_intent",
+                user_input=request.message,
+                workflow_id=planning_session.workflow_id if planning_session else None,
+                frozen_facts=FrozenPlanningFacts(),
+                conversation_summary=_conversation_summary(request),
             )
             output = self._structured_runtime.run(
                 StructuredGenerationSpec(

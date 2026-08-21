@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
-from typing import cast
-
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
+)
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.event_repository import EventRepository
@@ -26,12 +28,20 @@ from app.schemas.agent_canvas_editing import (
     EditingPreparationResultV2,
     EditingVideoEntryV2,
 )
+from app.schemas.agent_canvas_production_closure import (
+    GuidedEditingPreparationReceiptV1,
+)
 from app.schemas.agent_working_documents import (
     AttachEditingNodePatchV2,
+    StoryboardPlannedNodeV3,
     StoryboardProductionPlanContentV2,
+    StoryboardProductionPlanContentV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.agent_canvas_guided_production_closure import (
+    GuidedProductionClosureService,
+)
 
 
 class GuidedEditingPreparationService:
@@ -44,13 +54,19 @@ class GuidedEditingPreparationService:
         documents: AgentWorkingDocumentService,
         conversations: AgentCanvasConversationRepository,
         events: EventRepository,
-        asset_resolver,
+        asset_resolver=None,
+        closure: GuidedProductionClosureService | None = None,
+        receipts: AgentCanvasProductionClosureRepository | None = None,
+        clock=lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
         self._documents = documents
         self._conversations = conversations
         self._events = events
         self._asset_resolver = asset_resolver
+        self._closure = closure
+        self._receipts = receipts
+        self._clock = clock
 
     def prepare(
         self,
@@ -60,6 +76,23 @@ class GuidedEditingPreparationService:
         expected_plan_revision: int,
     ) -> EditingPreparationResultV2:
         agent_run_id = "guided_editing_preparation"
+        if self._closure is not None and self._receipts is not None:
+            existing_preparation = self._receipts.find_preparation(
+                workflow_id,
+                plan_document_id,
+                expected_plan_revision,
+            )
+            if existing_preparation is not None:
+                return self._preparation_result(existing_preparation, replayed=True)
+        closure_plan = (
+            self._closure.freeze(
+                workflow_id,
+                plan_document_id,
+                expected_plan_revision=expected_plan_revision,
+            )
+            if self._closure is not None
+            else None
+        )
         plan_document = self._documents.get_document(workflow_id, plan_document_id)
         if (
             plan_document.kind != "storyboard_production_plan"
@@ -70,50 +103,100 @@ class GuidedEditingPreparationService:
                 "Editing preparation requires the current Storyboard plan revision.",
                 stage="guided_editing_preparation",
             )
-        plan = cast(StoryboardProductionPlanContentV2, plan_document.content)
+        plan = plan_document.content
+        if not isinstance(
+            plan,
+            (StoryboardProductionPlanContentV2, StoryboardProductionPlanContentV3),
+        ):
+            raise V2PersistenceError(
+                "editing_preparation_plan_invalid",
+                "Editing preparation requires a Storyboard production plan.",
+                stage="guided_editing_preparation",
+            )
+        plan_records = _plan_node_records(plan)
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
-        video_records = {
-            record.sequence_id: record
-            for record in plan.node_records
-            if record.node_role == "video_segment" and record.sequence_id is not None
-        }
-        ordered_video_nodes = tuple(
-            nodes[record.node_id]
-            for segment in plan.segments
-            if (record := video_records.get(segment.sequence_id)) is not None
-            and record.node_id in nodes
-        )
-        audio_node = next(
-            (
+        if closure_plan is not None:
+            available_videos = tuple(
+                nodes[item.node_id]
+                for item in closure_plan.ordered_inputs
+                if item.media_role == "video"
+            )
+            audio_inputs = tuple(
+                nodes[item.node_id]
+                for item in closure_plan.ordered_inputs
+                if item.media_role == "audio"
+            )
+            available_audio = audio_inputs[0] if audio_inputs else None
+            omitted_node_ids: tuple[str, ...] = ()
+        else:
+            video_records = {
+                record.sequence_id: record
+                for record in plan_records
+                if record.node_role == "video_segment" and record.sequence_id is not None
+            }
+            ordered_video_nodes = tuple(
                 nodes[record.node_id]
-                for record in plan.node_records
-                if record.node_role == "bgm" and record.node_id in nodes
-            ),
-            None,
-        )
-        available_videos = tuple(
-            node for node in ordered_video_nodes if self._ready_media(node, "video")
-        )
-        available_audio = (
-            audio_node
-            if audio_node is not None and self._ready_media(audio_node, "audio")
-            else None
-        )
-        omitted_node_ids = tuple(
-            node.node_id for node in ordered_video_nodes if node not in available_videos
-        )
-        if audio_node is not None and available_audio is None:
-            omitted_node_ids += (audio_node.node_id,)
+                for segment in plan.segments
+                if (record := video_records.get(segment.sequence_id)) is not None
+                and record.node_id in nodes
+            )
+            audio_node = next(
+                (
+                    nodes[record.node_id]
+                    for record in plan_records
+                    if record.node_role == "bgm" and record.node_id in nodes
+                ),
+                None,
+            )
+            available_videos = tuple(
+                node for node in ordered_video_nodes if self._ready_media(node, "video")
+            )
+            available_audio = (
+                audio_node
+                if audio_node is not None and self._ready_media(audio_node, "audio")
+                else None
+            )
+            omitted_node_ids = tuple(
+                node.node_id for node in ordered_video_nodes if node not in available_videos
+            )
+            if audio_node is not None and available_audio is None:
+                omitted_node_ids += (audio_node.node_id,)
+            if omitted_node_ids:
+                blocker_reasons = [
+                    (
+                        "planned_audio_not_ready"
+                        if node_id == getattr(audio_node, "node_id", None)
+                        else "planned_video_not_ready"
+                    )
+                    for node_id in omitted_node_ids
+                ]
+                raise V2PersistenceError(
+                    "guided_closure_blocked",
+                    "Guided Editing requires every planned media input to be ready.",
+                    stage="guided_editing_preparation",
+                    details={
+                        "blocker_node_ids": list(omitted_node_ids),
+                        "blocker_reasons": blocker_reasons,
+                    },
+                )
 
-        existing_record = next(
-            (record for record in plan.node_records if record.node_role == "editing"),
+        prior_editing_record = next(
+            (record for record in plan_records if record.node_role == "editing"),
             None,
         )
-        editing_node_id = (
-            existing_record.node_id
-            if existing_record is not None
-            else _stable_id("node_guided_editing", plan_document.guidance_session_id)
+        editing_node_id = _stable_id(
+            "node_guided_editing",
+            (
+                closure_plan.closure_plan_id
+                if closure_plan is not None
+                else plan_document.guidance_session_id
+            ),
+        )
+        existing_record = (
+            prior_editing_record
+            if prior_editing_record is not None and prior_editing_record.node_id == editing_node_id
+            else None
         )
         current_bindings = {
             _binding_source_id(binding): binding
@@ -148,7 +231,7 @@ class GuidedEditingPreparationService:
             ),
         )
         changed = False
-        now = datetime.now(timezone.utc)
+        now = self._clock()
         if editing_node_id not in nodes:
             editing_node = CanvasNodeV2(
                 node_id=editing_node_id,
@@ -213,40 +296,125 @@ class GuidedEditingPreparationService:
             )
 
         if existing_record is None:
-            updated_plan = self._documents.apply_agent_patch(
-                workflow_id,
-                agent_run_id,
-                AttachEditingNodePatchV2(
-                    operation="attach_editing_node",
+            if isinstance(plan, StoryboardProductionPlanContentV3):
+                next_content = plan.model_copy(
+                    update={
+                        "planned_nodes": tuple(
+                            record for record in plan.planned_nodes if record.node_role != "editing"
+                        )
+                        + (
+                            StoryboardPlannedNodeV3(
+                                node_role="editing",
+                                node_id=editing_node_id,
+                                node_revision=editing_node.revision,
+                                materialization_id=(
+                                    f"guided-editing:{closure_plan.closure_plan_id}"
+                                    if closure_plan is not None
+                                    else f"guided-editing:{editing_node_id}"
+                                ),
+                            ),
+                        )
+                    }
+                )
+                updated_plan = self._documents.commit_content_mutation(
+                    workflow_id=workflow_id,
+                    agent_run_id=agent_run_id,
                     document_id=plan_document.document_id,
                     expected_revision=plan_document.revision,
+                    operation="attach_guided_editing_node",
                     idempotency_key=f"attach-editing:{editing_node_id}",
-                    node_id=editing_node_id,
-                ),
-            ).document
+                    next_content=next_content,
+                )
+            else:
+                updated_plan = self._documents.apply_agent_patch(
+                    workflow_id,
+                    agent_run_id,
+                    AttachEditingNodePatchV2(
+                        operation="attach_editing_node",
+                        document_id=plan_document.document_id,
+                        expected_revision=plan_document.revision,
+                        idempotency_key=f"attach-editing:{editing_node_id}",
+                        node_id=editing_node_id,
+                    ),
+                ).document
             plan_document = updated_plan
             changed = True
+
+        final_node = self._workflows.get_node(workflow_id, editing_node_id)
+        final_content = EditingNodeContentV2.model_validate(final_node.structured_content)
+        preparation_receipt = None
+        if closure_plan is not None:
+            if self._receipts is None:
+                raise V2PersistenceError(
+                    "guided_preparation_receipt_unavailable",
+                    "Guided Editing preparation receipt authority is unavailable.",
+                    stage="guided_editing_preparation",
+                )
+            manifest_payload = json.dumps(
+                final_content.manifest.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            manifest_digest = hashlib.sha256(manifest_payload.encode()).hexdigest()
+            logical_identity = f"{closure_plan.closure_plan_id}:{editing_node_id}:{manifest_digest}"
+            preparation_receipt = self._receipts.save_preparation(
+                GuidedEditingPreparationReceiptV1(
+                    receipt_id=(
+                        "preparation_" + hashlib.sha256(logical_identity.encode()).hexdigest()[:32]
+                    ),
+                    logical_identity=logical_identity,
+                    workflow_id=workflow_id,
+                    closure_plan_id=closure_plan.closure_plan_id,
+                    plan_document_id=closure_plan.plan_document_id,
+                    plan_revision=closure_plan.plan_revision,
+                    confirmation_digest=closure_plan.confirmation_digest,
+                    editing_node_id=editing_node_id,
+                    editing_node_revision=final_node.revision,
+                    binding_ids=tuple(binding.binding_id for binding in desired_bindings),
+                    manifest_revision=final_content.manifest.manifest_revision,
+                    manifest_digest=manifest_digest,
+                    committed_at=now,
+                )
+            )
 
         session = self._conversations.get_guidance_session(workflow_id)
         if (
             session.completion.editing_preparation != "prepared"
             or session.completion.editing_node_id != editing_node_id
+            or (
+                preparation_receipt is not None
+                and session.completion.preparation_receipt_id != preparation_receipt.receipt_id
+            )
         ):
-            self._conversations.complete_guidance_session(
+            update_completion = getattr(
+                self._conversations,
+                "update_guidance_completion",
+                None,
+            )
+            if update_completion is None:
+                update_completion = self._conversations.complete_guidance_session
+            update_completion(
                 session.session_id,
                 expected_session_revision=session.revision,
                 completion=session.completion.model_copy(
                     update={
+                        "authoring": "ready",
+                        "delivery": "ready",
+                        "plan_document_id": plan_document.document_id,
+                        "plan_revision": plan_document.revision,
                         "editing_preparation": "prepared",
                         "editing_node_id": editing_node_id,
+                        "preparation_receipt_id": (
+                            preparation_receipt.receipt_id
+                            if preparation_receipt is not None
+                            else None
+                        ),
+                        "manifest_revision": final_content.manifest.manifest_revision,
                     }
                 ),
             )
             changed = True
 
-        final_content = EditingNodeContentV2.model_validate(
-            self._workflows.get_node(workflow_id, editing_node_id).structured_content
-        )
         result = EditingPreparationResultV2(
             workflow_id=workflow_id,
             plan_document_id=plan_document.document_id,
@@ -274,13 +442,21 @@ class GuidedEditingPreparationService:
                     node_id=editing_node_id,
                     event_type="editing_prepared",
                     transition_key=f"editing_prepared:{hashlib.sha256(identity.encode()).hexdigest()}",
-                    created_at=datetime.now(timezone.utc).isoformat(),
+                    created_at=now.isoformat(),
                     payload={
                         "editing_node_id": editing_node_id,
                         "bound_video_node_ids": list(result.bound_video_node_ids),
                         "bound_audio_node_ids": list(result.bound_audio_node_ids),
                         "omitted_node_ids": list(result.omitted_node_ids),
                         "manifest_revision": result.manifest_revision,
+                        "closure_plan_id": (
+                            closure_plan.closure_plan_id if closure_plan is not None else None
+                        ),
+                        "preparation_receipt_id": (
+                            preparation_receipt.receipt_id
+                            if preparation_receipt is not None
+                            else None
+                        ),
                         "plan_document_id": plan_document.document_id,
                         "plan_revision": plan_document.revision,
                         "guidance_session_id": plan_document.guidance_session_id,
@@ -288,7 +464,68 @@ class GuidedEditingPreparationService:
                     },
                 )
             )
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=workflow_id,
+                    node_id=editing_node_id,
+                    event_type="guided_editing_ready",
+                    transition_key=(
+                        "guided-editing-ready:"
+                        f"{preparation_receipt.receipt_id if preparation_receipt else identity}"
+                    ),
+                    created_at=now.isoformat(),
+                    payload={
+                        "editing_node_id": editing_node_id,
+                        "manifest_revision": result.manifest_revision,
+                        "plan_document_id": plan_document.document_id,
+                        "plan_revision": plan_document.revision,
+                        "closure_plan_id": (
+                            closure_plan.closure_plan_id if closure_plan is not None else None
+                        ),
+                        "preparation_receipt_id": (
+                            preparation_receipt.receipt_id
+                            if preparation_receipt is not None
+                            else None
+                        ),
+                    },
+                )
+            )
         return result
+
+    def _preparation_result(
+        self,
+        receipt: GuidedEditingPreparationReceiptV1,
+        *,
+        replayed: bool,
+    ) -> EditingPreparationResultV2:
+        workflow = self._workflows.get_workflow(receipt.workflow_id)
+        binding_ids = set(receipt.binding_ids)
+        ordered_bindings = tuple(
+            sorted(
+                (binding for binding in workflow.bindings if binding.binding_id in binding_ids),
+                key=lambda item: (item.order, item.binding_id),
+            )
+        )
+        nodes = {node.node_id: node for node in workflow.nodes}
+        ordered_nodes = tuple(
+            nodes[node_id]
+            for binding in ordered_bindings
+            if (node_id := _binding_source_id(binding)) in nodes
+        )
+        return EditingPreparationResultV2(
+            workflow_id=receipt.workflow_id,
+            plan_document_id=receipt.plan_document_id,
+            editing_node_id=receipt.editing_node_id,
+            bound_video_node_ids=tuple(
+                node.node_id for node in ordered_nodes if node.node_type == "video"
+            ),
+            bound_audio_node_ids=tuple(
+                node.node_id for node in ordered_nodes if node.node_type == "audio"
+            ),
+            omitted_node_ids=(),
+            manifest_revision=receipt.manifest_revision,
+            replayed=replayed,
+        )
 
     def _ready_media(self, node: CanvasNodeV2, media_type: str) -> bool:
         if node.status != "ready" or node.output_asset_id is None:
@@ -332,6 +569,14 @@ def _binding_source_id(binding: CanvasBindingV2) -> str:
     if isinstance(binding.source, CanvasBindingSourceNodeV2):
         return binding.source.node_id
     return ""
+
+
+def _plan_node_records(
+    plan: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+):
+    if isinstance(plan, StoryboardProductionPlanContentV3):
+        return plan.planned_nodes
+    return plan.node_records
 
 
 def _stable_id(prefix: str, *parts: str) -> str:

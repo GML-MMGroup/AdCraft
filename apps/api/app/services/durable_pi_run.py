@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-from typing import Any, Literal, Mapping
+from typing import Any, Callable, Literal, Mapping
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -22,8 +22,14 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
 )
-from app.services.v2_agent_event_projector import V2AgentEventProjector
-
+from app.services.v2_agent_event_projector import (
+    V2AgentEventProjector,
+    safe_agent_transport_audit,
+)
+from app.services.agent_operation_policy import (
+    AgentOperationPolicyError,
+    validate_agent_run_operation_policy,
+)
 
 _TERMINAL_STATUS_BY_EVENT = {
     "run_completed": "completed",
@@ -39,6 +45,47 @@ _SAFE_AUDIT_IDENTITY_FIELDS = {
     "operation",
     "turn_id",
     "workflow_id",
+}
+_PRE_SUBMISSION_FAILURE_CODES = {
+    "agent_context_input_missing",
+    "agent_model_capability_mismatch",
+    "agent_model_incompatible",
+    "agent_model_policy_mismatch",
+    "agent_model_unavailable",
+    "agent_operation_not_allowed",
+    "agent_prompt_input_registry_invalid",
+    "provider_credentials_invalid",
+    "provider_credentials_missing",
+}
+_PROVIDER_FAILURE_CODES = {
+    "agent_provider_timeout",
+    "agent_provider_transport_failed",
+}
+_STRUCTURED_FAILURE_CODES = {
+    "agent_contract_validation_failed",
+    "agent_structured_output_invalid",
+}
+_SAFE_FAILURE_MESSAGES = {
+    "agent_contract_validation_failed": "Agent contract validation failed.",
+    "agent_context_input_missing": "Agent Prompt input is incomplete.",
+    "agent_deadline_exceeded": "Agent run deadline exceeded.",
+    "agent_model_capability_mismatch": ("Agent model capability does not satisfy this operation."),
+    "agent_model_incompatible": "Agent model is incompatible with this operation.",
+    "agent_model_policy_mismatch": "Agent model policy rejected this operation.",
+    "agent_model_unavailable": "Agent model is unavailable.",
+    "agent_operation_not_allowed": "Agent operation is not allowed.",
+    "agent_protocol_mismatch": "Agent runtime protocol validation failed.",
+    "agent_publication_failed": "Agent result publication failed.",
+    "agent_provider_timeout": "Agent provider request timed out.",
+    "agent_provider_transport_failed": "Agent provider transport failed.",
+    "agent_run_cancelled": "Agent run was cancelled.",
+    "agent_runtime_unavailable": "Agent runtime is unavailable.",
+    "agent_stream_backpressure_exceeded": ("Agent runtime stream exceeded its byte budget."),
+    "agent_structured_output_invalid": "Agent structured output was invalid.",
+    "agent_target_revision_conflict": "Agent target revision changed.",
+    "agent_tool_not_allowed": "Agent tool is not allowed.",
+    "provider_credentials_invalid": "Agent provider credentials are invalid.",
+    "provider_credentials_missing": "Agent provider credentials are unavailable.",
 }
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,9 +155,18 @@ class DurablePiRunService:
         *,
         identity_fields: Mapping[str, str | int],
         model_ref: str | None = None,
+        on_dispatch_owned: Callable[[AgentRunRequest], None] | None = None,
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
+        try:
+            validate_agent_run_operation_policy(request)
+        except AgentOperationPolicyError as error:
+            raise PiAgentRuntimeError(
+                "agent_model_policy_mismatch",
+                "Agent request policy does not match the canonical operation registry.",
+                retryable=False,
+            ) from error
         identity = derive_durable_pi_run_identity(identity_fields)
         request = request.model_copy(
             update={
@@ -144,17 +200,59 @@ class DurablePiRunService:
                     lease_duration_seconds=lease_duration,
                 )
                 lease_generation = renewed.lease_generation
-            repository.record_event_seq(
-                request.run_id,
-                lease_owner_id=lease_owner_id,
-                lease_generation=lease_generation,
-                seq=event.seq,
-            )
-            event_projector.consume(
-                event,
-                workflow_id=getattr(request.context, "workflow_id", None),
-                model_id=model_ref,
-            )
+            if event.event_type == "run_completed":
+                repository.stage_completed_result(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    seq=event.seq,
+                    terminal_result=dict(event.payload),
+                    attempt_metadata=_safe_audit_metadata(event.payload),
+                )
+            else:
+                repository.record_event_seq(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    seq=event.seq,
+                    operation_stage=_operation_stage_for_event(event.event_type),
+                )
+            projected_event = event
+            if event.event_type in {"run_failed", "run_cancelled"}:
+                projected_event = event.model_copy(
+                    update={
+                        "payload": _safe_terminal_failure_payload(
+                            event.payload,
+                            operation=request.operation,
+                        )
+                    }
+                )
+            try:
+                event_projector.consume(
+                    projected_event,
+                    workflow_id=getattr(request.context, "workflow_id", None),
+                    model_id=model_ref,
+                )
+            except Exception as error:
+                if event.event_type == "run_completed":
+                    raise PiAgentRuntimeError(
+                        "agent_publication_failed",
+                        _safe_error_message_for_code("agent_publication_failed"),
+                        retryable=True,
+                        details=_publication_failure_audit(
+                            request.operation,
+                            _safe_audit_metadata(event.payload),
+                        ),
+                    ) from error
+                if event.event_type in {"run_failed", "run_cancelled"}:
+                    failure_payload = projected_event.payload
+                    raise PiAgentRuntimeError(
+                        _safe_error_code(failure_payload),
+                        _safe_error_message_for_code(_safe_error_code(failure_payload)),
+                        retryable=bool(failure_payload.get("retryable")),
+                        details=_safe_audit_metadata(failure_payload),
+                    ) from error
+                raise
 
         try:
             record, created = repository.create_or_load(
@@ -180,8 +278,27 @@ class DurablePiRunService:
                 )
                 owns_lease = True
                 lease_generation = record.lease_generation
-                request = request.model_copy(update={"run_id": record.run_id})
+                request = request.model_copy(
+                    update={
+                        "run_id": record.run_id,
+                        "deadline_at": record.deadline_at or request.deadline_at,
+                    }
+                )
+                if record.completed_result_identity is not None:
+                    replayed = self._replay_staged_result(
+                        repository,
+                        event_projector,
+                        record,
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=lease_generation,
+                        request=request,
+                        model_ref=model_ref,
+                    )
+                    owns_lease = False
+                    return replayed
 
+            if on_dispatch_owned is not None:
+                on_dispatch_owned(request)
             outcome = self._client.run(request, on_event=persist_event)
             terminal = outcome.terminal_event
             status = _TERMINAL_STATUS_BY_EVENT.get(terminal.event_type)
@@ -190,22 +307,34 @@ class DurablePiRunService:
                     "agent_protocol_mismatch",
                     "Agent runtime did not emit a terminal event.",
                 )
+            if status == "completed":
+                staged = repository.load(request.run_id)
+                if staged.completed_result_identity is None:
+                    persist_event(terminal)
+                terminal_payload = dict(terminal.payload)
+                terminal_audit = _safe_audit_metadata(terminal.payload)
+            else:
+                terminal_payload = _safe_terminal_failure_payload(
+                    terminal.payload,
+                    operation=request.operation,
+                )
+                terminal_audit = dict(terminal_payload["audit"])
             repository.finish(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
                 lease_generation=lease_generation,
                 status=status,
-                terminal_result=terminal.payload,
-                audit_metadata=_safe_audit_metadata(terminal.payload),
+                terminal_result=terminal_payload,
+                audit_metadata=terminal_audit,
                 safe_error_code=(
-                    _safe_error_code(terminal.payload) if status != "completed" else None
+                    _safe_error_code(terminal_payload) if status != "completed" else None
                 ),
             )
             owns_lease = False
             result = DurablePiRunResult(
                 run_id=request.run_id,
                 status=status,
-                terminal_payload=dict(terminal.payload),
+                terminal_payload=terminal_payload,
                 last_event_seq=outcome.last_seq,
                 replayed=False,
             )
@@ -213,52 +342,208 @@ class DurablePiRunService:
                 self._raise_terminal_error(result)
             return result
         except PiAgentRuntimeError as error:
-            self._log_structured_rejection(request, error)
+            safe_error = _normalized_runtime_error(request, error)
+            self._log_structured_rejection(request, safe_error)
             if owns_lease:
-                self._finish_failed(
+                if safe_error.code == "agent_publication_failed":
+                    repository.release_for_recovery(
+                        request.run_id,
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=lease_generation,
+                        safe_error_code=safe_error.code,
+                    )
+                    owns_lease = False
+                    raise safe_error from error
+                self._persist_local_failure(
                     repository,
-                    request.run_id,
-                    lease_owner_id,
-                    lease_generation,
-                    code=error.code,
-                    message=error.message,
-                    retryable=error.retryable,
+                    event_projector,
+                    request,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    error=safe_error,
+                    model_ref=model_ref,
                 )
-            raise
+            raise safe_error from error
         except AgentRunRepositoryError as error:
-            self._log_structured_rejection(
+            safe_error = _normalized_runtime_error(
                 request,
                 PiAgentRuntimeError(error.code, error.message),
             )
+            self._log_structured_rejection(request, safe_error)
             if owns_lease:
-                self._finish_failed(
+                self._persist_local_failure(
                     repository,
-                    request.run_id,
-                    lease_owner_id,
-                    lease_generation,
-                    code=error.code,
-                    message=error.message,
-                    retryable=False,
+                    event_projector,
+                    request,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    error=safe_error,
+                    model_ref=model_ref,
                 )
-            raise PiAgentRuntimeError(error.code, error.message) from error
+            raise safe_error from error
         except Exception as error:
-            if owns_lease:
-                self._finish_failed(
-                    repository,
-                    request.run_id,
-                    lease_owner_id,
-                    lease_generation,
-                    code="agent_runtime_unavailable",
-                    message="Agent runtime is unavailable.",
+            safe_error = _normalized_runtime_error(
+                request,
+                PiAgentRuntimeError(
+                    "agent_runtime_unavailable",
+                    _safe_error_message_for_code("agent_runtime_unavailable"),
                     retryable=True,
+                    details={
+                        "attempt_stage": "runtime_processing",
+                        "failure_boundary": "runtime_internal",
+                    },
+                ),
+            )
+            if owns_lease:
+                self._persist_local_failure(
+                    repository,
+                    event_projector,
+                    request,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    error=safe_error,
+                    model_ref=model_ref,
                 )
-            raise PiAgentRuntimeError(
-                "agent_runtime_unavailable",
-                "Agent runtime is unavailable.",
-                retryable=True,
-            ) from error
+            raise safe_error from error
         finally:
             database.dispose()
+
+    @staticmethod
+    def _replay_staged_result(
+        repository: AgentRunRepository,
+        event_projector: V2AgentEventProjector,
+        record: AgentRunRecord,
+        *,
+        lease_owner_id: str,
+        lease_generation: int,
+        request: AgentRunRequest,
+        model_ref: str | None,
+    ) -> DurablePiRunResult:
+        payload = dict(record.terminal_result or {})
+        event = AgentRuntimeEvent(
+            seq=max(1, record.last_event_seq),
+            run_id=record.run_id,
+            agent_name=request.agent_name,
+            event_type="run_completed",
+            created_at=datetime.now(timezone.utc),
+            payload=payload,
+        )
+        try:
+            event_projector.consume(
+                event,
+                workflow_id=getattr(request.context, "workflow_id", None),
+                model_id=model_ref,
+            )
+        except Exception as error:
+            repository.release_for_recovery(
+                record.run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                safe_error_code="agent_publication_failed",
+            )
+            raise PiAgentRuntimeError(
+                "agent_publication_failed",
+                _safe_error_message_for_code("agent_publication_failed"),
+                retryable=True,
+                details=_publication_failure_audit(
+                    request.operation,
+                    record.attempt_metadata,
+                ),
+            ) from error
+        completed = repository.finish(
+            record.run_id,
+            lease_owner_id=lease_owner_id,
+            lease_generation=lease_generation,
+            status="completed",
+            terminal_result=payload,
+            audit_metadata=record.attempt_metadata,
+        )
+        return DurablePiRunResult(
+            run_id=completed.run_id,
+            status="completed",
+            terminal_payload=payload,
+            last_event_seq=completed.last_event_seq,
+            replayed=True,
+        )
+
+    @staticmethod
+    def _persist_local_failure(
+        repository: AgentRunRepository,
+        projector: V2AgentEventProjector,
+        request: AgentRunRequest,
+        *,
+        lease_owner_id: str,
+        lease_generation: int,
+        error: PiAgentRuntimeError,
+        model_ref: str | None,
+    ) -> None:
+        try:
+            record = repository.load(request.run_id)
+            event_seq = record.last_event_seq + 1
+            repository.record_event_seq(
+                request.run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                seq=event_seq,
+                operation_stage="failed",
+            )
+        except AgentRunRepositoryError:
+            event_seq = 1
+        try:
+            DurablePiRunService._project_failed_trace(
+                projector,
+                request,
+                seq=event_seq,
+                code=error.code,
+                retryable=error.retryable,
+                audit=error.details,
+                model_ref=model_ref,
+            )
+        except Exception:  # noqa: BLE001 - SQLite terminal authority must still publish.
+            _LOGGER.exception(
+                "Agent failure trace publication failed run_id=%s code=%s",
+                request.run_id,
+                error.code,
+            )
+        DurablePiRunService._finish_failed(
+            repository,
+            request.run_id,
+            lease_owner_id,
+            lease_generation,
+            code=error.code,
+            message=error.message,
+            retryable=error.retryable,
+            audit=error.details,
+        )
+
+    @staticmethod
+    def _project_failed_trace(
+        projector: V2AgentEventProjector,
+        request: AgentRunRequest,
+        *,
+        seq: int,
+        code: str,
+        retryable: bool,
+        audit: Mapping[str, Any],
+        model_ref: str | None,
+    ) -> None:
+        projector.consume(
+            AgentRuntimeEvent(
+                seq=seq,
+                run_id=request.run_id,
+                agent_name=request.agent_name,
+                event_type="run_failed",
+                created_at=datetime.now(timezone.utc),
+                payload={
+                    "code": code,
+                    "message": _safe_error_message_for_code(code),
+                    "retryable": retryable,
+                    "audit": safe_agent_transport_audit(dict(audit)),
+                },
+            ),
+            workflow_id=getattr(request.context, "workflow_id", None),
+            model_id=model_ref,
+        )
 
     @staticmethod
     def _log_structured_rejection(
@@ -308,11 +593,9 @@ class DurablePiRunService:
         payload = result.terminal_payload
         raise PiAgentRuntimeError(
             safe_error_code or _safe_error_code(payload),
-            _safe_error_message(payload),
+            _safe_error_message_for_code(safe_error_code or _safe_error_code(payload)),
             retryable=bool(payload.get("retryable")),
-            details=(
-                dict(payload.get("audit") or {}) if isinstance(payload.get("audit"), dict) else {}
-            ),
+            details=_safe_audit_metadata(payload),
         )
 
     @staticmethod
@@ -325,7 +608,9 @@ class DurablePiRunService:
         code: str,
         message: str,
         retryable: bool,
+        audit: Mapping[str, Any],
     ) -> None:
+        safe_audit = safe_agent_transport_audit(dict(audit))
         try:
             repository.finish(
                 run_id,
@@ -336,12 +621,10 @@ class DurablePiRunService:
                     "code": code,
                     "message": message,
                     "retryable": retryable,
+                    "audit": safe_audit,
                 },
                 safe_error_code=code,
-                audit_metadata={
-                    "durable_pi_stage": "runtime_failure",
-                    "safe_error_code": code,
-                },
+                audit_metadata=safe_audit,
             )
         except AgentRunRepositoryError:
             return
@@ -355,6 +638,17 @@ def _has_live_lease(record: AgentRunRecord) -> bool:
     )
 
 
+def _operation_stage_for_event(event_type: str) -> str:
+    return {
+        "run_started": "running",
+        "heartbeat": "waiting_provider_response",
+        "tool_call": "validating",
+        "tool_result": "validating",
+        "run_failed": "failed",
+        "run_cancelled": "cancelled",
+    }.get(event_type, "running")
+
+
 def _safe_scope_value(scope: Mapping[str, Any], key: str) -> str | int | None:
     value = scope.get(key)
     return value if isinstance(value, (str, int)) else None
@@ -362,14 +656,117 @@ def _safe_scope_value(scope: Mapping[str, Any], key: str) -> str | int | None:
 
 def _safe_audit_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
     audit = payload.get("audit")
-    return dict(audit) if isinstance(audit, dict) else {}
+    return safe_agent_transport_audit(audit)
 
 
 def _safe_error_code(payload: Mapping[str, Any]) -> str:
     value = payload.get("code")
-    return str(value) if isinstance(value, str) and value else "agent_runtime_unavailable"
+    if (
+        isinstance(value, str)
+        and 0 < len(value) <= 120
+        and value.replace("_", "").isalnum()
+        and value == value.lower()
+    ):
+        return value
+    return "agent_runtime_unavailable"
 
 
-def _safe_error_message(payload: Mapping[str, Any]) -> str:
-    value = payload.get("message")
-    return str(value) if isinstance(value, str) and value else "Agent runtime failed."
+def _safe_error_message_for_code(code: str) -> str:
+    return _SAFE_FAILURE_MESSAGES.get(code, "Agent runtime failed.")
+
+
+def _normalized_runtime_error(
+    request: AgentRunRequest,
+    error: PiAgentRuntimeError,
+) -> PiAgentRuntimeError:
+    code = _safe_error_code({"code": error.code})
+    retryable = bool(error.retryable)
+    audit = _canonical_failure_audit(
+        operation=request.operation,
+        code=code,
+        retryable=retryable,
+        candidate=error.details,
+    )
+    return PiAgentRuntimeError(
+        code,
+        _safe_error_message_for_code(code),
+        retryable=retryable,
+        details=audit,
+    )
+
+
+def _safe_terminal_failure_payload(
+    payload: Mapping[str, Any],
+    *,
+    operation: str,
+) -> dict[str, Any]:
+    code = _safe_error_code(payload)
+    retryable = bool(payload.get("retryable"))
+    audit = _canonical_failure_audit(
+        operation=operation,
+        code=code,
+        retryable=retryable,
+        candidate=payload.get("audit"),
+    )
+    return {
+        "code": code,
+        "message": _safe_error_message_for_code(code),
+        "retryable": retryable,
+        "audit": audit,
+    }
+
+
+def _canonical_failure_audit(
+    *,
+    operation: str,
+    code: str,
+    retryable: bool,
+    candidate: Any,
+) -> dict[str, Any]:
+    audit = safe_agent_transport_audit(candidate)
+    audit["attempt_stage"] = str(audit.get("attempt_stage") or "initial")
+    audit["failure_boundary"] = str(
+        audit.get("failure_boundary") or _default_failure_boundary(code)
+    )
+    if "model_submission_count" not in audit and code in _PRE_SUBMISSION_FAILURE_CODES:
+        audit["model_submission_count"] = 0
+    audit["operation"] = operation
+    if audit.get("model_submission_count") == 0:
+        audit["response_activity_observed"] = False
+    audit["retryable"] = retryable
+    audit["terminal_code"] = code
+    return audit
+
+
+def _default_failure_boundary(code: str) -> str:
+    if code in _PROVIDER_FAILURE_CODES:
+        return "provider"
+    if code in _STRUCTURED_FAILURE_CODES:
+        return "structured_validation"
+    if code in _PRE_SUBMISSION_FAILURE_CODES:
+        return "operation_preparation"
+    if code == "agent_publication_failed":
+        return "terminal_publication"
+    if code == "agent_protocol_mismatch":
+        return "runtime_protocol"
+    if code in {"agent_deadline_exceeded", "agent_run_cancelled"}:
+        return "runtime_control"
+    return "runtime_internal"
+
+
+def _publication_failure_audit(
+    operation: str,
+    candidate: Mapping[str, Any],
+) -> dict[str, Any]:
+    upstream = safe_agent_transport_audit(candidate)
+    audit: dict[str, Any] = {
+        "attempt_stage": "terminal_publication",
+        "failure_boundary": "terminal_publication",
+        "operation": operation,
+        "retryable": True,
+        "terminal_code": "agent_publication_failed",
+    }
+    for key in ("model_submission_count", "response_activity_observed"):
+        if key in upstream:
+            audit[key] = upstream[key]
+    return audit

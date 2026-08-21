@@ -22,6 +22,7 @@ from app.persistence.models import (
     AgentWorkingDocumentRow,
     AgentCanvasChatEntryRow,
     AgentCanvasConversationRow,
+    AgentCanvasGuidanceSessionRow,
 )
 from app.schemas.agent_working_documents import (
     AgentWorkingDocumentContentV2,
@@ -29,9 +30,12 @@ from app.schemas.agent_working_documents import (
     AgentWorkingDocumentPageV2,
     AgentWorkingDocumentV2,
     AnchorRegistryContentV2,
+    AnchorRegistryContentV3,
     StoryboardProductionPlanContentV2,
+    StoryboardProductionPlanContentV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
 class AgentWorkingDocumentRepository:
@@ -123,6 +127,7 @@ class AgentWorkingDocumentRepository:
             kind=kind,
             title=title,
             revision=1,
+            content_schema_version=_content_schema_version(typed_content),
             content_digest=digest,
             content=typed_content,
             created_by_agent_run_id=agent_run_id,
@@ -152,6 +157,99 @@ class AgentWorkingDocumentRepository:
             ) from error
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
+        return document
+
+    def create_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        guidance_session_id: str,
+        kind: AgentWorkingDocumentKindV2,
+        title: str,
+        content: AgentWorkingDocumentContentV2 | dict[str, Any],
+        agent_run_id: str,
+        idempotency_key: str,
+        request_digest: str,
+        now: datetime,
+        document_id: str,
+    ) -> AgentWorkingDocumentV2:
+        """Create one document and its replay receipt in an owning transaction."""
+
+        receipt = (
+            connection.execute(
+                select(AgentWorkingDocumentPatchReceiptRow).where(
+                    AgentWorkingDocumentPatchReceiptRow.document_id == document_id,
+                    AgentWorkingDocumentPatchReceiptRow.idempotency_key == idempotency_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if receipt is not None:
+            if str(receipt["request_digest"]) != request_digest:
+                raise _error(
+                    "agent_document_idempotency_conflict",
+                    "The patch key was already used for another request.",
+                )
+            return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+        existing = connection.execute(
+            select(AgentWorkingDocumentRow.document_id).where(
+                AgentWorkingDocumentRow.workflow_id == workflow_id,
+                AgentWorkingDocumentRow.guidance_session_id == guidance_session_id,
+                AgentWorkingDocumentRow.document_kind == kind,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise _error(
+                "agent_document_kind_conflict",
+                "A working document already exists for this session and kind.",
+            )
+
+        typed_content = _typed_content(kind, content)
+        document = AgentWorkingDocumentV2(
+            document_id=document_id,
+            workflow_id=workflow_id,
+            guidance_session_id=guidance_session_id,
+            kind=kind,
+            title=title,
+            revision=1,
+            content_schema_version=_content_schema_version(typed_content),
+            content_digest=self.digest_content(typed_content),
+            content=typed_content,
+            created_by_agent_run_id=agent_run_id,
+            updated_by_agent_run_id=agent_run_id,
+            created_at=now,
+            updated_at=now,
+        )
+        connection.execute(insert(AgentWorkingDocumentRow).values(**_document_values(document)))
+        connection.execute(
+            insert(AgentWorkingDocumentPatchReceiptRow).values(
+                receipt_id=f"adoc_patch_{uuid4().hex}",
+                document_id=document_id,
+                idempotency_key=idempotency_key,
+                operation="create_guided_document",
+                request_digest=request_digest,
+                before_revision=0,
+                after_revision=1,
+                result_digest=document.content_digest,
+                result_json=document.model_dump_json(),
+                created_at=_iso(now),
+            )
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(document, event_type="agent_document_created"),
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(
+                document,
+                event_type="agent_document_revision_created",
+                transition_key=f"agent-document-revision:{document_id}:1",
+            ),
+        )
+        _append_timeline_reference(connection, document)
         return document
 
     def get(self, document_id: str) -> AgentWorkingDocumentV2 | None:
@@ -257,7 +355,6 @@ class AgentWorkingDocumentRepository:
         now: datetime,
         request_digest: str | None = None,
     ) -> AgentWorkingDocumentV2:
-        timestamp = _iso(now)
         request_digest = request_digest or _request_digest(
             document_id=document_id,
             expected_revision=expected_revision,
@@ -269,102 +366,17 @@ class AgentWorkingDocumentRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    receipt = (
-                        connection.execute(
-                            select(AgentWorkingDocumentPatchReceiptRow).where(
-                                AgentWorkingDocumentPatchReceiptRow.document_id == document_id,
-                                AgentWorkingDocumentPatchReceiptRow.idempotency_key
-                                == idempotency_key,
-                            )
-                        )
-                        .mappings()
-                        .one_or_none()
-                    )
-                    if receipt is not None:
-                        if str(receipt["request_digest"]) != request_digest:
-                            raise _error(
-                                "agent_document_idempotency_conflict",
-                                "The patch key was already used for another request.",
-                            )
-                        replay = AgentWorkingDocumentV2.model_validate_json(
-                            str(receipt["result_json"])
-                        )
-                        connection.commit()
-                        return replay
-
-                    current_row = (
-                        connection.execute(
-                            select(AgentWorkingDocumentRow).where(
-                                AgentWorkingDocumentRow.document_id == document_id
-                            )
-                        )
-                        .mappings()
-                        .one_or_none()
-                    )
-                    if current_row is None:
-                        raise _error(
-                            "agent_document_not_found",
-                            "Agent working document was not found.",
-                        )
-                    current = _document(current_row)
-                    if current.revision != expected_revision:
-                        raise V2PersistenceError(
-                            "agent_document_revision_conflict",
-                            "Agent working document changed before this patch.",
-                            stage="agent_working_documents",
-                            details={"current_revision": current.revision},
-                        )
-                    typed_content = _typed_content(current.kind, content)
-                    next_document = current.model_copy(
-                        update={
-                            "revision": current.revision + 1,
-                            "content": typed_content,
-                            "content_digest": self.digest_content(typed_content),
-                            "updated_by_agent_run_id": agent_run_id,
-                            "updated_at": now,
-                        }
-                    )
-                    result = connection.execute(
-                        update(AgentWorkingDocumentRow)
-                        .where(
-                            AgentWorkingDocumentRow.document_id == document_id,
-                            AgentWorkingDocumentRow.revision == expected_revision,
-                        )
-                        .values(
-                            revision=next_document.revision,
-                            content_digest=next_document.content_digest,
-                            content_json=_content_json(next_document.content),
-                            updated_by_agent_run_id=agent_run_id,
-                            updated_at=timestamp,
-                        )
-                    )
-                    if result.rowcount != 1:
-                        raise _error(
-                            "agent_document_revision_conflict",
-                            "Agent working document changed before this patch.",
-                        )
-                    connection.execute(
-                        insert(AgentWorkingDocumentPatchReceiptRow).values(
-                            receipt_id=f"adoc_patch_{uuid4().hex}",
-                            document_id=document_id,
-                            idempotency_key=idempotency_key,
-                            operation=operation,
-                            request_digest=request_digest,
-                            result_json=next_document.model_dump_json(),
-                            created_at=timestamp,
-                        )
-                    )
-                    self._events.append_in_transaction(
+                    next_document = self.apply_content_in_transaction(
                         connection,
-                        _document_event(
-                            next_document,
-                            event_type="agent_document_updated",
-                            transition_key=(
-                                f"agent-document:{document_id}:{next_document.revision}"
-                            ),
-                        ),
+                        document_id=document_id,
+                        expected_revision=expected_revision,
+                        operation=operation,
+                        content=content,
+                        agent_run_id=agent_run_id,
+                        idempotency_key=idempotency_key,
+                        now=now,
+                        request_digest=request_digest,
                     )
-                    _append_timeline_reference(connection, next_document)
                     connection.commit()
                     return next_document
                 except BaseException:
@@ -375,15 +387,168 @@ class AgentWorkingDocumentRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
 
+    @staticmethod
+    def digest_mutation(
+        *,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        content: AgentWorkingDocumentContentV2 | dict[str, Any],
+        agent_run_id: str,
+    ) -> str:
+        """Return the canonical identity for a planned document mutation."""
+
+        return _request_digest(
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            content=content,
+            agent_run_id=agent_run_id,
+        )
+
+    def apply_content_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        content: AgentWorkingDocumentContentV2 | dict[str, Any],
+        agent_run_id: str,
+        idempotency_key: str,
+        now: datetime,
+        request_digest: str,
+    ) -> AgentWorkingDocumentV2:
+        """Apply one replay-safe CAS mutation inside an owning transaction."""
+
+        receipt = (
+            connection.execute(
+                select(AgentWorkingDocumentPatchReceiptRow).where(
+                    AgentWorkingDocumentPatchReceiptRow.document_id == document_id,
+                    AgentWorkingDocumentPatchReceiptRow.idempotency_key == idempotency_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if receipt is not None:
+            if str(receipt["request_digest"]) != request_digest:
+                raise _error(
+                    "agent_document_idempotency_conflict",
+                    "The patch key was already used for another request.",
+                )
+            return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+
+        current_row = (
+            connection.execute(
+                select(AgentWorkingDocumentRow).where(
+                    AgentWorkingDocumentRow.document_id == document_id
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if current_row is None:
+            raise _error("agent_document_not_found", "Agent working document was not found.")
+        current = _document(current_row)
+        if current.revision != expected_revision:
+            raise V2PersistenceError(
+                "agent_document_revision_conflict",
+                "Agent working document changed before this patch.",
+                stage="agent_working_documents",
+                details={"current_revision": current.revision},
+            )
+        typed_content = _typed_content(current.kind, content)
+        next_document = current.model_copy(
+            update={
+                "revision": current.revision + 1,
+                "content_schema_version": _content_schema_version(typed_content),
+                "content": typed_content,
+                "content_digest": self.digest_content(typed_content),
+                "updated_by_agent_run_id": agent_run_id,
+                "updated_at": now,
+            }
+        )
+        result = connection.execute(
+            update(AgentWorkingDocumentRow)
+            .where(
+                AgentWorkingDocumentRow.document_id == document_id,
+                AgentWorkingDocumentRow.revision == expected_revision,
+            )
+            .values(
+                revision=next_document.revision,
+                content_schema_version=next_document.content_schema_version,
+                content_digest=next_document.content_digest,
+                content_json=_content_json(next_document.content),
+                updated_by_agent_run_id=agent_run_id,
+                updated_at=_iso(now),
+            )
+        )
+        if result.rowcount != 1:
+            raise _error(
+                "agent_document_revision_conflict",
+                "Agent working document changed before this patch.",
+            )
+        connection.execute(
+            insert(AgentWorkingDocumentPatchReceiptRow).values(
+                receipt_id=f"adoc_patch_{uuid4().hex}",
+                document_id=document_id,
+                idempotency_key=idempotency_key,
+                operation=operation,
+                request_digest=request_digest,
+                before_revision=current.revision,
+                after_revision=next_document.revision,
+                result_digest=next_document.content_digest,
+                result_json=next_document.model_dump_json(),
+                created_at=_iso(now),
+            )
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(
+                next_document,
+                event_type="agent_document_updated",
+                transition_key=f"agent-document:{document_id}:{next_document.revision}",
+            ),
+        )
+        self._events.append_in_transaction(
+            connection,
+            _document_event(
+                next_document,
+                event_type="agent_document_revision_created",
+                transition_key=(f"agent-document-revision:{document_id}:{next_document.revision}"),
+            ),
+        )
+        if operation == "upsert_anchor":
+            self._events.append_in_transaction(
+                connection,
+                _document_event(
+                    next_document,
+                    event_type="anchor_registered",
+                    transition_key=f"anchor-registered:{document_id}:{next_document.revision}",
+                ),
+            )
+        _append_timeline_reference(connection, next_document)
+        return next_document
+
 
 def _typed_content(
     kind: AgentWorkingDocumentKindV2,
     content: AgentWorkingDocumentContentV2 | dict[str, Any],
 ) -> AgentWorkingDocumentContentV2:
+    if isinstance(content, (AnchorRegistryContentV3, StoryboardProductionPlanContentV3)):
+        return content
+    is_v3 = isinstance(content, dict) and content.get("schema_version") == "3"
     model = (
-        AnchorRegistryContentV2 if kind == "anchor_registry" else StoryboardProductionPlanContentV2
+        (AnchorRegistryContentV3 if is_v3 else AnchorRegistryContentV2)
+        if kind == "anchor_registry"
+        else (StoryboardProductionPlanContentV3 if is_v3 else StoryboardProductionPlanContentV2)
     )
     return model.model_validate(_content_payload(content))
+
+
+def _content_schema_version(content: AgentWorkingDocumentContentV2) -> int:
+    return 3 if getattr(content, "schema_version", None) == "3" else 2
 
 
 def _content_payload(content: AgentWorkingDocumentContentV2 | dict[str, Any]) -> Any:
@@ -409,6 +574,7 @@ def _document_values(document: AgentWorkingDocumentV2) -> dict[str, object]:
         "document_kind": document.kind,
         "title": document.title,
         "revision": document.revision,
+        "content_schema_version": document.content_schema_version,
         "content_digest": document.content_digest,
         "content_json": _content_json(document.content),
         "created_by_agent_run_id": document.created_by_agent_run_id,
@@ -427,6 +593,7 @@ def _document(row: RowMapping) -> AgentWorkingDocumentV2:
             "kind": row["document_kind"],
             "title": row["title"],
             "revision": row["revision"],
+            "content_schema_version": row["content_schema_version"],
             "content_digest": row["content_digest"],
             "content": json.loads(str(row["content_json"])),
             "created_by_agent_run_id": row["created_by_agent_run_id"],
@@ -481,14 +648,25 @@ def _append_timeline_reference(
         )
         + 1
     )
-    metadata = {
-        "type": "agent_document_reference",
-        "document_id": document.document_id,
-        "document_kind": document.kind,
-        "revision": document.revision,
-        "content_digest": document.content_digest,
-        "title": document.title,
-    }
+    response_locale = connection.execute(
+        select(AgentCanvasGuidanceSessionRow.response_locale).where(
+            AgentCanvasGuidanceSessionRow.session_id == document.guidance_session_id
+        )
+    ).scalar_one_or_none()
+    metadata = build_presentation_metadata(
+        message_key=None,
+        message_args={},
+        response_locale=str(response_locale or "und"),
+        presentation_key=f"document:{document.document_id}",
+        base={
+            "type": "agent_document_reference",
+            "document_id": document.document_id,
+            "document_kind": document.kind,
+            "revision": document.revision,
+            "content_digest": document.content_digest,
+            "title": document.title,
+        },
+    )
     connection.execute(
         insert(AgentCanvasChatEntryRow).values(
             entry_id=f"entry_{uuid4().hex}",

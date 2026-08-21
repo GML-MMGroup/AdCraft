@@ -1,4 +1,3 @@
-import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -13,8 +12,9 @@ from app.api.dependencies import (
     get_workflow_node_execution_service,
     get_workflow_quality_review_service,
     get_workflow_working_version_service,
+    get_v1_workflow_authority_boundary,
+    require_v1_workflow_authority,
 )
-from app.core.config import Settings, get_settings
 from app.schemas.final_composition import (
     FinalCompositionRenderRequest,
     FinalCompositionRenderResponse,
@@ -95,9 +95,10 @@ from app.services.workflow_working_versions import (
 from app.services.workflow_run import WorkflowCanvasExecutionService
 from app.services.workflow_run_response_builder import build_workflow_run_response
 from app.services.canvas_runtime_events import CanvasRuntimeEventService
-from app.services.workflow_v2 import workflow_v2_path
+from app.services.v1_workflow_authority import V1WorkflowAuthorityBoundary
 
 router = APIRouter(tags=["workflow-nodes"])
+workflow_router = APIRouter(dependencies=[Depends(require_v1_workflow_authority)])
 
 
 def _node_run_output_status(result: WorkflowNodeRunResponse) -> str | None:
@@ -112,19 +113,6 @@ def _node_run_waiting_reason(result: WorkflowNodeRunResponse) -> str | None:
     if output_status not in (None, ""):
         return str(output_status)
     return "node_run_waiting"
-
-
-def _is_v2_workflow_id(settings: Settings, workflow_id: str | None) -> bool:
-    if not workflow_id:
-        return False
-    path = workflow_v2_path(settings.media_data_dir, workflow_id)
-    if not path.exists():
-        return False
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return False
-    return payload.get("workflow_schema_version") == 2
 
 
 def _output_dict(result: WorkflowNodeRunResponse, key: str) -> dict[str, Any]:
@@ -204,16 +192,12 @@ def run_workflow_node(
         CanvasRuntimeEventService,
         Depends(get_canvas_runtime_event_service),
     ],
-    settings: Annotated[Settings, Depends(get_settings)],
+    authority: Annotated[
+        V1WorkflowAuthorityBoundary,
+        Depends(get_v1_workflow_authority_boundary),
+    ],
 ) -> WorkflowNodeRunResponse:
-    if _is_v2_workflow_id(settings, request.workflow_id):
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "unsupported_workflow_schema_version",
-                "message": "Use /api/v2 for workflow_schema_version=2 workflows.",
-            },
-        )
+    require_v1_workflow_authority(request.workflow_id, authority)
     event_workflow_id = request.workflow_id
     event_node_id = request.node_id or request.node_type
     event_node_type = request.node_type or request.node_id
@@ -302,7 +286,7 @@ def run_workflow_node(
         ) from exc
 
 
-@router.post("/workflows/{workflow_id}/run", response_model=WorkflowRunResponse)
+@workflow_router.post("/workflows/{workflow_id}/run", response_model=WorkflowRunResponse)
 def run_workflow_canvas(
     workflow_id: str,
     request: WorkflowRunRequest,
@@ -347,7 +331,7 @@ def run_workflow_canvas(
         ) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/final-composition/timeline",
     response_model=FinalCompositionTimelineResponse,
 )
@@ -364,7 +348,7 @@ def get_final_composition_timeline(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.put(
+@workflow_router.put(
     "/workflows/{workflow_id}/final-composition/timeline",
     response_model=FinalCompositionTimelineResponse,
 )
@@ -382,7 +366,7 @@ def save_final_composition_timeline(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/final-composition/render",
     response_model=FinalCompositionRenderResponse,
 )
@@ -400,7 +384,7 @@ def render_final_composition_timeline(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/executions/{execution_id}",
     response_model=WorkflowExecutionStateResponse,
 )
@@ -428,7 +412,7 @@ def get_workflow_execution(
     )
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/executions/{execution_id}/events",
     response_model=WorkflowExecutionEventsResponse,
 )
@@ -459,7 +443,7 @@ def list_workflow_execution_events(
     )
 
 
-@router.get("/workflows/{workflow_id}/nodes", response_model=WorkflowNodeListResponse)
+@workflow_router.get("/workflows/{workflow_id}/nodes", response_model=WorkflowNodeListResponse)
 def list_workflow_node_runs(
     workflow_id: str,
     service: Annotated[WorkflowNodeExecutionService, Depends(get_workflow_node_execution_service)],
@@ -467,7 +451,7 @@ def list_workflow_node_runs(
     return service.list_nodes(workflow_id)
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/revisions",
     response_model=WorkflowRevisionState,
 )
@@ -488,7 +472,7 @@ def create_workflow_node_revision(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/nodes/{node_id}/revisions",
     response_model=WorkflowRevisionListResponse,
 )
@@ -503,7 +487,7 @@ def list_workflow_node_revisions(
     return service.list_revisions(workflow_id, node_id)
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/nodes/{node_id}/revisions/{revision_id}",
     response_model=WorkflowRevisionState,
 )
@@ -522,7 +506,7 @@ def get_workflow_node_revision(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/revisions/{revision_id}/accept",
     response_model=WorkflowRevisionState,
 )
@@ -544,7 +528,7 @@ def accept_workflow_node_revision(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/revisions/{revision_id}/reject",
     response_model=WorkflowRevisionState,
 )
@@ -566,7 +550,7 @@ def reject_workflow_node_revision(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/nodes/{node_id}/assets/history",
     response_model=WorkflowAssetHistoryResponse,
 )
@@ -591,7 +575,7 @@ def get_workflow_node_asset_history(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/quality-review",
     response_model=WorkflowQualityReviewResponse,
 )
@@ -611,7 +595,7 @@ def review_workflow_node_quality(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/nodes/{node_id}/resolved-inputs",
     response_model=ResolvedNodeInputsResponse,
 )
@@ -629,7 +613,7 @@ def resolve_workflow_node_inputs(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.patch(
+@workflow_router.patch(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/prompt",
     response_model=WorkflowItemPromptUpdateResponse,
 )
@@ -654,7 +638,7 @@ def update_workflow_node_item_prompt(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items",
     response_model=WorkflowItemMutationResponse,
 )
@@ -673,7 +657,7 @@ def add_workflow_node_item(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.patch(
+@workflow_router.patch(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/assets/{asset_id}/prompt",
     response_model=WorkflowAssetMutationResponse,
 )
@@ -694,7 +678,7 @@ def update_workflow_node_item_asset_prompt(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/assets/{asset_id}/regenerate",
     response_model=WorkflowAssetMutationResponse,
 )
@@ -715,7 +699,7 @@ def regenerate_workflow_node_item_asset(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/assets/{asset_id}/use-current-version",
     response_model=WorkflowAssetMutationResponse,
 )
@@ -736,7 +720,7 @@ def use_workflow_node_item_asset_current_version(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get(
+@workflow_router.get(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/assets/{asset_id}/history",
     response_model=WorkflowAssetSlotHistoryResponse,
 )
@@ -756,7 +740,7 @@ def get_workflow_node_item_asset_history(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/regenerate",
     response_model=WorkflowItemMutationResponse,
 )
@@ -776,7 +760,7 @@ def regenerate_workflow_node_item(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.delete(
+@workflow_router.delete(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}",
     response_model=WorkflowItemMutationResponse,
 )
@@ -795,7 +779,7 @@ def remove_workflow_node_item(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items/{item_id}/use-current-version",
     response_model=WorkflowItemMutationResponse,
 )
@@ -815,7 +799,7 @@ def use_workflow_node_item_current_version(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/nodes/{node_id}/items/batch-use-current-versions",
     response_model=WorkflowBatchUseCurrentVersionsResponse,
 )
@@ -834,7 +818,7 @@ def batch_use_workflow_node_item_current_versions(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/storyboard/shots/{shot_id}/videos/generate",
     response_model=WorkflowItemMutationResponse,
 )
@@ -853,7 +837,7 @@ def generate_storyboard_shot_video(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/storyboard/videos/generate-missing-stale",
     response_model=WorkflowShotVideoBatchResponse,
 )
@@ -870,7 +854,7 @@ def generate_missing_stale_storyboard_shot_videos(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/storyboard/videos/regenerate-all-selected",
     response_model=WorkflowShotVideoBatchResponse,
 )
@@ -887,7 +871,7 @@ def regenerate_all_selected_storyboard_shot_videos(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post(
+@workflow_router.post(
     "/workflows/{workflow_id}/storyboard/videos/use-current-for-composition",
     response_model=WorkflowBatchUseCurrentVersionsResponse,
 )
@@ -905,7 +889,9 @@ def use_storyboard_shot_videos_for_composition(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.get("/workflows/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeRunResponse)
+@workflow_router.get(
+    "/workflows/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeRunResponse
+)
 def get_latest_workflow_node_run(
     workflow_id: str,
     node_id: str,
@@ -915,3 +901,6 @@ def get_latest_workflow_node_run(
         return service.get_latest_node(workflow_id, node_id)
     except WorkflowNodeInputError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+router.include_router(workflow_router)

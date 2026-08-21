@@ -303,6 +303,28 @@ class AgentCanvasAutomaticRunRepository:
             now=now,
         )
 
+    def defer(
+        self,
+        command_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        error: CanvasNodeErrorV2,
+        retry_at: datetime,
+        now: datetime,
+    ) -> AutomaticRunCommandV2:
+        return self._finish_claim(
+            command_id,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            state="pending",
+            execution_id=None,
+            error=error,
+            retry_at=retry_at,
+            now=now,
+            increment_attempt=False,
+        )
+
     def _claimed_row(
         self,
         command_id: str,
@@ -344,6 +366,7 @@ class AgentCanvasAutomaticRunRepository:
         error: CanvasNodeErrorV2 | None,
         retry_at: datetime | None,
         now: datetime,
+        increment_attempt: bool = True,
     ) -> AutomaticRunCommandV2:
         timestamp = _iso(now)
         try:
@@ -369,7 +392,9 @@ class AgentCanvasAutomaticRunRepository:
                             "Automatic Run command claim is stale.",
                             stage="agent_canvas_auto_run",
                         )
-                    attempt_count = int(row["attempt_count"]) + (error is not None)
+                    attempt_count = int(row["attempt_count"]) + int(
+                        error is not None and increment_attempt
+                    )
                     values = {
                         "state": state,
                         "execution_id": execution_id,

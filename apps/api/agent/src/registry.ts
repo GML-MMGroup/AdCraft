@@ -32,6 +32,7 @@ export interface OperationDescriptor {
   readonly agent_name: "video_agent";
   readonly operation: string;
   readonly capability_id: CapabilityId | null;
+  readonly context_contract_name: string;
   readonly result_contract_name: string;
   readonly required_skill: string | null;
   readonly style_projection_role: string | null;
@@ -42,6 +43,7 @@ export interface OperationDescriptor {
 }
 
 interface OperationMetadata {
+  readonly context_contract_name: string;
   readonly result_contract_name: string;
   readonly capability_id?: CapabilityId;
   readonly required_skill?: string;
@@ -64,17 +66,25 @@ const capabilityDefinitions = [
 >;
 
 const metadata = new Map<string, OperationMetadata>([
-  ["decide_turn_intent", { result_contract_name: "TurnIntentDecisionV1" }],
-  ["decide_next_action", { result_contract_name: "NextActionCommandV1" }],
-  ["command_replan", { result_contract_name: "AgentCommandPlanDraftV2" }],
-  ["workflow_conversation", { result_contract_name: "WorkflowConversationReply" }],
-  ["conversation_summary", { result_contract_name: "ConversationSummaryResult" }],
+  ["decide_turn_intent", { context_contract_name: "TurnIntentContextV2", result_contract_name: "CompactTurnIntentDecisionV3" }],
+  ["decide_next_action", { context_contract_name: "NextActionContextV1", result_contract_name: "NextActionCommandV1" }],
+  ["command_replan", { context_contract_name: "AgentCommandReplanContextV2", result_contract_name: "AgentCommandPlanDraftV2" }],
+  ["workflow_conversation", { context_contract_name: "WorkflowConversationAgentContext", result_contract_name: "WorkflowConversationReply" }],
+  ["conversation_summary", { context_contract_name: "ConversationSummaryAgentContext", result_contract_name: "ConversationSummaryResult" }],
+  ["author_decision_bundle", { context_contract_name: "NextActionContextV1", result_contract_name: "DecisionBundleDraftV1" }],
+  ["author_role_brief", {
+    context_contract_name: "RolePromptPreparationContextV2",
+    result_contract_name: "RoleCreativeBriefV2",
+    required_skill: "video_agent_role_prompt_authoring",
+    display_name: "Role Prompt Author",
+  }],
 ]);
 
 for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefinitions) {
   for (const prefix of ["propose", "revise"] as const) {
     metadata.set(`${prefix}_${stem}_options`, {
       capability_id: capabilityId,
+      context_contract_name: "CapabilityInvocationContextV2",
       result_contract_name: contract,
       required_skill: skill,
       style_projection_role: stem,
@@ -85,6 +95,7 @@ for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefin
 
 addMetadata(["free_image", "free_video", "free_audio"], {
   capability_id: "quick_media",
+  context_contract_name: "QuickMediaAgentContext",
   result_contract_name: "V2QuickMediaPromptPlan",
   required_skill: "video_agent_quick_media",
   style_projection_role: "quick_media",
@@ -92,37 +103,47 @@ addMetadata(["free_image", "free_video", "free_audio"], {
 });
 metadata.set("materialize_quick_media", {
   capability_id: "quick_media",
+  context_contract_name: "CapabilityMaterializationContextV1",
   result_contract_name: "QuickMediaMaterializationResultV1",
   required_skill: "video_agent_quick_media",
   style_projection_role: "quick_media",
   display_name: "Quick Media",
 });
-metadata.set("execute_canvas_text", { result_contract_name: "AgentCanvasTextOutput" });
+metadata.set("plan_storyboard_sequence_outline", creativeMetadata(
+  "storyboard_design", "StoryboardSequenceOutlineDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist", "CapabilityMaterializationContextV1",
+));
+metadata.set("materialize_storyboard_segment", creativeMetadata(
+  "storyboard_design", "StoryboardSegmentMaterializationDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist", "StoryboardSegmentAuthoringContextV2",
+));
+metadata.set("author_guided_script_checkpoint", creativeMetadata(
+  "script_authoring", "ScriptMaterializationResultV1", "video_agent_script_authoring", "script", "Script Writer", "CapabilityInvocationContextV2",
+));
+metadata.set("execute_canvas_text", { context_contract_name: "AgentRunContext", result_contract_name: "AgentCanvasTextOutput" });
 metadata.set("execute_canvas_script", creativeMetadata(
   "script_authoring", "AgentCanvasScriptOutput", "video_agent_script_authoring", "script", "Script Writer",
 ));
 metadata.set("compile_video_parameters", creativeMetadata(
-  "video_direction", "VideoParameterIntentV2", "video_agent_video_direction", "video", "Video Director",
+  "video_direction", "VideoParameterIntentV3", "video_agent_video_direction", "video", "Video Director", "VideoParameterIntentContextV3",
 ));
-metadata.set("workflow_creation", { result_contract_name: "FrontDeskIntentOutput" });
-metadata.set("intent_contract_planner", { result_contract_name: "V2IntentPlan" });
+metadata.set("workflow_creation", { context_contract_name: "FrontDeskIntentAgentContext", result_contract_name: "FrontDeskIntentOutput" });
+metadata.set("intent_contract_planner", { context_contract_name: "IntentContractAgentContext", result_contract_name: "V2IntentPlan" });
 metadata.set("script_writer", creativeMetadata(
-  "script_authoring", "V2ScriptPlanV2", "video_agent_script_authoring", "script", "Script Writer",
+  "script_authoring", "V2ScriptPlanV2", "video_agent_script_authoring", "script", "Script Writer", "ScriptWriterAgentContext",
 ));
 metadata.set("script_edit_normalization", creativeMetadata(
   "script_authoring", "V2EditableScriptDocument", "video_agent_script_authoring", "script", "Script Writer",
 ));
 metadata.set("product_expert_brief", creativeMetadata(
-  "product_design", "V2ProductExpertPlan", "video_agent_product_design", "product", "Product Designer",
+  "product_design", "V2ProductExpertPlan", "video_agent_product_design", "product", "Product Designer", "ProductExpertAgentContext",
 ));
 metadata.set("character_expert_brief", creativeMetadata(
-  "character_design", "V2CharacterExpertPlan", "video_agent_character_design", "character", "Character Designer",
+  "character_design", "V2CharacterExpertPlan", "video_agent_character_design", "character", "Character Designer", "CharacterExpertAgentContext",
 ));
 metadata.set("scene_expert_brief", creativeMetadata(
-  "scene_design", "V2SceneExpertPlan", "video_agent_scene_design", "scene", "Scene Designer",
+  "scene_design", "V2SceneExpertPlan", "video_agent_scene_design", "scene", "Scene Designer", "SceneExpertAgentContext",
 ));
 metadata.set("bgm_expert_brief", creativeMetadata(
-  "bgm_direction", "V2BgmExpertPlan", "video_agent_bgm_direction", "bgm", "BGM Director",
+  "bgm_direction", "V2BgmExpertPlan", "video_agent_bgm_direction", "bgm", "BGM Director", "BgmExpertAgentContext",
 ));
 metadata.set("product_prompt", creativeMetadata(
   "product_design", "V2ProductPromptPlan", "video_agent_product_design", "product", "Product Designer",
@@ -174,6 +195,7 @@ const descriptors: ReadonlyArray<OperationDescriptor> = Object.freeze(
       agent_name: "video_agent",
       operation,
       capability_id: item.capability_id ?? null,
+      context_contract_name: item.context_contract_name,
       result_contract_name: item.result_contract_name,
       required_skill: item.required_skill ?? null,
       style_projection_role: item.style_projection_role ?? null,
@@ -235,9 +257,11 @@ function creativeMetadata(
   requiredSkill: string,
   styleProjectionRole: string,
   displayName: string,
+  contextContractName = "AgentRunContext",
 ): OperationMetadata {
   return {
     capability_id: capabilityId,
+    context_contract_name: contextContractName,
     result_contract_name: resultContractName,
     required_skill: requiredSkill,
     style_projection_role: styleProjectionRole,

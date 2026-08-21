@@ -57,6 +57,10 @@ from app.services.v2_runtime_prompt_governance import (
     compile_v2_provider_prompt,
 )
 from app.tools.media_provider_factory import build_media_provider
+from app.tools.mock_media_fixtures import (
+    MockMediaFixtureError,
+    deterministic_mock_media_bytes,
+)
 from app.tools.media_provider_protocol import (
     DEFAULT_VIDEO_RATIO,
     SEEDANCE_SINGLE_TASK_DURATIONS_SECONDS,
@@ -933,13 +937,29 @@ class V2ProviderExecutor:
                 error_message=missing_message,
             )
         if self._settings.media_mode.strip().lower() != "real":
-            return self._placeholder_result(
+            result = self._placeholder_result(
                 media_type="video",
                 slot_type="agent_canvas_video",
                 provider="dev_placeholder_video",
                 provider_payload=provider_payload,
                 reference_asset_ids=reference_asset_ids,
             )
+            try:
+                content = deterministic_mock_media_bytes(
+                    "video",
+                    data_dir=self._data_dir,
+                    ffmpeg_path=self._settings.ffmpeg_path,
+                )
+            except MockMediaFixtureError:
+                return result.model_copy(
+                    update={
+                        "status": "failed",
+                        "asset_bytes": None,
+                        "error_code": "mock_media_fixture_unavailable",
+                        "error_message": "Deterministic Mock media could not be created.",
+                    }
+                )
+            return result.model_copy(update={"asset_bytes": content})
         try:
             provider = self._media_provider()
             submit_manifest = getattr(provider, "submit_seedance_manifest_task", None)

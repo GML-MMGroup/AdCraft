@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.api.dependencies import (
     get_canvas_runtime_event_service,
     get_canvas_runtime_service,
+    require_v1_workflow_authority,
 )
 from app.schemas.canvas_runtime import (
     CanvasRuntimeEventsResponse,
@@ -18,7 +19,11 @@ from app.services.canvas_runtime_events import (
 )
 
 
-router = APIRouter(prefix="/workflows/{workflow_id}/canvas", tags=["canvas-runtime"])
+router = APIRouter(
+    prefix="/workflows/{workflow_id}/canvas",
+    tags=["canvas-runtime"],
+    dependencies=[Depends(require_v1_workflow_authority)],
+)
 
 
 @router.get("/runtime", response_model=CanvasRuntimeSnapshotResponse)

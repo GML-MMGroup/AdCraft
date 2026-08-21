@@ -15,6 +15,8 @@ from pydantic import (
 )
 
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
+from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_world_setting import WorldSettingResolvedInputV2
 
@@ -66,12 +68,6 @@ class _AgentCanvasModel(BaseModel):
 class CanvasPositionV2(_AgentCanvasModel):
     x: float
     y: float
-
-
-class CanvasNodeErrorV2(_AgentCanvasModel):
-    code: str = Field(min_length=1)
-    message: str = Field(min_length=1)
-    retryable: bool
 
 
 class CanvasModelSummaryV2(_AgentCanvasModel):
@@ -233,6 +229,9 @@ class CanvasNodeV2(_AgentCanvasModel):
     position: CanvasPositionV2
     revision: int = Field(ge=1)
     error: CanvasNodeErrorV2 | None = None
+    prompt_preparation: NodePromptPreparationV1 = Field(
+        default_factory=NodePromptPreparationV1.legacy_ready
+    )
     variation_draft: CanvasVariationDraftV2 | None = None
     created_at: datetime
     updated_at: datetime
@@ -674,7 +673,23 @@ class AgentCanvasPromptContextSnapshotV2(_AgentCanvasModel):
     skill_refs: tuple[dict[str, str], ...] = ()
     memory_digest: str | None = None
     upstream_summary_digest: str | None = None
+    requirement_revision_id: str | None = None
+    requirement_revision_no: int | None = Field(default=None, ge=1)
+    requirement_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    requirement_projection_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     byte_estimate: int = Field(default=0, ge=0)
     token_estimate: int = Field(default=0, ge=0)
     content_digest: str | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_requirement_lineage(self) -> "AgentCanvasPromptContextSnapshotV2":
+        lineage = (
+            self.requirement_revision_id,
+            self.requirement_revision_no,
+            self.requirement_digest,
+            self.requirement_projection_digest,
+        )
+        if any(item is not None for item in lineage) and any(item is None for item in lineage):
+            raise ValueError("Prompt context Requirement lineage must be complete.")
+        return self
