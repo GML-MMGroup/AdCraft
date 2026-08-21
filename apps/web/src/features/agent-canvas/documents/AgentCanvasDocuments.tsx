@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { CloseIcon, DocumentIcon } from "../../../icons.tsx";
@@ -248,6 +249,7 @@ export function AgentCanvasDocumentBrowser({
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const eventRevision = useMemo(() => documentEventRevision(documentEvents), [documentEvents]);
 
   const load = useCallback(async (cursor?: string, append = false) => {
@@ -272,9 +274,103 @@ export function AgentCanvasDocumentBrowser({
     if (open) void load(undefined, false);
   }, [eventRevision, load, open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const trigger = triggerRef.current;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+      trigger?.focus();
+    };
+  }, [open]);
+
+  const dialog = open ? (
+    <div className="agent-document-browser__overlay">
+      <button
+        type="button"
+        className="agent-document-browser__backdrop"
+        aria-label="Close Agent Documents"
+        tabIndex={-1}
+        onClick={() => setOpen(false)}
+      />
+      <section
+        className="agent-document-browser__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Agent Documents"
+      >
+        <header>
+          <div>
+            <strong>Agent Documents</strong>
+            <small>Read-only production records</small>
+          </div>
+          <button
+            type="button"
+            aria-label="Close Agent Documents"
+            autoFocus
+            onClick={() => setOpen(false)}
+          >
+            <CloseIcon />
+          </button>
+        </header>
+        <div className="agent-document-browser__filters" role="group" aria-label="Document type">
+          <button type="button" className={!kind ? "is-selected" : ""} onClick={() => setKind(undefined)}>All</button>
+          <button
+            type="button"
+            className={kind === "anchor_registry" ? "is-selected" : ""}
+            aria-label="Anchor registries"
+            onClick={() => setKind("anchor_registry")}
+          >
+            Anchors
+          </button>
+          <button
+            type="button"
+            className={kind === "storyboard_production_plan" ? "is-selected" : ""}
+            aria-label="Storyboard plans"
+            onClick={() => setKind("storyboard_production_plan")}
+          >
+            Storyboards
+          </button>
+        </div>
+        <div className="agent-document-browser__content">
+          {items.map((document) => (
+            <AgentCanvasDocumentContent
+              key={document.document_id}
+              document={document}
+              onFocusNode={onFocusNode}
+            />
+          ))}
+          {!loading && !items.length && !error ? (
+            <p className="agent-document-browser__empty">No Agent Documents yet.</p>
+          ) : null}
+          {loading ? <p className="agent-document-browser__loading">Loading documents...</p> : null}
+          {error ? <button type="button" onClick={() => void load()}>{error} Retry</button> : null}
+        </div>
+        {nextCursor ? (
+          <button
+            type="button"
+            className="agent-document-browser__more"
+            aria-label="Load more documents"
+            disabled={loading}
+            onClick={() => void load(nextCursor, true)}
+          >
+            Load more
+          </button>
+        ) : null}
+      </section>
+    </div>
+  ) : null;
+
   return (
     <div className="agent-document-browser">
       <button
+        ref={triggerRef}
         type="button"
         className={open ? "is-active" : ""}
         aria-label="Open Agent Documents"
@@ -283,63 +379,7 @@ export function AgentCanvasDocumentBrowser({
       >
         <DocumentIcon />
       </button>
-      {open ? (
-        <section className="agent-document-browser__panel" aria-label="Agent Documents">
-          <header>
-            <div>
-              <strong>Agent Documents</strong>
-              <small>Read-only production records</small>
-            </div>
-            <button type="button" aria-label="Close Agent Documents" onClick={() => setOpen(false)}>
-              <CloseIcon />
-            </button>
-          </header>
-          <div className="agent-document-browser__filters" role="group" aria-label="Document type">
-            <button type="button" className={!kind ? "is-selected" : ""} onClick={() => setKind(undefined)}>All</button>
-            <button
-              type="button"
-              className={kind === "anchor_registry" ? "is-selected" : ""}
-              aria-label="Anchor registries"
-              onClick={() => setKind("anchor_registry")}
-            >
-              Anchors
-            </button>
-            <button
-              type="button"
-              className={kind === "storyboard_production_plan" ? "is-selected" : ""}
-              aria-label="Storyboard plans"
-              onClick={() => setKind("storyboard_production_plan")}
-            >
-              Storyboards
-            </button>
-          </div>
-          <div className="agent-document-browser__content">
-            {items.map((document) => (
-              <AgentCanvasDocumentContent
-                key={document.document_id}
-                document={document}
-                onFocusNode={onFocusNode}
-              />
-            ))}
-            {!loading && !items.length && !error ? (
-              <p className="agent-document-browser__empty">No Agent Documents yet.</p>
-            ) : null}
-            {loading ? <p className="agent-document-browser__loading">Loading documents...</p> : null}
-            {error ? <button type="button" onClick={() => void load()}>{error} Retry</button> : null}
-          </div>
-          {nextCursor ? (
-            <button
-              type="button"
-              className="agent-document-browser__more"
-              aria-label="Load more documents"
-              disabled={loading}
-              onClick={() => void load(nextCursor, true)}
-            >
-              Load more
-            </button>
-          ) : null}
-        </section>
-      ) : null}
+      {dialog && typeof document !== "undefined" ? createPortal(dialog, document.body) : null}
     </div>
   );
 }
