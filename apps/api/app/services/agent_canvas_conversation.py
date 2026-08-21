@@ -98,6 +98,7 @@ from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
 from app.services.agent_run_context_registry import (
+    AGENT_RUN_CONTEXT_REGISTRY,
     validate_video_agent_context_parity,
     validate_video_agent_operation_context,
 )
@@ -573,7 +574,11 @@ class PiVideoAgentGateway:
         repair_error: str | None,
     ) -> BaseModel:
         contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
-        invocation = CapabilityMaterializationContextV1.model_validate(context)
+        operation_definition = self._operation_registry.resolve(operation)
+        context_model = AGENT_RUN_CONTEXT_REGISTRY.resolve(
+            operation_definition.context_contract_name
+        )
+        invocation = context_model.model_validate({**context, "repair_error": repair_error})
         completed = self._run_structured(
             operation=operation,
             context=invocation,

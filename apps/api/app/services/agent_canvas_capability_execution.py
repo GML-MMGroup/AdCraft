@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_run_context_registry import AgentRunContextRegistryError
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
@@ -54,6 +55,9 @@ def capability_context_from_envelope(
 ) -> Mapping[str, object]:
     """Project only immutable, capability-local context for the Pi boundary."""
 
+    capability_context = dict(envelope.capability_context)
+    if envelope.publication_kind == "internal_document":
+        capability_context["journey_stage"] = envelope.journey_stage
     return {
         "context_kind": "capability_operation",
         "workflow_id": envelope.workflow_id,
@@ -64,7 +68,7 @@ def capability_context_from_envelope(
         "context_snapshot_digest": envelope.context_snapshot_digest,
         "requirement_projection": envelope.requirement_projection.model_dump(mode="json"),
         "approved_reference_ids": envelope.reference_allowlist,
-        "capability_context": envelope.capability_context or {"objective": envelope.objective},
+        "capability_context": capability_context or {"objective": envelope.objective},
         "style_projection": envelope.style_projection,
         "response_locale": envelope.response_locale,
     }
@@ -131,6 +135,13 @@ class CapabilityExecutionService:
             raw = self._invoke(envelope, definition.operation, context, repair_error=None)
         except V2PersistenceError:
             raise
+        except AgentRunContextRegistryError as error:
+            raise V2PersistenceError(
+                error.code,
+                error.message,
+                stage="capability_execution",
+                details=error.details,
+            ) from error
         except PiAgentRuntimeError as error:
             raise V2PersistenceError(
                 error.code,
