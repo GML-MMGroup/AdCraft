@@ -506,20 +506,27 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByText("Failed")).toBeTruthy();
   });
 
-  it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
-    const node = makeNode("image", "draft");
-    render(
-      <AgentCanvasNodeCard
-        node={node}
-        runtime={makeRuntime("working")}
-        onRun={vi.fn()}
-      />,
-    );
+  it.each<"image" | "video">(["image", "video"])(
+    "uses the diffusion loader while a %s node is generating",
+    (nodeType) => {
+      const node = makeNode(nodeType, "draft");
+      const { container } = render(
+        <AgentCanvasNodeCard
+          node={node}
+          runtime={makeRuntime("working")}
+          onRun={vi.fn()}
+        />,
+      );
 
-    expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.getByLabelText("image node is working").classList.contains("agent-canvas-node__working")).toBe(true);
-    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
-  });
+      expect(screen.getByText("Working")).toBeTruthy();
+      const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
+      expect(loader.getAttribute("data-variant")).toBe("diffusion");
+      expect((loader as HTMLElement).style.getPropertyValue("--iml-size")).toBe("192px");
+      expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
+      expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
+      expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
+    },
+  );
 
   it("contains complete image outputs while keeping video frames full-bleed", () => {
     const imageView = render(
