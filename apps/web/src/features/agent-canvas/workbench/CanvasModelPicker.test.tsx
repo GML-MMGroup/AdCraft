@@ -41,7 +41,7 @@ afterEach(() => {
 describe("CanvasModelPicker", () => {
   it("renders the menu in document.body and places it below the trigger", () => {
     renderPicker();
-    const trigger = screen.getByRole("button", { name: "Choose model" });
+    const trigger = screen.getByLabelText("Choose model");
     vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
       left: 100,
       right: 280,
@@ -65,7 +65,7 @@ describe("CanvasModelPicker", () => {
 
   it("opens upward when the trigger is near the bottom of the viewport", () => {
     renderPicker();
-    const trigger = screen.getByRole("button", { name: "Choose model" });
+    const trigger = screen.getByLabelText("Choose model");
     vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
       left: 100,
       right: 280,
@@ -88,8 +88,8 @@ describe("CanvasModelPicker", () => {
 
   it("does not open while loading or disabled", () => {
     const { rerender } = renderPicker({ loading: true });
-    const loadingTrigger = screen.getByRole("button", { name: "Choose model" });
-    expect(loadingTrigger.hasAttribute("disabled")).toBe(true);
+    const loadingTrigger = screen.getByLabelText("Choose model");
+    expect(loadingTrigger.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(loadingTrigger);
     expect(screen.queryByRole("listbox")).toBeNull();
 
@@ -106,8 +106,8 @@ describe("CanvasModelPicker", () => {
         onChange={vi.fn()}
       />,
     );
-    const disabledTrigger = screen.getByRole("button", { name: "Choose model" });
-    expect(disabledTrigger.hasAttribute("disabled")).toBe(true);
+    const disabledTrigger = screen.getByLabelText("Choose model");
+    expect(disabledTrigger.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(disabledTrigger);
     expect(screen.queryByRole("listbox")).toBeNull();
   });
