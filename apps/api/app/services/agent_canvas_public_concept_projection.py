@@ -66,6 +66,9 @@ class AgentCanvasPublicConceptProjector:
     ) -> ConceptProposalV2:
         """Return a public Proposal copy without changing persisted private facts."""
 
+        if len(proposal.options) == 1:
+            return self.project_direct_proposal(proposal, response_locale=response_locale)
+
         option_ids = tuple(option.option_id for option in proposal.options)
         projection = self.project(
             options=proposal.options,
@@ -83,6 +86,32 @@ class AgentCanvasPublicConceptProjector:
                     )
                     for option in projection.options
                 )
+            }
+        )
+
+    def project_direct_proposal(
+        self,
+        proposal: ConceptProposalV2,
+        *,
+        response_locale: str,
+    ) -> ConceptProposalV2:
+        """Project one private direct-materialization handle without actions."""
+
+        if len(proposal.options) != 1:
+            raise _error("A direct concept handle requires exactly one option.")
+        option = proposal.options[0]
+        compact_option = ConceptOptionRecordV2(
+            option_id=option.option_id,
+            title=_compact_text(option.title, limit=_TITLE_LIMIT),
+            public_summary=_compact_summary(option.public_summary),
+            key_decisions=(),
+        )
+        self._locale_resolver.resolve(response_locale)
+        return proposal.model_copy(
+            update={
+                "options": (compact_option,),
+                "actions": (),
+                "proposed_references": (),
             }
         )
 

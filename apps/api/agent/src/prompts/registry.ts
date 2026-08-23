@@ -165,7 +165,9 @@ function instructionForOperation(operation: string): string {
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",
+      "Return exactly the candidate_count specified by the authoritative context, and never choose a different count.",
+      "Each option must contain only concise interaction display text: title, public_summary, and key_decisions. Do not add wrappers or fields such as model_type.",
+      "Use key_decisions only for concise creative decisions; do not emit provider prompts, shot lists, or media parameters.",
       "Render all option display text in the supplied response_locale.",
       "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");

@@ -104,6 +104,7 @@ def _definition(
     internal_skill_id: str | None = None,
     style_projection_role: str | None = None,
     display_name: str | None = None,
+    validation_profile: str | None = None,
 ) -> VideoAgentOperationDefinitionV1:
     return VideoAgentOperationDefinitionV1(
         operation=operation,
@@ -113,6 +114,7 @@ def _definition(
         context_contract_name=context_contract_name,
         result_contract_name=result_contract_name,
         display_name=display_name,
+        validation_profile=validation_profile,
     )
 
 
@@ -129,6 +131,7 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
                     internal_skill_id=skill,
                     style_projection_role=style_role,
                     display_name=display,
+                    validation_profile="proposal_candidate_count_v1",
                 )
             )
     return tuple(definitions)

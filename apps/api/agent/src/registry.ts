@@ -34,6 +34,7 @@ export interface OperationDescriptor {
   readonly capability_id: CapabilityId | null;
   readonly context_contract_name: string;
   readonly result_contract_name: string;
+  readonly validation_profile: string | null;
   readonly required_skill: string | null;
   readonly style_projection_role: string | null;
   readonly display_name: string | null;
@@ -49,6 +50,7 @@ interface OperationMetadata {
   readonly required_skill?: string;
   readonly style_projection_role?: string;
   readonly display_name?: string;
+  readonly validation_profile?: string;
 }
 
 const capabilityDefinitions = [
@@ -89,6 +91,7 @@ for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefin
       required_skill: skill,
       style_projection_role: stem,
       display_name: displayName,
+      validation_profile: "proposal_candidate_count_v1",
     });
   }
 }
@@ -197,6 +200,7 @@ const descriptors: ReadonlyArray<OperationDescriptor> = Object.freeze(
       capability_id: item.capability_id ?? null,
       context_contract_name: item.context_contract_name,
       result_contract_name: item.result_contract_name,
+      validation_profile: item.validation_profile ?? null,
       required_skill: item.required_skill ?? null,
       style_projection_role: item.style_projection_role ?? null,
       display_name: item.display_name ?? null,

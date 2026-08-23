@@ -25,12 +25,16 @@ from app.persistence.models import (
     AgentCanvasActionReceiptRow,
     AgentCanvasChatTurnRow,
     AgentCanvasConceptProposalRow,
+    AgentCanvasExecutionResultCommitRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedInteractionSubmissionRow,
     AgentCanvasWorkflowRow,
+    AgentCanvasNodeRow,
+    AgentWorkingDocumentRow,
+    AssetVersionRow,
 )
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2, ContinuationCommitV2
 from app.schemas.agent_canvas_creative_session import (
@@ -51,8 +55,13 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
     GuidedMediaReviewSubmitV1,
+    GuidedMediaReviewV1,
     GuidedSkipAnswerV1,
     GuidedInteractionAcceptedV1,
+)
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+    GuidedMediaReviewPublicationCommandV1,
 )
 from app.schemas.agent_canvas_guided_media_resume import (
     GuidedMediaConfirmationResumeDeliveryV1,
@@ -87,9 +96,16 @@ from app.services.agent_canvas_guided_duration import (
 class AgentCanvasGuidedInteractionRepository:
     """Persist one current interaction and awaiting descriptor per workflow."""
 
-    def __init__(self, database: V2Database, events: EventRepository) -> None:
+    def __init__(
+        self,
+        database: V2Database,
+        events: EventRepository,
+        *,
+        fault_injector: Callable[[str], None] | None = None,
+    ) -> None:
         self._database = database
         self._events = events
+        self._fault = fault_injector or (lambda _boundary: None)
         self._media_resume_deliveries = AgentCanvasGuidedMediaResumeRepository(
             database,
             events,
@@ -174,41 +190,10 @@ class AgentCanvasGuidedInteractionRepository:
                             "Guidance session changed before the interaction opened.",
                         )
 
-                    connection.execute(
-                        insert(AgentCanvasGuidedInteractionRow).values(
-                            interaction_id=interaction.interaction_id,
-                            workflow_id=interaction.workflow_id,
-                            session_id=interaction.session_id,
-                            checkpoint_id=interaction.checkpoint_id,
-                            kind=interaction.kind,
-                            status=interaction.status,
-                            response_locale=interaction.response_locale,
-                            expected_session_revision=interaction.expected_session_revision,
-                            revision=interaction.revision,
-                            title=interaction.title,
-                            context=interaction.context,
-                            content_json=interaction.content.model_dump_json(),
-                            allowed_actions_json=_dump(list(interaction.allowed_actions)),
-                            submit_path=interaction.submit_path,
-                            created_at=interaction.created_at.isoformat(),
-                            updated_at=interaction.updated_at.isoformat(),
-                        )
-                    )
-                    connection.execute(
-                        insert(AgentCanvasGuidanceAwaitingRow).values(
-                            awaiting_id=awaiting.awaiting_id,
-                            workflow_id=awaiting.workflow_id,
-                            session_id=awaiting.session_id,
-                            checkpoint_id=awaiting.checkpoint_id,
-                            kind=awaiting.kind,
-                            requires_user_action=awaiting.requires_user_action,
-                            resume_policy=awaiting.resume_policy,
-                            interaction_id=awaiting.interaction_id,
-                            node_ids_json=_dump(list(awaiting.node_ids)),
-                            stage=awaiting.stage,
-                            stage_revision=awaiting.stage_revision,
-                            created_at=awaiting.created_at.isoformat(),
-                        )
+                    _insert_interaction_and_awaiting_in_transaction(
+                        connection,
+                        interaction,
+                        awaiting,
                     )
                     self._events.append_in_transaction(
                         connection,
@@ -714,6 +699,7 @@ class AgentCanvasGuidedInteractionRepository:
                 return accepted
             except BaseException:
                 connection.rollback()
+                raise
                 raise
 
     def submit_concept_state_action(
@@ -1330,6 +1316,256 @@ class AgentCanvasGuidedInteractionRepository:
                 connection.rollback()
                 raise
 
+    def publish_media_review_from_result(
+        self,
+        command: GuidedMediaReviewPublicationCommandV1,
+        *,
+        now: datetime | None = None,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        """Replace one exact terminal wait and publish its review atomically."""
+
+        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        created_at = timestamp.isoformat()
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                awaiting = _awaiting_for_workflow(connection, command.lineage.workflow_id)
+                if (
+                    awaiting is not None
+                    and awaiting.kind == "media_review"
+                    and awaiting.interaction_id == command.interaction_id
+                ):
+                    connection.rollback()
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="already_applied",
+                        reason_code="media_review_already_published",
+                        interaction_id=command.interaction_id,
+                    )
+                if awaiting is None or not _awaiting_matches_publication(awaiting, command):
+                    connection.rollback()
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="superseded",
+                        reason_code="current_wait_replaced",
+                    )
+                session = _require_session(
+                    connection,
+                    workflow_id=command.lineage.workflow_id,
+                    session_id=awaiting.session_id,
+                    expected_revision=command.expected_session_revision,
+                )
+                self._validate_media_review_authority(connection, command)
+                current_journey = _journey(session).model_copy(
+                    update={"stage_status": "working", "active_action": None}
+                )
+                interaction = _publication_interaction(command, timestamp)
+                review_awaiting = _publication_awaiting(command, timestamp)
+                self._fault("after_old_wait_validation")
+                connection.execute(
+                    delete(AgentCanvasGuidanceAwaitingRow).where(
+                        AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
+                    )
+                )
+                _insert_interaction_and_awaiting_in_transaction(
+                    connection,
+                    interaction,
+                    review_awaiting,
+                )
+                self._fault("after_review_interaction")
+                changed = connection.execute(
+                    update(AgentCanvasGuidanceSessionRow)
+                    .where(
+                        AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
+                        AgentCanvasGuidanceSessionRow.revision == command.expected_session_revision,
+                    )
+                    .values(
+                        journey_state_json=current_journey.model_dump_json(),
+                        revision=command.expected_session_revision + 1,
+                        updated_at=created_at,
+                    )
+                )
+                if changed.rowcount != 1:
+                    raise _error(
+                        "guidance_revision_conflict",
+                        "Guidance session changed before media review publication.",
+                    )
+                self._fault("after_review_awaiting")
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=command.lineage.workflow_id,
+                        node_id=command.lineage.node_id,
+                        event_type="guidance_awaiting_resumed",
+                        transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:result-replaced",
+                        created_at=created_at,
+                        payload={
+                            "awaiting_id": awaiting.awaiting_id,
+                            "checkpoint_id": awaiting.checkpoint_id,
+                            "kind": awaiting.kind,
+                            "resume_policy": awaiting.resume_policy,
+                            "resume_evidence": "result_lineage",
+                            "node_ids": list(awaiting.node_ids),
+                            "source_commit_id": command.lineage.commit_id,
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=command.lineage.workflow_id,
+                        node_id=command.lineage.node_id,
+                        event_type="guided_interaction_opened",
+                        transition_key=f"guided-interaction:{interaction.interaction_id}:opened",
+                        action_id=interaction.interaction_id,
+                        created_at=created_at,
+                        payload={
+                            "interaction_id": interaction.interaction_id,
+                            "session_id": interaction.session_id,
+                            "checkpoint_id": interaction.checkpoint_id,
+                            "kind": interaction.kind,
+                            "interaction_revision": interaction.revision,
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=command.lineage.workflow_id,
+                        node_id=command.lineage.node_id,
+                        event_type="guidance_awaiting_entered",
+                        transition_key=f"guidance-awaiting:{review_awaiting.awaiting_id}:entered",
+                        action_id=interaction.interaction_id,
+                        created_at=created_at,
+                        payload={
+                            "awaiting_id": review_awaiting.awaiting_id,
+                            "session_id": review_awaiting.session_id,
+                            "checkpoint_id": review_awaiting.checkpoint_id,
+                            "kind": review_awaiting.kind,
+                            "resume_policy": review_awaiting.resume_policy,
+                            "interaction_id": review_awaiting.interaction_id,
+                            "node_ids": list(review_awaiting.node_ids),
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=command.lineage.workflow_id,
+                        node_id=command.lineage.node_id,
+                        event_type="guided_media_review_required",
+                        transition_key=f"guided-media-review-required:{interaction.interaction_id}",
+                        action_id=interaction.interaction_id,
+                        created_at=created_at,
+                        payload={
+                            "interaction_id": interaction.interaction_id,
+                            "plan_document_id": command.plan_document_id,
+                            "plan_revision": command.plan_revision,
+                            "node_revision": command.current_node_revision,
+                            "asset_id": command.asset_id,
+                            "asset_version_id": command.asset_version_id,
+                            "allowed_actions": list(command.allowed_actions),
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=command.lineage.workflow_id,
+                        node_id=command.lineage.node_id,
+                        event_type="guidance_state_updated",
+                        transition_key=f"guided-media-review:{interaction.interaction_id}:state",
+                        action_id=interaction.interaction_id,
+                        created_at=created_at,
+                        payload={
+                            "session_id": interaction.session_id,
+                            "session_revision": command.expected_session_revision + 1,
+                            "refresh": ["conversation", "workflow", "runtime", "events"],
+                        },
+                    ),
+                )
+                connection.commit()
+                return CanvasPostReadyEffectDispositionV1(
+                    outcome="applied",
+                    reason_code="media_review_published",
+                    interaction_id=interaction.interaction_id,
+                )
+            except BaseException:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _validate_media_review_authority(connection, command) -> None:
+        commit = (
+            connection.execute(
+                select(AgentCanvasExecutionResultCommitRow).where(
+                    AgentCanvasExecutionResultCommitRow.commit_id == command.lineage.commit_id
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        node = (
+            connection.execute(
+                select(AgentCanvasNodeRow).where(
+                    AgentCanvasNodeRow.workflow_id == command.lineage.workflow_id,
+                    AgentCanvasNodeRow.node_id == command.lineage.node_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        version = (
+            connection.execute(
+                select(AssetVersionRow).where(
+                    AssetVersionRow.version_id == command.asset_version_id,
+                    AssetVersionRow.asset_id == command.asset_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        plan = (
+            connection.execute(
+                select(AgentWorkingDocumentRow).where(
+                    AgentWorkingDocumentRow.document_id == command.plan_document_id,
+                    AgentWorkingDocumentRow.workflow_id == command.lineage.workflow_id,
+                    AgentWorkingDocumentRow.revision == command.plan_revision,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        valid_commit = commit is not None and all(
+            (
+                str(commit["workflow_id"]) == command.lineage.workflow_id,
+                str(commit["execution_id"]) == command.lineage.execution_id,
+                str(commit["member_id"]) == command.lineage.member_id,
+                str(commit["node_id"]) == command.lineage.node_id,
+                str(commit["outcome"]) == "succeeded",
+                str(commit["asset_id"]) == command.asset_id,
+                str(commit["version_id"]) == command.asset_version_id,
+            )
+        )
+        valid_node = node is not None and all(
+            (
+                str(node["status"]) == "ready",
+                str(node["output_asset_id"]) == command.asset_id,
+                int(node["revision"]) == command.current_node_revision,
+            )
+        )
+        valid_version = version is not None and str(version["status"]) == "ready"
+        valid_plan = _plan_contains_node(
+            plan,
+            node_id=command.lineage.node_id,
+            node_role=command.planned_node_role,
+            sequence_id=command.planned_sequence_id,
+            node_revision=command.planned_node_revision,
+        )
+        if not all((valid_commit, valid_node, valid_version, valid_plan)):
+            raise _error(
+                "guided_media_result_lineage_invalid",
+                "Ready media result lineage does not match current Guidance authority.",
+            )
+
     def resume_awaiting(
         self,
         workflow_id: str,
@@ -1450,6 +1686,51 @@ def guided_interaction_from_row(row: Mapping[str, object]) -> GuidedInteractionV
     )
 
 
+def _insert_interaction_and_awaiting_in_transaction(
+    connection,
+    interaction: GuidedInteractionV1,
+    awaiting: GuidanceAwaitingV2,
+) -> None:
+    """Insert one validated interaction/awaiting pair in the caller transaction."""
+
+    connection.execute(
+        insert(AgentCanvasGuidedInteractionRow).values(
+            interaction_id=interaction.interaction_id,
+            workflow_id=interaction.workflow_id,
+            session_id=interaction.session_id,
+            checkpoint_id=interaction.checkpoint_id,
+            kind=interaction.kind,
+            status=interaction.status,
+            response_locale=interaction.response_locale,
+            expected_session_revision=interaction.expected_session_revision,
+            revision=interaction.revision,
+            title=interaction.title,
+            context=interaction.context,
+            content_json=interaction.content.model_dump_json(),
+            allowed_actions_json=_dump(list(interaction.allowed_actions)),
+            submit_path=interaction.submit_path,
+            created_at=interaction.created_at.isoformat(),
+            updated_at=interaction.updated_at.isoformat(),
+        )
+    )
+    connection.execute(
+        insert(AgentCanvasGuidanceAwaitingRow).values(
+            awaiting_id=awaiting.awaiting_id,
+            workflow_id=awaiting.workflow_id,
+            session_id=awaiting.session_id,
+            checkpoint_id=awaiting.checkpoint_id,
+            kind=awaiting.kind,
+            requires_user_action=awaiting.requires_user_action,
+            resume_policy=awaiting.resume_policy,
+            interaction_id=awaiting.interaction_id,
+            node_ids_json=_dump(list(awaiting.node_ids)),
+            stage=awaiting.stage,
+            stage_revision=awaiting.stage_revision,
+            created_at=awaiting.created_at.isoformat(),
+        )
+    )
+
+
 def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV2 | None:
     row = (
         connection.execute(
@@ -1463,6 +1744,100 @@ def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV2 |
     if row is None:
         return None
     return guidance_awaiting_from_row(row)
+
+
+def _awaiting_matches_publication(
+    awaiting: GuidanceAwaitingV2,
+    command: GuidedMediaReviewPublicationCommandV1,
+) -> bool:
+    return (
+        awaiting.workflow_id == command.lineage.workflow_id
+        and awaiting.session_id == command.session_id
+        and awaiting.awaiting_id == command.expected_awaiting_id
+        and awaiting.kind == command.expected_awaiting_kind
+        and awaiting.resume_policy == command.expected_resume_policy
+        and awaiting.node_ids == command.expected_awaiting_node_ids
+        and awaiting.stage == command.expected_stage
+        and awaiting.stage_revision == command.expected_stage_revision
+    )
+
+
+def _publication_interaction(
+    command: GuidedMediaReviewPublicationCommandV1,
+    timestamp: datetime,
+) -> GuidedInteractionV1:
+    return GuidedInteractionV1(
+        interaction_id=command.interaction_id,
+        workflow_id=command.lineage.workflow_id,
+        session_id=command.session_id,
+        checkpoint_id=command.checkpoint_id,
+        kind="media_review",
+        status="open",
+        response_locale=command.response_locale,
+        expected_session_revision=command.expected_session_revision + 1,
+        revision=1,
+        title=command.title,
+        context=command.summary,
+        content=GuidedMediaReviewV1(
+            node_id=command.lineage.node_id,
+            node_revision=command.current_node_revision,
+            asset_id=command.asset_id,
+            asset_version_id=command.asset_version_id,
+            summary=command.summary,
+        ),
+        allowed_actions=command.allowed_actions,
+        submit_path=(
+            f"/api/v2/workflows/{command.lineage.workflow_id}/chat/interactions/"
+            f"{command.interaction_id}/submit"
+        ),
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
+def _publication_awaiting(
+    command: GuidedMediaReviewPublicationCommandV1,
+    timestamp: datetime,
+) -> GuidanceAwaitingV2:
+    return GuidanceAwaitingV2(
+        awaiting_id=command.review_awaiting_id,
+        workflow_id=command.lineage.workflow_id,
+        session_id=command.session_id,
+        checkpoint_id=command.checkpoint_id,
+        kind="media_review",
+        requires_user_action=True,
+        resume_policy="submit_interaction",
+        interaction_id=command.interaction_id,
+        node_ids=(),
+        stage=command.expected_stage,
+        stage_revision=command.expected_stage_revision,
+        created_at=timestamp,
+    )
+
+
+def _plan_contains_node(
+    plan: Mapping[str, object] | None,
+    *,
+    node_id: str,
+    node_role: str,
+    sequence_id: str | None,
+    node_revision: int,
+) -> bool:
+    if plan is None:
+        return False
+    try:
+        content = json.loads(str(plan["content_json"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    records = content.get("planned_nodes") or content.get("node_records") or ()
+    return any(
+        str(record.get("node_id")) == node_id
+        and str(record.get("node_role")) == node_role
+        and record.get("sequence_id") == sequence_id
+        and int(record.get("node_revision", 0)) == node_revision
+        for record in records
+        if isinstance(record, dict)
+    )
 
 
 def guidance_awaiting_from_row(row: Mapping[str, object]) -> GuidanceAwaitingV2:

@@ -3751,6 +3751,11 @@ class AgentCanvasConversationRepository:
             current_session_revision=int(current_session_revision),
         )
 
+    def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
+        """Read the complete private Proposal authority for materialization paths."""
+
+        return self.get_proposal(proposal_id)
+
     def list_open_proposals(self, workflow_id: str) -> tuple[ConceptProposalV2, ...]:
         try:
             with self._database.engine.connect() as connection:

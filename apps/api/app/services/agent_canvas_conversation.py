@@ -99,6 +99,7 @@ from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
 from app.services.agent_run_context_registry import (
     AGENT_RUN_CONTEXT_REGISTRY,
+    AgentRunContextRegistryError,
     validate_video_agent_context_parity,
     validate_video_agent_operation_context,
 )
@@ -553,6 +554,16 @@ class PiVideoAgentGateway:
                 "repair_error": repair_error,
             }
         )
+        if invocation.candidate_count != candidate_count:
+            raise AgentRunContextRegistryError(
+                "agent_context_registry_invalid",
+                "Capability invocation count conflicts with the immutable dispatch count.",
+                details={
+                    "candidate_count": candidate_count,
+                    "context_candidate_count": invocation.candidate_count,
+                    "field_path": "candidate_count",
+                },
+            )
         completed = self._run_structured(
             operation=operation,
             context=invocation,
@@ -654,7 +665,7 @@ class PiVideoAgentGateway:
         )
         style_lineage = _style_skill_lineage(context)
         turn_id = identity_fields.get("turn_id")
-        validation_profile = None
+        validation_profile = operation_definition.validation_profile
         validation_context: dict[str, object] = {}
         if operation == "decide_turn_intent" and isinstance(turn_id, str):
             validation_profile = "agent_intake_source_quotes_v1"
@@ -667,6 +678,13 @@ class PiVideoAgentGateway:
             )
             validation_profile = "storyboard_sequence_window_parity_v1"
             validation_context = authority.model_dump(mode="json")
+        elif validation_profile == "proposal_candidate_count_v1":
+            validation_context = {
+                "expected_candidate_count": getattr(context, "candidate_count", None),
+                "operation": operation,
+                "capability_id": getattr(context, "capability_id", None),
+                "result_contract_name": contract.__name__,
+            }
         request = self._request_factory.build(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
@@ -764,8 +782,7 @@ def _deterministic_capability_result(
     capability_id: str,
     candidate_count: int,
 ) -> dict[str, object]:
-    del candidate_count
-    count = 1 if capability_id == "quick_media" else 3
+    count = 1 if capability_id == "quick_media" else candidate_count
     options: list[dict[str, object]] = []
     for index in range(1, count + 1):
         summary = f"Deterministic {capability_id} option {index}."
@@ -1266,7 +1283,7 @@ class AgentConversationService:
         *,
         idempotency_key: str,
     ) -> ChatTurnAcceptedV2:
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if proposal.workflow_id != workflow_id:
             raise V2PersistenceError(
                 "proposal_not_found",
@@ -1885,7 +1902,7 @@ class AgentConversationService:
             return self._complete_turn(turn_id, turn.workflow_id, committed_receipt.summary)
         proposal_id = str(turn.request["proposal_id"])
         action = TypeAdapter(ProposalActionRequestV2).validate_python(turn.request["action"])
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if (
             action.action in {"select_option", "delegate_choice", "reuse_direction"}
             and proposal.materialization is not None
@@ -2149,7 +2166,7 @@ class AgentConversationService:
 
     def get_proposal(self, workflow_id: str, proposal_id: str):
         self._workflows.get_workflow(workflow_id)
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if proposal.workflow_id != workflow_id:
             raise V2PersistenceError(
                 "proposal_not_found",
@@ -2221,6 +2238,7 @@ class AgentConversationService:
             workflow_id=proposal.workflow_id,
             conversation_id=turn.conversation_id,
             capability_id=proposal.capability_id,
+            candidate_count=candidate_count,
             objective=objective,
             context_snapshot_id=f"snapshot_{snapshot_digest[:32]}",
             context_snapshot_digest=snapshot_digest,

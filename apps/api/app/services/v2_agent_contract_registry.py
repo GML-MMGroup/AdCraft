@@ -220,6 +220,25 @@ def validate_video_agent_contract_parity(
 
     errors: list[dict[str, str]] = []
     for definition in definitions:
+        is_proposal = definition.operation.startswith(
+            ("propose_", "revise_")
+        ) and definition.operation.endswith("_options")
+        if is_proposal and definition.validation_profile != "proposal_candidate_count_v1":
+            errors.append(
+                {
+                    "operation": definition.operation[:160],
+                    "contract_name": definition.result_contract_name[:160],
+                    "validation_profile": str(definition.validation_profile),
+                }
+            )
+        if not is_proposal and definition.validation_profile is not None:
+            errors.append(
+                {
+                    "operation": definition.operation[:160],
+                    "contract_name": definition.result_contract_name[:160],
+                    "validation_profile": definition.validation_profile,
+                }
+            )
         try:
             declared_model = registry.resolve(definition.result_contract_name)
         except AgentStructuredContractRegistryError:

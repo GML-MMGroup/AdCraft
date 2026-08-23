@@ -218,7 +218,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
         "bgm",
     ]
     capability_id: CapabilityIdV1
-    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=3, max_length=3)
+    options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=3)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
         max_length=64,
@@ -249,7 +249,11 @@ class _ConceptProposalBaseV2(_ConversationModel):
 
 
 class ConceptProposalCreateV2(_ConceptProposalBaseV2):
-    pass
+    @model_validator(mode="after")
+    def validate_public_cardinality(self) -> "ConceptProposalCreateV2":
+        if len(self.options) != 3:
+            raise ValueError("Public concept proposals require exactly three options.")
+        return self
 
 
 ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]

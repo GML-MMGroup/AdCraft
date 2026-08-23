@@ -493,7 +493,7 @@ class CapabilityDefinitionV1(_CapabilityModel):
     result_contract_name: str = Field(min_length=1, max_length=160)
     node_type: Literal["text", "script", "image", "video", "audio"] | None
     creative_role: str | None = Field(default=None, max_length=160)
-    default_candidate_count: int = Field(ge=1, le=3)
+    default_candidate_count: Literal[1, 3]
     allowed_reference_roles: tuple[SemanticReferenceRoleV2, ...] = ()
 
 
@@ -578,6 +578,7 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     capability_id: CapabilityIdV1
+    candidate_count: int = Field(ge=1, le=3)
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -732,39 +733,39 @@ class QuickMediaProposalOptionV1(_OptionBaseV1):
 
 
 class WorldSettingProposalResultV1(_CapabilityModel):
-    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class ProductProposalResultV1(_CapabilityModel):
-    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class PropProposalResultV1(_CapabilityModel):
-    options: tuple[PropProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[PropProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class CharacterProposalResultV1(_CapabilityModel):
-    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class SceneProposalResultV1(_CapabilityModel):
-    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class ScriptProposalResultV1(_CapabilityModel):
-    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class StoryboardProposalResultV1(_CapabilityModel):
-    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class VideoProposalResultV1(_CapabilityModel):
-    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class BgmProposalResultV1(_CapabilityModel):
-    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class QuickMediaProposalResultV1(_CapabilityModel):

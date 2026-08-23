@@ -255,6 +255,9 @@ from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEff
 from app.services.agent_canvas_post_ready_checkpoint import (
     AgentCanvasPostReadyCheckpointService,
 )
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -982,6 +985,7 @@ def create_agent_canvas_runtime(
         plans=storyboard_authoring,
         assets=asset_service.resolve_asset,
         confirmations=guided_media_confirmations,
+        result_commits=result_commit_repository,
         receipts=production_closure_receipts,
         events=event_repository,
         resume_media_confirmation=fanout_activation.resume_confirmation,
@@ -995,24 +999,35 @@ def create_agent_canvas_runtime(
         continuation_worker.run_once()
         return result
 
-    def handle_storyboard_progression(effect) -> None:
-        node = workflow_repository.get_node(effect.workflow_id, effect.node_id)
-        guided_media_reviews.on_node_ready(node)
+    def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
+        conversation_repository.publish_script_artifact(
+            effect.workflow_id,
+            script_node_id=effect.node_id,
+            source_turn_id=None,
+        )
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="script_document_persisted",
+        )
+
+    def persist_text_document(effect) -> CanvasPostReadyEffectDispositionV1:
+        _persist_text_document(
+            document_repository,
+            workflow_repository.get_node(effect.workflow_id, effect.node_id),
+        )
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="text_document_persisted",
+        )
+
+    def handle_storyboard_progression(effect) -> CanvasPostReadyEffectDispositionV1:
+        return guided_media_reviews.publish_from_effect(effect)
 
     post_ready_effects = AgentCanvasPostReadyEffectWorker(
         AgentCanvasPostReadyEffectRepository(database, event_repository),
         handlers={
-            "persist_script_document": lambda effect: (
-                conversation_repository.publish_script_artifact(
-                    effect.workflow_id,
-                    script_node_id=effect.node_id,
-                    source_turn_id=None,
-                )
-            ),
-            "persist_text_document": lambda effect: _persist_text_document(
-                document_repository,
-                workflow_repository.get_node(effect.workflow_id, effect.node_id),
-            ),
+            "persist_script_document": persist_script_document,
+            "persist_text_document": persist_text_document,
             "advance_storyboard_progression": handle_storyboard_progression,
         },
         worker_id=f"agent-canvas-post-ready:{uuid4().hex}",
@@ -1151,7 +1166,7 @@ def create_agent_canvas_runtime(
     )
 
     def materialize_explicit_direction(proposal_id: str) -> ChatTurnAcceptedV2:
-        proposal = conversation_repository.get_proposal(proposal_id)
+        proposal = conversation_repository.get_private_proposal(proposal_id)
         if len(proposal.options) != 1:
             raise V2PersistenceError(
                 "guided_interaction_policy_invalid",
@@ -2577,7 +2592,7 @@ def act_on_chat_proposal(
             idempotency_key=idempotency_key,
         )
         if replayed_interaction is not None:
-            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            proposal = runtime.conversation_repository.get_private_proposal(proposal_id)
             source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
             if proposal.materialization is None:
                 raise V2PersistenceError(
@@ -2638,7 +2653,7 @@ def act_on_chat_proposal(
                 ),
                 idempotency_key=idempotency_key,
             )
-            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            proposal = runtime.conversation_repository.get_private_proposal(proposal_id)
             source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
             if proposal.materialization is None and isinstance(
                 request, (SelectOptionActionV2, DelegateChoiceActionV2)

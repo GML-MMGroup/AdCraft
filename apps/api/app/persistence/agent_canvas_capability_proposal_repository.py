@@ -46,11 +46,15 @@ from app.services.agent_canvas_production_journey import (
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
     parse_production_journey,
 )
+from app.services.agent_canvas_proposal_cardinality import (
+    proposal_candidate_count_details,
+)
 from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
     public_option_metadata,
 )
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
+from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
 _PROPOSAL_KIND = {
@@ -87,20 +91,31 @@ class AgentCanvasCapabilityProposalRepository:
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
         options = tuple(getattr(result, "options", ()))
-        if not options:
+        details = proposal_candidate_count_details(envelope.candidate_count, result)
+        if details is not None:
             raise V2PersistenceError(
-                "capability_contract_invalid",
-                "Capability result contains no Proposal options.",
+                "proposal_candidate_count_mismatch",
+                "Proposal result candidate count conflicts with its immutable envelope.",
                 stage="capability_publication",
+                details=details,
             )
         option_ids = tuple(
             f"option_{_digest(proposal_id, str(order))[:32]}" for order in range(len(options))
         )
-        public_projection = AgentCanvasPublicConceptProjector().project(
-            options=options,
-            option_ids=option_ids,
-            response_locale=envelope.response_locale,
-            recommended_option_id=option_ids[0],
+        public_projection = (
+            AgentCanvasPublicConceptProjector().project(
+                options=options,
+                option_ids=option_ids,
+                response_locale=envelope.response_locale,
+                recommended_option_id=option_ids[0],
+            )
+            if envelope.candidate_count == 3
+            else None
+        )
+        response_locale = (
+            public_projection.response_locale
+            if public_projection is not None
+            else ResponseLocaleResolverV1().resolve(envelope.response_locale)
         )
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -285,8 +300,8 @@ class AgentCanvasCapabilityProposalRepository:
                     proposal_id=proposal_id,
                     session=session,
                     session_revision=session_revision,
-                    public_options=public_projection.options,
-                    response_locale=public_projection.response_locale,
+                    public_options=(public_projection.options if public_projection else ()),
+                    response_locale=response_locale,
                     now=now,
                 )
                 if interaction is not None and awaiting is not None:
@@ -334,7 +349,7 @@ class AgentCanvasCapabilityProposalRepository:
                     update(AgentCanvasGuidanceSessionRow)
                     .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
                     .values(
-                        active_proposal_id=proposal_id,
+                        active_proposal_id=(proposal_id if public_projection is not None else None),
                         current_topic_id=topic_id,
                         journey_state_json=journey.model_dump_json(),
                         revision=session_revision,
@@ -357,7 +372,7 @@ class AgentCanvasCapabilityProposalRepository:
                     self._events,
                     turn_id=envelope.capability_turn_id,
                     status="completed",
-                    response_locale=public_projection.response_locale,
+                    response_locale=response_locale,
                     now=timestamp,
                 )
                 if not activity_publication.changed:
@@ -393,40 +408,41 @@ class AgentCanvasCapabilityProposalRepository:
                     )
                     + 1
                 )
-                connection.execute(
-                    insert(AgentCanvasChatEntryRow).values(
-                        entry_id=f"entry_{_digest(proposal_id)[:32]}",
-                        conversation_id=envelope.conversation_id,
-                        workflow_id=envelope.workflow_id,
-                        sequence_no=sequence_no,
-                        entry_type="concept_proposal",
-                        speaker="adcraft_video_agent",
-                        content=f"Review {len(options)} option(s).",
-                        metadata_json=json.dumps(
-                            build_presentation_metadata(
-                                message_key="concept_proposal.review",
-                                message_args={"option_count": len(options)},
-                                response_locale=public_projection.response_locale,
-                                presentation_key=f"proposal:{proposal_id}",
-                                base={
-                                    "proposal_id": proposal_id,
-                                    "capability_id": envelope.capability_id,
-                                    "capability_display_name": CAPABILITY_DISPLAY_NAMES[
-                                        envelope.capability_id
-                                    ],
-                                    "proposal_revision": 1,
-                                    "options": [
-                                        public_option_metadata(option)
-                                        for option in public_projection.options
-                                    ],
-                                },
+                if public_projection is not None:
+                    connection.execute(
+                        insert(AgentCanvasChatEntryRow).values(
+                            entry_id=f"entry_{_digest(proposal_id)[:32]}",
+                            conversation_id=envelope.conversation_id,
+                            workflow_id=envelope.workflow_id,
+                            sequence_no=sequence_no,
+                            entry_type="concept_proposal",
+                            speaker="adcraft_video_agent",
+                            content=f"Review {len(options)} option(s).",
+                            metadata_json=json.dumps(
+                                build_presentation_metadata(
+                                    message_key="concept_proposal.review",
+                                    message_args={"option_count": len(options)},
+                                    response_locale=response_locale,
+                                    presentation_key=f"proposal:{proposal_id}",
+                                    base={
+                                        "proposal_id": proposal_id,
+                                        "capability_id": envelope.capability_id,
+                                        "capability_display_name": CAPABILITY_DISPLAY_NAMES[
+                                            envelope.capability_id
+                                        ],
+                                        "proposal_revision": 1,
+                                        "options": [
+                                            public_option_metadata(option)
+                                            for option in public_projection.options
+                                        ],
+                                    },
+                                ),
+                                separators=(",", ":"),
+                                sort_keys=True,
                             ),
-                            separators=(",", ":"),
-                            sort_keys=True,
-                        ),
-                        created_at=timestamp,
+                            created_at=timestamp,
+                        )
                     )
-                )
                 publication_events: list[tuple[str, dict[str, object]]] = [
                     (
                         "concept_proposal_created",

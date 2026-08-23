@@ -62,7 +62,7 @@ class _ProposalSelectionSubmissionService:
         ),
         accepted: ChatTurnAcceptedV2,
     ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         envelope = self._build_envelope(proposal, action, accepted)
         self._materializations.queue(envelope)
         return envelope
@@ -81,7 +81,7 @@ class _ProposalSelectionSubmissionService:
         idempotency_key: str,
         guided_submission: dict[str, object] | None = None,
     ) -> ChatTurnAcceptedV2:
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if proposal.workflow_id != workflow_id:
             raise _error("proposal_not_found", "Concept proposal was not found.")
         source_turn = self._conversations.get_turn(proposal.turn_id)

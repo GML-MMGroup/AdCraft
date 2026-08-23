@@ -200,7 +200,7 @@ class AgentCanvasMaterializationRepository:
         materialization_id = materialization_plan.materialization_id
         workflow_id = materialization_plan.workflow_id
         fault_injector = self._fault_injector
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         skill_run_id = proposal.video_skill_run_id
         topic_id = proposal.topic_id
 
@@ -1788,7 +1788,7 @@ class AgentCanvasMaterializationRepository:
                             "parent_materialization_revision_stale",
                             "The parent Node no longer matches the derived operation.",
                         )
-                    self._envelopes.create_in_transaction(connection, envelope)
+                    persisted_envelope = self._envelopes.create_in_transaction(connection, envelope)
                     existing = (
                         connection.execute(
                             select(AgentCanvasContinuationOutboxRow).where(
@@ -1872,7 +1872,12 @@ class AgentCanvasMaterializationRepository:
                 "capability_materialization_failed",
                 "Derived materialization submission could not be persisted.",
             ) from error
-        return envelope
+        if not isinstance(persisted_envelope, ProposalPublicationEnvelopeV1):
+            raise _error(
+                "capability_materialization_invalid",
+                "Persisted derivative envelope has an invalid operation type.",
+            )
+        return persisted_envelope
 
     def mark_working(
         self,

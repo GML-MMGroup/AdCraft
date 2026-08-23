@@ -270,7 +270,7 @@ class CapabilityMaterializationPublicationService:
         )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
-            self._parent_derived.queue_after_parent(envelope, lease_guard=lease_guard)
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_guided_document_stage(
@@ -815,6 +815,8 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _activate_prompt_ready_media(

@@ -105,7 +105,7 @@ class GuidedInteractionService:
                 "idempotency_conflict",
                 "Idempotency key was reused with different content.",
             )
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if (
             proposal.workflow_id != workflow_id
             or proposal.guidance_session_revision != submission.request.expected_session_revision
@@ -186,7 +186,7 @@ class GuidedInteractionService:
                 "guided_interaction_incomplete",
                 "Concept interaction does not identify its Proposal.",
             )
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         if request.action in {"defer", "exclude"}:
             proposal_action = "defer_topic" if request.action == "defer" else "exclude_element"
             descriptor = next(
@@ -219,7 +219,7 @@ class GuidedInteractionService:
                 "request": request.model_dump(mode="json", exclude_none=True),
             },
         )
-        refreshed = self._conversations.get_proposal(proposal_id)
+        refreshed = self._conversations.get_private_proposal(proposal_id)
         materialization = refreshed.materialization
         if materialization is None:
             raise _error(
