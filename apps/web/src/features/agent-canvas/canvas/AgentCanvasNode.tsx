@@ -133,7 +133,11 @@ function MediaSurface({
     );
   }
 
-  return mediaUrl ? (
+  if (!mediaUrl) {
+    return <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />;
+  }
+
+  return (
     <img
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
@@ -148,7 +152,7 @@ function MediaSurface({
         }
       }}
     />
-  ) : <AgentCanvasNodeContent node={node} />;
+  );
 }
 /* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
 

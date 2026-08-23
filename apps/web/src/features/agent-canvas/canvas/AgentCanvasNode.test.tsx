@@ -264,46 +264,46 @@ describe("AgentCanvasNodeCard", () => {
     expect(scriptContentRule).toContain("overscroll-behavior: contain");
   });
 
-  it.each([
-    [
-      "text",
-      { structured_content: { content: "A concise campaign direction." } },
-      "A concise campaign direction.",
-    ],
-    [
-      "image",
-      { generation_prompt: "A complete product image prompt." },
-      "A complete product image prompt.",
-    ],
-    [
-      "video",
-      { generation_prompt: "A smooth cinematic camera move." },
-      "A smooth cinematic camera move.",
-    ],
-  ] as const)("replaces the centered %s icon with saved node content", (nodeType, overrides, copy) => {
+  it("renders saved Text content in the node body", () => {
     const node = {
-      ...makeNode(nodeType),
-      ...overrides,
-      ...(nodeType === "image" || nodeType === "video"
-        ? {
-            prompt_preparation: {
-              status: "ready" as const,
-              operation_id: "prompt-operation-1",
-              attempt_no: 1,
-              context_snapshot_id: "prompt-context-1",
-              prompt_digest: "prompt-digest-1",
-              error: null,
-              updated_at: "2026-08-04T00:00:00Z",
-            },
-          }
-        : {}),
+      ...makeNode("text"),
+      structured_content: { content: "A concise campaign direction." },
     } as CanvasNodeV2;
 
     render(<AgentCanvasNodeCard node={node} />);
 
-    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.getByText("A concise campaign direction.")).toBeTruthy();
     expect(screen.getByLabelText(`${creativeRoleDisplayName(node.creative_role)} node type`)).toBeTruthy();
   });
+
+  it.each<"image" | "video">(["image", "video"])(
+    "keeps the empty %s body free of the generation prompt until media exists",
+    (nodeType) => {
+      const prompt = nodeType === "image"
+        ? "A complete product image prompt."
+        : "A smooth cinematic camera move.";
+      const node = {
+        ...makeNode(nodeType),
+        generation_prompt: prompt,
+        prompt_preparation: {
+          status: "ready" as const,
+          operation_id: "prompt-operation-1",
+          attempt_no: 1,
+          context_snapshot_id: "prompt-context-1",
+          prompt_digest: "prompt-digest-1",
+          error: null,
+          updated_at: "2026-08-04T00:00:00Z",
+        },
+      } as CanvasNodeV2;
+
+      render(<AgentCanvasNodeCard node={node} />);
+
+      expect(screen.queryByText(prompt)).toBeNull();
+      expect(screen.getByTestId(`agent-canvas-node-${nodeType}-node`).querySelector(
+        ".agent-canvas-node__media-placeholder",
+      )).toBeTruthy();
+    },
+  );
 
   it("renders current backend Script content on the card", () => {
     const node = {
@@ -351,7 +351,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByLabelText("Script node type")).toBeTruthy();
   });
 
-  it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
+  it("keeps the media body empty during prompt preparation without changing its four-state node status", () => {
     const node = {
       ...makeNode("image"),
       summary_prompt: "A warm product portrait for the campaign opening.",
@@ -369,8 +369,10 @@ describe("AgentCanvasNodeCard", () => {
 
     render(<AgentCanvasNodeCard node={node} />);
 
-    expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
-    expect(screen.getByTestId("agent-canvas-node-image-node").classList.contains("agent-canvas-node--draft")).toBe(true);
+    const card = screen.getByTestId("agent-canvas-node-image-node");
+    expect(screen.queryByText("A warm product portrait for the campaign opening.")).toBeNull();
+    expect(card.querySelector(".agent-canvas-node__media-placeholder")).toBeTruthy();
+    expect(card.classList.contains("agent-canvas-node--draft")).toBe(true);
     expect(screen.queryByText("Preparing")).toBeNull();
   });
 
