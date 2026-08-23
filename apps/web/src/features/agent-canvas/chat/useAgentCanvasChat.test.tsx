@@ -6,6 +6,7 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasRuntimeEventV2,
   GuidedSessionStateV2,
+  GuidedInteractionV1,
   GuidanceSessionActionV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -160,6 +161,45 @@ function guidedSession(stageRevision = 4, revision = 8): GuidedSessionStateV2 {
     },
     revision,
     updated_at: "2026-08-10T00:00:00Z",
+  };
+}
+
+function guidedQuestionnaireInteraction(): GuidedInteractionV1 {
+  return {
+    interaction_id: "interaction-duration-1",
+    workflow_id: "workflow-1",
+    session_id: "guidance-1",
+    checkpoint_id: "checkpoint-duration-1",
+    kind: "clarification_questionnaire",
+    status: "open",
+    response_locale: "en-US",
+    expected_session_revision: 8,
+    revision: 3,
+    title: "Set duration",
+    context: "Choose a target duration.",
+    content: {
+      content_kind: "questionnaire",
+      questions: [{
+        question_id: "production_duration_seconds",
+        prompt: "How long should the ad be?",
+        input_kind: "single_select",
+        options: [{
+          option_id: "duration_seconds_30",
+          title: "30 seconds",
+          summary: "Balanced.",
+          difference_tags: [],
+          recommended: true,
+          reference_preview: [],
+        }],
+        allow_custom: true,
+        allow_skip: false,
+        required: true,
+      }],
+    },
+    allowed_actions: ["answer"],
+    submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-duration-1/submit",
+    created_at: "2026-08-23T10:00:00Z",
+    updated_at: "2026-08-23T10:00:00Z",
   };
 }
 
@@ -861,6 +901,76 @@ describe("useAgentCanvasChat", () => {
 
     expect(order).toEqual(["submit", "timeline", "session", "graph", "runtime"]);
     expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
+  it("refreshes authority after a stale guided interaction without resubmitting it", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      code: "guided_interaction_stale",
+      message: "The interaction is no longer current.",
+    });
+    const onWorkflowRefresh = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+      onWorkflowRefresh,
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    api.agentCanvasChatTimeline.mockClear();
+
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(guidedQuestionnaireInteraction(), {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "45" }],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledTimes(1);
+    expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(1);
+    expect(onWorkflowRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.state.notice).toContain("Your draft was kept");
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it("keeps an invalid duration in the guided interaction field instead of replacing it with a global error", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      code: "guided_duration_value_invalid",
+      message: "Use one of the supported duration values.",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(guidedQuestionnaireInteraction(), {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "12" }],
+      });
+    });
+
+    expect(result.current.state.guidedInteractionError).toBe("Use one of the supported duration values.");
+    expect(result.current.state.error).toBeNull();
   });
 
   it("uses backend content when a presentation message key or locale is unsupported", async () => {

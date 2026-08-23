@@ -31,19 +31,21 @@ function isAllowed(interaction: GuidedInteractionV1, action: GuidedInteractionAc
 export function GuidedInteractionCard({
   interaction,
   pending,
+  error = null,
   proposalReferences,
   referenceMediaUrls = {},
   onSubmit,
 }: {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  error?: string | null;
   proposalReferences?: ProposedDraftReferenceV2[] | null;
   referenceMediaUrls?: Record<string, string>;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }) {
   if (interaction.status !== "open") return null;
   if (interaction.content.content_kind === "questionnaire") {
-    return <QuestionnaireInteraction interaction={interaction} pending={pending} onSubmit={onSubmit} />;
+    return <QuestionnaireInteraction interaction={interaction} pending={pending} error={error} onSubmit={onSubmit} />;
   }
   if (interaction.content.content_kind === "concept_choice") {
     const references = proposalReferences === undefined
@@ -84,15 +86,21 @@ function InteractionFrame({
 function QuestionnaireInteraction({
   interaction,
   pending,
+  error,
   onSubmit,
 }: {
   interaction: GuidedInteractionV1;
   pending: boolean;
+  error: string | null;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }) {
   const questions = interaction.content.content_kind === "questionnaire" ? interaction.content.questions : [];
   const [answers, setAnswers] = useState<Record<string, { kind: "option" | "custom" | "skip"; value?: string }>>({});
-  const complete = questions.every((question) => !question.required || answers[question.question_id]);
+  const complete = questions.every((question) => {
+    if (!question.required) return true;
+    const answer = answers[question.question_id];
+    return Boolean(answer) && (answer?.kind !== "custom" || Boolean(answer.value?.trim()));
+  });
 
   return (
     <InteractionFrame interaction={interaction}>
@@ -113,20 +121,32 @@ function QuestionnaireInteraction({
                       [question.question_id]: { kind: "option", value: option.option_id },
                     }))}
                   />
-                  <span><strong>{option.title}</strong><small>{option.summary}</small></span>
+                  <span>
+                    <strong>
+                      {option.title}
+                      {option.recommended ? <em>Recommended</em> : null}
+                    </strong>
+                    <small>{option.summary}</small>
+                  </span>
                 </label>
               ))}
               {question.allow_custom ? (
                 <label className="agent-chat__guided-custom">
                   <input
-                    type="text"
+                    aria-label={question.question_id === "production_duration_seconds" ? "Custom duration in seconds" : undefined}
+                    aria-invalid={question.question_id === "production_duration_seconds" && Boolean(error)}
+                    type={question.question_id === "production_duration_seconds" ? "number" : "text"}
+                    inputMode={question.question_id === "production_duration_seconds" ? "numeric" : undefined}
                     value={answer?.kind === "custom" ? answer.value ?? "" : ""}
-                    placeholder="Your direction"
+                    placeholder={question.question_id === "production_duration_seconds" ? "Duration in seconds" : "Your direction"}
                     onChange={(event) => setAnswers((current) => ({
                       ...current,
                       [question.question_id]: { kind: "custom", value: event.target.value },
                     }))}
                   />
+                  {question.question_id === "production_duration_seconds" && error ? (
+                    <small className="agent-chat__guided-field-error" role="alert">{error}</small>
+                  ) : null}
                 </label>
               ) : null}
               {question.allow_skip && isAllowed(interaction, "skip") ? (

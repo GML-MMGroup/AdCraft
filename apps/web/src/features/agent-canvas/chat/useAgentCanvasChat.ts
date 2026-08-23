@@ -204,6 +204,7 @@ export function useAgentCanvasChat({
   const [postReadyCheckpoint, setPostReadyCheckpoint] = useState<CanvasPostReadyCheckpointV2 | null>(null);
   const [postReadyPollRevision, setPostReadyPollRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [guidedInteractionError, setGuidedInteractionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
@@ -487,6 +488,7 @@ export function useAgentCanvasChat({
         || !persistedMessageIds.has(item.message_id)
       )));
       setError(null);
+      setGuidedInteractionError(null);
     } catch (refreshError) {
       if (generation !== refreshGenerationRef.current) return;
       setError(chatRequestErrorMessage(refreshError, "Conversation could not be loaded."));
@@ -497,6 +499,17 @@ export function useAgentCanvasChat({
 
   const handleStructuredActionError = useCallback((actionError: unknown): boolean => {
     if (!isV2ApiError(actionError)) return false;
+    if (actionError.code === "guided_duration_value_invalid") {
+      setGuidedInteractionError(actionError.message || "The duration value is not valid.");
+      return true;
+    }
+    if (actionError.code === "guided_interaction_stale") {
+      setGuidedInteractionError(null);
+      setNotice("The guidance state changed. Your draft was kept; review it and submit again.");
+      void refresh();
+      void onWorkflowRefresh?.();
+      return true;
+    }
     if (
       actionError.code === "guided_action_stale"
       || actionError.code === "guided_action_superseded"
@@ -591,6 +604,7 @@ export function useAgentCanvasChat({
     postReadyBarrierRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
     setError(null);
+    setGuidedInteractionError(null);
     setNotice(null);
     setProposalIssues({});
   }, [workflowId]);
@@ -1162,6 +1176,7 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     setActingInteractionId(interaction.interaction_id);
     setError(null);
+    setGuidedInteractionError(null);
     try {
       const accepted = await agentCanvasApi.submitAgentCanvasGuidedInteraction(
         workflowId,
@@ -1299,6 +1314,7 @@ export function useAgentCanvasChat({
       actingGuidedActionId,
       actingInteractionId,
       error,
+      guidedInteractionError,
       notice,
       proposalIssues,
       failedDraft,

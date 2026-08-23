@@ -417,9 +417,10 @@ export function AgentCanvasChatPanel({
       {standaloneGuidedInteraction ? (
         <div className="agent-chat__current-interaction" aria-live="polite">
           <GuidedInteractionCard
-            key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
+            key={standaloneGuidedInteraction.interaction_id}
             interaction={standaloneGuidedInteraction}
             pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            error={chat.state.guidedInteractionError}
             proposalReferences={standaloneGuidedReferences}
             referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
             onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}

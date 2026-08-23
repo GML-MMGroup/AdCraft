@@ -49,6 +49,31 @@ const proposalReferences: ProposedDraftReferenceV2[] = [{
   media_type: "image",
 }];
 
+const durationInteraction: GuidedInteractionV1 = {
+  interaction_id: "duration-interaction-1", workflow_id: "workflow-1", session_id: "session-1", checkpoint_id: "checkpoint-duration",
+  kind: "clarification_questionnaire", status: "open", response_locale: "zh-CN", expected_session_revision: 8, revision: 3,
+  title: "Set production duration", context: "Choose the target duration for the ad.",
+  content: {
+    content_kind: "questionnaire",
+    questions: [{
+      question_id: "production_duration_seconds",
+      prompt: "How long should the final ad be?",
+      input_kind: "single_select",
+      options: [
+        { option_id: "duration_seconds_15", title: "15 seconds", summary: "A concise cut.", difference_tags: [], recommended: false, reference_preview: [] },
+        { option_id: "duration_seconds_30", title: "30 seconds", summary: "A balanced cut.", difference_tags: [], recommended: true, reference_preview: [] },
+        { option_id: "duration_seconds_45", title: "45 seconds", summary: "More room to develop the story.", difference_tags: [], recommended: false, reference_preview: [] },
+        { option_id: "duration_seconds_60", title: "60 seconds", summary: "A full-length cut.", difference_tags: [], recommended: false, reference_preview: [] },
+      ],
+      allow_custom: true,
+      allow_skip: false,
+      required: true,
+    }],
+  },
+  allowed_actions: ["answer"], submit_path: "/api/v2/workflows/workflow-1/chat/interactions/duration-interaction-1/submit",
+  created_at: "2026-08-23T10:00:00Z", updated_at: "2026-08-23T10:00:00Z",
+};
+
 afterEach(cleanup);
 
 describe("GuidedInteractionCard", () => {
@@ -189,5 +214,52 @@ describe("GuidedInteractionCard", () => {
     expect(screen.getAllByRole("button", { name: /Warm|Precise|Playful/ })).toHaveLength(3);
     expect(screen.queryByText("internal-decision-1")).toBeNull();
     expect(screen.queryByText("Internal reference 1")).toBeNull();
+  });
+
+  it("renders the backend duration options in order without selecting the recommended option", () => {
+    render(<GuidedInteractionCard interaction={durationInteraction} pending={false} onSubmit={vi.fn().mockResolvedValue(true)} />);
+
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
+    expect(screen.getByText("15 seconds")).toBeTruthy();
+    expect(screen.getByText("30 seconds")).toBeTruthy();
+    expect(screen.getByText("45 seconds")).toBeTruthy();
+    expect(screen.getByText("60 seconds")).toBeTruthy();
+    expect(screen.getByText("Recommended")).toBeTruthy();
+    expect(screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it("uses a numeric custom duration and keeps Submit disabled while it is empty", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    render(<GuidedInteractionCard interaction={durationInteraction} pending={false} onSubmit={submit} />);
+
+    const input = screen.getByRole("spinbutton", { name: "Custom duration in seconds" }) as HTMLInputElement;
+    const submitButton = screen.getByRole("button", { name: "Submit answers" }) as HTMLButtonElement;
+    expect(input.type).toBe("number");
+    expect(submitButton.disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: "45" } });
+    expect(submitButton.disabled).toBe(false);
+    fireEvent.click(submitButton);
+
+    expect(submit).toHaveBeenCalledWith({
+      submission_kind: "questionnaire",
+      expected_interaction_revision: 3,
+      expected_session_revision: 8,
+      answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "45" }],
+    });
+  });
+
+  it("does not show Skip when the backend disallows skipping and keeps duration errors beside the input", () => {
+    render(
+      <GuidedInteractionCard
+        interaction={durationInteraction}
+        pending={false}
+        error="The duration must be one of the supported values."
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(screen.getByText("The duration must be one of the supported values.")).toBeTruthy();
   });
 });

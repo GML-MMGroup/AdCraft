@@ -1814,6 +1814,20 @@
   text-align: left;
 }
 
+.agent-chat__guided-interaction label strong em {
+  margin-left: 6px;
+  color: var(--brand);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.agent-chat__guided-custom {
+  display: grid !important;
+  gap: 4px !important;
+  align-items: stretch !important;
+}
+
 .agent-chat__guided-options button.is-selected {
   border-color: rgb(156 211 142 / 58%);
   background: rgb(156 211 142 / 12%);
@@ -1922,6 +1936,7 @@
 }
 
 .agent-chat__guided-interaction input[type="text"],
+.agent-chat__guided-interaction input[type="number"],
 .agent-chat__guided-interaction > input {
   width: 100%;
   box-sizing: border-box;
@@ -1930,6 +1945,12 @@
   border-radius: 6px;
   background: rgb(0 0 0 / 16%);
   color: inherit;
+}
+
+.agent-chat__guided-field-error {
+  color: #ca6f6f !important;
+  font-size: 10px !important;
+  line-height: 1.35;
 }
 
 .agent-chat__guided-actions {
