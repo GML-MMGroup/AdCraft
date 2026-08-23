@@ -187,14 +187,9 @@
   outline-offset: 3px;
 }
 
-.agent-canvas-node-workbench-anchor {
-  position: absolute;
+.react-flow__node-toolbar.agent-canvas-node-workbench-toolbar {
   z-index: 24;
-  top: calc(100% + 18px);
-  left: 50%;
-  width: max-content;
-  max-width: min(640px, calc(100vw - 48px));
-  transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 .agent-canvas-node__media-placeholder {

@@ -1,5 +1,6 @@
 import {
   Handle,
+  NodeToolbar,
   Position,
   useUpdateNodeInternals,
   type Node,
@@ -316,13 +317,17 @@ function AgentCanvasNodeRendererComponent({
         mediaDimensions={validAgentCanvasMediaDimensions(assetDimensions) ? assetDimensions : null}
       />
       {workbench ? (
-        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- The embedded form remains keyboard-accessible; this boundary only prevents node-level double-click focus.
-        <div
-          className="agent-canvas-node-workbench-anchor nodrag nopan nowheel"
+        <NodeToolbar
+          nodeId={id}
+          isVisible
+          position={Position.Bottom}
+          offset={18}
+          align="center"
+          className="agent-canvas-node-workbench-toolbar nodrag nopan nowheel"
           onDoubleClick={(event) => event.stopPropagation()}
         >
           {workbench}
-        </div>
+        </NodeToolbar>
       ) : null}
       {data.showOutputHandle !== false ? (
         <Handle
