@@ -1,7 +1,9 @@
 .agent-node-workbench {
   position: relative;
-  width: 640px;
-  max-width: min(640px, calc(100vw - 48px));
+  box-sizing: border-box;
+  width: 638px;
+  height: 217px;
+  max-width: calc(100vw - 48px);
   overflow: hidden;
   color: #edf0f8;
   background: #2a2a2a;
@@ -548,7 +550,7 @@
 }
 
 @media (max-width: 720px) {
-  .agent-node-workbench { width: min(440px, calc(100vw - 38px)); }
+  .agent-node-workbench { width: min(638px, calc(100vw - 38px)); }
   .agent-node-workbench__options { grid-template-columns: 1fr; }
   .agent-node-workbench__library { grid-template-columns: 1fr auto; }
   .agent-node-workbench__library label { grid-column: 1 / -1; }

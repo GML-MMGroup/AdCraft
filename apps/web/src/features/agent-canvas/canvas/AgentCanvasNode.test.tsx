@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -26,6 +27,9 @@ vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
   return {
     ...actual,
+    NodeToolbar: ({ children, ...props }: { children?: ReactNode } & HTMLAttributes<HTMLDivElement>) => (
+      <div {...props}>{children}</div>
+    ),
     useUpdateNodeInternals: () => updateNodeInternals,
   };
 });
@@ -921,7 +925,7 @@ describe("AgentCanvasNodeRenderer", () => {
   });
 
   it.each(["image", "audio"] as const)(
-    "renders the selected %s node workbench directly below the node shell",
+    "renders the selected %s node workbench through the viewport-independent toolbar",
     (nodeType) => {
       const workbenchLabel = `${nodeType === "image" ? "Image" : "Audio"} node workbench`;
       const data = {
@@ -983,13 +987,19 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
   });
 
-  it("centers the inline workbench beneath its card", () => {
-    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+  it("keeps the prompt workbench fixed at 638 by 217 CSS pixels", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css");
     const css = readFileSync(cssPath, "utf8");
-    const anchorRule = css.match(/\.agent-canvas-node-workbench-anchor\s*\{([\s\S]*?)\n\}/)?.[1];
+    const workbenchRule = css.match(/\.agent-node-workbench\s*\{([\s\S]*?)\n\}/)?.[1];
 
-    expect(anchorRule).toBeDefined();
-    expect(anchorRule).toContain("left: 50%");
-    expect(anchorRule).toContain("transform: translateX(-50%)");
+    expect(workbenchRule).toBeDefined();
+    expect(workbenchRule).toContain("width: 638px");
+    expect(workbenchRule).toContain("height: 217px");
+    expect(workbenchRule).toContain("box-sizing: border-box");
+
+    const nodeCssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const nodeCss = readFileSync(nodeCssPath, "utf8");
+    expect(nodeCss).toContain(".react-flow__node-toolbar.agent-canvas-node-workbench-toolbar");
+    expect(nodeCss).toContain("pointer-events: auto");
   });
 });
