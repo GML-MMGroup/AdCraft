@@ -19,6 +19,7 @@ import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
+import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
@@ -192,7 +193,7 @@ export function AgentCanvasNodeCard({
   mediaDimensions,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
-  const label = node.title.trim() || node.node_type;
+  const label = creativeRoleDisplayName(node.creative_role);
   const resolvedMediaDimensions = mediaDimensions
     ?? (validAgentCanvasMediaDimensions(asset)
       ? { width: asset.width, height: asset.height }
@@ -262,7 +263,7 @@ function AgentCanvasNodeRendererComponent({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const [scriptContentHeight, setScriptContentHeight] = useState(0);
-  const label = data.node.title.trim() || data.node.node_type;
+  const label = creativeRoleDisplayName(data.node.creative_role);
   const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }

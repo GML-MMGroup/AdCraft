@@ -18,6 +18,7 @@ import {
   type AgentCanvasNodeData,
 } from "./AgentCanvasNode.tsx";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
+import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 
 const updateNodeInternals = vi.hoisted(() => vi.fn());
 
@@ -112,18 +113,18 @@ afterEach(() => {
 
 describe("AgentCanvasNodeCard", () => {
   it.each([
-    ["product", "image", "image"],
-    ["storyboard_sequence", "image", "image"],
-    ["world_setting", "text", "text"],
+    ["product", "image", "Product"],
+    ["storyboard_sequence", "image", "Storyboard Sequence"],
+    ["world_setting", "text", "World Setting"],
   ] as const)(
-    "shows the backend-provided %s name in the header",
+    "shows the backend-provided %s creative role in the header",
     (creativeRole, nodeType, expectedLabel) => {
       const { container } = render(
         <AgentCanvasNodeCard
           node={{
             ...makeNode(nodeType),
             creative_role: creativeRole,
-            title: expectedLabel,
+            title: "A backend title that is not used for the label",
           }}
         />,
       );
@@ -183,8 +184,9 @@ describe("AgentCanvasNodeCard", () => {
 
       const card = screen.getByTestId(`agent-canvas-node-${node.node_id}`);
       expect(card.dataset.nodeType).toBe(nodeType);
-      expect(screen.getByLabelText(`${node.title} node type`).classList.contains("agent-canvas-node__header-icon")).toBe(true);
-      expect(screen.getByText(node.title)).toBeTruthy();
+      const label = creativeRoleDisplayName(node.creative_role);
+      expect(screen.getByLabelText(`${label} node type`).classList.contains("agent-canvas-node__header-icon")).toBe(true);
+      expect(screen.getByText(label)).toBeTruthy();
       expect(card.classList.contains("agent-canvas-node--draft")).toBe(true);
     },
   );
@@ -231,7 +233,7 @@ describe("AgentCanvasNodeCard", () => {
     const scriptContent = card.querySelector(".agent-canvas-node__content--script");
     expect(scriptContent).toBeTruthy();
     expect(scriptContent?.classList.contains("nowheel")).toBe(true);
-    expect(screen.getByLabelText("Hidden script title node type")).toBeTruthy();
+    expect(screen.getByLabelText("Script node type")).toBeTruthy();
   });
 
   it("keeps non-Script node content available to canvas wheel gestures", () => {
@@ -296,7 +298,7 @@ describe("AgentCanvasNodeCard", () => {
     render(<AgentCanvasNodeCard node={node} />);
 
     expect(screen.getByText(copy)).toBeTruthy();
-    expect(screen.getByLabelText(`${node.title} node type`)).toBeTruthy();
+    expect(screen.getByLabelText(`${creativeRoleDisplayName(node.creative_role)} node type`)).toBeTruthy();
   });
 
   it("renders current backend Script content on the card", () => {
@@ -307,7 +309,7 @@ describe("AgentCanvasNodeCard", () => {
 
     render(<AgentCanvasNodeCard node={node} />);
 
-    expect(screen.getByLabelText("Hidden script title node, Draft")).toBeTruthy();
+    expect(screen.getByLabelText("Script node, Draft")).toBeTruthy();
     expect(screen.getByText("A quiet coffee break resets the afternoon.")).toBeTruthy();
   });
 
@@ -326,7 +328,7 @@ describe("AgentCanvasNodeCard", () => {
 
     render(<AgentCanvasNodeCard node={node} />);
 
-    expect(screen.getByLabelText("Hidden script title node type")).toBeTruthy();
+    expect(screen.getByLabelText("Script node type")).toBeTruthy();
   });
 
   it("does not resurrect legacy Script text after current content is cleared", () => {
@@ -342,7 +344,7 @@ describe("AgentCanvasNodeCard", () => {
     render(<AgentCanvasNodeCard node={node} />);
 
     expect(screen.queryByText("Legacy script that was cleared.")).toBeNull();
-    expect(screen.getByLabelText("Hidden script title node type")).toBeTruthy();
+    expect(screen.getByLabelText("Script node type")).toBeTruthy();
   });
 
   it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
@@ -410,7 +412,7 @@ describe("AgentCanvasNodeCard", () => {
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
     expect(screen.queryByText("Draft")).toBeNull();
-    expect(screen.getByLabelText("Hidden audio title node type")).toBeTruthy();
+    expect(screen.getByLabelText("General Audio node type")).toBeTruthy();
   });
 
   it("never offers Run for a text node", () => {
@@ -516,8 +518,8 @@ describe("AgentCanvasNodeCard", () => {
     const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
 
-    expect(screen.getByLabelText("Hidden image title node, Ready")).toBeTruthy();
-    expect(screen.getByLabelText("Hidden image title node type")).toBeTruthy();
+    expect(screen.getByLabelText("Storyboard Sequence node, Ready")).toBeTruthy();
+    expect(screen.getByLabelText("Storyboard Sequence node type")).toBeTruthy();
     expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
@@ -756,7 +758,7 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
-    expect(screen.getByLabelText("Hidden image title node type")).toBeTruthy();
+    expect(screen.getByLabelText("General Image node type")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
 });
@@ -912,10 +914,10 @@ describe("AgentCanvasNodeRenderer", () => {
       </ReactFlowProvider>,
     );
 
-    expect(screen.getByLabelText("Hidden image title node input").classList).toContain("react-flow__handle-left");
-    expect(screen.getByLabelText("Hidden image title node output").classList).toContain("react-flow__handle-right");
-    expect(screen.queryByLabelText("Add an upstream node to Hidden image title")).toBeNull();
-    expect(screen.queryByLabelText("Add a downstream node to Hidden image title")).toBeNull();
+    expect(screen.getByLabelText("General Image node input").classList).toContain("react-flow__handle-left");
+    expect(screen.getByLabelText("General Image node output").classList).toContain("react-flow__handle-right");
+    expect(screen.queryByLabelText("Add an upstream node to General Image")).toBeNull();
+    expect(screen.queryByLabelText("Add a downstream node to General Image")).toBeNull();
   });
 
   it.each(["image", "audio"] as const)(
