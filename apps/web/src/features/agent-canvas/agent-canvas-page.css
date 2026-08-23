@@ -94,10 +94,9 @@
 }
 
 .agent-canvas-board.is-interacting :is(
-  .agent-canvas-node__type-label,
   .agent-canvas-node__video-play,
   .agent-canvas-audio-player,
-  .agent-canvas-node__status,
+  .agent-canvas-node__header,
   .agent-canvas-node__fallback-warning,
   .agent-canvas-node__error
 ) {
@@ -114,7 +113,6 @@
   animation-play-state: paused;
 }
 
-.agent-canvas-board.is-interacting .agent-canvas-node__center-icon img,
 .agent-canvas-board.is-interacting .agent-canvas-pointer-dot {
   filter: none;
 }

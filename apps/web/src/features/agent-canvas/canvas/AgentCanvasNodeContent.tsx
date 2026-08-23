@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useRef } from "react";
 
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
-import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
 import { isLikelyMarkdown, renderMarkdownAwareText } from "./AgentCanvasMarkdown";
 
 function nonEmptyString(value: unknown): string | null {
@@ -35,13 +34,11 @@ function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
 
 interface AgentCanvasNodeContentProps {
   node: CanvasNodeV2;
-  iconLabel: string;
   onScriptContentHeightResolved?: (height: number) => void;
 }
 
 export function AgentCanvasNodeContent({
   node,
-  iconLabel,
   onScriptContentHeightResolved,
 }: AgentCanvasNodeContentProps) {
   const copy = agentCanvasNodeDisplayText(node);
@@ -91,9 +88,5 @@ export function AgentCanvasNodeContent({
     );
   }
 
-  return (
-    <div className="agent-canvas-node__media-placeholder">
-      <AgentCanvasNodeTypeIcon nodeType={node.node_type} label={iconLabel} />
-    </div>
-  );
+  return <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />;
 }

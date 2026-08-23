@@ -1,11 +1,4 @@
-import { useState, type ReactNode } from "react";
-
-import {
-  EditIcon,
-  ImageIcon,
-  MuteIcon,
-  VideoIcon,
-} from "../../../icons.tsx";
+import { useState } from "react";
 import type {
   CanvasBindingInputRoleV2,
   CanvasConnectionPolicyV2,
@@ -17,19 +10,12 @@ import {
   isAgentCanvasVisibleNodeType,
   type AgentCanvasVisibleNodeTypeV2,
 } from "../model/nodeDefaults.ts";
+import { AgentCanvasNodeIcon } from "./AgentCanvasNodeIcon.tsx";
 import {
   compatibleConnectedNodeTypes,
   connectionRuleForPair,
 } from "./connectionPolicy.ts";
 import "./AgentCanvasConnectedNodeMenu.css";
-
-function nodeIcon(type: CanvasNodeTypeV2): ReactNode {
-  if (type === "text") return <EditIcon />;
-  if (type === "image") return <ImageIcon />;
-  if (type === "video") return <VideoIcon />;
-  if (type === "audio") return <MuteIcon />;
-  return <EditIcon />;
-}
 
 interface AgentCanvasConnectedNodeMenuProps {
   anchorNode: CanvasNodeV2;
@@ -91,7 +77,7 @@ export function AgentCanvasConnectedNodeMenu({
                 aria-label={`Create connected ${AGENT_CANVAS_NODE_LABELS[nodeType]} node`}
                 onClick={() => onSelect(nodeType, selectedRole)}
               >
-                {nodeIcon(nodeType)}
+                <AgentCanvasNodeIcon nodeType={nodeType} />
                 <span>
                   <strong>{AGENT_CANVAS_NODE_LABELS[nodeType]}</strong>
                   <small>{selectedRole.replaceAll("_", " ")}</small>
