@@ -181,6 +181,7 @@
 
 .agent-node-workbench__model-trigger {
   display: flex;
+  width: 100%;
   min-height: 32px;
   align-items: center;
   justify-content: space-between;
@@ -194,6 +195,8 @@
   cursor: pointer;
   font-size: 11px;
   text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .agent-node-workbench__model-trigger:disabled { cursor: default; opacity: 0.55; }
