@@ -18,6 +18,7 @@ import type {
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
+import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
@@ -42,14 +43,6 @@ const NODE_STATUS_LABELS: Record<CanvasNodeStatusV2, string> = {
   working: "Working",
   ready: "Ready",
   failed: "Failed",
-};
-
-const IMAGE_ROLE_LABELS: Partial<Record<CanvasNodeV2["creative_role"], string>> = {
-  product: "Product",
-  prop: "Prop",
-  character: "Character",
-  scene: "Scene",
-  storyboard_sequence: "Storyboard Sequence",
 };
 
 export interface AgentCanvasNodeCallbacks {
@@ -87,19 +80,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   disabled?: boolean;
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
   onScriptContentHeightResolved?: (height: number) => void;
-}
-
-function semanticNodeLabel(node: CanvasNodeV2): string {
-  if (node.node_type === "text" && node.creative_role === "world_setting") return "World Setting";
-  if (node.node_type !== "image") return NODE_TYPE_LABELS[node.node_type];
-  return IMAGE_ROLE_LABELS[node.creative_role] ?? NODE_TYPE_LABELS.image;
-}
-
-function typeIconLabel(node: CanvasNodeV2, label: string): string {
-  if (node.creative_role === "world_setting") return label;
-  return node.node_type === "image" && IMAGE_ROLE_LABELS[node.creative_role]
-    ? `${label} image`
-    : node.node_type;
+  mediaDimensions?: { width: number; height: number } | null;
 }
 
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- Image load only reports intrinsic media dimensions; the image remains non-interactive. */
@@ -165,7 +146,7 @@ function MediaSurface({
         }
       }}
     />
-  ) : <AgentCanvasNodeContent node={node} iconLabel={typeIconLabel(node, label)} />;
+  ) : <AgentCanvasNodeContent node={node} />;
 }
 /* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
 
@@ -182,7 +163,6 @@ function NodeSurface({
     return (
       <AgentCanvasNodeContent
         node={node}
-        iconLabel={typeIconLabel(node, label)}
         onScriptContentHeightResolved={onScriptContentHeightResolved}
       />
     );
@@ -209,11 +189,14 @@ export function AgentCanvasNodeCard({
   onOpenVideoPreview,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
+  mediaDimensions,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
-  const label = semanticNodeLabel(node);
-  const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
-    || Boolean(runtime?.blocked_by_node_ids.length);
+  const label = node.title.trim() || node.node_type;
+  const resolvedMediaDimensions = mediaDimensions
+    ?? (validAgentCanvasMediaDimensions(asset)
+      ? { width: asset.width, height: asset.height }
+      : null);
   const promptPreparation = promptPreparationForNode(node);
   const hasPromptPreparationFailure = promptPreparation?.status === "failed";
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
@@ -232,10 +215,8 @@ export function AgentCanvasNodeCard({
       data-node-status={status}
       aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
     >
+      <AgentCanvasNodeHeader node={node} status={status} dimensions={resolvedMediaDimensions} />
       <div className="agent-canvas-node__surface">
-        <span className="agent-canvas-node__type-label">
-          {NODE_TYPE_LABELS[node.node_type].toLowerCase()}
-        </span>
         <NodeSurface
           node={node}
           asset={asset}
@@ -260,16 +241,6 @@ export function AgentCanvasNodeCard({
         ) : null}
       </div>
 
-      {node.node_type !== "audio" ? (
-        <span
-          className={`agent-canvas-node__status agent-canvas-node__status--${status}${blockedByUpstream ? " agent-canvas-node__status--blocked" : ""}`}
-          title={blockedByUpstream ? "Waiting for required upstream nodes." : undefined}
-        >
-          <i aria-hidden="true" />
-          {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
-        </span>
-      ) : null}
-
       {usedDeterministicFallback ? (
         <span className="agent-canvas-node__fallback-warning" role="status">
           Created with a simplified fallback
@@ -291,7 +262,7 @@ function AgentCanvasNodeRendererComponent({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const [scriptContentHeight, setScriptContentHeight] = useState(0);
-  const label = semanticNodeLabel(data.node);
+  const label = data.node.title.trim() || data.node.node_type;
   const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
@@ -341,6 +312,7 @@ function AgentCanvasNodeRendererComponent({
         onScriptContentHeightResolved={data.node.node_type === "script"
           ? handleScriptContentHeightResolved
           : undefined}
+        mediaDimensions={validAgentCanvasMediaDimensions(assetDimensions) ? assetDimensions : null}
       />
       {workbench ? (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- The embedded form remains keyboard-accessible; this boundary only prevents node-level double-click focus.
