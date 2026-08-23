@@ -107,7 +107,7 @@ export function CanvasModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<ModelMenuPosition | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const selectedModel = useMemo(() => {
     if (selectionMode !== "explicit" || !modelRef) return null;
@@ -235,19 +235,25 @@ export function CanvasModelPicker({
   return (
     <div className="agent-node-workbench__model-picker">
       <span className="agent-node-workbench__model-label">Model</span>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="agent-node-workbench__model-trigger"
-        aria-label="Choose model"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        disabled={disabled || loading}
-        onClick={() => setOpen((current) => !current)}
+      <details
+        open={open}
       >
-        <span>{loading ? "Loading compatible models..." : selectedLabel}</span>
-        {selectedModel ? <small className={`is-${selectedModel.availability}`}>{selectedModel.availability}</small> : null}
-      </button>
+        <summary
+          ref={triggerRef}
+          aria-label="Choose model"
+          aria-disabled={disabled || loading}
+          onClick={(event) => {
+            if (disabled || loading) {
+              event.preventDefault();
+              return;
+            }
+            setOpen((current) => !current);
+          }}
+        >
+          <span>{loading ? "Loading compatible models..." : selectedLabel}</span>
+          {selectedModel ? <small className={`is-${selectedModel.availability}`}>{selectedModel.availability}</small> : null}
+        </summary>
+      </details>
       {menu}
       {error ? <p className="agent-node-workbench__field-error">{error}</p> : null}
       {selectionMode === "explicit" && selectedModel?.unavailable_reason ? (
