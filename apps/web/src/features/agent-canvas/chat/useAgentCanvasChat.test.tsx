@@ -203,6 +203,45 @@ function guidedQuestionnaireInteraction(): GuidedInteractionV1 {
   };
 }
 
+function guidedConceptInteraction(): GuidedInteractionV1 {
+  return {
+    interaction_id: "interaction-concept-1",
+    workflow_id: "workflow-1",
+    session_id: "guidance-1",
+    checkpoint_id: "checkpoint-concept-1",
+    kind: "concept_choice",
+    status: "open",
+    response_locale: "en-US",
+    expected_session_revision: 8,
+    revision: 3,
+    title: "Choose a scene direction",
+    context: "Select one direction to create the Draft.",
+    content: {
+      content_kind: "concept_choice",
+      proposal_id: "proposal-1",
+      stage: "scene",
+      stage_revision: 4,
+      action_id: "action-select-1",
+      occurrence_id: "scene-1",
+      capability_id: "scene_design",
+      options: [{
+        option_id: "option-1",
+        title: "Morning forest",
+        summary: "Soft light through the trees.",
+        difference_tags: [],
+        recommended: true,
+        reference_preview: [],
+      }],
+      allow_custom: true,
+      allow_exclusion: true,
+    },
+    allowed_actions: ["select", "custom", "defer", "exclude", "delegate"],
+    submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-concept-1/submit",
+    created_at: "2026-08-24T10:00:00Z",
+    updated_at: "2026-08-24T10:00:00Z",
+  };
+}
+
 function descriptor(
   action: ProposalActionDescriptorV2["action"],
   actionId = `action-${action}`,
@@ -901,6 +940,152 @@ describe("useAgentCanvasChat", () => {
 
     expect(order).toEqual(["submit", "timeline", "session", "graph", "runtime"]);
     expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
+  it("keeps a guided choice pending until the authoritative interaction closes", async () => {
+    const interaction = guidedConceptInteraction();
+    const openSession = {
+      ...guidedSession(),
+      interaction,
+      awaiting: null,
+    };
+    const closedSession = {
+      ...guidedSession(5, 9),
+      interaction: null,
+      awaiting: null,
+    };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: openSession,
+    }));
+    api.agentCanvasCreativeSession.mockResolvedValue(openSession);
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValue({
+      workflow_id: "workflow-1",
+      interaction_id: interaction.interaction_id,
+      submission_id: "submission-concept-1",
+      receipt_id: "receipt-concept-1",
+      created_node_ids: [],
+      created_binding_ids: [],
+      document_revisions: {},
+      continuation_id: "continuation-concept-1",
+      automatic_run_command_ids: [],
+      resulting_session_revision: 9,
+      events_cursor: 21,
+      replayed: false,
+    });
+    const { result, rerender } = renderHook(
+      ({ chatRevision, chatEvents }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents,
+      }),
+      { initialProps: { chatRevision: 0, chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "concept_choice",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        action: "select",
+        option_id: "option-1",
+        custom_text: null,
+        accepted_references: [],
+      });
+    });
+
+    expect(result.current.state.actingInteractionId).toBe(interaction.interaction_id);
+
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: closedSession,
+    }));
+    api.agentCanvasCreativeSession.mockResolvedValue(closedSession);
+    const completedEvent: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_completed", "turn-materialization-1", 22),
+      event_type: "proposal_materialization_completed",
+      action_id: interaction.interaction_id,
+      payload: {
+        proposal_id: "proposal-1",
+        materialization_id: "materialization-1",
+        option_id: "option-1",
+        turn_id: "turn-materialization-1",
+        node_ids: ["node-scene-1"],
+        binding_ids: [],
+      },
+    };
+    rerender({ chatRevision: 1, chatEvents: [completedEvent] });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.guidedInteraction).toBeNull();
+    expect(result.current.state.actingInteractionId).toBeNull();
+  });
+
+  it("releases the guided choice lock when its materialization fails", async () => {
+    const interaction = guidedConceptInteraction();
+    const openSession = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: openSession }));
+    api.agentCanvasCreativeSession.mockResolvedValue(openSession);
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValue({
+      workflow_id: "workflow-1",
+      interaction_id: interaction.interaction_id,
+      submission_id: "submission-concept-failed-1",
+      receipt_id: "receipt-concept-failed-1",
+      created_node_ids: [],
+      created_binding_ids: [],
+      document_revisions: {},
+      continuation_id: "continuation-concept-failed-1",
+      automatic_run_command_ids: [],
+      resulting_session_revision: 9,
+      events_cursor: 21,
+      replayed: false,
+    });
+    const { result, rerender } = renderHook(
+      ({ chatRevision, chatEvents }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents,
+      }),
+      { initialProps: { chatRevision: 0, chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "concept_choice",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        action: "select",
+        option_id: "option-1",
+        custom_text: null,
+        accepted_references: [],
+      });
+    });
+    expect(result.current.state.actingInteractionId).toBe(interaction.interaction_id);
+
+    const failedEvent: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_failed", "turn-materialization-failed-1", 22),
+      event_type: "proposal_materialization_failed",
+      action_id: interaction.interaction_id,
+      payload: {
+        proposal_id: "proposal-1",
+        materialization_id: "materialization-failed-1",
+        option_id: "option-1",
+        turn_id: "turn-materialization-failed-1",
+        error_code: "capability_materialization_failed",
+        retryable: true,
+      },
+    };
+    rerender({ chatRevision: 1, chatEvents: [failedEvent] });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.actingInteractionId).toBeNull();
   });
 
   it("refreshes authority after a stale guided interaction without resubmitting it", async () => {

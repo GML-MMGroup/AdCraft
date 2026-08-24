@@ -223,6 +223,7 @@ export function useAgentCanvasChat({
   const submittedGuidanceAuthorityDigestsRef = useRef(new Set<string>());
   const guidanceAdvanceInFlightRef = useRef<string | null>(null);
   const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
+  const guidedInteractionSubmitSeqRef = useRef<number | null>(null);
   const guidanceAdvanceRebaseRef = useRef<{
     stalePrecondition: GuidanceAdvancePreconditionV1;
     replacementAttempted: boolean;
@@ -602,6 +603,7 @@ export function useAgentCanvasChat({
     submittedGuidanceAuthorityDigestsRef.current.clear();
     guidanceAdvanceInFlightRef.current = null;
     postReadyBarrierRef.current = null;
+    guidedInteractionSubmitSeqRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
     setError(null);
     setGuidedInteractionError(null);
@@ -662,6 +664,39 @@ export function useAgentCanvasChat({
     const timer = window.setTimeout(() => void refresh(), 80);
     return () => window.clearTimeout(timer);
   }, [chatRevision, refresh]);
+
+  useEffect(() => {
+    if (!actingInteractionId || !guidanceSession) return;
+    const authoritativeInteraction = guidanceSession.interaction;
+    if (
+      authoritativeInteraction?.interaction_id === actingInteractionId
+      && authoritativeInteraction.status === "open"
+    ) return;
+    guidedInteractionSubmitSeqRef.current = null;
+    setActingInteractionId(null);
+  }, [actingInteractionId, guidanceSession]);
+
+  useEffect(() => {
+    if (!actingInteractionId) return;
+    const interaction = guidanceSession?.interaction;
+    if (
+      !interaction
+      || interaction.interaction_id !== actingInteractionId
+      || interaction.content.content_kind !== "concept_choice"
+    ) return;
+    const proposalId = interaction.content.proposal_id;
+    if (!proposalId) return;
+    const materializationFailed = chatEvents.some((event) => (
+      event.workflow_id === workflowId
+      && event.event_type === "proposal_materialization_failed"
+      && event.payload?.proposal_id === proposalId
+      && event.seq > (guidedInteractionSubmitSeqRef.current ?? -1)
+    ));
+    if (materializationFailed) {
+      guidedInteractionSubmitSeqRef.current = null;
+      setActingInteractionId(null);
+    }
+  }, [actingInteractionId, chatEvents, guidanceSession, workflowId]);
 
   const submitGuidanceAdvance = useCallback(async (
     precondition: GuidanceAdvancePreconditionV1,
@@ -1175,6 +1210,10 @@ export function useAgentCanvasChat({
     if (!workflowId || actingInteractionId || interaction.status !== "open") return false;
     const workflowGeneration = workflowGenerationRef.current;
     setActingInteractionId(interaction.interaction_id);
+    guidedInteractionSubmitSeqRef.current = chatEvents.reduce(
+      (latest, event) => Math.max(latest, event.seq),
+      -1,
+    );
     setError(null);
     setGuidedInteractionError(null);
     try {
@@ -1195,14 +1234,13 @@ export function useAgentCanvasChat({
       if (!handleStructuredActionError(interactionError)) {
         setError(chatRequestErrorMessage(interactionError, "The guided response could not be submitted."));
       }
+      guidedInteractionSubmitSeqRef.current = null;
+      setActingInteractionId(null);
       return false;
-    } finally {
-      if (workflowGeneration === workflowGenerationRef.current) {
-        setActingInteractionId(null);
-      }
     }
   }, [
     actingInteractionId,
+    chatEvents,
     handleStructuredActionError,
     onRuntimeRefresh,
     onWorkflowRefresh,
