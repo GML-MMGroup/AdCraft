@@ -854,7 +854,7 @@ export function ProposalCard({
     <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
         <strong>{proposal.capability_display_name}</strong>
-        <span>{readOnly ? (appliedOptionId ? "Applied" : "Options") : proposal.availability}</span>
+        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
       </header>
       {readOnly ? (
         <HistoricalProposalOptions
