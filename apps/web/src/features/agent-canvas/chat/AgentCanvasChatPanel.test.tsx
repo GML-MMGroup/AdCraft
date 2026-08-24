@@ -846,6 +846,51 @@ describe("command and receipt cards", () => {
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
+  it("shows text generation feedback only while capability work is active", () => {
+    const activity: ChatCapabilityActivityV2 = {
+      item_type: "expert_activity",
+      activity_id: "activity-loader",
+      turn_id: "turn-loader",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      status: "working",
+      sequence: 4,
+      started_at: "2026-08-04T00:00:00Z",
+      finished_at: null,
+      message: null,
+      error_code: null,
+      elapsed_ms: null,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    };
+
+    const { rerender } = render(<CapabilityActivityRow activity={activity} />);
+
+    expect(screen.getByText("Preparing the next response...")).toBeTruthy();
+
+    rerender(<CapabilityActivityRow activity={{
+      ...activity,
+      status: "completed",
+      finished_at: "2026-08-04T00:01:00Z",
+    }} />);
+
+    expect(screen.queryByText("Preparing the next response...")).toBeNull();
+
+    rerender(<CapabilityActivityRow activity={{
+      ...activity,
+      status: "failed",
+      finished_at: "2026-08-04T00:02:00Z",
+      message: "The capability request failed.",
+      error_code: "agent_failed",
+    }} />);
+
+    expect(screen.queryByText("Preparing the next response...")).toBeNull();
+  });
+
   it("shows a superseded capability as replaced progress rather than a failure", () => {
     render(<CapabilityActivityRow activity={{
       item_type: "expert_activity",
