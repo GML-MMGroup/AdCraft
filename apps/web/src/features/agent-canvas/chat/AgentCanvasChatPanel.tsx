@@ -54,6 +54,7 @@ import {
 } from "./guidedInteractionReferences.ts";
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
+import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
@@ -853,7 +854,7 @@ export function ProposalCard({
     <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
         <strong>{proposal.capability_display_name}</strong>
-        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
+        <span>{readOnly ? (appliedOptionId ? "Applied" : "Options") : proposal.availability}</span>
       </header>
       {readOnly ? (
         <HistoricalProposalOptions
@@ -861,20 +862,18 @@ export function ProposalCard({
           selectedOptionId={appliedOptionId}
         />
       ) : (
-        <div className="agent-chat__options">
-          {displayOptions.map((option) => (
-            <button
-              type="button"
+        <div className="agent-chat__options" aria-label="Creative direction options">
+          {displayOptions.map((option, index) => (
+            <ProposalOptionRow
               key={option.option_id}
-              className={selected?.option_id === option.option_id ? "is-selected" : ""}
+              index={index}
+              optionId={option.option_id}
+              title={option.title}
+              summary={option.public_summary}
+              selected={selected?.option_id === option.option_id}
               disabled={!canSelect || pending}
-              onClick={() => setSelected(option)}
-            >
-              <strong>
-                {option.title}
-              </strong>
-              <span>{option.public_summary}</span>
-            </button>
+              onSelect={() => setSelected(option)}
+            />
           ))}
         </div>
       )}

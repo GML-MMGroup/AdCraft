@@ -9,6 +9,7 @@ import type {
 import { ConceptChoiceSubmitControls } from "./ConceptChoiceSubmitControls.tsx";
 import { GuidedInteractionReferences } from "./GuidedInteractionReferences.tsx";
 import { guidedReferenceKey } from "./guidedInteractionReferences.ts";
+import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 
 const ACTION_LABELS: Record<GuidedInteractionActionV1, string> = {
   answer: "Submit answers",
@@ -66,13 +67,18 @@ export function GuidedInteractionCard({
 
 function InteractionFrame({
   interaction,
+  variant,
   children,
 }: {
   interaction: GuidedInteractionV1;
+  variant?: "proposal";
   children: ReactNode;
 }) {
   return (
-    <article className="agent-chat__guided-interaction" aria-label={interaction.title}>
+    <article
+      className={`agent-chat__guided-interaction${variant ? ` agent-chat__guided-interaction--${variant}` : ""}`}
+      aria-label={interaction.title}
+    >
       <header>
         <strong>{interaction.title}</strong>
         <span>{interaction.response_locale}</span>
@@ -239,12 +245,24 @@ function ConceptInteraction({
     });
   };
   return (
-    <InteractionFrame interaction={interaction}>
-      <div className="agent-chat__guided-options">
-        {options.map((option) => (
-          <button type="button" key={option.option_id} disabled={pending} className={optionId === option.option_id ? "is-selected" : ""} onClick={() => setOptionId(option.option_id)}>
-            <strong>{option.title}{option.recommended ? <em>Recommended</em> : null}</strong><span>{option.summary}</span>
-          </button>
+    <InteractionFrame interaction={interaction} variant="proposal">
+      <div className="agent-chat__guided-proposal-intro">
+        <span>Choose one direction</span>
+        <small>{options.length} options</small>
+      </div>
+      <div className="agent-chat__guided-options" aria-label="Creative direction options">
+        {options.map((option, index) => (
+          <ProposalOptionRow
+            key={option.option_id}
+            index={index}
+            optionId={option.option_id}
+            title={option.title}
+            summary={option.summary}
+            recommended={option.recommended}
+            selected={optionId === option.option_id}
+            disabled={pending}
+            onSelect={() => setOptionId(option.option_id)}
+          />
         ))}
       </div>
       {content?.proposal_id ? (
