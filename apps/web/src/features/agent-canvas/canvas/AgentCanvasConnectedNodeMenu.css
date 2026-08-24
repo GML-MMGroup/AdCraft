@@ -54,7 +54,7 @@
   outline: none;
 }
 
-.agent-canvas-connected-menu__option > button > svg {
+.agent-canvas-connected-menu__option > button > .agent-canvas-node-icon {
   width: 18px;
   height: 18px;
   color: var(--brand);

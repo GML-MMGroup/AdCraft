@@ -217,7 +217,7 @@ describe("AgentCanvasNodeCard", () => {
 
     const failedCard = screen.getByTestId("agent-canvas-node-image-node");
     expect(failedCard.querySelector(".agent-canvas-node__header--failed .agent-canvas-node__header-icon")).toBeTruthy();
-    expect(failedCard.querySelector(".agent-canvas-node__header-icon svg")).toBeTruthy();
+    expect(failedCard.querySelector(".agent-canvas-node__header-icon .agent-canvas-node-icon")).toBeTruthy();
   });
 
   it("renders backend Script content rather than hiding the canonical Script node", () => {

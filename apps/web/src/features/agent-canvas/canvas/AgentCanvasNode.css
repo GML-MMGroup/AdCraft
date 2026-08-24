@@ -85,7 +85,20 @@
   color: rgba(172, 176, 186, 0.94);
 }
 
-.agent-canvas-node__header-icon svg {
+.agent-canvas-node-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+
+.agent-canvas-node__header-icon .agent-canvas-node-icon {
   display: block;
   width: 17px;
   height: 17px;

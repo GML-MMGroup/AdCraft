@@ -343,6 +343,12 @@
   background: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
+.agent-canvas-node-picker .agent-canvas-node-icon {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+}
+
 .agent-canvas-node-picker span {
   font-size: 13px;
   font-weight: 600;
