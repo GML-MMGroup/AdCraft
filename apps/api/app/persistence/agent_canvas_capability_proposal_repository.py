@@ -28,7 +28,7 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionRow,
     AgentCanvasRequirementLedgerRow,
 )
-from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
+from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2, ProposalCardResultV2
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
 from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
@@ -87,6 +87,12 @@ class AgentCanvasCapabilityProposalRepository:
                 "Internal document commands cannot publish a public Proposal.",
                 stage="capability_publication",
             )
+        if not isinstance(result, ProposalCardResultV2):
+            raise V2PersistenceError(
+                "proposal_card_contract_invalid",
+                "Only Proposal Card schema version 2 may be published after cutover.",
+                stage="capability_publication",
+            )
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
@@ -120,14 +126,68 @@ class AgentCanvasCapabilityProposalRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                existing = connection.execute(
-                    select(AgentCanvasConceptProposalRow.proposal_id).where(
-                        AgentCanvasConceptProposalRow.proposal_id == proposal_id
+                existing = (
+                    connection.execute(
+                        select(
+                            AgentCanvasConceptProposalRow.proposal_id,
+                            AgentCanvasConceptProposalRow.proposal_card_schema_version,
+                        ).where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
                     )
-                ).scalar_one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if existing is not None:
+                    version = int(existing["proposal_card_schema_version"] or 1)
+                    if version not in {1, 2}:
+                        raise V2PersistenceError(
+                            "proposal_card_version_unsupported",
+                            "The persisted Proposal Card schema version is unsupported.",
+                            stage="capability_publication",
+                        )
+                    if version != 2:
+                        raise V2PersistenceError(
+                            "proposal_card_version_conflict",
+                            "Historical Proposal Cards are read-only after cutover.",
+                            stage="capability_publication",
+                        )
+                    persisted_options = (
+                        connection.execute(
+                            select(
+                                AgentCanvasConceptOptionRow.title,
+                                AgentCanvasConceptOptionRow.description,
+                            )
+                            .where(
+                                AgentCanvasConceptOptionRow.proposal_id
+                                == str(existing["proposal_id"])
+                            )
+                            .order_by(AgentCanvasConceptOptionRow.display_order)
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    persisted_digest = _card_digest(
+                        tuple(
+                            (str(option["title"]), str(option["description"]))
+                            for option in persisted_options
+                        )
+                    )
+                    incoming_digest = _card_digest(
+                        tuple((str(option.title), str(option.public_summary)) for option in options)
+                    )
+                    if persisted_digest != incoming_digest:
+                        raise V2PersistenceError(
+                            "proposal_card_version_conflict",
+                            "The replayed Proposal Card differs from the persisted card.",
+                            stage="capability_publication",
+                            details={
+                                "proposal_id": str(existing["proposal_id"]),
+                                "proposal_card_schema_version": version,
+                                "persisted_card_digest": persisted_digest,
+                                "incoming_card_digest": incoming_digest,
+                            },
+                        )
                     connection.commit()
-                    return str(existing)
+                    return str(existing["proposal_id"])
                 requirement_head = (
                     connection.execute(
                         select(AgentCanvasRequirementLedgerRow).where(
@@ -259,6 +319,7 @@ class AgentCanvasCapabilityProposalRepository:
                         requirement_revision_no=envelope.requirement_revision_no,
                         requirement_digest=envelope.requirement_digest,
                         proposal_revision=1,
+                        proposal_card_schema_version=2,
                         proposed_references_json=json.dumps(
                             [
                                 reference.model_dump(mode="json")
@@ -286,7 +347,7 @@ class AgentCanvasCapabilityProposalRepository:
                             title=str(option.title),
                             description=public_summary,
                             key_decisions_json=json.dumps(
-                                list(option.key_decisions),
+                                list(getattr(option, "key_decisions", ())),
                                 separators=(",", ":"),
                                 sort_keys=True,
                             ),
@@ -618,6 +679,21 @@ def _project_references(
 
 def _digest(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+
+
+def _card_digest(options: tuple[tuple[str, str], ...]) -> str:
+    """Hash only the ordered public card fields used for replay identity."""
+
+    return _digest(
+        *(
+            json.dumps(
+                {"public_summary": public_summary, "title": title},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for title, public_summary in options
+        )
+    )
 
 
 def _style_snapshot_id(style_projection: dict[str, object]) -> str | None:

@@ -692,6 +692,23 @@ class _OptionBaseV1(_CapabilityModel):
     key_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
+class ProposalCardOptionV2(_CapabilityModel):
+    """The only model-authored fields allowed in a public Proposal Card."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
+
+
+class ProposalCardResultV2(_CapabilityModel):
+    """Compact proposal output; Python owns count and option identities."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[ProposalCardOptionV2, ...] = Field(min_length=1, max_length=3)
+
+
 class WorldSettingProposalOptionV1(_OptionBaseV1):
     pass
 
@@ -773,14 +790,14 @@ class QuickMediaProposalResultV1(_CapabilityModel):
 
 
 CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
-    "world_setting": WorldSettingProposalResultV1,
-    "product_design": ProductProposalResultV1,
-    "prop_design": PropProposalResultV1,
-    "character_design": CharacterProposalResultV1,
-    "scene_design": SceneProposalResultV1,
-    "script_authoring": ScriptProposalResultV1,
-    "storyboard_design": StoryboardProposalResultV1,
-    "video_direction": VideoProposalResultV1,
-    "bgm_direction": BgmProposalResultV1,
-    "quick_media": QuickMediaProposalResultV1,
+    "world_setting": ProposalCardResultV2,
+    "product_design": ProposalCardResultV2,
+    "prop_design": ProposalCardResultV2,
+    "character_design": ProposalCardResultV2,
+    "scene_design": ProposalCardResultV2,
+    "script_authoring": ProposalCardResultV2,
+    "storyboard_design": ProposalCardResultV2,
+    "video_direction": ProposalCardResultV2,
+    "bgm_direction": ProposalCardResultV2,
+    "quick_media": ProposalCardResultV2,
 }

@@ -187,6 +187,17 @@ class AgentCanvasRunService:
                 raise _run_error(reason, _skip_message(reason))
             else:
                 skipped.append(CanvasRunSkippedNodeV2(node_id=node.node_id, reason=reason))
+        if not accepted:
+            return CanvasRunAcceptedV2(
+                workflow_id=workflow_id,
+                execution_id=f"skipped:{_fingerprint(request)}",
+                status="completed",
+                accepted_node_ids=(),
+                joined_node_ids=(),
+                skipped=tuple(skipped),
+                waiting_node_ids=(),
+                events_cursor=self._events.max_seq(workflow_id),
+            )
         now = self._clock()
         snapshot_service = self._run_snapshots or AgentCanvasRunIntentSnapshotService(
             self._workflows,
@@ -1355,6 +1366,8 @@ class CanvasRuntimeSnapshotService:
 
 
 def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
+    if getattr(node, "execution_mode", "generative") == "source_only":
+        return "source_only_node_not_runnable"
     if node.node_type == "editing":
         return "node_not_runnable"
     if node.status == "ready":
@@ -1375,6 +1388,7 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
 
 def _skip_message(reason: str) -> str:
     return {
+        "source_only_node_not_runnable": "Source-only nodes cannot be run.",
         "node_not_runnable": "Node type cannot be run.",
         "node_already_ready": "Ready nodes are not rerun in place.",
         "node_already_working": "Working nodes are already executing.",

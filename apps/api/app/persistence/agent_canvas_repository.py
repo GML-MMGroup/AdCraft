@@ -926,7 +926,16 @@ class AgentCanvasWorkflowRepository:
                         for field, provenance in current.parameter_provenance.items()
                         if provenance.origin == "manual" and field in manual_parameters
                     }
-                    parameters = {**derived_parameters, **manual_parameters}
+                    deterministic_parameters = {
+                        field: value
+                        for field, value in current.parameters.items()
+                        if field not in current.parameter_provenance
+                    }
+                    parameters = {
+                        **deterministic_parameters,
+                        **derived_parameters,
+                        **manual_parameters,
+                    }
                     provenance = {**derived_provenance, **manual_provenance}
                     if (
                         parameters == current.parameters
@@ -2225,6 +2234,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "role_contract_version": node.role_contract_version,
         "title": node.title,
         "status": node.status,
+        "execution_mode": node.execution_mode,
         "summary_prompt": node.summary_prompt,
         "generation_prompt": node.generation_prompt,
         "structured_content_json": _json_dump(node.structured_content),
@@ -2375,6 +2385,7 @@ def _node_from_row(
         role_contract_version=cast(str, row["role_contract_version"]),
         title=str(row["title"]),
         status=cast(str, row["status"]),
+        execution_mode=cast(str, row["execution_mode"]),
         summary_prompt=cast(str | None, row["summary_prompt"]),
         generation_prompt=cast(str | None, row["generation_prompt"]),
         structured_content=cast(

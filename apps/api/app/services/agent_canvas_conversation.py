@@ -790,10 +790,6 @@ def _deterministic_capability_result(
             {
                 "title": f"Option {index}",
                 "public_summary": summary,
-                "key_decisions": [
-                    f"Keep the {capability_id} direction coherent.",
-                    f"Use option {index} as the selected creative premise.",
-                ],
             }
         )
     return {"options": options}
@@ -2316,7 +2312,6 @@ class AgentConversationService:
                     option_id=option_ids[index],
                     title=option.title,
                     public_summary=option.public_summary,
-                    key_decisions=option.key_decisions,
                 )
                 for index, option in enumerate(result.options)
             ),

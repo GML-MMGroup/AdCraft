@@ -41,6 +41,7 @@ from app.schemas.agent_working_documents import (
     StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
+    StoryboardSegmentMaterializationV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_production_journey import (
@@ -353,7 +354,10 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
                 order=window.order,
                 start_seconds=window.start_seconds,
                 end_seconds=window.end_seconds,
-                narrative_goal=authored_text,
+                narrative_goal=(
+                    f"Sequence {window.order} local narrative direction "
+                    f"({window.start_seconds:g}-{window.end_seconds:g}s)."
+                ),
                 start_state=("Opening state" if window.order == 1 else "Continue prior sequence."),
                 end_state=(
                     "Close the authored direction."
@@ -380,6 +384,13 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
             ),
             segments=segments,
             rows=(),
+            segment_materializations=tuple(
+                StoryboardSegmentMaterializationV3(
+                    sequence_id=segment.sequence_id,
+                    materialization_id=f"storyboard-segment:{segment.sequence_id}",
+                )
+                for segment in segments
+            ),
         )
 
     @staticmethod

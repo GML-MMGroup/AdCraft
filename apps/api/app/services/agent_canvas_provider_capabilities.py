@@ -160,17 +160,27 @@ class ProviderCapabilityService:
                     duration = maximum_duration
                     applied_normalizations.append("duration_clamped_to_provider_limit")
             effective["duration_seconds"] = duration
-            requested_audio = bool(requested.get("generate_audio", False))
-            if requested_audio and (
-                "generate_audio" not in capability.supported_parameters
-                or not capability.supports_native_audio
+            has_audio_request = "generate_audio" in requested
+            requested_audio = requested.get("generate_audio") is True
+            if (
+                has_audio_request
+                and requested_audio
+                and (
+                    "generate_audio" not in capability.supported_parameters
+                    or not capability.supports_native_audio
+                )
             ):
-                effective["generate_audio"] = False
-                applied_normalizations.append("generate_audio_omitted_for_model_capability")
-            elif "generate_audio" in capability.supported_parameters:
+                raise ProviderCapabilityError(
+                    "video_native_audio_unsupported",
+                    "The selected Video model does not support required native audio.",
+                    node_id=node.node_id,
+                    model_id=capability.model_id,
+                    generate_audio=True,
+                    supports_native_audio=capability.supports_native_audio,
+                    supported_parameters=sorted(capability.supported_parameters),
+                )
+            if has_audio_request:
                 effective["generate_audio"] = requested_audio
-            else:
-                effective.pop("generate_audio", None)
         return EffectiveMediaParameterSnapshotV2(
             requested=requested,
             effective=effective,

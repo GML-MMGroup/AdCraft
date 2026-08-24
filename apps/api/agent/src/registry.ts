@@ -54,15 +54,15 @@ interface OperationMetadata {
 }
 
 const capabilityDefinitions = [
-  ["world_setting", "world_setting", "WorldSettingProposalResultV1", "video_agent_world_setting", "World Setting Designer"],
-  ["product_design", "product", "ProductProposalResultV1", "video_agent_product_design", "Product Designer"],
-  ["prop_design", "prop", "PropProposalResultV1", "video_agent_prop_design", "Prop Designer"],
-  ["character_design", "character", "CharacterProposalResultV1", "video_agent_character_design", "Character Designer"],
-  ["scene_design", "scene", "SceneProposalResultV1", "video_agent_scene_design", "Scene Designer"],
-  ["script_authoring", "script", "ScriptProposalResultV1", "video_agent_script_authoring", "Script Writer"],
-  ["storyboard_design", "storyboard", "StoryboardProposalResultV1", "video_agent_storyboard_design", "Storyboard Artist"],
-  ["video_direction", "video", "VideoProposalResultV1", "video_agent_video_direction", "Video Director"],
-  ["bgm_direction", "bgm", "BgmProposalResultV1", "video_agent_bgm_direction", "BGM Director"],
+  ["world_setting", "world_setting", "ProposalCardResultV2", "video_agent_world_setting", "World Setting Designer"],
+  ["product_design", "product", "ProposalCardResultV2", "video_agent_product_design", "Product Designer"],
+  ["prop_design", "prop", "ProposalCardResultV2", "video_agent_prop_design", "Prop Designer"],
+  ["character_design", "character", "ProposalCardResultV2", "video_agent_character_design", "Character Designer"],
+  ["scene_design", "scene", "ProposalCardResultV2", "video_agent_scene_design", "Scene Designer"],
+  ["script_authoring", "script", "ProposalCardResultV2", "video_agent_script_authoring", "Script Writer"],
+  ["storyboard_design", "storyboard", "ProposalCardResultV2", "video_agent_storyboard_design", "Storyboard Artist"],
+  ["video_direction", "video", "ProposalCardResultV2", "video_agent_video_direction", "Video Director"],
+  ["bgm_direction", "bgm", "ProposalCardResultV2", "video_agent_bgm_direction", "BGM Director"],
 ] as const satisfies ReadonlyArray<
   readonly [CapabilityId, string, string, string, string]
 >;

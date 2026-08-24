@@ -119,7 +119,14 @@ class AgentCanvasRolePromptCompiler:
         if concrete_brief.role_variant != context.role_variant:
             raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
         recipe = self._registry.resolve(context.role_variant)
-        policy = self._assertion_policies.resolve(recipe.recipe_id, recipe.recipe_version)
+        policy = self._assertion_policies.resolve_for_video_audio(
+            recipe.recipe_id,
+            recipe.recipe_version,
+            native_audio_required=(
+                context.role_variant == "video_segment"
+                and any(item.name == "generate_audio" and item.value is True for item in parameters)
+            ),
+        )
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
         if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
             concrete_brief = concrete_brief.model_copy(update={"views": PRODUCT_MULTIVIEW_VIEWS})

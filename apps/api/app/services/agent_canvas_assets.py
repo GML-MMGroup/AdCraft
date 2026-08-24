@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,17 +51,9 @@ class AssetContentResponse:
 
 
 def deterministic_media_facts_probe(path: Path, media_type: str) -> V2MediaProbeResult:
-    """Return bounded facts only for explicit fake-provider test execution."""
+    """Probe deterministic Mock output while keeping the test path bounded."""
 
-    return V2MediaProbeResult(
-        path=path,
-        media_type=media_type,
-        width=1024 if media_type in {"image", "video"} else None,
-        height=576 if media_type in {"image", "video"} else None,
-        duration_seconds=1.0 if media_type in {"video", "audio"} else None,
-        fps=24.0 if media_type == "video" else None,
-        has_audio=media_type == "audio",
-    )
+    return V2MediaProbe()(path, media_type)
 
 
 class AgentCanvasAssetService:
@@ -210,6 +203,7 @@ class AgentCanvasAssetService:
         source_type: str = "generated",
         source_semantic_role: str | None = None,
         publication_metadata: Mapping[str, object] | None = None,
+        require_native_audio: bool = False,
     ) -> ProjectAssetSummaryV2:
         """Idempotently publish validated executor bytes to unified storage."""
 
@@ -247,6 +241,7 @@ class AgentCanvasAssetService:
             mime_type=mime_type,
             checksum=checksum,
             size_bytes=len(content),
+            require_native_audio=require_native_audio,
         )
         storage_key = self._storage.publish_verified_file(staging, checksum, extension)
         workflow = self._workflows.get_workflow(workflow_id)
@@ -332,6 +327,7 @@ class AgentCanvasAssetService:
         source_type: str = "generated",
         source_semantic_role: str | None = None,
         publication_metadata: Mapping[str, object] | None = None,
+        require_native_audio: bool = False,
     ) -> PreparedNodeResultV2:
         """Prepare verified bytes without publishing product Asset metadata."""
 
@@ -360,6 +356,7 @@ class AgentCanvasAssetService:
             mime_type=mime_type,
             checksum=checksum,
             size_bytes=len(content),
+            require_native_audio=require_native_audio,
         )
         storage_key = self._storage.publish_verified_file(staging, checksum, extension)
         workflow = self._workflows.get_workflow(workflow_id)
@@ -413,6 +410,7 @@ class AgentCanvasAssetService:
         mime_type: str,
         checksum: str,
         size_bytes: int,
+        require_native_audio: bool = False,
     ) -> PublishedMediaFactsV2:
         media_type = mime_type.split("/", 1)[0]
         probe = self._media_facts_probe(path, media_type)
@@ -438,6 +436,13 @@ class AgentCanvasAssetService:
                 "provider_output_invalid",
                 "Video output is missing measured media facts.",
                 stage="agent_canvas_asset_service",
+            )
+        if media_type == "video" and require_native_audio and not probe.has_audio:
+            raise V2PersistenceError(
+                "video_native_audio_missing",
+                "Video output is missing the required native audio stream.",
+                stage="agent_canvas_asset_service",
+                details={"has_audio": False, "retryable": True},
             )
         if media_type == "audio" and probe.duration_seconds is None:
             raise V2PersistenceError(
@@ -476,6 +481,7 @@ class AgentCanvasAssetService:
         asset_id: str,
         *,
         range_header: str | None = None,
+        download: bool = False,
     ) -> AssetContentResponse:
         version = self._require_ready_version(asset_id)
         path = self._storage.resolve_local_path(version.storage_key)
@@ -490,6 +496,8 @@ class AgentCanvasAssetService:
         }
         if partial:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="{_download_filename(version)}"'
         return AssetContentResponse(
             body=body,
             status_code=206 if partial else 200,
@@ -922,6 +930,14 @@ def _extension(filename: str, mime_type: str) -> str:
             stage="agent_canvas_asset_service",
         )
     return normalized
+
+
+def _download_filename(version: AssetVersionMetadataV2) -> str:
+    display_name = str(version.metadata.get("display_name") or version.asset_id)
+    stem = Path(display_name).stem or version.asset_id
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-") or version.asset_id
+    extension = _extension(display_name, version.mime_type)
+    return f"{safe_stem}.{extension}"
 
 
 def _stable_identifier(prefix: str, *parts: str) -> str:

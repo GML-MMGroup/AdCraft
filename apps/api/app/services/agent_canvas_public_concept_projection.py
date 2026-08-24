@@ -13,7 +13,6 @@ from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 _TITLE_LIMIT = 64
 _SUMMARY_LIMIT = 240
-_SENTENCE_TERMINATORS = frozenset(".!?。！？")
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,16 +137,7 @@ def _compact_summary(value: object) -> str:
     text = " ".join(str(value).split())
     if not text:
         raise _error("Public concept summary cannot be empty.")
-    sentence_count = 0
-    boundary = len(text)
-    for index, character in enumerate(text):
-        if character not in _SENTENCE_TERMINATORS:
-            continue
-        sentence_count += 1
-        if sentence_count == 2:
-            boundary = index + 1
-            break
-    return _compact_text(text[:boundary], limit=_SUMMARY_LIMIT)
+    return _compact_text(text, limit=_SUMMARY_LIMIT)
 
 
 def _error(message: str) -> V2PersistenceError:

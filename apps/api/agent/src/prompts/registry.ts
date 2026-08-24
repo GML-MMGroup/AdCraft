@@ -166,8 +166,9 @@ function instructionForOperation(operation: string): string {
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
       "Return exactly the candidate_count specified by the authoritative context, and never choose a different count.",
-      "Each option must contain only concise interaction display text: title, public_summary, and key_decisions. Do not add wrappers or fields such as model_type.",
-      "Use key_decisions only for concise creative decisions; do not emit provider prompts, shot lists, or media parameters.",
+      "Return exactly this JSON shape: {\"options\":[{\"title\":\"...\",\"public_summary\":\"...\"}]}. Each option must contain only concise interaction display text: title and public_summary. Do not add option IDs, private decisions, provider prompts, model parameters, media details, or wrappers.",
+      "The practical compact-card display limit is title <=64 Unicode characters and public_summary <=240 Unicode characters. Keep the summary concise, but do not split, truncate, or validate it by punctuation-based sentence count.",
+      "Python assigns option IDs and owns candidate cardinality; never emit IDs or private authoring data.",
       "Render all option display text in the supplied response_locale.",
       "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");
@@ -175,6 +176,8 @@ function instructionForOperation(operation: string): string {
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
     return [
       "Revise only the supplied capability options and return concise replacement typed options.",
+      "Return exactly this JSON shape: {\"options\":[{\"title\":\"...\",\"public_summary\":\"...\"}]}. Each option must contain only title and public_summary, with title <=64 and public_summary <=240 Unicode characters; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
+      "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
   }

@@ -33,6 +33,15 @@ class _ConversationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _compact_option_schema(schema: dict[str, object]) -> None:
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        properties.pop("key_decisions", None)
+    required = schema.get("required")
+    if isinstance(required, list):
+        schema["required"] = [item for item in required if item != "key_decisions"]
+
+
 class ChatMessageRequestV2(_ConversationModel):
     text: str = Field(min_length=1, max_length=32_768)
     mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
@@ -180,11 +189,13 @@ class ChatTimelineListResponseV2(_ConversationModel):
 
 
 class ConceptOptionRecordV2(_ConversationModel):
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_compact_option_schema)
+
     option_id: str
     title: str = Field(min_length=1, max_length=256)
     public_summary: str = Field(min_length=1, max_length=8_192)
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
-        default=(), max_length=6
+        default=(), max_length=6, exclude=True
     )
 
 
@@ -218,6 +229,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
         "bgm",
     ]
     capability_id: CapabilityIdV1
+    proposal_card_schema_version: int = Field(default=1, ge=1, exclude=True)
     options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=3)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),

@@ -53,6 +53,7 @@ from app.services.v2_provider_reference_input_delivery import (
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.tools.mock_media_fixtures import (
     MockMediaFixtureError,
     deterministic_mock_media_bytes,
@@ -402,6 +403,7 @@ class MediaNodeExecutor:
     def prepare(self, context: NodeExecutionContext) -> NodeExecutionContext:
         """Resolve provider-safe media before the scheduler starts provider work."""
 
+        require_node_runnable(context.node)
         if context.node.node_type not in {"image", "video", "audio"}:
             return context
         _require_character_identity_master_input(context)
@@ -518,6 +520,7 @@ class MediaNodeExecutor:
         )
 
     def __call__(self, context: NodeExecutionContext) -> NodeExecutionOutcome:
+        require_node_runnable(context.node)
         media_type = context.node.node_type
         if media_type not in {"image", "video", "audio"}:
             raise _error("node_not_runnable", "Node type cannot use a media executor.")
@@ -791,6 +794,7 @@ class NodeExecutionDispatcher:
         }
 
     def execute(self, context: NodeExecutionContext) -> NodeExecutionOutcome:
+        require_node_runnable(context.node)
         if context.node.node_type not in self._executors:
             raise _error("node_not_runnable", "Node type cannot be run.")
         executor = self._executors[context.node.node_type]
@@ -802,6 +806,7 @@ class NodeExecutionDispatcher:
         return executor(context)
 
     def prepare(self, context: NodeExecutionContext) -> NodeExecutionContext:
+        require_node_runnable(context.node)
         executor = self._executors.get(context.node.node_type)
         prepare = getattr(executor, "prepare", None)
         return prepare(context) if callable(prepare) else context
@@ -874,11 +879,22 @@ def build_default_node_dispatcher(
             try:
                 content = overridden_content or (
                     deterministic_mock_media_bytes(
-                        "audio",
+                        context.node.node_type,
                         data_dir=settings.media_data_dir,
                         ffmpeg_path=settings.ffmpeg_path,
+                        native_audio=(
+                            context.node.node_type == "video"
+                            and (
+                                context.node.parameters.get("generate_audio") is True
+                                or (
+                                    context.effective_parameters is not None
+                                    and context.effective_parameters.effective.get("generate_audio")
+                                    is True
+                                )
+                            )
+                        ),
                     )
-                    if context.node.node_type == "audio"
+                    if context.node.node_type in {"image", "video", "audio"}
                     else signature + b"ADCRAFT_FAKE_MEDIA\n" + seed
                 )
             except MockMediaFixtureError as error:

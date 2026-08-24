@@ -78,6 +78,18 @@ def capability_context_from_envelope(
     capability_context = dict(envelope.capability_context)
     if envelope.publication_kind == "internal_document":
         capability_context["journey_stage"] = envelope.journey_stage
+    existing_constraints = capability_context.get("explicit_constraints")
+    explicit_constraints = (
+        dict(existing_constraints) if isinstance(existing_constraints, dict) else {}
+    )
+    explicit_constraints.update(
+        {
+            control.control: control.value
+            for control in envelope.requirement_projection.hard_controls
+        }
+    )
+    if explicit_constraints:
+        capability_context["explicit_constraints"] = explicit_constraints
     return {
         "context_kind": "capability_operation",
         "workflow_id": envelope.workflow_id,
@@ -166,11 +178,17 @@ class CapabilityExecutionService:
                 details=error.details,
             ) from error
         except PiAgentRuntimeError as error:
+            details: dict[str, object] = {"retryable": error.retryable}
+            if (
+                envelope.publication_kind == "proposal"
+                and error.code == "agent_structured_output_invalid"
+            ):
+                details["proposal_retryable"] = True
             raise V2PersistenceError(
                 error.code,
                 error.message,
                 stage="capability_execution",
-                details={"retryable": error.retryable},
+                details=details,
             ) from error
         except Exception as error:  # noqa: BLE001 - gateway boundary normalization.
             raise V2PersistenceError(
@@ -204,11 +222,14 @@ class CapabilityExecutionService:
                     canonical_script_duration=canonical_script_duration,
                 )
             except _CapabilityResultValidationError as error:
+                details = {**error.details, "repair_attempted": True}
+                if envelope.publication_kind == "proposal":
+                    details.update(retryable=True, proposal_retryable=True)
                 raise V2PersistenceError(
                     error.code,
                     error.message,
                     stage="capability_execution",
-                    details=error.details,
+                    details=details,
                 ) from error
         lease_guard()
         proposal_id: str | None = None

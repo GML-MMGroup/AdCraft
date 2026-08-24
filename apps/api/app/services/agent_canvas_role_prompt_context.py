@@ -68,6 +68,7 @@ ROLE_PARAMETER_CONTROL_NAMES = frozenset(
         "aspect_ratio",
         "audio_mode",
         "duration_seconds",
+        "generate_audio",
         "frame_rate",
         "model_ref",
         "output_resolution",
@@ -302,6 +303,10 @@ def _validate_parameter(
         return value
     if name == "audio_mode":
         if value not in {"none", "bgm_only", "full"}:
+            raise _parameter_error()
+        return value
+    if name == "generate_audio":
+        if not isinstance(value, bool):
             raise _parameter_error()
         return value
     return value

@@ -3517,6 +3517,7 @@ class AgentCanvasConversationRepository:
                         requirement_revision_no=requirement_head.revision_no,
                         requirement_digest=requirement_head.digest,
                         proposal_revision=1,
+                        proposal_card_schema_version=2,
                         proposed_references_json=_dump(
                             [
                                 reference.model_dump(mode="json")
@@ -3566,7 +3567,7 @@ class AgentCanvasConversationRepository:
                             display_order=order,
                             title=option.title,
                             description=option.public_summary,
-                            key_decisions_json=_dump(list(option.key_decisions)),
+                            key_decisions_json=_dump([]),
                             draft_seed_schema=None,
                             draft_seed_json=None,
                             draft_seed_digest=None,
@@ -5775,6 +5776,12 @@ def _proposal(
                 queued_execution_ids=receipt.queued_execution_ids,
                 created_at=receipt.created_at,
             )
+    proposal_card_schema_version = int(row["proposal_card_schema_version"] or 1)
+    if proposal_card_schema_version not in {1, 2}:
+        raise _error(
+            "proposal_card_version_unsupported",
+            "The persisted Proposal Card schema version is unsupported.",
+        )
     availability = cast(str, row["availability"])
     materialization = (
         ProposalMaterializationProjectionV2(
@@ -5854,6 +5861,7 @@ def _proposal(
         ),
         proposal_kind=cast(str, row["proposal_kind"]),
         capability_id=cast(str, row["capability_id"]),
+        proposal_card_schema_version=proposal_card_schema_version,
         availability=availability,
         application_count=len(applications),
         latest_application=latest_application,
@@ -5870,7 +5878,11 @@ def _proposal(
                 option_id=str(option["option_id"]),
                 title=str(option["title"]),
                 public_summary=str(option["description"]),
-                key_decisions=tuple(json.loads(str(option["key_decisions_json"]))),
+                key_decisions=(
+                    tuple(json.loads(str(option["key_decisions_json"])))
+                    if proposal_card_schema_version < 2
+                    else ()
+                ),
             )
             for option in options
         ),

@@ -16,6 +16,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthorityPlanV2,
     StoryboardSequenceOutlineDraftV2,
     StoryboardSequencePlanDraftV2,
+    StoryboardSequenceRowDraftV2,
     StoryboardVideoAuthoringContextV2,
 )
 from app.schemas.agent_canvas_creative_session import (
@@ -47,6 +48,7 @@ from app.schemas.agent_working_documents import (
     StoryboardProductionPlanContentV3,
     StoryboardPlannedNodeV3,
     StoryboardSegmentMaterializationV2,
+    StoryboardSegmentMaterializationV3,
     StoryboardVisualAnchorV2,
     StoryboardVisualAnchorV3,
 )
@@ -285,22 +287,85 @@ class StoryboardSequenceAuthoringService:
         draft: StoryboardSegmentMaterializationDraftV2,
         *,
         planned_node: StoryboardPlannedNodeV3 | None = None,
+        materialization_id: str | None = None,
     ) -> StoryboardProductionPlanContentV3:
         """Plan one authoritative nine-row sequence without runtime mirrors."""
 
-        if sequence_id not in {item.sequence_id for item in content.segments}:
+        sequence_ids = tuple(item.sequence_id for item in content.segments)
+        if sequence_id not in sequence_ids:
             raise _storyboard_authority_error("Storyboard sequence was not found.")
         if planned_node is not None and (
             planned_node.sequence_id != sequence_id or planned_node.node_role != "storyboard_grid"
         ):
             raise _storyboard_authority_error("The planned Grid Node does not match its sequence.")
-        if any(row.sequence_id == sequence_id for row in content.rows):
-            raise _storyboard_authority_error("Storyboard sequence is already materialized.")
-        if any(
-            record.sequence_id == sequence_id and record.node_role == "storyboard_grid"
-            for record in content.planned_nodes
-        ):
+        materializations = content.segment_materializations
+        if not materializations:
+            if content.rows:
+                raise _storyboard_authority_error(
+                    "Storyboard sequence materialization records are missing."
+                )
+            materializations = tuple(
+                StoryboardSegmentMaterializationV3(
+                    sequence_id=item,
+                    materialization_id=f"storyboard-segment:{item}",
+                )
+                for item in sequence_ids
+            )
+        if tuple(item.sequence_id for item in materializations) != sequence_ids:
+            raise _storyboard_authority_error(
+                "Storyboard sequence materialization records are out of date."
+            )
+        current_materialization = next(
+            item for item in materializations if item.sequence_id == sequence_id
+        )
+        existing_rows = tuple(row for row in content.rows if row.sequence_id == sequence_id)
+        existing_node = next(
+            (
+                record
+                for record in content.planned_nodes
+                if record.sequence_id == sequence_id and record.node_role == "storyboard_grid"
+            ),
+            None,
+        )
+        if existing_rows or current_materialization.status == "materialized":
+            expected_prompt = _sequence_local_generation_prompt(
+                content,
+                sequence_id,
+                draft.generation_prompt,
+                rows=draft.rows,
+            )
+            if (
+                current_materialization.status != "materialized"
+                or expected_prompt != current_materialization.generation_prompt
+                or len(existing_rows) != 9
+                or any(
+                    row.content_beat != draft_row.content_beat
+                    or row.camera_description != draft_row.camera_description
+                    or row.panel_index != draft_row.panel_index
+                    for row, draft_row in zip(existing_rows, draft.rows)
+                )
+                or (planned_node is not None and existing_node != planned_node)
+            ):
+                raise _storyboard_authority_error(
+                    "Storyboard sequence materialization replay does not match authority."
+                )
+            return content
+        if existing_node is not None:
             raise _storyboard_authority_error("Storyboard Grid Node is already planned.")
+        sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
+        previous = _previous_sequence(content, sequence)
+        if previous is not None:
+            _ensure_adjacent_sequence_is_distinct(
+                content,
+                sequence,
+                draft,
+            )
+        generation_prompt = _sequence_local_generation_prompt(
+            content,
+            sequence_id,
+            draft.generation_prompt,
+            rows=draft.rows,
+        )
         rows_by_sequence = {
             item.sequence_id: tuple(
                 row for row in content.rows if row.sequence_id == item.sequence_id
@@ -323,10 +388,40 @@ class StoryboardSequenceAuthoringService:
             for row in rows_by_sequence[segment.sequence_id]:
                 rows.append(row.model_copy(update={"shot_index": len(rows) + 1}))
         try:
+            resolved_materialization_id = (
+                materialization_id or current_materialization.materialization_id
+            )
+            if resolved_materialization_id != current_materialization.materialization_id:
+                current_materialization = current_materialization.model_copy(
+                    update={"materialization_id": resolved_materialization_id}
+                )
+            materializations = tuple(
+                current_materialization.model_copy(
+                    update={
+                        "status": "materialized",
+                        "generation_prompt": generation_prompt,
+                    }
+                )
+                if item.sequence_id == sequence_id
+                else item
+                for item in materializations
+            )
+            segments = tuple(
+                item.model_copy(
+                    update={"continuity_from_previous": _continuity_handoff(content, sequence)}
+                )
+                if item.sequence_id == sequence_id and previous is not None
+                else item
+                for item in content.segments
+            )
             return StoryboardProductionPlanContentV3.model_validate(
                 {
                     **content.model_dump(mode="json"),
+                    "segments": [item.model_dump(mode="json") for item in segments],
                     "rows": [row.model_dump(mode="json") for row in rows],
+                    "segment_materializations": [
+                        item.model_dump(mode="json") for item in materializations
+                    ],
                     "planned_nodes": [
                         *(item.model_dump(mode="json") for item in content.planned_nodes),
                         *(
@@ -1298,6 +1393,132 @@ def _storyboard_authority_error(message: str) -> V2PersistenceError:
         message,
         stage="storyboard_sequence_authoring",
     )
+
+
+def _normalize_storyboard_text(value: str) -> str:
+    """Normalize only whitespace and case for exact structural comparisons."""
+
+    return " ".join(value.split()).casefold()
+
+
+def _previous_sequence(
+    content: StoryboardProductionPlanContentV3,
+    sequence: StoryboardNarrativeSegmentV2,
+) -> StoryboardNarrativeSegmentV2 | None:
+    return next(
+        (item for item in content.segments if item.order == sequence.order - 1),
+        None,
+    )
+
+
+def _continuity_handoff(
+    content: StoryboardProductionPlanContentV3,
+    sequence: StoryboardNarrativeSegmentV2,
+) -> str:
+    previous = _previous_sequence(content, sequence)
+    if previous is None:
+        return ""
+    previous_rows = tuple(row for row in content.rows if row.sequence_id == previous.sequence_id)
+    if len(previous_rows) != 9:
+        raise _storyboard_authority_error(
+            "A later Storyboard sequence requires the previous sequence's final panel."
+        )
+    handoff = (
+        f"Previous sequence {previous.sequence_id} closing state: {previous.end_state}. "
+        f"Final panel beat: {previous_rows[-1].content_beat}."
+    )
+    if len(handoff) > 2_048:
+        raise _storyboard_authority_error(
+            "The Storyboard continuity handoff exceeds its bounded size."
+        )
+    return handoff
+
+
+def _sequence_local_generation_prompt(
+    content: StoryboardProductionPlanContentV3,
+    sequence_id: str,
+    generation_prompt: str,
+    *,
+    rows: tuple[StoryboardSequenceRowDraftV2, ...],
+) -> str:
+    """Keep the persisted prompt local and append only the bounded prior handoff."""
+
+    normalized_prompt = _normalize_storyboard_text(generation_prompt)
+    for sibling in content.segments:
+        if sibling.sequence_id == sequence_id:
+            continue
+        sibling_values = [sibling.narrative_goal]
+        sibling_values.extend(
+            row.content_beat for row in content.rows if row.sequence_id == sibling.sequence_id
+        )
+        if any(_normalize_storyboard_text(value) in normalized_prompt for value in sibling_values):
+            raise _storyboard_authority_error(
+                "Storyboard sequence prompt contains a sibling sequence beat."
+            )
+    sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
+    handoff = _continuity_handoff(content, sequence)
+    row_projection = " ".join(
+        f"Panel {row.panel_index}: {row.content_beat}; camera: {row.camera_description}."
+        for row in rows
+    )
+    parts = [generation_prompt.rstrip(), f"Current sequence rows: {row_projection}"]
+    if handoff:
+        parts.append(handoff)
+    return "\n\n".join(parts)
+
+
+def _prompt_without_continuity_handoff(prompt: str) -> str:
+    for marker in ("\n\nCurrent sequence rows:", "\n\nPrevious sequence "):
+        prompt = prompt.split(marker, 1)[0]
+    return prompt
+
+
+def _ensure_adjacent_sequence_is_distinct(
+    content: StoryboardProductionPlanContentV3,
+    sequence: StoryboardNarrativeSegmentV2,
+    draft: StoryboardSegmentMaterializationDraftV2,
+) -> None:
+    previous = _previous_sequence(content, sequence)
+    if previous is None:
+        return
+    previous_rows = tuple(row for row in content.rows if row.sequence_id == previous.sequence_id)
+    previous_materialization = next(
+        item
+        for item in content.segment_materializations
+        if item.sequence_id == previous.sequence_id
+    )
+    if len(previous_rows) != 9 or previous_materialization.status != "materialized":
+        return
+    previous_payload = (
+        _normalize_storyboard_text(previous.narrative_goal),
+        tuple(
+            (
+                row.panel_index,
+                _normalize_storyboard_text(row.content_beat),
+                _normalize_storyboard_text(row.camera_description),
+            )
+            for row in previous_rows
+        ),
+        _normalize_storyboard_text(
+            _prompt_without_continuity_handoff(previous_materialization.generation_prompt or "")
+        ),
+    )
+    current_payload = (
+        _normalize_storyboard_text(sequence.narrative_goal),
+        tuple(
+            (
+                row.panel_index,
+                _normalize_storyboard_text(row.content_beat),
+                _normalize_storyboard_text(row.camera_description),
+            )
+            for row in draft.rows
+        ),
+        _normalize_storyboard_text(_prompt_without_continuity_handoff(draft.generation_prompt)),
+    )
+    if current_payload == previous_payload:
+        raise _storyboard_authority_error(
+            "Adjacent Storyboard sequences contain exact duplicate narrative content."
+        )
 
 
 def _anchor_error(message: str) -> V2PersistenceError:

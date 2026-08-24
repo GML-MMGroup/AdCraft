@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_world_setting import WorldSettingResolvedInputV2
 
 CanvasNodeTypeV2 = Literal["text", "script", "image", "video", "audio", "editing"]
 CanvasNodeStatusV2 = Literal["draft", "working", "ready", "failed"]
+CanvasNodeExecutionModeV2 = Literal["generative", "source_only"]
 RoleContractVersionV2 = Literal["ad-media-role-v1", "ad-media-role-v2"]
 ModelSelectionModeV1 = Literal["default", "explicit"]
 CanvasCreativeRoleV2 = Literal[
@@ -215,6 +216,7 @@ class CanvasNodeV2(_AgentCanvasModel):
     role_contract_version: RoleContractVersionV2 = "ad-media-role-v2"
     title: str = Field(min_length=1)
     status: CanvasNodeStatusV2
+    execution_mode: CanvasNodeExecutionModeV2 = "generative"
     summary_prompt: str | None = None
     generation_prompt: str | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)

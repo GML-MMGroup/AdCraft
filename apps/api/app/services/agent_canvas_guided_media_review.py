@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_guided_interactions import (
 )
 from app.schemas.agent_canvas_media_review_authority import (
     CanvasPostReadyEffectDispositionV1,
+    CanvasExecutionResultLineageV2,
     GuidedMediaReviewPublicationCommandV1,
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
@@ -69,6 +70,7 @@ class GuidedMediaReviewCoordinator:
         events=None,
         resume_media_confirmation: Callable[[str], None] | None = None,
         node_resolver: Callable[[str, str], object] | None = None,
+        execution_settings: Callable[[str], object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -80,6 +82,7 @@ class GuidedMediaReviewCoordinator:
         self._events = events
         self._resume_media_confirmation = resume_media_confirmation
         self._node_resolver = node_resolver
+        self._execution_settings = execution_settings
 
     def on_node_ready(self, node) -> tuple[str, ...]:
         return self._on_node_ready(
@@ -145,6 +148,20 @@ class GuidedMediaReviewCoordinator:
                     reason_code="media_review_already_published",
                     interaction_id=awaiting.interaction_id,
                 )
+            if awaiting is None and self._is_automatic_mode(effect.workflow_id):
+                if node.output_asset_id != lineage.asset_id or node.status != "ready":
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="superseded",
+                        reason_code="current_output_replaced",
+                    )
+                return self._delegate_result_confirmation(
+                    effect=effect,
+                    lineage=lineage,
+                    node=node,
+                    session=session,
+                    plan=plan,
+                    record=record,
+                )
             return CanvasPostReadyEffectDispositionV1(
                 outcome="superseded",
                 reason_code="current_wait_replaced",
@@ -207,6 +224,48 @@ class GuidedMediaReviewCoordinator:
                     "Current Guided media result lineage could not be resolved.",
                 ) from error
             raise
+
+    def _is_automatic_mode(self, workflow_id: str) -> bool:
+        if self._execution_settings is None:
+            return False
+        setting = self._execution_settings(workflow_id)
+        return getattr(setting, "media_execution_mode", None) == "automatic"
+
+    def _delegate_result_confirmation(
+        self,
+        *,
+        effect: CanvasPostReadyEffectV2,
+        lineage: CanvasExecutionResultLineageV2,
+        node,
+        session,
+        plan,
+        record,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        review_id, _checkpoint_id, _awaiting_id = _review_identity(
+            effect.source_commit_id,
+            plan.document_id,
+            plan.revision,
+            node.node_id,
+            lineage.asset_version_id,
+        )
+        result = self._confirmations.confirm_result(
+            workflow_id=effect.workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+            node_id=node.node_id,
+            expected_node_revision=node.revision,
+            asset_id=lineage.asset_id,
+            asset_version_id=lineage.asset_version_id,
+            accepted_by="agent",
+            action_id=f"delegated-media-review:{review_id}",
+            decision_id="accept",
+        )
+        if self._resume_media_confirmation is not None:
+            self._resume_media_confirmation(result.confirmation.confirmation_id)
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="automatic_media_result_confirmed",
+        )
 
     def _on_node_ready(
         self,
@@ -403,6 +462,29 @@ class GuidedMediaReviewCoordinator:
                         workflow_id=workflow_id,
                         node_id=record.node_id,
                     )
+                    if (
+                        effect is not None
+                        and self._is_automatic_mode(workflow_id)
+                        and record.node_role in {"video_segment", "bgm"}
+                    ):
+                        self._confirmations.confirm_result(
+                            workflow_id=workflow_id,
+                            plan_document_id=plan.document_id,
+                            expected_plan_revision=plan.revision,
+                            node_id=node.node_id,
+                            expected_node_revision=node.revision,
+                            asset_id=asset.asset_id,
+                            asset_version_id=asset.version_id or "",
+                            accepted_by="agent",
+                            action_id=(
+                                "automatic-media-reconciliation:"
+                                f"{plan.document_id}:{plan.revision}:"
+                                f"{node.node_id}:{asset.version_id}"
+                            ),
+                            decision_id="accept",
+                        )
+                        confirmations = self._receipts.list_confirmations(workflow_id)
+                        continue
                     if effect is not None and session.awaiting is not None:
                         self.publish_from_effect(effect)
                     elif effect is not None:

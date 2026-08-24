@@ -187,6 +187,39 @@ class PromptAssertionPolicyRegistry:
                 "Prompt assertion policy is not registered for the exact recipe."
             ) from error
 
+    def resolve_for_video_audio(
+        self,
+        recipe_id: str,
+        recipe_version: str,
+        *,
+        native_audio_required: bool,
+    ) -> PromptAssertionPolicyV1:
+        """Resolve the Video policy with an applicable native-audio assertion."""
+
+        policy = self.resolve(recipe_id, recipe_version)
+        if native_audio_required or "video.native_audio_without_bgm" not in policy.assertion_ids:
+            return policy
+        retained = tuple(
+            (assertion_id, positive_clause)
+            for assertion_id, positive_clause in zip(
+                policy.assertion_ids,
+                policy.positive_clauses,
+                strict=True,
+            )
+            if assertion_id != "video.native_audio_without_bgm"
+        )
+        return _policy(
+            policy.recipe_id,
+            policy.recipe_version,
+            tuple(item[0] for item in retained),
+            tuple(item[1] for item in retained),
+            policy.negative_clauses,
+            engine_owned_fields=policy.engine_owned_fields,
+            required_reference_purposes=policy.required_reference_purposes,
+            required_document_kinds=policy.required_document_kinds,
+            sequence_scoped=policy.sequence_scoped,
+        )
+
 
 class PromptAssertionEvidenceValidator:
     """Validate persisted evidence without I/O or semantic text inspection."""
@@ -301,8 +334,10 @@ def prompt_assertion_admission_error(node) -> str | None:
         return "node_prompt_assertion_contract_invalid"
     try:
         recipe = RolePromptRecipeRegistry().resolve(preparation.role_variant)
-        policy = PromptAssertionPolicyRegistry().resolve(
-            preparation.recipe_id, preparation.recipe_version
+        policy = PromptAssertionPolicyRegistry().resolve_for_video_audio(
+            preparation.recipe_id,
+            preparation.recipe_version,
+            native_audio_required=_node_requires_native_audio(node),
         )
         evidence = preparation.assertion_evidence
         PromptAssertionEvidenceValidator().validate_preparation(
@@ -334,3 +369,11 @@ def _error(message: str) -> V2PersistenceError:
         message,
         stage="prompt_assertion_validation",
     )
+
+
+def _node_requires_native_audio(node) -> bool:
+    preparation = node.prompt_preparation
+    for parameter in preparation.parameter_origins:
+        if parameter.name == "generate_audio":
+            return parameter.value is True
+    return node.parameters.get("generate_audio") is True

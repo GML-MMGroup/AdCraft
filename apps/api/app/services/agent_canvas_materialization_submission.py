@@ -32,6 +32,7 @@ from app.schemas.agent_canvas_materialization import (
     ProposalPublicationEnvelopeV1,
     ProposalReferencePlanV1,
     ProposalReferenceSnapshotV1,
+    SelectedProposalCardV2,
     SelectedConceptOptionV1,
 )
 
@@ -216,20 +217,22 @@ class _ProposalSelectionSubmissionService:
         selection_reason = None
         if isinstance(action, CustomDirectionActionV2):
             option_id = "custom_" + _digest(action.custom_text)[:32]
-            option = SelectedConceptOptionV1(
+            option = SelectedProposalCardV2(
                 option_id=option_id,
                 title="Custom direction",
                 public_summary=action.custom_text,
-                key_decisions=(action.custom_text,),
                 custom_text=action.custom_text,
             )
             selection_reason = "The user supplied this direction directly."
         elif option_id is None:
             option_id = proposal.options[0].option_id
             selection_reason = "The first current option best matches the approved direction."
-            option = SelectedConceptOptionV1.model_validate(
-                proposal.options[0].model_dump(mode="json")
+            option_model = (
+                SelectedConceptOptionV1
+                if proposal.proposal_card_schema_version < 2
+                else SelectedProposalCardV2
             )
+            option = option_model.model_validate(proposal.options[0].model_dump(mode="json"))
         else:
             proposal_option = next(
                 (candidate for candidate in proposal.options if candidate.option_id == option_id),
@@ -237,7 +240,12 @@ class _ProposalSelectionSubmissionService:
             )
             if proposal_option is None:
                 raise _error("proposal_option_not_found", "Concept option was not found.")
-            option = SelectedConceptOptionV1.model_validate(proposal_option.model_dump(mode="json"))
+            option_model = (
+                SelectedConceptOptionV1
+                if proposal.proposal_card_schema_version < 2
+                else SelectedProposalCardV2
+            )
+            option = option_model.model_validate(proposal_option.model_dump(mode="json"))
         reference_plan = self._reference_plan(proposal, action)
         attempt_no = (
             proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1

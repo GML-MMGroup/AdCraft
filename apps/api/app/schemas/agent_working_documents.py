@@ -264,6 +264,13 @@ class StoryboardSegmentMaterializationV2(_WorkingDocumentModel):
     generation_prompt: str | None = Field(default=None, max_length=16_384)
 
 
+class StoryboardSegmentMaterializationV3(_AuthoritativeWorkingDocumentModel):
+    sequence_id: str = Field(min_length=1, max_length=160)
+    materialization_id: str = Field(min_length=1, max_length=160)
+    status: Literal["pending", "materialized"] = "pending"
+    generation_prompt: str | None = Field(default=None, max_length=16_384)
+
+
 class StoryboardVisualAnchorV2(_WorkingDocumentModel):
     node_id: str = Field(min_length=1, max_length=160)
     asset_id: str = Field(min_length=1, max_length=160)
@@ -339,6 +346,18 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
             if key in seen_node_records:
                 raise ValueError("Storyboard node records must have unique roles per sequence.")
             seen_node_records.add(key)
+        if not self.segment_materializations and not self.rows:
+            self = self.model_copy(
+                update={
+                    "segment_materializations": tuple(
+                        StoryboardSegmentMaterializationV3(
+                            sequence_id=segment.sequence_id,
+                            materialization_id=f"storyboard-segment:{segment.sequence_id}",
+                        )
+                        for segment in self.segments
+                    )
+                }
+            )
         if self.segment_materializations:
             if [item.sequence_id for item in self.segment_materializations] != sequence_ids:
                 raise ValueError("Storyboard materialization records must follow segments.")
@@ -397,6 +416,9 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
     global_parameters: StoryboardPlanGlobalParametersV2
     segments: tuple[StoryboardNarrativeSegmentV2, ...] = Field(max_length=128)
     rows: tuple[StoryboardPlanRowV2, ...] = Field(max_length=1_152)
+    segment_materializations: tuple[StoryboardSegmentMaterializationV3, ...] = Field(
+        default=(), max_length=128
+    )
     planned_nodes: tuple[StoryboardPlannedNodeV3, ...] = Field(default=(), max_length=384)
     excluded_media: tuple[StoryboardExcludedMediaV3, ...] = Field(default=(), max_length=129)
     visual_anchor: StoryboardVisualAnchorV3 | None = None
@@ -436,6 +458,22 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
             raise ValueError("Storyboard rows must follow segment order.")
         if [row.shot_index for row in self.rows] != list(range(1, len(self.rows) + 1)):
             raise ValueError("Storyboard shot indices must be globally contiguous.")
+
+        if self.segment_materializations:
+            if [item.sequence_id for item in self.segment_materializations] != sequence_ids:
+                raise ValueError("Storyboard materialization records must follow segments.")
+            if len({item.materialization_id for item in self.segment_materializations}) != len(
+                self.segment_materializations
+            ):
+                raise ValueError("Storyboard materialization identities must be unique.")
+            for item in self.segment_materializations:
+                row_count = len(rows_by_sequence[item.sequence_id])
+                if item.status == "pending" and (row_count or item.generation_prompt):
+                    raise ValueError("Pending storyboard sequences cannot contain generated rows.")
+                if item.status == "materialized" and (row_count != 9 or not item.generation_prompt):
+                    raise ValueError(
+                        "Materialized storyboard sequences require rows and a generation prompt."
+                    )
 
         record_keys: set[tuple[str | None, StoryboardNodeRoleV2]] = set()
         for record in self.planned_nodes:

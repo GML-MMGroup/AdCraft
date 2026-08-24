@@ -2377,6 +2377,7 @@ def _insert_materialized_node(
             role_contract_version=node.role_contract_version,
             title=node.title,
             status=node.status,
+            execution_mode=node.execution_mode,
             summary_prompt=node.summary_prompt,
             generation_prompt=node.generation_prompt,
             structured_content_json=_dump(node.structured_content),

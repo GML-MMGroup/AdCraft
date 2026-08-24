@@ -5685,6 +5685,15 @@
           ],
           "default": null
         },
+        "execution_mode": {
+          "default": "generative",
+          "enum": [
+            "generative",
+            "source_only"
+          ],
+          "title": "Execution Mode",
+          "type": "string"
+        },
         "generation_prompt": {
           "anyOf": [
             {
@@ -6872,7 +6881,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "shared_summary": {
           "default": "",
@@ -7076,7 +7093,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "selection_actor": {
           "enum": [
@@ -17644,6 +17669,50 @@
       "title": "PropRoleBriefV2",
       "type": "object"
     },
+    "ProposalCardOptionV2": {
+      "additionalProperties": false,
+      "description": "The only model-authored fields allowed in a public Proposal Card.",
+      "properties": {
+        "public_summary": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "ProposalCardOptionV2",
+      "type": "object"
+    },
+    "ProposalCardResultV2": {
+      "additionalProperties": false,
+      "description": "Compact proposal output; Python owns count and option identities.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/ProposalCardOptionV2"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "ProposalCardResultV2",
+      "type": "object"
+    },
     "ProposalPublicationEnvelopeV1": {
       "additionalProperties": false,
       "properties": {
@@ -17782,7 +17851,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "selection_actor": {
           "enum": [
@@ -21167,6 +21244,50 @@
       "title": "SelectedConceptOptionV1",
       "type": "object"
     },
+    "SelectedProposalCardV2": {
+      "additionalProperties": false,
+      "description": "Selected public card carried into private post-selection authoring.",
+      "properties": {
+        "custom_text": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Text"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "public_summary",
+        "title"
+      ],
+      "title": "SelectedProposalCardV2",
+      "type": "object"
+    },
     "SetAspectRatioDecisionEffectV1": {
       "additionalProperties": false,
       "properties": {
@@ -22736,6 +22857,15 @@
           "title": "Schema Version",
           "type": "string"
         },
+        "segment_materializations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryboardSegmentMaterializationV3"
+          },
+          "maxItems": 128,
+          "title": "Segment Materializations",
+          "type": "array"
+        },
         "segments": {
           "items": {
             "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
@@ -22955,6 +23085,51 @@
         "sequence_id"
       ],
       "title": "StoryboardSegmentMaterializationV2",
+      "type": "object"
+    },
+    "StoryboardSegmentMaterializationV3": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "materialization_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Materialization Id",
+          "type": "string"
+        },
+        "sequence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Sequence Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "materialized",
+            "pending"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "materialization_id",
+        "sequence_id"
+      ],
+      "title": "StoryboardSegmentMaterializationV3",
       "type": "object"
     },
     "StoryboardSequenceCountControlPatchV1": {
@@ -26517,6 +26692,7 @@
     "DecisionBundleDraftV1",
     "RoleCreativeBriefV2",
     "WorldSettingProposalResultV1",
+    "ProposalCardResultV2",
     "ProductProposalResultV1",
     "PropProposalResultV1",
     "CharacterProposalResultV1",
@@ -26695,7 +26871,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_world_setting_options",
-      "result_contract_name": "WorldSettingProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26707,7 +26883,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_world_setting_options",
-      "result_contract_name": "WorldSettingProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26719,7 +26895,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_product_options",
-      "result_contract_name": "ProductProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "product",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26731,7 +26907,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_product_options",
-      "result_contract_name": "ProductProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "product",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26743,7 +26919,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_prop_options",
-      "result_contract_name": "PropProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "prop",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26755,7 +26931,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_prop_options",
-      "result_contract_name": "PropProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "prop",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26767,7 +26943,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_character_options",
-      "result_contract_name": "CharacterProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "character",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26779,7 +26955,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_character_options",
-      "result_contract_name": "CharacterProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "character",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26791,7 +26967,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_scene_options",
-      "result_contract_name": "SceneProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "scene",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26803,7 +26979,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_scene_options",
-      "result_contract_name": "SceneProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "scene",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26815,7 +26991,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_script_options",
-      "result_contract_name": "ScriptProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "script",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26827,7 +27003,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_script_options",
-      "result_contract_name": "ScriptProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "script",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26839,7 +27015,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_storyboard_options",
-      "result_contract_name": "StoryboardProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "storyboard",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26851,7 +27027,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_storyboard_options",
-      "result_contract_name": "StoryboardProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "storyboard",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26863,7 +27039,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_video_options",
-      "result_contract_name": "VideoProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "video",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26875,7 +27051,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_video_options",
-      "result_contract_name": "VideoProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "video",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26887,7 +27063,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_bgm_options",
-      "result_contract_name": "BgmProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "bgm",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -26899,7 +27075,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_bgm_options",
-      "result_contract_name": "BgmProposalResultV1",
+      "result_contract_name": "ProposalCardResultV2",
       "style_projection_role": "bgm",
       "validation_profile": "proposal_candidate_count_v1"
     },
