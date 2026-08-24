@@ -51,6 +51,7 @@ import type {
   CanvasMutationResponseV2,
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
+  CanvasNodeExecutionModeV2,
   NodePromptPreparationV1,
   PromptAssertionEvidenceV1,
   PromptAssertionSourceSnapshotV1,
@@ -157,6 +158,7 @@ type JsonRecord = Record<string, unknown>;
 const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
 const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
+const CANVAS_NODE_EXECUTION_MODES = new Set<CanvasNodeExecutionModeV2>(["generative", "source_only"]);
 const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status"]>([
   "queued",
   "working",
@@ -1095,6 +1097,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "role_contract_version",
       "title",
       "status",
+      "execution_mode",
       "summary_prompt",
       "generation_prompt",
       "structured_content",
@@ -1143,6 +1146,9 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     ),
     title: expectNonEmptyString(record.title, `${path}.title`),
     status,
+    execution_mode: record.execution_mode === undefined
+      ? "generative"
+      : expectLiteral(record.execution_mode, CANVAS_NODE_EXECUTION_MODES, `${path}.execution_mode`),
     summary_prompt: nullableString(record.summary_prompt, `${path}.summary_prompt`),
     generation_prompt: nullableString(record.generation_prompt, `${path}.generation_prompt`),
     structured_content: expectRecordValue(record.structured_content, `${path}.structured_content`),

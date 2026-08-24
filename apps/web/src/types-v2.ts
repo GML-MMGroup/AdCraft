@@ -1472,6 +1472,8 @@ export type CanvasNodeTypeV2 = "text" | "script" | "image" | "video" | "audio" |
 
 export type CanvasNodeStatusV2 = "draft" | "working" | "ready" | "failed";
 
+export type CanvasNodeExecutionModeV2 = "generative" | "source_only";
+
 export type CanvasCreativeRoleV2 =
   | "creative_brief"
   | "world_setting"
@@ -1690,6 +1692,7 @@ export interface CanvasNodeV2 {
   role_contract_version: CanvasRoleContractVersionV2;
   title: string;
   status: CanvasNodeStatusV2;
+  execution_mode: CanvasNodeExecutionModeV2;
   summary_prompt: string | null;
   generation_prompt: string | null;
   structured_content: Record<string, unknown>;

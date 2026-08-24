@@ -52,6 +52,7 @@ function validWorkflowPayload() {
         role_contract_version: "ad-media-role-v1",
         title: "Creative Brief",
         status: "ready",
+        execution_mode: "source_only",
         summary_prompt: "A compact brand brief.",
         generation_prompt: null,
         structured_content: { markdown: "# Brief" },
@@ -75,6 +76,7 @@ function validWorkflowPayload() {
         role_contract_version: "ad-media-role-v1",
         title: "Lead Character",
         status: "draft",
+        execution_mode: "generative",
         summary_prompt: "Main character portrait.",
         generation_prompt: "High detail cinematic portrait.",
         structured_content: {},
@@ -1277,6 +1279,8 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.revision).toBe(7);
     expect(workflow.layout_revision).toBe(3);
     expect(workflow.nodes).toHaveLength(2);
+    expect(workflow.nodes[0]?.execution_mode).toBe("source_only");
+    expect(workflow.nodes[1]?.execution_mode).toBe("generative");
     expect(workflow.bindings[1]?.source.kind).toBe("image_asset");
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
     expect(workflow.active_style_skill).toMatchObject({
