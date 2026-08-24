@@ -1,5 +1,6 @@
 import type { CapabilityProposalOptionV2 } from "../../../types-v2.ts";
-import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
+
+const OPTION_MARKERS = ["A", "B", "C", "D"] as const;
 
 export function HistoricalProposalOptions({
   options,
@@ -13,15 +14,19 @@ export function HistoricalProposalOptions({
       {options.map((option, index) => {
         const selected = option.option_id === selectedOptionId;
         return (
-          <ProposalOptionRow
+          <article
             key={option.option_id}
-            index={index}
-            optionId={option.option_id}
-            title={option.title}
-            summary={option.public_summary}
-            selected={selected}
-            readOnly
-          />
+            className={`agent-chat__historical-option${selected ? " is-selected" : ""}`}
+            aria-label={`${selected ? "Selected option" : "Option"}: ${option.title}`}
+          >
+            <span className="agent-chat__historical-option-marker" aria-hidden="true">
+              {OPTION_MARKERS[index] ?? String(index + 1)}
+            </span>
+            <span className="agent-chat__historical-option-copy">
+              <strong>{option.title}</strong>
+              <span>{option.public_summary}</span>
+            </span>
+          </article>
         );
       })}
     </div>
