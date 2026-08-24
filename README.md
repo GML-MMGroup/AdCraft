@@ -381,26 +381,18 @@ All orchestrated by AI agents, fully editable on an infinite canvas.
 
 ---
 
-## 🤝 Contributing
+## 💬 Contact
 
-We welcome contributions of all kinds! Please see our [Contributing Guide](#) to get started.
+For questions, feedback, collaboration, or other inquiries, feel free to contact us:
 
-## 📄 License
-
-This project is licensed under the **[GNU General Public License v3.0](./LICENSE)**.
-
-You are free to run, study, share, and modify this software. Any distributed
-derivative work must also be released under the GPL v3, keeping the software
-free for all users. See the [LICENSE](./LICENSE) file for the full text.
-
-## 💬 Community
-
-- [Discord](#) · [Twitter/X](#) · [WeChat Group](#)
+* **Ma Fei** — [mafei@gml.ac.cn](mailto:mafei@gml.ac.cn)
+* **Xu Hongbo** — [xuhongbo@gml.ac.cn](mailto:xuhongbo@gml.ac.cn)
 
 <div align="center">
 
 **⭐ If you find AdCraft useful, please give us a star!**
 
-Made with ❤️ by the AdCraft Team
+Made with ❤️ by **GML-MMGroup**
 
 </div>
+

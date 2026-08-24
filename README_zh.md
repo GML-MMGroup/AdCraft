@@ -149,26 +149,17 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 
 ---
 
-## 🤝 参与贡献
+## 💬 联系我们
 
-欢迎各种形式的贡献！请查看[贡献指南](#)开始参与。
+如果你有任何问题、建议、合作意向或其他需求，欢迎通过邮件联系我们：
 
-## 📄 开源协议
-
-本项目基于 **[GNU 通用公共许可证 v3.0（GPL v3）](./LICENSE)** 开源。
-
-你可以自由地运行、研究、分享和修改本软件。任何分发的衍生作品也必须以
-GPL v3 协议发布，从而让本软件对所有用户始终保持自由。完整条款请见
-[LICENSE](./LICENSE) 文件。
-
-## 💬 社区交流
-
-- [Discord](#) · [Twitter/X](#) · [微信群](#)
+* **马飞** — [mafei@gml.ac.cn](mailto:mafei@gml.ac.cn)
+* **徐洪波** — [xuhongbo@gml.ac.cn](mailto:xuhongbo@gml.ac.cn)
 
 <div align="center">
 
-**⭐ 如果 AdCraft 对你有帮助，欢迎点个 Star！**
+**⭐ 如果 AdCraft 对你有帮助，欢迎给我们一个 Star！**
 
-Made with ❤️ by the AdCraft Team
+Made with ❤️ by **GML-MMGroup**
 
 </div>
