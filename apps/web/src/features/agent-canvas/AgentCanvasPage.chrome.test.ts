@@ -165,9 +165,13 @@ describe("AgentCanvasPage chrome", () => {
     );
   });
 
-  it("culls nodes outside the viewport and memoizes node card rendering", () => {
+  it("keeps workflow nodes mounted so media previews survive viewport changes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+    const legacySurfaceSource = readFileSync(
+      resolve(process.cwd(), "src/features/workflow/page/WorkflowCanvasSurface.tsx"),
       "utf8",
     );
     const nodeSource = readFileSync(
@@ -175,7 +179,8 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain("onlyRenderVisibleElements");
+    expect(source).toContain("onlyRenderVisibleElements={false}");
+    expect(legacySurfaceSource).toContain("onlyRenderVisibleElements={false}");
     expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
     expect(nodeSource).toMatch(
       /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,
