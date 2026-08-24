@@ -874,6 +874,16 @@
   line-height: 1.45;
 }
 
+.agent-chat__proposal-option.is-selected {
+  border: 1px solid rgb(157 175 230 / 54%);
+  background: rgb(157 175 230 / 10%);
+  box-shadow: inset 3px 0 0 #9dafe6;
+}
+
+.agent-chat__proposal-option.is-selected .agent-chat__proposal-option-index {
+  color: #d9dff5;
+}
+
 .agent-chat__proposal-option-copy strong em,
 .agent-chat__guided-interaction label strong em {
   display: inline-flex;

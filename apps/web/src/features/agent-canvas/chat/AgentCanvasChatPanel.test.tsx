@@ -264,6 +264,17 @@ describe("ProposalCard", () => {
     expect(markerRule).toContain("font-size: 11px");
   });
 
+  it("defines a visible selected state for interactive proposal options", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const selectedRule = css.match(/\.agent-chat__proposal-option\.is-selected\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(selectedRule).toBeTruthy();
+    expect(selectedRule).toContain("border:");
+    expect(selectedRule).toContain("background:");
+    expect(selectedRule).toContain("box-shadow:");
+  });
+
   it.each(["queued", "working"] as const)(
     "keeps the selected direction visible and disables every action while materialization is %s",
     (status) => {
