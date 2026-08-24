@@ -68,6 +68,7 @@ export function areAgentCanvasNodePropsEqual(
     && sameRuntime
     && sameWorkbench
     && previousData.onOpenVideoPreview === nextData.onOpenVideoPreview
+    && previousData.onOpenEditing === nextData.onOpenEditing
     && previousData.showInputHandle === nextData.showInputHandle
     && previousData.showOutputHandle === nextData.showOutputHandle;
 }

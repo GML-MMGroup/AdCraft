@@ -426,6 +426,7 @@ export function AgentCanvasPage() {
     onRun: (nodeId) => runNodeById(nodeId, false),
     onRetry: (nodeId) => runNodeById(nodeId, true),
     onExport: openEditing,
+    onOpenEditing: openEditing,
     onOpenVideoPreview: openNodeVideoPreview,
     renderWorkbench,
     onOpenConnectedNodeMenu: (nodeId, direction, point) => {

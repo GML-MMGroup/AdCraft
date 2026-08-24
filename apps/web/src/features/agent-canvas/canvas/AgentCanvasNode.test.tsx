@@ -490,14 +490,13 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByText("Failed")).toBeNull();
   });
 
-  it.each<CanvasNodeTypeV2>(["image", "video", "editing"])(
+  it.each<CanvasNodeTypeV2>(["image", "video"])(
     "keeps %s actions in the inline composer instead of the card corner",
     (nodeType) => {
-      const status = nodeType === "editing" ? "ready" : "draft";
       render(
         <AgentCanvasNodeCard
-          node={makeNode(nodeType, status)}
-          asset={nodeType === "editing" ? makeAsset("video") : null}
+          node={makeNode(nodeType, "draft")}
+          asset={null}
           onRun={vi.fn()}
           onRetry={vi.fn()}
           onExport={vi.fn()}
@@ -507,6 +506,24 @@ describe("AgentCanvasNodeCard", () => {
       expect(screen.queryByRole("button")).toBeNull();
     },
   );
+
+  it("opens the Editing panel from the scissors control in the node surface", () => {
+    const onOpenEditing = vi.fn();
+    render(
+      <AgentCanvasNodeCard
+        node={makeNode("editing", "ready")}
+        asset={makeAsset("video")}
+        onOpenEditing={onOpenEditing}
+      />,
+    );
+
+    const scissors = screen.getByRole("button", { name: "Open editing editor" });
+    expect(scissors.querySelector("img")?.getAttribute("src")).toBe("/imgs/node-icons/scissors.svg");
+
+    fireEvent.click(scissors);
+
+    expect(onOpenEditing).toHaveBeenCalledWith("editing-node");
+  });
 
   it("does not run a Ready generated node in place", () => {
     render(
@@ -894,6 +911,38 @@ describe("AgentCanvasNodeRenderer", () => {
       expect(container.querySelectorAll(".agent-canvas-node__handle-target")).toHaveLength(0);
     },
   );
+
+  it("does not render the bottom workbench for an Editing node", () => {
+    const renderWorkbench = vi.fn(() => <div aria-label="Editing node workbench">Prompt controls</div>);
+    const data: AgentCanvasNodeData = {
+      node: makeNode("editing", "ready"),
+      renderWorkbench,
+      onOpenEditing: vi.fn(),
+    };
+
+    render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(renderWorkbench).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Editing node workbench")).toBeNull();
+    expect(screen.getByRole("button", { name: "Open editing editor" })).toBeTruthy();
+  });
 
   it("renders connectable left and right handles", () => {
     const data: AgentCanvasNodeData = {

@@ -213,6 +213,46 @@
   background: transparent;
 }
 
+.agent-canvas-node__editing-surface {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.agent-canvas-node__editing-entry {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(194, 198, 208, 0.9);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.agent-canvas-node__editing-entry img {
+  display: block;
+  width: 64px;
+  height: 64px;
+  filter: invert(78%) sepia(7%) saturate(400%) hue-rotate(190deg) brightness(92%);
+  opacity: 0.94;
+}
+
+.agent-canvas-node__editing-entry:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 237, 244, 0.98);
+  transform: scale(1.04);
+}
+
+.agent-canvas-node__editing-entry:focus-visible {
+  outline: 2px solid rgba(215, 208, 244, 0.9);
+  outline-offset: 4px;
+}
+
 .agent-canvas-node__content {
   display: flex;
   box-sizing: border-box;

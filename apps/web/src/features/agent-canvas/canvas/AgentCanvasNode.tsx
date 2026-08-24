@@ -20,6 +20,7 @@ import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
+import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
@@ -51,6 +52,7 @@ export interface AgentCanvasNodeCallbacks {
   onRun?: (nodeId: string) => void;
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
+  onOpenEditing?: (nodeId: string) => void;
   onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
   renderWorkbench?: (node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => ReactNode;
   onOpenConnectedNodeMenu?: (
@@ -161,10 +163,11 @@ function NodeSurface({
   asset,
   status,
   onOpenVideoPreview,
+  onOpenEditing,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   label,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onOpenEditing" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <AgentCanvasNodeContent
@@ -175,6 +178,9 @@ function NodeSurface({
   }
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
+  }
+  if (node.node_type === "editing") {
+    return <EditingNodeSurface onOpenEditing={onOpenEditing ? () => onOpenEditing(node.node_id) : undefined} />;
   }
   return (
     <MediaSurface
@@ -193,6 +199,7 @@ export function AgentCanvasNodeCard({
   runtime,
   selected = false,
   onOpenVideoPreview,
+  onOpenEditing,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   mediaDimensions,
@@ -229,6 +236,7 @@ export function AgentCanvasNodeCard({
           status={status}
           label={label}
           onOpenVideoPreview={onOpenVideoPreview}
+          onOpenEditing={onOpenEditing}
           onMediaDimensionsResolved={onMediaDimensionsResolved}
           onScriptContentHeightResolved={onScriptContentHeightResolved}
         />
@@ -269,7 +277,9 @@ function AgentCanvasNodeRendererComponent({
   ) | null>(null);
   const [scriptContentHeight, setScriptContentHeight] = useState(0);
   const label = creativeRoleDisplayName(data.node.creative_role);
-  const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
+  const workbench = data.node.node_type === "editing"
+    ? null
+    : data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
@@ -308,6 +318,7 @@ function AgentCanvasNodeRendererComponent({
         runtime={data.runtime}
         selected={selected}
         onOpenVideoPreview={data.onOpenVideoPreview}
+        onOpenEditing={data.onOpenEditing}
         onMediaDimensionsResolved={validAgentCanvasMediaDimensions(data.asset)
           ? undefined
           : ({ width, height }) => setIntrinsicDimensions({
