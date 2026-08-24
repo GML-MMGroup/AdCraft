@@ -66,7 +66,7 @@ export function WorkflowCanvasSurface({
         onEdgesDelete={actions.onEdgesDelete}
         fitView
         fitViewOptions={{ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }}
-        onlyRenderVisibleElements
+        onlyRenderVisibleElements={false}
         minZoom={0.05}
         maxZoom={2}
         nodesDraggable
