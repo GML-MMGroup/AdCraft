@@ -2620,9 +2620,11 @@ function normalizeCapabilityProposalOptionV2(
 ): CapabilityProposalOptionV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["option_id", "title", "public_summary", "key_decisions"], path);
-  const keyDecisions = expectArray(record.key_decisions, `${path}.key_decisions`).map((item, index) => (
-    expectNonEmptyString(item, `${path}.key_decisions[${index}]`)
-  ));
+  const keyDecisions = record.key_decisions === undefined
+    ? []
+    : expectArray(record.key_decisions, `${path}.key_decisions`).map((item, index) => (
+      expectNonEmptyString(item, `${path}.key_decisions[${index}]`)
+    ));
   if (keyDecisions.length > 6) {
     fail(`${path}.key_decisions`, "expected between 0 and 6 decisions");
   }
@@ -2802,10 +2804,7 @@ export function normalizeConceptProposalV2(
   const options = expectArray(record.options, `${path}.options`).map((item, index) => (
     normalizeCapabilityProposalOptionV2(item, `${path}.options[${index}]`)
   ));
-  if (options.length < 1 || options.length > 4) fail(`${path}.options`, "expected between 1 and 4 options");
-  if (record.proposal_kind === "world_setting" && options.length > 3) {
-    fail(`${path}.options`, "World Setting proposals allow between 1 and 3 options");
-  }
+  if (options.length < 1 || options.length > 3) fail(`${path}.options`, "expected between 1 and 3 options");
   return {
     proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),

@@ -490,17 +490,14 @@ describe("Agent Canvas normalizers", () => {
         option_id: "option_59d7f6dce6bb15c9ba2b8ff9e49ef022",
         title: "Warm family routine",
         public_summary: "A bright modern home shaped by calm morning and evening routines.",
-        key_decisions: [],
       }, {
         option_id: "option_c91b1a664803e4e96b91493ecf9c3448",
         title: "Minimal fresh living space",
         public_summary: "A restrained modern interior with clean surfaces and soft neutral tones.",
-        key_decisions: [],
       }, {
         option_id: "option_693fb095fed8d5187cb82afa115b736e",
         title: "Natural softness",
         public_summary: "A gentle natural world with warm wood, pale textiles, and soft daylight.",
-        key_decisions: [],
       }],
       proposed_references: [],
       target_node_id: null,

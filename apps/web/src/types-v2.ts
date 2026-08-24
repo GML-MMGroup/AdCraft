@@ -2386,6 +2386,7 @@ export interface CapabilityProposalOptionV2 {
   option_id: string;
   title: string;
   public_summary: string;
+  /** Backend public projections may omit this private field; normalizers fill it with []. */
   key_decisions: string[];
 }
 
