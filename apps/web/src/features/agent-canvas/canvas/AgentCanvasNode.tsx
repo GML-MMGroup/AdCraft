@@ -143,7 +143,7 @@ function MediaSurface({
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
       draggable={false}
-      loading="lazy"
+      loading="eager"
       decoding="async"
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;

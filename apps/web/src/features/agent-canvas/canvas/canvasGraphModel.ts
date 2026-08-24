@@ -146,7 +146,12 @@ export function toAgentCanvasFlowNodes(
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
   const previousNodes = new Map((options.previousNodes ?? []).map((node) => [node.id, node]));
   return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
-    const asset = node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null;
+    const previous = previousNodes.get(node.node_id);
+    const asset = resolveCanvasNodeAsset(
+      node,
+      node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null,
+      previous?.data.asset ?? null,
+    );
     const nodeRuntime = runtime?.node_runtime[node.node_id] ?? null;
     const dimensions = asset ? { width: asset.width, height: asset.height } : null;
     const size = agentCanvasNodeSize(node.node_type, dimensions);
@@ -154,7 +159,6 @@ export function toAgentCanvasFlowNodes(
       ? size
       : undefined;
     const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
-    const previous = previousNodes.get(node.node_id);
     if (previous && canReuseFlowNode(
       previous,
       node,
@@ -180,6 +184,23 @@ export function toAgentCanvasFlowNodes(
       },
     };
   });
+}
+
+function resolveCanvasNodeAsset(
+  node: CanvasNodeV2,
+  currentAsset: ProjectAssetSummaryV2 | null,
+  previousAsset: ProjectAssetSummaryV2 | null,
+): ProjectAssetSummaryV2 | null {
+  if (currentAsset?.media_url || currentAsset?.preview_url) return currentAsset;
+  if (
+    node.output_asset_id
+    && (!currentAsset || currentAsset.version_id === previousAsset?.version_id)
+    && previousAsset?.asset_id === node.output_asset_id
+    && (previousAsset.media_url || previousAsset.preview_url)
+  ) {
+    return previousAsset;
+  }
+  return currentAsset;
 }
 
 function canReuseFlowNode(

@@ -187,6 +187,57 @@ describe("canvasGraphModel", () => {
     expect(refreshed[1]).toBe(first[1]);
   });
 
+  it("keeps the last media asset while a canonical refresh temporarily omits it", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const refreshed = toAgentCanvasFlowNodes(
+      { ...workflow, assets: [] },
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBe(first[0]?.data.asset);
+    expect(refreshed[0]?.data.asset?.asset_id).toBe("asset-1");
+  });
+
+  it("does not keep stale media when the node points to a different asset", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const changedWorkflow = {
+      ...workflow,
+      nodes: workflow.nodes.map((item) => item.node_id === "image-1"
+        ? { ...item, output_asset_id: "asset-2" }
+        : item),
+      assets: [],
+    };
+
+    const refreshed = toAgentCanvasFlowNodes(
+      changedWorkflow,
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBeNull();
+  });
+
+  it("does not keep the previous version when the asset version changes", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const changedAsset = {
+      ...workflow.assets[0]!,
+      version_id: "asset-version-2",
+      preview_url: null,
+      media_url: null,
+    };
+    const refreshed = toAgentCanvasFlowNodes(
+      { ...workflow, assets: [changedAsset] },
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBe(changedAsset);
+  });
+
   it("rebuilds only the changed node and the active workbench node", () => {
     const firstWorkbench = vi.fn();
     const first = toAgentCanvasFlowNodes(workflow, runtime, {
