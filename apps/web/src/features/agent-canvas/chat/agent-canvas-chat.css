@@ -311,6 +311,14 @@
   gap: 4px;
 }
 
+.agent-chat__activity-loader {
+  width: min(100%, 260px);
+  color: #858698;
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: .82;
+}
+
 .agent-chat__activity code {
   width: fit-content;
   color: #ba4f62;

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { InlineLoader } from "generative-loaders";
+import { InlineLoader, TextLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
 
 import {
@@ -577,6 +577,14 @@ export function CapabilityActivityRow({
   const operationStage = recoveryStageLabel(turn?.operation_stage);
   const errorCode = turn?.operation_failure?.code ?? activity.error_code;
   const errorMessage = turn?.operation_failure?.message ?? activity.message;
+  const terminalActivity = activity.status === "completed"
+    || activity.status === "failed"
+    || activity.status === "superseded";
+  const waitingForModel = turn?.operation_stage === "waiting"
+    || turn?.operation_stage === "waiting_provider_response"
+    || turn?.operation_stage === "provider_waiting";
+  const showTextLoader = !terminalActivity
+    && (activity.status === "working" || waitingForModel);
   const fallbackLabel = retrying
     ? `${activity.capability_display_name} recovery is working`
     : activity.status === "working"
@@ -592,6 +600,14 @@ export function CapabilityActivityRow({
       <i aria-hidden="true" />
       <div>
         <span>{label}</span>
+        {showTextLoader ? (
+          <TextLoader
+            text="Preparing the next response..."
+            variant="skeleton"
+            className="agent-chat__activity-loader"
+            aria-label={`${activity.capability_display_name} is preparing the next response`}
+          />
+        ) : null}
         {activity.status === "failed" ? (
           <>
             {errorCode ? <code>{errorCode}</code> : null}
