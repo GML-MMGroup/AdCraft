@@ -44,7 +44,7 @@ describe("useAgentCanvasNodeFocus", () => {
     expect(flowRef.current.getViewport).toHaveBeenCalledOnce();
     expect(flowRef.current.fitView).toHaveBeenCalledWith({
       nodes: [{ id: "image-1" }],
-      padding: 1,
+      padding: 2 / 3,
       duration: 420,
       minZoom: 0.05,
       maxZoom: 4,
