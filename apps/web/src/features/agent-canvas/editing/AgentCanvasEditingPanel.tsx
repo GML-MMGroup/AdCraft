@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
-  ChevronDownIcon,
-  ChevronUpIcon,
   CloseIcon,
   DownloadIcon,
-  MuteIcon,
+  FastForwardIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
+  RewindIcon,
   UploadIcon,
   VideoIcon,
+  MuteIcon,
+  UnmuteIcon,
 } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
@@ -16,6 +19,7 @@ import type {
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
+import { EditingTimeline } from "./EditingTimeline.tsx";
 import "./agent-canvas-editing.css";
 
 type PatchNode = (
@@ -41,10 +45,8 @@ function seconds(value: number | null | undefined): string {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
-function numericValue(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function inputDuration(duration: number | null | undefined): number {
+  return duration && duration > 0 ? duration : 1;
 }
 
 export function AgentCanvasEditingPanel({
@@ -57,8 +59,13 @@ export function AgentCanvasEditingPanel({
   onAddExportToCanvas,
 }: AgentCanvasEditingPanelProps) {
   const editing = useAgentCanvasEditing(workflow, node, patchNode);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
   const [addingToCanvas, setAddingToCanvas] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [playheadSeconds, setPlayheadSeconds] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [selectedReferenceState, setSelectedReferenceState] = useState<string | null>(null);
   const activeExport = editing.content?.active_export;
   const exportRunning = activeExport?.status === "queued" || activeExport?.status === "exporting";
   const canReuseExport = editing.exportReadable && editing.terminalExport?.output_asset_id
@@ -69,6 +76,20 @@ export function AgentCanvasEditingPanel({
     && (input.node === null || input.node.status === "ready")
     && input.asset?.status === "ready",
   ).length;
+  const sourceDuration = editing.inputs.videos.reduce(
+    (total, input) => total + inputDuration(input.asset?.duration_seconds),
+    0,
+  );
+  const timelineDuration = Math.max(
+    editing.content?.preview.estimated_duration_seconds ?? 0,
+    sourceDuration,
+    1,
+  );
+  const selectedReferenceId = selectedReferenceState
+    && (editing.inputs.videos.some((input) => input.referenceId === selectedReferenceState)
+      || editing.inputs.bgm?.referenceId === selectedReferenceState)
+    ? selectedReferenceState
+    : editing.inputs.videos[0]?.referenceId ?? editing.inputs.bgm?.referenceId ?? null;
 
   const handleAddToCanvas = async () => {
     if (!canReuseExport || !onAddExportToCanvas || addingToCanvas) return;
@@ -83,6 +104,24 @@ export function AgentCanvasEditingPanel({
     }
   };
 
+  const seekPreview = (value: number) => {
+    const next = Math.max(0, Math.min(timelineDuration, value));
+    setPlayheadSeconds(next);
+    if (previewRef.current) previewRef.current.currentTime = next;
+  };
+
+  const togglePreview = () => {
+    const preview = previewRef.current;
+    if (!preview || !editing.outputAsset?.media_url) return;
+    if (preview.paused) {
+      void preview.play().catch(() => setPlaying(false));
+    } else {
+      preview.pause();
+    }
+  };
+
+  const nudgePreview = (offset: number) => seekPreview(playheadSeconds + offset);
+
   return (
     <section className="agent-editing-panel" aria-label="Editing node">
       <header className="agent-editing-panel__header">
@@ -91,16 +130,41 @@ export function AgentCanvasEditingPanel({
           <h2>{node.title || "Final composition"}</h2>
         </div>
         <div className="agent-editing-panel__header-actions">
-          {editing.content?.dirty ? (
-            <span className="agent-editing-panel__dirty">Changes not exported</span>
+          {editing.content?.dirty ? <span className="agent-editing-panel__dirty">Changes not exported</span> : null}
+          {canReuseExport ? (
+            <>
+              <button
+                type="button"
+                aria-label="Download exported video"
+                className="agent-editing-panel__toolbar-button"
+                disabled={editing.downloading}
+                onClick={() => {
+                  const assetId = canReuseExport.output_asset_id;
+                  if (!assetId) return;
+                  if (onDownloadExport) void onDownloadExport(assetId);
+                  else void editing.downloadExport(assetId);
+                }}
+                title="Download exported video"
+              >
+                <DownloadIcon />
+                <span>{editing.downloading ? "Downloading" : "Download"}</span>
+              </button>
+              {onAddExportToCanvas ? (
+                <button
+                  type="button"
+                  aria-label="Add exported video to canvas"
+                  className="agent-editing-panel__toolbar-button"
+                  disabled={addingToCanvas}
+                  onClick={() => void handleAddToCanvas()}
+                  title="Add exported video to canvas"
+                >
+                  <PlusIcon />
+                  <span>{addingToCanvas ? "Adding" : "Add to Canvas"}</span>
+                </button>
+              ) : null}
+            </>
           ) : null}
-          <button
-            type="button"
-            className="agent-editing-panel__icon-button"
-            aria-label="Close editor"
-            title="Close editor"
-            onClick={onClose}
-          >
+          <button type="button" className="agent-editing-panel__icon-button" aria-label="Close editor" title="Close editor" onClick={onClose}>
             <CloseIcon />
           </button>
         </div>
@@ -116,12 +180,17 @@ export function AgentCanvasEditingPanel({
             <div className="agent-editing-panel__preview">
               {editing.outputAsset?.media_url ? (
                 <video
+                  ref={previewRef}
                   key={editing.outputAsset.asset_id}
                   src={editing.outputAsset.media_url}
                   poster={editing.outputAsset.preview_url ?? undefined}
-                  controls
                   playsInline
                   preload="metadata"
+                  muted={muted}
+                  onTimeUpdate={(event) => setPlayheadSeconds(event.currentTarget.currentTime)}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
                 />
               ) : (
                 <div className="agent-editing-panel__preview-empty">
@@ -136,17 +205,25 @@ export function AgentCanvasEditingPanel({
                 </div>
               ) : null}
             </div>
-
+            <div className="agent-editing-panel__transport" aria-label="Preview controls">
+              <button type="button" aria-label="Rewind preview" title="Rewind 5 seconds" onClick={() => nudgePreview(-5)}>
+                <RewindIcon />
+              </button>
+              <button type="button" className="agent-editing-panel__transport-play" aria-label={playing ? "Pause preview" : "Play preview"} title={playing ? "Pause preview" : "Play preview"} disabled={!editing.outputAsset?.media_url} onClick={togglePreview}>
+                {playing ? <PauseIcon /> : <PlayIcon />}
+              </button>
+              <button type="button" aria-label="Fast forward preview" title="Fast forward 5 seconds" onClick={() => nudgePreview(5)}>
+                <FastForwardIcon />
+              </button>
+              <span className="agent-editing-panel__transport-time">{seconds(playheadSeconds)} / {seconds(timelineDuration)}</span>
+              <button type="button" aria-label={muted ? "Unmute preview" : "Mute preview"} title={muted ? "Unmute preview" : "Mute preview"} onClick={() => setMuted((value) => !value)}>
+                {muted ? <MuteIcon /> : <UnmuteIcon />}
+              </button>
+            </div>
             <div className="agent-editing-panel__output">
               <label>
                 <span>Resolution</span>
-                <select
-                  value={editing.content.manifest.output.resolution ?? ""}
-                  disabled={exportRunning}
-                  onChange={(event) => editing.setOutput({
-                    resolution: event.currentTarget.value || null,
-                  })}
-                >
+                <select value={editing.content.manifest.output.resolution ?? ""} disabled={exportRunning} onChange={(event) => editing.setOutput({ resolution: event.currentTarget.value || null })}>
                   <option value="">Source</option>
                   <option value="1280x720">1280 x 720</option>
                   <option value="1920x1080">1920 x 1080</option>
@@ -155,13 +232,7 @@ export function AgentCanvasEditingPanel({
               </label>
               <label>
                 <span>Aspect ratio</span>
-                <select
-                  value={editing.content.manifest.output.aspect_ratio ?? ""}
-                  disabled={exportRunning}
-                  onChange={(event) => editing.setOutput({
-                    aspect_ratio: event.currentTarget.value || null,
-                  })}
-                >
+                <select value={editing.content.manifest.output.aspect_ratio ?? ""} disabled={exportRunning} onChange={(event) => editing.setOutput({ aspect_ratio: event.currentTarget.value || null })}>
                   <option value="">Source</option>
                   <option value="16:9">16:9</option>
                   <option value="9:16">9:16</option>
@@ -170,19 +241,7 @@ export function AgentCanvasEditingPanel({
               </label>
               <label>
                 <span>FPS</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  step="1"
-                  value={editing.content.manifest.output.fps ?? ""}
-                  disabled={exportRunning}
-                  onChange={(event) => editing.setOutput({
-                    fps: event.currentTarget.value
-                      ? Number(event.currentTarget.value)
-                      : null,
-                  })}
-                />
+                <input type="number" min="1" max="120" step="1" value={editing.content.manifest.output.fps ?? ""} disabled={exportRunning} onChange={(event) => editing.setOutput({ fps: event.currentTarget.value ? Number(event.currentTarget.value) : null })} />
               </label>
             </div>
           </div>
@@ -190,58 +249,17 @@ export function AgentCanvasEditingPanel({
           <div className="agent-editing-panel__timeline-column">
             <div className="agent-editing-panel__timeline-heading">
               <div>
-                <h3>Sequence</h3>
+                <h3>Timeline</h3>
                 <span>{editing.inputs.videos.length} clips · {seconds(editing.content.preview.estimated_duration_seconds)}</span>
               </div>
               <div className="agent-editing-panel__export-actions">
-                {canReuseExport ? (
-                  <>
-                    <button
-                      type="button"
-                      aria-label="Download exported video"
-                      className="agent-editing-panel__export-secondary"
-                      disabled={editing.downloading}
-                      onClick={() => {
-                        const assetId = canReuseExport.output_asset_id;
-                        if (!assetId) return;
-                        if (onDownloadExport) void onDownloadExport(assetId);
-                        else void editing.downloadExport(assetId);
-                      }}
-                    >
-                      <DownloadIcon />
-                      <span>{editing.downloading ? "Downloading" : "Download"}</span>
-                    </button>
-                    {onAddExportToCanvas ? (
-                      <button
-                        type="button"
-                        aria-label="Add exported video to canvas"
-                        className="agent-editing-panel__export-secondary"
-                        disabled={addingToCanvas}
-                        onClick={() => void handleAddToCanvas()}
-                      >
-                        <PlusIcon />
-                        <span>{addingToCanvas ? "Adding" : "Add to Canvas"}</span>
-                      </button>
-                    ) : null}
-                  </>
-                ) : null}
                 {exportRunning ? (
-                  <button
-                    type="button"
-                    className="agent-editing-panel__cancel-export"
-                    disabled={editing.exporting}
-                    onClick={() => void editing.cancelExport()}
-                  >
+                  <button type="button" className="agent-editing-panel__cancel-export" disabled={editing.exporting} onClick={() => void editing.cancelExport()}>
                     <CloseIcon />
                     <span>Cancel</span>
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    className="agent-editing-panel__export"
-                    disabled={editing.exporting || editing.saving || readyVideos === 0}
-                    onClick={() => void editing.exportComposition()}
-                  >
+                  <button type="button" className="agent-editing-panel__export" disabled={editing.exporting || editing.saving || readyVideos === 0} onClick={() => void editing.exportComposition()}>
                     <UploadIcon />
                     <span>{editing.exporting ? "Starting" : "Export"}</span>
                   </button>
@@ -249,258 +267,22 @@ export function AgentCanvasEditingPanel({
               </div>
             </div>
 
-            <div className="agent-editing-panel__tracks">
-              {editing.inputs.videos.length === 0 ? (
-                <div className="agent-editing-panel__empty-track">
-                  Connect Video nodes to add clips.
-                </div>
-              ) : editing.inputs.videos.map((input, index) => (
-                <div
-                  key={input.referenceId}
-                  className={`agent-editing-track agent-editing-track--${input.node?.status ?? input.asset?.status ?? "failed"}`}
-                >
-                  <span className="agent-editing-track__index">{String(index + 1).padStart(2, "0")}</span>
-                  <div className="agent-editing-track__thumbnail">
-                    {input.asset?.preview_url ? (
-                      <img src={input.asset.preview_url} alt="" />
-                    ) : (
-                      <VideoIcon aria-hidden="true" />
-                    )}
-                  </div>
-                  <div className="agent-editing-track__identity">
-                    <strong>{input.node?.title || input.asset?.display_name || `Shot ${index + 1}`}</strong>
-                    <span>{input.node?.status ?? input.asset?.status ?? "Unavailable"} · {seconds(input.asset?.duration_seconds)}</span>
-                  </div>
-                  <div className="agent-editing-track__order">
-                    <button
-                      type="button"
-                      aria-label={`Move ${input.node?.title || `clip ${index + 1}`} earlier`}
-                      title="Move earlier"
-                      disabled={exportRunning || index === 0}
-                      onClick={() => editing.moveVideo(input.referenceId, -1)}
-                    >
-                      <ChevronUpIcon />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Move ${input.node?.title || `clip ${index + 1}`} later`}
-                      title="Move later"
-                      disabled={exportRunning || index === editing.inputs.videos.length - 1}
-                      onClick={() => editing.moveVideo(input.referenceId, 1)}
-                    >
-                      <ChevronDownIcon />
-                    </button>
-                  </div>
-                  <div className="agent-editing-track__settings">
-                    <label className="agent-editing-track__toggle">
-                      <input
-                        type="checkbox"
-                        checked={input.entry.enabled}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          enabled: event.currentTarget.checked,
-                        })}
-                      />
-                      <span>Enabled</span>
-                    </label>
-                    <label>
-                      <span>Trim start</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={input.entry.trim_start_seconds}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          trim_start_seconds: Math.max(0, numericValue(event.currentTarget.value) ?? 0),
-                        })}
-                      />
-                    </label>
-                    <label>
-                      <span>Trim end</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.1"
-                        value={input.entry.trim_end_seconds ?? ""}
-                        placeholder="Source"
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          trim_end_seconds: numericValue(event.currentTarget.value),
-                        })}
-                      />
-                    </label>
-                    <label>
-                      <span>Volume</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={input.entry.volume}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          volume: Number(event.currentTarget.value),
-                        })}
-                      />
-                    </label>
-                    <label className="agent-editing-track__toggle">
-                      <input
-                        type="checkbox"
-                        checked={input.entry.preserve_native_audio}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          preserve_native_audio: event.currentTarget.checked,
-                        })}
-                      />
-                      <span>Source audio</span>
-                    </label>
-                    <label>
-                      <span>Transition</span>
-                      <select
-                        value={input.entry.transition}
-                        disabled={exportRunning}
-                        onChange={(event) => {
-                          const transition = event.currentTarget.value as "cut" | "fade";
-                          editing.updateVideo(input.referenceId, {
-                            transition,
-                            ...(transition === "cut" ? { transition_duration_seconds: 0 } : {}),
-                          });
-                        }}
-                      >
-                        <option value="cut">Cut</option>
-                        <option value="fade">Fade</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>Transition duration</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="5"
-                        step="0.1"
-                        value={input.entry.transition_duration_seconds}
-                        disabled={exportRunning || input.entry.transition === "cut"}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          transition_duration_seconds: Math.min(
-                            5,
-                            Math.max(0, numericValue(event.currentTarget.value) ?? 0),
-                          ),
-                        })}
-                      />
-                    </label>
-                    <label>
-                      <span>Fit</span>
-                      <select
-                        value={input.entry.fit_mode}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.updateVideo(input.referenceId, {
-                          fit_mode: event.currentTarget.value as "fit" | "fill",
-                        })}
-                      >
-                        <option value="fill">Fill</option>
-                        <option value="fit">Fit</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              ))}
-
-              <div className="agent-editing-track agent-editing-track--bgm">
-                <span className="agent-editing-track__index"><MuteIcon /></span>
-                <div className="agent-editing-track__identity">
-                  <strong>{editing.inputs.bgm?.node?.title || editing.inputs.bgm?.asset?.display_name || "No BGM connected"}</strong>
-                  <span>{editing.inputs.bgm ? seconds(editing.inputs.bgm.asset?.duration_seconds) : "Optional audio input"}</span>
-                </div>
-                {editing.content.manifest.bgm ? (
-                  <div className="agent-editing-track__settings agent-editing-track__settings--bgm">
-                    <label className="agent-editing-track__toggle">
-                      <input
-                        type="checkbox"
-                        checked={editing.content.manifest.bgm.enabled}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgm({ enabled: event.currentTarget.checked })}
-                      />
-                      <span>Enabled</span>
-                    </label>
-                    <label>
-                      <span>Trim start</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={editing.content.manifest.bgm.trim_start_seconds}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgm({
-                          trim_start_seconds: Math.max(0, numericValue(event.currentTarget.value) ?? 0),
-                        })}
-                      />
-                    </label>
-                    <label>
-                      <span>Trim end</span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.1"
-                        value={editing.content.manifest.bgm.trim_end_seconds ?? ""}
-                        placeholder="Source"
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgm({
-                          trim_end_seconds: numericValue(event.currentTarget.value),
-                        })}
-                      />
-                    </label>
-                    <label className="agent-editing-track__volume">
-                      <span>Volume {Math.round(editing.content.manifest.bgm.volume * 100)}%</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        aria-label="BGM volume"
-                        value={editing.content.manifest.bgm.volume}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgmVolume(Number(event.currentTarget.value))}
-                      />
-                    </label>
-                    <label>
-                      <span>Fade in</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="30"
-                        step="0.1"
-                        value={editing.content.manifest.bgm.fade_in_seconds}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgm({
-                          fade_in_seconds: Math.min(30, Math.max(0, numericValue(event.currentTarget.value) ?? 0)),
-                        })}
-                      />
-                    </label>
-                    <label>
-                      <span>Fade out</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="30"
-                        step="0.1"
-                        value={editing.content.manifest.bgm.fade_out_seconds}
-                        disabled={exportRunning}
-                        onChange={(event) => editing.setBgm({
-                          fade_out_seconds: Math.min(30, Math.max(0, numericValue(event.currentTarget.value) ?? 0)),
-                        })}
-                      />
-                    </label>
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <EditingTimeline
+              inputs={editing.inputs}
+              timelineDuration={timelineDuration}
+              playheadSeconds={playheadSeconds}
+              selectedReferenceId={selectedReferenceId}
+              exportRunning={exportRunning}
+              onPlayheadChange={seekPreview}
+              onSelectReference={setSelectedReferenceState}
+              onMoveVideo={editing.moveVideo}
+              onUpdateVideo={editing.updateVideo}
+              onSetBgm={editing.setBgm}
+              onSetBgmVolume={editing.setBgmVolume}
+            />
 
             {omittedNodeIds.length ? (
-              <section
-                className="agent-editing-panel__omitted"
-                aria-labelledby="agent-editing-omitted-heading"
-              >
+              <section className="agent-editing-panel__omitted" aria-labelledby="agent-editing-omitted-heading">
                 <div>
                   <h3 id="agent-editing-omitted-heading">Omitted planned inputs</h3>
                   <p>These planned nodes were not included in the prepared composition.</p>
@@ -508,40 +290,14 @@ export function AgentCanvasEditingPanel({
                 <ul>
                   {omittedNodeIds.map((nodeId) => {
                     const omittedNode = workflow.nodes.find((candidate) => candidate.node_id === nodeId);
-                    return (
-                      <li key={nodeId}>
-                        <strong>{omittedNode?.title || nodeId}</strong>
-                        <span>{omittedNode ? `${omittedNode.node_type} · ${omittedNode.status}` : "Not materialized"}</span>
-                      </li>
-                    );
+                    return <li key={nodeId}><strong>{omittedNode?.title || nodeId}</strong><span>{omittedNode ? `${omittedNode.node_type} · ${omittedNode.status}` : "Not materialized"}</span></li>;
                   })}
                 </ul>
               </section>
             ) : null}
-
-            {editing.content.preview.warnings.length ? (
-              <ul className="agent-editing-panel__warnings">
-                {editing.content.preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-              </ul>
-            ) : null}
-            {editing.error ? (
-              <button
-                type="button"
-                className="agent-editing-panel__error"
-                onClick={editing.clearError}
-              >
-                {editing.error}
-              </button>
-            ) : null}
-            {actionError ? (
-              <button
-                type="button"
-                className="agent-editing-panel__error"
-                onClick={() => setActionError(null)}
-              >
-                {actionError}
-              </button>
-            ) : null}
+            {editing.content.preview.warnings.length ? <ul className="agent-editing-panel__warnings">{editing.content.preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+            {editing.error ? <button type="button" className="agent-editing-panel__error" onClick={editing.clearError}>{editing.error}</button> : null}
+            {actionError ? <button type="button" className="agent-editing-panel__error" onClick={() => setActionError(null)}>{actionError}</button> : null}
           </div>
         </div>
       )}

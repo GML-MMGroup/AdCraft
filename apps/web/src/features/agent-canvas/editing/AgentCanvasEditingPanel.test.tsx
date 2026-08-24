@@ -229,6 +229,14 @@ describe("AgentCanvasEditingPanel", () => {
       />,
     );
 
+    expect(screen.getByRole("group", { name: "Video track" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Audio track" })).toBeTruthy();
+    expect(screen.getByText("Video Track")).toBeTruthy();
+    expect(screen.getByText("Audio Track")).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Timeline playhead" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play preview" })).toBeTruthy();
+    expect(screen.getByText("Selected clip")).toBeTruthy();
+
     expect(screen.getByText("Shot 1")).toBeTruthy();
     expect(screen.getByText("Transition")).toBeTruthy();
     expect(screen.getByText("Transition duration")).toBeTruthy();
