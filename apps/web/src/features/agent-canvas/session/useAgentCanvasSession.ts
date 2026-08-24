@@ -9,6 +9,7 @@ import type {
   CanvasBindingCreateRequestV2,
   CanvasBindingPatchRequestV2,
   CanvasConnectedNodeCreateRequestV2,
+  CanvasEditingExportImportRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasLayoutPositionV2,
   CanvasNodeCreateRequestV2,
@@ -28,6 +29,7 @@ import {
   mergeAgentCanvasLayout,
   mergeAgentCanvasBindingMutation,
   mergeAgentCanvasConnectedNode,
+  mergeAgentCanvasEditingExportImport,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -445,6 +447,34 @@ export function useAgentCanvasSession() {
     });
   }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
 
+  const importEditingExport = useCallback(async (
+    editingNodeId: string,
+    request: CanvasEditingExportImportRequestV2,
+  ) => {
+    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const workflowId = agentCanvasWorkflow.workflow_id;
+    return queueRef.current!.enqueue(
+      createOperationKey(`editing-export-import:${editingNodeId}`),
+      async () => {
+        const response = await agentCanvasApi.importAgentCanvasEditingExport(
+          workflowId,
+          editingNodeId,
+          request,
+          createOperationKey("editing-export-import-request"),
+        );
+        setAgentCanvasWorkflow((current) => {
+          if (!current || current.workflow_id !== workflowId) return current;
+          const next = mergeAgentCanvasEditingExportImport(current, response.value);
+          workflowRef.current = next;
+          return next;
+        });
+        setSelectedNodeId(response.value.node.node_id);
+        setAuthoringError(null);
+        return response.value;
+      },
+    );
+  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+
   const patchBinding = useCallback(async (
     bindingId: string,
     request: CanvasBindingPatchRequestV2,
@@ -538,6 +568,7 @@ export function useAgentCanvasSession() {
       rollbackNodePositions,
       createNode,
       createConnectedNode,
+      importEditingExport,
       saveVariationDraft,
       discardVariationDraft,
       materializeVariationDraft,

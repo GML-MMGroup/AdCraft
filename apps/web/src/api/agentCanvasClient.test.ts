@@ -845,6 +845,109 @@ describe("Agent Canvas settings and working document client", () => {
     expect(detail.document_id).toBe("doc-anchor-1");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("imports an Editing export with Workflow ETag and one idempotent semantic request", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:8"');
+    const importedNode = {
+      ...draftNode,
+      node_id: "video-export",
+      node_type: "video",
+      creative_role: "general_video",
+      status: "ready",
+      execution_mode: "source_only",
+      generation_prompt: null,
+      output_asset_id: "asset-export",
+      position: { x: 640, y: 120 },
+    };
+    const importedBinding = {
+      binding_id: "binding-editing-export",
+      workflow_id: "workflow-1",
+      source: { kind: "node_output", source_node_id: "editing-1" },
+      target_node_id: "video-export",
+      input_role: "video_reference",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
+      created_at: "2026-08-24T00:00:00Z",
+      updated_at: "2026-08-24T00:00:00Z",
+    };
+    const importedAsset = {
+      ...asset,
+      asset_id: "asset-export",
+      media_type: "video",
+      source_type: "editing_export",
+      display_name: "Exported video",
+      mime_type: "video/mp4",
+      preview_url: "/api/v2/assets/asset-export/content",
+      media_url: "/api/v2/assets/asset-export/content",
+      width: 1920,
+      height: 1080,
+      duration_seconds: 30,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/v2/workflows/workflow-1/nodes/editing-1/import-export");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("If-Match")).toBe('"workflow:workflow-1:revision:8"');
+      expect(headers.get("Idempotency-Key")).toBe("import-export-key");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        export_id: "export-30s",
+        title: "Exported video",
+        position: { x: 640, y: 120 },
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        revision: 9,
+        layout_revision: 4,
+        node: importedNode,
+        binding: importedBinding,
+        asset: importedAsset,
+        events_cursor: 41,
+        replayed: false,
+      }, { etag: '"workflow:workflow-1:revision:9"' });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await v2Api.importAgentCanvasEditingExport(
+      "workflow-1",
+      "editing-1",
+      {
+        export_id: "export-30s",
+        title: "Exported video",
+        position: { x: 640, y: 120 },
+      },
+      "import-export-key",
+    );
+
+    expect(response.value.node).toMatchObject({
+      node_id: "video-export",
+      execution_mode: "source_only",
+      output_asset_id: "asset-export",
+    });
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:9"');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("downloads exported media through the canonical content endpoint", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/v2/assets/asset-export/content?download=true");
+      expect(init?.method).toBe("GET");
+      return new Response("mp4-bytes", {
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Disposition": "attachment; filename*=UTF-8''AdCraft%20Final%2030s.mp4",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await v2Api.downloadAgentCanvasAsset("asset-export");
+
+    expect(response.filename).toBe("AdCraft Final 30s.mp4");
+    expect(response.mimeType).toBe("video/mp4");
+    expect(await response.blob.text()).toBe("mp4-bytes");
+  });
 });
 
 function jsonResponse(

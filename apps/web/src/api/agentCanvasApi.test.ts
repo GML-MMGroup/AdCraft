@@ -21,4 +21,9 @@ describe("agentCanvasApi", () => {
     expect(agentCanvasApi.agentCanvasDecisionBundle).toBeTypeOf("function");
     expect(agentCanvasApi.actOnAgentCanvasDecisionBundle).toBeTypeOf("function");
   });
+
+  it("exposes Editing export download and Canvas import actions", () => {
+    expect(agentCanvasApi.downloadAgentCanvasAsset).toBeTypeOf("function");
+    expect(agentCanvasApi.importAgentCanvasEditingExport).toBeTypeOf("function");
+  });
 });

@@ -5,6 +5,7 @@ import type {
   CanvasBindingV2,
   CanvasBindingMutationResponseV2,
   CanvasConnectedNodeCreateResponseV2,
+  CanvasEditingExportImportResponseV2,
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
@@ -12,6 +13,7 @@ import {
   mergeAgentCanvasLayout,
   mergeAgentCanvasBindingMutation,
   mergeAgentCanvasConnectedNode,
+  mergeAgentCanvasEditingExportImport,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -245,6 +247,64 @@ describe("mergeAgentCanvasWorkflow", () => {
 
     expect(withPending.layout_revision).toBe(3);
     expect(withPending.nodes[0]?.position).toEqual({ x: 720, y: 480 });
+  });
+});
+
+describe("mergeAgentCanvasEditingExportImport", () => {
+  it("adopts the authoritative imported node, binding, asset, and revisions on replay", () => {
+    const importedNode = node({
+      node_id: "video-export",
+      node_type: "video",
+      creative_role: "general_video",
+      status: "ready",
+      execution_mode: "source_only",
+      output_asset_id: "asset-export",
+      position: { x: 520, y: 80 },
+    });
+    const importedBinding: CanvasBindingV2 = {
+      ...binding,
+      binding_id: "binding-editing-export",
+      source: { kind: "node_output", source_node_id: "editing-1" },
+      target_node_id: importedNode.node_id,
+      input_role: "video_reference",
+    };
+    const importedAsset: ProjectAssetSummaryV2 = {
+      ...publishedAsset,
+      asset_id: "asset-export",
+      media_type: "video",
+      source_type: "editing_export",
+      display_name: "Final cut source",
+      media_url: "/api/v2/assets/asset-export/content",
+      preview_url: "/api/v2/assets/asset-export/content",
+      source_semantic_role: null,
+      source_node_id: "video-export",
+    };
+      const response: CanvasEditingExportImportResponseV2 = {
+        workflow_id: "workflow-1",
+        revision: 9,
+      layout_revision: 4,
+      node: importedNode,
+      binding: importedBinding,
+      asset: importedAsset,
+      events_cursor: 41,
+      replayed: true,
+    };
+    const current = workflow({
+      revision: 8,
+      layout_revision: 3,
+      nodes: [node({ node_id: "editing-1", node_type: "editing", creative_role: "editing" }), importedNode],
+      bindings: [importedBinding],
+      assets: [importedAsset],
+    });
+
+    const merged = mergeAgentCanvasEditingExportImport(current, response);
+
+    expect(merged.revision).toBe(9);
+    expect(merged.layout_revision).toBe(4);
+    expect(merged.nodes.filter((item) => item.node_id === importedNode.node_id)).toHaveLength(1);
+    expect(merged.bindings.filter((item) => item.binding_id === importedBinding.binding_id)).toHaveLength(1);
+    expect(merged.assets.filter((item) => item.asset_id === importedAsset.asset_id)).toHaveLength(1);
+    expect(merged.nodes.find((item) => item.node_id === importedNode.node_id)).toBe(importedNode);
   });
 });
 

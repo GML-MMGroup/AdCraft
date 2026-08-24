@@ -46,6 +46,7 @@ export function useAgentCanvasEditing(
 ) {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftManifest, setDraftManifest] = useState<{
     nodeId: string;
@@ -191,13 +192,52 @@ export function useAgentCanvasEditing(
   const outputAsset = node.output_asset_id
     ? workflow.assets.find((asset) => asset.asset_id === node.output_asset_id) ?? null
     : null;
+  const terminalExport = content?.active_export?.status === "completed"
+    ? content.active_export
+    : content?.last_successful_export?.status === "completed"
+      ? content.last_successful_export
+      : null;
+  const terminalExportAsset = terminalExport?.output_asset_id
+    ? workflow.assets.find((asset) => asset.asset_id === terminalExport.output_asset_id) ?? null
+    : null;
+  const exportAsset = terminalExportAsset ?? outputAsset;
+  const exportReadable = Boolean(
+    terminalExport
+    && terminalExport.output_asset_id
+    && exportAsset?.status === "ready"
+    && exportAsset.media_url,
+  );
+
+  const downloadExport = useCallback(async (assetId: string | null) => {
+    if (!assetId || downloading) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const response = await agentCanvasApi.downloadAgentCanvasAsset(assetId);
+      const url = URL.createObjectURL(response.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = response.filename ?? (
+        response.mimeType.includes("mp4") ? "adcraft-export.mp4" : "adcraft-export"
+      );
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (downloadError) {
+      setError(errorMessage(downloadError, "Unable to download the exported video."));
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading]);
 
   return {
     content,
     inputs,
-    outputAsset,
+    outputAsset: exportAsset,
+    terminalExport,
+    exportReadable,
     saving,
     exporting,
+    downloading,
     error,
     clearError: () => setError(null),
     moveVideo,
@@ -207,5 +247,6 @@ export function useAgentCanvasEditing(
     setOutput,
     exportComposition,
     cancelExport,
+    downloadExport,
   };
 }

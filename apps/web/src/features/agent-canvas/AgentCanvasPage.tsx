@@ -122,6 +122,7 @@ export function AgentCanvasPage() {
     discardVariationDraft,
     deleteBinding,
     deleteNode,
+    importEditingExport,
     materializeVariationDraft,
     mergeNode,
     mergePublishedAsset,
@@ -276,6 +277,48 @@ export function AgentCanvasPage() {
     setEditingNodeId(nodeId);
     setSelectedNodeId(nodeId);
   }, [setSelectedNodeId]);
+
+  const addEditingExportToCanvas = useCallback(async (exportId: string) => {
+    if (!workflow || !editingNodeId) {
+      throw new Error("Select an Editing node before importing an export.");
+    }
+    const editingNode = workflow.nodes.find((candidate) => (
+      candidate.node_id === editingNodeId && candidate.node_type === "editing"
+    ));
+    if (!editingNode) throw new Error("The Editing node is no longer available.");
+    const editingAsset = editingNode.output_asset_id
+      ? workflow.assets.find((asset) => asset.asset_id === editingNode.output_asset_id) ?? null
+      : null;
+    const sourceSize = agentCanvasNodePlacementSize(
+      editingNode.node_type,
+      editingAsset ? { width: editingAsset.width, height: editingAsset.height } : null,
+    );
+    const videoSize = agentCanvasNodePlacementSize("video");
+    const position = findAvailableCanvasPosition(
+      workflow.nodes,
+      {
+        x: editingNode.position.x + sourceSize.width + AGENT_CANVAS_NODE_HORIZONTAL_GAP,
+        y: editingNode.position.y,
+      },
+      {
+        assets: workflow.assets,
+        candidateNodeType: "video",
+        candidateDimensions: videoSize,
+      },
+    );
+    setSurfaceError(null);
+    try {
+      await importEditingExport(editingNode.node_id, {
+        export_id: exportId,
+        title: "Exported video",
+        position,
+      });
+      setEditingNodeId(null);
+    } catch (error) {
+      setSurfaceError(error instanceof Error ? error.message : "The exported video could not be added to canvas.");
+      throw error;
+    }
+  }, [editingNodeId, importEditingExport, workflow]);
 
   const closeVideoPreview = useCallback(() => {
     setVideoPreview(null);
@@ -1071,6 +1114,7 @@ export function AgentCanvasPage() {
             omittedNodeIds={editingPreparation?.omittedNodeIds ?? []}
             patchNode={patchNode}
             onClose={() => setEditingNodeId(null)}
+            onAddExportToCanvas={addEditingExportToCanvas}
           />
         ) : null}
 

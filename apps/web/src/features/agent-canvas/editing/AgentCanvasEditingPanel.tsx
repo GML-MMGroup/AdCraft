@@ -1,8 +1,12 @@
+import { useState } from "react";
+
 import {
   ChevronDownIcon,
   ChevronUpIcon,
   CloseIcon,
+  DownloadIcon,
   MuteIcon,
+  PlusIcon,
   UploadIcon,
   VideoIcon,
 } from "../../../icons.tsx";
@@ -26,6 +30,8 @@ export interface AgentCanvasEditingPanelProps {
   omittedNodeIds?: string[];
   patchNode: PatchNode;
   onClose: () => void;
+  onDownloadExport?: (assetId: string) => Promise<void> | void;
+  onAddExportToCanvas?: (exportId: string) => Promise<void> | void;
 }
 
 function seconds(value: number | null | undefined): string {
@@ -47,15 +53,35 @@ export function AgentCanvasEditingPanel({
   omittedNodeIds = [],
   patchNode,
   onClose,
+  onDownloadExport,
+  onAddExportToCanvas,
 }: AgentCanvasEditingPanelProps) {
   const editing = useAgentCanvasEditing(workflow, node, patchNode);
+  const [addingToCanvas, setAddingToCanvas] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const activeExport = editing.content?.active_export;
   const exportRunning = activeExport?.status === "queued" || activeExport?.status === "exporting";
+  const canReuseExport = editing.exportReadable && editing.terminalExport?.output_asset_id
+    ? editing.terminalExport
+    : null;
   const readyVideos = editing.inputs.videos.filter((input) =>
     input.entry.enabled
     && (input.node === null || input.node.status === "ready")
     && input.asset?.status === "ready",
   ).length;
+
+  const handleAddToCanvas = async () => {
+    if (!canReuseExport || !onAddExportToCanvas || addingToCanvas) return;
+    setAddingToCanvas(true);
+    setActionError(null);
+    try {
+      await onAddExportToCanvas(canReuseExport.export_id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to add the exported video to canvas.");
+    } finally {
+      setAddingToCanvas(false);
+    }
+  };
 
   return (
     <section className="agent-editing-panel" aria-label="Editing node">
@@ -168,6 +194,37 @@ export function AgentCanvasEditingPanel({
                 <span>{editing.inputs.videos.length} clips · {seconds(editing.content.preview.estimated_duration_seconds)}</span>
               </div>
               <div className="agent-editing-panel__export-actions">
+                {canReuseExport ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Download exported video"
+                      className="agent-editing-panel__export-secondary"
+                      disabled={editing.downloading}
+                      onClick={() => {
+                        const assetId = canReuseExport.output_asset_id;
+                        if (!assetId) return;
+                        if (onDownloadExport) void onDownloadExport(assetId);
+                        else void editing.downloadExport(assetId);
+                      }}
+                    >
+                      <DownloadIcon />
+                      <span>{editing.downloading ? "Downloading" : "Download"}</span>
+                    </button>
+                    {onAddExportToCanvas ? (
+                      <button
+                        type="button"
+                        aria-label="Add exported video to canvas"
+                        className="agent-editing-panel__export-secondary"
+                        disabled={addingToCanvas}
+                        onClick={() => void handleAddToCanvas()}
+                      >
+                        <PlusIcon />
+                        <span>{addingToCanvas ? "Adding" : "Add to Canvas"}</span>
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
                 {exportRunning ? (
                   <button
                     type="button"
@@ -474,6 +531,15 @@ export function AgentCanvasEditingPanel({
                 onClick={editing.clearError}
               >
                 {editing.error}
+              </button>
+            ) : null}
+            {actionError ? (
+              <button
+                type="button"
+                className="agent-editing-panel__error"
+                onClick={() => setActionError(null)}
+              >
+                {actionError}
               </button>
             ) : null}
           </div>

@@ -211,6 +211,7 @@
 }
 
 .agent-editing-panel__export,
+.agent-editing-panel__export-secondary,
 .agent-editing-panel__cancel-export {
   display: inline-flex;
   height: 36px;
@@ -224,6 +225,17 @@
   cursor: pointer;
 }
 
+.agent-editing-panel__export-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.agent-editing-panel__export-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .agent-editing-panel__export {
   color: var(--text-inverse);
   background: var(--brand);
@@ -235,6 +247,7 @@
 }
 
 .agent-editing-panel__export:disabled,
+.agent-editing-panel__export-secondary:disabled,
 .agent-editing-panel__cancel-export:disabled,
 .agent-editing-track__order button:disabled {
   cursor: not-allowed;

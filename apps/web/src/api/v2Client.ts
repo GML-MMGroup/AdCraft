@@ -33,6 +33,8 @@ import type {
   CanvasConnectedNodeCreateRequestV2,
   CanvasConnectedNodeCreateResponseV2,
   CanvasConnectionPolicyV2,
+  CanvasEditingExportImportRequestV2,
+  CanvasEditingExportImportResponseV2,
   CanvasLayoutPatchRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasMutationResponseV2,
@@ -184,6 +186,7 @@ import {
   normalizeCanvasMutationResponseV2,
   normalizeCanvasBindingMutationResponseV2,
   normalizeCanvasConnectedNodeCreateResponseV2,
+  normalizeCanvasEditingExportImportResponseV2,
   normalizeCanvasConnectionPolicyV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
@@ -274,6 +277,69 @@ export function isNetworkError(value: unknown): value is V2NetworkError {
 
 async function requestV2Payload(path: string, options: RequestInit = {}): Promise<unknown> {
   return (await requestV2Response(path, options)).payload;
+}
+
+function filenameFromContentDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const encoded = value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.replace(/^"|"$/g, ""));
+    } catch {
+      return encoded.replace(/^"|"$/g, "");
+    }
+  }
+  return value.match(/filename\s*=\s*"([^"]+)"/i)?.[1]
+    ?? value.match(/filename\s*=\s*([^;]+)/i)?.[1]?.trim()
+    ?? null;
+}
+
+async function downloadV2Asset(path: string): Promise<{
+  blob: Blob;
+  filename: string | null;
+  mimeType: string;
+}> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_V2_BASE}${path}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new V2NetworkError(error);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const detail = payload && typeof payload === "object" && "detail" in payload
+      ? (payload as { detail?: unknown }).detail
+      : payload;
+    const detailRecord = asRecord(detail);
+    const details = asRecord(detailRecord?.details) ?? {};
+    throw new V2ApiError({
+      status: response.status,
+      code: typeof detailRecord?.code === "string" ? detailRecord.code : undefined,
+      message: detailRecord && "message" in detailRecord
+        ? String(detailRecord.message)
+        : typeof detail === "string"
+          ? detail
+          : `Request failed with status ${response.status}`,
+      details,
+      stage: firstString(detailRecord?.stage, details.stage),
+      violations: Array.isArray(detailRecord?.violations)
+        ? detailRecord.violations
+        : Array.isArray(details.violations)
+          ? details.violations
+          : [],
+      suggestedActions: recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions),
+      payload,
+    });
+  }
+  const blob = await response.blob();
+  return {
+    blob,
+    filename: filenameFromContentDisposition(response.headers.get("content-disposition")),
+    mimeType: response.headers.get("content-type") ?? blob.type,
+  };
 }
 
 async function requestV2Response(
@@ -1168,6 +1234,31 @@ export const v2Api = {
       },
       normalizeEditingExportCancelResponseV2,
     );
+  },
+
+  importAgentCanvasEditingExport(
+    workflowId: string,
+    editingNodeId: string,
+    request: CanvasEditingExportImportRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<CanvasEditingExportImportResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(editingNodeId)}/import-export`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasEditingExportImportResponseV2,
+    );
+  },
+
+  downloadAgentCanvasAsset(assetId: string): Promise<{
+    blob: Blob;
+    filename: string | null;
+    mimeType: string;
+  }> {
+    return downloadV2Asset(`/assets/${encodeURIComponent(assetId)}/content?download=true`);
   },
 
   uploadInputAssets(formData: FormData): Promise<V2InputAssetUploadResponse> {

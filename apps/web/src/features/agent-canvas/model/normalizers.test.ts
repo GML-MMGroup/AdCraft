@@ -12,6 +12,7 @@ import {
   normalizeAgentWorkingDocumentPageV2,
   normalizeAgentWorkingDocumentV2,
   normalizeCanvasBindingV2,
+  normalizeCanvasEditingExportImportResponseV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
   normalizeCanvasPostReadyCheckpointV2,
@@ -3022,5 +3023,64 @@ describe("Agent Canvas normalizers", () => {
       document_kind: "storyboard_production_plan",
       revision: 4,
     })]);
+  });
+});
+
+describe("normalizeCanvasEditingExportImportResponseV2", () => {
+  it("accepts the authoritative source-only node import response", () => {
+    const workflow = validWorkflowPayload();
+    const node = {
+      ...workflow.nodes[1],
+      node_id: "video-export",
+      node_type: "video",
+      creative_role: "general_video",
+      status: "ready",
+      execution_mode: "source_only",
+      generation_prompt: null,
+      output_asset_id: "asset-export",
+    };
+    const asset = {
+      ...workflow.assets[0],
+      asset_id: "asset-export",
+      media_type: "video",
+      mime_type: "video/mp4",
+      display_name: "Final cut source",
+      width: 1920,
+      height: 1080,
+      preview_url: "/api/v2/assets/asset-export/content",
+      media_url: "/api/v2/assets/asset-export/content",
+    };
+    const binding = {
+      ...workflow.bindings[0],
+      binding_id: "binding-editing-export",
+      source: { kind: "node_output", source_node_id: "editing-1" },
+      target_node_id: "video-export",
+      input_role: "video_reference",
+    };
+
+    const normalized = normalizeCanvasEditingExportImportResponseV2({
+      workflow_id: "workflow-1",
+      revision: 9,
+      layout_revision: 4,
+      node,
+      binding,
+      asset,
+      events_cursor: 41,
+      replayed: true,
+    });
+
+    expect(normalized).toMatchObject({
+      revision: 9,
+      layout_revision: 4,
+      events_cursor: 41,
+      replayed: true,
+      node: {
+        node_id: "video-export",
+        execution_mode: "source_only",
+        output_asset_id: "asset-export",
+      },
+      binding: { binding_id: "binding-editing-export" },
+      asset: { asset_id: "asset-export", media_type: "video" },
+    });
   });
 });
