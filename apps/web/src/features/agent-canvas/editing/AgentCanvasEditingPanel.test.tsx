@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
@@ -58,6 +58,8 @@ function asset(
 }
 
 describe("AgentCanvasEditingPanel", () => {
+  afterEach(() => cleanup());
+
   it("shows nodes omitted by the backend composition plan without adding controls", () => {
     const omittedVideo = {
       ...node("video-omitted", "video", null),
@@ -119,6 +121,8 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Missing product close-up")).toBeTruthy();
     expect(screen.getByText("video-not-materialized")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /missing product close-up/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download exported video" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add exported video to canvas" })).toBeNull();
     expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -243,5 +247,81 @@ describe("AgentCanvasEditingPanel", () => {
       }),
       { coalesce: true },
     ));
+  });
+
+  it("offers Download and Add to Canvas only for a readable terminal export", async () => {
+    const editing = {
+      ...node("editing-1", "editing", "asset-export"),
+      structured_content: {
+        manifest: {
+          video_entries: [],
+          bgm: null,
+          output: {
+            resolution: null,
+            aspect_ratio: null,
+            fps: null,
+            video_codec: "h264",
+            audio_codec: "aac",
+            container: "mp4",
+          },
+          manifest_revision: 5,
+        },
+        dirty: false,
+        preview: {
+          clips: [],
+          bgm_binding_id: null,
+          bgm_node_id: null,
+          bgm_asset_id: null,
+          estimated_duration_seconds: 30,
+          warnings: [],
+        },
+        last_successful_export: {
+          export_id: "export-30s",
+          status: "completed",
+          manifest_revision: 5,
+          fingerprint: "fingerprint-30s",
+          ready_video_node_ids: [],
+          skipped_inputs: [],
+          bgm_node_id: null,
+          output_asset_id: "asset-export",
+          error: null,
+          started_at: "2026-08-24T00:00:00Z",
+          finished_at: "2026-08-24T00:00:10Z",
+        },
+        active_export: null,
+      },
+    } satisfies CanvasNodeV2;
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 5,
+      layout_revision: 1,
+      nodes: [editing],
+      bindings: [],
+      assets: [asset("asset-export", "video")],
+    };
+    const onDownload = vi.fn().mockResolvedValue(undefined);
+    const onAddToCanvas = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AgentCanvasEditingPanel
+        workflow={workflow}
+        node={editing}
+        patchNode={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+        onDownloadExport={onDownload}
+        onAddExportToCanvas={onAddToCanvas}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download exported video" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add exported video to canvas" }));
+
+    await waitFor(() => {
+      expect(onDownload).toHaveBeenCalledWith("asset-export");
+      expect(onAddToCanvas).toHaveBeenCalledWith("export-30s");
+    });
   });
 });

@@ -87,6 +87,7 @@ import type {
   EditingExportRuntimeV2,
   EditingExportAcceptedV2,
   EditingExportCancelResponseV2,
+  CanvasEditingExportImportResponseV2,
   EditingBgmEntryV2,
   EditingManifestV2,
   EditingNodeContentV2,
@@ -4064,6 +4065,33 @@ export function normalizeCanvasMutationResponseV2(
     binding: record.binding === null || record.binding === undefined
       ? null
       : normalizeCanvasBindingV2(record.binding, `${path}.binding`),
+  };
+}
+
+export function normalizeCanvasEditingExportImportResponseV2(
+  value: unknown,
+  path = "editingExportImport",
+): CanvasEditingExportImportResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "workflow_id",
+    "revision",
+    "layout_revision",
+    "node",
+    "binding",
+    "asset",
+    "events_cursor",
+    "replayed",
+  ], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    revision: expectNonNegativeInteger(record.revision, `${path}.revision`),
+    layout_revision: expectNonNegativeInteger(record.layout_revision, `${path}.layout_revision`),
+    node: normalizeCanvasNodeV2(record.node, `${path}.node`),
+    binding: normalizeCanvasBindingV2(record.binding, `${path}.binding`),
+    asset: normalizeProjectAssetSummaryV2(record.asset, `${path}.asset`),
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+    replayed: expectBoolean(record.replayed, `${path}.replayed`),
   };
 }
 

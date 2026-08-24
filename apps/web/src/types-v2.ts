@@ -3862,3 +3862,20 @@ export interface EditingExportCancelResponseV2 {
   status: "cancelled";
   events_cursor: number;
 }
+
+export interface CanvasEditingExportImportRequestV2 {
+  export_id: string;
+  title?: string | null;
+  position: CanvasPositionV2;
+}
+
+export interface CanvasEditingExportImportResponseV2 {
+  workflow_id: string;
+  revision: number;
+  layout_revision: number;
+  node: CanvasNodeV2;
+  binding: CanvasBindingV2;
+  asset: ProjectAssetSummaryV2;
+  events_cursor: number;
+  replayed: boolean;
+}

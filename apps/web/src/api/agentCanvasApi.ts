@@ -59,4 +59,6 @@ export const agentCanvasApi = {
   openAgentCanvasEventStream: v2Api.openAgentCanvasEventStream,
   exportAgentCanvasEditingNode: v2Api.exportAgentCanvasEditingNode,
   cancelAgentCanvasEditingExport: v2Api.cancelAgentCanvasEditingExport,
+  importAgentCanvasEditingExport: v2Api.importAgentCanvasEditingExport,
+  downloadAgentCanvasAsset: v2Api.downloadAgentCanvasAsset,
 } as const;

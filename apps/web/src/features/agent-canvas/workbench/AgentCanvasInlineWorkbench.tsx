@@ -41,6 +41,10 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
+  if (node.execution_mode === "source_only") {
+    return null;
+  }
+
   const references = node.node_type === "editing" ? null : (
     <NodeReferenceStrip
       workflow={workflow}

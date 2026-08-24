@@ -2,6 +2,7 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasBindingMutationResponseV2,
   CanvasConnectedNodeCreateResponseV2,
+  CanvasEditingExportImportResponseV2,
   CanvasLayoutPatchResponseV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
@@ -108,6 +109,30 @@ export function mergeAgentCanvasBindingMutation(
     bindings: [
       ...current.bindings.filter((binding) => binding.target_node_id !== targetNodeId),
       ...response.incoming_bindings,
+    ],
+  };
+}
+
+export function mergeAgentCanvasEditingExportImport(
+  current: AgentCanvasWorkflowV2,
+  response: CanvasEditingExportImportResponseV2,
+): AgentCanvasWorkflowV2 {
+  if (current.workflow_id !== response.workflow_id) return current;
+  return {
+    ...current,
+    revision: Math.max(current.revision, response.revision),
+    layout_revision: Math.max(current.layout_revision, response.layout_revision),
+    nodes: [
+      ...current.nodes.filter((node) => node.node_id !== response.node.node_id),
+      response.node,
+    ],
+    bindings: [
+      ...current.bindings.filter((binding) => binding.binding_id !== response.binding.binding_id),
+      response.binding,
+    ],
+    assets: [
+      ...current.assets.filter((asset) => asset.asset_id !== response.asset.asset_id),
+      response.asset,
     ],
   };
 }
