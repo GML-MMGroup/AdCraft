@@ -67,7 +67,7 @@ export function useAgentCanvasNodeFocus({
       fitFrameRef.current = null;
       void instance.fitView({
         nodes: [{ id: nodeId }],
-        padding: 1,
+        padding: 2 / 3,
         duration: 420,
         minZoom: 0.05,
         maxZoom: AGENT_CANVAS_FOCUS_MAX_ZOOM,
