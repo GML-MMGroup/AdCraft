@@ -7,6 +7,10 @@ import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
 import {
+  isChatCompletionChunkErrorCode,
+  normalizeChatCompletionChunk,
+} from "./chat-completion-chunk-normalizer.js";
+import {
   buildPrimaryStructuredCompletionRequest,
   canonicalRequestSha256,
   executeOpenAICompletion,
@@ -431,9 +435,10 @@ export async function runProviderConformance(
     } catch (error) {
       const completedAt = now();
       const timedOut = controller.signal.aborted;
+      const responseStarted = safeBooleanProperty(error, "response_started");
       observation = {
         transport_completed: false,
-        response_activity_observed: null,
+        response_activity_observed: responseStarted,
         dns_at: null,
         tcp_at: null,
         tls_at: null,
@@ -864,16 +869,7 @@ function projectSafeError(
   value: ConformanceCaseResultV1["safe_error"],
 ): ConformanceCaseResultV1["safe_error"] {
   if (!value) return null;
-  const allowed = ["code", "exception_class", "http_status", "timed_out"] as const;
-  return Object.fromEntries(
-    allowed.flatMap((key) =>
-      typeof value[key] === "string" ||
-      typeof value[key] === "number" ||
-      typeof value[key] === "boolean"
-        ? [[key, value[key]]]
-        : [],
-    ),
-  );
+  return sanitizeSafeError(value);
 }
 
 function projectBudgetPlan(
@@ -1077,47 +1073,29 @@ function responseContent(body: string, streaming: boolean): string | null {
 
 export function parseRawStreamingJsonContent(body: string): string | null {
   const fragments: string[] = [];
-  let terminal = false;
+  let finishSeen = false;
+  let doneSeen = false;
   for (const line of body.split(/\r?\n/)) {
     if (line.trim().length === 0) continue;
     if (!line.startsWith("data:")) return null;
     const payload = line.slice(5).trim();
     if (payload === "[DONE]") {
-      if (terminal) return null;
-      terminal = true;
+      if (doneSeen || !finishSeen) return null;
+      doneSeen = true;
       continue;
     }
-    if (terminal) return null;
+    if (finishSeen || doneSeen) return null;
     try {
-      const event = JSON.parse(payload) as {
-        readonly error?: unknown;
-        readonly choices?: ReadonlyArray<{
-          readonly index?: number;
-          readonly delta?: {
-            readonly content?: string | null;
-            readonly tool_calls?: unknown;
-            readonly function_call?: unknown;
-          };
-          readonly finish_reason?: string | null;
-        }>;
-      };
-      if (event.error != null || event.choices?.length !== 1) return null;
-      const choice = event.choices[0];
-      if (!choice || (choice.index !== undefined && choice.index !== 0)) return null;
-      if (choice.delta?.tool_calls != null || choice.delta?.function_call != null) {
-        return null;
-      }
-      const content = choice.delta?.content;
-      if (typeof content === "string") fragments.push(content);
-      else if (content !== undefined && content !== null) return null;
-      if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
-        if (choice.finish_reason !== "stop") return null;
-      }
+      const chunk = normalizeChatCompletionChunk(JSON.parse(payload));
+      if (chunk.content !== null) fragments.push(chunk.content);
+      if (chunk.finishReason === "stop") finishSeen = true;
     } catch {
       return null;
     }
   }
-  return terminal && fragments.length > 0 ? fragments.join("") : null;
+  return finishSeen && doneSeen && fragments.length > 0
+    ? fragments.join("")
+    : null;
 }
 
 function completionContent(response: StructuredCompletionResponse): string | null {
@@ -1226,12 +1204,70 @@ function byteCount(value: unknown): number {
 }
 
 function safeError(error: unknown, code: string) {
-  const candidate = error as { readonly name?: unknown; readonly status?: unknown };
-  return {
+  const candidate = error as Readonly<Record<string, unknown>> | null;
+  return sanitizeSafeError({
     code,
     ...(typeof candidate?.name === "string" ? { exception_class: candidate.name.slice(0, 120) } : {}),
     ...(typeof candidate?.status === "number" ? { http_status: candidate.status } : {}),
-  };
+    ...(typeof candidate?.internal_error_code === "string"
+      ? { internal_error_code: candidate.internal_error_code }
+      : {}),
+    ...(typeof candidate?.attempt_stage === "string"
+      ? { attempt_stage: candidate.attempt_stage }
+      : {}),
+    ...(typeof candidate?.response_started === "boolean"
+      ? { response_started: candidate.response_started }
+      : {}),
+    ...(typeof candidate?.response_bytes === "number"
+      ? { response_bytes: candidate.response_bytes }
+      : {}),
+  });
+}
+
+function sanitizeSafeError(
+  value: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, string | number | boolean | null>> {
+  const result: Record<string, string | number | boolean> = {};
+  if (typeof value.code === "string") result.code = value.code.slice(0, 120);
+  const internalErrorCode =
+    typeof value.internal_error_code === "string" &&
+    isChatCompletionChunkErrorCode(value.internal_error_code)
+      ? value.internal_error_code
+      : null;
+  if (internalErrorCode !== null) {
+    result.internal_error_code = internalErrorCode;
+  } else {
+    if (typeof value.exception_class === "string") {
+      result.exception_class = value.exception_class.slice(0, 120);
+    }
+    if (
+      typeof value.http_status === "number" &&
+      Number.isInteger(value.http_status)
+    ) {
+      result.http_status = value.http_status;
+    }
+    if (typeof value.timed_out === "boolean") result.timed_out = value.timed_out;
+  }
+  if (value.attempt_stage === "stream_chunk_normalization") {
+    result.attempt_stage = value.attempt_stage;
+  }
+  if (typeof value.response_started === "boolean") {
+    result.response_started = value.response_started;
+  }
+  if (
+    typeof value.response_bytes === "number" &&
+    Number.isInteger(value.response_bytes) &&
+    value.response_bytes >= 0
+  ) {
+    result.response_bytes = Math.min(value.response_bytes, 1_048_576);
+  }
+  return result;
+}
+
+function safeBooleanProperty(error: unknown, key: string): boolean | null {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Readonly<Record<string, unknown>>)[key];
+  return typeof value === "boolean" ? value : null;
 }
 
 function isSuccessStatus(status: number | null): boolean {

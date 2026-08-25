@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 import OpenAI from "openai";
 
+import {
+  chatCompletionChunkFailure,
+  normalizeChatCompletionChunk,
+} from "./chat-completion-chunk-normalizer.js";
 import type {
   AgentRunRequest,
   AgentStructuredValidationAttemptAuditV1,
@@ -444,38 +448,47 @@ export async function aggregateStreamingJsonCompletion(
     while (true) {
       const item = await abortableNext(iterator, options.signal);
       if (item.done) break;
-      if (terminal) {
-        throw streamingFailure("agent_provider_transport_failed", true);
-      }
-      const parsed = parseStreamingChunk(item.value);
       responseActivityObserved = true;
       const observedAt = now().toISOString();
       lastActivityAt = observedAt;
-      providerTraceId = boundedProviderTrace(parsed.id) ?? providerTraceId;
+      if (terminal) {
+        throw chatCompletionChunkFailure(
+          "agent_provider_transport_failed",
+          "stream_chunk_after_terminal",
+        );
+      }
+      const parsed = normalizeChatCompletionChunk(item.value);
+      providerTraceId =
+        boundedProviderTrace(parsed.providerTraceId) ?? providerTraceId;
+      if (responseBytes + parsed.responseBytes > options.maxOutputBytes) {
+        throw chatCompletionChunkFailure(
+          "agent_provider_transport_failed",
+          "stream_response_bytes_exceeded",
+        );
+      }
+      responseBytes += parsed.responseBytes;
       if (parsed.content !== null) {
-        const fragmentBytes = Buffer.byteLength(parsed.content, "utf8");
-        if (responseBytes + fragmentBytes > options.maxOutputBytes) {
-          throw streamingFailure("agent_provider_transport_failed", true);
-        }
         if (firstContentAt === null && parsed.content.length > 0) {
           firstContentAt = observedAt;
         }
         content += parsed.content;
-        responseBytes += fragmentBytes;
       }
       if (parsed.finishReason !== null) {
-        if (parsed.finishReason !== "stop") {
-          throw streamingFailure("agent_provider_transport_failed", true);
-        }
         finishReason = parsed.finishReason;
         terminal = true;
       }
     }
     if (!terminal) {
-      throw streamingFailure("agent_provider_transport_failed", responseActivityObserved);
+      throw chatCompletionChunkFailure(
+        "agent_provider_transport_failed",
+        "stream_terminal_missing",
+      );
     }
     if (content.length === 0) {
-      throw streamingFailure("agent_structured_output_invalid", responseActivityObserved);
+      throw chatCompletionChunkFailure(
+        "agent_structured_output_invalid",
+        "stream_content_missing",
+      );
     }
     const completedAt = now().toISOString();
     return {
@@ -511,72 +524,6 @@ export async function aggregateStreamingJsonCompletion(
   }
 }
 
-interface ParsedStreamingChunk {
-  readonly id: unknown;
-  readonly content: string | null;
-  readonly finishReason: string | null;
-}
-
-function parseStreamingChunk(value: unknown): ParsedStreamingChunk {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw streamingFailure("agent_provider_transport_failed", false);
-  }
-  const event = value as Readonly<Record<string, unknown>>;
-  if (event.error !== undefined && event.error !== null) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  if (!Array.isArray(event.choices) || event.choices.length !== 1) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const choice = event.choices[0];
-  if (!choice || typeof choice !== "object" || Array.isArray(choice)) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const typedChoice = choice as Readonly<Record<string, unknown>>;
-  if (typedChoice.index !== undefined && typedChoice.index !== 0) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const delta = typedChoice.delta;
-  if (!delta || typeof delta !== "object" || Array.isArray(delta)) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const typedDelta = delta as Readonly<Record<string, unknown>>;
-  if (typedDelta.tool_calls != null || typedDelta.function_call != null) {
-    throw streamingFailure("agent_model_capability_mismatch", true);
-  }
-  if (typedDelta.role !== undefined && typedDelta.role !== "assistant") {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const allowed = new Set(["role", "content", "tool_calls", "function_call"]);
-  if (
-    Object.entries(typedDelta).some(
-      ([key, child]) => !allowed.has(key) && child !== undefined && child !== null,
-    )
-  ) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  if (
-    typedDelta.content !== undefined &&
-    typedDelta.content !== null &&
-    typeof typedDelta.content !== "string"
-  ) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  const rawFinishReason = typedChoice.finish_reason;
-  if (
-    rawFinishReason !== undefined &&
-    rawFinishReason !== null &&
-    typeof rawFinishReason !== "string"
-  ) {
-    throw streamingFailure("agent_provider_transport_failed", true);
-  }
-  return {
-    id: event.id,
-    content: typeof typedDelta.content === "string" ? typedDelta.content : null,
-    finishReason: typeof rawFinishReason === "string" ? rawFinishReason : null,
-  };
-}
-
 async function abortableNext(
   iterator: AsyncIterator<unknown>,
   signal: AbortSignal,
@@ -588,13 +535,6 @@ async function abortableNext(
     void iterator.next().then(resolve, reject).finally(() => {
       signal.removeEventListener("abort", onAbort);
     });
-  });
-}
-
-function streamingFailure(code: string, responseStarted: boolean): Error {
-  return Object.assign(new Error(code), {
-    code,
-    response_started: responseStarted,
   });
 }
 
