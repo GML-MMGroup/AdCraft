@@ -85,20 +85,16 @@
 }
 
 .projects-toolbar .search-box {
-  border-color: rgba(255, 255, 255, 0.075);
-  background: color-mix(in srgb, #9DAFE6 10%, transparent);
-  box-shadow:
-    0 0 20px color-mix(in srgb, #9DAFE6 30%, transparent),
-    0 8px 22px rgba(0, 13, 24, 0.12);
   caret-color: #9DAFE6;
 }
 
-.projects-toolbar .search-box.clear-glass-control:is(:hover, :focus, :focus-visible, :active) {
-  border-color: rgba(255, 255, 255, 0.075);
+.projects-toolbar .search-box.clear-glass-control.is-active:is(:hover, :focus, :focus-visible, :active) {
+  border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13));
   background: color-mix(in srgb, #9DAFE6 10%, transparent);
   box-shadow:
-    0 0 20px color-mix(in srgb, #9DAFE6 30%, transparent),
-    0 8px 22px rgba(0, 13, 24, 0.12);
+    0 0 0 1px color-mix(in srgb, #9DAFE6 22%, transparent),
+    0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent),
+    0 11px 26px rgba(0, 13, 24, 0.17);
   outline: 0;
   transform: none;
 }
