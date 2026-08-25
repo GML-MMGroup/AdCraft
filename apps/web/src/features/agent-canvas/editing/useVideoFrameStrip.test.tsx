@@ -6,6 +6,7 @@ import {
   frameCacheKey,
   frameSampleTimes,
   useVideoFrameStrip,
+  VIDEO_FRAME_SEEK_TIMEOUT_MS,
 } from "./useVideoFrameStrip.ts";
 
 function frameRequest(overrides: Partial<Parameters<typeof useVideoFrameStrip>[0]> = {}) {
@@ -94,6 +95,7 @@ function mockVideoFrameEnvironment(options: {
 
 afterEach(() => {
   delete (document as Document & { hidden?: boolean }).hidden;
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -326,6 +328,42 @@ describe("useVideoFrameStrip", () => {
 
     media.video.dispatchEvent(new Event("seeked"));
     await expect(frame).resolves.toBe("blob:frame");
+    expect(media.drawImage).toHaveBeenCalledTimes(1);
+    sampler.dispose();
+  });
+
+  it("falls back after a newly assigned seek times out without drawing a frame", async () => {
+    vi.useFakeTimers();
+    const media = mockVideoFrameEnvironment({ currentTime: 0, dispatchSeeked: false });
+    const { result } = renderHook(() => useVideoFrameStrip(frameRequest({
+      assetId: "asset-seek-timeout",
+      renderedWidth: 80,
+    })));
+
+    await vi.advanceTimersByTimeAsync(0);
+    media.video.dispatchEvent(new Event("loadedmetadata"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(media.currentTimeAssignments()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(VIDEO_FRAME_SEEK_TIMEOUT_MS);
+    expect(result.current).toEqual([
+      { sourceSeconds: 1, url: "https://cdn.example.test/preview.jpg", sampled: false },
+    ]);
+    expect(media.drawImage).not.toHaveBeenCalled();
+    expect(media.video.isConnected).toBe(false);
+  });
+
+  it("clears the seek timeout after a successful seek", async () => {
+    vi.useFakeTimers();
+    const media = mockVideoFrameEnvironment({ currentTime: 0 });
+    const sampler = createVideoFrameSampler("https://cdn.example.test/video.mp4");
+    const controller = new AbortController();
+    const frame = sampler.sample("https://cdn.example.test/video.mp4", 1, controller.signal);
+
+    media.video.dispatchEvent(new Event("loadedmetadata"));
+    await expect(frame).resolves.toBe("blob:frame");
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(VIDEO_FRAME_SEEK_TIMEOUT_MS);
     expect(media.drawImage).toHaveBeenCalledTimes(1);
     sampler.dispose();
   });

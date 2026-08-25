@@ -5,6 +5,7 @@ const TARGET_FRAME_HEIGHT = 45;
 const MAX_FRAME_SAMPLES = 12;
 const MAX_CACHED_FRAME_URLS = 120;
 const SEEK_EPSILON_SECONDS = 0.001;
+export const VIDEO_FRAME_SEEK_TIMEOUT_MS = 4_000;
 
 export interface VideoFrameSample {
   sourceSeconds: number;
@@ -79,6 +80,12 @@ function finiteOr(value: number, fallback: number): number {
 function abortError(): Error {
   const error = new Error("Video frame sampling was aborted");
   error.name = "AbortError";
+  return error;
+}
+
+function seekTimeoutError(): Error {
+  const error = new Error("Video frame seek timed out");
+  error.name = "TimeoutError";
   return error;
 }
 
@@ -284,10 +291,12 @@ function seekVideo(video: HTMLVideoElement, targetTime: number, signal: AbortSig
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timeoutId: number | null = null;
     const cleanup = () => {
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
       signal.removeEventListener("abort", onAbort);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
     };
     const finish = (callback: () => void) => {
       if (settled) return;
@@ -302,6 +311,7 @@ function seekVideo(video: HTMLVideoElement, targetTime: number, signal: AbortSig
     video.addEventListener("seeked", onSeeked, { once: true });
     video.addEventListener("error", onError, { once: true });
     signal.addEventListener("abort", onAbort, { once: true });
+    timeoutId = window.setTimeout(() => finish(() => reject(seekTimeoutError())), VIDEO_FRAME_SEEK_TIMEOUT_MS);
     try {
       video.currentTime = targetTime;
     } catch (error) {
@@ -392,7 +402,7 @@ export function createVideoFrameSampler(mediaUrl: string): VideoFrameSamplerSess
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         return await canvasBlobUrl(canvas, signal);
       } catch (error) {
-        if (signal.aborted) dispose();
+        if (signal.aborted || (error instanceof Error && error.name === "TimeoutError")) dispose();
         throw error;
       }
     },
