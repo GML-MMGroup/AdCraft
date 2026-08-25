@@ -5292,19 +5292,6 @@ def _memory_revision(connection: Connection, workflow_id: str) -> int:
     return int(value) if value is not None else 0
 
 
-def _proposal_topic_id(proposal_kind: str) -> str:
-    return {
-        "script": "narrative_direction",
-        "product": "product",
-        "prop": "props",
-        "character": "characters",
-        "scene": "scenes",
-        "storyboard": "storyboard",
-        "video": "videos",
-        "bgm": "bgm",
-    }[proposal_kind]
-
-
 def _insert_retry_turn_in_transaction(
     connection: Connection,
     *,
@@ -5969,24 +5956,6 @@ def _store_style_activation_idempotency(
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _available_option_id(
-    connection: Connection,
-    *,
-    requested_id: str,
-    proposal_id: str,
-    reserved_ids: set[str],
-) -> str:
-    existing = connection.execute(
-        select(AgentCanvasConceptOptionRow.option_id).where(
-            AgentCanvasConceptOptionRow.option_id == requested_id
-        )
-    ).scalar_one_or_none()
-    if existing is None and requested_id not in reserved_ids:
-        return requested_id
-    suffix = hashlib.sha256(f"{proposal_id}:{requested_id}".encode()).hexdigest()[:12]
-    return f"{requested_id[:147]}_{suffix}"
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

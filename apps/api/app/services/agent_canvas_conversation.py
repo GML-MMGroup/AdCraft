@@ -2271,7 +2271,10 @@ class AgentConversationService:
     ) -> str:
         assert action.instruction is not None
         source_options = tuple(proposal.options)
-        definition = self._capability_policy.definition(proposal.capability_id)
+        operation_definition = VideoAgentOperationRegistry().for_capability(
+            proposal.capability_id,
+            revision=True,
+        )
         candidate_count = 3
         public_direction = "\n".join(
             f"{option.title}: {option.public_summary}" for option in source_options
@@ -2336,7 +2339,7 @@ class AgentConversationService:
         activity = self._conversations.start_expert_activity(
             turn.turn_id,
             capability_id=proposal.capability_id,
-            operation=definition.operation,
+            operation=operation_definition.operation,
             display_name=CAPABILITY_DISPLAY_NAMES[proposal.capability_id],
         )
         contract = CAPABILITY_RESULT_CONTRACTS[proposal.capability_id]
@@ -2344,8 +2347,8 @@ class AgentConversationService:
             raw = self._gateway.run_capability(
                 request_identity=request_identity,
                 capability_id=proposal.capability_id,
-                operation=definition.operation,
-                result_contract_name=definition.result_contract_name,
+                operation=operation_definition.operation,
+                result_contract_name=operation_definition.result_contract_name,
                 candidate_count=candidate_count,
                 context=invocation.model_dump(mode="json"),
                 repair_error=None,
@@ -2356,8 +2359,8 @@ class AgentConversationService:
                 repaired = self._gateway.run_capability(
                     request_identity=request_identity,
                     capability_id=proposal.capability_id,
-                    operation=definition.operation,
-                    result_contract_name=definition.result_contract_name,
+                    operation=operation_definition.operation,
+                    result_contract_name=operation_definition.result_contract_name,
                     candidate_count=candidate_count,
                     context=invocation.model_dump(mode="json"),
                     repair_error="capability_contract_invalid",
@@ -2401,7 +2404,7 @@ class AgentConversationService:
             requirement_digest=projection.ledger_digest,
             requirement_projection_digest=requirement_projection_digest(projection),
             requirement_projection=projection,
-            result_contract_name=definition.result_contract_name,
+            result_contract_name=operation_definition.result_contract_name,
             candidate_count=3,
             reference_allowlist=reference_plan.approved_reference_ids,
             reference_plan=reference_plan,

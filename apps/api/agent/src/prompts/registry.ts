@@ -175,8 +175,9 @@ function instructionForOperation(operation: string): string {
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
     return [
-      "Revise only the supplied capability options and return concise replacement typed options.",
-      "Return exactly this JSON shape: {\"options\":[{\"title\":\"...\",\"public_summary\":\"...\"}]}. Each option must contain only title and public_summary, with title <=64 and public_summary <=240 Unicode characters; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
+      "Revise only the supplied capability options.",
+      "Return exactly three short, meaningfully distinct directions as replacement options.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Each option must contain only title and public_summary, with title <=64 and public_summary <=240 Unicode characters; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
       "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
