@@ -255,7 +255,10 @@ describe("theme styles", () => {
     const createCardPlus = declarationBlock(projectStyles, ":root .create-card--new-project .create-plus");
 
     expect(createCard).toContain("color: rgba(255, 255, 255, 0.8)");
-    expect(createCardPlus).toContain("background: transparent");
+    expect(createCardPlus).toContain("width: 48px");
+    expect(createCardPlus).toContain("height: 48px");
+    expect(createCardPlus).toContain("border-radius: 50%");
+    expect(createCardPlus).toContain("background: rgba(255, 255, 255, 0.12)");
     expect(createCardPlus).toContain("color: currentColor");
   });
 });
