@@ -70,7 +70,7 @@ export function editedClipDuration(
   const start = typeof trimStart === "number" ? trimStart : trimStart.trim_start_seconds;
   const end = typeof trimStart === "number" ? trimEnd ?? sourceDuration : trimStart.trim_end_seconds ?? sourceDuration;
   const range = normalizeTrimRange(sourceDuration, start, end);
-  return Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start);
+  return Math.min(sourceDurationOf(sourceDuration), Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start));
 }
 
 export function buildTimelineSegments(clips: readonly TimelineClipInput[]): TimelineSegment[] {
@@ -78,7 +78,7 @@ export function buildTimelineSegments(clips: readonly TimelineClipInput[]): Time
   return clips.map((clip) => {
     const sourceDuration = sourceDurationOf(clip.sourceDuration);
     const range = normalizeTrimRange(sourceDuration, clip.trimStart, clip.trimEnd ?? sourceDuration);
-    const duration = Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start);
+    const duration = Math.min(sourceDuration, Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start));
     const segment = {
       referenceId: clip.referenceId,
       timelineStart,

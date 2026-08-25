@@ -39,6 +39,34 @@ describe("editing timeline math", () => {
     expect(editedClipDuration(8, 2, null)).toBe(6);
   });
 
+  it("preserves source clips shorter than the minimum edited duration", () => {
+    expect(editedClipDuration(0.25, 0, null)).toBe(0.25);
+
+    const [segment] = buildTimelineSegments([
+      { referenceId: "short", sourceDuration: 0.25, trimStart: 0, trimEnd: null },
+    ]);
+    expect(segment).toMatchObject({
+      timelineEnd: 0.25,
+      sourceStart: 0,
+      sourceEnd: 0.25,
+    });
+    expect(segment.sourceEnd).toBeLessThanOrEqual(0.25);
+  });
+
+  it("bounds invalid and out-of-range trim inputs to the source", () => {
+    const [invalid] = buildTimelineSegments([
+      { referenceId: "invalid", sourceDuration: 10, trimStart: Number.NaN, trimEnd: Number.POSITIVE_INFINITY },
+    ]);
+    expect(invalid).toMatchObject({ sourceStart: 0, sourceEnd: 10, timelineEnd: 10 });
+
+    const [outOfRange] = buildTimelineSegments([
+      { referenceId: "out-of-range", sourceDuration: 10, trimStart: 20, trimEnd: 30 },
+    ]);
+    expect(outOfRange.sourceStart).toBe(9.5);
+    expect(outOfRange.sourceEnd).toBe(10);
+    expect(outOfRange.sourceEnd).toBeLessThanOrEqual(10);
+  });
+
   it("maps pixels and seconds using the same scale", () => {
     expect(timeToPixels(2.5, 40)).toBe(100);
     expect(pixelsToTime(100, 40)).toBe(2.5);
