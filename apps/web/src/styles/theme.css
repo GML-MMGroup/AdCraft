@@ -166,16 +166,22 @@
 }
 
 :root .floating-rail--clear-glass .rail-item.is-active {
-  border-color: rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.018);
-  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+  border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13));
+  background: color-mix(in srgb, #9DAFE6 10%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #9DAFE6 22%, transparent),
+    0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent),
+    0 11px 26px rgba(0, 13, 24, 0.17);
   color: rgba(255, 255, 255, 0.96);
 }
 
 :root .floating-rail--clear-glass .rail-item:is(:hover, :focus-visible) {
-  border-color: rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.018);
-  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+  border-color: color-mix(in srgb, #9DAFE6 54%, rgba(255, 255, 255, 0.13));
+  background: color-mix(in srgb, #9DAFE6 7%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #9DAFE6 18%, transparent),
+    0 0 16px color-mix(in srgb, #9DAFE6 28%, transparent),
+    0 11px 26px rgba(0, 13, 24, 0.17);
   color: rgba(255, 255, 255, 0.96);
   transform: translateY(-1px);
 }
