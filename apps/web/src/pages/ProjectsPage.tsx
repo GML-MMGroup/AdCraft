@@ -120,6 +120,6 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
 
 function formatSavedProjectTime(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Last worked";
-  return "Last worked " + date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString();
 }
