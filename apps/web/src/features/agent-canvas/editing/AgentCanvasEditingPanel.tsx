@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   CloseIcon,
@@ -9,7 +9,6 @@ import {
   PlusIcon,
   RewindIcon,
   UploadIcon,
-  VideoIcon,
   MuteIcon,
   UnmuteIcon,
 } from "../../../icons.tsx";
@@ -18,8 +17,13 @@ import type {
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
-import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
+import { EditingPreviewStage } from "./EditingPreviewStage.tsx";
 import { EditingTimeline } from "./EditingTimeline.tsx";
+import {
+  buildPlayableEditingSequence,
+  isBackendReadyEditingVideo,
+} from "./editingPlayableSequence.ts";
+import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
 import "./agent-canvas-editing.css";
 
 type PatchNode = (
@@ -45,10 +49,6 @@ function seconds(value: number | null | undefined): string {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
-function inputDuration(duration: number | null | undefined): number {
-  return duration && duration > 0 ? duration : 1;
-}
-
 export function AgentCanvasEditingPanel({
   workflow,
   node,
@@ -59,7 +59,6 @@ export function AgentCanvasEditingPanel({
   onAddExportToCanvas,
 }: AgentCanvasEditingPanelProps) {
   const editing = useAgentCanvasEditing(workflow, node, patchNode);
-  const previewRef = useRef<HTMLVideoElement | null>(null);
   const [addingToCanvas, setAddingToCanvas] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
@@ -71,20 +70,13 @@ export function AgentCanvasEditingPanel({
   const canReuseExport = editing.exportReadable && editing.terminalExport?.output_asset_id
     ? editing.terminalExport
     : null;
-  const readyVideos = editing.inputs.videos.filter((input) =>
-    input.entry.enabled
-    && (input.node === null || input.node.status === "ready")
-    && input.asset?.status === "ready",
-  ).length;
-  const sourceDuration = editing.inputs.videos.reduce(
-    (total, input) => total + inputDuration(input.asset?.duration_seconds),
-    0,
+  const playableSequence = useMemo(
+    () => buildPlayableEditingSequence(editing.inputs.videos),
+    [editing.inputs.videos],
   );
-  const timelineDuration = Math.max(
-    editing.content?.preview.estimated_duration_seconds ?? 0,
-    sourceDuration,
-    1,
-  );
+  const backendReadyVideos = editing.inputs.videos.filter(isBackendReadyEditingVideo).length;
+  const timelineDuration = playableSequence.duration;
+  const hasPlayableDraft = playableSequence.videos.length > 0;
   const selectedReferenceId = selectedReferenceState
     && (editing.inputs.videos.some((input) => input.referenceId === selectedReferenceState)
       || editing.inputs.bgm?.referenceId === selectedReferenceState)
@@ -107,17 +99,12 @@ export function AgentCanvasEditingPanel({
   const seekPreview = (value: number) => {
     const next = Math.max(0, Math.min(timelineDuration, value));
     setPlayheadSeconds(next);
-    if (previewRef.current) previewRef.current.currentTime = next;
   };
 
   const togglePreview = () => {
-    const preview = previewRef.current;
-    if (!preview || !editing.outputAsset?.media_url) return;
-    if (preview.paused) {
-      void preview.play().catch(() => setPlaying(false));
-    } else {
-      preview.pause();
-    }
+    if (!hasPlayableDraft) return;
+    if (!playing && playheadSeconds >= timelineDuration) setPlayheadSeconds(0);
+    setPlaying((value) => !value);
   };
 
   const nudgePreview = (offset: number) => seekPreview(playheadSeconds + offset);
@@ -178,26 +165,18 @@ export function AgentCanvasEditingPanel({
         <div className="agent-editing-panel__workspace">
           <div className="agent-editing-panel__preview-column">
             <div className="agent-editing-panel__preview">
-              {editing.outputAsset?.media_url ? (
-                <video
-                  ref={previewRef}
-                  key={editing.outputAsset.asset_id}
-                  src={editing.outputAsset.media_url}
-                  poster={editing.outputAsset.preview_url ?? undefined}
-                  playsInline
-                  preload="metadata"
-                  muted={muted}
-                  onTimeUpdate={(event) => setPlayheadSeconds(event.currentTarget.currentTime)}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onEnded={() => setPlaying(false)}
-                />
-              ) : (
-                <div className="agent-editing-panel__preview-empty">
-                  <VideoIcon aria-hidden="true" />
-                  <span>No exported video</span>
-                </div>
-              )}
+              <EditingPreviewStage
+                inputs={editing.inputs}
+                sequence={playableSequence}
+                outputAspectRatio={editing.content.manifest.output.aspect_ratio}
+                outputResolution={editing.content.manifest.output.resolution}
+                exportedAsset={editing.outputAsset}
+                playheadSeconds={playheadSeconds}
+                playing={playing}
+                muted={muted}
+                onPlayheadChange={seekPreview}
+                onPlayingChange={setPlaying}
+              />
               {exportRunning ? (
                 <div className="agent-editing-panel__export-overlay" role="status">
                   <span aria-hidden="true" />
@@ -209,7 +188,7 @@ export function AgentCanvasEditingPanel({
               <button type="button" aria-label="Rewind preview" title="Rewind 5 seconds" onClick={() => nudgePreview(-5)}>
                 <RewindIcon />
               </button>
-              <button type="button" className="agent-editing-panel__transport-play" aria-label={playing ? "Pause preview" : "Play preview"} title={playing ? "Pause preview" : "Play preview"} disabled={!editing.outputAsset?.media_url} onClick={togglePreview}>
+              <button type="button" className="agent-editing-panel__transport-play" aria-label={playing ? "Pause preview" : "Play preview"} title={playing ? "Pause preview" : "Play preview"} disabled={!hasPlayableDraft} onClick={togglePreview}>
                 {playing ? <PauseIcon /> : <PlayIcon />}
               </button>
               <button type="button" aria-label="Fast forward preview" title="Fast forward 5 seconds" onClick={() => nudgePreview(5)}>
@@ -259,7 +238,7 @@ export function AgentCanvasEditingPanel({
                     <span>Cancel</span>
                   </button>
                 ) : (
-                  <button type="button" className="agent-editing-panel__export" disabled={editing.exporting || editing.saving || readyVideos === 0} onClick={() => void editing.exportComposition()}>
+                  <button type="button" className="agent-editing-panel__export" disabled={editing.exporting || editing.saving || backendReadyVideos === 0} onClick={() => void editing.exportComposition()}>
                     <UploadIcon />
                     <span>{editing.exporting ? "Starting" : "Export"}</span>
                   </button>
@@ -269,7 +248,7 @@ export function AgentCanvasEditingPanel({
 
             <EditingTimeline
               inputs={editing.inputs}
-              timelineDuration={timelineDuration}
+              sequence={playableSequence}
               playheadSeconds={playheadSeconds}
               selectedReferenceId={selectedReferenceId}
               exportRunning={exportRunning}
@@ -277,6 +256,9 @@ export function AgentCanvasEditingPanel({
               onSelectReference={setSelectedReferenceState}
               onMoveVideo={editing.moveVideo}
               onUpdateVideo={editing.updateVideo}
+              onStageVideo={editing.stageVideoUpdate}
+              onCommitStagedManifest={editing.commitStagedManifest}
+              onDiscardStagedManifest={editing.discardStagedManifest}
               onSetBgm={editing.setBgm}
               onSetBgmVolume={editing.setBgmVolume}
             />

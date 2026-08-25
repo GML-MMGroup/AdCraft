@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
+  CanvasNodePatchRequestV2,
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
@@ -58,7 +59,16 @@ function asset(
 }
 
 describe("AgentCanvasEditingPanel", () => {
-  afterEach(() => cleanup());
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it("shows nodes omitted by the backend composition plan without adding controls", () => {
     const omittedVideo = {
@@ -124,6 +134,86 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.queryByRole("button", { name: "Download exported video" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add exported video to canvas" })).toBeNull();
     expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("allows backend export for a ready source without a browser media URL", () => {
+    const video = node("video-export-only", "video", "asset-export-only");
+    const editing = {
+      ...node("editing-export-only", "editing", null),
+      structured_content: {
+        manifest: {
+          video_entries: [{
+            binding_id: "binding-export-only",
+            asset_id: null,
+            enabled: true,
+            trim_start_seconds: 0,
+            trim_end_seconds: null,
+            volume: 1,
+            preserve_native_audio: true,
+            transition: "cut",
+            transition_duration_seconds: 0,
+            fit_mode: "fit",
+          }],
+          bgm: null,
+          output: {
+            resolution: null,
+            aspect_ratio: null,
+            fps: null,
+            video_codec: "h264",
+            audio_codec: "aac",
+            container: "mp4",
+          },
+          manifest_revision: 1,
+        },
+        dirty: false,
+        preview: {
+          clips: [],
+          bgm_binding_id: null,
+          bgm_node_id: null,
+          bgm_asset_id: null,
+          estimated_duration_seconds: 8,
+          warnings: [],
+        },
+        last_successful_export: null,
+        active_export: null,
+      },
+    } satisfies CanvasNodeV2;
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 3,
+      layout_revision: 1,
+      nodes: [video, editing],
+      bindings: [{
+        binding_id: "binding-export-only",
+        workflow_id: "workflow-1",
+        source: { kind: "node_output", source_node_id: video.node_id },
+        target_node_id: editing.node_id,
+        input_role: "video_reference",
+        required: true,
+        enabled: true,
+        order: 0,
+        label: null,
+        metadata: {},
+        created_at: "2026-07-30T00:00:00Z",
+        updated_at: "2026-07-30T00:00:00Z",
+      }],
+      assets: [{ ...asset("asset-export-only", "video"), media_url: null }],
+    };
+
+    render(
+      <AgentCanvasEditingPanel
+        workflow={workflow}
+        node={editing}
+        patchNode={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Play preview" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("renders the final per-track and BGM authoring controls", async () => {
@@ -216,7 +306,10 @@ describe("AgentCanvasEditingPanel", () => {
           updated_at: "2026-07-30T00:00:00Z",
         },
       ],
-      assets: [asset("asset-video", "video"), asset("asset-audio", "audio")],
+      assets: [
+        { ...asset("asset-video", "video"), duration_seconds: 0.5 },
+        asset("asset-audio", "audio"),
+      ],
     };
     const patchNode = vi.fn().mockResolvedValue(undefined);
 
@@ -234,8 +327,20 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Video Track")).toBeTruthy();
     expect(screen.getByText("Audio Track")).toBeTruthy();
     expect(screen.getByRole("slider", { name: "Timeline playhead" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Play preview" })).toBeTruthy();
-    expect(screen.getByText("Selected clip")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play preview" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByTestId("editing-preview-video").getAttribute("src"))
+      .toBe("/api/v2/assets/asset-video/content");
+    fireEvent.click(screen.getByRole("button", { name: "Fast forward preview" }));
+    expect((screen.getByTestId("editing-preview-video") as HTMLVideoElement).currentTime).toBe(0.5);
+    fireEvent.click(screen.getByRole("button", { name: "Play preview" }));
+    expect((screen.getByTestId("editing-preview-video") as HTMLVideoElement).currentTime).toBe(0);
+    expect(screen.getByRole("button", { name: "Pause preview" })).toBeTruthy();
+    expect(screen.queryByText("Selected clip")).toBeNull();
+    const clipProperties = screen.getByRole("toolbar", { name: "Clip properties" });
+    expect(within(clipProperties).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
+    expect(within(clipProperties).queryByRole("spinbutton", { name: "Trim end" })).toBeNull();
+    expect(screen.getByRole("slider", { name: "Trim start Shot 1" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Trim end Shot 1" })).toBeTruthy();
 
     expect(screen.getByText("Shot 1")).toBeTruthy();
     expect(screen.getByText("Transition")).toBeTruthy();
@@ -255,6 +360,20 @@ describe("AgentCanvasEditingPanel", () => {
       }),
       { coalesce: true },
     ));
+
+    fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "1920x1080" } });
+    fireEvent.change(screen.getByLabelText("Aspect ratio"), { target: { value: "16:9" } });
+    fireEvent.change(screen.getByLabelText("FPS"), { target: { value: "30" } });
+
+    await waitFor(() => {
+      const latestPatch = patchNode.mock.calls.at(-1)?.[1] as CanvasNodePatchRequestV2 | undefined;
+      expect(latestPatch?.structured_content?.output).toMatchObject({
+        resolution: "1920x1080",
+        aspect_ratio: "16:9",
+        fps: 30,
+      });
+    });
+    expect(patchNode.mock.calls.every((call) => call[2]?.coalesce === true)).toBe(true);
   });
 
   it("offers Download and Add to Canvas only for a readable terminal export", async () => {

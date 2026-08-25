@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
@@ -24,6 +24,106 @@ type PatchNode = (
   options?: { coalesce?: boolean; optimistic?: boolean },
 ) => Promise<void>;
 
+type ManifestUpdater = (manifest: EditingManifestV2) => EditingManifestV2;
+
+interface ManifestCommitItem {
+  identity: string;
+  nodeId: string;
+  patchNode: PatchNode;
+  baseManifest: EditingManifestV2;
+  updateManifest: ManifestUpdater;
+  authoringPayload: (manifest: EditingManifestV2) => Record<string, unknown>;
+  onSuccess: (manifest: EditingManifestV2, hasNewerCommit: boolean) => void;
+  onFailure: (
+    error: unknown,
+    confirmedManifest: EditingManifestV2,
+    hasNewerCommit: boolean,
+  ) => void;
+}
+
+interface ManifestCommitCoordinator {
+  loop: Promise<void> | null;
+  pending: boolean;
+  queuedItem: ManifestCommitItem | null;
+  confirmedManifest: EditingManifestV2 | null;
+}
+
+const manifestCommitCoordinators = new Map<string, ManifestCommitCoordinator>();
+const manifestCommitListeners = new Map<string, Set<() => void>>();
+
+function coordinatorFor(identity: string): ManifestCommitCoordinator {
+  const existing = manifestCommitCoordinators.get(identity);
+  if (existing) return existing;
+  const coordinator: ManifestCommitCoordinator = {
+    loop: null,
+    pending: false,
+    queuedItem: null,
+    confirmedManifest: null,
+  };
+  manifestCommitCoordinators.set(identity, coordinator);
+  return coordinator;
+}
+
+function notifyManifestCommitListeners(identity: string) {
+  manifestCommitListeners.get(identity)?.forEach((listener) => listener());
+}
+
+function discardIdleManifestCommitCoordinator(
+  identity: string,
+  coordinator: ManifestCommitCoordinator,
+) {
+  if (!coordinator.loop && !coordinator.queuedItem) {
+    manifestCommitCoordinators.delete(identity);
+  }
+}
+
+function enqueueManifestCommit(item: ManifestCommitItem): Promise<void> {
+  const coordinator = coordinatorFor(item.identity);
+  coordinator.confirmedManifest ??= item.baseManifest;
+  const queuedItem = coordinator.queuedItem;
+  coordinator.queuedItem = queuedItem
+    ? {
+        ...item,
+        baseManifest: queuedItem.baseManifest,
+        updateManifest: (manifest) => item.updateManifest(queuedItem.updateManifest(manifest)),
+      }
+    : item;
+  coordinator.pending = true;
+  notifyManifestCommitListeners(item.identity);
+
+  if (!coordinator.loop) {
+    const run = async () => {
+      while (coordinator.queuedItem) {
+        const currentItem = coordinator.queuedItem;
+        coordinator.queuedItem = null;
+        const baseManifest = coordinator.confirmedManifest ?? currentItem.baseManifest;
+        const manifest = currentItem.updateManifest(baseManifest);
+        try {
+          await currentItem.patchNode(currentItem.nodeId, {
+            structured_content: currentItem.authoringPayload(manifest),
+          }, { coalesce: true });
+          coordinator.confirmedManifest = manifest;
+          currentItem.onSuccess(manifest, Boolean(coordinator.queuedItem));
+        } catch (error) {
+          currentItem.onFailure(error, baseManifest, Boolean(coordinator.queuedItem));
+        }
+      }
+    };
+    coordinator.loop = run().finally(() => {
+      coordinator.loop = null;
+      coordinator.pending = false;
+      notifyManifestCommitListeners(item.identity);
+      discardIdleManifestCommitCoordinator(item.identity, coordinator);
+    });
+  }
+
+  return coordinator.loop;
+}
+
+function manifestCommitPending(identity: string): boolean {
+  return manifestCommitCoordinators.get(identity)?.pending ?? false;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   if (isV2ApiError(error)) {
     if (error.code === "editing_no_ready_video") {
@@ -44,16 +144,67 @@ export function useAgentCanvasEditing(
   node: CanvasNodeV2,
   patchNode: PatchNode,
 ) {
-  const [saving, setSaving] = useState(false);
+  const manifestIdentity = JSON.stringify([workflow.workflow_id, node.node_id]);
+  const [pendingManifestCommit, setPendingManifestCommit] = useState({
+    identity: manifestIdentity,
+    pending: manifestCommitPending(manifestIdentity),
+  });
   const [exporting, setExporting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftManifest, setDraftManifest] = useState<{
+    identity: string;
     nodeId: string;
     manifest: EditingManifestV2;
   } | null>(null);
   const draftManifestRef = useRef<typeof draftManifest>(null);
-  const pendingSaveCountRef = useRef(0);
+  const stagedManifestRef = useRef<EditingManifestV2 | null>(null);
+  const stagedBaselineManifestRef = useRef<EditingManifestV2 | null>(null);
+  const stagedBaselineIsLocalDraftRef = useRef(false);
+  const stagedManifestUpdaterRef = useRef<ManifestUpdater | null>(null);
+  const confirmedManifestRef = useRef<EditingManifestV2 | null>(null);
+  const canonicalManifestKeyRef = useRef<string | null>(null);
+  const activeManifestIdentityRef = useRef(manifestIdentity);
+  const mountedRef = useRef(true);
+
+  if (activeManifestIdentityRef.current !== manifestIdentity) {
+    activeManifestIdentityRef.current = manifestIdentity;
+    draftManifestRef.current = null;
+    stagedManifestRef.current = null;
+    stagedBaselineManifestRef.current = null;
+    stagedBaselineIsLocalDraftRef.current = false;
+    stagedManifestUpdaterRef.current = null;
+    confirmedManifestRef.current = null;
+    canonicalManifestKeyRef.current = null;
+  }
+
+  useEffect(() => {
+    const updatePending = () => {
+      setPendingManifestCommit({
+        identity: manifestIdentity,
+        pending: manifestCommitPending(manifestIdentity),
+      });
+    };
+    updatePending();
+    const listeners = manifestCommitListeners.get(manifestIdentity) ?? new Set();
+    listeners.add(updatePending);
+    manifestCommitListeners.set(manifestIdentity, listeners);
+    return () => {
+      listeners.delete(updatePending);
+      if (!listeners.size) manifestCommitListeners.delete(manifestIdentity);
+    };
+  }, [manifestIdentity]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const hasPendingManifestCommit = pendingManifestCommit.identity === manifestIdentity
+    ? pendingManifestCommit.pending
+    : manifestCommitPending(manifestIdentity);
 
   const canonicalContent = useMemo(() => {
     if (node.node_type !== "editing") return null;
@@ -64,59 +215,166 @@ export function useAgentCanvasEditing(
     }
   }, [node.node_type, node.structured_content]);
 
+  const canonicalManifestKey = canonicalContent
+    ? `${manifestIdentity}:${node.revision}:${canonicalContent.manifest.manifest_revision}`
+    : null;
+  if (canonicalManifestKey !== canonicalManifestKeyRef.current) {
+    canonicalManifestKeyRef.current = canonicalManifestKey;
+    if (
+      canonicalContent
+      && !draftManifestRef.current
+      && !stagedManifestRef.current
+      && !hasPendingManifestCommit
+    ) {
+      confirmedManifestRef.current = canonicalContent.manifest;
+    }
+  }
+
   const content = useMemo(() => {
     if (!canonicalContent) return null;
-    return draftManifest?.nodeId === node.node_id
+    return draftManifest?.identity === manifestIdentity
       ? {
           ...canonicalContent,
           manifest: draftManifest.manifest,
           dirty: true,
         }
       : canonicalContent;
-  }, [canonicalContent, draftManifest, node.node_id]);
+  }, [canonicalContent, draftManifest, manifestIdentity]);
 
   const currentManifest = useCallback(() => {
     const draft = draftManifestRef.current;
-    if (draft?.nodeId === node.node_id) return draft.manifest;
-    return canonicalContent?.manifest ?? null;
-  }, [canonicalContent?.manifest, node.node_id]);
+    if (draft?.identity === manifestIdentity) return draft.manifest;
+    return confirmedManifestRef.current ?? canonicalContent?.manifest ?? null;
+  }, [canonicalContent?.manifest, manifestIdentity]);
+
+  const setLocalDraft = useCallback((manifest: EditingManifestV2 | null) => {
+    const draft = manifest ? { identity: manifestIdentity, nodeId: node.node_id, manifest } : null;
+    draftManifestRef.current = draft;
+    setDraftManifest(draft);
+  }, [manifestIdentity, node.node_id]);
 
   const inputs = useMemo(
     () => content ? buildEditingInputs(workflow, node.node_id, content) : { videos: [], bgm: null },
     [content, node.node_id, workflow],
   );
 
-  const saveManifest = useCallback(async (next: EditingManifestV2) => {
-    if (!canonicalContent) return;
-    const draft = { nodeId: node.node_id, manifest: next };
-    draftManifestRef.current = draft;
-    setDraftManifest(draft);
-    pendingSaveCountRef.current += 1;
-    setSaving(true);
+  const queueManifestCommit = useCallback((
+    updateManifest: ManifestUpdater,
+    optimisticManifest?: EditingManifestV2,
+    baseManifestOverride?: EditingManifestV2,
+  ) => {
+    const baseManifest = baseManifestOverride ?? currentManifest();
+    if (!canonicalContent || !baseManifest) return Promise.resolve();
+    const manifest = optimisticManifest ?? updateManifest(baseManifest);
+    stagedManifestRef.current = null;
+    stagedBaselineManifestRef.current = null;
+    stagedBaselineIsLocalDraftRef.current = false;
+    stagedManifestUpdaterRef.current = null;
+    setLocalDraft(manifest);
     setError(null);
-    try {
-      const authoringPayload = replaceEditingManifest(canonicalContent, next);
-      await patchNode(node.node_id, {
-        structured_content: authoringPayload as unknown as Record<string, unknown>,
-      }, { coalesce: true });
-    } catch (saveError) {
-      setError(errorMessage(saveError, "Unable to update the composition."));
-    } finally {
-      pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1);
-      if (pendingSaveCountRef.current === 0) {
-        draftManifestRef.current = null;
-        setDraftManifest(null);
-        setSaving(false);
-      }
+    setPendingManifestCommit({ identity: manifestIdentity, pending: true });
+    return enqueueManifestCommit({
+      identity: manifestIdentity,
+      nodeId: node.node_id,
+      patchNode,
+      baseManifest,
+      updateManifest,
+      authoringPayload: (nextManifest) => (
+        replaceEditingManifest(canonicalContent, nextManifest) as unknown as Record<string, unknown>
+      ),
+      onSuccess: (confirmedManifest, hasNewerCommit) => {
+        if (
+          !mountedRef.current
+          || activeManifestIdentityRef.current !== manifestIdentity
+        ) return;
+        confirmedManifestRef.current = confirmedManifest;
+        if (
+          draftManifestRef.current?.identity === manifestIdentity
+          && draftManifestRef.current.manifest === manifest
+          && !stagedManifestRef.current
+          && !hasNewerCommit
+        ) {
+          setLocalDraft(null);
+        }
+      },
+      onFailure: (saveError, confirmedManifest, hasNewerCommit) => {
+        if (
+          !mountedRef.current
+          || activeManifestIdentityRef.current !== manifestIdentity
+        ) return;
+        setError(errorMessage(saveError, "Unable to update the composition."));
+        if (
+          draftManifestRef.current?.identity === manifestIdentity
+          && draftManifestRef.current.manifest === manifest
+          && !stagedManifestRef.current
+          && !hasNewerCommit
+        ) {
+          confirmedManifestRef.current = confirmedManifest;
+          setLocalDraft(confirmedManifest === canonicalContent.manifest ? null : confirmedManifest);
+        }
+      },
+    });
+  }, [canonicalContent, currentManifest, manifestIdentity, node.node_id, patchNode, setLocalDraft]);
+
+  const stageVideoUpdate = useCallback((
+    referenceId: string,
+    patch: Partial<EditingVideoEntryV2>,
+  ) => {
+    const manifest = currentManifest();
+    if (!manifest) return;
+    const updateManifest: ManifestUpdater = (baseManifest) => (
+      updateEditingVideoEntry(baseManifest, referenceId, patch)
+    );
+    const next = updateManifest(manifest);
+    if (next === manifest) return;
+    if (!stagedManifestRef.current) {
+      stagedBaselineManifestRef.current = manifest;
+      stagedBaselineIsLocalDraftRef.current = (
+        draftManifestRef.current?.identity === manifestIdentity
+      );
     }
-  }, [canonicalContent, node.node_id, patchNode]);
+    const previousUpdater = stagedManifestUpdaterRef.current;
+    stagedManifestUpdaterRef.current = previousUpdater
+      ? (baseManifest) => updateManifest(previousUpdater(baseManifest))
+      : updateManifest;
+    stagedManifestRef.current = next;
+    setLocalDraft(next);
+    setError(null);
+  }, [currentManifest, manifestIdentity, setLocalDraft]);
+
+  const commitStagedManifest = useCallback(() => {
+    const stagedManifest = stagedManifestRef.current;
+    const stagedUpdater = stagedManifestUpdaterRef.current;
+    if (!stagedManifest || !stagedUpdater) {
+      return manifestCommitCoordinators.get(manifestIdentity)?.loop ?? Promise.resolve();
+    }
+    return queueManifestCommit(
+      stagedUpdater,
+      stagedManifest,
+      stagedBaselineManifestRef.current ?? undefined,
+    );
+  }, [manifestIdentity, queueManifestCommit]);
+
+  const discardStagedManifest = useCallback(() => {
+    if (!stagedManifestRef.current) return;
+    const stagedBaselineManifest = stagedBaselineManifestRef.current;
+    const stagedBaselineIsLocalDraft = stagedBaselineIsLocalDraftRef.current;
+    stagedManifestRef.current = null;
+    stagedBaselineManifestRef.current = null;
+    stagedBaselineIsLocalDraftRef.current = false;
+    stagedManifestUpdaterRef.current = null;
+    setLocalDraft(stagedBaselineIsLocalDraft ? stagedBaselineManifest : null);
+  }, [setLocalDraft]);
 
   const moveVideo = useCallback((referenceId: string, offset: -1 | 1) => {
     const manifest = currentManifest();
     if (!manifest) return;
-    const next = moveEditingVideoEntry(manifest, referenceId, offset);
-    if (next !== manifest) void saveManifest(next);
-  }, [currentManifest, saveManifest]);
+    const updateManifest: ManifestUpdater = (baseManifest) => (
+      moveEditingVideoEntry(baseManifest, referenceId, offset)
+    );
+    const next = updateManifest(manifest);
+    if (next !== manifest) void queueManifestCommit(updateManifest, next);
+  }, [currentManifest, queueManifestCommit]);
 
   const updateVideo = useCallback((
     referenceId: string,
@@ -124,18 +382,23 @@ export function useAgentCanvasEditing(
   ) => {
     const manifest = currentManifest();
     if (!manifest) return;
-    const next = updateEditingVideoEntry(manifest, referenceId, patch);
-    if (next !== manifest) void saveManifest(next);
-  }, [currentManifest, saveManifest]);
+    const updateManifest: ManifestUpdater = (baseManifest) => (
+      updateEditingVideoEntry(baseManifest, referenceId, patch)
+    );
+    const next = updateManifest(manifest);
+    if (next !== manifest) void queueManifestCommit(updateManifest, next);
+  }, [currentManifest, queueManifestCommit]);
 
   const setBgm = useCallback((patch: Partial<EditingBgmEntryV2>) => {
     const manifest = currentManifest();
     if (!manifest?.bgm) return;
-    void saveManifest({
-      ...manifest,
-      bgm: { ...manifest.bgm, ...patch },
-    });
-  }, [currentManifest, saveManifest]);
+    const updateManifest: ManifestUpdater = (baseManifest) => (
+      baseManifest.bgm
+        ? { ...baseManifest, bgm: { ...baseManifest.bgm, ...patch } }
+        : baseManifest
+    );
+    void queueManifestCommit(updateManifest, updateManifest(manifest));
+  }, [currentManifest, queueManifestCommit]);
 
   const setBgmVolume = useCallback((volume: number) => {
     setBgm({ volume: Math.min(1, Math.max(0, volume)) });
@@ -144,14 +407,20 @@ export function useAgentCanvasEditing(
   const setOutput = useCallback((patch: Partial<EditingManifestV2["output"]>) => {
     const manifest = currentManifest();
     if (!manifest) return;
-    void saveManifest({
-      ...manifest,
-      output: { ...manifest.output, ...patch },
+    const updateManifest: ManifestUpdater = (baseManifest) => ({
+      ...baseManifest,
+      output: { ...baseManifest.output, ...patch },
     });
-  }, [currentManifest, saveManifest]);
+    void queueManifestCommit(updateManifest, updateManifest(manifest));
+  }, [currentManifest, queueManifestCommit]);
 
   const exportComposition = useCallback(async () => {
-    if (!content || exporting) return;
+    if (
+      !content
+      || exporting
+      || hasPendingManifestCommit
+      || manifestCommitPending(manifestIdentity)
+    ) return;
     setExporting(true);
     setError(null);
     try {
@@ -169,7 +438,14 @@ export function useAgentCanvasEditing(
     } finally {
       setExporting(false);
     }
-  }, [content, exporting, node.node_id, workflow.workflow_id]);
+  }, [
+    content,
+    exporting,
+    hasPendingManifestCommit,
+    manifestIdentity,
+    node.node_id,
+    workflow.workflow_id,
+  ]);
 
   const cancelExport = useCallback(async () => {
     const activeExportId = content?.active_export?.export_id;
@@ -235,11 +511,15 @@ export function useAgentCanvasEditing(
     outputAsset: exportAsset,
     terminalExport,
     exportReadable,
-    saving,
+    saving: hasPendingManifestCommit,
     exporting,
     downloading,
     error,
     clearError: () => setError(null),
+    stageVideoUpdate,
+    commitStagedManifest,
+    discardStagedManifest,
+    hasPendingManifestCommit,
     moveVideo,
     updateVideo,
     setBgm,
