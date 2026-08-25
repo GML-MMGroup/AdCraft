@@ -180,7 +180,12 @@ export function EditingPreviewStage({
   }, [exportedMediaUrl, view]);
 
   useEffect(() => {
-    if (sequenceDuration <= 0 || playheadSeconds <= sequenceDuration) return;
+    if (sequenceDuration <= 0) {
+      if (playheadSeconds > 0) onPlayheadChange(0);
+      if (playing) onPlayingChange(false);
+      return;
+    }
+    if (playheadSeconds <= sequenceDuration) return;
     onPlayheadChange(sequenceDuration);
     if (playing) onPlayingChange(false);
   }, [onPlayheadChange, onPlayingChange, playheadSeconds, playing, sequenceDuration]);

@@ -19,7 +19,10 @@ import type {
 } from "../../../types-v2.ts";
 import { EditingPreviewStage } from "./EditingPreviewStage.tsx";
 import { EditingTimeline } from "./EditingTimeline.tsx";
-import { buildPlayableEditingSequence } from "./editingPlayableSequence.ts";
+import {
+  buildPlayableEditingSequence,
+  isBackendReadyEditingVideo,
+} from "./editingPlayableSequence.ts";
 import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
 import "./agent-canvas-editing.css";
 
@@ -71,7 +74,7 @@ export function AgentCanvasEditingPanel({
     () => buildPlayableEditingSequence(editing.inputs.videos),
     [editing.inputs.videos],
   );
-  const readyVideos = playableSequence.videos.length;
+  const backendReadyVideos = editing.inputs.videos.filter(isBackendReadyEditingVideo).length;
   const timelineDuration = playableSequence.duration;
   const hasPlayableDraft = playableSequence.videos.length > 0;
   const selectedReferenceId = selectedReferenceState
@@ -235,7 +238,7 @@ export function AgentCanvasEditingPanel({
                     <span>Cancel</span>
                   </button>
                 ) : (
-                  <button type="button" className="agent-editing-panel__export" disabled={editing.exporting || editing.saving || readyVideos === 0} onClick={() => void editing.exportComposition()}>
+                  <button type="button" className="agent-editing-panel__export" disabled={editing.exporting || editing.saving || backendReadyVideos === 0} onClick={() => void editing.exportComposition()}>
                     <UploadIcon />
                     <span>{editing.exporting ? "Starting" : "Export"}</span>
                   </button>

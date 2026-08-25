@@ -65,3 +65,31 @@ passed (793 modules transformed)
 - Draft playback intentionally does not reproduce transitions or the final FFmpeg mix; Exported output remains the authoritative result.
 - Browser codec support and autoplay policy can prevent a source or BGM element from playing. The stage keeps controlled state coherent and treats BGM failure as non-fatal, but it cannot bypass browser policy.
 - Inactive source status is derived from current node/asset availability; it updates when the parent editing inputs refresh.
+
+## Fix Round 2
+
+Commit: `fix(editing): separate export readiness from preview`
+
+- Split backend export eligibility from browser preview playability. Backend-ready enabled sources still require a ready asset and a null-or-ready source node, but do not require `media_url`; the draft/timeline sequence continues to require it.
+- Added a panel regression proving a backend-ready video without `media_url` leaves Play preview disabled while Export remains enabled. The regression failed with Export disabled before the predicate split.
+- Fixed zero-duration transitions so disabling or removing the final playable clip clamps a positive controlled playhead to `0` and stops playback.
+- Added disabled-final-clip and removed-final-clip regressions. Both failed with no playhead callback before the clamp fix.
+
+Fix-round verification from `apps/web`:
+
+```text
+npm test -- --run editingModel editingTimelineMath editingPlayableSequence useAgentCanvasEditing useVideoFrameStrip useAudioWaveform EditingTimeline EditingPreviewStage AgentCanvasEditingPanel
+9 files passed, 111 tests passed
+
+npm run typecheck
+passed
+
+npx eslint src/features/agent-canvas/editing/AgentCanvasEditingPanel.tsx src/features/agent-canvas/editing/AgentCanvasEditingPanel.test.tsx src/features/agent-canvas/editing/EditingPreviewStage.tsx src/features/agent-canvas/editing/EditingPreviewStage.test.tsx src/features/agent-canvas/editing/editingPlayableSequence.ts src/features/agent-canvas/editing/editingPlayableSequence.test.ts
+passed
+
+npm run build
+passed (793 modules transformed)
+
+git diff --check
+passed
+```

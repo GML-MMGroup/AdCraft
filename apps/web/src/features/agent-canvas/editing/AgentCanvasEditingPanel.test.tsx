@@ -135,6 +135,86 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("allows backend export for a ready source without a browser media URL", () => {
+    const video = node("video-export-only", "video", "asset-export-only");
+    const editing = {
+      ...node("editing-export-only", "editing", null),
+      structured_content: {
+        manifest: {
+          video_entries: [{
+            binding_id: "binding-export-only",
+            asset_id: null,
+            enabled: true,
+            trim_start_seconds: 0,
+            trim_end_seconds: null,
+            volume: 1,
+            preserve_native_audio: true,
+            transition: "cut",
+            transition_duration_seconds: 0,
+            fit_mode: "fit",
+          }],
+          bgm: null,
+          output: {
+            resolution: null,
+            aspect_ratio: null,
+            fps: null,
+            video_codec: "h264",
+            audio_codec: "aac",
+            container: "mp4",
+          },
+          manifest_revision: 1,
+        },
+        dirty: false,
+        preview: {
+          clips: [],
+          bgm_binding_id: null,
+          bgm_node_id: null,
+          bgm_asset_id: null,
+          estimated_duration_seconds: 8,
+          warnings: [],
+        },
+        last_successful_export: null,
+        active_export: null,
+      },
+    } satisfies CanvasNodeV2;
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 3,
+      layout_revision: 1,
+      nodes: [video, editing],
+      bindings: [{
+        binding_id: "binding-export-only",
+        workflow_id: "workflow-1",
+        source: { kind: "node_output", source_node_id: video.node_id },
+        target_node_id: editing.node_id,
+        input_role: "video_reference",
+        required: true,
+        enabled: true,
+        order: 0,
+        label: null,
+        metadata: {},
+        created_at: "2026-07-30T00:00:00Z",
+        updated_at: "2026-07-30T00:00:00Z",
+      }],
+      assets: [{ ...asset("asset-export-only", "video"), media_url: null }],
+    };
+
+    render(
+      <AgentCanvasEditingPanel
+        workflow={workflow}
+        node={editing}
+        patchNode={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Play preview" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(false);
+  });
+
   it("renders the final per-track and BGM authoring controls", async () => {
     const video = node("video-1", "video", "asset-video");
     const audio = node("audio-1", "audio", "asset-audio");

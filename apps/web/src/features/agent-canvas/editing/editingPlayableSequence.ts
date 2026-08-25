@@ -11,11 +11,14 @@ export interface PlayableEditingSequence {
   duration: number;
 }
 
-export function isPlayableEditingVideo(input: EditingVideoInput): boolean {
+export function isBackendReadyEditingVideo(input: EditingVideoInput): boolean {
   return input.entry.enabled
     && input.asset?.status === "ready"
-    && Boolean(input.asset.media_url)
     && (input.node === null || input.node.status === "ready");
+}
+
+export function isPlayableEditingVideo(input: EditingVideoInput): boolean {
+  return isBackendReadyEditingVideo(input) && Boolean(input.asset?.media_url);
 }
 
 export function buildPlayableEditingSequence(

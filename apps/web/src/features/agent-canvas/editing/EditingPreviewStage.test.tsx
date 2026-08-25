@@ -517,6 +517,40 @@ describe("EditingPreviewStage", () => {
     expect(onPlayingChange).toHaveBeenCalledWith(false);
   });
 
+  it.each(["disabled", "removed"] as const)(
+    "clamps to zero and stops when the final playable clip is %s",
+    (change) => {
+      const onPlayheadChange = vi.fn();
+      const onPlayingChange = vi.fn();
+      const active = videoInput("video-final", firstAsset, 0, 4);
+      const props = {
+        outputAspectRatio: null,
+        outputResolution: null,
+        exportedAsset: null,
+        playheadSeconds: 2,
+        playing: true,
+        muted: false,
+        onPlayheadChange,
+        onPlayingChange,
+      };
+      const view = render(
+        <EditingPreviewStage {...props} inputs={{ videos: [active], bgm: null }} />,
+      );
+      onPlayheadChange.mockClear();
+      onPlayingChange.mockClear();
+
+      const videos = change === "removed"
+        ? []
+        : [{ ...active, entry: { ...active.entry, enabled: false } }];
+      view.rerender(
+        <EditingPreviewStage {...props} inputs={{ videos, bgm: null }} />,
+      );
+
+      expect(onPlayheadChange).toHaveBeenCalledWith(0);
+      expect(onPlayingChange).toHaveBeenCalledWith(false);
+    },
+  );
+
   it("ignores time and ended events from the previous load after a boundary switch", () => {
     const onPlayheadChange = vi.fn();
     const props = {
