@@ -30,7 +30,7 @@ describe("AgentCanvasPage chrome", () => {
     );
   });
 
-  it("uses the same monochrome treatment for the canvas context menu", () => {
+  it("uses one monochrome panel for the canvas context menu and node picker", () => {
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
       "utf8",
@@ -43,7 +43,7 @@ describe("AgentCanvasPage chrome", () => {
       /\.agent-canvas-context-menu__action:hover,[\s\S]*?background: #303030;/,
     );
     expect(canvasCss).toMatch(
-      /\.agent-canvas-context-menu__node-picker \{[\s\S]*?background: #1d1d1d;[\s\S]*?border: 1px solid #3a3a3a;/,
+      /\.agent-canvas-context-menu__node-picker \{[\s\S]*?background: transparent;[\s\S]*?border: 0;[\s\S]*?border-radius: 0;/,
     );
   });
 
