@@ -2282,7 +2282,7 @@ def _invalidate_target_prompt_preparation(
         raise _node_not_found_error()
     node = _node_from_row(row)
     if (
-        node.status != "draft"
+        node.status not in {"draft", "failed"}
         or node.prompt_preparation.status == "queued"
         or node.prompt_preparation.recipe_id is None
     ):
@@ -2296,6 +2296,17 @@ def _invalidate_target_prompt_preparation(
         error=None,
         updated_at=updated_at,
     )
+    values: dict[str, object | None] = {
+        "prompt_preparation_json": queued.model_dump_json(),
+        "revision": node.revision + 1,
+        "updated_at": updated_at,
+    }
+    if node.status == "failed":
+        values.update(
+            status="draft",
+            error_json=None,
+            output_asset_id=None,
+        )
     connection.execute(
         update(AgentCanvasNodeRow)
         .where(
@@ -2303,11 +2314,7 @@ def _invalidate_target_prompt_preparation(
             AgentCanvasNodeRow.node_id == target_node_id,
             AgentCanvasNodeRow.revision == node.revision,
         )
-        .values(
-            prompt_preparation_json=queued.model_dump_json(),
-            revision=node.revision + 1,
-            updated_at=updated_at,
-        )
+        .values(**values)
     )
     safe_payload = {
         "node_revision": node.revision + 1,

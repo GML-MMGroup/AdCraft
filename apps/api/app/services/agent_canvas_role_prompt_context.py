@@ -297,7 +297,11 @@ def _validate_parameter(
         if not isinstance(value, str) or _ASPECT_RATIO.fullmatch(value) is None:
             raise _parameter_error()
         return value
-    if name in {"resolution", "size"}:
+    if name == "resolution":
+        if not isinstance(value, str) or not value.strip():
+            raise _parameter_error()
+        return value.strip()
+    if name == "size":
         if not isinstance(value, str) or _SIZE.fullmatch(value) is None:
             raise _parameter_error()
         return value
