@@ -248,4 +248,14 @@ describe("theme styles", () => {
     expect(interactiveSearchBox).toContain("transform: none");
     expect(declarationBlock(projectStyles, ".projects-toolbar .search-box:focus::placeholder")).toContain("color: transparent");
   });
+
+  test("keeps the new project card on the shared clear-glass control treatment", () => {
+    const projectStyles = source("pages/projects.css");
+    const createCard = declarationBlock(projectStyles, ":root .create-card--new-project.clear-glass-control");
+    const createCardPlus = declarationBlock(projectStyles, ":root .create-card--new-project .create-plus");
+
+    expect(createCard).toContain("color: rgba(255, 255, 255, 0.8)");
+    expect(createCardPlus).toContain("background: transparent");
+    expect(createCardPlus).toContain("color: currentColor");
+  });
 });

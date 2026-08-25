@@ -199,9 +199,9 @@ function ProjectPreviewImage({
 
 export function CreateCard({ title, onClick }: { title: string; onClick: () => void }) {
   return (
-    <button className="create-card" onClick={onClick}>
+    <button className="create-card create-card--new-project clear-glass-control" type="button" onClick={onClick}>
       <div>
-        <span className="create-plus">+</span>
+        <span className="create-plus" aria-hidden="true">+</span>
         <h3>{title}</h3>
       </div>
     </button>
