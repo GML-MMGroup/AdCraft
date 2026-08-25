@@ -84,6 +84,19 @@
   outline: 0;
 }
 
+.projects-toolbar .search-box {
+  caret-color: #9DAFE6;
+}
+
+.projects-toolbar .search-box::placeholder {
+  color: rgba(255, 255, 255, 0.58);
+  opacity: 1;
+}
+
+.projects-toolbar .search-box:focus::placeholder {
+  color: transparent;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
