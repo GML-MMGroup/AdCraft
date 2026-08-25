@@ -5777,7 +5777,7 @@ def _proposal(
                 created_at=receipt.created_at,
             )
     proposal_card_schema_version = int(row["proposal_card_schema_version"] or 1)
-    if proposal_card_schema_version not in {1, 2}:
+    if proposal_card_schema_version not in {1, 2, 3}:
         raise _error(
             "proposal_card_version_unsupported",
             "The persisted Proposal Card schema version is unsupported.",
@@ -5812,7 +5812,7 @@ def _proposal(
             expected_session_revision=int(row["guidance_session_revision"]),
             proposal_kind=str(row["proposal_kind"]),
         )
-        if availability == "open"
+        if availability == "open" and len(options) == 3
         else (
             _historical_proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),
@@ -5880,7 +5880,7 @@ def _proposal(
                 public_summary=str(option["description"]),
                 key_decisions=(
                     tuple(json.loads(str(option["key_decisions_json"])))
-                    if proposal_card_schema_version < 2
+                    if proposal_card_schema_version == 1
                     else ()
                 ),
             )

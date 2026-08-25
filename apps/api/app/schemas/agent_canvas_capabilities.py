@@ -709,6 +709,27 @@ class ProposalCardResultV2(_CapabilityModel):
     options: tuple[ProposalCardOptionV2, ...] = Field(min_length=1, max_length=3)
 
 
+class GuidedProposalCardOptionV3(_CapabilityModel):
+    """Compact public option for a normal guided creative choice."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
+
+
+class GuidedProposalCardResultV3(_CapabilityModel):
+    """Exact-three public proposal output for normal guided authoring."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[
+        GuidedProposalCardOptionV3,
+        GuidedProposalCardOptionV3,
+        GuidedProposalCardOptionV3,
+    ]
+
+
 class WorldSettingProposalOptionV1(_OptionBaseV1):
     pass
 
@@ -790,14 +811,14 @@ class QuickMediaProposalResultV1(_CapabilityModel):
 
 
 CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
-    "world_setting": ProposalCardResultV2,
-    "product_design": ProposalCardResultV2,
-    "prop_design": ProposalCardResultV2,
-    "character_design": ProposalCardResultV2,
-    "scene_design": ProposalCardResultV2,
-    "script_authoring": ProposalCardResultV2,
-    "storyboard_design": ProposalCardResultV2,
-    "video_direction": ProposalCardResultV2,
-    "bgm_direction": ProposalCardResultV2,
+    "world_setting": GuidedProposalCardResultV3,
+    "product_design": GuidedProposalCardResultV3,
+    "prop_design": GuidedProposalCardResultV3,
+    "character_design": GuidedProposalCardResultV3,
+    "scene_design": GuidedProposalCardResultV3,
+    "script_authoring": GuidedProposalCardResultV3,
+    "storyboard_design": GuidedProposalCardResultV3,
+    "video_direction": GuidedProposalCardResultV3,
+    "bgm_direction": GuidedProposalCardResultV3,
     "quick_media": ProposalCardResultV2,
 }

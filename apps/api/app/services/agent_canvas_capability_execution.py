@@ -121,7 +121,6 @@ class CapabilityExecutionService:
         internal_document_publisher: (
             Callable[[CapabilityCommandEnvelopeV2, BaseModel], str] | None
         ) = None,
-        direct_materializer: Callable[[str], object] | None = None,
     ) -> None:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(database)
         self._gateway = gateway
@@ -129,7 +128,6 @@ class CapabilityExecutionService:
         self._current_session_revision = current_session_revision
         self._publisher = publisher
         self._internal_document_publisher = internal_document_publisher
-        self._direct_materializer = direct_materializer
         self._policy = CapabilityPolicyService()
         self._supersession = CapabilitySupersessionClassifier(database)
 
@@ -250,14 +248,6 @@ class CapabilityExecutionService:
                 if error.code == "guidance_revision_conflict":
                     self._raise_if_superseded(envelope)
                 raise
-        if (
-            envelope.publication_kind == "proposal"
-            and envelope.candidate_count == 1
-            and self._direct_materializer is not None
-        ):
-            lease_guard()
-            assert proposal_id is not None
-            self._direct_materializer(proposal_id)
         return CapabilityExecutionResultV1(
             envelope_id=envelope.envelope_id,
             capability_id=envelope.capability_id,

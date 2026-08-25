@@ -66,7 +66,10 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceOutlineDraftV2,
     StoryboardSequenceRowDraftV2,
 )
-from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
+from app.schemas.agent_canvas_capability_identity import (
+    CAPABILITY_DISPLAY_NAMES,
+    CapabilityIdV1,
+)
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
@@ -90,6 +93,7 @@ from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
 )
 from app.schemas.agent_runtime import (
+    AgentActionEnvelopeV2,
     AgentCommandPlanDraftV2,
     AgentRunRequest,
     AgentRunCompletedPayload,
@@ -110,6 +114,7 @@ from app.services.agent_canvas_requirement_projection import (
 )
 from app.services.agent_canvas_command_compiler import (
     AgentCommandPlanCompiler,
+    ResolvedAgentMentionsV2,
 )
 from app.services.agent_canvas_commands import AgentCanvasCommandService
 from app.services.agent_canvas_context import AgentLocalContextAssembler
@@ -1866,19 +1871,29 @@ class AgentConversationService:
             ).approved_node_ids,
             asset_resolver=self._asset_resolver,
         )
-        self._capability_dispatch.dispatch_next_action(
-            turn,
-            command,
-            build_capability_context_snapshot(
-                workflow=workflow,
-                session=session,
-                conversations=self._conversations,
+        context_snapshot = build_capability_context_snapshot(
+            workflow=workflow,
+            session=session,
+            conversations=self._conversations,
+            capability_id=command.command.capability_id,
+            objective=command.command.objective or intent.objective,
+            reference_plan=reference_plan,
+            requirement_revision=requirements,
+            asset_resolver=self._asset_resolver,
+        )
+        if intent.mode == "targeted_authoring":
+            return self._apply_targeted_authoring_command(
+                turn=turn,
                 capability_id=command.command.capability_id,
                 objective=command.command.objective or intent.objective,
                 reference_plan=reference_plan,
-                requirement_revision=requirements,
-                asset_resolver=self._asset_resolver,
-            ),
+                context_snapshot_id=context_snapshot.snapshot_id,
+                context_snapshot_digest=context_snapshot.digest,
+            )
+        self._capability_dispatch.dispatch_next_action(
+            turn,
+            command,
+            context_snapshot,
             session_id=session.session_id,
             expected_session_revision=session.revision,
             source_reply=(
@@ -1891,6 +1906,136 @@ class AgentConversationService:
             ),
         )
         return self._conversations.get_turn(turn_id)
+
+    def _apply_targeted_authoring_command(
+        self,
+        *,
+        turn: ChatTurnV2,
+        capability_id: CapabilityIdV1,
+        objective: str,
+        reference_plan: CapabilityReferencePlanV1,
+        context_snapshot_id: str,
+        context_snapshot_digest: str,
+    ) -> ChatTurnV2:
+        definition = self._capability_policy.definition(capability_id)
+        if definition.node_type is None or definition.creative_role is None:
+            raise V2PersistenceError(
+                "targeted_authoring_not_supported",
+                "The requested capability does not support direct Draft authoring.",
+                stage="agent_conversation_service",
+            )
+        create_operation_id = "create_targeted_draft"
+        operations: list[dict[str, object]] = [
+            {
+                "operation_type": "create_draft_node",
+                "operation_id": create_operation_id,
+                "node_type": definition.node_type,
+                "creative_role": definition.creative_role,
+                "title": f"{definition.display_name} Draft",
+                "summary_prompt": objective,
+                "generation_prompt": (
+                    None if definition.node_type == "text" else objective
+                ),
+                "structured_content": (
+                    {"content": objective} if definition.node_type == "text" else {}
+                ),
+                "parameters": {
+                    "direct_authoring": True,
+                    "capability_id": capability_id,
+                    "context_snapshot_id": context_snapshot_id,
+                    "context_snapshot_digest": context_snapshot_digest,
+                    "reference_plan_digest": reference_plan.digest,
+                },
+                "placement_hint": {"intent": "append_flow"},
+            }
+        ]
+        binding_kind = {
+            "text_context": "brief_context",
+            "image_reference": "image_reference",
+            "video_reference": "video_reference",
+            "audio_reference": "audio_reference",
+        }
+        for index, reference in enumerate(reference_plan.references):
+            operations.append(
+                {
+                    "operation_type": "create_binding",
+                    "operation_id": f"bind_targeted_reference_{index}",
+                    "source": (
+                        {"kind": "node_id", "node_id": reference.source_id}
+                        if reference.source_kind == "node"
+                        else {"kind": "image_asset", "asset_id": reference.source_id}
+                    ),
+                    "target": {
+                        "kind": "operation_result",
+                        "operation_id": create_operation_id,
+                    },
+                    "binding_kind": binding_kind[reference.input_role],
+                    "required": reference.required,
+                    "display_order": index,
+                }
+            )
+        envelope = AgentActionEnvelopeV2(
+            assistant_message="The exact requested design is now an editable Draft.",
+            command_plan=AgentCommandPlanDraftV2.model_validate(
+                {
+                    "operations": operations,
+                    "continuation_requested": True,
+                }
+            ),
+        )
+        workflow = self._workflows.get_workflow(turn.workflow_id)
+        plan = self._command_compiler.compile(
+            workflow=workflow,
+            turn=turn,
+            envelope=envelope,
+            resolved_mentions=ResolvedAgentMentionsV2(
+                explicit_node_ids=tuple(
+                    item.source_id
+                    for item in reference_plan.references
+                    if item.source_kind == "node"
+                ),
+                explicit_image_asset_ids=tuple(
+                    item.source_id
+                    for item in reference_plan.references
+                    if item.source_kind == "image_asset"
+                ),
+            ),
+        )
+        submission = self._command_service.submit(
+            plan=plan,
+            idempotency_key=f"targeted-authoring:{turn.turn_id}",
+        )
+        if submission.receipt is None:
+            raise V2PersistenceError(
+                "targeted_authoring_confirmation_unexpected",
+                "Direct Draft authoring unexpectedly requires confirmation.",
+                stage="agent_conversation_service",
+            )
+        current_session = self._conversations.get_guidance_session(turn.workflow_id)
+        if current_session.journey.suspended_action is not None:
+            active_action = current_session.journey.active_action
+            if active_action is None:
+                raise V2PersistenceError(
+                    "targeted_authoring_authority_missing",
+                    "Direct Draft authoring lost its targeted journey authority.",
+                    stage="agent_conversation_service",
+                )
+            self._journey.apply_evidence(
+                turn.workflow_id,
+                evidence=JourneyEvidenceV2(
+                    evidence_id=f"targeted-finish:{submission.receipt.receipt_id}",
+                    evidence_kind="targeted_action_completed",
+                    source_id=submission.receipt.receipt_id,
+                    action_id=active_action.action_id,
+                ),
+                expected_session_revision=current_session.revision,
+                idempotency_key=f"targeted-finish:{turn.turn_id}",
+            )
+        return self._complete_turn(
+            turn.turn_id,
+            turn.workflow_id,
+            envelope.assistant_message,
+        )
 
     def _process_proposal_action(self, turn_id: str, turn: ChatTurnV2) -> ChatTurnV2:
         committed_receipt = self._conversations.get_publication_receipt_for_action(turn_id)

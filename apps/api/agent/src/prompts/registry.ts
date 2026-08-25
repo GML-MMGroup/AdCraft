@@ -165,7 +165,8 @@ function instructionForOperation(operation: string): string {
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return exactly the candidate_count specified by the authoritative context, and never choose a different count.",
+      "Return exactly three short, meaningfully distinct directions that all obey the accepted Requirements.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Keep each title within 64 characters and each public_summary within 240 characters.",
       "Return exactly this JSON shape: {\"options\":[{\"title\":\"...\",\"public_summary\":\"...\"}]}. Each option must contain only concise interaction display text: title and public_summary. Do not add option IDs, private decisions, provider prompts, model parameters, media details, or wrappers.",
       "The practical compact-card display limit is title <=64 Unicode characters and public_summary <=240 Unicode characters. Keep the summary concise, but do not split, truncate, or validate it by punctuation-based sentence count.",
       "Python assigns option IDs and owns candidate cardinality; never emit IDs or private authoring data.",

@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_capabilities import (
     BgmProposalResultV1,
     CharacterProposalResultV1,
     CompactTurnIntentDecisionV3,
+    GuidedProposalCardResultV3,
     NextActionCommandV1,
     ProductProposalResultV1,
     ProposalCardResultV2,
@@ -115,6 +116,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     RoleCreativeBriefV2,
     WorldSettingProposalResultV1,
     ProposalCardResultV2,
+    GuidedProposalCardResultV3,
     ProductProposalResultV1,
     PropProposalResultV1,
     CharacterProposalResultV1,
@@ -231,6 +233,14 @@ def validate_video_agent_contract_parity(
                     "operation": definition.operation[:160],
                     "contract_name": definition.result_contract_name[:160],
                     "validation_profile": str(definition.validation_profile),
+                }
+            )
+        if is_proposal and definition.result_contract_name != "GuidedProposalCardResultV3":
+            errors.append(
+                {
+                    "operation": definition.operation[:160],
+                    "contract_name": definition.result_contract_name[:160],
+                    "required_contract_name": "GuidedProposalCardResultV3",
                 }
             )
         if not is_proposal and definition.validation_profile is not None:

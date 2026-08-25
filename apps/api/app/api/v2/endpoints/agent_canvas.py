@@ -1188,36 +1188,6 @@ def create_agent_canvas_runtime(
         production_journey=production_journey,
     )
 
-    def materialize_explicit_direction(proposal_id: str) -> ChatTurnAcceptedV2:
-        proposal = conversation_repository.get_private_proposal(proposal_id)
-        if len(proposal.options) != 1:
-            raise V2PersistenceError(
-                "guided_interaction_policy_invalid",
-                "Direct materialization requires exactly one capability direction.",
-                stage="capability_execution",
-            )
-        descriptor = next(
-            (item for item in proposal.actions if item.action == "select_option"),
-            None,
-        )
-        if descriptor is None:
-            raise V2PersistenceError(
-                "guided_interaction_policy_invalid",
-                "Direct materialization requires a current select action.",
-                stage="capability_execution",
-            )
-        return conversation_service.act_on_proposal(
-            proposal.workflow_id,
-            proposal.proposal_id,
-            SelectOptionActionV2(
-                action_id=descriptor.action_id,
-                action="select_option",
-                option_id=proposal.options[0].option_id,
-                expected_session_revision=descriptor.expected_session_revision,
-            ),
-            idempotency_key=f"direct-materialization:{proposal.proposal_id}",
-        )
-
     capability_execution = CapabilityExecutionService(
         database=database,
         gateway=video_agent_gateway,
@@ -1235,7 +1205,6 @@ def create_agent_canvas_runtime(
             database,
             event_repository,
         ).publish,
-        direct_materializer=materialize_explicit_direction,
     )
     capability_supersession = AgentCanvasCapabilitySupersessionRepository(
         database,
