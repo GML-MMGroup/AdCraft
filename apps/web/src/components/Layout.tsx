@@ -33,6 +33,8 @@ export function Layout({ children, workflowControls }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const isWorkflowRoute = useMatch("/workflow/*") !== null;
+  const usesClearGlassRail = ["/", "/projects", "/assets", "/trash"].includes(location.pathname)
+    || location.pathname.startsWith("/workflow");
 
   useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
 
@@ -65,7 +67,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
 
   return (
     <>
-      <nav className="floating-rail" aria-label="Primary navigation">
+      <nav className={`floating-rail${usesClearGlassRail ? " floating-rail--clear-glass" : ""}`} aria-label="Primary navigation">
         {navItems.map((item) => (
           <NavLink
             key={item.route}

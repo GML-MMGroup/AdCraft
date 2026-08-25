@@ -183,23 +183,23 @@ describe("theme styles", () => {
     expect(themeStyles).toContain("background-position: 50% 63%");
   });
 
-  test("keeps clear-glass navigation buttons inside the home navigation rail", () => {
+  test("shares the home clear-glass navigation rail across primary content routes", () => {
     const themeStyles = source("styles/theme.css");
     const homeRail = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .floating-rail',
+      ":root .floating-rail--clear-glass",
     );
     const homeRailItem = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item',
+      ":root .floating-rail--clear-glass .rail-item",
     );
     const homeActiveRailItem = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item.is-active',
+      ":root .floating-rail--clear-glass .rail-item.is-active",
     );
     const homeRailItemHover = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible)',
+      ":root .floating-rail--clear-glass .rail-item:is(:hover, :focus-visible)",
     );
 
     expect(homeRail).toContain("background: rgba(255, 255, 255, 0.008)");
@@ -215,5 +215,10 @@ describe("theme styles", () => {
     expect(homeActiveRailItem).toContain("box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17)");
     expect(homeActiveRailItem).not.toContain("transform:");
     expect(homeRailItemHover).toContain("transform: translateY(-1px)");
+
+    const layout = source("components/Layout.tsx");
+    expect(layout).toContain('"/projects", "/assets", "/trash"');
+    expect(layout).toContain('location.pathname.startsWith("/workflow")');
+    expect(layout).toContain('floating-rail--clear-glass');
   });
 });

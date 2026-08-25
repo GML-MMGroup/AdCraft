@@ -142,8 +142,8 @@
   background: #202530;
 }
 
-/* The home rail and its controls are separate clear-glass surfaces. */
-:root:has(.main-view[data-route="/"]) .floating-rail {
+/* Primary application routes share the home rail's clear-glass surfaces. */
+:root .floating-rail--clear-glass {
   border-color: rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.008);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -151,7 +151,7 @@
   backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item {
+:root .floating-rail--clear-glass .rail-item {
   border-color: rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.008);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -165,14 +165,14 @@
     transform 220ms ease;
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item.is-active {
+:root .floating-rail--clear-glass .rail-item.is-active {
   border-color: rgba(255, 255, 255, 0.13);
   background: rgba(255, 255, 255, 0.018);
   box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
   color: rgba(255, 255, 255, 0.96);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible) {
+:root .floating-rail--clear-glass .rail-item:is(:hover, :focus-visible) {
   border-color: rgba(255, 255, 255, 0.13);
   background: rgba(255, 255, 255, 0.018);
   box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
@@ -180,13 +180,13 @@
   transform: translateY(-1px);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item:active {
+:root .floating-rail--clear-glass .rail-item:active {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   transform: scale(0.975);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  :root:has(.main-view[data-route="/"]) .rail-item {
+  :root .floating-rail--clear-glass .rail-item {
     background: rgba(20, 24, 40, 0.2);
   }
 }
