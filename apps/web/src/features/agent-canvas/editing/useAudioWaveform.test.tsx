@@ -1,10 +1,11 @@
-import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   combineAudioChannelPeaks,
   fallbackAudioPeaks,
   normalizePeakCount,
+  pendingAudioDecodeCount,
   reduceAudioPeaks,
   useAudioWaveform,
 } from "./useAudioWaveform.ts";
@@ -49,6 +50,10 @@ afterEach(() => {
 describe("useAudioWaveform", () => {
   it("reduces each sample bucket to its largest magnitude", () => {
     expect(reduceAudioPeaks(new Float32Array([0, -1, 0.5, 0.25]), 2)).toEqual([1, 0.5]);
+  });
+
+  it("assigns each downsampled source sample to only one bucket", () => {
+    expect(reduceAudioPeaks(new Float32Array([0, 1, 0]), 2)).toEqual([0, 1]);
   });
 
   it("returns silent buckets for empty peak data", () => {
@@ -131,6 +136,79 @@ describe("useAudioWaveform", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(decodeAudioData).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one decode while concurrent waveform consumers remain mounted", async () => {
+    const audioData = deferred<ArrayBuffer>();
+    const abortObserved = vi.fn();
+    const { decodeAudioData } = mockAudioContext({
+      channels: [new Float32Array([0.25, 0.75])],
+    });
+    const fetch = vi.fn((_url: string, init?: RequestInit) => {
+      init?.signal?.addEventListener("abort", abortObserved, { once: true });
+      return Promise.resolve({ ok: true, arrayBuffer: () => audioData.promise });
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const first = renderHook(() => useAudioWaveform({
+      audioUrl: "https://cdn.example.test/concurrent.mp3",
+      renderedWidth: 2,
+    }));
+    const second = renderHook(() => useAudioWaveform({
+      audioUrl: "https://cdn.example.test/concurrent.mp3",
+      renderedWidth: 2,
+    }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    first.unmount();
+    expect(abortObserved).not.toHaveBeenCalled();
+
+    audioData.resolve(new ArrayBuffer(8));
+    await waitFor(() => expect(second.result.current).toEqual({ status: "ready", peaks: [0.25, 0.75] }));
+    expect(decodeAudioData).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the final pending decode immediately without deleting a newer request", async () => {
+    const firstBytes = deferred<ArrayBuffer>();
+    const secondBytes = deferred<ArrayBuffer>();
+    let fetchIndex = 0;
+    const fetch = vi.fn(() => {
+      const bytes = fetchIndex === 0 ? firstBytes : secondBytes;
+      fetchIndex += 1;
+      return Promise.resolve({ ok: true, arrayBuffer: () => bytes.promise });
+    });
+    mockAudioContext({});
+    vi.stubGlobal("fetch", fetch);
+
+    const first = renderHook(() => useAudioWaveform({
+      audioUrl: "https://cdn.example.test/pending-release.mp3",
+      renderedWidth: 2,
+    }));
+    await waitFor(() => expect(pendingAudioDecodeCount()).toBe(1));
+    first.unmount();
+    expect(pendingAudioDecodeCount()).toBe(0);
+
+    const second = renderHook(() => useAudioWaveform({
+      audioUrl: "https://cdn.example.test/pending-release.mp3",
+      renderedWidth: 2,
+    }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(pendingAudioDecodeCount()).toBe(1);
+
+    firstBytes.resolve(new ArrayBuffer(8));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pendingAudioDecodeCount()).toBe(1);
+
+    const third = renderHook(() => useAudioWaveform({
+      audioUrl: "https://cdn.example.test/pending-release.mp3",
+      renderedWidth: 2,
+    }));
+    await waitFor(() => expect(pendingAudioDecodeCount()).toBe(1));
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    second.unmount();
+    third.unmount();
   });
 
   it("does not allow a replaced request to overwrite its newer waveform", async () => {
@@ -221,5 +299,139 @@ describe("useAudioWaveform", () => {
 
     expect(onSetBgmVolume).toHaveBeenCalledWith(0.7);
     expect(onSetBgm).not.toHaveBeenCalled();
+  });
+
+  it("forwards BGM enabled changes from the compact waveform controls", () => {
+    const onSetBgm = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        name="Campaign BGM"
+        onSetBgm={onSetBgm}
+        onSetBgmVolume={vi.fn()}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.click(within(track.container).getByRole("checkbox", { name: "Enabled" }));
+
+    expect(onSetBgm).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it("mutes BGM through the existing volume callback", () => {
+    const onSetBgmVolume = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        name="Campaign BGM"
+        onSetBgm={vi.fn()}
+        onSetBgmVolume={onSetBgmVolume}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.click(within(track.container).getByRole("button", { name: "Mute BGM" }));
+
+    expect(onSetBgmVolume).toHaveBeenCalledWith(0);
+  });
+
+  it("forwards BGM trim start changes from the compact waveform controls", () => {
+    const onSetBgm = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        name="Campaign BGM"
+        onSetBgm={onSetBgm}
+        onSetBgmVolume={vi.fn()}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Trim start" }), { target: { value: "3.5" } });
+
+    expect(onSetBgm).toHaveBeenCalledWith({ trim_start_seconds: 3.5 });
+  });
+
+  it("forwards an empty BGM trim end from the compact waveform controls", () => {
+    const onSetBgm = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        name="Campaign BGM"
+        onSetBgm={onSetBgm}
+        onSetBgmVolume={vi.fn()}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Trim end" }), { target: { value: "" } });
+
+    expect(onSetBgm).toHaveBeenCalledWith({ trim_end_seconds: null });
+  });
+
+  it("forwards BGM fade in changes from the compact waveform controls", () => {
+    const onSetBgm = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        fadeInSeconds={1}
+        name="Campaign BGM"
+        onSetBgm={onSetBgm}
+        onSetBgmVolume={vi.fn()}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Fade in" }), { target: { value: "2.5" } });
+
+    expect(onSetBgm).toHaveBeenCalledWith({ fade_in_seconds: 2.5 });
+  });
+
+  it("forwards BGM fade out changes from the compact waveform controls", () => {
+    const onSetBgm = vi.fn();
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        fadeOutSeconds={1}
+        name="Campaign BGM"
+        onSetBgm={onSetBgm}
+        onSetBgmVolume={vi.fn()}
+        renderedWidth={4}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Fade out" }), { target: { value: "3.5" } });
+
+    expect(onSetBgm).toHaveBeenCalledWith({ fade_out_seconds: 3.5 });
   });
 });

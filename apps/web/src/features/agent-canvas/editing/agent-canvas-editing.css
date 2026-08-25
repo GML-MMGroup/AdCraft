@@ -506,6 +506,138 @@
   opacity: .68;
 }
 
+.audio-waveform-track {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(104px, 132px) minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: center;
+  color: #d8d8d8;
+}
+
+.audio-waveform-track__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.audio-waveform-track__header strong {
+  overflow: hidden;
+  flex: 1;
+  color: #e5e5e5;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-waveform-track__mute {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  color: #bdbdbd;
+  background: transparent;
+  border: 1px solid #4b4b4b;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.audio-waveform-track__mute:hover:not(:disabled),
+.audio-waveform-track__mute:focus-visible {
+  color: #fff;
+  border-color: #aaa;
+}
+
+.audio-waveform-track__mute:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.audio-waveform-track__mute svg {
+  width: 15px;
+  height: 15px;
+}
+
+.audio-waveform-track__lane {
+  position: relative;
+  display: flex;
+  height: 54px;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+  isolation: isolate;
+}
+
+.audio-waveform-track__lane::before {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: #393939;
+}
+
+.audio-waveform-track__bar {
+  display: block;
+  position: relative;
+  z-index: 1;
+  min-width: 2px;
+  flex: 1 1 2px;
+  background: #777;
+  border-radius: 1px;
+  opacity: .82;
+}
+
+.audio-waveform-track__bar--played {
+  background: #ededed;
+  opacity: 1;
+}
+
+.audio-waveform-track__controls {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.audio-waveform-track__controls label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: #a6a6a6;
+  font-size: 10px;
+}
+
+.audio-waveform-track__controls label:has(input[type="number"]) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.audio-waveform-track__controls input[type="checkbox"],
+.audio-waveform-track__controls input[type="range"] {
+  accent-color: #e5e5e5;
+}
+
+.audio-waveform-track__controls input[type="range"] {
+  width: min(120px, 20vw);
+}
+
+.audio-waveform-track__controls input[type="number"] {
+  width: 64px;
+  color: #e4e4e4;
+  background: #1a1a1a;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+}
+
 .agent-editing-timeline__empty,
 .agent-editing-timeline__no-selection {
   display: grid;

@@ -25,6 +25,11 @@ interface PendingAudioDecode {
   promise: Promise<number[]>;
 }
 
+interface SharedAudioPeaks {
+  promise: Promise<number[]>;
+  release: () => void;
+}
+
 interface BaseWaveformState {
   audioUrl: string | null;
   basePeaks: number[] | null;
@@ -33,6 +38,14 @@ interface BaseWaveformState {
 
 const basePeakCache = new Map<string, number[]>();
 const pendingAudioDecodes = new Map<string, PendingAudioDecode>();
+
+function removePendingAudioDecode(audioUrl: string, pending: PendingAudioDecode): void {
+  if (pendingAudioDecodes.get(audioUrl) === pending) pendingAudioDecodes.delete(audioUrl);
+}
+
+export function pendingAudioDecodeCount(): number {
+  return pendingAudioDecodes.size;
+}
 
 function bucketCount(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
@@ -56,10 +69,15 @@ function peakBuckets(values: ArrayLike<number>, requestedCount: number): number[
   const count = bucketCount(requestedCount);
   if (count === 0) return [];
   if (values.length === 0) return Array.from({ length: count }, () => 0);
+  if (count >= values.length) {
+    return Array.from({ length: count }, (_, bucketIndex) => (
+      clampPeak(values[Math.min(values.length - 1, Math.floor((bucketIndex * values.length) / count))] ?? 0)
+    ));
+  }
 
   return Array.from({ length: count }, (_, bucketIndex) => {
     const start = Math.floor((bucketIndex * values.length) / count);
-    const end = Math.min(values.length, Math.max(start + 1, Math.ceil(((bucketIndex + 1) * values.length) / count)));
+    const end = Math.floor(((bucketIndex + 1) * values.length) / count);
     let peak = 0;
     for (let index = start; index < end; index += 1) {
       peak = Math.max(peak, clampPeak(values[index] ?? 0));
@@ -159,10 +177,10 @@ function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T>
   });
 }
 
-function sharedAudioPeaks(audioUrl: string, signal: AbortSignal): Promise<number[]> {
+function sharedAudioPeaks(audioUrl: string, signal: AbortSignal): SharedAudioPeaks {
   let pending = pendingAudioDecodes.get(audioUrl);
   if (pending?.controller.signal.aborted) {
-    pendingAudioDecodes.delete(audioUrl);
+    removePendingAudioDecode(audioUrl, pending);
     pending = undefined;
   }
   if (!pending) {
@@ -171,20 +189,29 @@ function sharedAudioPeaks(audioUrl: string, signal: AbortSignal): Promise<number
       basePeakCache.set(audioUrl, peaks);
       return peaks;
     });
-    pending = { consumers: 0, controller, promise };
-    pendingAudioDecodes.set(audioUrl, pending);
+    const created: PendingAudioDecode = { consumers: 0, controller, promise };
+    pending = created;
+    pendingAudioDecodes.set(audioUrl, created);
     void promise.finally(() => {
-      if (pendingAudioDecodes.get(audioUrl) === pending) pendingAudioDecodes.delete(audioUrl);
+      removePendingAudioDecode(audioUrl, created);
     }).catch(() => undefined);
   }
 
   pending.consumers += 1;
-  return awaitWithAbort(pending.promise, signal).finally(() => {
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     pending!.consumers -= 1;
-    if (pending!.consumers === 0 && pendingAudioDecodes.get(audioUrl) === pending && !pending!.controller.signal.aborted) {
-      pending!.controller.abort();
+    if (pending!.consumers === 0) {
+      removePendingAudioDecode(audioUrl, pending!);
+      if (!pending!.controller.signal.aborted) pending!.controller.abort();
     }
-  });
+  };
+  return {
+    promise: awaitWithAbort(pending.promise, signal).finally(release),
+    release,
+  };
 }
 
 export function useAudioWaveform(requestInput: AudioWaveformRequest): AudioWaveformState {
@@ -214,7 +241,8 @@ export function useAudioWaveform(requestInput: AudioWaveformRequest): AudioWavef
     const controller = new AbortController();
     let disposed = false;
     setBaseState({ audioUrl, basePeaks: null, status: "loading" });
-    void sharedAudioPeaks(audioUrl, controller.signal).then(
+    const shared = sharedAudioPeaks(audioUrl, controller.signal);
+    void shared.promise.then(
       (basePeaks) => {
         if (!disposed) setBaseState({ audioUrl, basePeaks, status: "ready" });
       },
@@ -224,6 +252,7 @@ export function useAudioWaveform(requestInput: AudioWaveformRequest): AudioWavef
     );
     return () => {
       disposed = true;
+      shared.release();
       controller.abort();
     };
   }, [request.audioUrl]);
