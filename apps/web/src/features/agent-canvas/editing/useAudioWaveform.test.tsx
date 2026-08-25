@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   combineAudioChannelPeaks,
+  MAX_AUDIO_WAVEFORM_CACHE_ENTRIES,
   fallbackAudioPeaks,
   normalizePeakCount,
   pendingAudioDecodeCount,
   reduceAudioPeaks,
+  trimAudioPeaks,
   useAudioWaveform,
 } from "./useAudioWaveform.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
@@ -65,6 +67,21 @@ describe("useAudioWaveform", () => {
       new Float32Array([0.125, 0.75, 0.25, 0.5]),
       new Float32Array([0.5, 0.25, -1, 0.125]),
     ], 2)).toEqual([0.75, 1]);
+  });
+
+  it("slices and resamples peaks to the selected source trim range", () => {
+    expect(trimAudioPeaks(
+      [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+      8,
+      2,
+      6,
+      4,
+    )).toEqual([0.3, 0.4, 0.5, 0.6]);
+  });
+
+  it("falls back safely when source duration or trim bounds are invalid", () => {
+    expect(trimAudioPeaks([0.2, 0.4, 0.6, 0.8], Number.NaN, 2, 0, 2)).toEqual([0.4, 0.8]);
+    expect(trimAudioPeaks([0.2, 0.4, 0.6, 0.8], 4, 3, 2, 2)).toEqual([0.4, 0.8]);
   });
 
   it("shows a stable fallback waveform when decodeAudioData rejects", async () => {
@@ -275,6 +292,78 @@ describe("useAudioWaveform", () => {
     await waitFor(() => expect(decodeAudioData).toHaveBeenCalledTimes(1));
     hook.unmount();
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  });
+
+  it("evicts the least recently used inactive decoded waveform", async () => {
+    mockAudioContext({ channels: [new Float32Array([0.25, 0.75])] });
+    const fetch = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
+    vi.stubGlobal("fetch", fetch);
+    const firstUrl = "https://cdn.example.test/audio-lru-first.mp3";
+
+    const first = renderHook(() => useAudioWaveform({ audioUrl: firstUrl, renderedWidth: 2 }));
+    await waitFor(() => expect(first.result.current.status).toBe("ready"));
+    first.unmount();
+
+    for (let index = 0; index < MAX_AUDIO_WAVEFORM_CACHE_ENTRIES; index += 1) {
+      const hook = renderHook(() => useAudioWaveform({
+        audioUrl: `https://cdn.example.test/audio-lru-${index}.mp3`,
+        renderedWidth: 2,
+      }));
+      await waitFor(() => expect(hook.result.current.status).toBe("ready"));
+      hook.unmount();
+    }
+
+    const fetchesBeforeReopen = fetch.mock.calls.length;
+    const reopened = renderHook(() => useAudioWaveform({ audioUrl: firstUrl, renderedWidth: 2 }));
+    await waitFor(() => expect(reopened.result.current.status).toBe("ready"));
+    expect(fetch).toHaveBeenCalledTimes(fetchesBeforeReopen + 1);
+  });
+
+  it("does not evict a decoded waveform while it has an active consumer", async () => {
+    mockAudioContext({ channels: [new Float32Array([0.25, 0.75])] });
+    const fetch = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
+    vi.stubGlobal("fetch", fetch);
+    const activeUrl = "https://cdn.example.test/audio-lru-active.mp3";
+
+    const active = renderHook(() => useAudioWaveform({ audioUrl: activeUrl, renderedWidth: 2 }));
+    await waitFor(() => expect(active.result.current.status).toBe("ready"));
+
+    for (let index = 0; index <= MAX_AUDIO_WAVEFORM_CACHE_ENTRIES; index += 1) {
+      const hook = renderHook(() => useAudioWaveform({
+        audioUrl: `https://cdn.example.test/audio-active-fill-${index}.mp3`,
+        renderedWidth: 2,
+      }));
+      await waitFor(() => expect(hook.result.current.status).toBe("ready"));
+      hook.unmount();
+    }
+
+    const fetchesBeforeSecondConsumer = fetch.mock.calls.length;
+    const second = renderHook(() => useAudioWaveform({ audioUrl: activeUrl, renderedWidth: 2 }));
+    await waitFor(() => expect(second.result.current.status).toBe("ready"));
+    expect(fetch).toHaveBeenCalledTimes(fetchesBeforeSecondConsumer);
+    active.unmount();
+    second.unmount();
+  });
+
+  it("maps the timeline playhead directly across the trimmed BGM lane", () => {
+    const track = render(
+      <AudioWaveformTrack
+        audioUrl={null}
+        durationSeconds={12}
+        enabled
+        name="Campaign BGM"
+        onSetBgm={vi.fn()}
+        onSetBgmVolume={vi.fn()}
+        playheadSeconds={4}
+        renderedWidth={8}
+        trimEndSeconds={10}
+        trimStartSeconds={2}
+        volume={0.5}
+      />,
+    );
+
+    expect(track.container.querySelectorAll(".audio-waveform-track__bar--played")).toHaveLength(4);
+    track.unmount();
   });
 
   it("forwards BGM volume changes from the compact waveform controls", () => {

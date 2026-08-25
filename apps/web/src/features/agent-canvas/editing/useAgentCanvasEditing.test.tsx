@@ -222,6 +222,7 @@ describe("useAgentCanvasEditing", () => {
       second.resolve();
       await Promise.resolve();
     });
+    await waitFor(() => expect(result.current.hasPendingManifestCommit).toBe(false));
   });
 
   it("restores the last confirmed manifest after rejection only when no newer draft exists", async () => {
@@ -344,6 +345,7 @@ describe("useAgentCanvasEditing", () => {
       second.resolve();
       await Promise.resolve();
     });
+    await waitFor(() => expect(result.current.hasPendingManifestCommit).toBe(false));
   });
 
   it("serializes writes across an unmount and remount of the same node", async () => {
@@ -373,6 +375,45 @@ describe("useAgentCanvasEditing", () => {
       second.resolve();
       await Promise.resolve();
     });
+    await waitFor(() => expect(secondHook.result.current.hasPendingManifestCommit).toBe(false));
+    secondHook.unmount();
+  });
+
+  it("rebases a cross-remount update on the latest persisted manifest", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const patchNode = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const node = editingNode();
+    const firstHook = renderHook(() => useAgentCanvasEditing(workflow, node, patchNode));
+
+    act(() => firstHook.result.current.setBgmVolume(0.35));
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+    firstHook.unmount();
+
+    const secondHook = renderHook(() => useAgentCanvasEditing(workflow, node, patchNode));
+    act(() => secondHook.result.current.setOutput({ fps: 60 }));
+    expect(patchNode).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
+    expect(patchNode.mock.calls[1]?.[1]).toMatchObject({
+      structured_content: {
+        bgm: { volume: 0.35 },
+        output: { fps: 60 },
+      },
+    });
+
+    await act(async () => {
+      second.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(secondHook.result.current.hasPendingManifestCommit).toBe(false));
+    secondHook.unmount();
   });
 
   it("does not export while this node has an unresolved manifest commit", async () => {

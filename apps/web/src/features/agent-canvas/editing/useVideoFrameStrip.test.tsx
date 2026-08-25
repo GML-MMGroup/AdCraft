@@ -273,6 +273,64 @@ describe("useVideoFrameStrip", () => {
     ]);
   });
 
+  it("limits video frame sampling to two concurrent decodes across clips", async () => {
+    const pending: Array<ReturnType<typeof deferred<string>>> = [];
+    let active = 0;
+    let maximumActive = 0;
+    const sampler = vi.fn(() => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      const frame = deferred<string>();
+      pending.push(frame);
+      return frame.promise.finally(() => {
+        active -= 1;
+      });
+    });
+
+    const first = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-limit-1", renderedWidth: 80 }), sampler));
+    const second = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-limit-2", renderedWidth: 80 }), sampler));
+    const third = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-limit-3", renderedWidth: 80 }), sampler));
+
+    await waitFor(() => expect(sampler).toHaveBeenCalledTimes(2));
+    expect(maximumActive).toBe(2);
+
+    pending[0]!.resolve("blob:limit-1");
+    await waitFor(() => expect(sampler).toHaveBeenCalledTimes(3));
+    expect(maximumActive).toBe(2);
+
+    pending[1]!.resolve("blob:limit-2");
+    pending[2]!.resolve("blob:limit-3");
+    await waitFor(() => expect(third.result.current[0]?.sampled).toBe(true));
+    first.unmount();
+    second.unmount();
+    third.unmount();
+  });
+
+  it("removes an aborted waiter without starving the next video sampling request", async () => {
+    const pending: Array<ReturnType<typeof deferred<string>>> = [];
+    const sampler = vi.fn(() => {
+      const frame = deferred<string>();
+      pending.push(frame);
+      return frame.promise;
+    });
+    const first = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-wait-1", renderedWidth: 80 }), sampler));
+    const second = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-wait-2", renderedWidth: 80 }), sampler));
+    const cancelled = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-wait-cancel", renderedWidth: 80 }), sampler));
+    const next = renderHook(() => useVideoFrameStrip(frameRequest({ assetId: "asset-wait-next", renderedWidth: 80 }), sampler));
+
+    await waitFor(() => expect(sampler).toHaveBeenCalledTimes(2));
+    cancelled.unmount();
+    pending[0]!.resolve("blob:wait-1");
+    await waitFor(() => expect(sampler).toHaveBeenCalledTimes(3));
+
+    pending[1]!.resolve("blob:wait-2");
+    pending[2]!.resolve("blob:wait-next");
+    await waitFor(() => expect(next.result.current[0]?.sampled).toBe(true));
+    first.unmount();
+    second.unmount();
+    next.unmount();
+  });
+
   it("revokes unreferenced blob URLs when the bounded cache evicts them", async () => {
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL: vi.fn(), revokeObjectURL });

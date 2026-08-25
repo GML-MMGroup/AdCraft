@@ -2,7 +2,7 @@ import { useRef } from "react";
 
 import { MuteIcon, UnmuteIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
-import { useAudioWaveform } from "./useAudioWaveform.ts";
+import { trimAudioPeaks, useAudioWaveform } from "./useAudioWaveform.ts";
 
 export interface AudioWaveformTrackProps {
   audioUrl: string | null;
@@ -53,7 +53,14 @@ export function AudioWaveformTrack({
 
   const muted = volume <= 0;
   const playableDuration = Math.max(0, (trimEndSeconds ?? durationSeconds) - trimStartSeconds);
-  const playedRatio = playableDuration === 0 ? 0 : clamp((playheadSeconds - trimStartSeconds) / playableDuration, 0, 1);
+  const playedRatio = playableDuration === 0 ? 0 : clamp(playheadSeconds / playableDuration, 0, 1);
+  const visiblePeaks = trimAudioPeaks(
+    waveform.peaks,
+    durationSeconds,
+    trimStartSeconds,
+    trimEndSeconds,
+    renderedWidth,
+  );
 
   return (
     <section className="audio-waveform-track" aria-label="BGM track">
@@ -71,11 +78,11 @@ export function AudioWaveformTrack({
         </button>
       </div>
       <div className="audio-waveform-track__lane" role="img" aria-label={`Audio waveform, ${waveform.status}`}>
-        {waveform.peaks.map((peak, index) => (
+        {visiblePeaks.map((peak, index) => (
           <i
             key={index}
             aria-hidden="true"
-            className={index / Math.max(1, waveform.peaks.length) < playedRatio
+            className={index / Math.max(1, visiblePeaks.length) < playedRatio
               ? "audio-waveform-track__bar audio-waveform-track__bar--played"
               : "audio-waveform-track__bar"}
             style={{ height: `${Math.max(8, Math.round(peak * 100))}%` }}

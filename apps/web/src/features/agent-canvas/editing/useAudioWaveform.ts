@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 const MAX_BASE_PEAKS = 512;
+export const MAX_AUDIO_WAVEFORM_CACHE_ENTRIES = 24;
 const FALLBACK_PATTERN = [0.24, 0.41, 0.32, 0.56, 0.38, 0.68, 0.45, 0.3] as const;
 
 export type AudioWaveformState =
@@ -22,7 +23,13 @@ interface DecodedAudioBuffer {
 interface PendingAudioDecode {
   consumers: number;
   controller: AbortController;
+  cacheEntry: AudioPeakCacheEntry | null;
   promise: Promise<number[]>;
+}
+
+interface AudioPeakCacheEntry {
+  consumers: number;
+  peaks: number[];
 }
 
 interface SharedAudioPeaks {
@@ -36,8 +43,38 @@ interface BaseWaveformState {
   status: AudioWaveformState["status"];
 }
 
-const basePeakCache = new Map<string, number[]>();
+const basePeakCache = new Map<string, AudioPeakCacheEntry>();
 const pendingAudioDecodes = new Map<string, PendingAudioDecode>();
+
+function touchAudioPeakCache(audioUrl: string, entry: AudioPeakCacheEntry): void {
+  basePeakCache.delete(audioUrl);
+  basePeakCache.set(audioUrl, entry);
+}
+
+function evictAudioPeakCache(): void {
+  while (basePeakCache.size > MAX_AUDIO_WAVEFORM_CACHE_ENTRIES) {
+    const evictable = [...basePeakCache].find(([, entry]) => entry.consumers === 0);
+    if (!evictable) return;
+    basePeakCache.delete(evictable[0]);
+  }
+}
+
+function retainCachedAudioPeaks(audioUrl: string): { peaks: number[]; release: () => void } | null {
+  const entry = basePeakCache.get(audioUrl);
+  if (!entry) return null;
+  touchAudioPeakCache(audioUrl, entry);
+  entry.consumers += 1;
+  let released = false;
+  return {
+    peaks: entry.peaks,
+    release: () => {
+      if (released) return;
+      released = true;
+      entry.consumers = Math.max(0, entry.consumers - 1);
+      evictAudioPeakCache();
+    },
+  };
+}
 
 function removePendingAudioDecode(audioUrl: string, pending: PendingAudioDecode): void {
   if (pendingAudioDecodes.get(audioUrl) === pending) pendingAudioDecodes.delete(audioUrl);
@@ -92,6 +129,36 @@ export function reduceAudioPeaks(samples: Float32Array, requestedCount: number):
 
 export function normalizePeakCount(peaks: readonly number[], requestedCount: number): number[] {
   return peakBuckets(peaks, requestedCount);
+}
+
+export function trimAudioPeaks(
+  peaks: readonly number[],
+  sourceDuration: number,
+  trimStart: number,
+  trimEnd: number | null,
+  requestedCount: number,
+): number[] {
+  const count = bucketCount(requestedCount);
+  if (count === 0) return [];
+  if (
+    !Number.isFinite(sourceDuration)
+    || sourceDuration <= 0
+    || !Number.isFinite(trimStart)
+  ) {
+    return normalizePeakCount(peaks, count);
+  }
+
+  const start = Math.min(sourceDuration, Math.max(0, trimStart));
+  const requestedEnd = trimEnd ?? sourceDuration;
+  if (!Number.isFinite(requestedEnd) || requestedEnd <= start) {
+    return normalizePeakCount(peaks, count);
+  }
+  const end = Math.min(sourceDuration, requestedEnd);
+  if (end <= start || peaks.length === 0) return normalizePeakCount(peaks, count);
+
+  const startIndex = Math.min(peaks.length - 1, Math.floor((start / sourceDuration) * peaks.length));
+  const endIndex = Math.max(startIndex + 1, Math.min(peaks.length, Math.ceil((end / sourceDuration) * peaks.length)));
+  return normalizePeakCount(peaks.slice(startIndex, endIndex), count);
 }
 
 export function combineAudioChannelPeaks(channels: readonly Float32Array[], requestedCount: number): number[] {
@@ -185,11 +252,20 @@ function sharedAudioPeaks(audioUrl: string, signal: AbortSignal): SharedAudioPea
   }
   if (!pending) {
     const controller = new AbortController();
+    const created: PendingAudioDecode = {
+      consumers: 0,
+      controller,
+      cacheEntry: null,
+      promise: Promise.resolve([]),
+    };
     const promise = decodeAudioPeaks(audioUrl, controller.signal).then((peaks) => {
-      basePeakCache.set(audioUrl, peaks);
+      const entry: AudioPeakCacheEntry = { consumers: created.consumers, peaks };
+      created.cacheEntry = entry;
+      touchAudioPeakCache(audioUrl, entry);
+      evictAudioPeakCache();
       return peaks;
     });
-    const created: PendingAudioDecode = { consumers: 0, controller, promise };
+    created.promise = promise;
     pending = created;
     pendingAudioDecodes.set(audioUrl, created);
     void promise.finally(() => {
@@ -203,13 +279,17 @@ function sharedAudioPeaks(audioUrl: string, signal: AbortSignal): SharedAudioPea
     if (released) return;
     released = true;
     pending!.consumers -= 1;
+    if (pending!.cacheEntry) {
+      pending!.cacheEntry.consumers = Math.max(0, pending!.cacheEntry.consumers - 1);
+      evictAudioPeakCache();
+    }
     if (pending!.consumers === 0) {
       removePendingAudioDecode(audioUrl, pending!);
       if (!pending!.controller.signal.aborted) pending!.controller.abort();
     }
   };
   return {
-    promise: awaitWithAbort(pending.promise, signal).finally(release),
+    promise: awaitWithAbort(pending.promise, signal),
     release,
   };
 }
@@ -232,10 +312,10 @@ export function useAudioWaveform(requestInput: AudioWaveformRequest): AudioWavef
       return undefined;
     }
 
-    const cached = basePeakCache.get(audioUrl);
+    const cached = retainCachedAudioPeaks(audioUrl);
     if (cached) {
-      setBaseState({ audioUrl, basePeaks: cached, status: "ready" });
-      return undefined;
+      setBaseState({ audioUrl, basePeaks: cached.peaks, status: "ready" });
+      return cached.release;
     }
 
     const controller = new AbortController();

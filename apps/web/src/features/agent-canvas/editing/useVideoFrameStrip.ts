@@ -4,6 +4,7 @@ const TARGET_FRAME_WIDTH = 80;
 const TARGET_FRAME_HEIGHT = 45;
 const MAX_FRAME_SAMPLES = 12;
 const MAX_CACHED_FRAME_URLS = 120;
+const MAX_CONCURRENT_VIDEO_SAMPLING = 2;
 const SEEK_EPSILON_SECONDS = 0.001;
 export const VIDEO_FRAME_SEEK_TIMEOUT_MS = 4_000;
 
@@ -72,6 +73,70 @@ interface SamplingRun {
 
 const frameUrlCache = new Map<string, CacheEntry>();
 const pendingFrames = new Map<string, PendingFrame>();
+let activeVideoSamplingPermits = 0;
+
+interface VideoSamplingWaiter {
+  signal: AbortSignal;
+  resolve: (release: () => void) => void;
+  reject: (error: Error) => void;
+  onAbort: () => void;
+}
+
+const videoSamplingWaiters: VideoSamplingWaiter[] = [];
+
+function drainVideoSamplingWaiters(): void {
+  while (
+    activeVideoSamplingPermits < MAX_CONCURRENT_VIDEO_SAMPLING
+    && videoSamplingWaiters.length > 0
+  ) {
+    const waiter = videoSamplingWaiters.shift()!;
+    waiter.signal.removeEventListener("abort", waiter.onAbort);
+    if (waiter.signal.aborted) {
+      waiter.reject(abortError());
+      continue;
+    }
+    activeVideoSamplingPermits += 1;
+    let released = false;
+    waiter.resolve(() => {
+      if (released) return;
+      released = true;
+      activeVideoSamplingPermits = Math.max(0, activeVideoSamplingPermits - 1);
+      drainVideoSamplingWaiters();
+    });
+  }
+}
+
+function acquireVideoSamplingPermit(signal: AbortSignal): Promise<() => void> {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const waiter: VideoSamplingWaiter = {
+      signal,
+      resolve,
+      reject,
+      onAbort: () => {
+        const index = videoSamplingWaiters.indexOf(waiter);
+        if (index >= 0) videoSamplingWaiters.splice(index, 1);
+        reject(abortError());
+        drainVideoSamplingWaiters();
+      },
+    };
+    signal.addEventListener("abort", waiter.onAbort, { once: true });
+    videoSamplingWaiters.push(waiter);
+    drainVideoSamplingWaiters();
+  });
+}
+
+async function withVideoSamplingPermit<T>(
+  signal: AbortSignal,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireVideoSamplingPermit(signal);
+  try {
+    return await awaitWithAbort(Promise.resolve().then(operation), signal);
+  } finally {
+    release();
+  }
+}
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -511,15 +576,17 @@ export function useVideoFrameStrip(
 
           let entry: CacheEntry;
           try {
-            entry = await sharedFrame(cacheKey, run.controller.signal, (signal) => {
-              if (sampler) return sampler(request.mediaUrl!, sourceSeconds, signal);
-              run.session ??= createVideoFrameSampler(request.mediaUrl!);
-              run.sessionOperations += 1;
-              return run.session.sample(request.mediaUrl!, sourceSeconds, signal).finally(() => {
-                run.sessionOperations -= 1;
-                if (run.stopped && run.sessionOperations === 0) run.session?.dispose();
-              });
-            });
+            entry = await sharedFrame(cacheKey, run.controller.signal, (signal) => (
+              withVideoSamplingPermit(signal, () => {
+                if (sampler) return sampler(request.mediaUrl!, sourceSeconds, signal);
+                run.session ??= createVideoFrameSampler(request.mediaUrl!);
+                run.sessionOperations += 1;
+                return run.session.sample(request.mediaUrl!, sourceSeconds, signal).finally(() => {
+                  run.sessionOperations -= 1;
+                  if (run.stopped && run.sessionOperations === 0) run.session?.dispose();
+                });
+              })
+            ));
           } catch (error) {
             if (error instanceof Error && error.name === "AbortError") return;
             continue;
