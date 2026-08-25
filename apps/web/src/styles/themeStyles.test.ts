@@ -226,7 +226,18 @@ describe("theme styles", () => {
 
   test("hides the project search placeholder on focus and uses the approved caret color", () => {
     const projectStyles = source("pages/projects.css");
-    expect(declarationBlock(projectStyles, ".projects-toolbar .search-box")).toContain("caret-color: #9DAFE6");
+    const searchBox = declarationBlock(projectStyles, ".projects-toolbar .search-box");
+    const interactiveSearchBox = declarationBlock(
+      projectStyles,
+      ".projects-toolbar .search-box.clear-glass-control:is(:hover, :focus, :focus-visible, :active)",
+    );
+
+    expect(searchBox).toContain("caret-color: #9DAFE6");
+    expect(searchBox).toContain("border-color: rgba(255, 255, 255, 0.075)");
+    expect(searchBox).toContain("0 0 20px color-mix(in srgb, #9DAFE6 30%, transparent)");
+    expect(interactiveSearchBox).toContain("border-color: rgba(255, 255, 255, 0.075)");
+    expect(interactiveSearchBox).not.toContain("0 0 0 1px");
+    expect(interactiveSearchBox).toContain("transform: none");
     expect(declarationBlock(projectStyles, ".projects-toolbar .search-box:focus::placeholder")).toContain("color: transparent");
   });
 });
