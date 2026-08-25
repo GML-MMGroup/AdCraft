@@ -390,7 +390,11 @@
 .agent-editing-timeline-viewport__ruler-row {
   display: grid;
   height: 27px;
-  grid-template-columns: 124px max-content;
+  grid-template-columns:
+    124px
+    var(--agent-editing-timeline-time-gutter)
+    var(--agent-editing-timeline-content-width)
+    var(--agent-editing-timeline-time-gutter);
   color: #747474;
   background: #191919;
   border-bottom: 1px solid #353535;
@@ -417,6 +421,7 @@
 
 .agent-editing-timeline-viewport__ruler {
   position: relative;
+  grid-column: 3;
   height: 27px;
 }
 
@@ -448,7 +453,11 @@
   display: grid;
   width: 100%;
   min-height: 72px;
-  grid-template-columns: 124px max-content;
+  grid-template-columns:
+    124px
+    var(--agent-editing-timeline-time-gutter)
+    var(--agent-editing-timeline-content-width)
+    var(--agent-editing-timeline-time-gutter);
   border-block: 1px solid #303030;
 }
 
@@ -509,6 +518,7 @@
 
 .agent-editing-timeline__lane {
   position: relative;
+  grid-column: 3;
   min-width: 0;
   min-height: 72px;
   background: #181818;

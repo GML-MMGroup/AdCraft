@@ -140,11 +140,14 @@ describe("EditingTimeline direct trim", () => {
   it("stages pointer movement and commits once when the drag ends", () => {
     const { onCommitStagedManifest, onStageVideo } = renderTimeline();
     const handle = screen.getByRole("slider", { name: "Trim start Shot 1" });
+    const pixelsPerSecond = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
 
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100 });
     fireEvent.pointerMove(window, { pointerId: 1, clientX: 140 });
 
-    expect(onStageVideo).toHaveBeenCalledWith("video-1", { trim_start_seconds: 1.4 });
+    expect(onStageVideo).toHaveBeenCalledWith("video-1", {
+      trim_start_seconds: Math.round((1 + 40 / pixelsPerSecond) * 1_000) / 1_000,
+    });
     expect(onCommitStagedManifest).not.toHaveBeenCalled();
 
     fireEvent.pointerUp(window, { pointerId: 1, clientX: 140 });
@@ -275,6 +278,53 @@ describe("EditingTimeline direct trim", () => {
     expect(screen.getByRole("slider", { name: "Trim start Shot 1" }).getAttribute("aria-valuemax")).toBe("0");
     expect(screen.getByRole("slider", { name: "Trim end Shot 1" }).getAttribute("aria-valuemin")).toBe("0.25");
   });
+
+  it("keeps the first selected start target reachable at the fit-left boundary", () => {
+    renderTimeline({
+      inputs: { videos: [video("video-1", 1), video("video-2", 2)], bgm: null },
+      selectedReferenceId: "video-1",
+    });
+    const scroller = screen.getByTestId("timeline-scroll-viewport");
+    const handle = screen.getByRole("slider", { name: "Trim start Shot 1" });
+    const clip = handle.parentElement as HTMLElement;
+    const playhead = document.querySelector(".agent-editing-timeline-viewport__playhead") as HTMLElement;
+    const pixelsPerSecond = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
+    const viewportBounds = scroller.getBoundingClientRect();
+    const timeOrigin = parseFloat(playhead.style.left) - 2 * pixelsPerSecond;
+    const targetLeft = timeOrigin + parseFloat(clip.style.left) + parseFloat(handle.style.left);
+
+    expect(scroller.scrollLeft).toBe(0);
+    expect(targetLeft).toBeGreaterThanOrEqual(124);
+    expect(targetLeft + parseFloat(handle.style.width)).toBeLessThanOrEqual(viewportBounds.right);
+  });
+
+  it("keeps the final selected end target reachable at the zoomed-right boundary", () => {
+    renderTimeline({
+      inputs: { videos: [video("video-1", 1), video("video-2", 2)], bgm: null },
+      selectedReferenceId: "video-2",
+    });
+    const scroller = screen.getByTestId("timeline-scroll-viewport");
+    const content = document.querySelector(".agent-editing-timeline-viewport__content") as HTMLElement;
+    const handle = screen.getByRole("slider", { name: "Trim end Shot 2" });
+    const clip = handle.parentElement as HTMLElement;
+    const playhead = document.querySelector(".agent-editing-timeline-viewport__playhead") as HTMLElement;
+
+    fireEvent.change(screen.getByRole("slider", { name: "Timeline zoom" }), { target: { value: "100" } });
+    fireEvent.wheel(scroller, { deltaY: 2_000 });
+
+    const pixelsPerSecond = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
+    const viewportBounds = scroller.getBoundingClientRect();
+    const timeOrigin = parseFloat(playhead.style.left) - 2 * pixelsPerSecond;
+    const targetRight = timeOrigin
+      + parseFloat(clip.style.left)
+      + parseFloat(clip.style.width)
+      + parseFloat(handle.style.width)
+      - scroller.scrollLeft;
+
+    expect(scroller.scrollLeft).toBe(parseFloat(content.style.width) - viewportBounds.width);
+    expect(targetRight - parseFloat(handle.style.width)).toBeGreaterThanOrEqual(124);
+    expect(targetRight).toBeLessThanOrEqual(viewportBounds.right);
+  });
 });
 
 describe("EditingTimeline retained controls", () => {
@@ -303,9 +353,12 @@ describe("EditingTimeline retained controls", () => {
     renderTimeline({ inputs: { videos: [video("video-1", 1)], bgm: bgm() } });
     const videoTrack = screen.getByRole("group", { name: "Video track" });
     const track = screen.getByRole("group", { name: "Audio track" });
+    const ruler = document.querySelector(".agent-editing-timeline-viewport__ruler") as HTMLElement;
 
     expect((videoTrack.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width)
       .toBe((track.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width);
+    expect((videoTrack.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width)
+      .toBe(ruler.style.width);
     expect(within(track).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
     expect(within(track).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
     expect(within(track).getByRole("spinbutton", { name: "Trim start" })).toBeTruthy();
@@ -349,17 +402,17 @@ describe("EditingTimelineViewport", () => {
       </EditingTimelineViewport>,
     );
 
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("40");
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
-    expect(Number(screen.getByTestId("pixels-per-second").textContent)).toBeGreaterThan(40);
+    expect(Number(screen.getByTestId("pixels-per-second").textContent)).toBeGreaterThan(38.2);
 
     fireEvent.click(screen.getByRole("button", { name: "Fit timeline" }));
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("40");
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
 
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     fireEvent.doubleClick(screen.getByTestId("timeline-ruler"));
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("40");
-    expect((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).min).toBe("40");
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
+    expect((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).min).toBe("38.2");
   });
 
   it("zooms around the pointer with Ctrl-wheel and uses ordinary wheel for horizontal navigation", () => {
@@ -378,9 +431,16 @@ describe("EditingTimelineViewport", () => {
     expect(scroller.scrollLeft).toBe(120);
 
     const widthBefore = Number(screen.getByTestId("content-width").textContent);
+    const zoomBefore = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
+    const pointerOffset = 524 - 124 - 18;
+    const anchorBefore = (scroller.scrollLeft + pointerOffset) / zoomBefore;
     fireEvent.wheel(scroller, { clientX: 524, ctrlKey: true, deltaY: -100 });
+    const zoomAfter = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
+    const anchorAfter = (scroller.scrollLeft + pointerOffset) / zoomAfter;
+
     expect(Number(screen.getByTestId("content-width").textContent)).toBeGreaterThan(widthBefore);
     expect(scroller.scrollLeft).toBeGreaterThan(120);
+    expect(anchorAfter).toBeCloseTo(anchorBefore, 8);
   });
 
   it("retains ruler and keyboard seeking", () => {
@@ -422,7 +482,8 @@ describe("EditingTimelineViewport", () => {
       toJSON: () => ({}),
     });
 
-    fireEvent.click(ruler, { clientX: 504 });
+    const pixelsPerSecond = Number((screen.getByRole("slider", { name: "Timeline zoom" }) as HTMLInputElement).value);
+    fireEvent.click(ruler, { clientX: -120 + 124 + 18 + 10 * pixelsPerSecond });
 
     expect(onPlayheadChange).toHaveBeenLastCalledWith(10);
   });

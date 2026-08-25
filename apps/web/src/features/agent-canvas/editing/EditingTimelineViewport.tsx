@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -17,6 +18,7 @@ import {
 } from "./editingTimelineMath.ts";
 
 const TRACK_LABEL_WIDTH = 124;
+const TIME_GUTTER_WIDTH = 18;
 const MAX_PIXELS_PER_SECOND = 240;
 const BUTTON_ZOOM_FACTOR = 1.25;
 const WHEEL_ZOOM_FACTOR = 1.12;
@@ -76,16 +78,19 @@ export function EditingTimelineViewport({
   }, []);
 
   const safeDuration = Math.max(0, duration);
-  const availableWidth = Math.max(1, viewportWidth - TRACK_LABEL_WIDTH);
-  const fit = fitPixelsPerSecond(availableWidth, safeDuration);
+  const availableTrackWidth = Math.max(0, viewportWidth - TRACK_LABEL_WIDTH);
+  const timeViewportWidth = Math.max(1, availableTrackWidth - 2 * TIME_GUTTER_WIDTH);
+  const timeOrigin = TRACK_LABEL_WIDTH + TIME_GUTTER_WIDTH;
+  const fit = fitPixelsPerSecond(timeViewportWidth, safeDuration);
   const pixelsPerSecond = clampPixelsPerSecond(fit * zoomScale, {
-    viewportWidth: availableWidth,
+    viewportWidth: timeViewportWidth,
     duration: safeDuration,
     max: MAX_PIXELS_PER_SECOND,
   });
   const maximumPixelsPerSecond = Math.max(fit, MAX_PIXELS_PER_SECOND);
-  const contentWidth = Math.max(availableWidth, timeToPixels(safeDuration, pixelsPerSecond));
-  const maxScrollLeft = Math.max(0, contentWidth - availableWidth);
+  const contentWidth = Math.max(timeViewportWidth, timeToPixels(safeDuration, pixelsPerSecond));
+  const timeScrollSurfaceWidth = TIME_GUTTER_WIDTH + contentWidth + TIME_GUTTER_WIDTH;
+  const maxScrollLeft = Math.max(0, timeScrollSurfaceWidth - availableTrackWidth);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -105,12 +110,12 @@ export function EditingTimelineViewport({
 
   const setPixelsPerSecond = useCallback((value: number) => {
     const clamped = clampPixelsPerSecond(value, {
-      viewportWidth: availableWidth,
+      viewportWidth: timeViewportWidth,
       duration: safeDuration,
       max: MAX_PIXELS_PER_SECOND,
     });
     setZoomScale(fit > 0 ? clamped / fit : 1);
-  }, [availableWidth, fit, safeDuration]);
+  }, [fit, safeDuration, timeViewportWidth]);
 
   const fitTimeline = useCallback(() => {
     pendingAnchorRef.current = 0;
@@ -125,15 +130,24 @@ export function EditingTimelineViewport({
       if (!safeDuration || event.deltaY === 0) return;
       const factor = event.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
       const nextPixelsPerSecond = clampPixelsPerSecond(pixelsPerSecond * factor, {
-        viewportWidth: availableWidth,
+        viewportWidth: timeViewportWidth,
         duration: safeDuration,
         max: MAX_PIXELS_PER_SECOND,
       });
       if (nextPixelsPerSecond === pixelsPerSecond) return;
 
       const rect = viewport.getBoundingClientRect();
-      const pointerOffset = clamp(event.clientX - rect.left - TRACK_LABEL_WIDTH, 0, availableWidth);
-      const anchorSeconds = pixelsToTime(scrollLeft + pointerOffset, pixelsPerSecond);
+      const pointerOffset = clamp(
+        event.clientX - rect.left - timeOrigin,
+        -TIME_GUTTER_WIDTH,
+        viewportWidth - timeOrigin,
+      );
+      const anchorPixels = clamp(
+        scrollLeft + pointerOffset,
+        0,
+        timeToPixels(safeDuration, pixelsPerSecond),
+      );
+      const anchorSeconds = pixelsToTime(anchorPixels, pixelsPerSecond);
       pendingAnchorRef.current = timeToPixels(anchorSeconds, nextPixelsPerSecond) - pointerOffset;
       event.preventDefault();
       setPixelsPerSecond(nextPixelsPerSecond);
@@ -149,7 +163,7 @@ export function EditingTimelineViewport({
   };
 
   const seekFromClientX = (clientX: number, bounds: DOMRect) => {
-    const timelinePixels = clientX - bounds.left - TRACK_LABEL_WIDTH;
+    const timelinePixels = clientX - bounds.left - timeOrigin;
     onPlayheadChange(clamp(pixelsToTime(timelinePixels, pixelsPerSecond), 0, safeDuration));
   };
 
@@ -163,10 +177,22 @@ export function EditingTimelineViewport({
 
   const state: EditingTimelineViewportRenderState = {
     pixelsPerSecond,
-    visibleStartSeconds: pixelsToTime(scrollLeft, pixelsPerSecond),
-    visibleEndSeconds: Math.min(safeDuration, pixelsToTime(scrollLeft + availableWidth, pixelsPerSecond)),
+    visibleStartSeconds: pixelsToTime(Math.max(0, scrollLeft - TIME_GUTTER_WIDTH), pixelsPerSecond),
+    visibleEndSeconds: Math.min(
+      safeDuration,
+      pixelsToTime(
+        Math.max(0, scrollLeft + viewportWidth - timeOrigin),
+        pixelsPerSecond,
+      ),
+    ),
     contentWidth,
   };
+
+  const contentStyle = {
+    "--agent-editing-timeline-content-width": `${contentWidth}px`,
+    "--agent-editing-timeline-time-gutter": `${TIME_GUTTER_WIDTH}px`,
+    width: TRACK_LABEL_WIDTH + timeScrollSurfaceWidth,
+  } as CSSProperties;
 
   return (
     <div className="agent-editing-timeline-viewport">
@@ -199,7 +225,7 @@ export function EditingTimelineViewport({
         onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
         onWheel={onWheel}
       >
-        <div className="agent-editing-timeline-viewport__content" style={{ width: TRACK_LABEL_WIDTH + contentWidth }}>
+        <div className="agent-editing-timeline-viewport__content" style={contentStyle}>
           <div
             className="agent-editing-timeline-viewport__ruler-row"
             data-testid="timeline-ruler"
@@ -229,7 +255,7 @@ export function EditingTimelineViewport({
           </div>
           <div
             className="agent-editing-timeline-viewport__playhead"
-            style={{ left: TRACK_LABEL_WIDTH + timeToPixels(clamp(playheadSeconds, 0, safeDuration), pixelsPerSecond) }}
+            style={{ left: timeOrigin + timeToPixels(clamp(playheadSeconds, 0, safeDuration), pixelsPerSecond) }}
             aria-hidden="true"
           />
           {children(state)}
