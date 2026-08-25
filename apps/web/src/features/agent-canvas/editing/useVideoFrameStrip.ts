@@ -308,10 +308,6 @@ function seekVideo(video: HTMLVideoElement, targetTime: number, signal: AbortSig
       finish(() => reject(error));
       return;
     }
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-      && Math.abs(video.currentTime - targetTime) <= SEEK_EPSILON_SECONDS) {
-      finish(resolve);
-    }
   });
 }
 

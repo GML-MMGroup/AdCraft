@@ -18,7 +18,7 @@ The module exposes the requested `VideoFrameSample` and `VideoFrameRequest` inte
 - Initial and failed frames use `previewUrl`, including `null`; sampling errors are contained and never reject rendering.
 - The sampling API accepts `AbortSignal`. Unmount, request changes, and hidden-document transitions abort the active run, remove media listeners, and dispose the video source when no shared consumer remains. Visibility resume starts a fresh run.
 - Concurrent requests for the same cache key share one in-flight sampling task. Duplicate URLs retain the canonical cache entry and only an unused duplicate is revoked.
-- Seek listeners attach before assigning `currentTime`; an already-current frame extracts immediately, and synchronous seek assignment failures settle without leaving listeners behind.
+- Seek listeners attach before assigning `currentTime`; only an already-current decoded frame takes the fast path. Newly assigned seeks wait for `seeked`, error, abort, or timeout before extraction, and synchronous seek assignment failures settle without leaving listeners behind.
 - Render-time output is fallback/state-only and does not mutate LRU recency.
 - Request epochs and effect cleanup prevent stale request completions and unmounted hooks from writing React state.
 - No API clients, backend routes, or backend writes were changed.
@@ -29,9 +29,11 @@ The module exposes the requested `VideoFrameSample` and `VideoFrameRequest` inte
 2. Ran the required command and observed the expected RED failure: Vite could not resolve `./useVideoFrameStrip.ts` because the module did not exist.
 3. Implemented the sampler/cache.
 4. Added remediation regression tests and observed RED failures for null fallback, unmount cancellation, same-key deduplication, and seek API behavior.
-5. Ran the focused test after the remediation: 13 tests passed.
+5. Ran the focused test after the first remediation: 13 tests passed.
+6. Added a delayed-`seeked` regression and observed RED when drawing began after numeric time assignment but before decode completion.
+7. Ran the focused test after the seek-accuracy fix: 14 tests passed.
 
-The tests cover midpoint times and cache keys, cache reuse, preview fallback, null fallback, cache-bound eviction/revocation, unmount cancellation, request-change cancellation and stale-result protection, hidden pause/visible resume, same-key deduplication, seek listener ordering, already-current extraction, and synchronous seek failure settlement.
+The tests cover midpoint times and cache keys, cache reuse, preview fallback, null fallback, cache-bound eviction/revocation, unmount cancellation, request-change cancellation and stale-result protection, hidden pause/visible resume, same-key deduplication, synchronous seek listener ordering, already-current extraction, delayed seek completion before drawing, and synchronous seek failure settlement.
 
 ## Verification
 
@@ -39,7 +41,7 @@ From `apps/web`:
 
 ```text
 npm test -- --run --reporter=verbose src/features/agent-canvas/editing/useVideoFrameStrip.test.tsx
-13 passed
+14 passed
 
 npm run typecheck
 passed

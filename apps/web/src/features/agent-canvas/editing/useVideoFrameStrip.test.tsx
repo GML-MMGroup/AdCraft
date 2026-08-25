@@ -36,10 +36,16 @@ function setDocumentHidden(hidden: boolean) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
-function mockVideoFrameEnvironment(options: { currentTime: number; duration?: number; throwOnSeek?: boolean }) {
+function mockVideoFrameEnvironment(options: {
+  currentTime: number;
+  duration?: number;
+  throwOnSeek?: boolean;
+  dispatchSeeked?: boolean;
+}) {
   const nativeCreateElement = document.createElement.bind(document);
   const video = nativeCreateElement("video");
   let currentTime = options.currentTime;
+  let currentTimeAssignments = 0;
   let seekedListenerCount = 0;
   let seekListenerAttachedBeforeSet = false;
   const addEventListener = video.addEventListener.bind(video);
@@ -57,8 +63,9 @@ function mockVideoFrameEnvironment(options: { currentTime: number; duration?: nu
     set: (value: number) => {
       seekListenerAttachedBeforeSet = seekListenerAttachedBeforeSet || seekedListenerCount > 0;
       if (options.throwOnSeek) throw new Error("seek rejected");
+      currentTimeAssignments += 1;
       currentTime = value;
-      video.dispatchEvent(new Event("seeked"));
+      if (options.dispatchSeeked !== false) video.dispatchEvent(new Event("seeked"));
     },
   });
   video.load = vi.fn();
@@ -67,8 +74,9 @@ function mockVideoFrameEnvironment(options: { currentTime: number; duration?: nu
   vi.spyOn(document, "createElement").mockImplementation(((tagName: string, elementOptions?: ElementCreationOptions) => (
     tagName === "video" ? video : nativeCreateElement(tagName, elementOptions)
   )) as typeof document.createElement);
+  const drawImage = vi.fn();
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    drawImage: vi.fn(),
+    drawImage,
   } as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(new Blob(["frame"])));
   vi.stubGlobal("URL", {
@@ -78,6 +86,8 @@ function mockVideoFrameEnvironment(options: { currentTime: number; duration?: nu
 
   return {
     video,
+    drawImage,
+    currentTimeAssignments: () => currentTimeAssignments,
     seekListenerAttachedBeforeSet: () => seekListenerAttachedBeforeSet,
   };
 }
@@ -301,6 +311,22 @@ describe("useVideoFrameStrip", () => {
     media.video.dispatchEvent(new Event("loadedmetadata"));
     await expect(frame).resolves.toBe("blob:frame");
     expect(media.seekListenerAttachedBeforeSet()).toBe(false);
+    sampler.dispose();
+  });
+
+  it("waits for delayed seeked before extracting a newly assigned frame", async () => {
+    const media = mockVideoFrameEnvironment({ currentTime: 0, dispatchSeeked: false });
+    const sampler = createVideoFrameSampler("https://cdn.example.test/video.mp4");
+    const controller = new AbortController();
+    const frame = sampler.sample("https://cdn.example.test/video.mp4", 1, controller.signal);
+
+    media.video.dispatchEvent(new Event("loadedmetadata"));
+    await waitFor(() => expect(media.currentTimeAssignments()).toBe(1));
+    expect(media.drawImage).not.toHaveBeenCalled();
+
+    media.video.dispatchEvent(new Event("seeked"));
+    await expect(frame).resolves.toBe("blob:frame");
+    expect(media.drawImage).toHaveBeenCalledTimes(1);
     sampler.dispose();
   });
 
