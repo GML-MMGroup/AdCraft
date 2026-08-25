@@ -526,7 +526,11 @@
   top: 8px;
   bottom: 8px;
   z-index: 2;
-  min-width: 1px;
+  overflow: visible;
+}
+
+.agent-editing-timeline-clip.is-selected {
+  z-index: 8;
 }
 
 .agent-editing-timeline-clip__surface {
@@ -615,13 +619,13 @@
 }
 
 .agent-editing-timeline-clip__trim--start {
-  left: -1px;
-  justify-items: start;
+  left: -18px;
+  justify-items: end;
 }
 
 .agent-editing-timeline-clip__trim--end {
-  right: -1px;
-  justify-items: end;
+  left: 100%;
+  justify-items: start;
 }
 
 .agent-editing-timeline-clip__trim > span {

@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as R
 
 import { VideoIcon } from "../../../icons.tsx";
 import type { CanvasNodeStatusV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
-import { clampTrimRange, type TimelineSegment } from "./editingTimelineMath.ts";
+import {
+  clampTrimRange,
+  MIN_EDITED_CLIP_SECONDS,
+  type TimelineSegment,
+} from "./editingTimelineMath.ts";
 import type { EditingBoundInput } from "./editingModel.ts";
 import { useVideoFrameStrip } from "./useVideoFrameStrip.ts";
 
@@ -90,6 +94,7 @@ export function VideoTimelineClip({
     const initial = { ...trimRange };
     let last = initial;
     let changed = false;
+    let staged = false;
     let finished = false;
 
     const cleanup = () => {
@@ -105,6 +110,7 @@ export function VideoTimelineClip({
       finished = true;
       cleanup();
       if (commit && changed) void onCommitStagedManifest();
+      if (commit && staged && !changed) onDiscardStagedManifest();
     };
     const onPointerMove = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId || finished) return;
@@ -119,13 +125,16 @@ export function VideoTimelineClip({
       if (next.start === last.start && next.end === last.end) return;
       last = next;
       changed = next.start !== initial.start || next.end !== initial.end;
+      staged = true;
       stageRange(edge, next);
     };
     const onPointerUp = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId === pointerId) finish(true);
     };
     const onPointerCancel = (pointerEvent: PointerEvent) => {
-      if (pointerEvent.pointerId === pointerId) finish(true);
+      if (pointerEvent.pointerId !== pointerId) return;
+      setTrimRange(initial);
+      cancel();
     };
     function cancel() {
       if (finished) return;
@@ -170,9 +179,10 @@ export function VideoTimelineClip({
       className={`agent-editing-timeline-clip__trim agent-editing-timeline-clip__trim--${edge}`}
       role="slider"
       tabIndex={disabled ? -1 : 0}
+      style={edge === "start" ? { left: -18, width: 18 } : { left: "100%", width: 18 }}
       aria-label={`Trim ${edge} ${label}`}
-      aria-valuemin={0}
-      aria-valuemax={sourceDuration}
+      aria-valuemin={edge === "start" ? 0 : endMinimum}
+      aria-valuemax={edge === "start" ? startMaximum : sourceDuration}
       aria-valuenow={edge === "start" ? trimRange.start : trimRange.end}
       aria-disabled={disabled}
       onKeyDown={(event) => onHandleKeyDown(edge, event)}
@@ -182,17 +192,26 @@ export function VideoTimelineClip({
     </div>
   );
 
-  const clipWidth = Math.max(1, (segment.timelineEnd - segment.timelineStart) * pixelsPerSecond);
+  const clipWidth = (segment.timelineEnd - segment.timelineStart) * pixelsPerSecond;
   const hasFrame = samples.some((sample) => Boolean(sample.url));
+  const effectiveMinimum = Math.min(MIN_EDITED_CLIP_SECONDS, sourceDuration);
+  const startMaximum = Math.max(0, Math.min(sourceDuration, trimRange.end - effectiveMinimum));
+  const endMinimum = Math.min(sourceDuration, Math.max(0, trimRange.start + effectiveMinimum));
 
   return (
     <div
       className={`agent-editing-timeline-clip agent-editing-timeline__clip--${statusOf(input)}${selected ? " is-selected" : ""}`}
-      style={{ left: segment.timelineStart * pixelsPerSecond, width: clipWidth }}
+      style={{
+        left: segment.timelineStart * pixelsPerSecond,
+        overflow: selected ? "visible" : undefined,
+        width: clipWidth,
+        zIndex: selected ? 8 : undefined,
+      }}
     >
       <button
         type="button"
         className="agent-editing-timeline-clip__surface"
+        style={{ overflow: "hidden" }}
         aria-label={`Select ${label}`}
         aria-pressed={selected}
         onClick={(event) => {

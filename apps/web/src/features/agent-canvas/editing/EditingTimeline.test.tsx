@@ -7,6 +7,11 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import type { EditingBoundInput, EditingInputs } from "./editingModel.ts";
+import type { VideoFrameRequest } from "./useVideoFrameStrip.ts";
+
+const useVideoFrameStripMock = vi.hoisted(() => vi.fn((_request: VideoFrameRequest) => []));
+vi.mock("./useVideoFrameStrip.ts", () => ({ useVideoFrameStrip: useVideoFrameStripMock }));
+
 import { EditingTimeline } from "./EditingTimeline.tsx";
 import { EditingTimelineViewport } from "./EditingTimelineViewport.tsx";
 import { frameStripActiveIndices } from "./editingTimelineVisibility.ts";
@@ -74,6 +79,7 @@ function bgm(): EditingBoundInput<EditingBgmEntryV2> {
 }
 
 function renderTimeline(options: {
+  exportRunning?: boolean;
   inputs?: EditingInputs;
   selectedReferenceId?: string | null;
 } = {}) {
@@ -95,7 +101,7 @@ function renderTimeline(options: {
       timelineDuration={8}
       playheadSeconds={2}
       selectedReferenceId={options.selectedReferenceId === undefined ? "video-1" : options.selectedReferenceId}
-      exportRunning={false}
+      exportRunning={options.exportRunning ?? false}
       {...callbacks}
     />,
   );
@@ -103,6 +109,7 @@ function renderTimeline(options: {
 }
 
 beforeEach(() => {
+  useVideoFrameStripMock.mockClear();
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
     bottom: 200,
     height: 200,
@@ -145,15 +152,30 @@ describe("EditingTimeline direct trim", () => {
     expect(onCommitStagedManifest).toHaveBeenCalledTimes(1);
   });
 
-  it("commits a changed drag once on pointer cancellation", () => {
-    const { onCommitStagedManifest } = renderTimeline();
+  it("discards a changed drag on pointer cancellation", () => {
+    const { onCommitStagedManifest, onDiscardStagedManifest } = renderTimeline();
     const handle = screen.getByRole("slider", { name: "Trim end Shot 1" });
 
     fireEvent.pointerDown(handle, { pointerId: 2, clientX: 200 });
     fireEvent.pointerMove(window, { pointerId: 2, clientX: 160 });
     fireEvent.pointerCancel(window, { pointerId: 2, clientX: 160 });
 
-    expect(onCommitStagedManifest).toHaveBeenCalledTimes(1);
+    expect(onDiscardStagedManifest).toHaveBeenCalledTimes(1);
+    expect(onCommitStagedManifest).not.toHaveBeenCalled();
+  });
+
+  it("discards staged values when a drag returns to its original trim", () => {
+    const { onCommitStagedManifest, onDiscardStagedManifest, onStageVideo } = renderTimeline();
+    const handle = screen.getByRole("slider", { name: "Trim start Shot 1" });
+
+    fireEvent.pointerDown(handle, { pointerId: 5, clientX: 100 });
+    fireEvent.pointerMove(window, { pointerId: 5, clientX: 140 });
+    fireEvent.pointerMove(window, { pointerId: 5, clientX: 100 });
+    fireEvent.pointerUp(window, { pointerId: 5, clientX: 100 });
+
+    expect(onStageVideo).toHaveBeenLastCalledWith("video-1", { trim_start_seconds: 1 });
+    expect(onDiscardStagedManifest).toHaveBeenCalledTimes(1);
+    expect(onCommitStagedManifest).not.toHaveBeenCalled();
   });
 
   it("discards the current drag on Escape without committing", () => {
@@ -212,6 +234,47 @@ describe("EditingTimeline direct trim", () => {
     expect(screen.queryByRole("slider", { name: "Trim start Shot 1" })).toBeNull();
     expect(screen.getByRole("slider", { name: "Trim start Shot 2" })).toBeTruthy();
   });
+
+  it("keeps two outward trim targets independent on a narrower-than-target clip", () => {
+    const short = video("video-short", 1, { trim_start_seconds: 0, trim_end_seconds: null });
+    short.asset = asset("video-1", "video", 0.001);
+    renderTimeline({ inputs: { videos: [short, video("video-2", 2)], bgm: null }, selectedReferenceId: "video-short" });
+
+    const start = screen.getByRole("slider", { name: "Trim start Shot 1" });
+    const end = screen.getByRole("slider", { name: "Trim end Shot 1" });
+    const clip = start.parentElement as HTMLElement;
+    const surface = clip.querySelector(".agent-editing-timeline-clip__surface") as HTMLElement;
+
+    expect(parseFloat(clip.style.width)).toBeLessThan(1);
+    expect(clip.classList.contains("agent-editing-timeline-clip")).toBe(true);
+    expect(surface.parentElement).toBe(clip);
+    expect(surface.contains(start)).toBe(false);
+    expect(surface.contains(end)).toBe(false);
+    expect(clip.style.overflow).toBe("visible");
+    expect(clip.style.zIndex).toBe("8");
+    expect(surface.style.overflow).toBe("hidden");
+    expect(start.style.width).toBe("18px");
+    expect(start.style.left).toBe("-18px");
+    expect(end.style.width).toBe("18px");
+    expect(end.style.left).toBe("100%");
+  });
+
+  it("publishes trim slider bounds that enforce the effective minimum duration", () => {
+    const { unmount } = renderTimeline();
+    const start = screen.getByRole("slider", { name: "Trim start Shot 1" });
+    const end = screen.getByRole("slider", { name: "Trim end Shot 1" });
+
+    expect(start.getAttribute("aria-valuemax")).toBe("8.5");
+    expect(end.getAttribute("aria-valuemin")).toBe("1.5");
+    unmount();
+
+    const short = video("video-short", 1, { trim_start_seconds: 0, trim_end_seconds: null });
+    short.asset = asset("video-1", "video", 0.25);
+    renderTimeline({ inputs: { videos: [short], bgm: null }, selectedReferenceId: "video-short" });
+
+    expect(screen.getByRole("slider", { name: "Trim start Shot 1" }).getAttribute("aria-valuemax")).toBe("0");
+    expect(screen.getByRole("slider", { name: "Trim end Shot 1" }).getAttribute("aria-valuemin")).toBe("0.25");
+  });
 });
 
 describe("EditingTimeline retained controls", () => {
@@ -249,6 +312,32 @@ describe("EditingTimeline retained controls", () => {
     expect(within(track).getByRole("spinbutton", { name: "Trim end" })).toBeTruthy();
     expect(within(track).getByRole("spinbutton", { name: "Fade in" })).toBeTruthy();
     expect(within(track).getByRole("spinbutton", { name: "Fade out" })).toBeTruthy();
+  });
+
+  it("disables trim and clip properties during export while leaving zoom and seek usable", () => {
+    const view = renderTimeline({ exportRunning: true });
+    const start = screen.getByRole("slider", { name: "Trim start Shot 1" });
+    const properties = screen.getByRole("toolbar", { name: "Clip properties" });
+
+    expect(start.getAttribute("aria-disabled")).toBe("true");
+    expect(start.getAttribute("tabindex")).toBe("-1");
+    for (const control of properties.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("button, input, select")) {
+      expect(control.disabled).toBe(true);
+    }
+
+    fireEvent.pointerDown(start, { pointerId: 9, clientX: 100 });
+    fireEvent.pointerMove(window, { pointerId: 9, clientX: 140 });
+    fireEvent.pointerUp(window, { pointerId: 9, clientX: 140 });
+    expect(view.onStageVideo).not.toHaveBeenCalled();
+    expect(view.onCommitStagedManifest).not.toHaveBeenCalled();
+
+    const zoomLevel = screen.getByLabelText("Timeline zoom level");
+    const zoomBefore = zoomLevel.textContent;
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(zoomLevel.textContent).not.toBe(zoomBefore);
+
+    fireEvent.change(screen.getByRole("slider", { name: "Timeline playhead" }), { target: { value: "4" } });
+    expect(view.onPlayheadChange).toHaveBeenLastCalledWith(4);
   });
 });
 
@@ -308,6 +397,35 @@ describe("EditingTimelineViewport", () => {
     fireEvent.keyDown(screen.getByRole("slider", { name: "Timeline playhead" }), { key: "ArrowRight" });
     expect(onPlayheadChange).toHaveBeenLastCalledWith(3);
   });
+
+  it("seeks from a scrolled ruler content rect without counting scroll twice", () => {
+    const onPlayheadChange = vi.fn();
+    render(
+      <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={onPlayheadChange}>
+        {() => null}
+      </EditingTimelineViewport>,
+    );
+    const scroller = screen.getByTestId("timeline-scroll-viewport");
+    const ruler = screen.getByTestId("timeline-ruler");
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.wheel(scroller, { deltaY: 120 });
+    vi.spyOn(ruler, "getBoundingClientRect").mockReturnValue({
+      bottom: 27,
+      height: 27,
+      left: -120,
+      right: 884,
+      top: 0,
+      width: 1_004,
+      x: -120,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(ruler, { clientX: 504 });
+
+    expect(onPlayheadChange).toHaveBeenLastCalledWith(10);
+  });
 });
 
 describe("frame strip visibility", () => {
@@ -321,5 +439,21 @@ describe("frame strip visibility", () => {
     ];
 
     expect([...frameStripActiveIndices(segments, 4.25, 5.75)]).toEqual([1, 2, 3]);
+  });
+
+  it("requests frames for visible and adjacent clips but not distant clips", () => {
+    const inputs = {
+      videos: Array.from({ length: 8 }, (_, index) => video(`video-${index + 1}`, index + 1)),
+      bgm: null,
+    };
+    renderTimeline({ inputs, selectedReferenceId: "video-1" });
+
+    fireEvent.change(screen.getByRole("slider", { name: "Timeline zoom" }), { target: { value: "100" } });
+    fireEvent.wheel(screen.getByTestId("timeline-scroll-viewport"), { deltaY: 2_000 });
+
+    const latestRequests = new Map<string, VideoFrameRequest>();
+    for (const [request] of useVideoFrameStripMock.mock.calls) latestRequests.set(request.assetId, request);
+    expect(Array.from({ length: 8 }, (_, index) => latestRequests.get(`video-${index + 1}`)?.active))
+      .toEqual([false, true, true, true, true, false, false, false]);
   });
 });

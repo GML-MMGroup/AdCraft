@@ -149,7 +149,7 @@ export function EditingTimelineViewport({
   };
 
   const seekFromClientX = (clientX: number, bounds: DOMRect) => {
-    const timelinePixels = scrollLeft + clientX - bounds.left - TRACK_LABEL_WIDTH;
+    const timelinePixels = clientX - bounds.left - TRACK_LABEL_WIDTH;
     onPlayheadChange(clamp(pixelsToTime(timelinePixels, pixelsPerSecond), 0, safeDuration));
   };
 
