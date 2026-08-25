@@ -372,14 +372,12 @@
   z-index: 32;
   min-width: 188px;
   padding: 6px;
-  color: #313448;
-  background: rgb(249 250 255 / 70%);
-  border: 1px solid rgb(255 255 255 / 82%);
-  border-radius: 18px;
-  box-shadow:
-    0 20px 44px rgb(30 31 54 / 24%),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
-  backdrop-filter: blur(28px) saturate(1.35);
+  color: #dedede;
+  background: #151515;
+  border: 1px solid #353535;
+  border-radius: 8px;
+  box-shadow: 0 20px 44px rgb(0 0 0 / 46%);
+  backdrop-filter: none;
 }
 
 .agent-canvas-context-menu__action {
@@ -403,8 +401,8 @@
 
 .agent-canvas-context-menu__action:hover,
 .agent-canvas-context-menu__action:focus-visible {
-  color: var(--brand-hover);
-  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: #fff;
+  background: #303030;
   outline: 0;
 }
 
@@ -416,14 +414,15 @@
 .agent-canvas-context-menu__node-picker {
   width: 188px;
   padding: 0;
-  background: transparent;
-  border: 0;
+  background: #1d1d1d;
+  border: 1px solid #3a3a3a;
+  border-radius: 5px;
   box-shadow: none;
   backdrop-filter: none;
 }
 
 .agent-canvas-context-menu__node-picker button {
-  border-radius: 13px;
+  border-radius: 4px;
 }
 
 .agent-canvas-toolbar__connection {
@@ -1037,6 +1036,43 @@
 }
 
 :root .agent-canvas-add-menu button:hover {
+  color: #fff;
+  background: #2d2d2d;
+}
+
+:root .agent-canvas-context-menu {
+  color: #dedede;
+  background: #151515;
+  border-color: #353535;
+  box-shadow: 0 20px 44px rgb(0 0 0 / 46%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-context-menu__action {
+  color: #dedede;
+}
+
+:root .agent-canvas-context-menu__action:hover,
+:root .agent-canvas-context-menu__action:focus-visible {
+  color: #fff;
+  background: #303030;
+}
+
+:root .agent-canvas-context-menu__node-picker {
+  color: #dedede;
+  background: #1d1d1d;
+  border-color: #3a3a3a;
+  border-radius: 5px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-context-menu__node-picker button {
+  color: #cfcfcf;
+}
+
+:root .agent-canvas-context-menu__node-picker button:hover,
+:root .agent-canvas-context-menu__node-picker button:focus-visible {
   color: #fff;
   background: #2d2d2d;
 }

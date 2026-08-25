@@ -30,6 +30,23 @@ describe("AgentCanvasPage chrome", () => {
     );
   });
 
+  it("uses the same monochrome treatment for the canvas context menu", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu \{[\s\S]*?color: #dedede;[\s\S]*?background: #151515;[\s\S]*?border: 1px solid #353535;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu__action:hover,[\s\S]*?background: #303030;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu__node-picker \{[\s\S]*?background: #1d1d1d;[\s\S]*?border: 1px solid #3a3a3a;/,
+    );
+  });
+
   it("suppresses the browser menu across the canvas while preserving the pane menu", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
