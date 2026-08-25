@@ -22,6 +22,11 @@ import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
 function editingNode(
   videoEntries: EditingVideoEntryV2[] = [],
   nodeId = "editing-1",
+  options: {
+    dirty?: boolean;
+    manifestRevision?: number;
+    nodeRevision?: number;
+  } = {},
 ): CanvasNodeV2 {
   return {
     node_id: nodeId,
@@ -54,9 +59,9 @@ function editingNode(
           audio_codec: "aac",
           container: "mp4",
         },
-        manifest_revision: 4,
+        manifest_revision: options.manifestRevision ?? 4,
       },
-      dirty: true,
+      dirty: options.dirty ?? true,
       preview: {
         clips: [],
         bgm_binding_id: null,
@@ -73,7 +78,7 @@ function editingNode(
     prompt_context_snapshot_id: null,
     output_asset_id: null,
     position: { x: 0, y: 0 },
-    revision: 2,
+    revision: options.nodeRevision ?? 2,
     error: null,
     variation_draft: null,
     created_at: "2026-07-28T10:00:00Z",
@@ -417,5 +422,28 @@ describe("useAgentCanvasEditing", () => {
       pendingSave.resolve();
       await Promise.resolve();
     });
+  });
+
+  it("clears an idle staged draft so newer canonical content becomes visible", () => {
+    const patchNode = vi.fn(() => Promise.resolve());
+    const { result, rerender } = renderHook(
+      ({ node }: { node: CanvasNodeV2 }) => useAgentCanvasEditing(workflow, node, patchNode),
+      { initialProps: { node: editingNode([videoEntry()]) } },
+    );
+
+    act(() => result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 1 }));
+    act(() => result.current.discardStagedManifest());
+
+    rerender({
+      node: editingNode(
+        [{ ...videoEntry(), trim_start_seconds: 4 }],
+        "editing-1",
+        { dirty: false, manifestRevision: 5, nodeRevision: 3 },
+      ),
+    });
+
+    expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(4);
+    expect(result.current.content?.dirty).toBe(false);
+    expect(patchNode).not.toHaveBeenCalled();
   });
 });

@@ -139,6 +139,7 @@ export function useAgentCanvasEditing(
   const draftManifestRef = useRef<typeof draftManifest>(null);
   const stagedManifestRef = useRef<EditingManifestV2 | null>(null);
   const stagedBaselineManifestRef = useRef<EditingManifestV2 | null>(null);
+  const stagedBaselineIsLocalDraftRef = useRef(false);
   const confirmedManifestRef = useRef<EditingManifestV2 | null>(null);
   const canonicalManifestKeyRef = useRef<string | null>(null);
   const activeManifestIdentityRef = useRef(manifestIdentity);
@@ -149,6 +150,7 @@ export function useAgentCanvasEditing(
     draftManifestRef.current = null;
     stagedManifestRef.current = null;
     stagedBaselineManifestRef.current = null;
+    stagedBaselineIsLocalDraftRef.current = false;
     confirmedManifestRef.current = null;
     canonicalManifestKeyRef.current = null;
   }
@@ -237,6 +239,7 @@ export function useAgentCanvasEditing(
     if (!canonicalContent) return Promise.resolve();
     stagedManifestRef.current = null;
     stagedBaselineManifestRef.current = null;
+    stagedBaselineIsLocalDraftRef.current = false;
     setLocalDraft(manifest);
     setError(null);
     setPendingManifestCommit({ identity: manifestIdentity, pending: true });
@@ -289,11 +292,16 @@ export function useAgentCanvasEditing(
     if (!manifest) return;
     const next = updateEditingVideoEntry(manifest, referenceId, patch);
     if (next === manifest) return;
-    if (!stagedManifestRef.current) stagedBaselineManifestRef.current = manifest;
+    if (!stagedManifestRef.current) {
+      stagedBaselineManifestRef.current = manifest;
+      stagedBaselineIsLocalDraftRef.current = (
+        draftManifestRef.current?.identity === manifestIdentity
+      );
+    }
     stagedManifestRef.current = next;
     setLocalDraft(next);
     setError(null);
-  }, [currentManifest, setLocalDraft]);
+  }, [currentManifest, manifestIdentity, setLocalDraft]);
 
   const commitStagedManifest = useCallback(() => {
     const stagedManifest = stagedManifestRef.current;
@@ -306,9 +314,11 @@ export function useAgentCanvasEditing(
   const discardStagedManifest = useCallback(() => {
     if (!stagedManifestRef.current) return;
     const stagedBaselineManifest = stagedBaselineManifestRef.current;
+    const stagedBaselineIsLocalDraft = stagedBaselineIsLocalDraftRef.current;
     stagedManifestRef.current = null;
     stagedBaselineManifestRef.current = null;
-    setLocalDraft(stagedBaselineManifest);
+    stagedBaselineIsLocalDraftRef.current = false;
+    setLocalDraft(stagedBaselineIsLocalDraft ? stagedBaselineManifest : null);
   }, [setLocalDraft]);
 
   const moveVideo = useCallback((referenceId: string, offset: -1 | 1) => {
