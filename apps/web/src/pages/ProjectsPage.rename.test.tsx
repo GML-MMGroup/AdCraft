@@ -61,6 +61,10 @@ describe("ProjectsPage project rename", () => {
     expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(3);
     expect(toolbar?.querySelector(".toolbar-new-project")).toBeNull();
     expect(screen.getByPlaceholderText("Search projects").classList.contains("is-active")).toBe(true);
+
+    const createProjectCard = screen.getByRole("button", { name: "New Project" });
+    expect(createProjectCard.classList.contains("create-card--new-project")).toBe(true);
+    expect(createProjectCard.classList.contains("clear-glass-control")).toBe(true);
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {

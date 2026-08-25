@@ -637,7 +637,7 @@
   box-shadow: var(--shadow-soft);
 }
 
-:root :is(.project-card, .create-card, .trash-card) {
+:root :is(.project-card, .create-card:not(.clear-glass-control), .trash-card) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
@@ -649,13 +649,34 @@
   color: var(--text-primary);
 }
 
-:root .create-card {
+:root .create-card:not(.clear-glass-control) {
   color: var(--brand);
 }
 
-:root .create-plus {
+:root .create-card:not(.clear-glass-control) .create-plus {
   background: var(--brand-subtle);
   color: var(--brand);
+}
+
+:root .create-card--new-project.clear-glass-control {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+:root .create-card--new-project .create-plus {
+  width: auto;
+  height: auto;
+  margin-bottom: 12px;
+  background: transparent;
+  color: currentColor;
+  font-size: 36px;
+  font-weight: 300;
+}
+
+:root .create-card--new-project h3 {
+  margin: 0;
+  color: currentColor;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 :root .project-card {
