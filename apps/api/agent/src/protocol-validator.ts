@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 
 import type {
-  AgentProviderConformanceInputV1,
+  AgentProviderConformanceInputV2,
   AgentRunRequest,
 } from "./generated/agent-runtime.js";
 import { getOperationDescriptor } from "./registry.js";
@@ -27,9 +27,9 @@ const validate: ValidateFunction<AgentRunRequest> = ajv.compile({
   $ref: "#/$defs/AgentRunRequest",
   $defs: withoutDiscriminatorAnnotations(schema.$defs),
 });
-const validateConformanceInput: ValidateFunction<AgentProviderConformanceInputV1> =
+const validateConformanceInput: ValidateFunction<AgentProviderConformanceInputV2> =
   ajv.compile({
-    $ref: "#/$defs/AgentProviderConformanceInputV1",
+    $ref: "#/$defs/AgentProviderConformanceInputV2",
     $defs: withoutDiscriminatorAnnotations(schema.$defs),
   });
 
@@ -45,7 +45,7 @@ export function validateAgentRunRequest(value: unknown): AgentRunRequest {
 
 export function validateAgentProviderConformanceInput(
   value: unknown,
-): AgentProviderConformanceInputV1 {
+): AgentProviderConformanceInputV2 {
   if (!validateConformanceInput(value)) throw new Error("conformance_parity_failed");
   return value;
 }

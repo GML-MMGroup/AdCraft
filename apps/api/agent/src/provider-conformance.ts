@@ -16,6 +16,7 @@ import {
   type StructuredCompletionResponse,
 } from "./pi-structured-transport.js";
 import type { AgentCredentialSnapshot } from "./python-internal-client.js";
+import type { AgentProviderConformanceBudgetPlanV1 } from "./generated/agent-runtime.js";
 import type { PreparedStructuredModelInput } from "./structured-model-input.js";
 
 export type ConformanceCaseId =
@@ -23,7 +24,7 @@ export type ConformanceCaseId =
   | "production_prompt_only"
   | "production_schema_only"
   | "production_exact_raw"
-  | "production_exact_streaming"
+  | "production_exact_opposite_mode"
   | "production_exact_sdk"
   | "production_exact_pi"
   | "reduced_prompt"
@@ -33,11 +34,18 @@ export type ConformanceCaseId =
 export type ConformanceVerdict =
   | "verified"
   | "blocked_external"
+  | "production_contract_incompatible"
+  | "sdk_incompatible"
+  | "pi_transport_incompatible";
+
+export type ConformanceDiagnosis =
   | "prompt_overload"
   | "schema_incompatible"
   | "prompt_schema_interaction"
-  | "sdk_incompatible"
-  | "pi_transport_incompatible";
+  | "candidate_transport_incompatible"
+  | "inconclusive";
+
+export type ConformanceBudgetClass = "production_exact" | "diagnostic_isolation";
 
 export type ConformanceTransport =
   | "raw_non_streaming"
@@ -49,6 +57,8 @@ export interface ConformanceCaseResultV1 {
   readonly case_id: ConformanceCaseId;
   readonly transport: ConformanceTransport;
   readonly status: "succeeded" | "failed" | "timed_out" | "aborted";
+  readonly budget_class: ConformanceBudgetClass;
+  readonly effective_timeout_ms: number;
   readonly request_sha256: string;
   readonly request_bytes: number;
   readonly schema_bytes: number;
@@ -71,12 +81,13 @@ export interface ConformanceCaseResultV1 {
 }
 
 export type ConformanceBlockedStage =
+  | "budget"
   | "credential"
   | "request_preparation"
   | "request_parity";
 
-export interface ConformanceReportV2 {
-  readonly schema_version: 2;
+export interface ConformanceReportV3 {
+  readonly schema_version: 3;
   readonly run_id: string;
   readonly status: "completed" | "blocked";
   readonly blocked_stage: ConformanceBlockedStage | null;
@@ -101,9 +112,12 @@ export interface ConformanceReportV2 {
   readonly contract_schema_bytes?: number;
   readonly semantic_request_bytes?: number;
   readonly maximum_submissions: 6;
+  readonly budget_plan: AgentProviderConformanceBudgetPlanV1;
+  readonly diagnostic_budget_digest: string;
   readonly submission_count: number;
   readonly cases: ReadonlyArray<ConformanceCaseResultV1>;
   readonly verdict: ConformanceVerdict | null;
+  readonly diagnosis: ConformanceDiagnosis | null;
   readonly operator_error_code?: string;
 }
 
@@ -112,9 +126,9 @@ export interface ConformanceRunOptions {
   readonly operation: "decide_turn_intent";
   readonly model_ref: string;
   readonly output_directory: string;
-  readonly per_case_timeout_ms?: number;
-  readonly total_timeout_ms?: number;
-  readonly maximum_submissions?: number;
+  readonly budget_plan: AgentProviderConformanceBudgetPlanV1;
+  readonly diagnostic_budget_digest: string;
+  readonly maximum_submissions: 6;
 }
 
 export interface ProductionRequestDigestsV1 {
@@ -220,6 +234,7 @@ interface CaseDefinition {
   readonly request: StructuredCompletionRequest | Readonly<Record<string, unknown>>;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly changedFields: ReadonlyArray<string>;
+  readonly budgetClass: ConformanceBudgetClass;
 }
 
 const MINIMAL_SCHEMA = Object.freeze({
@@ -236,35 +251,58 @@ export function createRawConformanceExecutor(
 ): ConformanceExecutor {
   const send = options.send ?? sendRawHttpRequest;
   return async (input) => {
-    const response = await send({
-      url: completionUrl(credential.base_url),
-      apiKey: credential.api_key,
-      payload: input.request as Readonly<Record<string, unknown>>,
-      signal: input.signal,
-      maximumResponseBytes: 1_048_576,
-    });
-    return {
-      transport_completed: true,
-      content: response.content,
-      response_activity_observed: true,
-      dns_at: response.dns_at,
-      tcp_at: response.tcp_at,
-      tls_at: response.tls_at,
-      response_headers_at: response.response_headers_at,
-      first_content_at: response.first_content_at,
-      completed_at: response.completed_at,
-      http_status: response.status,
-      provider_request_id: boundedHeader(
-        response.headers["x-request-id"] ?? response.headers["request-id"],
-      ),
-      safe_error:
-        response.status >= 200 && response.status < 300
-          ? null
-          : {
-              code: "conformance_provider_http_error",
-              http_status: response.status,
-            },
-    };
+    try {
+      const response = await send({
+        url: completionUrl(credential.base_url),
+        apiKey: credential.api_key,
+        payload: input.request as Readonly<Record<string, unknown>>,
+        signal: input.signal,
+        maximumResponseBytes: 1_048_576,
+      });
+      return {
+        transport_completed: true,
+        content: response.content,
+        response_activity_observed: true,
+        dns_at: response.dns_at,
+        tcp_at: response.tcp_at,
+        tls_at: response.tls_at,
+        response_headers_at: response.response_headers_at,
+        first_content_at: response.first_content_at,
+        completed_at: response.completed_at,
+        http_status: response.status,
+        provider_request_id: boundedHeader(
+          response.headers["x-request-id"] ?? response.headers["request-id"],
+        ),
+        safe_error:
+          response.status >= 200 && response.status < 300
+            ? null
+            : {
+                code: "conformance_provider_http_error",
+                http_status: response.status,
+              },
+      };
+    } catch (error) {
+      const partial = rawPartialObservation(error);
+      return {
+        transport_completed: false,
+        content: null,
+        response_activity_observed: partial?.response_activity_observed ?? null,
+        dns_at: partial?.dns_at ?? null,
+        tcp_at: partial?.tcp_at ?? null,
+        tls_at: partial?.tls_at ?? null,
+        response_headers_at: partial?.response_headers_at ?? null,
+        first_content_at: partial?.first_content_at ?? null,
+        completed_at: new Date().toISOString(),
+        http_status: null,
+        provider_request_id: null,
+        safe_error: safeError(
+          error,
+          input.signal.aborted
+            ? "conformance_case_timeout"
+            : "conformance_transport_failed",
+        ),
+      };
+    }
   };
 }
 
@@ -294,10 +332,12 @@ export function createPiConformanceExecutor(
       ...prepared.credential.execution_policy,
       deadline_seconds: primarySeconds + 2,
       primary_timeout_seconds: primarySeconds,
-      recovery_timeout_seconds: 1,
-      persistence_reserve_seconds: 1,
+      recovery_timeout_seconds: 0,
+      persistence_reserve_seconds: 2,
       transport_retry_limit: 0,
       structured_repair_limit: 0,
+      max_model_submissions: 1 as const,
+      recovery_mode: "none" as const,
     };
     const router = new PiStructuredTransportRouter({ execute });
     const result = await router.run({
@@ -313,6 +353,8 @@ export function createPiConformanceExecutor(
           persistence_reserve_seconds: policy.persistence_reserve_seconds,
           transport_retry_limit: 0,
           structured_repair_limit: 0,
+          max_model_submissions: 1,
+          recovery_mode: "none",
         },
       },
       systemPrompt: prepared.systemPrompt,
@@ -348,10 +390,8 @@ export function createPiConformanceExecutor(
 export async function runProviderConformance(
   options: ConformanceRunOptions,
   dependencies: ConformanceDependencies,
-): Promise<ConformanceReportV2> {
-  const perCaseTimeoutMs = boundedLimit(options.per_case_timeout_ms, 60_000, 60_000);
-  const totalTimeoutMs = boundedLimit(options.total_timeout_ms, 360_000, 360_000);
-  const maximumSubmissions = boundedLimit(options.maximum_submissions, 6, 6);
+): Promise<ConformanceReportV3> {
+  const maximumSubmissions = options.maximum_submissions;
   const now = dependencies.now ?? (() => new Date());
   const startedAt = now();
   const runId = options.run_id;
@@ -359,15 +399,20 @@ export async function runProviderConformance(
   const digests = productionRequestDigests(dependencies.prepared);
   const exactRequestBytes = byteCount(exactRequest);
   const exactSchemaBytes = byteCount(dependencies.prepared.schema);
-  const deadlineAt = startedAt.getTime() + totalTimeoutMs;
+  const deadlineAt = startedAt.getTime() + options.budget_plan.matrix_timeout_ms;
   const results: ConformanceCaseResultV1[] = [];
+  let submissionCount = 0;
 
   const executeCase = async (definition: CaseDefinition): Promise<ConformanceCaseResultV1> => {
-    if (results.length >= maximumSubmissions || Date.now() >= deadlineAt) {
-      return budgetFailure(definition, now());
+    const requestedTimeoutMs =
+      definition.budgetClass === "production_exact"
+        ? options.budget_plan.exact_case_timeout_ms
+        : options.budget_plan.isolation_case_timeout_ms;
+    const remainingMs = deadlineAt - now().getTime();
+    if (submissionCount >= maximumSubmissions || remainingMs < requestedTimeoutMs) {
+      return budgetFailure(definition, now(), Math.max(0, remainingMs));
     }
-    const remainingMs = Math.max(1, deadlineAt - Date.now());
-    const timeoutMs = Math.min(perCaseTimeoutMs, remainingMs);
+    const timeoutMs = requestedTimeoutMs;
     const dispatchedAt = now();
     const controller = new AbortController();
     const timer = setTimeout(
@@ -375,6 +420,7 @@ export async function runProviderConformance(
       timeoutMs,
     );
     let observation: ConformanceExecutionObservation;
+    submissionCount += 1;
     try {
       observation = await definition.executor({
         caseId: definition.caseId,
@@ -413,6 +459,8 @@ export async function runProviderConformance(
       case_id: definition.caseId,
       transport: definition.transport,
       status,
+      budget_class: definition.budgetClass,
+      effective_timeout_ms: timeoutMs,
       request_sha256: requestSha256(definition.request),
       request_bytes: byteCount(definition.request),
       schema_bytes: byteCount(definition.schema),
@@ -444,9 +492,7 @@ export async function runProviderConformance(
   const mandatory = mandatoryCases(dependencies, exactRequest);
   const minimal = await run(mandatory[0]);
   if (succeeded(minimal)) {
-    await run(mandatory[1]);
-    await run(mandatory[2]);
-    const exact = await run(mandatory[3]);
+    const exact = await run(mandatory[1]);
     if (succeeded(exact)) {
       const sdk = await run({
         caseId: "production_exact_sdk",
@@ -455,6 +501,7 @@ export async function runProviderConformance(
         request: exactRequest,
         schema: dependencies.prepared.schema,
         changedFields: [],
+        budgetClass: "production_exact",
       });
       if (succeeded(sdk)) {
         await run({
@@ -464,17 +511,21 @@ export async function runProviderConformance(
           request: exactRequest,
           schema: dependencies.prepared.schema,
           changedFields: [],
+          budgetClass: "production_exact",
         });
       }
-    } else {
+    } else if (!externalFailure(exact)) {
+      await run(mandatory[2]);
+      await run(mandatory[3]);
       const opposite = candidateRaw(dependencies, !exactRequest.stream);
       await run({
-        caseId: "production_exact_streaming",
+        caseId: "production_exact_opposite_mode",
         transport: opposite.transport,
         executor: opposite.executor,
         request: { ...exactRequest, stream: !exactRequest.stream },
         schema: dependencies.prepared.schema,
         changedFields: ["stream"],
+        budgetClass: "diagnostic_isolation",
       });
       const selection = selectReducedCase(results);
       await run(reducedCase(selection, dependencies, exactRequest));
@@ -483,7 +534,7 @@ export async function runProviderConformance(
 
   const completedAt = now().toISOString();
   return {
-    schema_version: 2,
+    schema_version: 3,
     run_id: runId,
     status: "completed",
     blocked_stage: null,
@@ -498,10 +549,13 @@ export async function runProviderConformance(
     production_request_bytes: exactRequestBytes,
     production_schema_bytes: exactSchemaBytes,
     ...digests,
+    budget_plan: options.budget_plan,
+    diagnostic_budget_digest: options.diagnostic_budget_digest,
     maximum_submissions: 6,
-    submission_count: results.length,
+    submission_count: submissionCount,
     cases: results,
     verdict: classifyConformance(results),
+    diagnosis: diagnoseConformance(results),
   };
 }
 
@@ -509,11 +563,11 @@ function preparedMaxOutputBytes(_credential: AgentCredentialSnapshot): number {
   return 262_144;
 }
 
-export function projectConformanceEvidence(value: unknown): ConformanceReportV2 {
-  const report = value as ConformanceReportV2;
+export function projectConformanceEvidence(value: unknown): ConformanceReportV3 {
+  const report = value as ConformanceReportV3;
   assertReportInvariants(report);
   return {
-    schema_version: 2,
+    schema_version: 3,
     run_id: report.run_id,
     status: report.status,
     blocked_stage: report.blocked_stage,
@@ -553,9 +607,12 @@ export function projectConformanceEvidence(value: unknown): ConformanceReportV2 
       ? { semantic_request_bytes: report.semantic_request_bytes }
       : {}),
     maximum_submissions: 6,
+    budget_plan: projectBudgetPlan(report.budget_plan),
+    diagnostic_budget_digest: report.diagnostic_budget_digest,
     submission_count: report.submission_count,
     cases: report.cases.map(projectCaseEvidence),
     verdict: report.verdict,
+    diagnosis: report.diagnosis,
     ...(isOperatorErrorCode(report.operator_error_code)
       ? { operator_error_code: report.operator_error_code }
       : {}),
@@ -618,22 +675,7 @@ function mandatoryCases(
       ),
       schema: MINIMAL_SCHEMA,
       changedFields: ["system_prompt", "user_prompt", "schema"],
-    },
-    {
-      caseId: "production_prompt_only",
-      transport: candidate.transport,
-      executor: candidate.executor,
-      request: promptOnly,
-      schema: ANY_OBJECT_SCHEMA,
-      changedFields: ["schema"],
-    },
-    {
-      caseId: "production_schema_only",
-      transport: candidate.transport,
-      executor: candidate.executor,
-      request: schemaOnly,
-      schema: dependencies.prepared.schema,
-      changedFields: ["system_prompt", "user_prompt"],
+      budgetClass: "diagnostic_isolation",
     },
     {
       caseId: "production_exact_raw",
@@ -642,6 +684,25 @@ function mandatoryCases(
       request: exactRequest,
       schema: dependencies.prepared.schema,
       changedFields: [],
+      budgetClass: "production_exact",
+    },
+    {
+      caseId: "production_prompt_only",
+      transport: candidate.transport,
+      executor: candidate.executor,
+      request: promptOnly,
+      schema: ANY_OBJECT_SCHEMA,
+      changedFields: ["schema"],
+      budgetClass: "diagnostic_isolation",
+    },
+    {
+      caseId: "production_schema_only",
+      transport: candidate.transport,
+      executor: candidate.executor,
+      request: schemaOnly,
+      schema: dependencies.prepared.schema,
+      changedFields: ["system_prompt", "user_prompt"],
+      budgetClass: "diagnostic_isolation",
     },
   ];
 }
@@ -675,6 +736,7 @@ function reducedCase(
       ),
       schema: dependencies.prepared.schema,
       changedFields: selection.changed_fields,
+      budgetClass: "diagnostic_isolation",
     };
   }
   if (selection.case_id === "reduced_schema") {
@@ -692,6 +754,7 @@ function reducedCase(
       },
       schema: ANY_OBJECT_SCHEMA,
       changedFields: selection.changed_fields,
+      budgetClass: "diagnostic_isolation",
     };
   }
   return {
@@ -706,6 +769,7 @@ function reducedCase(
     ),
     schema: ANY_OBJECT_SCHEMA,
     changedFields: selection.changed_fields,
+    budgetClass: "diagnostic_isolation",
   };
 }
 
@@ -734,11 +798,17 @@ function requestWithJsonSchema(
   };
 }
 
-function budgetFailure(definition: CaseDefinition, completedAt: Date): ConformanceCaseResultV1 {
+function budgetFailure(
+  definition: CaseDefinition,
+  completedAt: Date,
+  effectiveTimeoutMs: number,
+): ConformanceCaseResultV1 {
   return {
     case_id: definition.caseId,
     transport: definition.transport,
     status: "aborted",
+    budget_class: definition.budgetClass,
+    effective_timeout_ms: effectiveTimeoutMs,
     request_sha256: requestSha256(definition.request),
     request_bytes: byteCount(definition.request),
     schema_bytes: byteCount(definition.schema),
@@ -766,6 +836,8 @@ function projectCaseEvidence(value: ConformanceCaseResultV1): ConformanceCaseRes
     case_id: value.case_id,
     transport: value.transport,
     status: value.status,
+    budget_class: value.budget_class,
+    effective_timeout_ms: value.effective_timeout_ms,
     request_sha256: value.request_sha256,
     request_bytes: value.request_bytes,
     schema_bytes: value.schema_bytes,
@@ -804,7 +876,21 @@ function projectSafeError(
   );
 }
 
-function renderMarkdown(report: ConformanceReportV2): string {
+function projectBudgetPlan(
+  value: AgentProviderConformanceBudgetPlanV1,
+): AgentProviderConformanceBudgetPlanV1 {
+  return {
+    budget_version: "1",
+    maximum_submissions: 6,
+    exact_case_timeout_ms: value.exact_case_timeout_ms,
+    isolation_case_timeout_ms: value.isolation_case_timeout_ms,
+    matrix_timeout_ms: value.matrix_timeout_ms,
+    child_timeout_ms: value.child_timeout_ms,
+    lease_duration_seconds: value.lease_duration_seconds,
+  };
+}
+
+function renderMarkdown(report: ConformanceReportV3): string {
   const rows = report.cases
     .map((item) => `| \`${item.case_id}\` | \`${item.transport}\` | \`${item.status}\` | ${item.duration_ms} |`)
     .join("\n");
@@ -814,6 +900,10 @@ function renderMarkdown(report: ConformanceReportV2): string {
     `Status: \`${report.status}\``,
     "",
     `Verdict: \`${report.verdict ?? "none"}\``,
+    "",
+    `Diagnosis: \`${report.diagnosis ?? "none"}\``,
+    "",
+    `Diagnostic budget: \`${report.diagnostic_budget_digest}\``,
     "",
     ...(report.candidate_structured_transport
       ? [`Candidate transport: \`${report.candidate_structured_transport}\``, ""]
@@ -909,9 +999,47 @@ async function sendRawHttpRequest(
         timestamps.tls_at = new Date().toISOString();
       });
     });
-    call.once("error", reject);
+    call.once("error", (error) => {
+      reject(
+        Object.assign(error, {
+          conformance_observation: {
+            ...timestamps,
+            response_activity_observed:
+              timestamps.response_headers_at !== null ||
+              timestamps.first_content_at !== null,
+          },
+        }),
+      );
+    });
     call.end(payload);
   });
+}
+
+function rawPartialObservation(error: unknown): {
+  readonly response_activity_observed: boolean;
+  readonly dns_at: string | null;
+  readonly tcp_at: string | null;
+  readonly tls_at: string | null;
+  readonly response_headers_at: string | null;
+  readonly first_content_at: string | null;
+} | null {
+  const value = (error as { readonly conformance_observation?: unknown })
+    ?.conformance_observation;
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Readonly<Record<string, unknown>>;
+  if (typeof candidate.response_activity_observed !== "boolean") return null;
+  return {
+    response_activity_observed: candidate.response_activity_observed,
+    dns_at: safeTimestamp(candidate.dns_at),
+    tcp_at: safeTimestamp(candidate.tcp_at),
+    tls_at: safeTimestamp(candidate.tls_at),
+    response_headers_at: safeTimestamp(candidate.response_headers_at),
+    first_content_at: safeTimestamp(candidate.first_content_at),
+  };
+}
+
+function safeTimestamp(value: unknown): string | null {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
 function terminalObservation(
@@ -1028,27 +1156,30 @@ function isOperatorErrorCode(value: unknown): value is string {
     "conformance_credential_unavailable",
     "conformance_request_preparation_failed",
     "conformance_parity_failed",
+    "conformance_budget_invalid",
     "conformance_budget_exhausted",
     "conformance_evidence_write_failed",
     "conformance_unclassified_result",
   ]).has(value);
 }
 
-function assertReportInvariants(report: ConformanceReportV2): void {
+function assertReportInvariants(report: ConformanceReportV3): void {
   const blocked =
-    report.schema_version === 2 &&
+    report.schema_version === 3 &&
     report.status === "blocked" &&
     report.submission_count === 0 &&
     report.cases.length === 0 &&
     report.verdict === null &&
+    report.diagnosis === null &&
     report.blocked_stage !== null &&
     (report.blocked_stage !== "request_parity" ||
       report.operator_error_code === "conformance_parity_failed");
   const completed =
-    report.schema_version === 2 &&
+    report.schema_version === 3 &&
     report.status === "completed" &&
     report.submission_count >= 1 &&
-    report.cases.length === report.submission_count &&
+    report.cases.filter((item) => item.status !== "aborted").length ===
+      report.submission_count &&
     report.submission_count <= 6 &&
     report.verdict !== null &&
     report.blocked_stage === null;
@@ -1107,12 +1238,6 @@ function isSuccessStatus(status: number | null): boolean {
   return status !== null && status >= 200 && status < 300;
 }
 
-function boundedLimit(value: number | undefined, fallback: number, maximum: number): number {
-  return Number.isInteger(value) && (value ?? 0) > 0
-    ? Math.min(value as number, maximum)
-    : fallback;
-}
-
 export function classifyConformance(
   results: ReadonlyArray<ConformanceCaseResultV1>,
 ): ConformanceVerdict {
@@ -1127,14 +1252,29 @@ export function classifyConformance(
     return "verified";
   }
 
+  const exact = byCase.get("production_exact_raw");
+  return exact && !externalFailure(exact) && completeBudget(exact)
+    ? "production_contract_incompatible"
+    : "blocked_external";
+}
+
+export function diagnoseConformance(
+  results: ReadonlyArray<ConformanceCaseResultV1>,
+): ConformanceDiagnosis | null {
+  const byCase = new Map(results.map((result) => [result.case_id, result]));
+  const exact = byCase.get("production_exact_raw");
+  if (!exact || succeeded(exact) || externalFailure(exact)) return null;
+  const opposite = byCase.get("production_exact_opposite_mode");
+  if (succeeded(opposite)) return "candidate_transport_incompatible";
   const prompt = byCase.get("production_prompt_only");
   const schema = byCase.get("production_schema_only");
-  if (!prompt || !schema) return "blocked_external";
+  if (!determinateIsolation(prompt) || !determinateIsolation(schema)) {
+    return "inconclusive";
+  }
   if (!succeeded(prompt) && succeeded(schema)) return "prompt_overload";
   if (succeeded(prompt) && !succeeded(schema)) return "schema_incompatible";
   if (succeeded(prompt) && succeeded(schema)) return "prompt_schema_interaction";
-  if (succeeded(byCase.get("reduced_combined"))) return "prompt_overload";
-  return "blocked_external";
+  return "inconclusive";
 }
 
 export function selectReducedCase(
@@ -1164,5 +1304,34 @@ function succeeded(result: ConformanceCaseResultV1 | undefined): boolean {
     result.transport_completed &&
     result.json_parsed &&
     result.contract_valid
+  );
+}
+
+function completeBudget(result: ConformanceCaseResultV1): boolean {
+  return (
+    result.budget_class === "production_exact" &&
+    result.status !== "aborted" &&
+    result.effective_timeout_ms > 0
+  );
+}
+
+function determinateIsolation(result: ConformanceCaseResultV1 | undefined): boolean {
+  return Boolean(
+    result &&
+      result.budget_class === "diagnostic_isolation" &&
+      result.status !== "timed_out" &&
+      result.status !== "aborted" &&
+      !externalFailure(result) &&
+      (succeeded(result) ||
+        (result.transport_completed && isSuccessStatus(result.http_status))),
+  );
+}
+
+function externalFailure(result: ConformanceCaseResultV1): boolean {
+  if (result.status === "timed_out" || result.status === "aborted") return false;
+  if (result.http_status !== null && !isSuccessStatus(result.http_status)) return true;
+  return (
+    !result.transport_completed &&
+    result.safe_error?.code === "conformance_transport_failed"
   );
 }

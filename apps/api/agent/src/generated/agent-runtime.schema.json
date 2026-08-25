@@ -2336,15 +2336,65 @@
       "title": "AgentPlacementHintV2",
       "type": "object"
     },
-    "AgentProviderConformanceInputV1": {
+    "AgentProviderConformanceBudgetPlanV1": {
       "additionalProperties": false,
       "properties": {
-        "diagnostic_case_budget": {
-          "default": 6,
-          "maximum": 6,
-          "minimum": 1,
-          "title": "Diagnostic Case Budget",
+        "budget_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Budget Version",
+          "type": "string"
+        },
+        "child_timeout_ms": {
+          "minimum": 1000,
+          "title": "Child Timeout Ms",
           "type": "integer"
+        },
+        "exact_case_timeout_ms": {
+          "maximum": 900000,
+          "minimum": 1000,
+          "title": "Exact Case Timeout Ms",
+          "type": "integer"
+        },
+        "isolation_case_timeout_ms": {
+          "maximum": 60000,
+          "minimum": 1000,
+          "title": "Isolation Case Timeout Ms",
+          "type": "integer"
+        },
+        "lease_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Lease Duration Seconds",
+          "type": "integer"
+        },
+        "matrix_timeout_ms": {
+          "minimum": 1000,
+          "title": "Matrix Timeout Ms",
+          "type": "integer"
+        },
+        "maximum_submissions": {
+          "const": 6,
+          "default": 6,
+          "title": "Maximum Submissions",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "child_timeout_ms",
+        "exact_case_timeout_ms",
+        "isolation_case_timeout_ms",
+        "lease_duration_seconds",
+        "matrix_timeout_ms"
+      ],
+      "title": "AgentProviderConformanceBudgetPlanV1",
+      "type": "object"
+    },
+    "AgentProviderConformanceInputV2": {
+      "additionalProperties": false,
+      "properties": {
+        "budget_plan": {
+          "$ref": "#/$defs/AgentProviderConformanceBudgetPlanV1"
         },
         "evidence_destination_id": {
           "maxLength": 160,
@@ -2361,18 +2411,19 @@
           "type": "string"
         },
         "schema_version": {
-          "const": "1",
-          "default": "1",
+          "const": "2",
+          "default": "2",
           "title": "Schema Version",
           "type": "string"
         }
       },
       "required": [
+        "budget_plan",
         "evidence_destination_id",
         "frozen_agent_request",
         "frozen_agent_request_digest"
       ],
-      "title": "AgentProviderConformanceInputV1",
+      "title": "AgentProviderConformanceInputV2",
       "type": "object"
     },
     "AgentReferenceSummary": {
