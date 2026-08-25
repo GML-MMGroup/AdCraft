@@ -560,7 +560,7 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it.each<"image" | "video">(["image", "video"])(
-    "uses the diffusion loader while a %s node is generating",
+    "uses the golden star diffusion loader while a %s node is generating",
     (nodeType) => {
       const node = makeNode(nodeType, "draft");
       const { container } = render(
@@ -573,13 +573,51 @@ describe("AgentCanvasNodeCard", () => {
 
       expect(screen.getByTestId(`agent-canvas-node-${nodeType}-node`).classList.contains("agent-canvas-node--working")).toBe(true);
       const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
-      expect(loader.getAttribute("data-variant")).toBe("diffusion");
-      expect((loader as HTMLElement).style.getPropertyValue("--iml-size")).toBe("100%");
+      expect(loader.getAttribute("data-variant")).toBe("star-diffusion");
+      expect(loader.querySelectorAll(".agent-canvas-node__generation-star")).toHaveLength(28);
+      expect(container.querySelector(".iml-loader")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
       expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
     },
   );
+
+  it("keeps the golden star loader transparent and motion-aware", () => {
+    const nodeCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css"),
+      "utf8",
+    );
+    const pageCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+    const starAsset = readFileSync(
+      resolve(process.cwd(), "public/imgs/node-icons/solar-star-outline.svg"),
+      "utf8",
+    );
+    const mediaOverlayRule = nodeCss.match(
+      /\.agent-canvas-node__working--media\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const loaderRule = nodeCss.match(
+      /\.agent-canvas-node__generation-loader\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const starRule = nodeCss.match(
+      /\.agent-canvas-node__generation-star\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(mediaOverlayRule).toContain("background: transparent");
+    expect(loaderRule).toContain("color: #e1a750");
+    expect(starRule).toContain('mask: url("/imgs/node-icons/solar-star-outline.svg")');
+    expect(nodeCss).toContain("@keyframes agent-canvas-star-diffusion");
+    expect(nodeCss).toContain("drop-shadow(0 0 11px rgba(225, 167, 80, 0.58))");
+    expect(nodeCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-star[\s\S]*?animation: none/,
+    );
+    expect(pageCss).toMatch(
+      /\.agent-canvas-board\.is-interacting :is\([\s\S]*?\.agent-canvas-node__generation-star[\s\S]*?animation-play-state: paused/,
+    );
+    expect(starAsset).toContain('viewBox="0 0 24 24"');
+  });
 
   it("contains complete image outputs while keeping video frames full-bleed", () => {
     const imageView = render(

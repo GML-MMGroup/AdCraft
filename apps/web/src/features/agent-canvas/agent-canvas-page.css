@@ -107,6 +107,7 @@
 
 .agent-canvas-board.is-interacting :is(
   .agent-canvas-audio-player__waveform i,
+  .agent-canvas-node__generation-star,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen
 ) {
