@@ -182,13 +182,13 @@
   align-items: center;
   gap: 6px;
   padding: 5px;
-  color: #4f5267;
-  background: rgb(248 249 253 / 78%);
-  border: 1px solid rgb(255 255 255 / 72%);
+  color: #dedede;
+  background: #151515;
+  border: 1px solid #353535;
   border-radius: 8px;
-  box-shadow: 0 14px 34px rgb(43 43 67 / 16%);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 42%);
   transform: translateX(-50%);
-  backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: none;
 }
 
 .agent-canvas-toolbar > button,
@@ -210,13 +210,13 @@
 .agent-canvas-toolbar__add > button:hover,
 .agent-canvas-toolbar__layout > button:hover:not(:disabled),
 .agent-canvas-toolbar button.is-active {
-  color: var(--brand-hover);
-  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: #fff;
+  background: #303030;
 }
 
 .agent-canvas-toolbar__run {
-  color: var(--text-inverse) !important;
-  background: var(--brand) !important;
+  color: #111 !important;
+  background: #e7e7e7 !important;
 }
 
 .agent-canvas-toolbar > button:disabled,
@@ -311,11 +311,11 @@
   display: grid;
   width: 164px;
   padding: 6px;
-  background: rgb(249 250 253 / 96%);
-  border: 1px solid rgb(255 255 255 / 76%);
+  background: #1d1d1d;
+  border: 1px solid #3a3a3a;
   border-radius: 7px;
-  box-shadow: 0 18px 40px rgb(35 35 58 / 20%);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
 }
 
 .agent-canvas-add-menu {
@@ -331,7 +331,7 @@
   grid-template-columns: 24px 1fr;
   gap: 9px;
   padding: 0 10px;
-  color: #34374c;
+  color: #cfcfcf;
   text-align: left;
   background: transparent;
   border: 0;
@@ -340,7 +340,8 @@
 }
 
 .agent-canvas-node-picker button:hover {
-  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: #fff;
+  background: #2d2d2d;
 }
 
 .agent-canvas-node-picker .agent-canvas-node-icon {
@@ -992,7 +993,6 @@
 }
 
 :root :is(
-  .agent-canvas-toolbar,
   .agent-canvas-add-menu,
   .agent-canvas-context-menu,
   .agent-canvas-inspector,
@@ -1001,6 +1001,44 @@
   color: #e4e5ee;
   background: rgb(24 27 35 / 92%);
   border-color: rgb(255 255 255 / 12%);
+}
+
+:root .agent-canvas-toolbar {
+  color: #dedede;
+  background: #151515;
+  border-color: #353535;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-toolbar > button:hover:not(:disabled),
+:root .agent-canvas-toolbar__add > button:hover,
+:root .agent-canvas-toolbar__layout > button:hover:not(:disabled),
+:root .agent-canvas-toolbar button.is-active {
+  color: #fff;
+  background: #303030;
+}
+
+:root .agent-canvas-toolbar__run {
+  color: #111 !important;
+  background: #e7e7e7 !important;
+}
+
+:root .agent-canvas-add-menu {
+  color: #dedede;
+  background: #1d1d1d;
+  border-color: #3a3a3a;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-add-menu button {
+  color: #cfcfcf;
+}
+
+:root .agent-canvas-add-menu button:hover {
+  color: #fff;
+  background: #2d2d2d;
 }
 
 :root :is(

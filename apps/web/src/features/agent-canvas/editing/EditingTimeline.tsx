@@ -277,10 +277,23 @@ export function EditingTimeline({
         />
         <section className="agent-editing-timeline__track" aria-label="Video track" role="group">
           <TrackLabel icon={<VideoIcon />} count={inputs.videos.length}>Video Track</TrackLabel>
-          <div className="agent-editing-timeline__lane" onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            onPlayheadChange(Math.max(0, Math.min(timelineDuration, ((event.clientX - rect.left) / rect.width) * timelineDuration)));
-          }}>
+          <div
+            className="agent-editing-timeline__lane"
+            role="slider"
+            tabIndex={0}
+            aria-label="Seek video track"
+            aria-valuemin={0}
+            aria-valuemax={timelineDuration}
+            aria-valuenow={playheadSeconds}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              onPlayheadChange(Math.max(0, Math.min(timelineDuration, ((event.clientX - rect.left) / rect.width) * timelineDuration)));
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1));
+              if (event.key === "ArrowRight") onPlayheadChange(Math.min(timelineDuration, playheadSeconds + 1));
+            }}
+          >
             {inputs.videos.length === 0 ? <span className="agent-editing-timeline__empty">Connect ready Video nodes to build the sequence.</span> : inputs.videos.map((input, index) => {
               const duration = clipDuration(input);
               const left = (elapsed / timelineDuration) * 100;
@@ -292,11 +305,25 @@ export function EditingTimeline({
         </section>
         <section className="agent-editing-timeline__track" aria-label="Audio track" role="group">
           <TrackLabel icon={inputs.bgm ? <UnmuteIcon /> : <MuteIcon />}>Audio Track</TrackLabel>
-          <div className="agent-editing-timeline__lane agent-editing-timeline__lane--audio" onClick={(event) => {
-            if (inputs.bgm) onSelectReference(inputs.bgm.referenceId);
-            const rect = event.currentTarget.getBoundingClientRect();
-            onPlayheadChange(Math.max(0, Math.min(timelineDuration, ((event.clientX - rect.left) / rect.width) * timelineDuration)));
-          }}>
+          <div
+            className="agent-editing-timeline__lane agent-editing-timeline__lane--audio"
+            role="slider"
+            tabIndex={0}
+            aria-label="Seek audio track"
+            aria-valuemin={0}
+            aria-valuemax={timelineDuration}
+            aria-valuenow={playheadSeconds}
+            onClick={(event) => {
+              if (inputs.bgm) onSelectReference(inputs.bgm.referenceId);
+              const rect = event.currentTarget.getBoundingClientRect();
+              onPlayheadChange(Math.max(0, Math.min(timelineDuration, ((event.clientX - rect.left) / rect.width) * timelineDuration)));
+            }}
+            onKeyDown={(event) => {
+              if (inputs.bgm && (event.key === "Enter" || event.key === " ")) onSelectReference(inputs.bgm.referenceId);
+              if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1));
+              if (event.key === "ArrowRight") onPlayheadChange(Math.min(timelineDuration, playheadSeconds + 1));
+            }}
+          >
             {inputs.bgm ? (
               <button type="button" className={`agent-editing-timeline__audio-clip${selectedBgm ? " is-selected" : ""}`} aria-label="Select BGM" aria-pressed={Boolean(selectedBgm)}>
                 <span>{inputs.bgm.node?.title || inputs.bgm.asset?.display_name || "Campaign BGM"}</span>
