@@ -277,6 +277,9 @@ export function AgentCanvasEditingPanel({
               onSelectReference={setSelectedReferenceState}
               onMoveVideo={editing.moveVideo}
               onUpdateVideo={editing.updateVideo}
+              onStageVideo={editing.stageVideoUpdate}
+              onCommitStagedManifest={editing.commitStagedManifest}
+              onDiscardStagedManifest={editing.discardStagedManifest}
               onSetBgm={editing.setBgm}
               onSetBgmVolume={editing.setBgmVolume}
             />

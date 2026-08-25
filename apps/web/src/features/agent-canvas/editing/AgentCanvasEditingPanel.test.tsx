@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
@@ -58,7 +58,15 @@ function asset(
 }
 
 describe("AgentCanvasEditingPanel", () => {
-  afterEach(() => cleanup());
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it("shows nodes omitted by the backend composition plan without adding controls", () => {
     const omittedVideo = {
@@ -216,7 +224,7 @@ describe("AgentCanvasEditingPanel", () => {
           updated_at: "2026-07-30T00:00:00Z",
         },
       ],
-      assets: [asset("asset-video", "video"), asset("asset-audio", "audio")],
+      assets: [{ ...asset("asset-video", "video"), media_url: null }, asset("asset-audio", "audio")],
     };
     const patchNode = vi.fn().mockResolvedValue(undefined);
 
@@ -235,7 +243,12 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Audio Track")).toBeTruthy();
     expect(screen.getByRole("slider", { name: "Timeline playhead" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Play preview" })).toBeTruthy();
-    expect(screen.getByText("Selected clip")).toBeTruthy();
+    expect(screen.queryByText("Selected clip")).toBeNull();
+    const clipProperties = screen.getByRole("toolbar", { name: "Clip properties" });
+    expect(within(clipProperties).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
+    expect(within(clipProperties).queryByRole("spinbutton", { name: "Trim end" })).toBeNull();
+    expect(screen.getByRole("slider", { name: "Trim start Shot 1" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Trim end Shot 1" })).toBeTruthy();
 
     expect(screen.getByText("Shot 1")).toBeTruthy();
     expect(screen.getByText("Transition")).toBeTruthy();
