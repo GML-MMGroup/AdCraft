@@ -97,8 +97,7 @@
   .agent-canvas-node__video-play,
   .agent-canvas-audio-player,
   .agent-canvas-node__header,
-  .agent-canvas-node__fallback-warning,
-  .agent-canvas-node__error
+  .agent-canvas-node__fallback-warning
 ) {
   box-shadow: none;
   backdrop-filter: none;
