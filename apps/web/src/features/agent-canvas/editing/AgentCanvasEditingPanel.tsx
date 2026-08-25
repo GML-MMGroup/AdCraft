@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   CloseIcon,
@@ -19,7 +19,7 @@ import type {
 } from "../../../types-v2.ts";
 import { EditingPreviewStage } from "./EditingPreviewStage.tsx";
 import { EditingTimeline } from "./EditingTimeline.tsx";
-import { buildTimelineSegments } from "./editingTimelineMath.ts";
+import { buildPlayableEditingSequence } from "./editingPlayableSequence.ts";
 import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
 import "./agent-canvas-editing.css";
 
@@ -67,28 +67,13 @@ export function AgentCanvasEditingPanel({
   const canReuseExport = editing.exportReadable && editing.terminalExport?.output_asset_id
     ? editing.terminalExport
     : null;
-  const readyVideos = editing.inputs.videos.filter((input) =>
-    input.entry.enabled
-    && (input.node === null || input.node.status === "ready")
-    && input.asset?.status === "ready",
-  ).length;
-  const previewSegments = buildTimelineSegments(editing.inputs.videos.map((input) => ({
-    referenceId: input.referenceId,
-    sourceDuration: input.asset?.duration_seconds
-      ?? input.entry.trim_end_seconds
-      ?? input.entry.trim_start_seconds + 0.5,
-    trimStart: input.entry.trim_start_seconds,
-    trimEnd: input.entry.trim_end_seconds,
-  })));
-  const sequenceDuration = previewSegments.at(-1)?.timelineEnd ?? 0;
-  const timelineDuration = sequenceDuration > 0
-    ? sequenceDuration
-    : Math.max(editing.content?.preview.estimated_duration_seconds ?? 0, 1);
-  const hasPlayableDraft = editing.inputs.videos.some((input) => (
-    input.entry.enabled
-    && input.asset?.status === "ready"
-    && Boolean(input.asset.media_url)
-  ));
+  const playableSequence = useMemo(
+    () => buildPlayableEditingSequence(editing.inputs.videos),
+    [editing.inputs.videos],
+  );
+  const readyVideos = playableSequence.videos.length;
+  const timelineDuration = playableSequence.duration;
+  const hasPlayableDraft = playableSequence.videos.length > 0;
   const selectedReferenceId = selectedReferenceState
     && (editing.inputs.videos.some((input) => input.referenceId === selectedReferenceState)
       || editing.inputs.bgm?.referenceId === selectedReferenceState)
@@ -179,6 +164,7 @@ export function AgentCanvasEditingPanel({
             <div className="agent-editing-panel__preview">
               <EditingPreviewStage
                 inputs={editing.inputs}
+                sequence={playableSequence}
                 outputAspectRatio={editing.content.manifest.output.aspect_ratio}
                 outputResolution={editing.content.manifest.output.resolution}
                 exportedAsset={editing.outputAsset}
@@ -259,7 +245,7 @@ export function AgentCanvasEditingPanel({
 
             <EditingTimeline
               inputs={editing.inputs}
-              timelineDuration={timelineDuration}
+              sequence={playableSequence}
               playheadSeconds={playheadSeconds}
               selectedReferenceId={selectedReferenceId}
               exportRunning={exportRunning}

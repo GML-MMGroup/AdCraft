@@ -4,17 +4,18 @@ import { MuteIcon, UnmuteIcon, VideoIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
 import { ClipPropertiesToolbar } from "./ClipPropertiesToolbar.tsx";
-import {
-  buildTimelineSegments,
-} from "./editingTimelineMath.ts";
 import { EditingTimelineViewport } from "./EditingTimelineViewport.tsx";
 import { frameStripActiveIndices } from "./editingTimelineVisibility.ts";
 import type { EditingInputs } from "./editingModel.ts";
+import {
+  buildPlayableEditingSequence,
+  type PlayableEditingSequence,
+} from "./editingPlayableSequence.ts";
 import { VideoTimelineClip } from "./VideoTimelineClip.tsx";
 
 export interface EditingTimelineProps {
   inputs: EditingInputs;
-  timelineDuration: number;
+  sequence?: PlayableEditingSequence;
   playheadSeconds: number;
   selectedReferenceId: string | null;
   exportRunning: boolean;
@@ -31,6 +32,19 @@ export interface EditingTimelineProps {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function inputLabel(input: EditingInputs["videos"][number], index: number): string {
+  return input.node?.title || input.asset?.display_name || `Shot ${index + 1}`;
+}
+
+function inactiveStatus(input: EditingInputs["videos"][number]): string {
+  if (!input.entry.enabled) return "Disabled";
+  if (input.node && input.node.status !== "ready") return `Source ${input.node.status}`;
+  if (!input.asset) return "Asset unavailable";
+  if (input.asset.status !== "ready") return `Asset ${input.asset.status}`;
+  if (!input.asset.media_url) return "Media unavailable";
+  return "Inactive";
 }
 
 function TrackLabel({
@@ -76,17 +90,14 @@ export function EditingTimeline({
   onUpdateVideo,
   playheadSeconds,
   selectedReferenceId,
-  timelineDuration,
+  sequence,
 }: EditingTimelineProps) {
-  const segments = useMemo(() => buildTimelineSegments(inputs.videos.map((input) => ({
-    referenceId: input.referenceId,
-    sourceDuration: input.asset?.duration_seconds
-      ?? input.entry.trim_end_seconds
-      ?? input.entry.trim_start_seconds + 0.5,
-    trimStart: input.entry.trim_start_seconds,
-    trimEnd: input.entry.trim_end_seconds,
-  }))), [inputs.videos]);
-  const sequenceDuration = segments.at(-1)?.timelineEnd ?? Math.max(0, timelineDuration);
+  const activeSequence = useMemo(
+    () => sequence ?? buildPlayableEditingSequence(inputs.videos),
+    [inputs.videos, sequence],
+  );
+  const { segments } = activeSequence;
+  const sequenceDuration = activeSequence.duration;
   const selectedVideoIndex = inputs.videos.findIndex((input) => input.referenceId === selectedReferenceId);
   const selectedVideo = selectedVideoIndex >= 0 ? inputs.videos[selectedVideoIndex] : null;
   const selectedBgm = inputs.bgm?.referenceId === selectedReferenceId ? inputs.bgm : null;
@@ -107,7 +118,7 @@ export function EditingTimeline({
           return (
             <div className="agent-editing-timeline__lanes">
               <section className="agent-editing-timeline__track" aria-label="Video track" role="group">
-                <TrackLabel icon={<VideoIcon />} count={inputs.videos.length}>Video Track</TrackLabel>
+                <TrackLabel icon={<VideoIcon />} count={activeSequence.videos.length}>Video Track</TrackLabel>
                 <div
                   className="agent-editing-timeline__lane"
                   style={{ width: viewport.contentWidth }}
@@ -126,14 +137,16 @@ export function EditingTimeline({
                     if (event.key === "ArrowRight") onPlayheadChange(Math.min(sequenceDuration, playheadSeconds + 1));
                   }}
                 >
-                  {inputs.videos.length === 0 ? (
+                  {activeSequence.videos.length === 0 ? (
                     <span className="agent-editing-timeline__empty">Connect ready Video nodes to build the sequence.</span>
-                  ) : inputs.videos.map((input, index) => (
+                  ) : activeSequence.videos.map((input, index) => {
+                    const manifestIndex = inputs.videos.indexOf(input);
+                    return (
                     <VideoTimelineClip
                       key={input.referenceId}
                       active={activeFrames.has(index)}
                       disabled={exportRunning}
-                      index={index}
+                      index={manifestIndex}
                       input={input}
                       onCommitStagedManifest={onCommitStagedManifest}
                       onDiscardStagedManifest={onDiscardStagedManifest}
@@ -143,7 +156,8 @@ export function EditingTimeline({
                       segment={segments[index]!}
                       selected={input.referenceId === selectedReferenceId}
                     />
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
@@ -181,6 +195,44 @@ export function EditingTimeline({
           );
         }}
       </EditingTimelineViewport>
+
+      {activeSequence.inactiveVideos.length ? (
+        <section className="agent-editing-timeline__inactive" role="region" aria-label="Inactive sources">
+          <header>
+            <strong>Inactive sources</strong>
+            <span>{activeSequence.inactiveVideos.length}</span>
+          </header>
+          <ul>
+            {activeSequence.inactiveVideos.map((input) => {
+              const manifestIndex = inputs.videos.indexOf(input);
+              const label = inputLabel(input, manifestIndex);
+              return (
+                <li key={input.referenceId}>
+                  <button
+                    type="button"
+                    aria-label={`Inspect ${label}`}
+                    aria-pressed={input.referenceId === selectedReferenceId}
+                    onClick={() => onSelectReference(input.referenceId)}
+                  >
+                    <strong>{label}</strong>
+                    <span>{inactiveStatus(input)}</span>
+                  </button>
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={`Enable ${label}`}
+                      checked={input.entry.enabled}
+                      disabled={exportRunning}
+                      onChange={(event) => onUpdateVideo(input.referenceId, { enabled: event.currentTarget.checked })}
+                    />
+                    <span>Enabled</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {selectedVideo ? (
         <ClipPropertiesToolbar

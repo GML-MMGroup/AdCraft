@@ -844,6 +844,90 @@
   accent-color: #dedede;
 }
 
+.agent-editing-timeline__inactive {
+  display: grid;
+  gap: 6px;
+  padding: 7px 8px;
+  border-top: 1px solid #303030;
+}
+
+.agent-editing-timeline__inactive > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #8d8d8d;
+  font-size: 10px;
+}
+
+.agent-editing-timeline__inactive > header strong {
+  color: #bdbdbd;
+  font-weight: 650;
+}
+
+.agent-editing-timeline__inactive ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+  list-style: none;
+}
+
+.agent-editing-timeline__inactive li {
+  display: flex;
+  min-width: 180px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  background: #1d1d1d;
+  border: 1px solid #343434;
+  border-radius: 3px;
+}
+
+.agent-editing-timeline__inactive li > button {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  flex: 1;
+  color: #ddd;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.agent-editing-timeline__inactive li > button[aria-pressed="true"] {
+  color: #fff;
+}
+
+.agent-editing-timeline__inactive li > button strong,
+.agent-editing-timeline__inactive li > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-editing-timeline__inactive li > button strong {
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.agent-editing-timeline__inactive li > button span,
+.agent-editing-timeline__inactive li > label {
+  color: #858585;
+  font-size: 9px;
+}
+
+.agent-editing-timeline__inactive li > label {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.agent-editing-timeline__inactive input {
+  accent-color: #dedede;
+}
+
 .agent-editing-clip-properties {
   display: flex;
   min-height: 46px;

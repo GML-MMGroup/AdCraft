@@ -1,12 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import { VideoIcon } from "../../../icons.tsx";
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
-import {
-  buildTimelineSegments,
-  mapTimelineTimeToSource,
-} from "./editingTimelineMath.ts";
+import { mapTimelineTimeToSource } from "./editingTimelineMath.ts";
 import type { EditingInputs } from "./editingModel.ts";
+import {
+  buildPlayableEditingSequence,
+  type PlayableEditingSequence,
+} from "./editingPlayableSequence.ts";
+import { fitContainedFrame } from "./editingPreviewSizing.ts";
 
 const MEDIA_SYNC_TOLERANCE_SECONDS = 0.2;
 const TIMELINE_END_TOLERANCE_SECONDS = 0.01;
@@ -15,6 +25,7 @@ type PreviewView = "draft" | "export";
 
 export interface EditingPreviewStageProps {
   inputs: EditingInputs;
+  sequence?: PlayableEditingSequence;
   outputAspectRatio: string | null;
   outputResolution: string | null;
   exportedAsset: ProjectAssetSummaryV2 | null;
@@ -52,27 +63,6 @@ function assetRatio(asset: ProjectAssetSummaryV2 | null): [number, number] | nul
   return positivePair(asset?.width ?? null, asset?.height ?? null);
 }
 
-function segmentInputs(inputs: EditingInputs) {
-  return inputs.videos.map((input) => ({
-    referenceId: input.referenceId,
-    sourceDuration: input.asset?.duration_seconds
-      ?? input.entry.trim_end_seconds
-      ?? input.entry.trim_start_seconds + 0.5,
-    trimStart: input.entry.trim_start_seconds,
-    trimEnd: input.entry.trim_end_seconds,
-  }));
-}
-
-function currentSourceMatches(media: HTMLMediaElement, expectedUrl: string): boolean {
-  const currentSource = media.currentSrc;
-  if (!currentSource) return true;
-  try {
-    return currentSource === new URL(expectedUrl, document.baseURI).href;
-  } catch {
-    return false;
-  }
-}
-
 function seekWithinTolerance(media: HTMLMediaElement, seconds: number) {
   if (Math.abs(media.currentTime - seconds) <= MEDIA_SYNC_TOLERANCE_SECONDS) return;
   try {
@@ -96,33 +86,94 @@ export function EditingPreviewStage({
   outputResolution,
   playheadSeconds,
   playing,
+  sequence,
 }: EditingPreviewStageProps) {
   const [view, setView] = useState<PreviewView>("draft");
+  const previewId = useId();
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const draftTabRef = useRef<HTMLButtonElement | null>(null);
+  const exportTabRef = useRef<HTMLButtonElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
   const playAttemptRef = useRef(0);
+  const loadGenerationRef = useRef<{
+    generation: number;
+    identity: string | null;
+    token: string | null;
+  }>({ generation: 0, identity: null, token: null });
+  const activeLoadTokenRef = useRef<string | null>(null);
   const playingRef = useRef(playing);
   const onPlayingChangeRef = useRef(onPlayingChange);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   playingRef.current = playing;
   onPlayingChangeRef.current = onPlayingChange;
 
-  const segments = useMemo(() => buildTimelineSegments(segmentInputs(inputs)), [inputs]);
-  const sequenceDuration = segments.at(-1)?.timelineEnd ?? 0;
-  const mapping = mapTimelineTimeToSource(segments, playheadSeconds);
+  const activeSequence = useMemo(
+    () => sequence ?? buildPlayableEditingSequence(inputs.videos),
+    [inputs.videos, sequence],
+  );
+  const sequenceDuration = activeSequence.duration;
+  const mapping = mapTimelineTimeToSource(activeSequence.segments, playheadSeconds);
   const activeInput = mapping
-    ? inputs.videos.find((input) => input.referenceId === mapping.referenceId) ?? null
+    ? activeSequence.videos.find((input) => input.referenceId === mapping.referenceId) ?? null
     : null;
-  const activeMediaUrl = activeInput?.entry.enabled ? activeInput.asset?.media_url ?? null : null;
+  const activeMediaUrl = activeInput?.asset?.media_url ?? null;
+  const loadIdentity = activeInput && activeMediaUrl
+    ? JSON.stringify([activeInput.referenceId, activeMediaUrl])
+    : null;
+  if (loadGenerationRef.current.identity !== loadIdentity) {
+    const generation = loadGenerationRef.current.generation + 1;
+    loadGenerationRef.current = {
+      generation,
+      identity: loadIdentity,
+      token: loadIdentity
+        ? JSON.stringify([generation, activeInput?.referenceId, activeMediaUrl])
+        : null,
+    };
+  }
+  const loadToken = loadGenerationRef.current.token;
   const exportedMediaUrl = exportedAsset?.status === "ready" ? exportedAsset.media_url : null;
   const ratio = parseAspectRatio(outputAspectRatio)
     ?? parseResolution(outputResolution)
     ?? assetRatio(exportedAsset)
     ?? assetRatio(activeInput?.asset ?? null)
     ?? [16, 9];
+  const ratioValue = ratio[0] / ratio[1];
+  const frameSize = fitContainedFrame(canvasSize.width, canvasSize.height, ratioValue);
   const bgm = inputs.bgm;
   const bgmUrl = bgm?.asset?.status === "ready" ? bgm.asset.media_url : null;
   const atTimelineEnd = sequenceDuration > 0
     && playheadSeconds >= sequenceDuration - TIMELINE_END_TOLERANCE_SECONDS;
+
+  useLayoutEffect(() => {
+    activeLoadTokenRef.current = loadToken;
+    return () => {
+      if (activeLoadTokenRef.current === loadToken) activeLoadTokenRef.current = null;
+    };
+  }, [loadToken]);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const measure = () => {
+      const bounds = canvas.getBoundingClientRect();
+      const next = {
+        width: Math.max(0, bounds.width),
+        height: Math.max(0, bounds.height),
+      };
+      setCanvasSize((current) => (
+        current.width === next.width && current.height === next.height ? current : next
+      ));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(canvas);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   useEffect(() => {
     if (!exportedMediaUrl && view === "export") setView("draft");
@@ -143,6 +194,8 @@ export function EditingPreviewStage({
       || !mapping
       || !activeInput
       || !activeMediaUrl
+      || !loadToken
+      || video.dataset.loadToken !== loadToken
       || video.getAttribute("src") !== activeMediaUrl
     ) {
       pauseMedia(video);
@@ -182,6 +235,7 @@ export function EditingPreviewStage({
     mapping,
     muted,
     playing,
+    loadToken,
     view,
   ]);
 
@@ -202,12 +256,13 @@ export function EditingPreviewStage({
     audio.muted = muted;
     audio.volume = Math.min(1, Math.max(0, bgm.entry.volume));
 
-    if (view === "draft" && bgm.entry.enabled && withinTrim) {
+    if (view === "draft" && sequenceDuration > 0 && bgm.entry.enabled && withinTrim) {
       seekWithinTolerance(audio, bgmSeconds);
     }
 
     if (
       view !== "draft"
+      || sequenceDuration <= 0
       || !bgm.entry.enabled
       || !withinTrim
       || !playing
@@ -224,26 +279,28 @@ export function EditingPreviewStage({
         // Draft playback remains usable when browser autoplay policy blocks BGM.
       }
     }
-  }, [atTimelineEnd, bgm, bgmUrl, muted, playheadSeconds, playing, view]);
+  }, [atTimelineEnd, bgm, bgmUrl, muted, playheadSeconds, playing, sequenceDuration, view]);
+
+  const isActiveLoadEvent = (video: HTMLVideoElement): boolean => (
+    loadToken !== null
+    && video.dataset.loadToken === loadToken
+    && activeLoadTokenRef.current === loadToken
+  );
 
   const syncActiveVideo = (video: HTMLVideoElement) => {
     if (
-      video !== videoRef.current
+      !isActiveLoadEvent(video)
       || !mapping
       || !activeMediaUrl
-      || video.getAttribute("src") !== activeMediaUrl
-      || !currentSourceMatches(video, activeMediaUrl)
     ) return;
     seekWithinTolerance(video, mapping.sourceSeconds);
   };
 
   const handleTimeUpdate = (video: HTMLVideoElement) => {
     if (
-      video !== videoRef.current
+      !isActiveLoadEvent(video)
       || !mapping
       || !activeMediaUrl
-      || video.getAttribute("src") !== activeMediaUrl
-      || !currentSourceMatches(video, activeMediaUrl)
     ) return;
 
     const reachedSegmentEnd = video.currentTime
@@ -264,11 +321,9 @@ export function EditingPreviewStage({
 
   const handleEnded = (video: HTMLVideoElement) => {
     if (
-      video !== videoRef.current
+      !isActiveLoadEvent(video)
       || !mapping
       || !activeMediaUrl
-      || video.getAttribute("src") !== activeMediaUrl
-      || !currentSourceMatches(video, activeMediaUrl)
     ) return;
     onPlayheadChange(mapping.timelineEnd);
     if (mapping.timelineEnd >= sequenceDuration - TIMELINE_END_TOLERANCE_SECONDS) {
@@ -276,15 +331,37 @@ export function EditingPreviewStage({
     }
   };
 
-  const showDraft = () => {
-    setView("draft");
-    onPlayingChange(false);
-  };
-  const showExport = () => {
+  const selectView = (next: PreviewView) => {
     pauseMedia(videoRef.current);
     pauseMedia(bgmRef.current);
     onPlayingChange(false);
-    setView("export");
+    setView(next);
+  };
+  const handleTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    current: PreviewView,
+  ) => {
+    let next: PreviewView | null = null;
+    if (event.key === "Home") next = "draft";
+    if (event.key === "End") next = "export";
+    if (event.key === "ArrowRight") next = current === "draft" ? "export" : "draft";
+    if (event.key === "ArrowLeft") next = current === "draft" ? "export" : "draft";
+    if (!next) return;
+    event.preventDefault();
+    selectView(next);
+    (next === "draft" ? draftTabRef.current : exportTabRef.current)?.focus();
+  };
+
+  const draftTabId = `${previewId}-draft-tab`;
+  const exportTabId = `${previewId}-export-tab`;
+  const draftPanelId = `${previewId}-draft-panel`;
+  const exportPanelId = `${previewId}-export-panel`;
+  const frameStyle = {
+    aspectRatio: `${ratio[0]} / ${ratio[1]}`,
+    width: frameSize.width,
+    height: frameSize.height,
+    maxWidth: "100%",
+    maxHeight: "100%",
   };
 
   return (
@@ -294,36 +371,51 @@ export function EditingPreviewStage({
     >
       {exportedMediaUrl ? (
         <div className="agent-editing-preview__views" role="tablist" aria-label="Preview source">
-          <button type="button" role="tab" aria-selected={view === "draft"} onClick={showDraft}>Draft preview</button>
-          <button type="button" role="tab" aria-selected={view === "export"} onClick={showExport}>Exported output</button>
+          <button
+            ref={draftTabRef}
+            id={draftTabId}
+            type="button"
+            role="tab"
+            tabIndex={view === "draft" ? 0 : -1}
+            aria-selected={view === "draft"}
+            aria-controls={draftPanelId}
+            onKeyDown={(event) => handleTabKeyDown(event, "draft")}
+            onClick={() => selectView("draft")}
+          >Draft preview</button>
+          <button
+            ref={exportTabRef}
+            id={exportTabId}
+            type="button"
+            role="tab"
+            tabIndex={view === "export" ? 0 : -1}
+            aria-selected={view === "export"}
+            aria-controls={exportPanelId}
+            onKeyDown={(event) => handleTabKeyDown(event, "export")}
+            onClick={() => selectView("export")}
+          >Exported output</button>
         </div>
       ) : <span className="agent-editing-preview__label">Draft preview</span>}
       <div
+        ref={canvasRef}
         className="agent-editing-preview__canvas"
         style={{ display: "grid", width: "100%", minHeight: 0, flex: 1, overflow: "hidden", placeItems: "center" }}
       >
         <div
+          id={exportedMediaUrl ? draftPanelId : undefined}
+          role={exportedMediaUrl ? "tabpanel" : undefined}
+          aria-labelledby={exportedMediaUrl ? draftTabId : undefined}
+          hidden={Boolean(exportedMediaUrl) && view !== "draft"}
           className="agent-editing-preview__frame"
-          data-testid="editing-preview-frame"
-          style={{ aspectRatio: `${ratio[0]} / ${ratio[1]}`, width: "100%", maxWidth: "100%", maxHeight: "100%" }}
+          data-testid={view === "draft" ? "editing-preview-frame" : undefined}
+          style={frameStyle}
         >
-          {view === "export" && exportedMediaUrl ? (
+          {activeMediaUrl ? (
             <video
-              className="agent-editing-preview__video agent-editing-preview__video--contain"
-              data-testid="editing-preview-export"
-              src={exportedMediaUrl}
-              poster={exportedAsset?.preview_url ?? undefined}
-              controls
-              playsInline
-              preload="metadata"
-              muted={muted}
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          ) : activeMediaUrl ? (
-            <video
+              key={loadToken}
               ref={videoRef}
               className="agent-editing-preview__video agent-editing-preview__video--contain"
               data-testid="editing-preview-video"
+              data-load-token={loadToken ?? undefined}
               src={activeMediaUrl}
               poster={activeInput?.asset?.preview_url ?? undefined}
               aria-label="Draft timeline preview"
@@ -341,6 +433,29 @@ export function EditingPreviewStage({
             </div>
           )}
         </div>
+        {exportedMediaUrl ? (
+          <div
+            id={exportPanelId}
+            role="tabpanel"
+            aria-labelledby={exportTabId}
+            hidden={view !== "export"}
+            className="agent-editing-preview__frame"
+            data-testid={view === "export" ? "editing-preview-frame" : undefined}
+            style={frameStyle}
+          >
+            <video
+              className="agent-editing-preview__video agent-editing-preview__video--contain"
+              data-testid="editing-preview-export"
+              src={exportedMediaUrl}
+              poster={exportedAsset?.preview_url ?? undefined}
+              controls
+              playsInline
+              preload="metadata"
+              muted={muted}
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            />
+          </div>
+        ) : null}
       </div>
       {bgmUrl ? (
         <audio

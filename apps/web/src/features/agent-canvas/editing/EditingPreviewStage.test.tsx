@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
 import type { EditingInputs } from "./editingModel.ts";
 import { EditingPreviewStage } from "./EditingPreviewStage.tsx";
+import { fitContainedFrame } from "./editingPreviewSizing.ts";
 
 function asset(
   assetId: string,
@@ -95,6 +96,75 @@ describe("EditingPreviewStage", () => {
     width: 1080,
     height: 1920,
   });
+
+  it.each([
+    { container: [800, 200], ratio: 16 / 9, expected: [355.5555555556, 200] },
+    { container: [800, 200], ratio: 9 / 16, expected: [112.5, 200] },
+    { container: [800, 200], ratio: 1, expected: [200, 200] },
+    { container: [200, 800], ratio: 16 / 9, expected: [200, 112.5] },
+    { container: [200, 800], ratio: 9 / 16, expected: [200, 200 / (9 / 16)] },
+    { container: [200, 800], ratio: 1, expected: [200, 200] },
+  ])("fits ratio $ratio inside $container", ({ container, expected, ratio }) => {
+    const frame = fitContainedFrame(container[0]!, container[1]!, ratio);
+
+    expect(frame.width).toBeCloseTo(expected[0]!);
+    expect(frame.height).toBeCloseTo(expected[1]!);
+    expect(frame.width).toBeLessThanOrEqual(container[0]!);
+    expect(frame.height).toBeLessThanOrEqual(container[1]!);
+    expect(frame.width / frame.height).toBeCloseTo(ratio);
+  });
+
+  it("updates explicit contained frame dimensions from the observed stage size", () => {
+    let bounds = { width: 800, height: 200 };
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const observer = { disconnect: vi.fn(), observe: vi.fn(), unobserve: vi.fn() } as unknown as ResizeObserver;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe = observer.observe;
+      disconnect = observer.disconnect;
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBounds() {
+      const size = this.classList.contains("agent-editing-preview__canvas")
+        ? bounds
+        : { width: 0, height: 0 };
+      return {
+        ...size,
+        bottom: size.height,
+        left: 0,
+        right: size.width,
+        top: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    });
+
+    render(
+      <EditingPreviewStage
+        inputs={inputs}
+        outputAspectRatio="9:16"
+        outputResolution={null}
+        exportedAsset={null}
+        playheadSeconds={0}
+        playing={false}
+        muted={false}
+        onPlayheadChange={vi.fn()}
+        onPlayingChange={vi.fn()}
+      />,
+    );
+    const frame = screen.getByTestId("editing-preview-frame");
+    expect(frame.style.width).toBe("112.5px");
+    expect(frame.style.height).toBe("200px");
+
+    bounds = { width: 200, height: 800 };
+    act(() => resizeCallback?.([], observer));
+    expect(frame.style.width).toBe("200px");
+    expect(parseFloat(frame.style.height)).toBeCloseTo(200 / (9 / 16));
+  });
   const inputs: EditingInputs = {
     videos: [
       videoInput("video-1", firstAsset, 1, 4),
@@ -111,6 +181,7 @@ describe("EditingPreviewStage", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("contains a portrait output frame and never applies the per-clip fill mode", () => {
@@ -175,7 +246,7 @@ describe("EditingPreviewStage", () => {
     expect(frame.getAttribute("style")).toContain("aspect-ratio: 16 / 9");
   });
 
-  it("switches source URL and trimmed source time at a clip boundary without remounting video", () => {
+  it("remounts with a new immutable load token at a clip boundary", () => {
     const props = {
       inputs,
       outputAspectRatio: null,
@@ -188,15 +259,77 @@ describe("EditingPreviewStage", () => {
     };
     const view = render(<EditingPreviewStage {...props} playheadSeconds={2.5} />);
     const video = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
+    const firstToken = video.dataset.loadToken;
 
     expect(video.getAttribute("src")).toBe("/media/video-1");
     expect(video.currentTime).toBeCloseTo(3.5);
+    expect(firstToken).toBeTruthy();
 
     view.rerender(<EditingPreviewStage {...props} playheadSeconds={3} />);
 
-    expect(screen.getByTestId("editing-preview-video")).toBe(video);
+    const nextVideo = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
+    expect(nextVideo).not.toBe(video);
+    expect(nextVideo.dataset.loadToken).not.toBe(firstToken);
+    expect(nextVideo.getAttribute("src")).toBe("/media/video-2");
+    expect(nextVideo.currentTime).toBeCloseTo(2);
+  });
+
+  it("excludes inactive sources from draft boundaries and the BGM timeline clock", () => {
+    const disabled = videoInput("video-disabled", asset("video-disabled", "video", {
+      duration_seconds: 10,
+    }), 0, 10);
+    disabled.entry.enabled = false;
+    const audioAsset = asset("audio-compressed", "audio", { duration_seconds: 20 });
+    const compressedInputs: EditingInputs = {
+      videos: [inputs.videos[0]!, disabled, inputs.videos[1]!],
+      bgm: bgmInput(audioAsset),
+    };
+
+    render(
+      <EditingPreviewStage
+        inputs={compressedInputs}
+        outputAspectRatio={null}
+        outputResolution={null}
+        exportedAsset={null}
+        playheadSeconds={3}
+        playing={false}
+        muted={false}
+        onPlayheadChange={vi.fn()}
+        onPlayingChange={vi.fn()}
+      />,
+    );
+
+    const video = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
+    const audio = screen.getByTestId("editing-preview-bgm") as HTMLAudioElement;
     expect(video.getAttribute("src")).toBe("/media/video-2");
-    expect(video.currentTime).toBeCloseTo(2);
+    expect(video.currentTime).toBe(2);
+    expect(audio.currentTime).toBe(4);
+  });
+
+  it("does not start BGM when there is no playable draft duration", () => {
+    const inactive = videoInput("video-disabled", firstAsset, 1, 4);
+    inactive.entry.enabled = false;
+
+    render(
+      <EditingPreviewStage
+        inputs={{
+          videos: [inactive],
+          bgm: bgmInput(asset("audio-without-video", "audio", { duration_seconds: 20 })),
+        }}
+        outputAspectRatio={null}
+        outputResolution={null}
+        exportedAsset={null}
+        playheadSeconds={0}
+        playing
+        muted={false}
+        onPlayheadChange={vi.fn()}
+        onPlayingChange={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByTestId("editing-preview-bgm") as HTMLAudioElement).currentTime).toBe(0);
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   });
 
   it("synchronizes enabled BGM trim and volume and pauses it after trim end", () => {
@@ -327,6 +460,35 @@ describe("EditingPreviewStage", () => {
     await waitFor(() => expect(onPlayingChange).toHaveBeenCalledWith(false));
   });
 
+  it("tolerates BGM play rejection and still follows a controlled pause", async () => {
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementation(function play() {
+      return this instanceof HTMLAudioElement
+        ? Promise.reject(new Error("bgm blocked"))
+        : Promise.resolve();
+    });
+    const onPlayingChange = vi.fn();
+    const audioAsset = asset("audio-rejected", "audio", { duration_seconds: 20 });
+    const props = {
+      inputs: { ...inputs, bgm: bgmInput(audioAsset) },
+      outputAspectRatio: null,
+      outputResolution: null,
+      exportedAsset: null,
+      playheadSeconds: 1,
+      muted: false,
+      onPlayheadChange: vi.fn(),
+      onPlayingChange,
+    };
+    const view = render(<EditingPreviewStage {...props} playing />);
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2));
+    expect(onPlayingChange).not.toHaveBeenCalledWith(false);
+
+    const audio = screen.getByTestId("editing-preview-bgm") as HTMLAudioElement;
+    const pause = vi.spyOn(audio, "pause");
+    view.rerender(<EditingPreviewStage {...props} playing={false} />);
+    expect(pause).toHaveBeenCalled();
+  });
+
   it("clamps the playhead and stops when trims shorten the sequence", () => {
     const onPlayheadChange = vi.fn();
     const onPlayingChange = vi.fn();
@@ -355,7 +517,7 @@ describe("EditingPreviewStage", () => {
     expect(onPlayingChange).toHaveBeenCalledWith(false);
   });
 
-  it("ignores an ended event from the previous source after a boundary switch", () => {
+  it("ignores time and ended events from the previous load after a boundary switch", () => {
     const onPlayheadChange = vi.fn();
     const props = {
       inputs,
@@ -371,14 +533,46 @@ describe("EditingPreviewStage", () => {
     const video = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
     view.rerender(<EditingPreviewStage {...props} playheadSeconds={3} />);
     onPlayheadChange.mockClear();
-    Object.defineProperty(video, "currentSrc", {
-      configurable: true,
-      value: new URL("/media/video-1", document.baseURI).href,
-    });
+    video.currentTime = 4;
 
+    fireEvent.timeUpdate(video);
     fireEvent.ended(video);
 
     expect(onPlayheadChange).not.toHaveBeenCalled();
+  });
+
+  it("invalidates stale events when a load is cleared and the same source returns", () => {
+    const onPlayheadChange = vi.fn();
+    const props = {
+      outputAspectRatio: null,
+      outputResolution: null,
+      exportedAsset: null,
+      playing: false,
+      muted: false,
+      onPlayheadChange,
+      onPlayingChange: vi.fn(),
+    };
+    const view = render(<EditingPreviewStage {...props} inputs={inputs} playheadSeconds={0} />);
+    const staleVideo = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
+    const staleToken = staleVideo.dataset.loadToken;
+
+    view.rerender(
+      <EditingPreviewStage
+        {...props}
+        inputs={{ videos: [], bgm: null }}
+        playheadSeconds={0}
+      />,
+    );
+    onPlayheadChange.mockClear();
+    staleVideo.currentTime = 4;
+    fireEvent.timeUpdate(staleVideo);
+    fireEvent.ended(staleVideo);
+    expect(onPlayheadChange).not.toHaveBeenCalled();
+
+    view.rerender(<EditingPreviewStage {...props} inputs={inputs} playheadSeconds={0} />);
+    const reloadedVideo = screen.getByTestId("editing-preview-video") as HTMLVideoElement;
+    expect(reloadedVideo.dataset.loadToken).toBeTruthy();
+    expect(reloadedVideo.dataset.loadToken).not.toBe(staleToken);
   });
 
   it("offers authoritative exported playback without losing the draft playhead", () => {
@@ -414,5 +608,57 @@ describe("EditingPreviewStage", () => {
     expect(draft.getAttribute("src")).toBe("/media/video-2");
     expect(draft.currentTime).toBeCloseTo(2.5);
     expect(onPlayingChange).toHaveBeenCalledWith(false);
+  });
+
+  it("implements linked roving tabs with arrow, Home, and End navigation", () => {
+    render(
+      <EditingPreviewStage
+        inputs={inputs}
+        outputAspectRatio={null}
+        outputResolution={null}
+        exportedAsset={asset("exported-tabs", "video")}
+        playheadSeconds={0}
+        playing={false}
+        muted={false}
+        onPlayheadChange={vi.fn()}
+        onPlayingChange={vi.fn()}
+      />,
+    );
+    const draftTab = screen.getByRole("tab", { name: "Draft preview" });
+    const exportTab = screen.getByRole("tab", { name: "Exported output" });
+
+    expect(draftTab.tabIndex).toBe(0);
+    expect(exportTab.tabIndex).toBe(-1);
+    expect(draftTab.getAttribute("aria-controls")).toBeTruthy();
+    expect(exportTab.getAttribute("aria-controls")).toBeTruthy();
+    const draftPanel = document.getElementById(draftTab.getAttribute("aria-controls")!);
+    const exportPanel = document.getElementById(exportTab.getAttribute("aria-controls")!);
+    expect(draftPanel).toBeTruthy();
+    expect(exportPanel).toBeTruthy();
+    expect(draftPanel?.hidden).toBe(false);
+    expect(exportPanel?.hidden).toBe(true);
+    let panel = screen.getByRole("tabpanel");
+    expect(panel.id).toBe(draftTab.getAttribute("aria-controls"));
+    expect(panel.getAttribute("aria-labelledby")).toBe(draftTab.id);
+
+    fireEvent.keyDown(draftTab, { key: "End" });
+    expect(exportTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(exportTab);
+    panel = screen.getByRole("tabpanel");
+    expect(panel.id).toBe(exportTab.getAttribute("aria-controls"));
+    expect(panel.getAttribute("aria-labelledby")).toBe(exportTab.id);
+    expect(draftPanel?.hidden).toBe(true);
+    expect(exportPanel?.hidden).toBe(false);
+
+    fireEvent.keyDown(exportTab, { key: "ArrowRight" });
+    expect(draftTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(draftTab);
+
+    fireEvent.keyDown(draftTab, { key: "ArrowLeft" });
+    expect(exportTab.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(exportTab, { key: "Home" });
+    expect(draftTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(draftTab);
   });
 });

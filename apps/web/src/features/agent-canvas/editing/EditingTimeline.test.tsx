@@ -29,7 +29,7 @@ function asset(
     mime_type: mediaType === "video" ? "video/mp4" : "audio/mpeg",
     status: "ready",
     preview_url: mediaType === "video" ? `/preview/${assetId}.jpg` : null,
-    media_url: null,
+    media_url: `/media/${assetId}`,
     width: mediaType === "video" ? 1920 : null,
     height: mediaType === "video" ? 1080 : null,
     duration_seconds: durationSeconds,
@@ -98,7 +98,6 @@ function renderTimeline(options: {
   const view = render(
     <EditingTimeline
       inputs={inputs}
-      timelineDuration={8}
       playheadSeconds={2}
       selectedReferenceId={options.selectedReferenceId === undefined ? "video-1" : options.selectedReferenceId}
       exportRunning={options.exportRunning ?? false}
@@ -227,7 +226,6 @@ describe("EditingTimeline direct trim", () => {
     rerender(
       <EditingTimeline
         inputs={inputs}
-        timelineDuration={16}
         playheadSeconds={2}
         selectedReferenceId="video-2"
         exportRunning={false}
@@ -328,6 +326,32 @@ describe("EditingTimeline direct trim", () => {
 });
 
 describe("EditingTimeline retained controls", () => {
+  it("keeps inactive sources off the timed track while preserving selection and enable controls", () => {
+    const active = video("video-active", 1, { trim_start_seconds: 1, trim_end_seconds: 5 });
+    const disabled = video("video-disabled", 2, { enabled: false });
+    const unavailable = video("video-unavailable", 3);
+    unavailable.asset = { ...unavailable.asset!, media_url: null };
+    const view = renderTimeline({
+      inputs: { videos: [active, disabled, unavailable], bgm: null },
+      selectedReferenceId: "video-disabled",
+    });
+
+    const videoTrack = screen.getByRole("group", { name: "Video track" });
+    expect(videoTrack.querySelectorAll(".agent-editing-timeline-clip")).toHaveLength(1);
+    expect(screen.getByRole("slider", { name: "Timeline playhead" }).getAttribute("max")).toBe("4");
+
+    const inactive = screen.getByRole("region", { name: "Inactive sources" });
+    expect(within(inactive).getByText("Disabled")).toBeTruthy();
+    expect(within(inactive).getByText("Media unavailable")).toBeTruthy();
+    expect(within(inactive).getByRole("button", { name: "Inspect Shot 3" })).toBeTruthy();
+    expect(screen.getByRole("toolbar", { name: "Clip properties" })).toBeTruthy();
+
+    fireEvent.click(within(inactive).getByRole("checkbox", { name: "Enable Shot 2" }));
+    expect(view.onUpdateVideo).toHaveBeenCalledWith("video-disabled", { enabled: true });
+    fireEvent.click(within(inactive).getByRole("button", { name: "Inspect Shot 3" }));
+    expect(view.onSelectReference).toHaveBeenCalledWith("video-unavailable");
+  });
+
   it("replaces the selected clip form while retaining non-trim clip properties", () => {
     const view = renderTimeline();
 
