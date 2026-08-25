@@ -410,6 +410,9 @@ describe("EditingTimeline retained controls", () => {
 
     const zoomLevel = screen.getByLabelText("Timeline zoom level");
     const zoomBefore = zoomLevel.textContent;
+    expect(screen.getByRole("button", { name: "Fit timeline" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("slider", { name: "Timeline playhead" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByTestId("timeline-ruler").getAttribute("tabindex")).toBe("0");
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(zoomLevel.textContent).not.toBe(zoomBefore);
 

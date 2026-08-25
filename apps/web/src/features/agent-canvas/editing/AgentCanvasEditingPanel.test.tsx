@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
+  CanvasNodePatchRequestV2,
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
@@ -359,6 +360,20 @@ describe("AgentCanvasEditingPanel", () => {
       }),
       { coalesce: true },
     ));
+
+    fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "1920x1080" } });
+    fireEvent.change(screen.getByLabelText("Aspect ratio"), { target: { value: "16:9" } });
+    fireEvent.change(screen.getByLabelText("FPS"), { target: { value: "30" } });
+
+    await waitFor(() => {
+      const latestPatch = patchNode.mock.calls.at(-1)?.[1] as CanvasNodePatchRequestV2 | undefined;
+      expect(latestPatch?.structured_content?.output).toMatchObject({
+        resolution: "1920x1080",
+        aspect_ratio: "16:9",
+        fps: 30,
+      });
+    });
+    expect(patchNode.mock.calls.every((call) => call[2]?.coalesce === true)).toBe(true);
   });
 
   it("offers Download and Add to Canvas only for a readable terminal export", async () => {
