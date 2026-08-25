@@ -209,5 +209,8 @@ function transportSubmissionPrompt(
   if (transport === "non_streaming_json_object") {
     return "Return exactly one JSON object in assistant content. Do not call a tool.";
   }
+  if (transport === "streaming_json_object") {
+    return "Return exactly one JSON object in streamed assistant content. Do not call a tool.";
+  }
   return "Call submit_structured_result with the final structured value.";
 }

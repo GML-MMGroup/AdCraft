@@ -257,6 +257,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "streaming_json_object",
         "json_object",
     ]
     supports_tool_calls: bool
@@ -337,6 +338,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "streaming_json_object",
         "json_object",
     ]
     thinking_format: Literal["zai", "qwen", "none"]
@@ -356,6 +358,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     effective_timeout_ms: int = Field(ge=0, le=900_000)
     request_bytes: int = Field(ge=0, le=4_194_304)
     schema_bytes: int = Field(ge=0, le=4_194_304)
+    response_bytes: int | None = Field(default=None, ge=0, le=4_194_304)
     response_activity_observed: bool
     attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
     started_at: datetime

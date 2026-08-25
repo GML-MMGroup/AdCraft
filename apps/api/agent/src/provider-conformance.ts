@@ -83,6 +83,8 @@ export interface ConformanceReportV2 {
   readonly operation: string;
   readonly provider: string;
   readonly model_ref: string;
+  readonly candidate_structured_transport?:
+    AgentCredentialSnapshot["execution_policy"]["structured_transport"];
   readonly started_at: string;
   readonly completed_at: string;
   readonly production_request_sha256: string;
@@ -277,6 +279,7 @@ export function createSdkConformanceExecutor(
         baseUrl: credential.base_url,
         signal: input.signal,
         timeoutMs: input.timeoutMs,
+        maxOutputBytes: preparedMaxOutputBytes(credential),
       }),
     );
 }
@@ -464,11 +467,12 @@ export async function runProviderConformance(
         });
       }
     } else {
+      const opposite = candidateRaw(dependencies, !exactRequest.stream);
       await run({
         caseId: "production_exact_streaming",
-        transport: "raw_streaming",
-        executor: dependencies.rawStreaming,
-        request: { ...exactRequest, stream: true },
+        transport: opposite.transport,
+        executor: opposite.executor,
+        request: { ...exactRequest, stream: !exactRequest.stream },
         schema: dependencies.prepared.schema,
         changedFields: ["stream"],
       });
@@ -486,6 +490,8 @@ export async function runProviderConformance(
     operation: options.operation,
     provider: dependencies.prepared.credential.provider,
     model_ref: options.model_ref,
+    candidate_structured_transport:
+      dependencies.prepared.credential.execution_policy.structured_transport,
     started_at: startedAt.toISOString(),
     completed_at: completedAt,
     production_request_sha256: canonicalRequestSha256(exactRequest),
@@ -499,6 +505,10 @@ export async function runProviderConformance(
   };
 }
 
+function preparedMaxOutputBytes(_credential: AgentCredentialSnapshot): number {
+  return 262_144;
+}
+
 export function projectConformanceEvidence(value: unknown): ConformanceReportV2 {
   const report = value as ConformanceReportV2;
   assertReportInvariants(report);
@@ -510,6 +520,9 @@ export function projectConformanceEvidence(value: unknown): ConformanceReportV2 
     operation: report.operation,
     provider: report.provider,
     model_ref: report.model_ref,
+    ...(report.candidate_structured_transport
+      ? { candidate_structured_transport: report.candidate_structured_transport }
+      : {}),
     started_at: report.started_at,
     completed_at: report.completed_at,
     production_request_sha256: report.production_request_sha256,
@@ -577,6 +590,7 @@ function mandatoryCases(
   exactRequest: StructuredCompletionRequest,
 ): readonly [CaseDefinition, CaseDefinition, CaseDefinition, CaseDefinition] {
   const base = exactRequestBase(exactRequest);
+  const candidate = candidateRaw(dependencies, exactRequest.stream);
   const promptOnly = {
     ...base,
     messages: [
@@ -594,8 +608,8 @@ function mandatoryCases(
   return [
     {
       caseId: "minimal_json",
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: requestWithJsonSchema(
         base,
         "Return exactly one JSON object matching the supplied schema.",
@@ -607,29 +621,38 @@ function mandatoryCases(
     },
     {
       caseId: "production_prompt_only",
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: promptOnly,
       schema: ANY_OBJECT_SCHEMA,
       changedFields: ["schema"],
     },
     {
       caseId: "production_schema_only",
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: schemaOnly,
       schema: dependencies.prepared.schema,
       changedFields: ["system_prompt", "user_prompt"],
     },
     {
       caseId: "production_exact_raw",
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: exactRequest,
       schema: dependencies.prepared.schema,
       changedFields: [],
     },
   ];
+}
+
+function candidateRaw(
+  dependencies: ConformanceDependencies,
+  streaming: boolean,
+): Pick<CaseDefinition, "transport" | "executor"> {
+  return streaming
+    ? { transport: "raw_streaming", executor: dependencies.rawStreaming }
+    : { transport: "raw_non_streaming", executor: dependencies.rawNonStreaming };
 }
 
 function reducedCase(
@@ -638,11 +661,12 @@ function reducedCase(
   exactRequest: StructuredCompletionRequest,
 ): CaseDefinition {
   const base = exactRequestBase(exactRequest);
+  const candidate = candidateRaw(dependencies, exactRequest.stream);
   if (selection.case_id === "reduced_prompt") {
     return {
       caseId: selection.case_id,
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: requestWithJsonSchema(
         base,
         "Return one concise JSON object matching the supplied schema.",
@@ -656,8 +680,8 @@ function reducedCase(
   if (selection.case_id === "reduced_schema") {
     return {
       caseId: selection.case_id,
-      transport: "raw_non_streaming",
-      executor: dependencies.rawNonStreaming,
+      transport: candidate.transport,
+      executor: candidate.executor,
       request: {
         ...base,
         messages: [
@@ -672,8 +696,8 @@ function reducedCase(
   }
   return {
     caseId: selection.case_id,
-    transport: "raw_non_streaming",
-    executor: dependencies.rawNonStreaming,
+    transport: candidate.transport,
+    executor: candidate.executor,
     request: requestWithJsonSchema(
       base,
       "Return one JSON object.",
@@ -687,7 +711,7 @@ function reducedCase(
 
 function exactRequestBase(request: StructuredCompletionRequest) {
   const { messages: _messages, tools: _tools, tool_choice: _toolChoice, ...base } = request;
-  return { ...base, stream: false as const };
+  return { ...base };
 }
 
 function requestWithJsonSchema(
@@ -705,7 +729,7 @@ function requestWithJsonSchema(
       },
       { role: "user", content: userPrompt },
     ],
-    stream: false,
+    stream: base.stream === true,
     response_format: { type: "json_object" },
   };
 }
@@ -791,6 +815,9 @@ function renderMarkdown(report: ConformanceReportV2): string {
     "",
     `Verdict: \`${report.verdict ?? "none"}\``,
     "",
+    ...(report.candidate_structured_transport
+      ? [`Candidate transport: \`${report.candidate_structured_transport}\``, ""]
+      : []),
     `Submissions: ${report.submission_count}/${report.maximum_submissions}`,
     "",
     ...(report.contract_name && report.contract_version
@@ -890,18 +917,21 @@ async function sendRawHttpRequest(
 function terminalObservation(
   response: StructuredCompletionResponse,
 ): ConformanceExecutionObservation {
+  const transport = response.transport_metadata;
   return {
     transport_completed: true,
     content: completionContent(response),
-    response_activity_observed: true,
+    response_activity_observed: transport?.response_activity_observed ?? true,
     dns_at: null,
     tcp_at: null,
     tls_at: null,
     response_headers_at: null,
-    first_content_at: null,
-    completed_at: new Date().toISOString(),
+    first_content_at: transport?.first_content_at ?? null,
+    completed_at: transport?.completed_at ?? new Date().toISOString(),
     http_status: 200,
-    provider_request_id: boundedHeader(response.id),
+    provider_request_id: boundedHeader(
+      transport?.provider_trace_id ?? response.id,
+    ),
     safe_error: null,
   };
 }
@@ -914,22 +944,52 @@ function responseContent(body: string, streaming: boolean): string | null {
       return null;
     }
   }
+  return parseRawStreamingJsonContent(body);
+}
+
+export function parseRawStreamingJsonContent(body: string): string | null {
   const fragments: string[] = [];
+  let terminal = false;
   for (const line of body.split(/\r?\n/)) {
-    if (!line.startsWith("data:") || line.slice(5).trim() === "[DONE]") continue;
-    try {
-      const event = JSON.parse(line.slice(5).trim()) as {
-        readonly choices?: ReadonlyArray<{
-          readonly delta?: { readonly content?: string };
-        }>;
-      };
-      const content = event.choices?.[0]?.delta?.content;
-      if (typeof content === "string") fragments.push(content);
-    } catch {
+    if (line.trim().length === 0) continue;
+    if (!line.startsWith("data:")) return null;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") {
+      if (terminal) return null;
+      terminal = true;
       continue;
     }
+    if (terminal) return null;
+    try {
+      const event = JSON.parse(payload) as {
+        readonly error?: unknown;
+        readonly choices?: ReadonlyArray<{
+          readonly index?: number;
+          readonly delta?: {
+            readonly content?: string | null;
+            readonly tool_calls?: unknown;
+            readonly function_call?: unknown;
+          };
+          readonly finish_reason?: string | null;
+        }>;
+      };
+      if (event.error != null || event.choices?.length !== 1) return null;
+      const choice = event.choices[0];
+      if (!choice || (choice.index !== undefined && choice.index !== 0)) return null;
+      if (choice.delta?.tool_calls != null || choice.delta?.function_call != null) {
+        return null;
+      }
+      const content = choice.delta?.content;
+      if (typeof content === "string") fragments.push(content);
+      else if (content !== undefined && content !== null) return null;
+      if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+        if (choice.finish_reason !== "stop") return null;
+      }
+    } catch {
+      return null;
+    }
   }
-  return fragments.length > 0 ? fragments.join("") : null;
+  return terminal && fragments.length > 0 ? fragments.join("") : null;
 }
 
 function completionContent(response: StructuredCompletionResponse): string | null {

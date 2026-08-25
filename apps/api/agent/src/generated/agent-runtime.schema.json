@@ -1638,7 +1638,8 @@
             "json_object",
             "non_streaming_json_object",
             "non_streaming_tool_call",
-            "streamed_tool_call"
+            "streamed_tool_call",
+            "streaming_json_object"
           ],
           "title": "Structured Transport",
           "type": "string"
@@ -4032,6 +4033,20 @@
           "title": "Response Activity Observed",
           "type": "boolean"
         },
+        "response_bytes": {
+          "anyOf": [
+            {
+              "maximum": 4194304,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Bytes"
+        },
         "safe_error_code": {
           "anyOf": [
             {
@@ -4080,7 +4095,8 @@
             "json_object",
             "non_streaming_json_object",
             "non_streaming_tool_call",
-            "streamed_tool_call"
+            "streamed_tool_call",
+            "streaming_json_object"
           ],
           "title": "Structured Transport",
           "type": "string"
