@@ -663,13 +663,21 @@
 }
 
 :root .create-card--new-project .create-plus {
-  width: auto;
-  height: auto;
+  width: 48px;
+  height: 48px;
   margin-bottom: 12px;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
   color: currentColor;
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 300;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+
+:root .create-card--new-project:is(:hover, :focus-visible) .create-plus {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 :root .create-card--new-project h3 {
