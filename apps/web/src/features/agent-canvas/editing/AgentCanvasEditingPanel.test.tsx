@@ -60,6 +60,7 @@ function asset(
 describe("AgentCanvasEditingPanel", () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   });
 
@@ -224,7 +225,10 @@ describe("AgentCanvasEditingPanel", () => {
           updated_at: "2026-07-30T00:00:00Z",
         },
       ],
-      assets: [{ ...asset("asset-video", "video"), media_url: null }, asset("asset-audio", "audio")],
+      assets: [
+        { ...asset("asset-video", "video"), duration_seconds: 0.5 },
+        asset("asset-audio", "audio"),
+      ],
     };
     const patchNode = vi.fn().mockResolvedValue(undefined);
 
@@ -242,7 +246,14 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Video Track")).toBeTruthy();
     expect(screen.getByText("Audio Track")).toBeTruthy();
     expect(screen.getByRole("slider", { name: "Timeline playhead" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Play preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play preview" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByTestId("editing-preview-video").getAttribute("src"))
+      .toBe("/api/v2/assets/asset-video/content");
+    fireEvent.click(screen.getByRole("button", { name: "Fast forward preview" }));
+    expect((screen.getByTestId("editing-preview-video") as HTMLVideoElement).currentTime).toBe(0.5);
+    fireEvent.click(screen.getByRole("button", { name: "Play preview" }));
+    expect((screen.getByTestId("editing-preview-video") as HTMLVideoElement).currentTime).toBe(0);
+    expect(screen.getByRole("button", { name: "Pause preview" })).toBeTruthy();
     expect(screen.queryByText("Selected clip")).toBeNull();
     const clipProperties = screen.getByRole("toolbar", { name: "Clip properties" });
     expect(within(clipProperties).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
