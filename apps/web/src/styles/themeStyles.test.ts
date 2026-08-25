@@ -223,4 +223,10 @@ describe("theme styles", () => {
     expect(layout).toContain('location.pathname.startsWith("/workflow")');
     expect(layout).toContain('floating-rail--clear-glass');
   });
+
+  test("hides the project search placeholder on focus and uses the approved caret color", () => {
+    const projectStyles = source("pages/projects.css");
+    expect(declarationBlock(projectStyles, ".projects-toolbar .search-box")).toContain("caret-color: #9DAFE6");
+    expect(declarationBlock(projectStyles, ".projects-toolbar .search-box:focus::placeholder")).toContain("color: transparent");
+  });
 });

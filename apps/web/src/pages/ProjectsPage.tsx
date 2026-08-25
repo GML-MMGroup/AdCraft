@@ -88,7 +88,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
           </button>
         </div>
         <div className="project-toolbar-actions">
-          <input className="search-box clear-glass-control" placeholder="Search projects" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input className="search-box clear-glass-control is-active" placeholder="Search projects" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
       </div>
       <ProjectCatalogNotice

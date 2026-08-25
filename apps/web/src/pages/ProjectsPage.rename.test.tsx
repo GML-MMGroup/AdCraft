@@ -60,6 +60,7 @@ describe("ProjectsPage project rename", () => {
     expect(document.querySelector(".page-toolbar")).toBeNull();
     expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(3);
     expect(toolbar?.querySelector(".toolbar-new-project")).toBeNull();
+    expect(screen.getByPlaceholderText("Search projects").classList.contains("is-active")).toBe(true);
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {
