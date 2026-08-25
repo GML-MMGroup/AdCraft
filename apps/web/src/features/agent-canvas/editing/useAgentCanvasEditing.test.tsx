@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodePatchRequestV2,
@@ -18,9 +19,12 @@ vi.mock("../../../api/v2Client.ts", () => ({
 
 import { useAgentCanvasEditing } from "./useAgentCanvasEditing.ts";
 
-function editingNode(videoEntries: EditingVideoEntryV2[] = []): CanvasNodeV2 {
+function editingNode(
+  videoEntries: EditingVideoEntryV2[] = [],
+  nodeId = "editing-1",
+): CanvasNodeV2 {
   return {
-    node_id: "editing-1",
+    node_id: nodeId,
     workflow_id: "workflow-1",
     node_type: "editing",
     creative_role: "editing",
@@ -297,5 +301,121 @@ describe("useAgentCanvasEditing", () => {
 
     await waitFor(() => expect(result.current.error).toBe("network failure"));
     expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(1);
+  });
+
+  it("keeps a node switch from sending the new node manifest through the old node writer", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const patchNode = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(
+      ({ node }: { node: CanvasNodeV2 }) => useAgentCanvasEditing(workflow, node, patchNode),
+      { initialProps: { node: editingNode([videoEntry()], "editing-a") } },
+    );
+
+    act(() => {
+      result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 1 });
+      void result.current.commitStagedManifest();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+
+    rerender({ node: editingNode([videoEntry()], "editing-b") });
+    expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(0);
+
+    act(() => {
+      result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 2 });
+      void result.current.commitStagedManifest();
+    });
+
+    await act(async () => {
+      first.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
+    expect(patchNode.mock.calls.map(([nodeId]) => nodeId)).toEqual(["editing-a", "editing-b"]);
+
+    await act(async () => {
+      second.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it("serializes writes across an unmount and remount of the same node", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const patchNode = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const node = editingNode();
+    const firstHook = renderHook(() => useAgentCanvasEditing(workflow, node, patchNode));
+
+    act(() => firstHook.result.current.setBgmVolume(0.35));
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+    firstHook.unmount();
+
+    const secondHook = renderHook(() => useAgentCanvasEditing(workflow, node, patchNode));
+    act(() => secondHook.result.current.setBgmVolume(0.7));
+    expect(patchNode).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      second.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it("does not export while this node has an unresolved manifest commit", async () => {
+    const pendingSave = deferred<void>();
+    const patchNode = vi.fn(() => pendingSave.promise);
+    const exportComposition = vi.mocked(agentCanvasApi.exportAgentCanvasEditingNode);
+    const { result } = renderHook(() => (
+      useAgentCanvasEditing(workflow, editingNode(), patchNode)
+    ));
+
+    act(() => {
+      result.current.setBgmVolume(0.35);
+      void result.current.exportComposition();
+    });
+
+    try {
+      expect(exportComposition).not.toHaveBeenCalled();
+      await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+    } finally {
+      await act(async () => {
+        pendingSave.resolve();
+        await Promise.resolve();
+      });
+    }
+  });
+
+  it("discards a staged change back to the manifest visible before staging", async () => {
+    const pendingSave = deferred<void>();
+    const patchNode = vi.fn(() => pendingSave.promise);
+    const { result } = renderHook(() => (
+      useAgentCanvasEditing(workflow, editingNode([videoEntry()]), patchNode)
+    ));
+
+    act(() => {
+      result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 1 });
+      void result.current.commitStagedManifest();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+
+    act(() => result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 2 }));
+    expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(2);
+
+    act(() => result.current.discardStagedManifest());
+    expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(1);
+
+    await act(async () => {
+      pendingSave.resolve();
+      await Promise.resolve();
+    });
   });
 });
