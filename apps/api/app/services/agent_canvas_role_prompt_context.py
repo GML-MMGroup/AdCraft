@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 import re
 from typing import cast
 
@@ -163,7 +164,7 @@ class RolePromptContextProjector:
             ),
             document_revisions=document_revisions,
             selected_direction=selected_direction,
-            user_prompt=node.generation_prompt,
+            user_prompt=_authoring_user_prompt(node),
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
             internal_skill_ref=stage_context.internal_skill_ref,
             style_projection=_aesthetic_style_projection(stage_context.style_projection),
@@ -280,6 +281,20 @@ def _aesthetic_style_projection(value: str | None) -> str | None:
         if line.strip():
             retained.append(line.strip())
     return "\n".join(retained) or None
+
+
+def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:
+    prompt = node.generation_prompt
+    if not prompt:
+        return None
+    prepared_digest = node.metadata.get("prompt_digest")
+    if (
+        node.metadata.get("prompt_recipe_id")
+        and isinstance(prepared_digest, str)
+        and prepared_digest == sha256(prompt.encode("utf-8")).hexdigest()
+    ):
+        return None
+    return prompt
 
 
 def _validate_parameter(
