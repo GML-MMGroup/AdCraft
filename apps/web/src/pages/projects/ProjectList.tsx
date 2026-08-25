@@ -1,9 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { v2Api } from "../../api/v2Client.ts";
+import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createRequestQueue } from "../../collections/requestQueue.ts";
 import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
-import { resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
+import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 
 export type ProjectListItem = {
   key: string;
@@ -109,8 +109,13 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
       if (coversByProjectIdRef.current[project.projectId]?.requestKey === requestKey) continue;
       const subscription = projectCoverResource.subscribe(projectCoverIdentity(project), (signal) => (
         projectCoverQueue.schedule(
-          () => v2Api.listWorkflowAssets(project.workflowId, {}, { signal })
-            .then((response) => resolveV2ProjectCover(project.coverAssetId, response.assets)),
+          () => agentCanvasApi.listAgentCanvasProjectAssets(project.workflowId, { signal })
+            .then(async (response) => {
+              const preliminary = resolveV2ProjectCover(project.coverAssetId, response.assets);
+              if (!needsV2ProjectCoverNodeAuthority(response.assets)) return preliminary;
+              const workflow = await agentCanvasApi.agentCanvasWorkflowWithEtag(project.workflowId, { signal });
+              return resolveV2ProjectCover(project.coverAssetId, response.assets, workflow.value.nodes) ?? preliminary;
+            }),
           { signal },
         )
       ));

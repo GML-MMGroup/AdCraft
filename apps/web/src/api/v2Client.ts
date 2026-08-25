@@ -573,10 +573,11 @@ export const v2Api = {
 
   agentCanvasWorkflowWithEtag(
     workflowId: string,
+    options: { signal?: AbortSignal } = {},
   ): Promise<V2EtaggedResponse<AgentCanvasWorkflowV2>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}`,
-      {},
+      { signal: options.signal },
       normalizeAgentCanvasWorkflowV2,
     );
   },
@@ -788,10 +789,13 @@ export const v2Api = {
     );
   },
 
-  listAgentCanvasProjectAssets(workflowId: string): Promise<ProjectAssetListResponseV2> {
+  listAgentCanvasProjectAssets(
+    workflowId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ProjectAssetListResponseV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/assets`,
-      {},
+      { signal: options.signal },
       normalizeProjectAssetListResponseV2,
     );
   },

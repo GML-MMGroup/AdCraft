@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectsPage } from "./ProjectsPage.tsx";
 
 const fixture = vi.hoisted(() => ({
-  listWorkflowAssets: vi.fn(),
+  listAgentCanvasProjectAssets: vi.fn(),
   renameProject: vi.fn(),
 }));
 
-vi.mock("../api/v2Client.ts", () => ({
-  v2Api: {
-    listWorkflowAssets: fixture.listWorkflowAssets,
+vi.mock("../api/agentCanvasApi.ts", () => ({
+  agentCanvasApi: {
+    listAgentCanvasProjectAssets: fixture.listAgentCanvasProjectAssets,
   },
 }));
 
@@ -43,7 +43,7 @@ function openRenameDialog() {
 
 describe("ProjectsPage project rename", () => {
   beforeEach(() => {
-    fixture.listWorkflowAssets.mockResolvedValue({ assets: [] });
+    fixture.listAgentCanvasProjectAssets.mockResolvedValue({ assets: [] });
     fixture.renameProject.mockResolvedValue(true);
   });
 
@@ -65,7 +65,8 @@ describe("ProjectsPage project rename", () => {
     const createProjectCard = screen.getByRole("button", { name: "New Project" });
     expect(createProjectCard.classList.contains("create-card--new-project")).toBe(true);
     expect(createProjectCard.classList.contains("clear-glass-control")).toBe(true);
-    expect(screen.getByText("Last worked 7/24/2026")).toBeTruthy();
+    expect(screen.getByText("7/24/2026")).toBeTruthy();
+    expect(screen.queryByText(/Last worked/i)).toBeNull();
     expect(screen.queryByText("Draft")).toBeNull();
     expect(screen.queryByText("Open")).toBeNull();
   });
