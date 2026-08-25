@@ -198,6 +198,28 @@ describe("ProjectList covers", () => {
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
   });
 
+  it("renders canonical V2 asset content URLs without a legacy media prefix", async () => {
+    const controlled = installControlledCoverRequests();
+    const view = render(
+      <ProjectList
+        projects={projects(1)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("product-cover", "/api/v2/assets/product-cover/content")]);
+    });
+
+    const image = view.container.querySelector(".project-preview-image img") as HTMLImageElement;
+    expect(image.src).toContain("/api/v2/assets/product-cover/content?v=product-cover-version");
+    expect(image.src).not.toContain("/media/api/v2/");
+  });
+
   it("drops queued covers on unmount so a new page gets queue slots", async () => {
     const controlled = installControlledCoverRequests();
     const oldPage = render(

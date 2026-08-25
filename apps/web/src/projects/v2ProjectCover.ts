@@ -9,7 +9,10 @@ export type V2ProjectCover = {
   posterPath: string | null;
 };
 
-type RankedCover = V2ProjectCover & { rank: number };
+type ProductCoverCandidate = {
+  cover: V2ProjectCover;
+  createdAt: number;
+};
 
 const EXCLUDED_STATES = new Set(["working", "history", "reference", "implicit_reference", "archived", "rejected"]);
 const EXCLUDED_STATUSES = new Set(["queued", "running", "waiting", "pending", "blocked", "failed", "partial_failed", "cancelled", "cancellation_requested"]);
@@ -18,26 +21,22 @@ export function resolveV2ProjectCover(
   coverAssetId: string | null | undefined,
   assets: readonly WorkflowAssetListRowV2[],
 ): V2ProjectCover | null {
-  const usableAssets = assets.filter(isCoverAsset);
+  const productImages = assets.filter(isProductCoverAsset);
 
   if (coverAssetId) {
-    const explicit = usableAssets.find((asset) => asset.asset_id === coverAssetId);
+    const explicit = productImages.find((asset) => asset.asset_id === coverAssetId);
     const cover = explicit ? coverFromUsableAsset(explicit) : null;
     if (cover) return cover;
   }
 
-  const candidates = usableAssets
-    .map(coverFromAsset)
-    .filter((cover): cover is RankedCover => Boolean(cover));
-  candidates.sort((left, right) => left.rank - right.rank || right.versionId.localeCompare(left.versionId));
-  return candidates[0] ? removeRank(candidates[0]) : null;
-}
-
-function coverFromAsset(asset: WorkflowAssetListRowV2 & { media_type: "image" | "video" }): RankedCover | null {
-  const cover = coverFromUsableAsset(asset);
-  if (!cover) return null;
-  const rank = coverRank(asset);
-  return rank === null ? null : { ...cover, rank };
+  const candidates = productImages
+    .map((asset): ProductCoverCandidate | null => {
+      const cover = coverFromUsableAsset(asset);
+      return cover ? { cover, createdAt: timestamp(asset.created_at) } : null;
+    })
+    .filter((candidate): candidate is ProductCoverCandidate => Boolean(candidate));
+  candidates.sort((left, right) => right.createdAt - left.createdAt || right.cover.versionId.localeCompare(left.cover.versionId));
+  return candidates[0]?.cover ?? null;
 }
 
 function coverFromUsableAsset(asset: WorkflowAssetListRowV2 & { media_type: "image" | "video" }): V2ProjectCover | null {
@@ -62,19 +61,18 @@ function isCoverAsset(asset: WorkflowAssetListRowV2): asset is WorkflowAssetList
   );
 }
 
-function coverRank(asset: WorkflowAssetListRowV2): number | null {
+function isProductCoverAsset(asset: WorkflowAssetListRowV2): asset is WorkflowAssetListRowV2 & { media_type: "image" } {
+  if (!isCoverAsset(asset) || asset.media_type !== "image") return false;
   const nodeId = normalize(asset.node_id);
   const semanticType = normalize(asset.semantic_type);
-  if (nodeId === "final-composition" || nodeId === "final_composition" || semanticType.includes("final_composition") || semanticType.includes("final-composition")) return 0;
-  if (nodeId === "storyboard" || semanticType.includes("storyboard") || semanticType.includes("shot")) return asset.media_type === "video" ? 1 : 2;
-  if (nodeId.includes("product") || semanticType.includes("product")) return 3;
-  if (nodeId.includes("scene") || semanticType.includes("scene")) return 4;
-  if (nodeId.includes("character") || semanticType.includes("character") || semanticType.includes("role")) return 5;
-  return null;
+  const metadataRole = normalize(typeof asset.metadata?.creative_role === "string" ? asset.metadata.creative_role : null);
+  return nodeId.includes("product") || semanticType.includes("product") || metadataRole === "product";
 }
 
-function removeRank({ rank: _rank, ...cover }: RankedCover): V2ProjectCover {
-  return cover;
+function timestamp(value: string | undefined) {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function normalize(value: string | null | undefined) {

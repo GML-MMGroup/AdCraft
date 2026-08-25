@@ -68,10 +68,6 @@ export const ProjectCard = memo(function ProjectCard({
         <div className="card-body">
           <h3>{name}</h3>
           <p>{time}</p>
-          <div className="card-meta">
-            <span>{favorite ? "Favorite" : "Draft"}</span>
-            <span>Open</span>
-          </div>
         </div>
       </button>
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Menu container only tracks hover/focus state; all actions are native buttons. */}
@@ -138,7 +134,7 @@ function ProjectPreviewImage({
 }) {
   const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
   const [previewFailed, setPreviewFailed] = useState(false);
-  const sourceUrl = cover ? mediaUrl(cover.posterPath || cover.mediaPath) : "";
+  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.mediaPath) : "";
   const generatedPosterKey = cover?.mediaType === "video" && !cover.posterPath
     ? `${cover.assetId}:${cover.versionId}:${cover.mediaPath}`
     : "";
@@ -163,7 +159,7 @@ function ProjectPreviewImage({
         public_url: cover.mediaPath,
         version: cover.versionId,
       },
-      videoUrl: mediaUrl(cover.mediaPath),
+      videoUrl: projectCoverMediaUrl(cover.mediaPath),
     })).then((record) => {
       if (cancelled || !record?.poster_blob) return;
       objectUrl = URL.createObjectURL(record.poster_blob);
@@ -195,6 +191,12 @@ function ProjectPreviewImage({
       <span className="sr-only">{name}</span>
     </span>
   );
+}
+
+function projectCoverMediaUrl(path: string) {
+  const value = path.trim();
+  if (/^\/?api\/v2\/assets\//i.test(value)) return value.startsWith("/") ? value : `/${value}`;
+  return mediaUrl(value);
 }
 
 export function CreateCard({ title, onClick }: { title: string; onClick: () => void }) {
