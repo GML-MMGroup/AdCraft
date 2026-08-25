@@ -636,6 +636,8 @@ export function normalizeWorkflowSlotV2(value: unknown): WorkflowSlotV2 {
 
 export function normalizeAssetVersionV2(value: unknown): AssetVersionV2 {
   const record = isRecord(value) ? value : {};
+  const publicUrl = record.public_url ?? record.media_url;
+  const thumbnailPath = record.thumbnail_path ?? record.thumbnail_url ?? record.preview_url;
   return {
     asset_id: stringValue(record.asset_id),
     version_id: stringValue(record.version_id),
@@ -643,8 +645,8 @@ export function normalizeAssetVersionV2(value: unknown): AssetVersionV2 {
     source_type: stringValue(record.source_type, "generated"),
     mime_type: record.mime_type === null ? null : stringValue(record.mime_type) || undefined,
     file_path: record.file_path === null ? null : stringValue(record.file_path) || undefined,
-    public_url: record.public_url === null ? null : stringValue(record.public_url) || undefined,
-    thumbnail_path: record.thumbnail_path === null ? null : stringValue(record.thumbnail_path, stringValue(record.thumbnail_url)) || undefined,
+    public_url: publicUrl === null ? null : stringValue(publicUrl) || undefined,
+    thumbnail_path: thumbnailPath === null ? null : stringValue(thumbnailPath) || undefined,
     proxy_path: record.proxy_path === null ? null : stringValue(record.proxy_path) || undefined,
     rendition_paths: stringArray(record.rendition_paths),
     duration_seconds: numberOrNull(record.duration_seconds),

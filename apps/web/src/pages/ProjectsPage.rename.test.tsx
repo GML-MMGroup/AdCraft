@@ -65,6 +65,9 @@ describe("ProjectsPage project rename", () => {
     const createProjectCard = screen.getByRole("button", { name: "New Project" });
     expect(createProjectCard.classList.contains("create-card--new-project")).toBe(true);
     expect(createProjectCard.classList.contains("clear-glass-control")).toBe(true);
+    expect(screen.getByText("Last worked 7/24/2026")).toBeTruthy();
+    expect(screen.queryByText("Draft")).toBeNull();
+    expect(screen.queryByText("Open")).toBeNull();
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {
