@@ -85,7 +85,22 @@
 }
 
 .projects-toolbar .search-box {
+  border-color: rgba(255, 255, 255, 0.075);
+  background: color-mix(in srgb, #9DAFE6 10%, transparent);
+  box-shadow:
+    0 0 20px color-mix(in srgb, #9DAFE6 30%, transparent),
+    0 8px 22px rgba(0, 13, 24, 0.12);
   caret-color: #9DAFE6;
+}
+
+.projects-toolbar .search-box.clear-glass-control:is(:hover, :focus, :focus-visible, :active) {
+  border-color: rgba(255, 255, 255, 0.075);
+  background: color-mix(in srgb, #9DAFE6 10%, transparent);
+  box-shadow:
+    0 0 20px color-mix(in srgb, #9DAFE6 30%, transparent),
+    0 8px 22px rgba(0, 13, 24, 0.12);
+  outline: 0;
+  transform: none;
 }
 
 .projects-toolbar .search-box::placeholder {
