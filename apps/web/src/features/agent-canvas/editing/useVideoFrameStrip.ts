@@ -4,10 +4,11 @@ const TARGET_FRAME_WIDTH = 80;
 const TARGET_FRAME_HEIGHT = 45;
 const MAX_FRAME_SAMPLES = 12;
 const MAX_CACHED_FRAME_URLS = 120;
+const SEEK_EPSILON_SECONDS = 0.001;
 
 export interface VideoFrameSample {
   sourceSeconds: number;
-  url: string;
+  url: string | null;
   sampled: boolean;
 }
 
@@ -21,7 +22,16 @@ export interface VideoFrameRequest {
   active: boolean;
 }
 
-export type VideoFrameSampler = (mediaUrl: string, sourceSeconds: number) => Promise<string>;
+export type VideoFrameSampler = (
+  mediaUrl: string,
+  sourceSeconds: number,
+  signal: AbortSignal,
+) => Promise<string>;
+
+export interface VideoFrameSamplerSession {
+  sample: VideoFrameSampler;
+  dispose: () => void;
+}
 
 interface FrameSampleTimesInput {
   start: number;
@@ -35,45 +45,160 @@ interface StripState {
   samples: VideoFrameSample[];
 }
 
-interface ManagedVideoFrameSampler {
-  sample: VideoFrameSampler;
-  dispose: () => void;
+interface CacheEntry {
+  url: string;
+  references: number;
+  cached: boolean;
 }
 
-const frameUrlCache = new Map<string, string>();
+interface FrameLease {
+  url: string;
+  release: () => void;
+}
+
+interface PendingFrame {
+  controller: AbortController;
+  consumers: number;
+  promise: Promise<CacheEntry>;
+}
+
+interface SamplingRun {
+  controller: AbortController;
+  session: VideoFrameSamplerSession | null;
+  sessionOperations: number;
+  stopped: boolean;
+}
+
+const frameUrlCache = new Map<string, CacheEntry>();
+const pendingFrames = new Map<string, PendingFrame>();
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function fallbackUrl(request: VideoFrameRequest): string {
-  return request.previewUrl ?? "";
+function abortError(): Error {
+  const error = new Error("Video frame sampling was aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 function revokeBlobUrl(url: string): void {
-  if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+  if (url.startsWith("blob:") && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
 }
 
-function cacheFrameUrl(key: string, url: string): void {
-  const existing = frameUrlCache.get(key);
-  if (existing && existing !== url) revokeBlobUrl(existing);
-  frameUrlCache.delete(key);
-  frameUrlCache.set(key, url);
+function releaseCacheEntry(entry: CacheEntry): void {
+  entry.references -= 1;
+  if (entry.references === 0 && !entry.cached) revokeBlobUrl(entry.url);
+}
 
+function retainCacheEntry(entry: CacheEntry): FrameLease {
+  entry.references += 1;
+  let released = false;
+  return {
+    url: entry.url,
+    release: () => {
+      if (released) return;
+      released = true;
+      releaseCacheEntry(entry);
+    },
+  };
+}
+
+function evictOverflow(): void {
   while (frameUrlCache.size > MAX_CACHED_FRAME_URLS) {
-    const oldest = frameUrlCache.entries().next().value as [string, string] | undefined;
+    const oldest = frameUrlCache.entries().next().value as [string, CacheEntry] | undefined;
     if (!oldest) return;
     frameUrlCache.delete(oldest[0]);
-    revokeBlobUrl(oldest[1]);
+    oldest[1].cached = false;
+    if (oldest[1].references === 0) revokeBlobUrl(oldest[1].url);
   }
 }
 
-function cachedFrameUrl(key: string): string | null {
-  const url = frameUrlCache.get(key);
-  if (!url) return null;
+function cacheLease(key: string): FrameLease | null {
+  const entry = frameUrlCache.get(key);
+  if (!entry) return null;
   frameUrlCache.delete(key);
-  frameUrlCache.set(key, url);
-  return url;
+  frameUrlCache.set(key, entry);
+  return retainCacheEntry(entry);
+}
+
+function cacheFrameUrl(key: string, url: string): CacheEntry {
+  const existing = frameUrlCache.get(key);
+  if (existing) {
+    frameUrlCache.delete(key);
+    frameUrlCache.set(key, existing);
+    if (existing.url !== url) revokeBlobUrl(url);
+    return existing;
+  }
+
+  const entry: CacheEntry = { url, references: 0, cached: true };
+  frameUrlCache.set(key, entry);
+  evictOverflow();
+  return entry;
+}
+
+function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError());
+
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      cleanup();
+      reject(abortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+function sharedFrame(
+  key: string,
+  signal: AbortSignal,
+  sample: (signal: AbortSignal) => Promise<string>,
+): Promise<CacheEntry> {
+  let pending = pendingFrames.get(key);
+  if (!pending) {
+    const controller = new AbortController();
+    pending = {
+      controller,
+      consumers: 0,
+      promise: Promise.resolve()
+        .then(() => sample(controller.signal))
+        .then((url) => {
+          if (controller.signal.aborted) {
+            revokeBlobUrl(url);
+            throw abortError();
+          }
+          return cacheFrameUrl(key, url);
+        }),
+    };
+    pendingFrames.set(key, pending);
+    void pending.promise.then(
+      () => {
+        if (pendingFrames.get(key) === pending) pendingFrames.delete(key);
+      },
+      () => {
+        if (pendingFrames.get(key) === pending) pendingFrames.delete(key);
+      },
+    );
+  }
+
+  pending.consumers += 1;
+  return awaitWithAbort(pending.promise, signal).finally(() => {
+    pending.consumers -= 1;
+    if (pending.consumers === 0 && pendingFrames.get(key) === pending && !pending.controller.signal.aborted) {
+      pending.controller.abort();
+    }
+  });
 }
 
 export function frameSampleTimes(input: FrameSampleTimesInput): number[] {
@@ -104,62 +229,129 @@ function requestKey(request: VideoFrameRequest): string {
   ].join("|");
 }
 
-function buildSamples(request: VideoFrameRequest): VideoFrameSample[] {
+function frameTimesFor(request: VideoFrameRequest): number[] {
   return frameSampleTimes({
     start: request.sourceStart,
     end: request.sourceEnd,
     renderedWidth: request.renderedWidth,
     targetFrameWidth: TARGET_FRAME_WIDTH,
-  }).map((sourceSeconds) => {
-    const url = cachedFrameUrl(frameCacheKey(
-      request.assetId,
-      sourceSeconds,
-      TARGET_FRAME_WIDTH,
-      TARGET_FRAME_HEIGHT,
-    ));
-    return {
-      sourceSeconds,
-      url: url ?? fallbackUrl(request),
-      sampled: url !== null,
-    };
   });
 }
 
-function waitForEvent(target: HTMLVideoElement, type: "loadedmetadata" | "seeked"): Promise<void> {
+function fallbackSamples(request: VideoFrameRequest): VideoFrameSample[] {
+  return frameTimesFor(request).map((sourceSeconds) => ({
+    sourceSeconds,
+    url: request.previewUrl,
+    sampled: false,
+  }));
+}
+
+function waitForMediaEvent(
+  target: HTMLVideoElement,
+  type: "loadedmetadata" | "seeked",
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return Promise.reject(abortError());
+
   return new Promise((resolve, reject) => {
+    let settled = false;
     const cleanup = () => {
       target.removeEventListener(type, onSuccess);
       target.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
     };
-    const onSuccess = () => {
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      resolve();
+      callback();
     };
-    const onError = () => {
-      cleanup();
-      reject(new Error(`Video ${type} failed`));
-    };
+    const onSuccess = () => finish(resolve);
+    const onError = () => finish(() => reject(new Error(`Video ${type} failed`)));
+    const onAbort = () => finish(() => reject(abortError()));
     target.addEventListener(type, onSuccess, { once: true });
     target.addEventListener("error", onError, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
-function canvasBlobUrl(canvas: HTMLCanvasElement): Promise<string> {
+function seekVideo(video: HTMLVideoElement, targetTime: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(abortError());
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+    && Math.abs(video.currentTime - targetTime) <= SEEK_EPSILON_SECONDS) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Video frame canvas was empty"));
-        return;
-      }
-      resolve(URL.createObjectURL(blob));
-    }, "image/jpeg", 0.82);
+    let settled = false;
+    const cleanup = () => {
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const onSeeked = () => finish(resolve);
+    const onError = () => finish(() => reject(new Error("Video seek failed")));
+    const onAbort = () => finish(() => reject(abortError()));
+
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      video.currentTime = targetTime;
+    } catch (error) {
+      finish(() => reject(error));
+      return;
+    }
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      && Math.abs(video.currentTime - targetTime) <= SEEK_EPSILON_SECONDS) {
+      finish(resolve);
+    }
   });
 }
 
-function createVideoFrameSampler(mediaUrl: string): ManagedVideoFrameSampler {
+function canvasBlobUrl(canvas: HTMLCanvasElement, signal: AbortSignal): Promise<string> {
+  if (signal.aborted) return Promise.reject(abortError());
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const onAbort = () => finish(() => reject(abortError()));
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          finish(() => reject(new Error("Video frame canvas was empty")));
+          return;
+        }
+        if (signal.aborted) {
+          finish(() => reject(abortError()));
+          return;
+        }
+        finish(() => resolve(URL.createObjectURL(blob)));
+      }, "image/jpeg", 0.82);
+    } catch (error) {
+      finish(() => reject(error));
+    }
+  });
+}
+
+export function createVideoFrameSampler(mediaUrl: string): VideoFrameSamplerSession {
   const video = document.createElement("video");
   const canvas = document.createElement("canvas");
   let disposed = false;
+  let metadata: Promise<void> | null = null;
 
   video.muted = true;
   video.preload = "metadata";
@@ -168,35 +360,47 @@ function createVideoFrameSampler(mediaUrl: string): ManagedVideoFrameSampler {
   video.style.display = "none";
   document.body.append(video);
 
-  const metadata = waitForEvent(video, "loadedmetadata");
-  video.src = mediaUrl;
-  video.load();
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+  };
+
+  const loadMetadata = (signal: AbortSignal): Promise<void> => {
+    if (metadata) return metadata;
+    const event = waitForMediaEvent(video, "loadedmetadata", signal);
+    video.src = mediaUrl;
+    video.load();
+    metadata = event;
+    return metadata;
+  };
 
   return {
-    sample: async (_requestedUrl, sourceSeconds) => {
-      await metadata;
-      if (disposed) throw new Error("Video frame sampler was disposed");
+    sample: async (_requestedUrl, sourceSeconds, signal) => {
+      try {
+        await loadMetadata(signal);
+        if (disposed || signal.aborted) throw abortError();
 
-      const duration = Number.isFinite(video.duration) ? video.duration : sourceSeconds;
-      const safeTime = Math.max(0, Math.min(sourceSeconds, Math.max(0, duration - 0.001)));
-      video.currentTime = safeTime;
-      await waitForEvent(video, "seeked");
-      if (disposed) throw new Error("Video frame sampler was disposed");
+        const duration = Number.isFinite(video.duration) ? video.duration : sourceSeconds;
+        const safeTime = Math.max(0, Math.min(sourceSeconds, Math.max(0, duration - SEEK_EPSILON_SECONDS)));
+        await seekVideo(video, safeTime, signal);
+        if (disposed || signal.aborted) throw abortError();
 
-      canvas.width = TARGET_FRAME_WIDTH;
-      canvas.height = TARGET_FRAME_HEIGHT;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Video frame canvas is unavailable");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return canvasBlobUrl(canvas);
+        canvas.width = TARGET_FRAME_WIDTH;
+        canvas.height = TARGET_FRAME_HEIGHT;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Video frame canvas is unavailable");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        return await canvasBlobUrl(canvas, signal);
+      } catch (error) {
+        if (signal.aborted) dispose();
+        throw error;
+      }
     },
-    dispose: () => {
-      disposed = true;
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-      video.remove();
-    },
+    dispose,
   };
 }
 
@@ -223,17 +427,26 @@ export function useVideoFrameStrip(
   ]);
   const key = requestKey(request);
   const epochRef = useRef(0);
-  const [state, setState] = useState<StripState>(() => ({
-    key,
-    samples: buildSamples(request),
-  }));
-  const visibleSamples = state.key === key ? state.samples : buildSamples(request);
+  const [state, setState] = useState<StripState>(() => ({ key, samples: fallbackSamples(request) }));
+  const visibleSamples = state.key === key ? state.samples : fallbackSamples(request);
 
   useEffect(() => {
     const epoch = ++epochRef.current;
-    let cancelled = false;
-    let running = false;
-    const isCurrent = () => !cancelled && epochRef.current === epoch;
+    let disposed = false;
+    let currentRun: SamplingRun | null = null;
+    const leases = new Map<string, FrameLease>();
+    const isCurrent = () => !disposed && epochRef.current === epoch;
+
+    const releaseLeases = () => {
+      leases.forEach((lease) => lease.release());
+      leases.clear();
+    };
+
+    const stopRun = (run: SamplingRun) => {
+      run.stopped = true;
+      run.controller.abort();
+      if (run.sessionOperations === 0) run.session?.dispose();
+    };
 
     const replaceSample = (index: number, sample: VideoFrameSample) => {
       if (!isCurrent()) return;
@@ -246,20 +459,41 @@ export function useVideoFrameStrip(
     };
 
     const schedule = async () => {
-      if (running || !isCurrent() || document.hidden) return;
-      running = true;
-      let managedSampler: ManagedVideoFrameSampler | null = null;
+      if (!isCurrent() || document.hidden || currentRun) return;
+      const run: SamplingRun = {
+        controller: new AbortController(),
+        session: null,
+        sessionOperations: 0,
+        stopped: false,
+      };
+      currentRun = run;
 
       try {
-        const samples = buildSamples(request);
-        if (!isCurrent()) return;
+        const sourceTimes = frameTimesFor(request);
+        const samples = sourceTimes.map((sourceSeconds) => {
+          const cacheKey = frameCacheKey(
+            request.assetId,
+            sourceSeconds,
+            TARGET_FRAME_WIDTH,
+            TARGET_FRAME_HEIGHT,
+          );
+          let lease = leases.get(cacheKey);
+          if (!lease) {
+            lease = cacheLease(cacheKey) ?? undefined;
+            if (lease) leases.set(cacheKey, lease);
+          }
+          return {
+            sourceSeconds,
+            url: lease?.url ?? request.previewUrl,
+            sampled: Boolean(lease),
+          };
+        });
+        if (!isCurrent() || run.stopped) return;
         setState({ key, samples });
 
         if (!request.active || !request.mediaUrl) return;
-        let sampleFrame = sampler;
-
         for (let index = 0; index < samples.length; index += 1) {
-          if (!isCurrent() || document.hidden) return;
+          if (!isCurrent() || run.stopped || document.hidden) return;
           const sourceSeconds = samples[index]!.sourceSeconds;
           const cacheKey = frameCacheKey(
             request.assetId,
@@ -267,42 +501,52 @@ export function useVideoFrameStrip(
             TARGET_FRAME_WIDTH,
             TARGET_FRAME_HEIGHT,
           );
-          const cached = cachedFrameUrl(cacheKey);
-          if (cached) {
-            replaceSample(index, { sourceSeconds, url: cached, sampled: true });
+          if (leases.has(cacheKey)) continue;
+
+          let entry: CacheEntry;
+          try {
+            entry = await sharedFrame(cacheKey, run.controller.signal, (signal) => {
+              if (sampler) return sampler(request.mediaUrl!, sourceSeconds, signal);
+              run.session ??= createVideoFrameSampler(request.mediaUrl!);
+              run.sessionOperations += 1;
+              return run.session.sample(request.mediaUrl!, sourceSeconds, signal).finally(() => {
+                run.sessionOperations -= 1;
+                if (run.stopped && run.sessionOperations === 0) run.session?.dispose();
+              });
+            });
+          } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") return;
             continue;
           }
-
-          try {
-            if (!sampleFrame) {
-              managedSampler = createVideoFrameSampler(request.mediaUrl);
-              sampleFrame = managedSampler.sample;
-            }
-            const url = await sampleFrame(request.mediaUrl, sourceSeconds);
-            if (!isCurrent()) {
-              revokeBlobUrl(url);
-              return;
-            }
-            cacheFrameUrl(cacheKey, url);
-            replaceSample(index, { sourceSeconds, url, sampled: true });
-          } catch {
-            // Preview-backed samples are intentionally retained when decoding fails.
-          }
+          if (!isCurrent() || run.stopped) return;
+          const lease = retainCacheEntry(entry);
+          leases.set(cacheKey, lease);
+          replaceSample(index, { sourceSeconds, url: lease.url, sampled: true });
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "AbortError") {
+          // Preview-backed samples intentionally remain visible when decoding fails.
         }
       } finally {
-        managedSampler?.dispose();
-        running = false;
+        if (currentRun === run) currentRun = null;
+        if (run.sessionOperations === 0) run.session?.dispose();
       }
     };
 
     const onVisibilityChange = () => {
-      if (!document.hidden) void schedule();
+      if (document.hidden) {
+        if (currentRun) stopRun(currentRun);
+        return;
+      }
+      void schedule();
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     void schedule();
     return () => {
-      cancelled = true;
+      disposed = true;
+      if (currentRun) stopRun(currentRun);
+      releaseLeases();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [key, request, sampler]);
