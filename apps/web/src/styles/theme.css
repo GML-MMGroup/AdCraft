@@ -151,7 +151,7 @@
   backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
 }
 
-:root .floating-rail--clear-glass .rail-item {
+:root .clear-glass-control {
   border-color: rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.008);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -165,7 +165,7 @@
     transform 220ms ease;
 }
 
-:root .floating-rail--clear-glass .rail-item.is-active {
+:root .clear-glass-control.is-active {
   border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13));
   background: color-mix(in srgb, #9DAFE6 10%, transparent);
   box-shadow:
@@ -175,7 +175,7 @@
   color: rgba(255, 255, 255, 0.96);
 }
 
-:root .floating-rail--clear-glass .rail-item:is(:hover, :focus-visible) {
+:root .clear-glass-control:is(:hover, :focus-visible) {
   border-color: color-mix(in srgb, #9DAFE6 54%, rgba(255, 255, 255, 0.13));
   background: color-mix(in srgb, #9DAFE6 7%, transparent);
   box-shadow:
@@ -186,13 +186,13 @@
   transform: translateY(-1px);
 }
 
-:root .floating-rail--clear-glass .rail-item:active {
+:root .clear-glass-control:active {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   transform: scale(0.975);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  :root .floating-rail--clear-glass .rail-item {
+  :root .clear-glass-control {
     background: rgba(20, 24, 40, 0.2);
   }
 }

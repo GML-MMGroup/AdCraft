@@ -191,15 +191,15 @@ describe("theme styles", () => {
     );
     const homeRailItem = declarationBlock(
       themeStyles,
-      ":root .floating-rail--clear-glass .rail-item",
+      ":root .clear-glass-control",
     );
     const homeActiveRailItem = declarationBlock(
       themeStyles,
-      ":root .floating-rail--clear-glass .rail-item.is-active",
+      ":root .clear-glass-control.is-active",
     );
     const homeRailItemHover = declarationBlock(
       themeStyles,
-      ":root .floating-rail--clear-glass .rail-item:is(:hover, :focus-visible)",
+      ":root .clear-glass-control:is(:hover, :focus-visible)",
     );
 
     expect(homeRail).toContain("background: rgba(255, 255, 255, 0.008)");

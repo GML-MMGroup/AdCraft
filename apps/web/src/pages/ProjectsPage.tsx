@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { CreateCard } from "../components/Cards";
 import { PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
-import { PlusIcon } from "../icons";
 import type { RouteName } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
@@ -79,21 +78,17 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   return (
     <section className="content-wrap">
       <PageHeader title="All Projects" subtitle="Saved campaign workflows and creative drafts." />
-      <div className="page-toolbar">
+      <div className="projects-toolbar">
         <div className="toolbar-row">
-          <button className={`filter-btn ${tab === "all" ? "is-active" : ""}`} onClick={() => setTab("all")}>
+          <button className={`filter-btn clear-glass-control ${tab === "all" ? "is-active" : ""}`} onClick={() => setTab("all")}>
             All
           </button>
-          <button className={`filter-btn ${tab === "favorite" ? "is-active" : ""}`} onClick={() => setTab("favorite")}>
+          <button className={`filter-btn clear-glass-control ${tab === "favorite" ? "is-active" : ""}`} onClick={() => setTab("favorite")}>
             Favorites
           </button>
         </div>
         <div className="project-toolbar-actions">
-          <input className="search-box" placeholder="Search projects" value={search} onChange={(event) => setSearch(event.target.value)} />
-          <button className="small-action toolbar-new-project" type="button" onClick={createProject}>
-            <PlusIcon />
-            <span>New Project</span>
-          </button>
+          <input className="search-box clear-glass-control" placeholder="Search projects" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
       </div>
       <ProjectCatalogNotice
