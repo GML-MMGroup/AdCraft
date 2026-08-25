@@ -210,11 +210,13 @@ describe("theme styles", () => {
     expect(homeRailItem).toContain("border-color: rgba(255, 255, 255, 0.075)");
     expect(homeRailItem).toContain("blur(1.5px) saturate(114%) brightness(1.025)");
     expect(homeRailItem).toContain("box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12)");
-    expect(homeActiveRailItem).toContain("background: rgba(255, 255, 255, 0.018)");
-    expect(homeActiveRailItem).toContain("border-color: rgba(255, 255, 255, 0.13)");
-    expect(homeActiveRailItem).toContain("box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17)");
+    expect(homeActiveRailItem).toContain("background: color-mix(in srgb, #9DAFE6 10%, transparent)");
+    expect(homeActiveRailItem).toContain("#9DAFE6 62%");
+    expect(homeActiveRailItem).toContain("0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent)");
     expect(homeActiveRailItem).not.toContain("transform:");
     expect(homeRailItemHover).toContain("transform: translateY(-1px)");
+    expect(homeRailItemHover).toContain("#9DAFE6 54%");
+    expect(homeRailItemHover).toContain("0 0 16px color-mix(in srgb, #9DAFE6 28%, transparent)");
 
     const layout = source("components/Layout.tsx");
     expect(layout).toContain('"/projects", "/assets", "/trash"');
