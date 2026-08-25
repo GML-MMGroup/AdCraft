@@ -23,7 +23,6 @@ import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
-import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
@@ -210,8 +209,6 @@ export function AgentCanvasNodeCard({
     ?? (validAgentCanvasMediaDimensions(asset)
       ? { width: asset.width, height: asset.height }
       : null);
-  const promptPreparation = promptPreparationForNode(node);
-  const hasPromptPreparationFailure = promptPreparation?.status === "failed";
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
 
@@ -246,11 +243,6 @@ export function AgentCanvasNodeCard({
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
-          </div>
-        ) : null}
-        {status === "failed" && !hasPromptPreparationFailure ? (
-          <div className="agent-canvas-node__error" title={runtime?.error?.message ?? node.error?.message ?? "Generation failed"}>
-            <span aria-hidden="true">!</span>
           </div>
         ) : null}
       </div>

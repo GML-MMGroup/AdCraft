@@ -667,7 +667,7 @@
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  color: #e1a750;
+  color: #f4f7ff;
 }
 
 .agent-canvas-node__generation-field {
@@ -694,7 +694,7 @@
 
 @keyframes agent-canvas-star-diffusion {
   0%, 100% {
-    filter: blur(3px) drop-shadow(0 0 0 rgba(225, 167, 80, 0));
+    filter: blur(3px) drop-shadow(0 0 0 rgba(157, 175, 230, 0));
     opacity: 0.06;
     transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.42);
   }
@@ -702,14 +702,14 @@
   40% {
     filter:
       blur(0)
-      drop-shadow(0 0 3px rgba(225, 167, 80, 0.92))
-      drop-shadow(0 0 11px rgba(225, 167, 80, 0.58));
+      drop-shadow(0 0 3px rgba(244, 247, 255, 0.94))
+      drop-shadow(0 0 12px rgba(157, 175, 230, 0.72));
     opacity: 0.96;
     transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(1);
   }
 
   70% {
-    filter: blur(0.7px) drop-shadow(0 0 5px rgba(225, 167, 80, 0.24));
+    filter: blur(0.7px) drop-shadow(0 0 6px rgba(157, 175, 230, 0.34));
     opacity: 0.28;
     transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.68);
   }
@@ -745,24 +745,6 @@
   inset: -60% -35%;
   background: linear-gradient(108deg, transparent 38%, rgba(255, 255, 255, 0.17) 49%, transparent 60%);
   animation: agent-canvas-node-sheen 2.1s ease-in-out infinite;
-}
-
-.agent-canvas-node__error {
-  position: absolute;
-  z-index: 5;
-  top: 10px;
-  right: 10px;
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.48);
-  border-radius: 50%;
-  background: rgba(176, 42, 54, 0.84);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
 }
 
 .react-flow__handle.agent-canvas-node__handle {
@@ -855,7 +837,7 @@
   }
 
   .agent-canvas-node__generation-star {
-    filter: drop-shadow(0 0 4px rgba(225, 167, 80, 0.38));
+    filter: drop-shadow(0 0 5px rgba(157, 175, 230, 0.42));
     opacity: 0.48;
     transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.78);
   }

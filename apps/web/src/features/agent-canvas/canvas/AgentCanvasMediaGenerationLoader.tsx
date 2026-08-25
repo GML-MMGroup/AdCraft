@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
 
-const STAR_PARTICLES = Array.from({ length: 28 }, (_, index) => ({
+const STAR_PARTICLES = Array.from({ length: 20 }, (_, index) => ({
   index,
   x: 8 + ((index * 37) % 84),
   y: 8 + ((index * 53) % 84),
   size: 5.4 + ((index * 7) % 5) * 1.05,
-  delay: -((index * 13) % 28) / 28,
+  delay: -((index * 13) % 20) / 20,
   rotation: ((index * 29) % 32) - 16,
 }));
 

@@ -557,10 +557,11 @@ describe("AgentCanvasNodeCard", () => {
 
     expect(screen.getByLabelText("video output").classList.contains("agent-canvas-node__media")).toBe(true);
     expect(screen.getByTestId("agent-canvas-node-video-node").classList.contains("agent-canvas-node--failed")).toBe(true);
+    expect(document.querySelector(".agent-canvas-node__error")).toBeNull();
   });
 
   it.each<"image" | "video">(["image", "video"])(
-    "uses the golden star diffusion loader while a %s node is generating",
+    "uses the blue-white star diffusion loader while a %s node is generating",
     (nodeType) => {
       const node = makeNode(nodeType, "draft");
       const { container } = render(
@@ -574,7 +575,7 @@ describe("AgentCanvasNodeCard", () => {
       expect(screen.getByTestId(`agent-canvas-node-${nodeType}-node`).classList.contains("agent-canvas-node--working")).toBe(true);
       const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
       expect(loader.getAttribute("data-variant")).toBe("star-diffusion");
-      expect(loader.querySelectorAll(".agent-canvas-node__generation-star")).toHaveLength(28);
+      expect(loader.querySelectorAll(".agent-canvas-node__generation-star")).toHaveLength(20);
       expect(container.querySelector(".iml-loader")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
@@ -582,7 +583,7 @@ describe("AgentCanvasNodeCard", () => {
     },
   );
 
-  it("keeps the golden star loader transparent and motion-aware", () => {
+  it("keeps the blue-white star loader transparent and motion-aware", () => {
     const nodeCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css"),
       "utf8",
@@ -606,10 +607,11 @@ describe("AgentCanvasNodeCard", () => {
     )?.[1];
 
     expect(mediaOverlayRule).toContain("background: transparent");
-    expect(loaderRule).toContain("color: #e1a750");
+    expect(loaderRule).toContain("color: #f4f7ff");
     expect(starRule).toContain('mask: url("/imgs/node-icons/solar-star-outline.svg")');
     expect(nodeCss).toContain("@keyframes agent-canvas-star-diffusion");
-    expect(nodeCss).toContain("drop-shadow(0 0 11px rgba(225, 167, 80, 0.58))");
+    expect(nodeCss).toContain("drop-shadow(0 0 12px rgba(157, 175, 230, 0.72))");
+    expect(nodeCss).not.toContain("rgba(225, 167, 80");
     expect(nodeCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-star[\s\S]*?animation: none/,
     );
