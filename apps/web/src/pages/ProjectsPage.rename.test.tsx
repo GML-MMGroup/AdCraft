@@ -52,6 +52,16 @@ describe("ProjectsPage project rename", () => {
     vi.clearAllMocks();
   });
 
+  it("renders single-layer glass project controls without a toolbar create button", () => {
+    render(<ProjectsPage navigate={vi.fn()} />);
+
+    const toolbar = document.querySelector(".projects-toolbar");
+    expect(toolbar).toBeTruthy();
+    expect(document.querySelector(".page-toolbar")).toBeNull();
+    expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(3);
+    expect(toolbar?.querySelector(".toolbar-new-project")).toBeNull();
+  });
+
   it("opens an accessible custom dialog from an icon-only rename action", () => {
     const promptSpy = vi.spyOn(window, "prompt");
     render(<ProjectsPage navigate={vi.fn()} />);

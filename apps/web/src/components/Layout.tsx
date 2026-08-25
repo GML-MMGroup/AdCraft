@@ -71,7 +71,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
         {navItems.map((item) => (
           <NavLink
             key={item.route}
-            className={({ isActive }) => `rail-item ${isActive ? "is-active" : ""}`}
+            className={({ isActive }) => `rail-item${usesClearGlassRail ? " clear-glass-control" : ""} ${isActive ? "is-active" : ""}`}
             to={routePath(item.route)}
             aria-label={item.label}
             end={item.route === "home"}
