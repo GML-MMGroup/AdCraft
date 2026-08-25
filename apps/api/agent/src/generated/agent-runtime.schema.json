@@ -6389,6 +6389,19 @@
           "default": null,
           "title": "Source Action"
         },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
         "source_turn_id": {
           "maxLength": 160,
           "minLength": 1,

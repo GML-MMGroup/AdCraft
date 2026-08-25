@@ -599,6 +599,7 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     conversation_id: str = Field(min_length=1, max_length=160)
     source_turn_id: str = Field(min_length=1, max_length=160)
     capability_turn_id: str = Field(min_length=1, max_length=160)
+    source_proposal_id: str | None = Field(default=None, max_length=160)
     session_id: str | None = Field(default=None, max_length=160)
     expected_session_revision: int | None = Field(default=None, ge=1)
     capability_id: CapabilityIdV1

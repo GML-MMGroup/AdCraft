@@ -27,6 +27,9 @@ from app.persistence.agent_canvas_materialization_repository import (
 from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
 )
+from app.persistence.agent_canvas_capability_proposal_repository import (
+    AgentCanvasCapabilityProposalRepository,
+)
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
@@ -35,22 +38,23 @@ from app.schemas.agent_canvas import (
     ProjectAssetSummaryV2,
 )
 from app.schemas.agent_canvas_conversation import (
-    AgentActionReceiptV2,
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
     ChatTurnV2,
-    ConceptOptionRecordV2,
     ConceptProposalCreateV2,
     ContinuationCommitV2,
     ProposalActionRequestV2,
 )
 from app.schemas.agent_canvas_capabilities import (
     CAPABILITY_RESULT_CONTRACTS,
+    CapabilityCommandEnvelopeV2,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
     CompactTurnIntentDecisionV3,
+    GuidanceSourceActionV1,
     NextActionCommandV1,
     NextActionContextV1,
+    PlannedCapabilityReferenceV1,
     TurnIntentContextV2,
     TurnIntentDecisionV2,
     expand_compact_turn_intent,
@@ -111,6 +115,7 @@ from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.agent_canvas_nodes import AgentCanvasNodeService
 from app.services.agent_canvas_requirement_projection import (
     AgentCanvasRequirementProjectionService,
+    requirement_projection_digest,
 )
 from app.services.agent_canvas_command_compiler import (
     AgentCommandPlanCompiler,
@@ -1889,6 +1894,7 @@ class AgentConversationService:
                 reference_plan=reference_plan,
                 context_snapshot_id=context_snapshot.snapshot_id,
                 context_snapshot_digest=context_snapshot.digest,
+                source_action=command.source_action,
             )
         self._capability_dispatch.dispatch_next_action(
             turn,
@@ -1916,6 +1922,7 @@ class AgentConversationService:
         reference_plan: CapabilityReferencePlanV1,
         context_snapshot_id: str,
         context_snapshot_digest: str,
+        source_action: GuidanceSourceActionV1 | None,
     ) -> ChatTurnV2:
         definition = self._capability_policy.definition(capability_id)
         if definition.node_type is None or definition.creative_role is None:
@@ -1933,9 +1940,7 @@ class AgentConversationService:
                 "creative_role": definition.creative_role,
                 "title": f"{definition.display_name} Draft",
                 "summary_prompt": objective,
-                "generation_prompt": (
-                    None if definition.node_type == "text" else objective
-                ),
+                "generation_prompt": (None if definition.node_type == "text" else objective),
                 "structured_content": (
                     {"content": objective} if definition.node_type == "text" else {}
                 ),
@@ -1945,6 +1950,7 @@ class AgentConversationService:
                     "context_snapshot_id": context_snapshot_id,
                     "context_snapshot_digest": context_snapshot_digest,
                     "reference_plan_digest": reference_plan.digest,
+                    "source_action": source_action,
                 },
                 "placement_hint": {"intent": "append_flow"},
             }
@@ -2101,7 +2107,7 @@ class AgentConversationService:
                 if proposal.target_node_id is not None or proposal.capability_id == "quick_media"
                 else None
             )
-            receipt = self._conversations.apply_guidance_state_action(
+            self._conversations.apply_guidance_state_action(
                 proposal_id,
                 source_turn_id=turn_id,
                 action_id=action.action_id,
@@ -2133,71 +2139,8 @@ class AgentConversationService:
                     )
             return self._conversations.get_turn(turn_id)
         if action.action == "revise_options":
-            revised = self._revise_capability_proposal(turn, proposal, action)
-            revised = revised.model_copy(
-                update={
-                    "topic_id": proposal.topic_id,
-                    "target_node_id": proposal.target_node_id,
-                    "target_node_revision": proposal.target_node_revision,
-                    "proposal_purpose": proposal.proposal_purpose,
-                }
-            )
-            receipt = AgentActionReceiptV2(
-                receipt_id=f"receipt_{turn_id}",
-                workflow_id=turn.workflow_id,
-                action_id=turn_id,
-                proposal_id=proposal_id,
-                proposal_action="revise_options",
-                actor_kind="user",
-                idempotency_key=turn_id,
-                status="applied",
-                summary="The concept options were revised.",
-                workflow_revision=self._workflows.get_workflow(turn.workflow_id).revision,
-            )
-            self._conversations.create_proposal(
-                turn_id,
-                revised,
-                source_proposal_id=proposal_id,
-                expected_session_revision=action.expected_session_revision,
-                receipt=receipt,
-            )
-            return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
-        if action.action == "revise_direction":
-            revised = self._revise_capability_proposal(
-                turn,
-                proposal,
-                action,
-                selected_option_id=action.option_id,
-            ).model_copy(
-                update={
-                    "topic_id": proposal.topic_id,
-                    "target_node_id": proposal.target_node_id,
-                    "target_node_revision": proposal.target_node_revision,
-                    "proposal_purpose": proposal.proposal_purpose,
-                }
-            )
-            receipt = AgentActionReceiptV2(
-                receipt_id=f"receipt_{turn_id}",
-                workflow_id=turn.workflow_id,
-                action_id=turn_id,
-                proposal_id=proposal_id,
-                proposal_option_id=action.option_id,
-                proposal_action="revise_direction",
-                actor_kind="user",
-                idempotency_key=turn_id,
-                status="applied",
-                summary="A new Proposal was created from the historical direction.",
-                workflow_revision=self._workflows.get_workflow(turn.workflow_id).revision,
-            )
-            self._conversations.create_proposal(
-                turn_id,
-                revised,
-                source_proposal_id=proposal_id,
-                allow_historical_source=True,
-                expected_session_revision=action.expected_session_revision,
-                receipt=receipt,
-            )
-            return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
+            self._revise_capability_proposal(turn, proposal, action)
+            return self._conversations.get_turn(turn_id)
         raise V2PersistenceError(
             "proposal_action_invalid",
             "This Proposal action is not implemented yet.",
@@ -2325,26 +2268,11 @@ class AgentConversationService:
         turn: ChatTurnV2,
         proposal,
         action: ProposalActionRequestV2,
-        *,
-        selected_option_id: str | None = None,
-    ) -> ConceptProposalCreateV2:
+    ) -> str:
         assert action.instruction is not None
-        source_options = tuple(
-            option
-            for option in proposal.options
-            if selected_option_id is None or option.option_id == selected_option_id
-        )
-        if not source_options:
-            raise V2PersistenceError(
-                "proposal_option_not_found",
-                "Concept option was not found.",
-                stage="agent_conversation_service",
-            )
+        source_options = tuple(proposal.options)
         definition = self._capability_policy.definition(proposal.capability_id)
-        candidate_count = max(
-            len(source_options),
-            2 if proposal.capability_id == "world_setting" else 1,
-        )
+        candidate_count = 3
         public_direction = "\n".join(
             f"{option.title}: {option.public_summary}" for option in source_options
         )
@@ -2364,16 +2292,31 @@ class AgentConversationService:
             json.dumps(snapshot_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         ).hexdigest()
         requirements = self._requirements.get_current_revision(proposal.workflow_id)
+        reference_plan = CapabilityReferencePlanV1(
+            capability_id=proposal.capability_id,
+            references=tuple(
+                PlannedCapabilityReferenceV1(
+                    source_kind=reference.source_kind,
+                    source_id=reference.source_id,
+                    input_role=reference.input_role,
+                    required=reference.required,
+                    semantic_reference_role=reference.semantic_reference_role,
+                    priority=reference.display_order,
+                    display_name=reference.display_name,
+                    media_type=reference.media_type,
+                )
+                for reference in proposal.proposed_references
+            ),
+            digest=snapshot_digest,
+        )
         projection = AgentCanvasRequirementProjectionService().project(
             requirements,
             workflow=self._workflows.get_workflow(proposal.workflow_id),
             capability_id=proposal.capability_id,
             goal_summary=objective,
-            reference_plan=CapabilityReferencePlanV1(
-                capability_id=proposal.capability_id,
-                digest=snapshot_digest,
-            ),
+            reference_plan=reference_plan,
         )
+        session = self._conversations.get_guidance_session(proposal.workflow_id)
         invocation = CapabilityInvocationContextV2(
             context_kind="capability_operation",
             workflow_id=proposal.workflow_id,
@@ -2387,9 +2330,7 @@ class AgentConversationService:
             approved_reference_ids=tuple(
                 reference.source_id for reference in proposal.proposed_references
             ),
-            response_locale=(
-                self._conversations.get_guidance_session(proposal.workflow_id).response_locale
-            ),
+            response_locale=session.response_locale,
         )
         request_identity = f"proposal-revision:{snapshot_digest}"
         activity = self._conversations.start_expert_activity(
@@ -2442,35 +2383,36 @@ class AgentConversationService:
                 "Capability revision result is invalid.",
                 stage="agent_conversation_service",
             ) from error
-        option_ids = tuple(
-            "option_"
-            + hashlib.sha256(
-                f"{request_identity}:{index}:{option.title}".encode("utf-8")
-            ).hexdigest()[:32]
-            for index, option in enumerate(result.options)
-        )
-        revised = ConceptProposalCreateV2(
-            proposal_kind=proposal.proposal_kind,
+        envelope = CapabilityCommandEnvelopeV2(
+            envelope_id=f"envelope_{snapshot_digest[:32]}",
+            workflow_id=proposal.workflow_id,
+            conversation_id=turn.conversation_id,
+            source_turn_id=turn.turn_id,
+            capability_turn_id=turn.turn_id,
+            source_proposal_id=proposal.proposal_id,
+            session_id=session.session_id,
+            expected_session_revision=action.expected_session_revision,
             capability_id=proposal.capability_id,
-            options=tuple(
-                ConceptOptionRecordV2(
-                    option_id=option_ids[index],
-                    title=option.title,
-                    public_summary=option.public_summary,
-                )
-                for index, option in enumerate(result.options)
-            ),
-            proposed_references=proposal.proposed_references,
-            topic_id=proposal.topic_id,
-            target_node_id=proposal.target_node_id,
-            target_node_revision=proposal.target_node_revision,
-            proposal_purpose=proposal.proposal_purpose,
+            objective=objective,
+            context_snapshot_id=invocation.context_snapshot_id,
+            context_snapshot_digest=invocation.context_snapshot_digest,
+            requirement_revision_id=projection.ledger_revision_id,
+            requirement_revision_no=projection.ledger_revision_no,
+            requirement_digest=projection.ledger_digest,
+            requirement_projection_digest=requirement_projection_digest(projection),
+            requirement_projection=projection,
+            result_contract_name=definition.result_contract_name,
+            candidate_count=3,
+            reference_allowlist=reference_plan.approved_reference_ids,
+            reference_plan=reference_plan,
+            agent_request_identity=request_identity,
+            created_at=datetime.now(timezone.utc),
+            response_locale=session.response_locale,
         )
-        self._conversations.transition_expert_activity(
-            activity.activity_id,
-            status="completed",
-        )
-        return revised
+        return AgentCanvasCapabilityProposalRepository(
+            self._workflows.database,
+            EventRepository(self._workflows.database),
+        ).publish(envelope, result)
 
 
 def _guidance_state_action_continuation(
