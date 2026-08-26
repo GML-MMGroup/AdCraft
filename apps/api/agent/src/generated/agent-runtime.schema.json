@@ -13085,6 +13085,7 @@
             "mapping": {
               "concept_choice": "#/$defs/GuidedConceptSubmitV2",
               "media_review": "#/$defs/GuidedMediaReviewSubmitV1",
+              "product_source": "#/$defs/GuidedProductSourceSubmitV1",
               "questionnaire": "#/$defs/GuidedQuestionnaireSubmitV1"
             },
             "propertyName": "submission_kind"
@@ -13092,6 +13093,9 @@
           "oneOf": [
             {
               "$ref": "#/$defs/GuidedQuestionnaireSubmitV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedProductSourceSubmitV1"
             },
             {
               "$ref": "#/$defs/GuidedConceptSubmitV2"
@@ -13153,6 +13157,7 @@
               "retry",
               "revise",
               "select",
+              "select_source",
               "skip"
             ],
             "type": "string"
@@ -13173,6 +13178,7 @@
             "mapping": {
               "concept_choice": "#/$defs/GuidedConceptChoiceV2",
               "media_review": "#/$defs/GuidedMediaReviewV1",
+              "product_source": "#/$defs/GuidedProductSourceQuestionV1",
               "questionnaire": "#/$defs/GuidedQuestionnaireV1"
             },
             "propertyName": "content_kind"
@@ -13180,6 +13186,9 @@
           "oneOf": [
             {
               "$ref": "#/$defs/GuidedQuestionnaireV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedProductSourceQuestionV1"
             },
             {
               "$ref": "#/$defs/GuidedConceptChoiceV2"
@@ -13216,7 +13225,8 @@
           "enum": [
             "clarification_questionnaire",
             "concept_choice",
-            "media_review"
+            "media_review",
+            "product_source"
           ],
           "title": "Kind",
           "type": "string"
@@ -13806,6 +13816,95 @@
         "question_id"
       ],
       "title": "GuidedProductSourceActionV1",
+      "type": "object"
+    },
+    "GuidedProductSourceQuestionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "const": "product_source",
+          "default": "product_source",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "expected_guidance_revision": {
+          "minimum": 1,
+          "title": "Expected Guidance Revision",
+          "type": "integer"
+        },
+        "input_kind": {
+          "enum": [
+            "main",
+            "multiview"
+          ],
+          "title": "Input Kind",
+          "type": "string"
+        },
+        "max_asset_count": {
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Max Asset Count",
+          "type": "integer"
+        },
+        "min_asset_count": {
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Min Asset Count",
+          "type": "integer"
+        },
+        "prompt": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_guidance_revision",
+        "input_kind",
+        "max_asset_count",
+        "min_asset_count",
+        "prompt",
+        "question_id"
+      ],
+      "title": "GuidedProductSourceQuestionV1",
+      "type": "object"
+    },
+    "GuidedProductSourceSubmitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/GuidedProductSourceActionV1"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "submission_kind": {
+          "const": "product_source",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "submission_kind"
+      ],
+      "title": "GuidedProductSourceSubmitV1",
       "type": "object"
     },
     "GuidedProductionJourneyV2": {

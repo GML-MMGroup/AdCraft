@@ -101,10 +101,7 @@ class GuidedProductInputCommitService:
         compiler_result = None
         try:
             if request.input_kind == "multiview":
-                compiler_inputs = tuple(
-                    self._compiler_input(version)
-                    for version in versions
-                )
+                compiler_inputs = tuple(self._compiler_input(version) for version in versions)
                 try:
                     compiler_result = self._compiler.compile(compiler_inputs)
                 except ProductUploadMultiviewCompilationError as error:

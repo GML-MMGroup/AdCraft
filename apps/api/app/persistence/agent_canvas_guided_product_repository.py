@@ -70,9 +70,9 @@ class AgentCanvasGuidedProductRepository:
                     )
                     if replay is not None:
                         connection.commit()
-                        return GuidedProductInputCommitResponseV1.model_validate_json(replay).model_copy(
-                            update={"replayed": True}
-                        )
+                        return GuidedProductInputCommitResponseV1.model_validate_json(
+                            replay
+                        ).model_copy(update={"replayed": True})
 
                     current_revision = _require_workflow_revision(
                         connection,
@@ -85,9 +85,7 @@ class AgentCanvasGuidedProductRepository:
                         )
                     ).scalar_one_or_none()
                     current_guidance_revision = (
-                        int(guidance_revision_row)
-                        if guidance_revision_row is not None
-                        else 1
+                        int(guidance_revision_row) if guidance_revision_row is not None else 1
                     )
                     if current_guidance_revision != guidance_revision:
                         raise V2PersistenceError(
