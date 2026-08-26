@@ -346,15 +346,19 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Transition")).toBeTruthy();
     expect(screen.getByText("Transition duration")).toBeTruthy();
     expect(screen.getAllByText("Fit")).toHaveLength(2);
-    expect(screen.getByText("Fade in")).toBeTruthy();
-    expect(screen.getByText("Fade out")).toBeTruthy();
+    expect(screen.queryByText("Fade in")).toBeNull();
+    expect(screen.queryByText("Fade out")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("BGM volume"), { target: { value: "0.45" } });
     await waitFor(() => expect(patchNode).toHaveBeenCalledWith(
       editing.node_id,
       expect.objectContaining({
         structured_content: expect.objectContaining({
-          bgm: expect.objectContaining({ volume: 0.45 }),
+          bgm: expect.objectContaining({
+            fade_in_seconds: 0,
+            fade_out_seconds: 0,
+            volume: 0.45,
+          }),
           video_entries: expect.any(Array),
         }),
       }),

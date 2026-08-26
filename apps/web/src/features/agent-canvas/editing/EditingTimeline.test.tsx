@@ -337,7 +337,7 @@ describe("EditingTimeline retained controls", () => {
     expect(view.onUpdateVideo).toHaveBeenCalledWith("video-1", { volume: 0.5 });
   });
 
-  it("keeps BGM controls below the waveform and trims with direct handles", () => {
+  it("keeps BGM controls below the Audio Track label and trims with direct handles", () => {
     renderTimeline({ inputs: { videos: [video("video-1", 1)], bgm: bgm() } });
     const videoTrack = screen.getByRole("group", { name: "Video track" });
     const track = screen.getByRole("group", { name: "Audio track" });
@@ -347,14 +347,17 @@ describe("EditingTimeline retained controls", () => {
       .toBe((track.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width);
     expect((videoTrack.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width)
       .toBe(ruler.style.width);
-    expect(within(track).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
-    expect(within(track).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
+    const controls = within(track).getByRole("region", { name: "Audio track controls" });
+    expect(within(controls).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
+    expect(within(controls).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
     expect(within(track).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
     expect(within(track).queryByRole("spinbutton", { name: "Trim end" })).toBeNull();
-    expect(within(track).getByRole("slider", { name: "Trim start Campaign BGM" })).toBeTruthy();
-    expect(within(track).getByRole("slider", { name: "Trim end Campaign BGM" })).toBeTruthy();
-    expect(within(track).getByRole("spinbutton", { name: "Fade in" })).toBeTruthy();
-    expect(within(track).getByRole("spinbutton", { name: "Fade out" })).toBeTruthy();
+    expect(within(track).getByRole("slider", { name: "Trim start BGM" })).toBeTruthy();
+    expect(within(track).getByRole("slider", { name: "Trim end BGM" })).toBeTruthy();
+    expect(within(track).queryByText("Campaign BGM")).toBeNull();
+    expect(within(track).queryByRole("button", { name: "Mute BGM" })).toBeNull();
+    expect(track.querySelector(".agent-editing-timeline__track-label")?.contains(controls)).toBe(true);
+    expect(track.querySelector(".agent-editing-timeline__lane")?.contains(controls)).toBe(false);
   });
 
   it("disables trim and clip properties during export while leaving direct playhead seek usable", () => {

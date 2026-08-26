@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import { MuteIcon, UnmuteIcon, VideoIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
+import { AudioTrackControls } from "./AudioTrackControls.tsx";
 import { ClipPropertiesToolbar } from "./ClipPropertiesToolbar.tsx";
 import { EditingTimelineViewport } from "./EditingTimelineViewport.tsx";
 import { frameStripActiveIndices } from "./editingTimelineVisibility.ts";
@@ -52,14 +53,16 @@ function TrackLabel({
   count,
   icon,
   onSelect,
+  details,
 }: {
   children: string;
   count?: number;
   icon: ReactNode;
   onSelect?: () => void;
+  details?: ReactNode;
 }) {
   return (
-    <div className="agent-editing-timeline__track-label">
+    <div className={`agent-editing-timeline__track-label${details ? " agent-editing-timeline__track-label--stacked" : ""}`}>
       {onSelect ? (
         <button type="button" className="agent-editing-timeline__track-label-action" aria-label={`Select ${children}`} onClick={onSelect}>
           <span className="agent-editing-timeline__track-icon">{icon}</span>
@@ -72,6 +75,7 @@ function TrackLabel({
         </>
       )}
       {count === undefined ? null : <small>{count}</small>}
+      {details}
     </div>
   );
 }
@@ -169,6 +173,15 @@ export function EditingTimeline({
                 <TrackLabel
                   icon={inputs.bgm ? <UnmuteIcon /> : <MuteIcon />}
                   onSelect={inputs.bgm ? () => onSelectReference(inputs.bgm!.referenceId) : undefined}
+                  details={inputs.bgm ? (
+                    <AudioTrackControls
+                      disabled={exportRunning}
+                      enabled={inputs.bgm.entry.enabled}
+                      onSetBgm={onSetBgm}
+                      onSetBgmVolume={onSetBgmVolume}
+                      volume={inputs.bgm.entry.volume}
+                    />
+                  ) : null}
                 >Audio Track</TrackLabel>
                 <div className="agent-editing-timeline__lane agent-editing-timeline__lane--audio" style={{ width: viewport.contentWidth }}>
                   {inputs.bgm ? (
@@ -176,17 +189,12 @@ export function EditingTimeline({
                       audioUrl={inputs.bgm.asset?.media_url ?? null}
                       disabled={exportRunning}
                       durationSeconds={inputs.bgm.asset?.duration_seconds ?? sequenceDuration}
-                      enabled={inputs.bgm.entry.enabled}
-                      fadeInSeconds={inputs.bgm.entry.fade_in_seconds}
-                      fadeOutSeconds={inputs.bgm.entry.fade_out_seconds}
-                      name={inputs.bgm.node?.title || inputs.bgm.asset?.display_name || "Campaign BGM"}
+                      name="BGM"
                       onSetBgm={onSetBgm}
-                      onSetBgmVolume={onSetBgmVolume}
                       playheadSeconds={playheadSeconds}
                       renderedWidth={Math.max(1, Math.min(512, Math.ceil(viewport.contentWidth / 3)))}
                       trimEndSeconds={inputs.bgm.entry.trim_end_seconds}
                       trimStartSeconds={inputs.bgm.entry.trim_start_seconds}
-                      volume={inputs.bgm.entry.volume}
                     />
                   ) : <span className="agent-editing-timeline__empty">Optional BGM input</span>}
                 </div>
