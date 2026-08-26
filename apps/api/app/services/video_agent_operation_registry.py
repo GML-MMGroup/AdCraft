@@ -23,7 +23,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "world_setting",
         "world_setting",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_world_setting",
         "world_setting",
         "World Setting Designer",
@@ -31,7 +31,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "product_design",
         "product",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_product_design",
         "product",
         "Product Designer",
@@ -39,7 +39,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "prop_design",
         "prop",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_prop_design",
         "prop",
         "Prop Designer",
@@ -47,7 +47,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "character_design",
         "character",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_character_design",
         "character",
         "Character Designer",
@@ -55,7 +55,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "scene_design",
         "scene",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_scene_design",
         "scene",
         "Scene Designer",
@@ -63,7 +63,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "script_authoring",
         "script",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_script_authoring",
         "script",
         "Script Writer",
@@ -71,7 +71,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "storyboard_design",
         "storyboard",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_storyboard_design",
         "storyboard",
         "Storyboard Artist",
@@ -79,7 +79,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "video_direction",
         "video",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_video_direction",
         "video",
         "Video Director",
@@ -87,7 +87,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "bgm_direction",
         "bgm",
-        "GuidedProposalCardResultV3",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_bgm_direction",
         "bgm",
         "BGM Director",

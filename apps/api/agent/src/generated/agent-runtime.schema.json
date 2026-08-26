@@ -26877,6 +26877,7 @@
     "RoleCreativeBriefV2",
     "WorldSettingProposalResultV1",
     "ProposalCardResultV2",
+    "GuidedProposalAuthoringResultV4",
     "GuidedProposalCardResultV3",
     "ProductProposalResultV1",
     "PropProposalResultV1",
@@ -27056,7 +27057,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_world_setting_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27068,7 +27069,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_world_setting_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "world_setting",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27080,7 +27081,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_product_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "product",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27092,7 +27093,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_product_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "product",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27104,7 +27105,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_prop_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "prop",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27116,7 +27117,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_prop_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "prop",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27128,7 +27129,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_character_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "character",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27140,7 +27141,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_character_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "character",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27152,7 +27153,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_scene_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "scene",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27164,7 +27165,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_scene_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "scene",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27176,7 +27177,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_script_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "script",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27188,7 +27189,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_script_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "script",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27200,7 +27201,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_storyboard_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "storyboard",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27212,7 +27213,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_storyboard_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "storyboard",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27224,7 +27225,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_video_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "video",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27236,7 +27237,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_video_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "video",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27248,7 +27249,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_bgm_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "bgm",
       "validation_profile": "proposal_candidate_count_v1"
     },
@@ -27260,7 +27261,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_bgm_options",
-      "result_contract_name": "GuidedProposalCardResultV3",
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
       "style_projection_role": "bgm",
       "validation_profile": "proposal_candidate_count_v1"
     },

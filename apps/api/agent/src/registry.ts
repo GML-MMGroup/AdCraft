@@ -54,15 +54,15 @@ interface OperationMetadata {
 }
 
 const capabilityDefinitions = [
-  ["world_setting", "world_setting", "GuidedProposalCardResultV3", "video_agent_world_setting", "World Setting Designer"],
-  ["product_design", "product", "GuidedProposalCardResultV3", "video_agent_product_design", "Product Designer"],
-  ["prop_design", "prop", "GuidedProposalCardResultV3", "video_agent_prop_design", "Prop Designer"],
-  ["character_design", "character", "GuidedProposalCardResultV3", "video_agent_character_design", "Character Designer"],
-  ["scene_design", "scene", "GuidedProposalCardResultV3", "video_agent_scene_design", "Scene Designer"],
-  ["script_authoring", "script", "GuidedProposalCardResultV3", "video_agent_script_authoring", "Script Writer"],
-  ["storyboard_design", "storyboard", "GuidedProposalCardResultV3", "video_agent_storyboard_design", "Storyboard Artist"],
-  ["video_direction", "video", "GuidedProposalCardResultV3", "video_agent_video_direction", "Video Director"],
-  ["bgm_direction", "bgm", "GuidedProposalCardResultV3", "video_agent_bgm_direction", "BGM Director"],
+  ["world_setting", "world_setting", "GuidedProposalAuthoringResultV4", "video_agent_world_setting", "World Setting Designer"],
+  ["product_design", "product", "GuidedProposalAuthoringResultV4", "video_agent_product_design", "Product Designer"],
+  ["prop_design", "prop", "GuidedProposalAuthoringResultV4", "video_agent_prop_design", "Prop Designer"],
+  ["character_design", "character", "GuidedProposalAuthoringResultV4", "video_agent_character_design", "Character Designer"],
+  ["scene_design", "scene", "GuidedProposalAuthoringResultV4", "video_agent_scene_design", "Scene Designer"],
+  ["script_authoring", "script", "GuidedProposalAuthoringResultV4", "video_agent_script_authoring", "Script Writer"],
+  ["storyboard_design", "storyboard", "GuidedProposalAuthoringResultV4", "video_agent_storyboard_design", "Storyboard Artist"],
+  ["video_direction", "video", "GuidedProposalAuthoringResultV4", "video_agent_video_direction", "Video Director"],
+  ["bgm_direction", "bgm", "GuidedProposalAuthoringResultV4", "video_agent_bgm_direction", "BGM Director"],
 ] as const satisfies ReadonlyArray<
   readonly [CapabilityId, string, string, string, string]
 >;
