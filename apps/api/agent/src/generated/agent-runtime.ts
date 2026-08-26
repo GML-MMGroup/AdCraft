@@ -198,7 +198,7 @@ export type StoryboardPanelV2 = { readonly "panel_index": number; readonly "beat
 
 export type StoryboardGridContentV2 = { readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: true };
 
-export type VideoSegmentContentV2 = { readonly "segment_summary": string; readonly "duration_seconds": number; readonly "storyboard_content": string; readonly "dialogue"?: string; readonly "voice_style"?: string; readonly "environment_sound"?: string; readonly "action_effects"?: string; readonly "negative_constraints"?: string; readonly "background_music"?: false };
+export type VideoSegmentContentV2 = { readonly "segment_summary": string; readonly "duration_seconds": number; readonly "storyboard_content": string; readonly "style"?: VisualStyleContractV2 | null; readonly "dialogue"?: string; readonly "voice_style"?: string; readonly "environment_sound"?: string; readonly "action_effects"?: string; readonly "negative_constraints"?: string; readonly "background_music"?: false };
 
 export type BgmContentV2 = { readonly "music_summary": string; readonly "duration_seconds": number; readonly "pace": string; readonly "energy_curve": string; readonly "instrumentation": string; readonly "mood": string; readonly "instrumental_only"?: true; readonly "no_vocals"?: true };
 

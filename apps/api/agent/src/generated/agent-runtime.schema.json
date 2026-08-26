@@ -26032,6 +26032,17 @@
           "title": "Storyboard Content",
           "type": "string"
         },
+        "style": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualStyleContractV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "voice_style": {
           "default": "",
           "maxLength": 2048,
