@@ -147,14 +147,13 @@ describe("AgentCanvasStyleSelector", () => {
     const listRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
     const cardRule = css.match(/\.agent-chat__style-menu \.agent-chat__style-option\s*\{([\s\S]*?)\n\}/m)?.[1];
     const previewRule = css.match(/\.agent-chat__style-preview\s*\{([\s\S]*?)\n\}/m)?.[1];
-    expect(listRule).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(listRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(listRule).toContain("flex: 1 1 auto");
     expect(listRule).toContain("min-height: 0");
     expect(listRule).toContain("overflow-y: auto");
-    expect(cardRule).toContain("grid-template-columns: 96px minmax(0, 1fr)");
-    expect(previewRule).toContain("width: 96px");
-    expect(previewRule).toContain("height: 64px");
-    expect(css).not.toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(cardRule).toContain("grid-template-columns: 64px minmax(0, 1fr)");
+    expect(previewRule).toContain("width: 64px");
+    expect(previewRule).toContain("height: 48px");
   });
 
   it("loads all catalog pages and deduplicates stable Skill versions", async () => {
