@@ -413,58 +413,6 @@
   min-width: 0;
 }
 
-.agent-editing-timeline-viewport__toolbar {
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-bottom: 5px;
-  padding-right: 1px;
-}
-
-.agent-editing-timeline-viewport__toolbar button {
-  display: inline-grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  color: #bdbdbd;
-  background: #1b1b1b;
-  border: 1px solid #393939;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.agent-editing-timeline-viewport__toolbar button:hover:not(:disabled),
-.agent-editing-timeline-viewport__toolbar button:focus-visible {
-  color: #fff;
-  border-color: #8a8a8a;
-}
-
-.agent-editing-timeline-viewport__toolbar button:disabled {
-  cursor: not-allowed;
-  opacity: .35;
-}
-
-.agent-editing-timeline-viewport__toolbar button svg {
-  width: 15px;
-  height: 15px;
-}
-
-.agent-editing-timeline-viewport__toolbar input[type="range"] {
-  width: 112px;
-  accent-color: #d7d7d7;
-}
-
-.agent-editing-timeline-viewport__toolbar output {
-  width: 42px;
-  color: #858585;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
 .agent-editing-timeline-viewport__scroller {
   position: relative;
   width: 100%;
@@ -809,13 +757,11 @@
 
 .audio-waveform-track__lane {
   position: relative;
-  display: flex;
+  display: block;
   height: 46px;
   min-width: 0;
-  align-items: center;
-  gap: 1px;
   isolation: isolate;
-  overflow: hidden;
+  overflow: visible;
   padding: 2px 0;
   background: #191919;
   border-block: 1px solid #303030;
@@ -842,6 +788,33 @@
   opacity: .9;
 }
 
+.audio-waveform-track__source,
+.audio-waveform-track__selection {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.audio-waveform-track__source {
+  right: 0;
+  left: 0;
+  opacity: .42;
+}
+
+.audio-waveform-track__selection {
+  z-index: 2;
+  background: rgb(220 220 220 / 7%);
+  border-inline: 1px solid rgb(230 230 230 / 26%);
+}
+
+.audio-waveform-track__source .audio-waveform-track__bar {
+  background: #666;
+}
+
 .audio-waveform-track__bar--played {
   background: #dcdcdc;
   opacity: 1;
@@ -865,12 +838,6 @@
   font-size: 10px;
 }
 
-.audio-waveform-track__controls label:has(input[type="number"]) {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-}
-
 .audio-waveform-track__controls input[type="checkbox"],
 .audio-waveform-track__controls input[type="range"] {
   accent-color: #e5e5e5;
@@ -886,6 +853,34 @@
   background: #1a1a1a;
   border: 1px solid #4a4a4a;
   border-radius: 3px;
+}
+
+.audio-waveform-track__trim {
+  position: absolute;
+  z-index: 5;
+  top: -1px;
+  bottom: -1px;
+  display: grid;
+  width: 22px;
+  margin-left: -11px;
+  place-items: center;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.audio-waveform-track__trim > span {
+  display: block;
+  width: 3px;
+  height: 40px;
+  background: #f2f2f2;
+  border: 1px solid #1a1a1a;
+  border-radius: 1px;
+}
+
+.audio-waveform-track__trim:hover > span,
+.audio-waveform-track__trim:focus-visible > span {
+  width: 4px;
+  background: #fff;
 }
 
 .agent-editing-timeline__lane--audio .audio-waveform-track {
@@ -940,9 +935,11 @@
   z-index: 6;
   top: 27px;
   bottom: 0;
-  width: 1px;
-  background: #f4f4f4;
-  pointer-events: none;
+  width: 24px;
+  margin-left: -12px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .agent-editing-timeline-viewport__playhead::before {
@@ -957,11 +954,21 @@
   border-radius: 1px;
 }
 
-.agent-editing-timeline__scrubber {
-  display: block;
-  width: calc(100% - var(--editing-track-label-width));
-  margin: 6px 0 8px var(--editing-track-label-width);
-  accent-color: #dedede;
+.agent-editing-timeline-viewport__playhead::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  content: "";
+  transform: translateX(-50%);
+  background: #f4f4f4;
+}
+
+.agent-editing-timeline-viewport__playhead:hover::after,
+.agent-editing-timeline-viewport__playhead:focus-visible::after {
+  width: 2px;
+  background: #fff;
 }
 
 .agent-editing-timeline__inactive {

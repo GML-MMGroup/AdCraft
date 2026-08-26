@@ -434,7 +434,7 @@ describe("useAudioWaveform", () => {
     expect(onSetBgmVolume).toHaveBeenCalledWith(0);
   });
 
-  it("forwards BGM trim start changes from the compact waveform controls", () => {
+  it("stages BGM trim during direct drag and commits once on release", () => {
     const onSetBgm = vi.fn();
     const track = render(
       <AudioWaveformTrack
@@ -444,19 +444,37 @@ describe("useAudioWaveform", () => {
         name="Campaign BGM"
         onSetBgm={onSetBgm}
         onSetBgmVolume={vi.fn()}
-        renderedWidth={4}
+        renderedWidth={100}
         trimEndSeconds={10}
         trimStartSeconds={2}
         volume={0.5}
       />,
     );
 
-    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Trim start" }), { target: { value: "3.5" } });
+    const lane = track.container.querySelector(".audio-waveform-track__lane") as HTMLElement;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({
+      bottom: 46,
+      height: 46,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const handle = within(track.container).getByRole("slider", { name: "Trim start Campaign BGM" });
 
-    expect(onSetBgm).toHaveBeenCalledWith({ trim_start_seconds: 3.5 });
+    fireEvent.pointerDown(handle, { button: 0, clientX: 20, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 30, pointerId: 1 });
+    expect(onSetBgm).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(window, { clientX: 30, pointerId: 1 });
+    expect(onSetBgm).toHaveBeenCalledTimes(1);
+    expect(onSetBgm).toHaveBeenCalledWith({ trim_start_seconds: 3.2 });
   });
 
-  it("forwards an empty BGM trim end from the compact waveform controls", () => {
+  it("does not persist a BGM trim when the direct drag is cancelled", () => {
     const onSetBgm = vi.fn();
     const track = render(
       <AudioWaveformTrack
@@ -466,16 +484,32 @@ describe("useAudioWaveform", () => {
         name="Campaign BGM"
         onSetBgm={onSetBgm}
         onSetBgmVolume={vi.fn()}
-        renderedWidth={4}
+        renderedWidth={100}
         trimEndSeconds={10}
         trimStartSeconds={2}
         volume={0.5}
       />,
     );
 
-    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Trim end" }), { target: { value: "" } });
+    const lane = track.container.querySelector(".audio-waveform-track__lane") as HTMLElement;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({
+      bottom: 46,
+      height: 46,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const handle = within(track.container).getByRole("slider", { name: "Trim end Campaign BGM" });
 
-    expect(onSetBgm).toHaveBeenCalledWith({ trim_end_seconds: null });
+    fireEvent.pointerDown(handle, { button: 0, clientX: 80, pointerId: 2 });
+    fireEvent.pointerMove(window, { clientX: 90, pointerId: 2 });
+    fireEvent.pointerCancel(window, { pointerId: 2 });
+
+    expect(onSetBgm).not.toHaveBeenCalled();
   });
 
   it("forwards BGM fade in changes from the compact waveform controls", () => {

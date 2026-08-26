@@ -1,17 +1,17 @@
 import {
-  useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-import { FitIcon, PlusIcon } from "../../../icons.tsx";
 import {
-  clampPixelsPerSecond,
   fitPixelsPerSecond,
   pixelsToTime,
   timeToPixels,
@@ -19,9 +19,6 @@ import {
 
 const TRACK_LABEL_WIDTH = 124;
 const TIME_GUTTER_WIDTH = 18;
-const MAX_PIXELS_PER_SECOND = 240;
-const BUTTON_ZOOM_FACTOR = 1.25;
-const WHEEL_ZOOM_FACTOR = 1.12;
 
 export interface EditingTimelineViewportRenderState {
   pixelsPerSecond: number;
@@ -61,10 +58,9 @@ export function EditingTimelineViewport({
   playheadSeconds,
 }: EditingTimelineViewportProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const pendingAnchorRef = useRef<number | null>(null);
+  const playheadDragCancelRef = useRef<(() => void) | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
-  const [zoomScale, setZoomScale] = useState(1);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -81,25 +77,10 @@ export function EditingTimelineViewport({
   const availableTrackWidth = Math.max(0, viewportWidth - TRACK_LABEL_WIDTH);
   const timeViewportWidth = Math.max(1, availableTrackWidth - 2 * TIME_GUTTER_WIDTH);
   const timeOrigin = TRACK_LABEL_WIDTH + TIME_GUTTER_WIDTH;
-  const fit = fitPixelsPerSecond(timeViewportWidth, safeDuration);
-  const pixelsPerSecond = clampPixelsPerSecond(fit * zoomScale, {
-    viewportWidth: timeViewportWidth,
-    duration: safeDuration,
-    max: MAX_PIXELS_PER_SECOND,
-  });
-  const maximumPixelsPerSecond = Math.max(fit, MAX_PIXELS_PER_SECOND);
+  const pixelsPerSecond = fitPixelsPerSecond(timeViewportWidth, safeDuration);
   const contentWidth = Math.max(timeViewportWidth, timeToPixels(safeDuration, pixelsPerSecond));
   const timeScrollSurfaceWidth = TIME_GUTTER_WIDTH + contentWidth + TIME_GUTTER_WIDTH;
   const maxScrollLeft = Math.max(0, timeScrollSurfaceWidth - availableTrackWidth);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || pendingAnchorRef.current === null) return;
-    const nextScrollLeft = clamp(pendingAnchorRef.current, 0, maxScrollLeft);
-    pendingAnchorRef.current = null;
-    viewport.scrollLeft = nextScrollLeft;
-    setScrollLeft(nextScrollLeft);
-  }, [maxScrollLeft, pixelsPerSecond]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -108,51 +89,9 @@ export function EditingTimelineViewport({
     setScrollLeft(maxScrollLeft);
   }, [maxScrollLeft, scrollLeft]);
 
-  const setPixelsPerSecond = useCallback((value: number) => {
-    const clamped = clampPixelsPerSecond(value, {
-      viewportWidth: timeViewportWidth,
-      duration: safeDuration,
-      max: MAX_PIXELS_PER_SECOND,
-    });
-    setZoomScale(fit > 0 ? clamped / fit : 1);
-  }, [fit, safeDuration, timeViewportWidth]);
-
-  const fitTimeline = useCallback(() => {
-    pendingAnchorRef.current = 0;
-    setZoomScale(1);
-  }, []);
-
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-
-    if (event.ctrlKey || event.metaKey) {
-      if (!safeDuration || event.deltaY === 0) return;
-      const factor = event.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
-      const nextPixelsPerSecond = clampPixelsPerSecond(pixelsPerSecond * factor, {
-        viewportWidth: timeViewportWidth,
-        duration: safeDuration,
-        max: MAX_PIXELS_PER_SECOND,
-      });
-      if (nextPixelsPerSecond === pixelsPerSecond) return;
-
-      const rect = viewport.getBoundingClientRect();
-      const pointerOffset = clamp(
-        event.clientX - rect.left - timeOrigin,
-        -TIME_GUTTER_WIDTH,
-        viewportWidth - timeOrigin,
-      );
-      const anchorPixels = clamp(
-        scrollLeft + pointerOffset,
-        0,
-        timeToPixels(safeDuration, pixelsPerSecond),
-      );
-      const anchorSeconds = pixelsToTime(anchorPixels, pixelsPerSecond);
-      pendingAnchorRef.current = timeToPixels(anchorSeconds, nextPixelsPerSecond) - pointerOffset;
-      event.preventDefault();
-      setPixelsPerSecond(nextPixelsPerSecond);
-      return;
-    }
 
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
     const nextScrollLeft = clamp(scrollLeft + delta, 0, maxScrollLeft);
@@ -160,6 +99,80 @@ export function EditingTimelineViewport({
     event.preventDefault();
     viewport.scrollLeft = nextScrollLeft;
     setScrollLeft(nextScrollLeft);
+  };
+
+  const updatePlayheadFromClientX = (clientX: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const bounds = viewport.getBoundingClientRect();
+    const timelinePixels = viewport.scrollLeft + clientX - bounds.left - timeOrigin;
+    onPlayheadChange(clamp(pixelsToTime(timelinePixels, pixelsPerSecond), 0, safeDuration));
+  };
+
+  const startPlayheadDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !safeDuration || !pixelsPerSecond) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    target.setPointerCapture?.(pointerId);
+    let finished = false;
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      if (target.hasPointerCapture?.(pointerId)) target.releasePointerCapture(pointerId);
+      if (playheadDragCancelRef.current === cancel) playheadDragCancelRef.current = null;
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+    };
+    const onPointerMove = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId || finished) return;
+      updatePlayheadFromClientX(pointerEvent.clientX);
+    };
+    const onPointerUp = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      updatePlayheadFromClientX(pointerEvent.clientX);
+      finish();
+    };
+    const onPointerCancel = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId === pointerId) finish();
+    };
+    function cancel() {
+      finish();
+    }
+
+    playheadDragCancelRef.current?.();
+    playheadDragCancelRef.current = cancel;
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    updatePlayheadFromClientX(event.clientX);
+  };
+
+  useEffect(() => () => playheadDragCancelRef.current?.(), []);
+
+  const onPlayheadKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      onPlayheadChange(Math.max(0, playheadSeconds - 1));
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1));
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      onPlayheadChange(0);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      onPlayheadChange(safeDuration);
+    }
   };
 
   const seekFromClientX = (clientX: number, bounds: DOMRect) => {
@@ -196,28 +209,6 @@ export function EditingTimelineViewport({
 
   return (
     <div className="agent-editing-timeline-viewport">
-      <div className="agent-editing-timeline-viewport__toolbar" role="toolbar" aria-label="Timeline zoom controls">
-        <button type="button" aria-label="Zoom out" title="Zoom out" disabled={pixelsPerSecond <= fit} onClick={() => setPixelsPerSecond(pixelsPerSecond / BUTTON_ZOOM_FACTOR)}>
-          <span aria-hidden="true">-</span>
-        </button>
-        <input
-          type="range"
-          min={fit}
-          max={maximumPixelsPerSecond}
-          step={Math.max(0.01, (maximumPixelsPerSecond - fit) / 100)}
-          value={pixelsPerSecond}
-          aria-label="Timeline zoom"
-          onChange={(event) => setPixelsPerSecond(Number(event.currentTarget.value))}
-        />
-        <button type="button" aria-label="Zoom in" title="Zoom in" disabled={pixelsPerSecond >= maximumPixelsPerSecond} onClick={() => setPixelsPerSecond(pixelsPerSecond * BUTTON_ZOOM_FACTOR)}>
-          <PlusIcon />
-        </button>
-        <button type="button" aria-label="Fit timeline" title="Fit timeline" onClick={fitTimeline}>
-          <FitIcon />
-        </button>
-        <output aria-label="Timeline zoom level">{Math.round((fit > 0 ? pixelsPerSecond / fit : 1) * 100)}%</output>
-      </div>
-
       <div
         ref={viewportRef}
         className="agent-editing-timeline-viewport__scroller"
@@ -236,7 +227,6 @@ export function EditingTimelineViewport({
             aria-valuemax={safeDuration}
             aria-valuenow={playheadSeconds}
             onClick={(event) => seekFromClientX(event.clientX, event.currentTarget.getBoundingClientRect())}
-            onDoubleClick={fitTimeline}
             onKeyDown={(event) => {
               if (event.key === "ArrowLeft") onPlayheadChange(Math.max(0, playheadSeconds - 1));
               if (event.key === "ArrowRight") onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1));
@@ -256,32 +246,18 @@ export function EditingTimelineViewport({
           <div
             className="agent-editing-timeline-viewport__playhead"
             style={{ left: timeOrigin + timeToPixels(clamp(playheadSeconds, 0, safeDuration), pixelsPerSecond) }}
-            aria-hidden="true"
+            role="slider"
+            tabIndex={safeDuration ? 0 : -1}
+            aria-label="Timeline playhead"
+            aria-valuemin={0}
+            aria-valuemax={safeDuration}
+            aria-valuenow={clamp(playheadSeconds, 0, safeDuration)}
+            onKeyDown={onPlayheadKeyDown}
+            onPointerDown={startPlayheadDrag}
           />
           {children(state)}
         </div>
       </div>
-
-      <input
-        className="agent-editing-timeline__scrubber"
-        type="range"
-        min="0"
-        max={safeDuration}
-        step="0.01"
-        value={clamp(playheadSeconds, 0, safeDuration)}
-        aria-label="Timeline playhead"
-        onChange={(event) => onPlayheadChange(Number(event.currentTarget.value))}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowLeft") {
-            event.preventDefault();
-            onPlayheadChange(Math.max(0, playheadSeconds - 1));
-          }
-          if (event.key === "ArrowRight") {
-            event.preventDefault();
-            onPlayheadChange(Math.min(safeDuration, playheadSeconds + 1));
-          }
-        }}
-      />
     </div>
   );
 }
