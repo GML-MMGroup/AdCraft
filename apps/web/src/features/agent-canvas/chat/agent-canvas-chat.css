@@ -1564,13 +1564,12 @@
 }
 
 .agent-chat__style-menu .agent-chat__style-option {
-  display: grid;
+  display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 64px;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
   padding: 0;
   border: 1px solid #2d333b;
   border-radius: 8px;
@@ -1600,8 +1599,8 @@
 .agent-chat__style-preview {
   position: relative;
   display: block;
-  width: 64px;
-  height: 48px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   background: #242930;
 }
@@ -1667,10 +1666,10 @@
 
 .agent-chat__style-option-copy {
   display: grid;
-  width: auto;
+  width: 100%;
   min-width: 0;
   gap: 4px;
-  padding: 8px 8px 8px 0;
+  padding: 10px 11px 12px;
 }
 
 .agent-chat__style-option-copy strong {
@@ -1693,11 +1692,11 @@
 
 .agent-chat__style-selected-mark {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 9px;
+  right: 9px;
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 25px;
+  height: 25px;
   place-items: center;
   border-radius: 50%;
   background: #e6a34a;
@@ -1705,15 +1704,15 @@
 }
 
 .agent-chat__style-selected-mark svg {
-  width: 12px;
-  height: 12px;
+  width: 15px;
+  height: 15px;
 }
 
 .agent-chat__style-applying {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
-  padding: 3px 5px;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 6px;
   border: 1px solid rgb(119 201 194 / 40%);
   border-radius: 4px;
   background: rgb(17 19 22 / 84%);

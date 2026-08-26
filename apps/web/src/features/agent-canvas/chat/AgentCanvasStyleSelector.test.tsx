@@ -127,7 +127,7 @@ describe("AgentCanvasStyleSelector", () => {
       .toBe("placeholder");
   });
 
-  it("keeps search hidden for a short catalog and gives the compact list its own scroll viewport", async () => {
+  it("keeps search hidden for a short catalog and gives the large two-column rail its own scroll viewport", async () => {
     vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
 
     render(
@@ -151,9 +151,10 @@ describe("AgentCanvasStyleSelector", () => {
     expect(listRule).toContain("flex: 1 1 auto");
     expect(listRule).toContain("min-height: 0");
     expect(listRule).toContain("overflow-y: auto");
-    expect(cardRule).toContain("grid-template-columns: 64px minmax(0, 1fr)");
-    expect(previewRule).toContain("width: 64px");
-    expect(previewRule).toContain("height: 48px");
+    expect(cardRule).toContain("display: flex");
+    expect(cardRule).toContain("flex-direction: column");
+    expect(previewRule).toContain("width: 100%");
+    expect(previewRule).toContain("aspect-ratio: 16 / 9");
   });
 
   it("loads all catalog pages and deduplicates stable Skill versions", async () => {
