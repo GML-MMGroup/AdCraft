@@ -427,7 +427,7 @@ describe("EditingTimeline retained controls", () => {
 });
 
 describe("EditingTimelineViewport", () => {
-  it("removes zoom controls and the bottom scrubber", () => {
+  it("zooms the timeline without changing the sequence and restores fit view", () => {
     render(
       <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={vi.fn()}>
         {(state) => <output data-testid="pixels-per-second">{state.pixelsPerSecond}</output>}
@@ -435,10 +435,52 @@ describe("EditingTimelineViewport", () => {
     );
 
     expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
-    expect(screen.queryByRole("slider", { name: "Timeline zoom" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Fit timeline" })).toBeNull();
+    const zoom = screen.getByRole("slider", { name: "Timeline zoom" });
+    expect(zoom.getAttribute("value")).toBe("1");
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fit timeline" })).toBeTruthy();
+
+    fireEvent.change(zoom, { target: { value: "2" } });
+
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("76.4");
+    expect(screen.getByTestId("timeline-scroll-viewport").scrollLeft).toBe(382);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fit timeline" }));
+
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
+    expect(screen.getByTestId("timeline-scroll-viewport").scrollLeft).toBe(0);
     expect(document.querySelector(".agent-editing-timeline__scrubber")).toBeNull();
+  });
+
+  it("uses modified wheel input for local zoom and normal wheel input for timeline scrolling", () => {
+    render(
+      <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={vi.fn()}>
+        {(state) => <output data-testid="pixels-per-second">{state.pixelsPerSecond}</output>}
+      </EditingTimelineViewport>,
+    );
+
+    const scroller = screen.getByTestId("timeline-scroll-viewport");
+    fireEvent.wheel(scroller, { deltaY: -1, ctrlKey: true });
+    expect(screen.getByRole("slider", { name: "Timeline zoom" }).getAttribute("value")).toBe("1.25");
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("47.75");
+
+    fireEvent.wheel(scroller, { deltaX: 120 });
+    expect(scroller.scrollLeft).toBeGreaterThan(0);
+  });
+
+  it("keeps ruler seeking aligned with the scrolled timeline after zooming", () => {
+    const onPlayheadChange = vi.fn();
+    render(
+      <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={onPlayheadChange}>
+        {() => null}
+      </EditingTimelineViewport>,
+    );
+
+    fireEvent.change(screen.getByRole("slider", { name: "Timeline zoom" }), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("timeline-ruler"), { clientX: 524 });
+
+    expect(onPlayheadChange).toHaveBeenLastCalledWith(10);
   });
 
   it("makes the playhead itself draggable and keeps ruler seeking", () => {
