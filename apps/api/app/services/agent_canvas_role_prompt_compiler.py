@@ -165,7 +165,11 @@ class AgentCanvasRolePromptCompiler:
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
         reference_digest = _digest([item.model_dump(mode="json") for item in context.bindings])
-        style_digest = _digest(context.style_projection or "")
+        style_digest = _digest(
+            structured.get("style", context.style_projection or "")
+            if context.role_variant == "video_segment"
+            else (context.style_projection or "")
+        )
         brief_digest = _digest(brief_payload)
         prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
         prepared_prompt_digest = sha256(prompt.encode("utf-8")).hexdigest()
@@ -485,6 +489,7 @@ def _structured_content(
             segment_summary=brief.segment_summary,
             duration_seconds=brief.duration_seconds,
             storyboard_content=brief.action,
+            style=style,
             dialogue=brief.dialogue,
             voice_style=brief.voiceover,
             environment_sound=brief.ambience,

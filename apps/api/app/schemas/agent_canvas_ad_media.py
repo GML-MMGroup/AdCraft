@@ -137,6 +137,7 @@ class VideoSegmentContentV2(_AdMediaModel):
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
     storyboard_content: str = Field(min_length=1, max_length=16_384)
+    style: VisualStyleContractV2 | None = None
     dialogue: str = Field(default="", max_length=8_192)
     voice_style: str = Field(default="", max_length=2_048)
     environment_sound: str = Field(default="", max_length=4_096)
