@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
 
 export interface AudioTrackControlsProps {
@@ -16,8 +17,8 @@ export function AudioTrackControls({
   volume,
 }: AudioTrackControlsProps) {
   return (
-    <div className="agent-editing-timeline__audio-controls" role="region" aria-label="Audio track controls">
-      <label>
+    <div className="agent-editing-timeline__audio-controls agent-editing-timeline__audio-controls--under-label" role="region" aria-label="Audio track controls">
+      <label className="agent-editing-timeline__audio-enabled">
         <input
           type="checkbox"
           aria-label="Enabled"
@@ -27,7 +28,7 @@ export function AudioTrackControls({
         />
         <span>Enabled</span>
       </label>
-      <label>
+      <label className="agent-editing-timeline__audio-volume">
         <span>Volume</span>
         <input
           type="range"
@@ -37,6 +38,7 @@ export function AudioTrackControls({
           aria-label="BGM volume"
           value={volume}
           disabled={disabled}
+          style={{ "--audio-volume": `${volume * 100}%` } as CSSProperties}
           onChange={(event) => onSetBgmVolume(Number(event.currentTarget.value))}
         />
       </label>

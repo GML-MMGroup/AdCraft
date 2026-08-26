@@ -18,8 +18,10 @@ describe("AudioTrackControls", () => {
     );
 
     const controls = screen.getByRole("region", { name: "Audio track controls" });
+    expect(controls.classList.contains("agent-editing-timeline__audio-controls--under-label")).toBe(true);
     expect(within(controls).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
-    expect(within(controls).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
+    const volume = within(controls).getByRole("slider", { name: "BGM volume" });
+    expect(volume.getAttribute("style")).toContain("--audio-volume: 40%");
     expect(within(controls).queryByText("Fade in")).toBeNull();
     expect(within(controls).queryByText("Fade out")).toBeNull();
   });

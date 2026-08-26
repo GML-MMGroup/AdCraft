@@ -544,12 +544,14 @@
 }
 
 .agent-editing-timeline__track-label--stacked {
+  flex-direction: column;
   align-items: stretch;
   gap: 6px;
   padding-block: 8px;
 }
 
 .agent-editing-timeline__track-label--stacked .agent-editing-timeline__track-label-action {
+  width: 100%;
   flex: 0 0 auto;
 }
 
@@ -570,6 +572,89 @@
 .agent-editing-timeline__track-icon svg {
   width: 16px;
   height: 16px;
+}
+
+.agent-editing-timeline__audio-controls {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  color: #969696;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.agent-editing-timeline__audio-controls label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.agent-editing-timeline__audio-enabled input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #cfcfcf;
+  cursor: pointer;
+}
+
+.agent-editing-timeline__audio-volume {
+  display: grid !important;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 5px !important;
+}
+
+.agent-editing-timeline__audio-volume input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-editing-timeline__audio-volume input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #d6d6d6 0 var(--audio-volume), #4a4a4a var(--audio-volume) 100%);
+}
+
+.agent-editing-timeline__audio-volume input[type="range"]::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px;
+  appearance: none;
+  border: 1px solid #969696;
+  border-radius: 50%;
+  background: #eeeeee;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 30%);
+}
+
+.agent-editing-timeline__audio-volume input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: #4a4a4a;
+}
+
+.agent-editing-timeline__audio-volume input[type="range"]::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: #d6d6d6;
+}
+
+.agent-editing-timeline__audio-volume input[type="range"]::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #969696;
+  border-radius: 50%;
+  background: #eeeeee;
+}
+
+.agent-editing-timeline__audio-controls input:disabled {
+  cursor: default;
+  opacity: .45;
 }
 
 .agent-editing-timeline__lane {
