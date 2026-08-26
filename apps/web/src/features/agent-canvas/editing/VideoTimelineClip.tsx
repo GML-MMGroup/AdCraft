@@ -20,9 +20,10 @@ interface VideoTimelineClipProps {
   onDiscardStagedManifest: () => void;
   onSelect: () => void;
   onStageVideo: (referenceId: string, patch: Partial<EditingVideoEntryV2>) => void;
-  onStartReorder: (referenceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onStartMove: (referenceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  invalidDrop?: boolean;
   pixelsPerSecond: number;
-  reorderOffsetX?: number;
+  moveOffsetX?: number;
   segment: TimelineSegment;
   selected: boolean;
 }
@@ -55,9 +56,10 @@ export function VideoTimelineClip({
   onDiscardStagedManifest,
   onSelect,
   onStageVideo,
-  onStartReorder,
+  onStartMove,
+  invalidDrop = false,
   pixelsPerSecond,
-  reorderOffsetX = 0,
+  moveOffsetX = 0,
   segment,
   selected,
 }: VideoTimelineClipProps) {
@@ -205,12 +207,14 @@ export function VideoTimelineClip({
 
   return (
     <div
-      className={`agent-editing-timeline-clip agent-editing-timeline__clip--${statusOf(input)}${selected ? " is-selected" : ""}${dragging ? " is-reordering" : ""}`}
+      className={`agent-editing-timeline-clip agent-editing-timeline__clip--${statusOf(input)}${selected ? " is-selected" : ""}${dragging ? " is-moving" : ""}${invalidDrop ? " is-invalid-drop" : ""}`}
+      data-testid={`timeline-clip-${input.referenceId}`}
       data-reference-id={input.referenceId}
+      aria-invalid={invalidDrop || undefined}
       style={{
         left: segment.timelineStart * pixelsPerSecond,
         overflow: selected ? "visible" : undefined,
-        transform: dragging ? `translate3d(${reorderOffsetX}px, 0, 0)` : undefined,
+        transform: dragging ? `translate3d(${moveOffsetX}px, 0, 0)` : undefined,
         width: clipWidth,
         zIndex: dragging ? 15 : selected ? 8 : undefined,
       }}
@@ -221,7 +225,7 @@ export function VideoTimelineClip({
         style={{ overflow: "hidden" }}
         aria-label={`Select ${label}`}
         aria-pressed={selected}
-        onPointerDown={(event) => onStartReorder(input.referenceId, event)}
+        onPointerDown={(event) => onStartMove(input.referenceId, event)}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();

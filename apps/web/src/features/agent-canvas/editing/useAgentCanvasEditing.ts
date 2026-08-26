@@ -13,11 +13,14 @@ import type {
 import { normalizeEditingNodeContentV2 } from "../model/normalizers.ts";
 import {
   buildEditingInputs,
-  moveEditingVideoEntry,
-  reorderEditingVideoEntries,
   replaceEditingManifest,
   updateEditingVideoEntry,
 } from "./editingModel.ts";
+import {
+  clampTimelineStart,
+  hasTimelineOverlap,
+} from "./editingTimelineMath.ts";
+import { buildPlayableEditingSequence } from "./editingPlayableSequence.ts";
 
 type PatchNode = (
   nodeId: string,
@@ -350,12 +353,6 @@ export function useAgentCanvasEditing(
     );
   }, [stageManifestUpdate]);
 
-  const stageVideoOrder = useCallback((orderedReferenceIds: readonly string[]) => {
-    stageManifestUpdate(
-      (baseManifest) => reorderEditingVideoEntries(baseManifest, orderedReferenceIds),
-    );
-  }, [stageManifestUpdate]);
-
   const commitStagedManifest = useCallback(() => {
     const stagedManifest = stagedManifestRef.current;
     const stagedUpdater = stagedManifestUpdaterRef.current;
@@ -383,12 +380,27 @@ export function useAgentCanvasEditing(
   const moveVideo = useCallback((referenceId: string, offset: -1 | 1) => {
     const manifest = currentManifest();
     if (!manifest) return;
+    const sequence = buildPlayableEditingSequence(inputs.videos, manifest.timeline_duration_seconds);
+    const videoIndex = sequence.videos.findIndex((input) => input.referenceId === referenceId);
+    const currentSegment = videoIndex >= 0 ? sequence.segments[videoIndex] : undefined;
+    if (!currentSegment) return;
+    const duration = currentSegment.timelineEnd - currentSegment.timelineStart;
+    const nextStart = clampTimelineStart(
+      currentSegment.timelineStart + offset,
+      duration,
+      sequence.duration,
+    );
+    const nextSegment = { ...currentSegment, timelineStart: nextStart, timelineEnd: nextStart + duration };
+    if (nextStart === currentSegment.timelineStart || hasTimelineOverlap([
+      ...sequence.segments.filter((segment) => segment.referenceId !== referenceId),
+      nextSegment,
+    ])) return;
     const updateManifest: ManifestUpdater = (baseManifest) => (
-      moveEditingVideoEntry(baseManifest, referenceId, offset)
+      updateEditingVideoEntry(baseManifest, referenceId, { timeline_start_seconds: nextStart })
     );
     const next = updateManifest(manifest);
     if (next !== manifest) void queueManifestCommit(updateManifest, next);
-  }, [currentManifest, queueManifestCommit]);
+  }, [currentManifest, inputs.videos, queueManifestCommit]);
 
   const updateVideo = useCallback((
     referenceId: string,
@@ -543,7 +555,6 @@ export function useAgentCanvasEditing(
     discardStagedManifest,
     hasPendingManifestCommit,
     moveVideo,
-    stageVideoOrder,
     updateVideo,
     setBgm,
     setBgmVolume,

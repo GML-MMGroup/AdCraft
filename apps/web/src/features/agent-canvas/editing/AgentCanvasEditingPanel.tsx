@@ -71,8 +71,11 @@ export function AgentCanvasEditingPanel({
     ? editing.terminalExport
     : null;
   const playableSequence = useMemo(
-    () => buildPlayableEditingSequence(editing.inputs.videos),
-    [editing.inputs.videos],
+    () => buildPlayableEditingSequence(
+      editing.inputs.videos,
+      editing.content?.manifest.timeline_duration_seconds,
+    ),
+    [editing.content?.manifest.timeline_duration_seconds, editing.inputs.videos],
   );
   const backendReadyVideos = editing.inputs.videos.filter(isBackendReadyEditingVideo).length;
   const timelineDuration = playableSequence.duration;
@@ -261,7 +264,6 @@ export function AgentCanvasEditingPanel({
               onDiscardStagedManifest={editing.discardStagedManifest}
               onSetBgm={editing.setBgm}
               onSetBgmVolume={editing.setBgmVolume}
-              onStageVideoOrder={editing.stageVideoOrder}
             />
 
             {omittedNodeIds.length ? (
