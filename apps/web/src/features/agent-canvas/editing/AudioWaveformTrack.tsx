@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
-import { MuteIcon, UnmuteIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
 import { clampTrimRange, MIN_EDITED_CLIP_SECONDS } from "./editingTimelineMath.ts";
 import { normalizePeakCount, trimAudioPeaks, useAudioWaveform } from "./useAudioWaveform.ts";
@@ -8,17 +7,12 @@ import { normalizePeakCount, trimAudioPeaks, useAudioWaveform } from "./useAudio
 export interface AudioWaveformTrackProps {
   audioUrl: string | null;
   durationSeconds: number;
-  enabled: boolean;
   name: string;
   onSetBgm: (patch: Partial<EditingBgmEntryV2>) => void;
-  onSetBgmVolume: (volume: number) => void;
   renderedWidth: number;
   trimEndSeconds: number | null;
   trimStartSeconds: number;
-  volume: number;
   disabled?: boolean;
-  fadeInSeconds?: number;
-  fadeOutSeconds?: number;
   playheadSeconds?: number;
 }
 
@@ -33,12 +27,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function roundTrim(value: number): number {
   return Math.round(value * 1_000) / 1_000;
-}
-
-function numberValue(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function initialTrimRange(durationSeconds: number, start: number, end: number | null): TrimRange {
@@ -56,26 +44,18 @@ export function AudioWaveformTrack({
   audioUrl,
   disabled = false,
   durationSeconds,
-  enabled,
-  fadeInSeconds = 0,
-  fadeOutSeconds = 0,
   name,
   onSetBgm,
-  onSetBgmVolume,
   playheadSeconds = 0,
   renderedWidth,
   trimEndSeconds,
   trimStartSeconds,
-  volume,
 }: AudioWaveformTrackProps) {
   const waveform = useAudioWaveform({ audioUrl, renderedWidth });
   const laneRef = useRef<HTMLDivElement>(null);
   const dragCancelRef = useRef<(() => void) | null>(null);
-  const lastAudibleVolume = useRef(volume > 0 ? volume : 1);
   const duration = Math.max(0, Number.isFinite(durationSeconds) ? durationSeconds : 0);
   const [trimRange, setTrimRange] = useState<TrimRange>(() => initialTrimRange(duration, trimStartSeconds, trimEndSeconds));
-
-  if (volume > 0) lastAudibleVolume.current = volume;
 
   useEffect(() => {
     setTrimRange(initialTrimRange(duration, trimStartSeconds, trimEndSeconds));
@@ -83,7 +63,6 @@ export function AudioWaveformTrack({
 
   useEffect(() => () => dragCancelRef.current?.(), []);
 
-  const muted = volume <= 0;
   const playableDuration = Math.max(0, trimRange.end - trimRange.start);
   const playedRatio = playableDuration === 0 ? 0 : clamp(playheadSeconds / playableDuration, 0, 1);
   const trimRatio = duration === 0 ? 0 : clamp(playableDuration / duration, 0, 1);
@@ -211,19 +190,6 @@ export function AudioWaveformTrack({
 
   return (
     <section className="audio-waveform-track" aria-label="BGM track">
-      <div className="audio-waveform-track__header">
-        <strong title={name}>{name}</strong>
-        <button
-          type="button"
-          className="audio-waveform-track__mute"
-          aria-label={muted ? "Unmute BGM" : "Mute BGM"}
-          title={muted ? "Unmute BGM" : "Mute BGM"}
-          disabled={disabled}
-          onClick={() => onSetBgmVolume(muted ? lastAudibleVolume.current : 0)}
-        >
-          {muted ? <MuteIcon aria-hidden="true" /> : <UnmuteIcon aria-hidden="true" />}
-        </button>
-      </div>
       <div ref={laneRef} className="audio-waveform-track__lane" role="group" aria-label={`Audio waveform, ${waveform.status}`}>
         <div className="audio-waveform-track__source" aria-hidden="true">
           {sourcePeaks.map((peak, index) => (
@@ -251,24 +217,6 @@ export function AudioWaveformTrack({
         </div>
         {duration ? renderHandle("start") : null}
         {duration ? renderHandle("end") : null}
-      </div>
-      <div className="audio-waveform-track__controls">
-        <label>
-          <input type="checkbox" checked={enabled} disabled={disabled} onChange={(event) => onSetBgm({ enabled: event.currentTarget.checked })} />
-          <span>Enabled</span>
-        </label>
-        <label>
-          <span>Volume</span>
-          <input type="range" min="0" max="1" step="0.05" aria-label="BGM volume" value={volume} disabled={disabled} onChange={(event) => onSetBgmVolume(Number(event.currentTarget.value))} />
-        </label>
-        <label>
-          <span>Fade in</span>
-          <input type="number" min="0" max="30" step="0.1" aria-label="Fade in" value={fadeInSeconds} disabled={disabled} onChange={(event) => onSetBgm({ fade_in_seconds: clamp(numberValue(event.currentTarget.value) ?? 0, 0, 30) })} />
-        </label>
-        <label>
-          <span>Fade out</span>
-          <input type="number" min="0" max="30" step="0.1" aria-label="Fade out" value={fadeOutSeconds} disabled={disabled} onChange={(event) => onSetBgm({ fade_out_seconds: clamp(numberValue(event.currentTarget.value) ?? 0, 0, 30) })} />
-        </label>
       </div>
     </section>
   );

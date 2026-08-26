@@ -394,7 +394,15 @@ export function useAgentCanvasEditing(
     if (!manifest?.bgm) return;
     const updateManifest: ManifestUpdater = (baseManifest) => (
       baseManifest.bgm
-        ? { ...baseManifest, bgm: { ...baseManifest.bgm, ...patch } }
+        ? {
+            ...baseManifest,
+            bgm: {
+              ...baseManifest.bgm,
+              ...patch,
+              fade_in_seconds: 0,
+              fade_out_seconds: 0,
+            },
+          }
         : baseManifest
     );
     void queueManifestCommit(updateManifest, updateManifest(manifest));

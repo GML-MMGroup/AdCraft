@@ -350,88 +350,17 @@ describe("useAudioWaveform", () => {
       <AudioWaveformTrack
         audioUrl={null}
         durationSeconds={12}
-        enabled
         name="Campaign BGM"
         onSetBgm={vi.fn()}
-        onSetBgmVolume={vi.fn()}
         playheadSeconds={4}
         renderedWidth={8}
         trimEndSeconds={10}
         trimStartSeconds={2}
-        volume={0.5}
       />,
     );
 
     expect(track.container.querySelectorAll(".audio-waveform-track__bar--played")).toHaveLength(4);
     track.unmount();
-  });
-
-  it("forwards BGM volume changes from the compact waveform controls", () => {
-    const onSetBgm = vi.fn();
-    const onSetBgmVolume = vi.fn();
-    render(
-      <AudioWaveformTrack
-        audioUrl={null}
-        durationSeconds={12}
-        enabled
-        name="Campaign BGM"
-        onSetBgm={onSetBgm}
-        onSetBgmVolume={onSetBgmVolume}
-        renderedWidth={4}
-        trimEndSeconds={10}
-        trimStartSeconds={2}
-        volume={0.5}
-      />,
-    );
-
-    fireEvent.change(screen.getByRole("slider", { name: "BGM volume" }), { target: { value: "0.7" } });
-
-    expect(onSetBgmVolume).toHaveBeenCalledWith(0.7);
-    expect(onSetBgm).not.toHaveBeenCalled();
-  });
-
-  it("forwards BGM enabled changes from the compact waveform controls", () => {
-    const onSetBgm = vi.fn();
-    const track = render(
-      <AudioWaveformTrack
-        audioUrl={null}
-        durationSeconds={12}
-        enabled
-        name="Campaign BGM"
-        onSetBgm={onSetBgm}
-        onSetBgmVolume={vi.fn()}
-        renderedWidth={4}
-        trimEndSeconds={10}
-        trimStartSeconds={2}
-        volume={0.5}
-      />,
-    );
-
-    fireEvent.click(within(track.container).getByRole("checkbox", { name: "Enabled" }));
-
-    expect(onSetBgm).toHaveBeenCalledWith({ enabled: false });
-  });
-
-  it("mutes BGM through the existing volume callback", () => {
-    const onSetBgmVolume = vi.fn();
-    const track = render(
-      <AudioWaveformTrack
-        audioUrl={null}
-        durationSeconds={12}
-        enabled
-        name="Campaign BGM"
-        onSetBgm={vi.fn()}
-        onSetBgmVolume={onSetBgmVolume}
-        renderedWidth={4}
-        trimEndSeconds={10}
-        trimStartSeconds={2}
-        volume={0.5}
-      />,
-    );
-
-    fireEvent.click(within(track.container).getByRole("button", { name: "Mute BGM" }));
-
-    expect(onSetBgmVolume).toHaveBeenCalledWith(0);
   });
 
   it("stages BGM trim during direct drag and commits once on release", () => {
@@ -440,14 +369,11 @@ describe("useAudioWaveform", () => {
       <AudioWaveformTrack
         audioUrl={null}
         durationSeconds={12}
-        enabled
         name="Campaign BGM"
         onSetBgm={onSetBgm}
-        onSetBgmVolume={vi.fn()}
         renderedWidth={100}
         trimEndSeconds={10}
         trimStartSeconds={2}
-        volume={0.5}
       />,
     );
 
@@ -480,14 +406,11 @@ describe("useAudioWaveform", () => {
       <AudioWaveformTrack
         audioUrl={null}
         durationSeconds={12}
-        enabled
         name="Campaign BGM"
         onSetBgm={onSetBgm}
-        onSetBgmVolume={vi.fn()}
         renderedWidth={100}
         trimEndSeconds={10}
         trimStartSeconds={2}
-        volume={0.5}
       />,
     );
 
@@ -512,49 +435,4 @@ describe("useAudioWaveform", () => {
     expect(onSetBgm).not.toHaveBeenCalled();
   });
 
-  it("forwards BGM fade in changes from the compact waveform controls", () => {
-    const onSetBgm = vi.fn();
-    const track = render(
-      <AudioWaveformTrack
-        audioUrl={null}
-        durationSeconds={12}
-        enabled
-        fadeInSeconds={1}
-        name="Campaign BGM"
-        onSetBgm={onSetBgm}
-        onSetBgmVolume={vi.fn()}
-        renderedWidth={4}
-        trimEndSeconds={10}
-        trimStartSeconds={2}
-        volume={0.5}
-      />,
-    );
-
-    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Fade in" }), { target: { value: "2.5" } });
-
-    expect(onSetBgm).toHaveBeenCalledWith({ fade_in_seconds: 2.5 });
-  });
-
-  it("forwards BGM fade out changes from the compact waveform controls", () => {
-    const onSetBgm = vi.fn();
-    const track = render(
-      <AudioWaveformTrack
-        audioUrl={null}
-        durationSeconds={12}
-        enabled
-        fadeOutSeconds={1}
-        name="Campaign BGM"
-        onSetBgm={onSetBgm}
-        onSetBgmVolume={vi.fn()}
-        renderedWidth={4}
-        trimEndSeconds={10}
-        trimStartSeconds={2}
-        volume={0.5}
-      />,
-    );
-
-    fireEvent.change(within(track.container).getByRole("spinbutton", { name: "Fade out" }), { target: { value: "3.5" } });
-
-    expect(onSetBgm).toHaveBeenCalledWith({ fade_out_seconds: 3.5 });
-  });
 });

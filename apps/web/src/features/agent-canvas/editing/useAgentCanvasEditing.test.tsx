@@ -205,6 +205,8 @@ describe("useAgentCanvasEditing", () => {
 
     act(() => result.current.setBgmVolume(0.35));
     await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+    expect((patchNode.mock.calls[0]?.[1] as CanvasNodePatchRequestV2).structured_content?.bgm)
+      .toEqual(expect.objectContaining({ fade_in_seconds: 0, fade_out_seconds: 0, volume: 0.35 }));
 
     act(() => result.current.setBgmVolume(0.7));
     expect(patchNode).toHaveBeenCalledTimes(1);
