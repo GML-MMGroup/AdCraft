@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { EditingBgmEntryV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
@@ -28,6 +28,34 @@ export interface EditingTimelineProps {
   onDiscardStagedManifest: () => void;
   onSetBgm: (patch: Partial<EditingBgmEntryV2>) => void;
   onSetBgmVolume: (volume: number) => void;
+  onStageVideoOrder: (orderedReferenceIds: readonly string[]) => void;
+}
+
+interface ClipLayout {
+  referenceId: string;
+  left: number;
+  right: number;
+  center: number;
+}
+
+interface ClipDragState {
+  referenceId: string;
+  initialOrder: string[];
+  offsetX: number;
+  dropIndicatorLeft: number;
+}
+
+interface ClipDragSession {
+  referenceId: string;
+  initialOrder: string[];
+  layouts: ClipLayout[];
+  startClientX: number;
+  laneLeft: number;
+  pointerId: number;
+  targetOrder: string[];
+  targetIndex: number;
+  moved: boolean;
+  finished: boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -89,12 +117,17 @@ export function EditingTimeline({
   onSelectReference,
   onSetBgm,
   onSetBgmVolume,
+  onStageVideoOrder,
   onStageVideo,
   onUpdateVideo,
   playheadSeconds,
   selectedReferenceId,
   sequence,
 }: EditingTimelineProps) {
+  const videoLaneRef = useRef<HTMLDivElement>(null);
+  const clipDragCancelRef = useRef<(() => void) | null>(null);
+  const clipDragSessionRef = useRef<ClipDragSession | null>(null);
+  const [clipDrag, setClipDrag] = useState<ClipDragState | null>(null);
   const activeSequence = useMemo(
     () => sequence ?? buildPlayableEditingSequence(inputs.videos),
     [inputs.videos, sequence],
@@ -104,6 +137,114 @@ export function EditingTimeline({
   const selectedVideoIndex = inputs.videos.findIndex((input) => input.referenceId === selectedReferenceId);
   const selectedVideo = selectedVideoIndex >= 0 ? inputs.videos[selectedVideoIndex] : null;
   const selectedBgm = inputs.bgm?.referenceId === selectedReferenceId ? inputs.bgm : null;
+
+  useEffect(() => () => clipDragCancelRef.current?.(), []);
+
+  const startReorder = (referenceId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (exportRunning || event.button !== 0 || clipDragSessionRef.current) return;
+    const lane = videoLaneRef.current;
+    if (!lane) return;
+    const laneBounds = lane.getBoundingClientRect();
+    const clipElements = [...lane.querySelectorAll<HTMLElement>(".agent-editing-timeline-clip[data-reference-id]")];
+    const layouts = clipElements.flatMap((element) => {
+      const id = element.dataset.referenceId;
+      if (!id) return [];
+      const bounds = element.getBoundingClientRect();
+      const left = bounds.left - laneBounds.left;
+      const right = bounds.right - laneBounds.left;
+      return [{ referenceId: id, left, right, center: (left + right) / 2 }];
+    });
+    const initialOrder = activeSequence.videos.map((input) => input.referenceId);
+    const draggedIndex = initialOrder.indexOf(referenceId);
+    if (draggedIndex < 0 || layouts.length < 2) return;
+
+    const session: ClipDragSession = {
+      referenceId,
+      initialOrder,
+      layouts,
+      startClientX: event.clientX,
+      laneLeft: laneBounds.left,
+      pointerId: event.pointerId,
+      targetOrder: initialOrder,
+      targetIndex: draggedIndex,
+      moved: false,
+      finished: false,
+    };
+    clipDragSessionRef.current = session;
+    const updateDrag = (pointerEvent: PointerEvent) => {
+      const current = clipDragSessionRef.current;
+      if (!current || current.finished) return;
+      const offsetX = pointerEvent.clientX - current.startClientX;
+      if (!current.moved && Math.abs(offsetX) < 4) return;
+      current.moved = true;
+      const others = current.layouts.filter((layout) => layout.referenceId !== current.referenceId);
+      const localClientX = pointerEvent.clientX - current.laneLeft;
+      const foundTargetIndex = others.findIndex((layout) => localClientX < layout.center);
+      const normalizedTargetIndex = foundTargetIndex < 0 ? others.length : foundTargetIndex;
+      const targetOrder = [...others.map((layout) => layout.referenceId)];
+      targetOrder.splice(normalizedTargetIndex, 0, current.referenceId);
+      const previousLayout = others[normalizedTargetIndex - 1];
+      const nextLayout = others[normalizedTargetIndex];
+      const dropIndicatorLeft = normalizedTargetIndex === 0
+        ? nextLayout?.left ?? 0
+        : normalizedTargetIndex >= others.length
+          ? previousLayout?.right ?? 0
+          : ((previousLayout?.right ?? 0) + (nextLayout?.left ?? 0)) / 2;
+      current.targetIndex = normalizedTargetIndex;
+      current.targetOrder = targetOrder;
+      setClipDrag({
+        referenceId: current.referenceId,
+        initialOrder: current.initialOrder,
+        offsetX,
+        dropIndicatorLeft,
+      });
+      pointerEvent.preventDefault();
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      window.removeEventListener("keydown", onWindowKeyDown);
+      if (clipDragCancelRef.current === cancel) clipDragCancelRef.current = null;
+      clipDragSessionRef.current = null;
+      setClipDrag(null);
+    };
+    const finish = (commit: boolean) => {
+      const current = clipDragSessionRef.current;
+      if (!current || current.finished) return;
+      current.finished = true;
+      cleanup();
+      if (commit && current.moved && current.targetOrder.some((id, index) => id !== current.initialOrder[index])) {
+        onStageVideoOrder(current.targetOrder);
+        void onCommitStagedManifest();
+      }
+    };
+    const onPointerMove = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId === session.pointerId) updateDrag(pointerEvent);
+    };
+    const onPointerUp = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId === session.pointerId) finish(true);
+    };
+    const onPointerCancel = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId === session.pointerId) finish(false);
+    };
+    const onWindowKeyDown = (keyboardEvent: globalThis.KeyboardEvent) => {
+      if (keyboardEvent.key === "Escape") {
+        keyboardEvent.preventDefault();
+        finish(false);
+      }
+    };
+    function cancel() {
+      finish(false);
+    }
+
+    clipDragCancelRef.current?.();
+    clipDragCancelRef.current = cancel;
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("keydown", onWindowKeyDown);
+  };
 
   return (
     <div className="agent-editing-timeline">
@@ -126,6 +267,7 @@ export function EditingTimeline({
                   count={activeSequence.videos.length}
                 >Video Track</TrackLabel>
                 <div
+                  ref={videoLaneRef}
                   className="agent-editing-timeline__lane"
                   style={{ width: viewport.contentWidth }}
                   role="slider"
@@ -152,18 +294,28 @@ export function EditingTimeline({
                       key={input.referenceId}
                       active={activeFrames.has(index)}
                       disabled={exportRunning}
+                      dragging={clipDrag?.referenceId === input.referenceId}
                       index={manifestIndex}
                       input={input}
                       onCommitStagedManifest={onCommitStagedManifest}
                       onDiscardStagedManifest={onDiscardStagedManifest}
                       onSelect={() => onSelectReference(input.referenceId)}
                       onStageVideo={onStageVideo}
+                      onStartReorder={startReorder}
                       pixelsPerSecond={viewport.pixelsPerSecond}
+                      reorderOffsetX={clipDrag?.referenceId === input.referenceId ? clipDrag.offsetX : 0}
                       segment={segments[index]!}
                       selected={input.referenceId === selectedReferenceId}
                     />
                     );
                   })}
+                  {clipDrag ? (
+                    <span
+                      className="agent-editing-timeline__drop-indicator"
+                      style={{ left: clipDrag.dropIndicatorLeft }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
                 </div>
               </section>
 

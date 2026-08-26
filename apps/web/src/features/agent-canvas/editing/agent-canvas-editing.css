@@ -692,6 +692,12 @@
   overflow: visible;
 }
 
+.agent-editing-timeline-clip.is-reordering {
+  z-index: 15;
+  opacity: .72;
+  pointer-events: none;
+}
+
 .agent-editing-timeline-clip.is-selected {
   z-index: 8;
 }
@@ -707,8 +713,14 @@
   background: #292929;
   border: 1px solid #4b4b4b;
   border-radius: 3px;
-  cursor: pointer;
+  cursor: grab;
   text-align: left;
+  touch-action: none;
+}
+
+.agent-editing-timeline-clip__surface:active,
+.agent-editing-timeline-clip.is-reordering .agent-editing-timeline-clip__surface {
+  cursor: grabbing;
 }
 
 .agent-editing-timeline-clip:hover .agent-editing-timeline-clip__surface,
@@ -772,18 +784,18 @@
 
 .agent-editing-timeline-clip__trim {
   position: absolute;
-  z-index: 8;
-  top: 0;
-  bottom: 0;
+  z-index: 16;
+  top: -3px;
+  bottom: -3px;
   display: grid;
-  width: 18px;
+  width: 20px;
   place-items: center;
   cursor: ew-resize;
   touch-action: none;
 }
 
 .agent-editing-timeline-clip__trim--start {
-  left: -18px;
+  left: -10px;
   justify-items: end;
 }
 
@@ -793,18 +805,53 @@
 }
 
 .agent-editing-timeline-clip__trim > span {
+  position: relative;
   display: block;
   width: 3px;
-  height: 40px;
-  background: #f2f2f2;
-  border: 1px solid #1a1a1a;
-  border-radius: 1px;
+  height: calc(100% - 4px);
+  min-height: 38px;
+  background: #e7e7e7;
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%), 0 0 8px rgb(255 255 255 / 20%);
+}
+
+.agent-editing-timeline-clip__trim > span::before,
+.agent-editing-timeline-clip__trim > span::after {
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 2px;
+  content: "";
+  transform: translateX(-50%);
+  background: #e7e7e7;
+  border-radius: 2px;
+}
+
+.agent-editing-timeline-clip__trim > span::before {
+  top: 0;
+}
+
+.agent-editing-timeline-clip__trim > span::after {
+  bottom: 0;
 }
 
 .agent-editing-timeline-clip__trim:hover > span,
 .agent-editing-timeline-clip__trim:focus-visible > span {
   width: 4px;
   background: #fff;
+}
+
+.agent-editing-timeline__drop-indicator {
+  position: absolute;
+  z-index: 14;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  pointer-events: none;
+  background: #f1f1f1;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 40%), 0 0 10px rgb(255 255 255 / 32%);
 }
 
 .audio-waveform-track {

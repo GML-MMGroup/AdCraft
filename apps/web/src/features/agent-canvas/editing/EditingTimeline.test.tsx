@@ -91,6 +91,7 @@ function renderTimeline(options: {
     onSelectReference: vi.fn(),
     onSetBgm: vi.fn(),
     onSetBgmVolume: vi.fn(),
+    onStageVideoOrder: vi.fn(),
     onStageVideo: vi.fn(),
     onUpdateVideo: vi.fn(),
   };
@@ -149,6 +150,43 @@ describe("EditingTimeline direct trim", () => {
     fireEvent.pointerUp(window, { pointerId: 1, clientX: 140 });
     fireEvent.pointerUp(window, { pointerId: 1, clientX: 140 });
     expect(onCommitStagedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it("reorders clips from the clip body and commits only after release", () => {
+    const inputs = { videos: [video("video-1", 1), video("video-2", 2), video("video-3", 3)], bgm: null };
+    const callbacks = renderTimeline({ inputs, selectedReferenceId: "video-1" });
+    const boundsByReferenceId: Record<string, { left: number; right: number }> = {
+      "video-1": { left: 0, right: 100 },
+      "video-2": { left: 100, right: 200 },
+      "video-3": { left: 200, right: 300 },
+    };
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function getClipBounds() {
+      const referenceId = this.getAttribute("data-reference-id");
+      const bounds = referenceId ? boundsByReferenceId[referenceId] : undefined;
+      const left = bounds?.left ?? 0;
+      const right = bounds?.right ?? 924;
+      return {
+        bottom: 200,
+        height: 200,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    });
+
+    const surface = screen.getByRole("button", { name: "Select Shot 1" });
+    fireEvent.pointerDown(surface, { button: 0, clientX: 50, pointerId: 21 });
+    fireEvent.pointerMove(window, { clientX: 290, pointerId: 21 });
+    expect(callbacks.onStageVideoOrder).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(window, { clientX: 290, pointerId: 21 });
+
+    expect(callbacks.onStageVideoOrder).toHaveBeenCalledWith(["video-2", "video-3", "video-1"]);
+    expect(callbacks.onCommitStagedManifest).toHaveBeenCalledTimes(1);
   });
 
   it("discards a changed drag on pointer cancellation", () => {
@@ -251,10 +289,10 @@ describe("EditingTimeline direct trim", () => {
     expect(clip.style.overflow).toBe("visible");
     expect(clip.style.zIndex).toBe("8");
     expect(surface.style.overflow).toBe("hidden");
-    expect(start.style.width).toBe("18px");
-    expect(start.style.left).toBe("-18px");
-    expect(end.style.width).toBe("18px");
-    expect(end.style.left).toBe("100%");
+    expect(start.classList.contains("agent-editing-timeline-clip__trim--start")).toBe(true);
+    expect(end.classList.contains("agent-editing-timeline-clip__trim--end")).toBe(true);
+    expect(start.style.cssText).toBe("");
+    expect(end.style.cssText).toBe("");
   });
 
   it("publishes trim slider bounds that enforce the effective minimum duration", () => {

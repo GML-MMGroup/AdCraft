@@ -14,6 +14,7 @@ import { normalizeEditingNodeContentV2 } from "../model/normalizers.ts";
 import {
   buildEditingInputs,
   moveEditingVideoEntry,
+  reorderEditingVideoEntries,
   replaceEditingManifest,
   updateEditingVideoEntry,
 } from "./editingModel.ts";
@@ -316,17 +317,14 @@ export function useAgentCanvasEditing(
     });
   }, [canonicalContent, currentManifest, manifestIdentity, node.node_id, patchNode, setLocalDraft]);
 
-  const stageVideoUpdate = useCallback((
-    referenceId: string,
-    patch: Partial<EditingVideoEntryV2>,
+  const stageManifestUpdate = useCallback((
+    updateManifest: ManifestUpdater,
+    optimisticManifest?: EditingManifestV2,
   ) => {
     const manifest = currentManifest();
-    if (!manifest) return;
-    const updateManifest: ManifestUpdater = (baseManifest) => (
-      updateEditingVideoEntry(baseManifest, referenceId, patch)
-    );
-    const next = updateManifest(manifest);
-    if (next === manifest) return;
+    if (!manifest) return false;
+    const next = optimisticManifest ?? updateManifest(manifest);
+    if (next === manifest) return false;
     if (!stagedManifestRef.current) {
       stagedBaselineManifestRef.current = manifest;
       stagedBaselineIsLocalDraftRef.current = (
@@ -340,7 +338,23 @@ export function useAgentCanvasEditing(
     stagedManifestRef.current = next;
     setLocalDraft(next);
     setError(null);
+    return true;
   }, [currentManifest, manifestIdentity, setLocalDraft]);
+
+  const stageVideoUpdate = useCallback((
+    referenceId: string,
+    patch: Partial<EditingVideoEntryV2>,
+  ) => {
+    stageManifestUpdate(
+      (baseManifest) => updateEditingVideoEntry(baseManifest, referenceId, patch),
+    );
+  }, [stageManifestUpdate]);
+
+  const stageVideoOrder = useCallback((orderedReferenceIds: readonly string[]) => {
+    stageManifestUpdate(
+      (baseManifest) => reorderEditingVideoEntries(baseManifest, orderedReferenceIds),
+    );
+  }, [stageManifestUpdate]);
 
   const commitStagedManifest = useCallback(() => {
     const stagedManifest = stagedManifestRef.current;
@@ -529,6 +543,7 @@ export function useAgentCanvasEditing(
     discardStagedManifest,
     hasPendingManifestCommit,
     moveVideo,
+    stageVideoOrder,
     updateVideo,
     setBgm,
     setBgmVolume,
