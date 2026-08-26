@@ -392,6 +392,26 @@ describe("EditingPreviewStage", () => {
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
   });
 
+  it("keeps BGM exactly aligned while the shared playhead is dragged", () => {
+    const audioAsset = asset("audio-dragged", "audio", { duration_seconds: 20 });
+    const props = {
+      inputs: { ...inputs, bgm: bgmInput(audioAsset) },
+      outputAspectRatio: null,
+      outputResolution: null,
+      exportedAsset: null,
+      playing: false,
+      muted: false,
+      onPlayheadChange: vi.fn(),
+      onPlayingChange: vi.fn(),
+    };
+    const view = render(<EditingPreviewStage {...props} playheadSeconds={2} />);
+    const audio = screen.getByTestId("editing-preview-bgm") as HTMLAudioElement;
+
+    expect(audio.currentTime).toBeCloseTo(3);
+    view.rerender(<EditingPreviewStage {...props} playheadSeconds={2.1} />);
+    expect(audio.currentTime).toBeCloseTo(3.1);
+  });
+
   it("maps an unbounded BGM playhead through the looped source duration", () => {
     const audioAsset = asset("audio-loop", "audio", { duration_seconds: 3 });
     const bgm = bgmInput(audioAsset);

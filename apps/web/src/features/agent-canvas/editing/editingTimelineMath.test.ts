@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTimelineSegments,
+  bgmPlayedRatioForTimeline,
   clampPixelsPerSecond,
   clampTrimRange,
   editedClipDuration,
@@ -71,6 +72,16 @@ describe("editing timeline math", () => {
     expect(timeToPixels(2.5, 40)).toBe(100);
     expect(pixelsToTime(100, 40)).toBe(2.5);
     expect(pixelsToTime(100, 0)).toBe(0);
+  });
+
+  it("aligns BGM waveform progress with the shared timeline playhead", () => {
+    expect(bgmPlayedRatioForTimeline({
+      playheadSeconds: 4,
+      timelineDuration: 10,
+      sourceDuration: 20,
+      trimStart: 2,
+      trimEnd: 12,
+    })).toBeCloseTo(0.6);
   });
 
   it("treats segment ends as half-open except at the timeline terminus", () => {

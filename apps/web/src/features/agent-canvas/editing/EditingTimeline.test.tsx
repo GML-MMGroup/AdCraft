@@ -348,6 +348,7 @@ describe("EditingTimeline retained controls", () => {
     expect((videoTrack.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width)
       .toBe(ruler.style.width);
     const controls = within(track).getByRole("region", { name: "Audio track controls" });
+    expect(track.querySelector('img[src="/icon/arcticons--ambient-music-mod.svg"]')).toBeTruthy();
     expect(within(controls).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
     expect(within(controls).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
     expect(within(track).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
@@ -413,6 +414,7 @@ describe("EditingTimelineViewport", () => {
 
     const playhead = screen.getByRole("slider", { name: "Timeline playhead" });
     expect(playhead.tagName).not.toBe("INPUT");
+    expect(playhead.style.zIndex).toBe("20");
     fireEvent.pointerDown(playhead, { pointerId: 13, clientX: 200 });
     fireEvent.pointerMove(window, { pointerId: 13, clientX: 524 });
     fireEvent.pointerUp(window, { pointerId: 13, clientX: 524 });

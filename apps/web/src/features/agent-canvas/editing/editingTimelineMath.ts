@@ -24,6 +24,14 @@ interface TrimRangeInput {
   edge: "start" | "end";
 }
 
+interface BgmPlayedRatioInput {
+  playheadSeconds: number;
+  timelineDuration: number;
+  sourceDuration: number;
+  trimStart: number;
+  trimEnd: number | null;
+}
+
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
@@ -112,6 +120,27 @@ export function timeToPixels(seconds: number, pixelsPerSecond: number): number {
 
 export function pixelsToTime(pixels: number, pixelsPerSecond: number): number {
   return pixelsPerSecond > 0 ? pixels / pixelsPerSecond : 0;
+}
+
+export function bgmPlayedRatioForTimeline(input: BgmPlayedRatioInput): number {
+  const sourceDuration = sourceDurationOf(input.sourceDuration);
+  const timelineDuration = sourceDurationOf(input.timelineDuration);
+  const range = normalizeTrimRange(
+    sourceDuration,
+    input.trimStart,
+    input.trimEnd ?? sourceDuration,
+  );
+  const selectedDuration = Math.max(0, range.end - range.start);
+  if (!sourceDuration || !selectedDuration) return 0;
+
+  if (!timelineDuration) {
+    return Math.min(1, Math.max(0, finiteOr(input.playheadSeconds, 0) / selectedDuration));
+  }
+
+  const playheadRatio = Math.min(1, Math.max(0, finiteOr(input.playheadSeconds, 0) / timelineDuration));
+  const selectionStartRatio = range.start / sourceDuration;
+  const selectionWidthRatio = selectedDuration / sourceDuration;
+  return Math.min(1, Math.max(0, (playheadRatio - selectionStartRatio) / selectionWidthRatio));
 }
 
 export function mapTimelineTimeToSource(

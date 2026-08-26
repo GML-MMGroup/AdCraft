@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { EditingBgmEntryV2 } from "../../../types-v2.ts";
-import { clampTrimRange, MIN_EDITED_CLIP_SECONDS } from "./editingTimelineMath.ts";
+import {
+  bgmPlayedRatioForTimeline,
+  clampTrimRange,
+  MIN_EDITED_CLIP_SECONDS,
+} from "./editingTimelineMath.ts";
 import { normalizePeakCount, trimAudioPeaks, useAudioWaveform } from "./useAudioWaveform.ts";
 
 export interface AudioWaveformTrackProps {
@@ -14,6 +18,7 @@ export interface AudioWaveformTrackProps {
   trimStartSeconds: number;
   disabled?: boolean;
   playheadSeconds?: number;
+  timelineDuration?: number;
 }
 
 interface TrimRange {
@@ -48,6 +53,7 @@ export function AudioWaveformTrack({
   onSetBgm,
   playheadSeconds = 0,
   renderedWidth,
+  timelineDuration,
   trimEndSeconds,
   trimStartSeconds,
 }: AudioWaveformTrackProps) {
@@ -64,7 +70,13 @@ export function AudioWaveformTrack({
   useEffect(() => () => dragCancelRef.current?.(), []);
 
   const playableDuration = Math.max(0, trimRange.end - trimRange.start);
-  const playedRatio = playableDuration === 0 ? 0 : clamp(playheadSeconds / playableDuration, 0, 1);
+  const playedRatio = bgmPlayedRatioForTimeline({
+    playheadSeconds,
+    timelineDuration: timelineDuration ?? 0,
+    sourceDuration: duration,
+    trimStart: trimRange.start,
+    trimEnd: trimRange.end,
+  });
   const trimRatio = duration === 0 ? 0 : clamp(playableDuration / duration, 0, 1);
   const trimStartRatio = duration === 0 ? 0 : clamp(trimRange.start / duration, 0, 1);
   const trimEndRatio = duration === 0 ? 0 : clamp(trimRange.end / duration, 0, 1);

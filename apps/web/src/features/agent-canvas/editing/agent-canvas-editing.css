@@ -569,9 +569,15 @@
   color: #999;
 }
 
-.agent-editing-timeline__track-icon svg {
+.agent-editing-timeline__track-icon svg,
+.agent-editing-timeline__track-icon img {
   width: 16px;
   height: 16px;
+}
+
+.agent-editing-timeline__track-icon img,
+.agent-editing-timeline__audio-volume img {
+  filter: brightness(0) saturate(100%) invert(64%);
 }
 
 .agent-editing-timeline__audio-controls {
@@ -601,8 +607,14 @@
 
 .agent-editing-timeline__audio-volume {
   display: grid !important;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 5px !important;
+}
+
+.agent-editing-timeline__audio-volume img {
+  width: 13px;
+  height: 13px;
+  justify-self: center;
 }
 
 .agent-editing-timeline__audio-volume input[type="range"] {
@@ -942,7 +954,7 @@
 
 .agent-editing-timeline-viewport__playhead {
   position: absolute;
-  z-index: 6;
+  z-index: 20;
   top: 27px;
   bottom: 0;
   width: 24px;

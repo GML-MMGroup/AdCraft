@@ -22,6 +22,8 @@ describe("AudioTrackControls", () => {
     expect(within(controls).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
     const volume = within(controls).getByRole("slider", { name: "BGM volume" });
     expect(volume.getAttribute("style")).toContain("--audio-volume: 40%");
+    expect(controls.querySelector('img[src="/icon/ant-design--audio-filled.svg"]')).toBeTruthy();
+    expect(within(controls).queryByText("Volume")).toBeNull();
     expect(within(controls).queryByText("Fade in")).toBeNull();
     expect(within(controls).queryByText("Fade out")).toBeNull();
   });
