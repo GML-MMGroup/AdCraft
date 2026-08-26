@@ -277,7 +277,6 @@ export function AgentCanvasEditingPanel({
                 </ul>
               </section>
             ) : null}
-            {editing.content.preview.warnings.length ? <ul className="agent-editing-panel__warnings">{editing.content.preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
             {editing.error ? <button type="button" className="agent-editing-panel__error" onClick={editing.clearError}>{editing.error}</button> : null}
             {actionError ? <button type="button" className="agent-editing-panel__error" onClick={() => setActionError(null)}>{actionError}</button> : null}
           </div>
