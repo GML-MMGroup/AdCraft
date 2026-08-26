@@ -556,6 +556,10 @@ export type ProposalCardResultV2 = { readonly "options": ReadonlyArray<ProposalC
 
 export type GuidedProposalCardResultV3 = { readonly "options": ReadonlyArray<unknown> };
 
+export type GuidedProposalAuthoringOptionV4 = { readonly "title": string; readonly "public_summary": string };
+
+export type GuidedProposalAuthoringResultV4 = { readonly "options": ReadonlyArray<unknown> };
+
 export type CreativeDirectionSnapshotV2 = { readonly "snapshot_id": string; readonly "workflow_id": string; readonly "skill_run_id": string; readonly "version": number; readonly "source_skill_id"?: string | null; readonly "source_skill_version"?: string | null; readonly "source_skill_digest"?: string | null; readonly "global_direction"?: Readonly<Record<string, unknown>>; readonly "role_projections"?: Readonly<Record<string, Readonly<Record<string, unknown>>>>; readonly "source_message_id"?: string | null; readonly "source_proposal_id"?: string | null; readonly "content_digest": string; readonly "created_at": string };
 
 export type StyleGuidanceContextV2 = { readonly "skill_run_id": string; readonly "skill_id": string; readonly "skill_version": string; readonly "package_digest": string; readonly "creative_direction_snapshot_id": string; readonly "global_guidance": string; readonly "role"?: string | null; readonly "role_guidance"?: string | null; readonly "role_guidance_digest"?: string | null; readonly "source"?: "creative_direction_snapshot"; readonly "precedence"?: "advisory" };

@@ -731,6 +731,27 @@ class GuidedProposalCardResultV3(_CapabilityModel):
     ]
 
 
+class GuidedProposalAuthoringOptionV4(_CapabilityModel):
+    """Safety-bounded creative text projected into a public Proposal Card."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=256)
+    public_summary: str = Field(min_length=1, max_length=2_048)
+
+
+class GuidedProposalAuthoringResultV4(_CapabilityModel):
+    """Exact-three authoring result for normal guided Proposal operations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[
+        GuidedProposalAuthoringOptionV4,
+        GuidedProposalAuthoringOptionV4,
+        GuidedProposalAuthoringOptionV4,
+    ]
+
+
 class WorldSettingProposalOptionV1(_OptionBaseV1):
     pass
 
@@ -812,14 +833,14 @@ class QuickMediaProposalResultV1(_CapabilityModel):
 
 
 CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
-    "world_setting": GuidedProposalCardResultV3,
-    "product_design": GuidedProposalCardResultV3,
-    "prop_design": GuidedProposalCardResultV3,
-    "character_design": GuidedProposalCardResultV3,
-    "scene_design": GuidedProposalCardResultV3,
-    "script_authoring": GuidedProposalCardResultV3,
-    "storyboard_design": GuidedProposalCardResultV3,
-    "video_direction": GuidedProposalCardResultV3,
-    "bgm_direction": GuidedProposalCardResultV3,
+    "world_setting": GuidedProposalAuthoringResultV4,
+    "product_design": GuidedProposalAuthoringResultV4,
+    "prop_design": GuidedProposalAuthoringResultV4,
+    "character_design": GuidedProposalAuthoringResultV4,
+    "scene_design": GuidedProposalAuthoringResultV4,
+    "script_authoring": GuidedProposalAuthoringResultV4,
+    "storyboard_design": GuidedProposalAuthoringResultV4,
+    "video_direction": GuidedProposalAuthoringResultV4,
+    "bgm_direction": GuidedProposalAuthoringResultV4,
     "quick_media": ProposalCardResultV2,
 }

@@ -13628,6 +13628,58 @@
       "title": "GuidedProductionJourneyV2",
       "type": "object"
     },
+    "GuidedProposalAuthoringOptionV4": {
+      "additionalProperties": false,
+      "description": "Safety-bounded creative text projected into a public Proposal Card.",
+      "properties": {
+        "public_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "GuidedProposalAuthoringOptionV4",
+      "type": "object"
+    },
+    "GuidedProposalAuthoringResultV4": {
+      "additionalProperties": false,
+      "description": "Exact-three authoring result for normal guided Proposal operations.",
+      "properties": {
+        "options": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            }
+          ],
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "GuidedProposalAuthoringResultV4",
+      "type": "object"
+    },
     "GuidedProposalCardOptionV3": {
       "additionalProperties": false,
       "description": "Compact public option for a normal guided creative choice.",
