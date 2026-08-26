@@ -637,7 +637,10 @@ def _document(row: RowMapping) -> AgentWorkingDocumentV2:
 
 def _document_from_json(value: str) -> AgentWorkingDocumentV2:
     try:
-        return _document_from_payload(json.loads(value))
+        payload = json.loads(value)
+        if not isinstance(payload, dict):
+            raise TypeError("Working document replay must contain an object.")
+        return _document_from_payload(payload)
     except (TypeError, ValueError, json.JSONDecodeError) as error:
         raise _error(
             "agent_working_document_content_invalid",
