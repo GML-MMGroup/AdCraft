@@ -23,8 +23,18 @@ export function isPlayableEditingVideo(input: EditingVideoInput): boolean {
 
 export function buildPlayableEditingSequence(
   inputs: readonly EditingVideoInput[],
+  fixedTimelineDuration?: number,
 ): PlayableEditingSequence {
   const videos = inputs.filter(isPlayableEditingVideo);
+  const sourceDurations = inputs.map((input) => (
+    input.asset?.duration_seconds
+      ?? input.entry.trim_end_seconds
+      ?? input.entry.trim_start_seconds + 0.5
+  ));
+  const timelineDuration = Math.max(
+    0,
+    fixedTimelineDuration ?? sourceDurations.reduce((total, duration) => total + duration, 0),
+  );
   const segments = buildTimelineSegments(videos.map((input) => ({
     referenceId: input.referenceId,
     sourceDuration: input.asset?.duration_seconds
@@ -32,11 +42,16 @@ export function buildPlayableEditingSequence(
       ?? input.entry.trim_start_seconds + 0.5,
     trimStart: input.entry.trim_start_seconds,
     trimEnd: input.entry.trim_end_seconds,
-  })));
+    timelineStart: input.entry.timeline_start_seconds,
+  })), timelineDuration);
+  const videosByReferenceId = new Map(videos.map((input) => [input.referenceId, input]));
   return {
-    videos,
+    videos: segments.flatMap((segment) => {
+      const input = videosByReferenceId.get(segment.referenceId);
+      return input ? [input] : [];
+    }),
     inactiveVideos: inputs.filter((input) => !isPlayableEditingVideo(input)),
     segments,
-    duration: segments.at(-1)?.timelineEnd ?? 0,
+    duration: timelineDuration,
   };
 }

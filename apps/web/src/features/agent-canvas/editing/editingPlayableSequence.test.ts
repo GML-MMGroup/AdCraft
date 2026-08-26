@@ -43,7 +43,7 @@ function video(
 }
 
 describe("buildPlayableEditingSequence", () => {
-  it("compresses only enabled ready playable sources into ordered timeline time", () => {
+  it("keeps playable clips ordered while the ruler retains the imported source duration", () => {
     const first = video("first", { trimStart: 1, trimEnd: 4 });
     const disabled = video("disabled", { enabled: false });
     const sourceDraft = video("source-draft", { nodeStatus: "draft" });
@@ -83,6 +83,20 @@ describe("buildPlayableEditingSequence", () => {
         sourceEnd: 6,
       },
     ]);
-    expect(sequence.duration).toBe(7);
+    expect(sequence.duration).toBe(60);
+  });
+
+  it("uses explicit timeline positions and preserves gaps", () => {
+    const first = video("first", { trimStart: 1, trimEnd: 4 });
+    const second = video("second", { trimStart: 2, trimEnd: 6 });
+    first.entry.timeline_start_seconds = 0;
+    second.entry.timeline_start_seconds = 12;
+
+    const sequence = buildPlayableEditingSequence([first, second], 30);
+
+    expect(sequence.videos.map((input) => input.referenceId)).toEqual(["first", "second"]);
+    expect(sequence.segments.map(({ timelineStart, timelineEnd }) => [timelineStart, timelineEnd]))
+      .toEqual([[0, 3], [12, 16]]);
+    expect(sequence.duration).toBe(30);
   });
 });

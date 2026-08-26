@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimelineSegments,
   bgmPlayedRatioForTimeline,
+  clampTimelineStart,
   clampPixelsPerSecond,
   clampTrimRange,
   editedClipDuration,
   fitPixelsPerSecond,
+  hasTimelineOverlap,
   mapTimelineTimeToSource,
   pixelsToTime,
   timeToPixels,
@@ -93,5 +95,40 @@ describe("editing timeline math", () => {
     expect(mapTimelineTimeToSource(segments, 1)?.referenceId).toBe("b");
     expect(mapTimelineTimeToSource(segments, 2)?.referenceId).toBe("b");
     expect(mapTimelineTimeToSource(segments, 2.0001)).toBeNull();
+  });
+
+  it("keeps a trimmed clip at its persisted timeline position", () => {
+    const [segment] = buildTimelineSegments([
+      { referenceId: "a", sourceDuration: 10, trimStart: 2, trimEnd: 8, timelineStart: 5 },
+    ], 30);
+
+    expect(segment).toMatchObject({
+      timelineStart: 5,
+      timelineEnd: 11,
+      sourceStart: 2,
+      sourceEnd: 8,
+    });
+  });
+
+  it("keeps gaps and fixed duration when clips are not contiguous", () => {
+    const segments = buildTimelineSegments([
+      { referenceId: "a", sourceDuration: 10, trimStart: 0, trimEnd: 4, timelineStart: 0 },
+      { referenceId: "b", sourceDuration: 10, trimStart: 1, trimEnd: 5, timelineStart: 8 },
+    ], 30);
+
+    expect(segments.map(({ timelineStart, timelineEnd }) => [timelineStart, timelineEnd]))
+      .toEqual([[0, 4], [8, 12]]);
+  });
+
+  it("clamps a moved clip so its complete duration stays inside the fixed timeline", () => {
+    expect(clampTimelineStart(28, 4, 30)).toBe(26);
+    expect(clampTimelineStart(-2, 4, 30)).toBe(0);
+  });
+
+  it("detects overlap without changing either clip", () => {
+    expect(hasTimelineOverlap([
+      { referenceId: "a", timelineStart: 0, timelineEnd: 5, sourceStart: 0, sourceEnd: 5 },
+      { referenceId: "b", timelineStart: 4, timelineEnd: 8, sourceStart: 0, sourceEnd: 4 },
+    ])).toBe(true);
   });
 });
