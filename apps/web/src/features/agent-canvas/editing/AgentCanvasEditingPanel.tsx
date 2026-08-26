@@ -261,6 +261,7 @@ export function AgentCanvasEditingPanel({
               onDiscardStagedManifest={editing.discardStagedManifest}
               onSetBgm={editing.setBgm}
               onSetBgmVolume={editing.setBgmVolume}
+              onStageVideoOrder={editing.stageVideoOrder}
             />
 
             {omittedNodeIds.length ? (

@@ -13,13 +13,16 @@ import { useVideoFrameStrip } from "./useVideoFrameStrip.ts";
 interface VideoTimelineClipProps {
   active: boolean;
   disabled: boolean;
+  dragging?: boolean;
   index: number;
   input: EditingBoundInput<EditingVideoEntryV2>;
   onCommitStagedManifest: () => void | Promise<unknown>;
   onDiscardStagedManifest: () => void;
   onSelect: () => void;
   onStageVideo: (referenceId: string, patch: Partial<EditingVideoEntryV2>) => void;
+  onStartReorder: (referenceId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
   pixelsPerSecond: number;
+  reorderOffsetX?: number;
   segment: TimelineSegment;
   selected: boolean;
 }
@@ -45,13 +48,16 @@ function roundTrim(value: number): number {
 export function VideoTimelineClip({
   active,
   disabled,
+  dragging = false,
   index,
   input,
   onCommitStagedManifest,
   onDiscardStagedManifest,
   onSelect,
   onStageVideo,
+  onStartReorder,
   pixelsPerSecond,
+  reorderOffsetX = 0,
   segment,
   selected,
 }: VideoTimelineClipProps) {
@@ -179,7 +185,6 @@ export function VideoTimelineClip({
       className={`agent-editing-timeline-clip__trim agent-editing-timeline-clip__trim--${edge}`}
       role="slider"
       tabIndex={disabled ? -1 : 0}
-      style={edge === "start" ? { left: -18, width: 18 } : { left: "100%", width: 18 }}
       aria-label={`Trim ${edge} ${label}`}
       aria-valuemin={edge === "start" ? 0 : endMinimum}
       aria-valuemax={edge === "start" ? startMaximum : sourceDuration}
@@ -200,12 +205,14 @@ export function VideoTimelineClip({
 
   return (
     <div
-      className={`agent-editing-timeline-clip agent-editing-timeline__clip--${statusOf(input)}${selected ? " is-selected" : ""}`}
+      className={`agent-editing-timeline-clip agent-editing-timeline__clip--${statusOf(input)}${selected ? " is-selected" : ""}${dragging ? " is-reordering" : ""}`}
+      data-reference-id={input.referenceId}
       style={{
         left: segment.timelineStart * pixelsPerSecond,
         overflow: selected ? "visible" : undefined,
+        transform: dragging ? `translate3d(${reorderOffsetX}px, 0, 0)` : undefined,
         width: clipWidth,
-        zIndex: selected ? 8 : undefined,
+        zIndex: dragging ? 15 : selected ? 8 : undefined,
       }}
     >
       <button
@@ -214,6 +221,7 @@ export function VideoTimelineClip({
         style={{ overflow: "hidden" }}
         aria-label={`Select ${label}`}
         aria-pressed={selected}
+        onPointerDown={(event) => onStartReorder(input.referenceId, event)}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();

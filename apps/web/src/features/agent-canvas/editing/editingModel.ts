@@ -90,6 +90,41 @@ export function moveEditingVideoEntry(
   return { ...manifest, video_entries: videoEntries };
 }
 
+export function reorderEditingVideoEntries(
+  manifest: EditingManifestV2,
+  orderedReferenceIds: readonly string[],
+): EditingManifestV2 {
+  const requested = new Set(orderedReferenceIds);
+  const positions = manifest.video_entries.flatMap((entry, index) => {
+    const referenceId = entry.binding_id ?? entry.asset_id;
+    return referenceId && requested.has(referenceId) ? [{ index, referenceId }] : [];
+  });
+  if (positions.length < 2) return manifest;
+
+  const entriesByReferenceId = new Map(
+    manifest.video_entries.flatMap((entry) => {
+      const referenceId = entry.binding_id ?? entry.asset_id;
+      return referenceId && requested.has(referenceId) ? [[referenceId, entry] as const] : [];
+    }),
+  );
+  const currentOrder = positions.map(({ referenceId }) => referenceId);
+  const nextOrder = [
+    ...orderedReferenceIds.filter((referenceId, index, ids) => (
+      requested.has(referenceId)
+      && entriesByReferenceId.has(referenceId)
+      && ids.indexOf(referenceId) === index
+    )),
+    ...currentOrder.filter((referenceId) => !orderedReferenceIds.includes(referenceId)),
+  ];
+  if (nextOrder.every((referenceId, index) => referenceId === currentOrder[index])) return manifest;
+
+  const videoEntries = [...manifest.video_entries];
+  positions.forEach(({ index }, position) => {
+    videoEntries[index] = entriesByReferenceId.get(nextOrder[position]!)!;
+  });
+  return { ...manifest, video_entries: videoEntries };
+}
+
 export function updateEditingVideoEntry(
   manifest: EditingManifestV2,
   referenceId: string,
