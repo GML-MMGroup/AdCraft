@@ -37,6 +37,15 @@ class SelectedConceptOptionV1(_MaterializationModel):
     custom_text: str | None = Field(default=None, max_length=2_048)
 
 
+class SelectedProposalCardV2(_MaterializationModel):
+    """Selected public card carried into private post-selection authoring."""
+
+    option_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
+    custom_text: str | None = Field(default=None, max_length=2_048)
+
+
 class ProposalReferenceSnapshotV1(_MaterializationModel):
     source_kind: Literal["node", "image_asset"]
     source_id: str = Field(min_length=1, max_length=160)
@@ -97,7 +106,7 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
     stage_revision: int = Field(default=1, ge=1)
@@ -145,7 +154,7 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
     stage_revision: int = Field(default=1, ge=1)
@@ -221,7 +230,7 @@ class CapabilityMaterializationContextV1(_MaterializationModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     creative_goal: str = Field(min_length=1, max_length=4_096)
     explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)
     shared_summary: str = Field(default="", max_length=8_192)

@@ -38,6 +38,7 @@ from app.schemas.agent_canvas_world_setting import (
     WorldSettingDocumentV2,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_guided_media_parameters import resolve_video_audio_parameter
 from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
@@ -107,6 +108,14 @@ class CapabilityDraftBundleBuilder:
             ):
                 role = "general_video"
             parameters = _stage_parameters(envelope.capability_id, draft_key, context)
+            parameter_provenance = {}
+            if envelope.capability_id == "video_direction":
+                _, audio_provenance = resolve_video_audio_parameter(
+                    structured_values=context.capability_facts,
+                    explicit_constraints=context.explicit_constraints,
+                )
+                if audio_provenance is not None:
+                    parameter_provenance["generate_audio"] = audio_provenance
             if character_pair_id is not None:
                 parameters["character_pair_id"] = character_pair_id
             elif pair_id is not None:
@@ -125,6 +134,7 @@ class CapabilityDraftBundleBuilder:
                         "source_proposal_id": envelope.proposal_id,
                         "source_option_id": envelope.selected_option.option_id,
                     },
+                    parameter_provenance=parameter_provenance,
                     prompt_context_snapshot_id=envelope.context_snapshot_id,
                     reference_intents=references,
                 )
@@ -800,6 +810,12 @@ def _stage_parameters(
         aspect_ratio = _explicit_constraint(context, "aspect_ratio")
         if isinstance(aspect_ratio, str) and aspect_ratio.strip():
             parameters["aspect_ratio"] = aspect_ratio.strip()
+        generate_audio, _ = resolve_video_audio_parameter(
+            structured_values=context.capability_facts,
+            explicit_constraints=context.explicit_constraints,
+        )
+        if generate_audio is not None:
+            parameters["generate_audio"] = generate_audio
     elif capability_id == "bgm_direction":
         duration = context.capability_facts.get("duration_seconds", 30)
         parameters["duration_seconds"] = max(1.0, float(duration))

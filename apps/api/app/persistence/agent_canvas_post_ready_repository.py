@@ -16,6 +16,9 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasPostReadyEffectRow
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+)
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -123,8 +126,15 @@ class AgentCanvasPostReadyEffectRepository:
         effect: CanvasPostReadyEffectV2,
         *,
         now: datetime,
+        disposition: CanvasPostReadyEffectDispositionV1,
     ) -> CanvasPostReadyEffectV2:
-        return self._finish(effect, status="completed", now=now, error=None)
+        return self._finish(
+            effect,
+            status="completed",
+            now=now,
+            error=None,
+            disposition=disposition,
+        )
 
     def renew(
         self,
@@ -234,6 +244,7 @@ class AgentCanvasPostReadyEffectRepository:
         status: str,
         now: datetime,
         error: CanvasNodeErrorV2 | None,
+        disposition: CanvasPostReadyEffectDispositionV1 | None = None,
         available_at: datetime | None = None,
         increment_attempt: bool = False,
     ) -> CanvasPostReadyEffectV2:
@@ -286,6 +297,7 @@ class AgentCanvasPostReadyEffectRepository:
                             "failed": "post_ready_effect_failed",
                         }[status],
                         timestamp,
+                        disposition=disposition,
                     )
                     connection.commit()
                     return _effect(row)
@@ -306,7 +318,14 @@ class AgentCanvasPostReadyEffectRepository:
         row: RowMapping | dict[str, object],
         event_type: str,
         now: datetime,
+        disposition: CanvasPostReadyEffectDispositionV1 | None = None,
     ) -> None:
+        error_code = None
+        if row.get("error_json"):
+            try:
+                error_code = json.loads(str(row["error_json"])).get("code")
+            except (TypeError, ValueError):
+                error_code = None
         self._events.append_in_transaction(
             connection,
             V2EventInsert(
@@ -322,6 +341,20 @@ class AgentCanvasPostReadyEffectRepository:
                     "effect_id": str(row["effect_id"]),
                     "effect_type": str(row["effect_type"]),
                     "attempt_no": int(row["attempt_no"]),
+                    **({"error_code": error_code} if error_code is not None else {}),
+                    **(
+                        {
+                            "disposition": disposition.outcome,
+                            "reason_code": disposition.reason_code,
+                            **(
+                                {"interaction_id": disposition.interaction_id}
+                                if disposition.interaction_id is not None
+                                else {}
+                            ),
+                        }
+                        if disposition is not None
+                        else {}
+                    ),
                 },
             ),
         )

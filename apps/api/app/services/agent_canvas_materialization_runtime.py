@@ -255,7 +255,7 @@ def materialization_context_from_state(
             asset_resolver=asset_resolver,
         )
 
-    proposal = conversations.get_proposal(envelope.proposal_id)
+    proposal = conversations.get_private_proposal(envelope.proposal_id)
     session = conversations.get_guidance_session(envelope.workflow_id)
     memory = conversations.get_creative_memory(envelope.workflow_id)
     workflow = workflows.get_workflow(envelope.workflow_id)

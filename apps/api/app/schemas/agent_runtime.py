@@ -257,6 +257,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "streaming_json_object",
         "json_object",
     ]
     supports_tool_calls: bool
@@ -337,6 +338,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "streaming_json_object",
         "json_object",
     ]
     thinking_format: Literal["zai", "qwen", "none"]
@@ -356,6 +358,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     effective_timeout_ms: int = Field(ge=0, le=900_000)
     request_bytes: int = Field(ge=0, le=4_194_304)
     schema_bytes: int = Field(ge=0, le=4_194_304)
+    response_bytes: int | None = Field(default=None, ge=0, le=4_194_304)
     response_activity_observed: bool
     attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
     started_at: datetime
@@ -426,21 +429,62 @@ def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
     return f"sha256:{sha256(payload).hexdigest()}"
 
 
-class AgentProviderConformanceInputV1(_StrictModel):
+class AgentProviderConformanceBudgetPlanV1(_StrictModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["1"] = "1"
+    budget_version: Literal["1"] = "1"
+    maximum_submissions: Literal[6] = 6
+    exact_case_timeout_ms: int = Field(ge=1_000, le=900_000)
+    isolation_case_timeout_ms: int = Field(ge=1_000, le=60_000)
+    matrix_timeout_ms: int = Field(ge=1_000)
+    child_timeout_ms: int = Field(ge=1_000)
+    lease_duration_seconds: int = Field(ge=1, le=3_600)
+
+    @model_validator(mode="after")
+    def validate_derived_budget(self) -> "AgentProviderConformanceBudgetPlanV1":
+        expected_isolation_ms = min(self.exact_case_timeout_ms, 60_000)
+        success_path_ms = expected_isolation_ms + (3 * self.exact_case_timeout_ms)
+        diagnostic_path_ms = self.exact_case_timeout_ms + (5 * expected_isolation_ms)
+        expected_matrix_ms = max(success_path_ms, diagnostic_path_ms) + 30_000
+        expected_child_ms = expected_matrix_ms + 60_000
+        expected_lease_seconds = (expected_child_ms // 1_000) + 60
+        if (
+            self.isolation_case_timeout_ms != expected_isolation_ms
+            or self.matrix_timeout_ms != expected_matrix_ms
+            or self.child_timeout_ms != expected_child_ms
+            or self.lease_duration_seconds != expected_lease_seconds
+        ):
+            raise ValueError("conformance_budget_invalid")
+        return self
+
+
+class AgentProviderConformanceInputV2(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["2"] = "2"
     frozen_agent_request: AgentRunRequest
     frozen_agent_request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    diagnostic_case_budget: int = Field(default=6, ge=1, le=6)
+    budget_plan: AgentProviderConformanceBudgetPlanV1
     evidence_destination_id: str = Field(min_length=1, max_length=160)
 
     @model_validator(mode="after")
-    def validate_frozen_request_digest(self) -> "AgentProviderConformanceInputV1":
+    def validate_frozen_authority(self) -> "AgentProviderConformanceInputV2":
         if self.frozen_agent_request_digest != canonical_agent_run_request_digest(
             self.frozen_agent_request
         ):
             raise ValueError("Frozen Agent request digest does not match the request.")
+
+        from app.services.agent_provider_conformance_budget import (
+            AgentProviderConformanceBudgetError,
+            derive_agent_provider_conformance_budget,
+        )
+
+        try:
+            expected_budget = derive_agent_provider_conformance_budget(self.frozen_agent_request)
+        except AgentProviderConformanceBudgetError as exc:
+            raise ValueError("conformance_budget_invalid") from exc
+        if self.budget_plan != expected_budget:
+            raise ValueError("conformance_budget_invalid")
         return self
 
 

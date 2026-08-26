@@ -50,6 +50,7 @@ def resolve_agent_model_execution_policy(
             "streamed_tool_call",
             "non_streaming_tool_call",
             "non_streaming_json_object",
+            "streaming_json_object",
             "json_object",
         },
     )

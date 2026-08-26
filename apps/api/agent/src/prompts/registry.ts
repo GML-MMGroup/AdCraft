@@ -165,14 +165,22 @@ function instructionForOperation(operation: string): string {
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",
+      "Return exactly three short, meaningfully distinct directions that all obey the accepted Requirements.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}.",
+      "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; keep text concise, but return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
+      "Do not split, truncate, or validate text by punctuation-based sentence count.",
+      "Python assigns option IDs and owns candidate cardinality; never emit IDs or private authoring data.",
       "Render all option display text in the supplied response_locale.",
       "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
     return [
-      "Revise only the supplied capability options and return concise replacement typed options.",
+      "Revise only the supplied capability options.",
+      "Return exactly three short, meaningfully distinct directions as replacement options.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Each option must contain only title and public_summary; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
+      "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
+      "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or safety-length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
   }

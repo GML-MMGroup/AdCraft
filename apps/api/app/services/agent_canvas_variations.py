@@ -8,6 +8,7 @@ from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.schemas.agent_canvas import (
     CanvasNodeErrorV2,
     CanvasNodeV2,
@@ -50,6 +51,7 @@ class AgentCanvasVariationService:
         expected_revision: int,
     ) -> CanvasVariationDraftResponseV2:
         source = self._workflows.get_node(workflow_id, source_node_id)
+        require_node_runnable(source)
         request = request.model_copy(
             update=(
                 {
@@ -92,6 +94,7 @@ class AgentCanvasVariationService:
         expected_revision: int,
         idempotency_key: str,
     ) -> CanvasVariationMaterializeResponseV2:
+        require_node_runnable(self._workflows.get_node(workflow_id, source_node_id))
         response, created = self._commands.materialize_variation_draft(
             workflow_id,
             source_node_id,

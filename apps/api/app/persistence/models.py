@@ -776,6 +776,10 @@ class AgentCanvasNodeRow(Base):
             "status IN ('draft', 'working', 'ready', 'failed')",
             name="ck_agent_canvas_nodes_status",
         ),
+        CheckConstraint(
+            "execution_mode IN ('generative', 'source_only')",
+            name="ck_agent_canvas_nodes_execution_mode",
+        ),
         CheckConstraint("revision > 0", name="ck_agent_canvas_nodes_revision"),
         Index(
             "ix_agent_canvas_nodes_workflow_created",
@@ -796,6 +800,9 @@ class AgentCanvasNodeRow(Base):
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default="generative", server_default="generative"
+    )
     summary_prompt: Mapped[str | None] = mapped_column(Text)
     generation_prompt: Mapped[str | None] = mapped_column(Text)
     structured_content_json: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1660,6 +1667,7 @@ class AgentCanvasConceptProposalRow(Base):
     requirement_revision_no: Mapped[int | None] = mapped_column(Integer)
     requirement_digest: Mapped[str | None] = mapped_column(Text)
     proposal_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    proposal_card_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     proposed_references_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
     availability: Mapped[str] = mapped_column(Text, nullable=False, default="open")

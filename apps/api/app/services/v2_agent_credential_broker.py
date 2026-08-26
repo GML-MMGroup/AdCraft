@@ -204,10 +204,18 @@ class V2AgentCredentialBroker:
                 "Agent operations require a text-capable model.",
             )
         metadata = record.capability_metadata
+        structured_transport = metadata.get("structured_transport")
         if (
             not _metadata_flag(metadata, "agent_compatible")
-            or not _metadata_flag(metadata, "supports_tool_calls")
             or not _metadata_flag(metadata, "supports_structured_output")
+            or (
+                structured_transport in {"streamed_tool_call", "non_streaming_tool_call"}
+                and not _metadata_flag(metadata, "supports_tool_calls")
+            )
+            or (
+                structured_transport == "streaming_json_object"
+                and not _metadata_flag(metadata, "supports_streaming")
+            )
         ):
             raise AgentCredentialError(
                 "agent_model_incompatible",

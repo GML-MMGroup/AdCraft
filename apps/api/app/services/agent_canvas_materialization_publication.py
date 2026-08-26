@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from hashlib import sha256
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
@@ -56,6 +56,7 @@ from app.schemas.agent_working_documents import (
     StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
+    StoryboardSegmentMaterializationV3,
 )
 from app.services.agent_canvas_conversation import (
     VideoAgentGateway,
@@ -270,7 +271,7 @@ class CapabilityMaterializationPublicationService:
         )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
-            self._parent_derived.queue_after_parent(envelope, lease_guard=lease_guard)
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_guided_document_stage(
@@ -316,7 +317,10 @@ class CapabilityMaterializationPublicationService:
                     order=window.order,
                     start_seconds=window.start_seconds,
                     end_seconds=window.end_seconds,
-                    narrative_goal=text,
+                    narrative_goal=(
+                        f"Sequence {window.order} local narrative direction "
+                        f"({window.start_seconds:g}-{window.end_seconds:g}s)."
+                    ),
                     start_state=(
                         "Opening state" if window.order == 1 else "Continue prior sequence."
                     ),
@@ -334,18 +338,35 @@ class CapabilityMaterializationPublicationService:
                 )
                 for window in authority_plan.windows
             )
-            content = StoryboardProductionPlanContentV3(
-                narrative_outline=text,
-                requirement_revision_id=requirement.revision_id,
-                requirement_revision_no=requirement.revision_no,
-                global_parameters=StoryboardPlanGlobalParametersV2(
-                    aspect_ratio=authority_plan.aspect_ratio,
-                    total_duration_seconds=authority_plan.total_duration_seconds,
-                    segment_count=len(authority_plan.windows),
-                ),
-                segments=segments,
-                rows=(),
-            )
+            try:
+                content = StoryboardProductionPlanContentV3(
+                    narrative_outline=text,
+                    requirement_revision_id=requirement.revision_id,
+                    requirement_revision_no=requirement.revision_no,
+                    global_parameters=StoryboardPlanGlobalParametersV2(
+                        aspect_ratio=authority_plan.aspect_ratio,
+                        total_duration_seconds=authority_plan.total_duration_seconds,
+                        segment_count=len(authority_plan.windows),
+                    ),
+                    segments=segments,
+                    rows=(),
+                    segment_materializations=tuple(
+                        StoryboardSegmentMaterializationV3(
+                            sequence_id=segment.sequence_id,
+                            materialization_id=_sequence_materialization_id(
+                                envelope.materialization_id,
+                                segment.sequence_id,
+                            ),
+                        )
+                        for segment in segments
+                    ),
+                )
+            except ValidationError as error:
+                raise V2PersistenceError(
+                    "agent_working_document_content_invalid",
+                    "Agent working document content is invalid.",
+                    stage="capability_materialization_publication",
+                ) from error
             document_id = (
                 "adoc_" + _digest(f"{envelope.workflow_id}:{session_id}:storyboard-plan")[:32]
             )
@@ -815,6 +836,8 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _activate_prompt_ready_media(
@@ -855,7 +878,7 @@ class CapabilityMaterializationPublicationService:
             generation_prompt=f"Create one text-free 3x3 storyboard grid. {summary}",
             structured_content=StoryboardGridContentV2(
                 sequence_summary=summary,
-                narrative_goal=" ".join(envelope.selected_option.key_decisions),
+                narrative_goal=envelope.selected_option.public_summary,
                 style=style,
                 panels=tuple(
                     StoryboardPanelV2(
@@ -963,6 +986,16 @@ class CapabilityMaterializationPublicationService:
                 global_parameters=legacy_outline.global_parameters,
                 segments=legacy_outline.segments,
                 rows=(),
+                segment_materializations=tuple(
+                    StoryboardSegmentMaterializationV3(
+                        sequence_id=segment.sequence_id,
+                        materialization_id=_sequence_materialization_id(
+                            envelope.materialization_id,
+                            segment.sequence_id,
+                        ),
+                    )
+                    for segment in legacy_outline.segments
+                ),
             )
             document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
             document_revision = 1
@@ -999,7 +1032,12 @@ class CapabilityMaterializationPublicationService:
                     if sequence.order == 1
                     else None
                 ),
+                materialization_id=_sequence_materialization_id(
+                    envelope.materialization_id,
+                    sequence_id,
+                ),
             )
+        first_sequence = _first_storyboard_sequence(content)
         if current is None:
             document_write = MaterializationDocumentWriteV1(
                 document_type="agent_working_document",
@@ -1021,7 +1059,7 @@ class CapabilityMaterializationPublicationService:
                 ).model_dump(mode="json"),
                 relation_metadata={
                     "node_id": node_id,
-                    "sequence_id": content.segments[0].sequence_id,
+                    "sequence_id": first_sequence.sequence_id,
                 },
             )
         else:
@@ -1046,11 +1084,11 @@ class CapabilityMaterializationPublicationService:
                 ),
                 relation_metadata={
                     "node_id": node_id,
-                    "sequence_id": content.segments[0].sequence_id,
+                    "sequence_id": first_sequence.sequence_id,
                 },
             )
         original = StoryboardMaterializationResultV1.model_validate(normalization.result)
-        sequence = content.segments[0]
+        sequence = first_sequence
         sequence_id = sequence.sequence_id
         segment = segment_drafts[sequence_id]
         result = original.model_copy(
@@ -1158,6 +1196,21 @@ def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
+def _first_storyboard_sequence(content: StoryboardProductionPlanContentV3):
+    sequence = next((item for item in content.segments if item.order == 1), None)
+    if sequence is None:
+        raise V2PersistenceError(
+            "agent_storyboard_plan_invalid",
+            "The Storyboard Plan has no first sequence.",
+            stage="capability_materialization_publication",
+        )
+    return sequence
+
+
+def _sequence_materialization_id(parent_materialization_id: str, sequence_id: str) -> str:
+    return "materialization_" + _digest(f"{parent_materialization_id}:{sequence_id}")[:32]
+
+
 def _document_authoring_text(
     envelope: ProposalApplicationEnvelopeV1,
     normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
@@ -1171,7 +1224,7 @@ def _document_authoring_text(
         item.strip()
         for item in (
             envelope.selected_option.public_summary,
-            *envelope.selected_option.key_decisions,
+            *tuple(getattr(envelope.selected_option, "key_decisions", ())),
         )
         if item and item.strip()
     )[:16_384]

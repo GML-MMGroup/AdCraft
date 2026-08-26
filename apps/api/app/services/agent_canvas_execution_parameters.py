@@ -329,6 +329,19 @@ def _normalize_video_parameters(
     for field, raw_value in requested.items():
         value = _validated_platform_value(field, raw_value)
         if field not in capability.supported_parameters:
+            if field == "generate_audio" and value is False:
+                effective[field] = False
+                continue
+            if field == "generate_audio" and value is True:
+                raise _error(
+                    "video_native_audio_unsupported",
+                    "Selected model cannot generate native audio.",
+                    details={
+                        "field": field,
+                        "reason": "capability_missing",
+                        "retryable": True,
+                    },
+                )
             raise _error(
                 "node_parameter_unsupported",
                 "Selected model does not support an explicit Video parameter.",
@@ -390,9 +403,13 @@ def _normalize_video_parameters(
         elif field == "generate_audio":
             if value is True and not capability.supports_native_audio:
                 raise _error(
-                    "node_parameter_unsupported",
+                    "video_native_audio_unsupported",
                     "Selected model cannot generate native audio.",
-                    details={"field": field, "retryable": True},
+                    details={
+                        "field": field,
+                        "reason": "capability_disabled",
+                        "retryable": True,
+                    },
                 )
             effective[field] = value
     return effective, tuple(normalizations)

@@ -50,6 +50,7 @@ class VideoAgentOperationDefinitionV1(_CapabilityModel):
     style_projection_role: str | None = Field(default=None, min_length=1, max_length=160)
     context_contract_name: str = Field(min_length=1, max_length=160)
     result_contract_name: str = Field(min_length=1, max_length=160)
+    validation_profile: str | None = Field(default=None, min_length=1, max_length=160)
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     max_skill_context_bytes: int = Field(default=8_192, ge=1, le=32_768)
     max_handoffs: Literal[0] = 0

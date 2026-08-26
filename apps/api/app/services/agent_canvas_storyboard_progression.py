@@ -46,11 +46,15 @@ from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_guided_media_parameters import (
+    resolve_video_audio_parameter,
+)
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
 StoryboardPipelinePreparedCallback = Callable[[str, str], object]
 VideoResolutionResolver = Callable[[str], str | None]
+VideoAudioConstraintsResolver = Callable[[str], dict[str, object]]
 
 
 class ProgressiveStoryboardReadyService:
@@ -67,6 +71,7 @@ class ProgressiveStoryboardReadyService:
         events: EventRepository | None = None,
         binding_capability_validator: BindingCapabilityValidator | None = None,
         video_resolution_resolver: VideoResolutionResolver | None = None,
+        video_audio_constraints_resolver: VideoAudioConstraintsResolver | None = None,
         on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
@@ -77,6 +82,7 @@ class ProgressiveStoryboardReadyService:
         self._events = events
         self._binding_capability_validator = binding_capability_validator
         self._video_resolution_resolver = video_resolution_resolver
+        self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
 
     def on_node_ready(
@@ -99,7 +105,7 @@ class ProgressiveStoryboardReadyService:
                 for item in page.items
                 if any(
                     record.node_role == "storyboard_grid"
-                    and record.sequence_id == item.content.segments[0].sequence_id
+                    and record.sequence_id == _first_sequence(item.content).sequence_id
                     and record.node_id == node.node_id
                     for record in _planned_nodes(item.content)
                 )
@@ -117,7 +123,12 @@ class ProgressiveStoryboardReadyService:
             content = _plan_content(plan.content)
             if content.visual_anchor is None or content.visual_anchor.node_id == node.node_id:
                 return ()
-            return self._materialize_sibling_branch(plan.document_id, content, node)
+            return self._materialize_sibling_branch(
+                plan.document_id,
+                plan.revision,
+                content,
+                node,
+            )
         replay: StoryboardFanoutPlanV1 | None = None
         if self._receipts is not None:
             if confirmation is None or self._asset_resolver is None:
@@ -185,19 +196,22 @@ class ProgressiveStoryboardReadyService:
                     confirmation=confirmation,
                 )
             )
-        first_sequence = content.segments[0]
+        first_sequence = _first_sequence(content)
         video_resolution = self._resolve_video_resolution(node.workflow_id)
         created.extend(
             self._ensure_video(
                 plan.document_id,
                 first_sequence.sequence_id,
                 node,
+                plan_revision=plan.revision,
                 duration_seconds=first_sequence.end_seconds - first_sequence.start_seconds,
+                sequence_start_seconds=first_sequence.start_seconds,
+                sequence_end_seconds=first_sequence.end_seconds,
                 aspect_ratio=content.global_parameters.aspect_ratio,
                 resolution=video_resolution,
             )
         )
-        for sequence in content.segments[1:]:
+        for sequence in _later_sequences(content):
             grid_id = _node_id(plan.document_id, sequence.sequence_id, "grid")
             workflow = self._workflows.get_workflow(node.workflow_id)
             existing = {item.node_id: item for item in workflow.nodes}.get(grid_id)
@@ -213,6 +227,7 @@ class ProgressiveStoryboardReadyService:
                     sequence=sequence,
                     segment=segment,
                     source=node,
+                    plan_revision=plan.revision,
                 )
                 bindings = _later_grid_bindings(
                     workflow=workflow,
@@ -240,7 +255,10 @@ class ProgressiveStoryboardReadyService:
                     plan.document_id,
                     sequence.sequence_id,
                     existing,
+                    plan_revision=plan.revision,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                    sequence_start_seconds=sequence.start_seconds,
+                    sequence_end_seconds=sequence.end_seconds,
                     aspect_ratio=content.global_parameters.aspect_ratio,
                     resolution=video_resolution,
                 )
@@ -302,7 +320,7 @@ class ProgressiveStoryboardReadyService:
             and confirmation.plan_document_id == plan.document_id
             and confirmation.plan_revision == plan.revision
             and confirmation.media_role == "image"
-            and confirmation.sequence_id == plan.content.segments[0].sequence_id
+            and confirmation.sequence_id == _first_sequence(plan.content).sequence_id
             and confirmation.node_id == node.node_id
             and confirmation.node_revision == node.revision
             and confirmation.asset_id == node.output_asset_id == asset.asset_id
@@ -322,26 +340,30 @@ class ProgressiveStoryboardReadyService:
     def _materialize_sibling_branch(
         self,
         plan_document_id: str,
+        plan_revision: int,
         content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
         grid_one: CanvasNodeV2,
     ) -> tuple[str, ...]:
         branch_scope = f"{plan_document_id}:{grid_one.node_id}"
         created: list[str] = []
-        first_sequence = content.segments[0]
+        first_sequence = _first_sequence(content)
         video_resolution = self._resolve_video_resolution(grid_one.workflow_id)
         created.extend(
             self._ensure_video(
                 plan_document_id,
                 first_sequence.sequence_id,
                 grid_one,
+                plan_revision=plan_revision,
                 duration_seconds=(first_sequence.end_seconds - first_sequence.start_seconds),
+                sequence_start_seconds=first_sequence.start_seconds,
+                sequence_end_seconds=first_sequence.end_seconds,
                 aspect_ratio=content.global_parameters.aspect_ratio,
                 resolution=video_resolution,
                 node_identity_scope=branch_scope,
                 attach_to_plan=False,
             )
         )
-        for sequence in content.segments[1:]:
+        for sequence in _later_sequences(content):
             grid_id = _node_id(branch_scope, sequence.sequence_id, "grid")
             workflow = self._workflows.get_workflow(grid_one.workflow_id)
             grid = {item.node_id: item for item in workflow.nodes}.get(grid_id)
@@ -357,6 +379,7 @@ class ProgressiveStoryboardReadyService:
                     sequence=sequence,
                     segment=segment,
                     source=grid_one,
+                    plan_revision=plan_revision,
                 )
                 bindings = _later_grid_bindings(
                     workflow=workflow,
@@ -375,7 +398,10 @@ class ProgressiveStoryboardReadyService:
                     plan_document_id,
                     sequence.sequence_id,
                     grid,
+                    plan_revision=plan_revision,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                    sequence_start_seconds=sequence.start_seconds,
+                    sequence_end_seconds=sequence.end_seconds,
                     aspect_ratio=content.global_parameters.aspect_ratio,
                     resolution=video_resolution,
                     node_identity_scope=branch_scope,
@@ -420,7 +446,10 @@ class ProgressiveStoryboardReadyService:
         sequence_id: str,
         grid: CanvasNodeV2,
         *,
+        plan_revision: int,
         duration_seconds: float,
+        sequence_start_seconds: float,
+        sequence_end_seconds: float,
         aspect_ratio: str,
         resolution: str | None,
         node_identity_scope: str | None = None,
@@ -435,6 +464,23 @@ class ProgressiveStoryboardReadyService:
         if any(item.node_id == video_id for item in workflow.nodes):
             return ()
         content = StoryboardGridContentV2.model_validate(grid.structured_content)
+        video_content = VideoSegmentContentV2(
+            segment_summary=content.sequence_summary,
+            duration_seconds=duration_seconds,
+            storyboard_content="Follow the nine ordered storyboard frames.",
+            environment_sound="Preserve scene ambience.",
+            action_effects="Preserve declared action sounds.",
+            background_music=False,
+        )
+        audio_constraints = (
+            self._video_audio_constraints_resolver(grid.workflow_id)
+            if self._video_audio_constraints_resolver is not None
+            else {}
+        )
+        generate_audio, audio_provenance = resolve_video_audio_parameter(
+            structured_values=video_content,
+            explicit_constraints=audio_constraints,
+        )
         now = datetime.now(timezone.utc)
         video = CanvasNodeV2(
             node_id=video_id,
@@ -453,22 +499,24 @@ class ProgressiveStoryboardReadyService:
                 "Preserve required dialogue, voice performance, native ambience, movement, "
                 "and synchronized action effects. Generate no background music."
             ),
-            structured_content=VideoSegmentContentV2(
-                segment_summary=content.sequence_summary,
-                duration_seconds=duration_seconds,
-                storyboard_content="Follow the nine ordered storyboard frames.",
-                environment_sound="Preserve scene ambience.",
-                action_effects="Preserve declared action sounds.",
-                background_music=False,
-            ).model_dump(mode="json"),
+            structured_content=video_content.model_dump(mode="json"),
             parameters={
                 "duration_seconds": duration_seconds,
                 "aspect_ratio": aspect_ratio,
                 **({"resolution": resolution} if resolution is not None else {}),
+                **({"generate_audio": generate_audio} if generate_audio is not None else {}),
             },
+            parameter_provenance=(
+                {"generate_audio": audio_provenance} if audio_provenance is not None else {}
+            ),
             metadata={
                 "source_agent_document_id": plan_document_id,
                 "source_sequence_id": sequence_id,
+                "source_plan_revision": plan_revision,
+                "source_sequence_window": {
+                    "start_seconds": sequence_start_seconds,
+                    "end_seconds": sequence_end_seconds,
+                },
             },
             position=CanvasPositionV2(x=grid.position.x + 360, y=grid.position.y),
             revision=1,
@@ -680,14 +728,18 @@ def _accepted_segment(
             stage="storyboard_progression",
             details={"sequence_id": sequence_id, "row_count": len(rows)},
         )
-    generation_prompt = next(
-        (
-            item.generation_prompt
-            for item in getattr(content, "segment_materializations", ())
-            if item.sequence_id == sequence_id and item.generation_prompt
-        ),
-        None,
-    )
+    records = tuple(getattr(content, "segment_materializations", ()))
+    record = next((item for item in records if item.sequence_id == sequence_id), None)
+    if isinstance(content, StoryboardProductionPlanContentV3) and (
+        record is None or record.status != "materialized" or not record.generation_prompt
+    ):
+        raise V2PersistenceError(
+            "storyboard_fanout_invalid",
+            "Storyboard fan-out requires a current materialization record for the sequence.",
+            stage="storyboard_progression",
+            details={"sequence_id": sequence_id},
+        )
+    generation_prompt = record.generation_prompt if record is not None else None
     if generation_prompt is None:
         sequence = next(item for item in content.segments if item.sequence_id == sequence_id)
         generation_prompt = (
@@ -727,6 +779,31 @@ def _planned_nodes(
     if isinstance(canonical, StoryboardProductionPlanContentV3):
         return canonical.planned_nodes
     return canonical.node_records
+
+
+def _first_sequence(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+):
+    sequence = next((item for item in content.segments if item.order == 1), None)
+    if sequence is None:
+        raise V2PersistenceError(
+            "storyboard_fanout_invalid",
+            "Storyboard fan-out requires an explicitly ordered first sequence.",
+            stage="storyboard_progression",
+        )
+    return sequence
+
+
+def _later_sequences(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+):
+    first = _first_sequence(content)
+    return tuple(
+        sorted(
+            (item for item in content.segments if item.sequence_id != first.sequence_id),
+            key=lambda item: item.order,
+        )
+    )
 
 
 def _fanout_plan(
@@ -843,6 +920,7 @@ def _grid_node(
     sequence,
     segment,
     source: CanvasNodeV2,
+    plan_revision: int,
 ) -> CanvasNodeV2:
     now = datetime.now(timezone.utc)
     source_content = StoryboardGridContentV2.model_validate(source.structured_content)
@@ -876,7 +954,12 @@ def _grid_node(
             ),
         ).model_dump(mode="json"),
         parameters={},
-        metadata={"source_sequence_id": sequence.sequence_id},
+        metadata={
+            "source_sequence_id": sequence.sequence_id,
+            "source_plan_revision": plan_revision,
+            "source_sequence_start_seconds": sequence.start_seconds,
+            "source_sequence_end_seconds": sequence.end_seconds,
+        },
         position=CanvasPositionV2(x=source.position.x, y=source.position.y + (order - 1) * 280),
         revision=1,
         created_at=now,

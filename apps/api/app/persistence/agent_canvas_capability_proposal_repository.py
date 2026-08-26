@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Mapping
 
 from pydantic import BaseModel
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -17,6 +17,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
     publish_expert_activity_terminal_in_transaction,
 )
 from app.persistence.models import (
+    AgentCanvasActionReceiptRow,
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasConceptOptionRow,
@@ -27,8 +28,13 @@ from app.persistence.models import (
     AgentCanvasGuidanceTopicRow,
     AgentCanvasGuidedInteractionRow,
     AgentCanvasRequirementLedgerRow,
+    AgentCanvasWorkflowRow,
 )
-from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
+from app.schemas.agent_canvas_conversation import AgentActionReceiptV2
+from app.schemas.agent_canvas_capabilities import (
+    CapabilityCommandEnvelopeV2,
+    GuidedProposalAuthoringResultV4,
+)
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
 from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
@@ -45,6 +51,9 @@ from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_production_journey import (
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
     parse_production_journey,
+)
+from app.services.agent_canvas_proposal_cardinality import (
+    proposal_candidate_count_details,
 )
 from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
@@ -83,15 +92,23 @@ class AgentCanvasCapabilityProposalRepository:
                 "Internal document commands cannot publish a public Proposal.",
                 stage="capability_publication",
             )
+        if not isinstance(result, GuidedProposalAuthoringResultV4):
+            raise V2PersistenceError(
+                "proposal_card_contract_invalid",
+                "Only Guided Proposal Authoring schema version 4 may be published after cutover.",
+                stage="capability_publication",
+            )
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
         options = tuple(getattr(result, "options", ()))
-        if not options:
+        details = proposal_candidate_count_details(envelope.candidate_count, result)
+        if details is not None:
             raise V2PersistenceError(
-                "capability_contract_invalid",
-                "Capability result contains no Proposal options.",
+                "proposal_candidate_count_mismatch",
+                "Proposal result candidate count conflicts with its immutable envelope.",
                 stage="capability_publication",
+                details=details,
             )
         option_ids = tuple(
             f"option_{_digest(proposal_id, str(order))[:32]}" for order in range(len(options))
@@ -102,17 +119,74 @@ class AgentCanvasCapabilityProposalRepository:
             response_locale=envelope.response_locale,
             recommended_option_id=option_ids[0],
         )
+        response_locale = public_projection.response_locale
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                existing = connection.execute(
-                    select(AgentCanvasConceptProposalRow.proposal_id).where(
-                        AgentCanvasConceptProposalRow.proposal_id == proposal_id
+                existing = (
+                    connection.execute(
+                        select(
+                            AgentCanvasConceptProposalRow.proposal_id,
+                            AgentCanvasConceptProposalRow.proposal_card_schema_version,
+                        ).where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
                     )
-                ).scalar_one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if existing is not None:
+                    version = int(existing["proposal_card_schema_version"] or 1)
+                    if version not in {1, 2, 3}:
+                        raise V2PersistenceError(
+                            "proposal_card_version_unsupported",
+                            "The persisted Proposal Card schema version is unsupported.",
+                            stage="capability_publication",
+                        )
+                    if version != 3:
+                        raise V2PersistenceError(
+                            "proposal_card_version_conflict",
+                            "Historical Proposal Cards are read-only after cutover.",
+                            stage="capability_publication",
+                        )
+                    persisted_options = (
+                        connection.execute(
+                            select(
+                                AgentCanvasConceptOptionRow.title,
+                                AgentCanvasConceptOptionRow.description,
+                            )
+                            .where(
+                                AgentCanvasConceptOptionRow.proposal_id
+                                == str(existing["proposal_id"])
+                            )
+                            .order_by(AgentCanvasConceptOptionRow.display_order)
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    persisted_digest = _card_digest(
+                        tuple(
+                            (str(option["title"]), str(option["description"]))
+                            for option in persisted_options
+                        )
+                    )
+                    incoming_digest = _card_digest(
+                        tuple(
+                            (option.title, option.summary) for option in public_projection.options
+                        )
+                    )
+                    if persisted_digest != incoming_digest:
+                        raise V2PersistenceError(
+                            "proposal_card_version_conflict",
+                            "The replayed Proposal Card differs from the persisted card.",
+                            stage="capability_publication",
+                            details={
+                                "proposal_id": str(existing["proposal_id"]),
+                                "proposal_card_schema_version": version,
+                                "persisted_card_digest": persisted_digest,
+                                "incoming_card_digest": incoming_digest,
+                            },
+                        )
                     connection.commit()
-                    return str(existing)
+                    return str(existing["proposal_id"])
                 requirement_head = (
                     connection.execute(
                         select(AgentCanvasRequirementLedgerRow).where(
@@ -170,6 +244,49 @@ class AgentCanvasCapabilityProposalRepository:
                 topic_id = f"topic_{envelope.capability_id}"
                 proposed_references = _project_references(envelope)
                 creative_direction_snapshot_id = _style_snapshot_id(envelope.style_projection)
+                source_proposal_id = envelope.source_proposal_id
+                if source_proposal_id is not None:
+                    source_proposal = (
+                        connection.execute(
+                            select(AgentCanvasConceptProposalRow).where(
+                                AgentCanvasConceptProposalRow.proposal_id == source_proposal_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if (
+                        source_proposal is None
+                        or str(source_proposal["workflow_id"]) != envelope.workflow_id
+                        or str(source_proposal["capability_id"]) != envelope.capability_id
+                        or str(source_proposal["availability"]) != "open"
+                        or str(session["active_proposal_id"]) != source_proposal_id
+                    ):
+                        raise V2PersistenceError(
+                            "proposal_action_stale",
+                            "The Proposal revision source is no longer current.",
+                            stage="capability_publication",
+                        )
+                    topic_id = str(source_proposal["topic_id"])
+                    connection.execute(
+                        update(AgentCanvasConceptProposalRow)
+                        .where(AgentCanvasConceptProposalRow.proposal_id == source_proposal_id)
+                        .values(availability="superseded", updated_at=timestamp)
+                    )
+                    connection.execute(
+                        update(AgentCanvasGuidedInteractionRow)
+                        .where(
+                            AgentCanvasGuidedInteractionRow.session_id == session["session_id"],
+                            AgentCanvasGuidedInteractionRow.status == "open",
+                        )
+                        .values(status="superseded", updated_at=timestamp)
+                    )
+                    connection.execute(
+                        delete(AgentCanvasGuidanceAwaitingRow).where(
+                            AgentCanvasGuidanceAwaitingRow.session_id == session["session_id"],
+                            AgentCanvasGuidanceAwaitingRow.kind == "concept_selection",
+                        )
+                    )
                 topic = (
                     connection.execute(
                         select(AgentCanvasGuidanceTopicRow).where(
@@ -180,7 +297,6 @@ class AgentCanvasCapabilityProposalRepository:
                     .mappings()
                     .one_or_none()
                 )
-                source_proposal_id = None
                 if topic is None:
                     connection.execute(
                         insert(AgentCanvasGuidanceTopicRow).values(
@@ -227,6 +343,19 @@ class AgentCanvasCapabilityProposalRepository:
                             updated_at=timestamp,
                         )
                     )
+                elif source_proposal_id is not None:
+                    connection.execute(
+                        update(AgentCanvasGuidanceTopicRow)
+                        .where(
+                            AgentCanvasGuidanceTopicRow.session_id == session["session_id"],
+                            AgentCanvasGuidanceTopicRow.topic_id == topic_id,
+                        )
+                        .values(
+                            source_proposal_id=proposal_id,
+                            revision=int(topic["revision"]) + 1,
+                            updated_at=timestamp,
+                        )
+                    )
                 connection.execute(
                     insert(AgentCanvasConceptProposalRow).values(
                         proposal_id=proposal_id,
@@ -244,6 +373,7 @@ class AgentCanvasCapabilityProposalRepository:
                         requirement_revision_no=envelope.requirement_revision_no,
                         requirement_digest=envelope.requirement_digest,
                         proposal_revision=1,
+                        proposal_card_schema_version=3,
                         proposed_references_json=json.dumps(
                             [
                                 reference.model_dump(mode="json")
@@ -260,21 +390,16 @@ class AgentCanvasCapabilityProposalRepository:
                         updated_at=timestamp,
                     )
                 )
-                for order, option in enumerate(options):
+                for order, option in enumerate(public_projection.options):
                     option_id = option_ids[order]
-                    public_summary = str(option.public_summary)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
                             proposal_id=proposal_id,
                             display_order=order,
-                            title=str(option.title),
-                            description=public_summary,
-                            key_decisions_json=json.dumps(
-                                list(option.key_decisions),
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            ),
+                            title=option.title,
+                            description=option.summary,
+                            key_decisions_json="[]",
                             draft_seed_schema=None,
                             draft_seed_json=None,
                             draft_seed_digest=None,
@@ -286,50 +411,49 @@ class AgentCanvasCapabilityProposalRepository:
                     session=session,
                     session_revision=session_revision,
                     public_options=public_projection.options,
-                    response_locale=public_projection.response_locale,
+                    response_locale=response_locale,
                     now=now,
                 )
-                if interaction is not None and awaiting is not None:
-                    connection.execute(
-                        insert(AgentCanvasGuidedInteractionRow).values(
-                            interaction_id=interaction.interaction_id,
-                            workflow_id=interaction.workflow_id,
-                            session_id=interaction.session_id,
-                            checkpoint_id=interaction.checkpoint_id,
-                            kind=interaction.kind,
-                            status=interaction.status,
-                            response_locale=interaction.response_locale,
-                            expected_session_revision=interaction.expected_session_revision,
-                            revision=interaction.revision,
-                            title=interaction.title,
-                            context=interaction.context,
-                            content_json=interaction.content.model_dump_json(),
-                            allowed_actions_json=json.dumps(
-                                list(interaction.allowed_actions),
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            ),
-                            submit_path=interaction.submit_path,
-                            created_at=timestamp,
-                            updated_at=timestamp,
-                        )
+                connection.execute(
+                    insert(AgentCanvasGuidedInteractionRow).values(
+                        interaction_id=interaction.interaction_id,
+                        workflow_id=interaction.workflow_id,
+                        session_id=interaction.session_id,
+                        checkpoint_id=interaction.checkpoint_id,
+                        kind=interaction.kind,
+                        status=interaction.status,
+                        response_locale=interaction.response_locale,
+                        expected_session_revision=interaction.expected_session_revision,
+                        revision=interaction.revision,
+                        title=interaction.title,
+                        context=interaction.context,
+                        content_json=interaction.content.model_dump_json(),
+                        allowed_actions_json=json.dumps(
+                            list(interaction.allowed_actions),
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        submit_path=interaction.submit_path,
+                        created_at=timestamp,
+                        updated_at=timestamp,
                     )
-                    connection.execute(
-                        insert(AgentCanvasGuidanceAwaitingRow).values(
-                            awaiting_id=awaiting.awaiting_id,
-                            workflow_id=awaiting.workflow_id,
-                            session_id=awaiting.session_id,
-                            checkpoint_id=awaiting.checkpoint_id,
-                            kind=awaiting.kind,
-                            requires_user_action=awaiting.requires_user_action,
-                            resume_policy=awaiting.resume_policy,
-                            interaction_id=awaiting.interaction_id,
-                            node_ids_json="[]",
-                            stage=awaiting.stage,
-                            stage_revision=awaiting.stage_revision,
-                            created_at=timestamp,
-                        )
+                )
+                connection.execute(
+                    insert(AgentCanvasGuidanceAwaitingRow).values(
+                        awaiting_id=awaiting.awaiting_id,
+                        workflow_id=awaiting.workflow_id,
+                        session_id=awaiting.session_id,
+                        checkpoint_id=awaiting.checkpoint_id,
+                        kind=awaiting.kind,
+                        requires_user_action=awaiting.requires_user_action,
+                        resume_policy=awaiting.resume_policy,
+                        interaction_id=awaiting.interaction_id,
+                        node_ids_json="[]",
+                        stage=awaiting.stage,
+                        stage_revision=awaiting.stage_revision,
+                        created_at=timestamp,
                     )
+                )
                 connection.execute(
                     update(AgentCanvasGuidanceSessionRow)
                     .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
@@ -339,6 +463,40 @@ class AgentCanvasCapabilityProposalRepository:
                         journey_state_json=journey.model_dump_json(),
                         revision=session_revision,
                         updated_at=timestamp,
+                    )
+                )
+                workflow_revision = int(
+                    connection.execute(
+                        select(AgentCanvasWorkflowRow.revision).where(
+                            AgentCanvasWorkflowRow.workflow_id == envelope.workflow_id
+                        )
+                    ).scalar_one()
+                )
+                publication_receipt = AgentActionReceiptV2(
+                    receipt_id=f"receipt_{_digest(proposal_id, 'publication')[:32]}",
+                    workflow_id=envelope.workflow_id,
+                    action_id=envelope.capability_turn_id,
+                    proposal_id=proposal_id,
+                    actor_kind="agent",
+                    idempotency_key=envelope.envelope_id,
+                    status="applied",
+                    summary="Published three guided Proposal choices.",
+                    workflow_revision=workflow_revision,
+                    before_workflow_revision=workflow_revision,
+                    continuation_turn_id=envelope.capability_turn_id,
+                    created_at=now,
+                )
+                connection.execute(
+                    insert(AgentCanvasActionReceiptRow).values(
+                        receipt_id=publication_receipt.receipt_id,
+                        workflow_id=publication_receipt.workflow_id,
+                        plan_id=None,
+                        action_id=publication_receipt.action_id,
+                        proposal_id=publication_receipt.proposal_id,
+                        proposal_option_id=None,
+                        proposal_action=None,
+                        receipt_json=publication_receipt.model_dump_json(),
+                        created_at=timestamp,
                     )
                 )
                 connection.execute(
@@ -357,7 +515,7 @@ class AgentCanvasCapabilityProposalRepository:
                     self._events,
                     turn_id=envelope.capability_turn_id,
                     status="completed",
-                    response_locale=public_projection.response_locale,
+                    response_locale=response_locale,
                     now=timestamp,
                 )
                 if not activity_publication.changed:
@@ -406,7 +564,7 @@ class AgentCanvasCapabilityProposalRepository:
                             build_presentation_metadata(
                                 message_key="concept_proposal.review",
                                 message_args={"option_count": len(options)},
-                                response_locale=public_projection.response_locale,
+                                response_locale=response_locale,
                                 presentation_key=f"proposal:{proposal_id}",
                                 base={
                                     "proposal_id": proposal_id,
@@ -441,36 +599,41 @@ class AgentCanvasCapabilityProposalRepository:
                         },
                     ),
                 ]
-                if interaction is not None:
-                    publication_events.append(
-                        (
-                            "guided_interaction_opened",
-                            {
-                                "interaction_id": interaction.interaction_id,
-                                "session_id": interaction.session_id,
-                                "checkpoint_id": interaction.checkpoint_id,
-                                "kind": interaction.kind,
-                                "interaction_revision": interaction.revision,
-                            },
-                        )
+                publication_events.append(
+                    (
+                        "guided_interaction_opened",
+                        {
+                            "interaction_id": interaction.interaction_id,
+                            "session_id": interaction.session_id,
+                            "checkpoint_id": interaction.checkpoint_id,
+                            "kind": interaction.kind,
+                            "interaction_revision": interaction.revision,
+                        },
                     )
-                if awaiting is not None:
-                    publication_events.append(
-                        (
-                            "guidance_awaiting_entered",
-                            {
-                                "awaiting_id": awaiting.awaiting_id,
-                                "session_id": awaiting.session_id,
-                                "checkpoint_id": awaiting.checkpoint_id,
-                                "kind": awaiting.kind,
-                                "resume_policy": awaiting.resume_policy,
-                                "interaction_id": awaiting.interaction_id,
-                                "node_ids": [],
-                            },
-                        )
+                )
+                publication_events.append(
+                    (
+                        "guidance_awaiting_entered",
+                        {
+                            "awaiting_id": awaiting.awaiting_id,
+                            "session_id": awaiting.session_id,
+                            "checkpoint_id": awaiting.checkpoint_id,
+                            "kind": awaiting.kind,
+                            "resume_policy": awaiting.resume_policy,
+                            "interaction_id": awaiting.interaction_id,
+                            "node_ids": [],
+                        },
                     )
+                )
                 publication_events.extend(
                     [
+                        (
+                            "agent_action_receipt_created",
+                            {
+                                "receipt_id": publication_receipt.receipt_id,
+                                "proposal_id": proposal_id,
+                            },
+                        ),
                         (
                             "agent_command_completed",
                             {
@@ -511,14 +674,20 @@ def _concept_interaction(
     public_options: tuple[GuidedChoiceOptionV1, ...],
     response_locale: str,
     now: datetime,
-) -> tuple[
-    GuidedInteractionV1 | None,
-    GuidanceAwaitingV2 | None,
-    GuidedProductionJourneyV2,
-]:
+) -> tuple[GuidedInteractionV1, GuidanceAwaitingV2, GuidedProductionJourneyV2]:
     journey = parse_production_journey(str(session["journey_state_json"]))
-    if len(public_options) != 3 or journey.active_action is None:
-        return None, None, journey
+    if len(public_options) != 3:
+        raise V2PersistenceError(
+            "proposal_candidate_count_mismatch",
+            "A normal Guided Proposal requires exactly three public options.",
+            stage="capability_publication",
+        )
+    if journey.active_action is None:
+        raise V2PersistenceError(
+            "guided_interaction_authority_missing",
+            "A normal Guided Proposal requires an active journey action.",
+            stage="capability_publication",
+        )
 
     checkpoint_id = f"checkpoint_{_digest(str(session['session_id']), journey.stage, str(journey.stage_revision))[:32]}"
     interaction_id = f"interaction_{_digest(proposal_id, 'interaction')[:32]}"
@@ -602,6 +771,21 @@ def _project_references(
 
 def _digest(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+
+
+def _card_digest(options: tuple[tuple[str, str], ...]) -> str:
+    """Hash only the ordered public card fields used for replay identity."""
+
+    return _digest(
+        *(
+            json.dumps(
+                {"public_summary": public_summary, "title": title},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for title, public_summary in options
+        )
+    )
 
 
 def _style_snapshot_id(style_projection: dict[str, object]) -> str | None:

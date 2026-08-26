@@ -926,7 +926,16 @@ class AgentCanvasWorkflowRepository:
                         for field, provenance in current.parameter_provenance.items()
                         if provenance.origin == "manual" and field in manual_parameters
                     }
-                    parameters = {**derived_parameters, **manual_parameters}
+                    deterministic_parameters = {
+                        field: value
+                        for field, value in current.parameters.items()
+                        if field not in current.parameter_provenance
+                    }
+                    parameters = {
+                        **deterministic_parameters,
+                        **derived_parameters,
+                        **manual_parameters,
+                    }
                     provenance = {**derived_provenance, **manual_provenance}
                     if (
                         parameters == current.parameters
@@ -2225,6 +2234,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "role_contract_version": node.role_contract_version,
         "title": node.title,
         "status": node.status,
+        "execution_mode": node.execution_mode,
         "summary_prompt": node.summary_prompt,
         "generation_prompt": node.generation_prompt,
         "structured_content_json": _json_dump(node.structured_content),
@@ -2272,7 +2282,7 @@ def _invalidate_target_prompt_preparation(
         raise _node_not_found_error()
     node = _node_from_row(row)
     if (
-        node.status != "draft"
+        node.status not in {"draft", "failed"}
         or node.prompt_preparation.status == "queued"
         or node.prompt_preparation.recipe_id is None
     ):
@@ -2286,6 +2296,17 @@ def _invalidate_target_prompt_preparation(
         error=None,
         updated_at=updated_at,
     )
+    values: dict[str, object | None] = {
+        "prompt_preparation_json": queued.model_dump_json(),
+        "revision": node.revision + 1,
+        "updated_at": updated_at,
+    }
+    if node.status == "failed":
+        values.update(
+            status="draft",
+            error_json=None,
+            output_asset_id=None,
+        )
     connection.execute(
         update(AgentCanvasNodeRow)
         .where(
@@ -2293,11 +2314,7 @@ def _invalidate_target_prompt_preparation(
             AgentCanvasNodeRow.node_id == target_node_id,
             AgentCanvasNodeRow.revision == node.revision,
         )
-        .values(
-            prompt_preparation_json=queued.model_dump_json(),
-            revision=node.revision + 1,
-            updated_at=updated_at,
-        )
+        .values(**values)
     )
     safe_payload = {
         "node_revision": node.revision + 1,
@@ -2375,6 +2392,7 @@ def _node_from_row(
         role_contract_version=cast(str, row["role_contract_version"]),
         title=str(row["title"]),
         status=cast(str, row["status"]),
+        execution_mode=cast(str, row["execution_mode"]),
         summary_prompt=cast(str | None, row["summary_prompt"]),
         generation_prompt=cast(str | None, row["generation_prompt"]),
         structured_content=cast(

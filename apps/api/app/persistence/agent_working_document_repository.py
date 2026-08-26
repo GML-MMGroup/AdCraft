@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, cast
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -31,6 +31,7 @@ from app.schemas.agent_working_documents import (
     AgentWorkingDocumentV2,
     AnchorRegistryContentV2,
     AnchorRegistryContentV3,
+    PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH,
     StoryboardProductionPlanContentV2,
     StoryboardProductionPlanContentV3,
 )
@@ -52,8 +53,20 @@ class AgentWorkingDocumentRepository:
         return self._database
 
     @staticmethod
+    def validate_document_payload(payload: dict[str, Any]) -> AgentWorkingDocumentV2:
+        """Validate one complete document payload before a caller mutates storage."""
+
+        return _document_from_payload(payload)
+
+    @staticmethod
+    def validate_document_row(row: RowMapping) -> AgentWorkingDocumentV2:
+        """Validate one complete document row before a caller projects it."""
+
+        return _document(row)
+
+    @staticmethod
     def digest_content(content: AgentWorkingDocumentContentV2 | dict[str, Any]) -> str:
-        payload = _content_payload(content)
+        payload = _validated_content_payload(content)
         encoded = json.dumps(
             payload,
             ensure_ascii=False,
@@ -103,7 +116,7 @@ class AgentWorkingDocumentRepository:
                 "agent_document_idempotency_conflict",
                 "The patch key was already used for another request.",
             )
-        return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+        return _document_from_json(str(receipt["result_json"]))
 
     def create(
         self,
@@ -192,7 +205,7 @@ class AgentWorkingDocumentRepository:
                     "agent_document_idempotency_conflict",
                     "The patch key was already used for another request.",
                 )
-            return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+            return _document_from_json(str(receipt["result_json"]))
         existing = connection.execute(
             select(AgentWorkingDocumentRow.document_id).where(
                 AgentWorkingDocumentRow.workflow_id == workflow_id,
@@ -437,7 +450,7 @@ class AgentWorkingDocumentRepository:
                     "agent_document_idempotency_conflict",
                     "The patch key was already used for another request.",
                 )
-            return AgentWorkingDocumentV2.model_validate_json(str(receipt["result_json"]))
+            return _document_from_json(str(receipt["result_json"]))
 
         current_row = (
             connection.execute(
@@ -536,15 +549,17 @@ def _typed_content(
     kind: AgentWorkingDocumentKindV2,
     content: AgentWorkingDocumentContentV2 | dict[str, Any],
 ) -> AgentWorkingDocumentContentV2:
-    if isinstance(content, (AnchorRegistryContentV3, StoryboardProductionPlanContentV3)):
-        return content
-    is_v3 = isinstance(content, dict) and content.get("schema_version") == "3"
+    payload = _content_payload(content)
+    is_v3 = isinstance(payload, dict) and payload.get("schema_version") == "3"
     model = (
         (AnchorRegistryContentV3 if is_v3 else AnchorRegistryContentV2)
         if kind == "anchor_registry"
         else (StoryboardProductionPlanContentV3 if is_v3 else StoryboardProductionPlanContentV2)
     )
-    return model.model_validate(_content_payload(content))
+    try:
+        return model.model_validate(payload)
+    except ValidationError as error:
+        raise _content_invalid_error(kind, payload) from error
 
 
 def _content_schema_version(content: AgentWorkingDocumentContentV2) -> int:
@@ -555,6 +570,22 @@ def _content_payload(content: AgentWorkingDocumentContentV2 | dict[str, Any]) ->
     if isinstance(content, BaseModel):
         return content.model_dump(mode="json")
     return content
+
+
+def _validated_content_payload(
+    content: AgentWorkingDocumentContentV2 | dict[str, Any],
+) -> Any:
+    payload = _content_payload(content)
+    if isinstance(content, (AnchorRegistryContentV2, AnchorRegistryContentV3)) or (
+        isinstance(payload, dict) and "anchors" in payload
+    ):
+        return _content_payload(_typed_content("anchor_registry", payload))
+    if isinstance(
+        content,
+        (StoryboardProductionPlanContentV2, StoryboardProductionPlanContentV3),
+    ) or (isinstance(payload, dict) and "narrative_outline" in payload):
+        return _content_payload(_typed_content("storyboard_production_plan", payload))
+    return payload
 
 
 def _content_json(content: AgentWorkingDocumentContentV2) -> str:
@@ -585,7 +616,7 @@ def _document_values(document: AgentWorkingDocumentV2) -> dict[str, object]:
 
 
 def _document(row: RowMapping) -> AgentWorkingDocumentV2:
-    return AgentWorkingDocumentV2.model_validate(
+    return _document_from_payload(
         {
             "document_id": row["document_id"],
             "workflow_id": row["workflow_id"],
@@ -602,6 +633,31 @@ def _document(row: RowMapping) -> AgentWorkingDocumentV2:
             "updated_at": row["updated_at"],
         }
     )
+
+
+def _document_from_json(value: str) -> AgentWorkingDocumentV2:
+    try:
+        payload = json.loads(value)
+        if not isinstance(payload, dict):
+            raise TypeError("Working document replay must contain an object.")
+        return _document_from_payload(payload)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise _error(
+            "agent_working_document_content_invalid",
+            "Agent working document content is invalid.",
+        ) from error
+
+
+def _document_from_payload(payload: dict[str, Any]) -> AgentWorkingDocumentV2:
+    kind = str(payload.get("kind", "unknown"))
+    content_payload = payload.get("content")
+    try:
+        typed_content = _typed_content(kind, content_payload)
+        return AgentWorkingDocumentV2.model_validate({**payload, "content": typed_content})
+    except V2PersistenceError:
+        raise
+    except ValidationError as error:
+        raise _content_invalid_error(kind, content_payload) from error
 
 
 def _document_event(
@@ -698,7 +754,7 @@ def _request_digest(
     payload = json.dumps(
         {
             "agent_run_id": agent_run_id,
-            "content": _content_payload(content),
+            "content": _validated_content_payload(content),
             "document_id": document_id,
             "expected_revision": expected_revision,
             "operation": operation,
@@ -738,6 +794,25 @@ def _iso(value: datetime) -> str:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_working_documents")
+
+
+def _content_invalid_error(
+    kind: str,
+    payload: Any,
+) -> V2PersistenceError:
+    details: dict[str, Any] = {"document_kind": kind}
+    if isinstance(payload, dict):
+        narrative = payload.get("narrative_outline")
+        if isinstance(narrative, str):
+            details["narrative_length"] = len(narrative)
+            if kind == "storyboard_production_plan":
+                details["narrative_budget"] = PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH
+    return V2PersistenceError(
+        "agent_working_document_content_invalid",
+        "Agent working document content is invalid.",
+        stage="agent_working_documents",
+        details=details,
+    )
 
 
 def _pagination_error() -> V2PersistenceError:

@@ -44,12 +44,6 @@ class GuidedChoiceOptionV1(_GuidedInteractionModel):
     recommended: bool = False
     reference_preview: tuple[GuidedReferencePreviewV1, ...] = Field(default=(), max_length=8)
 
-    @model_validator(mode="after")
-    def validate_summary_sentence_budget(self) -> "GuidedChoiceOptionV1":
-        if sum(character in ".!?。！？" for character in self.summary) > 2:
-            raise ValueError("A guided choice summary cannot exceed two sentences.")
-        return self
-
 
 class GuidedQuestionV1(_GuidedInteractionModel):
     question_id: str = Field(min_length=1, max_length=160)

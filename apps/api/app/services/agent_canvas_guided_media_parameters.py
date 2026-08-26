@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pydantic import BaseModel, JsonValue
@@ -131,26 +132,14 @@ class GuidedMediaParameterCompiler:
                     normalized,
                     normalized,
                 )
-        explicit_audio = _constraint(explicit_constraints, "generate_audio")
-        silent_video = _constraint(explicit_constraints, "silent_video") is True
-        if isinstance(explicit_audio, bool):
-            generate_audio = explicit_audio
-            audio_origin = "user_explicit"
-        elif silent_video:
-            generate_audio = False
-            audio_origin = "user_explicit"
-        else:
-            sound_fields = (
-                getattr(structured_content, "dialogue", ""),
-                getattr(structured_content, "environment_sound", ""),
-                getattr(structured_content, "action_effects", ""),
-            )
-            generate_audio = any(str(value).strip() for value in sound_fields)
-            audio_origin = "structured_content"
-        if generate_audio or explicit_audio is not None or silent_video:
+        generate_audio, audio_provenance = resolve_video_audio_parameter(
+            structured_values=structured_content,
+            explicit_constraints=explicit_constraints,
+        )
+        if generate_audio is not None and audio_provenance is not None:
             parameters["generate_audio"] = generate_audio
             provenance["generate_audio"] = _provenance(
-                audio_origin,
+                audio_provenance.origin,
                 generate_audio,
                 generate_audio,
             )
@@ -177,13 +166,44 @@ class GuidedMediaParameterCompiler:
         )
 
 
-def _constraint(constraints: dict[str, object], field: str) -> object | None:
+def resolve_video_audio_parameter(
+    *,
+    structured_values: BaseModel | Mapping[str, object],
+    explicit_constraints: Mapping[str, object],
+) -> tuple[bool | None, CanvasParameterProvenanceV2 | None]:
+    """Resolve native-audio intent for every V2 Video preparation path."""
+
+    explicit_audio = _constraint(explicit_constraints, "generate_audio")
+    audio_mode = _constraint(explicit_constraints, "audio_mode")
+    silent_video = _constraint(explicit_constraints, "silent_video") is True
+    if audio_mode == "none":
+        value, origin = False, "user_explicit"
+    elif isinstance(explicit_audio, bool):
+        value, origin = explicit_audio, "user_explicit"
+    elif silent_video:
+        value, origin = False, "user_explicit"
+    elif audio_mode == "full":
+        value, origin = True, "user_explicit"
+    else:
+        sound_fields = (
+            _structured_value(structured_values, "dialogue"),
+            _structured_value(structured_values, "environment_sound"),
+            _structured_value(structured_values, "action_effects"),
+        )
+        if not any(str(value).strip() for value in sound_fields):
+            return None, None
+        value, origin = True, "structured_content"
+    return value, _provenance(origin, value, value)
+
+
+def _constraint(constraints: Mapping[str, object], field: str) -> object | None:
     nested_keys = {
         "duration_seconds": ("required_video_parameters", "bgm_parameters"),
         "aspect_ratio": ("required_video_parameters", "required_image_parameters"),
         "resolution": ("required_video_parameters", "required_image_parameters"),
         "generate_audio": ("required_video_parameters",),
         "silent_video": ("required_video_parameters",),
+        "audio_mode": ("required_video_parameters",),
     }
     if field in constraints:
         return constraints[field]
@@ -192,6 +212,15 @@ def _constraint(constraints: dict[str, object], field: str) -> object | None:
         if isinstance(nested, dict) and field in nested:
             return nested[field]
     return None
+
+
+def _structured_value(
+    structured_values: BaseModel | Mapping[str, object],
+    field: str,
+) -> object:
+    if isinstance(structured_values, Mapping):
+        return structured_values.get(field, "")
+    return getattr(structured_values, field, "")
 
 
 def _positive_number(value: object) -> bool:

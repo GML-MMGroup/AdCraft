@@ -493,7 +493,7 @@ class CapabilityDefinitionV1(_CapabilityModel):
     result_contract_name: str = Field(min_length=1, max_length=160)
     node_type: Literal["text", "script", "image", "video", "audio"] | None
     creative_role: str | None = Field(default=None, max_length=160)
-    default_candidate_count: int = Field(ge=1, le=3)
+    default_candidate_count: Literal[1, 3]
     allowed_reference_roles: tuple[SemanticReferenceRoleV2, ...] = ()
 
 
@@ -578,6 +578,7 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     capability_id: CapabilityIdV1
+    candidate_count: int = Field(ge=1, le=3)
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -598,6 +599,7 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     conversation_id: str = Field(min_length=1, max_length=160)
     source_turn_id: str = Field(min_length=1, max_length=160)
     capability_turn_id: str = Field(min_length=1, max_length=160)
+    source_proposal_id: str | None = Field(default=None, max_length=160)
     session_id: str | None = Field(default=None, max_length=160)
     expected_session_revision: int | None = Field(default=None, ge=1)
     capability_id: CapabilityIdV1
@@ -691,6 +693,65 @@ class _OptionBaseV1(_CapabilityModel):
     key_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
+class ProposalCardOptionV2(_CapabilityModel):
+    """The only model-authored fields allowed in a public Proposal Card."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
+
+
+class ProposalCardResultV2(_CapabilityModel):
+    """Compact proposal output; Python owns count and option identities."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[ProposalCardOptionV2, ...] = Field(min_length=1, max_length=3)
+
+
+class GuidedProposalCardOptionV3(_CapabilityModel):
+    """Compact public option for a normal guided creative choice."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
+
+
+class GuidedProposalCardResultV3(_CapabilityModel):
+    """Exact-three public proposal output for normal guided authoring."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[
+        GuidedProposalCardOptionV3,
+        GuidedProposalCardOptionV3,
+        GuidedProposalCardOptionV3,
+    ]
+
+
+class GuidedProposalAuthoringOptionV4(_CapabilityModel):
+    """Safety-bounded creative text projected into a public Proposal Card."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1, max_length=256)
+    public_summary: str = Field(min_length=1, max_length=2_048)
+
+
+class GuidedProposalAuthoringResultV4(_CapabilityModel):
+    """Exact-three authoring result for normal guided Proposal operations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    options: tuple[
+        GuidedProposalAuthoringOptionV4,
+        GuidedProposalAuthoringOptionV4,
+        GuidedProposalAuthoringOptionV4,
+    ]
+
+
 class WorldSettingProposalOptionV1(_OptionBaseV1):
     pass
 
@@ -732,39 +793,39 @@ class QuickMediaProposalOptionV1(_OptionBaseV1):
 
 
 class WorldSettingProposalResultV1(_CapabilityModel):
-    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class ProductProposalResultV1(_CapabilityModel):
-    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[ProductProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class PropProposalResultV1(_CapabilityModel):
-    options: tuple[PropProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[PropProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class CharacterProposalResultV1(_CapabilityModel):
-    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[CharacterProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class SceneProposalResultV1(_CapabilityModel):
-    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[SceneProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class ScriptProposalResultV1(_CapabilityModel):
-    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[ScriptProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class StoryboardProposalResultV1(_CapabilityModel):
-    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[StoryboardProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class VideoProposalResultV1(_CapabilityModel):
-    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[VideoProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class BgmProposalResultV1(_CapabilityModel):
-    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=3, max_length=3)
+    options: tuple[BgmProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class QuickMediaProposalResultV1(_CapabilityModel):
@@ -772,14 +833,14 @@ class QuickMediaProposalResultV1(_CapabilityModel):
 
 
 CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
-    "world_setting": WorldSettingProposalResultV1,
-    "product_design": ProductProposalResultV1,
-    "prop_design": PropProposalResultV1,
-    "character_design": CharacterProposalResultV1,
-    "scene_design": SceneProposalResultV1,
-    "script_authoring": ScriptProposalResultV1,
-    "storyboard_design": StoryboardProposalResultV1,
-    "video_direction": VideoProposalResultV1,
-    "bgm_direction": BgmProposalResultV1,
-    "quick_media": QuickMediaProposalResultV1,
+    "world_setting": GuidedProposalAuthoringResultV4,
+    "product_design": GuidedProposalAuthoringResultV4,
+    "prop_design": GuidedProposalAuthoringResultV4,
+    "character_design": GuidedProposalAuthoringResultV4,
+    "scene_design": GuidedProposalAuthoringResultV4,
+    "script_authoring": GuidedProposalAuthoringResultV4,
+    "storyboard_design": GuidedProposalAuthoringResultV4,
+    "video_direction": GuidedProposalAuthoringResultV4,
+    "bgm_direction": GuidedProposalAuthoringResultV4,
+    "quick_media": ProposalCardResultV2,
 }

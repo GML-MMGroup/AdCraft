@@ -128,6 +128,10 @@ from app.schemas.agent_canvas import (
     ProjectCreateResponseV2,
     SaveImageToLibraryRequestV2,
 )
+from app.schemas.agent_canvas_editing_output_reuse import (
+    EditingExportOutputReuseRequestV2,
+    EditingExportOutputReuseResponseV2,
+)
 from app.schemas.agent_canvas_conversation import (
     AgentCommandPlanActionRequestV2,
     ChatMessageRequestV2,
@@ -255,6 +259,9 @@ from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEff
 from app.services.agent_canvas_post_ready_checkpoint import (
     AgentCanvasPostReadyCheckpointService,
 )
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -357,6 +364,7 @@ from app.services.agent_canvas_video_parameter_compiler import (
 )
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_variations import AgentCanvasVariationService
+from app.services.agent_canvas_editing_output_reuse import EditingExportOutputReuseService
 from app.services.model_selection import ModelSelectionService
 from app.services.model_resolution import ModelResolutionService
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
@@ -406,6 +414,7 @@ class AgentCanvasRuntime:
     post_ready_checkpoints: AgentCanvasPostReadyCheckpointService
     editing_nodes: EditingNodeService
     editing_exports: EditingExportService
+    editing_output_reuse: EditingExportOutputReuseService
     editing_export_repository: AgentCanvasEditingExportRepository
     continuation_outbox: AgentCanvasContinuationOutboxRepository
     continuation_worker: AgentCanvasContinuationWorker
@@ -712,6 +721,12 @@ def create_agent_canvas_runtime(
             None,
         )
 
+    def resolve_storyboard_video_audio_constraints(workflow_id: str) -> dict[str, object]:
+        return {
+            str(control.control): control.value
+            for control in requirement_service.get_current(workflow_id).hard_controls
+        }
+
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
@@ -720,6 +735,7 @@ def create_agent_canvas_runtime(
         asset_resolver=asset_service.resolve_asset,
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
+        video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -935,6 +951,14 @@ def create_agent_canvas_runtime(
         commit_service=editing_commit_service,
         on_completed=guided_final_completion.complete,
     )
+    editing_output_reuse = EditingExportOutputReuseService(
+        database,
+        workflow_repository,
+        asset_service,
+        event_repository,
+        data_dir=settings.media_data_dir,
+        connection_policy=connection_policy,
+    )
 
     run_service = AgentCanvasRunService(
         workflow_repository,
@@ -976,17 +1000,6 @@ def create_agent_canvas_runtime(
         events=event_repository,
         progression=storyboard_progression,
     )
-    guided_media_reviews = GuidedMediaReviewCoordinator(
-        interactions=guided_interaction_repository,
-        conversations=conversation_repository,
-        plans=storyboard_authoring,
-        assets=asset_service.resolve_asset,
-        confirmations=guided_media_confirmations,
-        receipts=production_closure_receipts,
-        events=event_repository,
-        resume_media_confirmation=fanout_activation.resume_confirmation,
-        node_resolver=workflow_repository.get_node,
-    )
 
     def resume_media_confirmation(confirmation_id: str):
         result = fanout_activation.resume_confirmation(confirmation_id)
@@ -995,24 +1008,49 @@ def create_agent_canvas_runtime(
         continuation_worker.run_once()
         return result
 
-    def handle_storyboard_progression(effect) -> None:
-        node = workflow_repository.get_node(effect.workflow_id, effect.node_id)
-        guided_media_reviews.on_node_ready(node)
+    guided_media_reviews = GuidedMediaReviewCoordinator(
+        interactions=guided_interaction_repository,
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+        assets=asset_service.resolve_asset,
+        confirmations=guided_media_confirmations,
+        result_commits=result_commit_repository,
+        receipts=production_closure_receipts,
+        events=event_repository,
+        resume_media_confirmation=resume_media_confirmation,
+        node_resolver=workflow_repository.get_node,
+        execution_settings=execution_settings.get_or_create,
+    )
+
+    def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
+        conversation_repository.publish_script_artifact(
+            effect.workflow_id,
+            script_node_id=effect.node_id,
+            source_turn_id=None,
+        )
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="script_document_persisted",
+        )
+
+    def persist_text_document(effect) -> CanvasPostReadyEffectDispositionV1:
+        _persist_text_document(
+            document_repository,
+            workflow_repository.get_node(effect.workflow_id, effect.node_id),
+        )
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="text_document_persisted",
+        )
+
+    def handle_storyboard_progression(effect) -> CanvasPostReadyEffectDispositionV1:
+        return guided_media_reviews.publish_from_effect(effect)
 
     post_ready_effects = AgentCanvasPostReadyEffectWorker(
         AgentCanvasPostReadyEffectRepository(database, event_repository),
         handlers={
-            "persist_script_document": lambda effect: (
-                conversation_repository.publish_script_artifact(
-                    effect.workflow_id,
-                    script_node_id=effect.node_id,
-                    source_turn_id=None,
-                )
-            ),
-            "persist_text_document": lambda effect: _persist_text_document(
-                document_repository,
-                workflow_repository.get_node(effect.workflow_id, effect.node_id),
-            ),
+            "persist_script_document": persist_script_document,
+            "persist_text_document": persist_text_document,
             "advance_storyboard_progression": handle_storyboard_progression,
         },
         worker_id=f"agent-canvas-post-ready:{uuid4().hex}",
@@ -1150,36 +1188,6 @@ def create_agent_canvas_runtime(
         production_journey=production_journey,
     )
 
-    def materialize_explicit_direction(proposal_id: str) -> ChatTurnAcceptedV2:
-        proposal = conversation_repository.get_proposal(proposal_id)
-        if len(proposal.options) != 1:
-            raise V2PersistenceError(
-                "guided_interaction_policy_invalid",
-                "Direct materialization requires exactly one capability direction.",
-                stage="capability_execution",
-            )
-        descriptor = next(
-            (item for item in proposal.actions if item.action == "select_option"),
-            None,
-        )
-        if descriptor is None:
-            raise V2PersistenceError(
-                "guided_interaction_policy_invalid",
-                "Direct materialization requires a current select action.",
-                stage="capability_execution",
-            )
-        return conversation_service.act_on_proposal(
-            proposal.workflow_id,
-            proposal.proposal_id,
-            SelectOptionActionV2(
-                action_id=descriptor.action_id,
-                action="select_option",
-                option_id=proposal.options[0].option_id,
-                expected_session_revision=descriptor.expected_session_revision,
-            ),
-            idempotency_key=f"direct-materialization:{proposal.proposal_id}",
-        )
-
     capability_execution = CapabilityExecutionService(
         database=database,
         gateway=video_agent_gateway,
@@ -1197,7 +1205,6 @@ def create_agent_canvas_runtime(
             database,
             event_repository,
         ).publish,
-        direct_materializer=materialize_explicit_direction,
     )
     capability_supersession = AgentCanvasCapabilitySupersessionRepository(
         database,
@@ -1403,6 +1410,7 @@ def create_agent_canvas_runtime(
         post_ready_checkpoints=post_ready_checkpoints,
         editing_nodes=editing_nodes,
         editing_exports=editing_exports,
+        editing_output_reuse=editing_output_reuse,
         editing_export_repository=editing_export_repository,
         continuation_outbox=continuation_outbox,
         continuation_worker=continuation_worker,
@@ -1708,6 +1716,36 @@ def create_node(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return CanvasMutationResponseV2(workflow=workflow, node=node)
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{editing_node_id}/import-export",
+    response_model=EditingExportOutputReuseResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_editing_export(
+    workflow_id: str,
+    editing_node_id: str,
+    request: EditingExportOutputReuseRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> EditingExportOutputReuseResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        result = runtime.editing_output_reuse.import_export(
+            workflow_id,
+            editing_node_id,
+            request,
+            expected_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, result.revision)
+    return result
 
 
 @router.get(
@@ -2147,9 +2185,14 @@ def get_asset_content(
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     range_header: Annotated[str | None, Header(alias="Range")] = None,
+    download: Annotated[bool, Query()] = False,
 ) -> Response:
     try:
-        content = runtime.assets.open_content(asset_id, range_header=range_header)
+        content = runtime.assets.open_content(
+            asset_id,
+            range_header=range_header,
+            download=download,
+        )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     return Response(
@@ -2577,7 +2620,7 @@ def act_on_chat_proposal(
             idempotency_key=idempotency_key,
         )
         if replayed_interaction is not None:
-            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            proposal = runtime.conversation_repository.get_private_proposal(proposal_id)
             source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
             if proposal.materialization is None:
                 raise V2PersistenceError(
@@ -2638,7 +2681,7 @@ def act_on_chat_proposal(
                 ),
                 idempotency_key=idempotency_key,
             )
-            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            proposal = runtime.conversation_repository.get_private_proposal(proposal_id)
             source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
             if proposal.materialization is None and isinstance(
                 request, (SelectOptionActionV2, DelegateChoiceActionV2)
@@ -2874,17 +2917,18 @@ def start_canvas_run(
             request,
             idempotency_key=idempotency_key,
         )
-        background_tasks.add_task(
-            runtime.accepted_background.run,
-            AcceptedBackgroundWork(
-                operation=AcceptedBackgroundOperation.CANVAS_RUN_RESUME,
-                workflow_id=workflow_id,
-                resource_type=AcceptedBackgroundResourceType.EXECUTION,
-                resource_id=accepted.execution_id,
-                callback=runtime.scheduler.resume,
-                args=(accepted.execution_id,),
-            ),
-        )
+        if accepted.accepted_node_ids or accepted.joined_node_ids:
+            background_tasks.add_task(
+                runtime.accepted_background.run,
+                AcceptedBackgroundWork(
+                    operation=AcceptedBackgroundOperation.CANVAS_RUN_RESUME,
+                    workflow_id=workflow_id,
+                    resource_type=AcceptedBackgroundResourceType.EXECUTION,
+                    resource_id=accepted.execution_id,
+                    callback=runtime.scheduler.resume,
+                    args=(accepted.execution_id,),
+                ),
+            )
         return accepted
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
@@ -3195,6 +3239,11 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "binding_not_found": 404,
         "asset_not_found": 404,
         "asset_not_ready": 409,
+        "editing_export_workflow_mismatch": 409,
+        "editing_export_not_ready": 409,
+        "editing_export_asset_unreadable": 409,
+        "editing_export_import_conflict": 409,
+        "source_only_node_not_runnable": 409,
         "target_not_found": 404,
         "target_type_not_supported": 422,
         "locator_invalid": 422,

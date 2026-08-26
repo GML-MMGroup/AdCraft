@@ -14,15 +14,19 @@ from app.schemas.agent_canvas_capabilities import (
     TurnIntentContextV2,
 )
 from app.schemas.agent_runtime import (
-    AgentProviderConformanceInputV1,
+    AgentProviderConformanceBudgetPlanV1,
+    AgentProviderConformanceInputV2,
     AgentRunRequest,
     canonical_agent_run_request_digest,
 )
 from app.services.agent_operation_policy import AgentRunRequestFactory
+from app.services.agent_provider_conformance_budget import (
+    canonical_agent_provider_conformance_budget_digest,
+    derive_agent_provider_conformance_budget,
+)
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
 
 
-_LEASE_DURATION_SECONDS = 600
 _SYNTHETIC_USER_INPUT = (
     "Create a 30-second 16:9 premium sparkling-tea advertisement for urban young adults."
 )
@@ -31,7 +35,7 @@ _SYNTHETIC_USER_INPUT = (
 @dataclass(frozen=True, slots=True)
 class AgentProviderConformanceRunHandle:
     request: AgentRunRequest
-    input_envelope: AgentProviderConformanceInputV1
+    input_envelope: AgentProviderConformanceInputV2
     record: AgentRunRecord
     lease_owner_id: str
     created: bool
@@ -47,11 +51,15 @@ class AgentProviderConformanceBootstrapService:
         now: Callable[[], datetime] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         lease_owner_factory: Callable[[], str] | None = None,
+        budget_deriver: Callable[
+            [AgentRunRequest], AgentProviderConformanceBudgetPlanV1
+        ] = derive_agent_provider_conformance_budget,
     ) -> None:
         self._repository = AgentRunRepository(database)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._run_id_factory = run_id_factory or _new_run_id
         self._lease_owner_factory = lease_owner_factory or _new_lease_owner_id
+        self._budget_deriver = budget_deriver
 
     def start(self, *, model_ref: str) -> AgentProviderConformanceRunHandle:
         timestamp = self._now()
@@ -80,23 +88,35 @@ class AgentProviderConformanceBootstrapService:
             contract_schema=CompactTurnIntentDecisionV3.model_json_schema(),
             audit_metadata={
                 "run_purpose": "provider_conformance",
-                "report_schema_version": 2,
+                "report_schema_version": 3,
                 "model_ref": model_ref,
             },
         )
+        budget_plan = self._budget_deriver(frozen_request)
+        audit_metadata = {
+            **frozen_request.audit_metadata,
+            "conformance_budget_version": budget_plan.budget_version,
+            "conformance_budget_digest": canonical_agent_provider_conformance_budget_digest(
+                budget_plan
+            ),
+            "conformance_matrix_timeout_ms": budget_plan.matrix_timeout_ms,
+            "conformance_child_timeout_ms": budget_plan.child_timeout_ms,
+            "conformance_lease_duration_seconds": budget_plan.lease_duration_seconds,
+        }
+        frozen_request = frozen_request.model_copy(update={"audit_metadata": audit_metadata})
         lease_owner_id = self._lease_owner_factory()
         record, created = self._repository.create_or_load(
             frozen_request,
             lease_owner_id=lease_owner_id,
-            lease_duration_seconds=_LEASE_DURATION_SECONDS,
+            lease_duration_seconds=budget_plan.lease_duration_seconds,
             now=timestamp,
         )
         return AgentProviderConformanceRunHandle(
             request=frozen_request,
-            input_envelope=AgentProviderConformanceInputV1(
+            input_envelope=AgentProviderConformanceInputV2(
                 frozen_agent_request=frozen_request,
                 frozen_agent_request_digest=canonical_agent_run_request_digest(frozen_request),
-                diagnostic_case_budget=6,
+                budget_plan=budget_plan,
                 evidence_destination_id=run_id,
             ),
             record=record,

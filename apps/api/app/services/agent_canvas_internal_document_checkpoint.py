@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select, update
 
 from app.persistence.agent_canvas_conversation_repository import (
@@ -41,6 +41,7 @@ from app.schemas.agent_working_documents import (
     StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardProductionPlanContentV3,
+    StoryboardSegmentMaterializationV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_production_journey import (
@@ -353,7 +354,10 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
                 order=window.order,
                 start_seconds=window.start_seconds,
                 end_seconds=window.end_seconds,
-                narrative_goal=authored_text,
+                narrative_goal=(
+                    f"Sequence {window.order} local narrative direction "
+                    f"({window.start_seconds:g}-{window.end_seconds:g}s)."
+                ),
                 start_state=("Opening state" if window.order == 1 else "Continue prior sequence."),
                 end_state=(
                     "Close the authored direction."
@@ -369,18 +373,31 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
             )
             for window in authority_plan.windows
         )
-        return StoryboardProductionPlanContentV3(
-            narrative_outline=authored_text,
-            requirement_revision_id=requirement.revision_id,
-            requirement_revision_no=requirement.revision_no,
-            global_parameters=StoryboardPlanGlobalParametersV2(
-                aspect_ratio=authority_plan.aspect_ratio,
-                total_duration_seconds=authority_plan.total_duration_seconds,
-                segment_count=len(authority_plan.windows),
-            ),
-            segments=segments,
-            rows=(),
-        )
+        try:
+            return StoryboardProductionPlanContentV3(
+                narrative_outline=authored_text,
+                requirement_revision_id=requirement.revision_id,
+                requirement_revision_no=requirement.revision_no,
+                global_parameters=StoryboardPlanGlobalParametersV2(
+                    aspect_ratio=authority_plan.aspect_ratio,
+                    total_duration_seconds=authority_plan.total_duration_seconds,
+                    segment_count=len(authority_plan.windows),
+                ),
+                segments=segments,
+                rows=(),
+                segment_materializations=tuple(
+                    StoryboardSegmentMaterializationV3(
+                        sequence_id=segment.sequence_id,
+                        materialization_id=f"storyboard-segment:{segment.sequence_id}",
+                    )
+                    for segment in segments
+                ),
+            )
+        except ValidationError as error:
+            raise _error(
+                "agent_working_document_content_invalid",
+                "Agent working document content is invalid.",
+            ) from error
 
     @staticmethod
     def _validate_envelope(envelope: CapabilityCommandEnvelopeV2) -> JourneyStageV2:

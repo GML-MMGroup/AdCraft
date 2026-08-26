@@ -40,6 +40,7 @@ from app.services.v2_provider_prompt_compiler import (
     V2ProviderPromptCompiler,
     V2ProviderPromptCompilerError,
 )
+from app.services.agent_canvas_seedance_inputs import validate_seedance_audio_parity
 from app.services.v2_provider_input_quality import V2ProviderInputEngineeringService
 from app.services.v2_provider_reference_input_delivery import (
     V2DeliveredReferenceSet,
@@ -920,13 +921,26 @@ class V2ProviderExecutor:
         audit is the only durable payload snapshot.
         """
 
+        reference_asset_ids = [item.asset_id for item in manifest.media_inputs]
+        try:
+            validate_seedance_audio_parity(manifest, audit)
+        except ValueError as error:
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot={
+                    "seedance_input_manifest": audit.model_dump(mode="json")
+                },
+                reference_asset_ids=reference_asset_ids,
+                error_code=str(error),
+                error_message="Seedance native-audio input parity is invalid.",
+            )
         missing_message = (
             self._missing_real_config("video")
             if self._settings.media_mode.strip().lower() == "real"
             else None
         )
         provider_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
-        reference_asset_ids = [item.asset_id for item in manifest.media_inputs]
         if missing_message and not self._settings.v2_provider_allow_fallback:
             return V2ProviderResult(
                 status="failed",
@@ -949,6 +963,7 @@ class V2ProviderExecutor:
                     "video",
                     data_dir=self._data_dir,
                     ffmpeg_path=self._settings.ffmpeg_path,
+                    native_audio=manifest.generate_audio,
                 )
             except MockMediaFixtureError:
                 return result.model_copy(

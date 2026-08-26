@@ -216,6 +216,8 @@ def _semantic_violations(
         return _front_desk_core_violations(value)
     if profile == "storyboard_sequence_window_parity_v1":
         return _storyboard_sequence_window_violations(context, value)
+    if profile == "proposal_candidate_count_v1":
+        return _proposal_candidate_count_violations(context, value)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -249,6 +251,55 @@ def _semantic_violations(
                 )
             )
     return tuple(violations)
+
+
+def _proposal_candidate_count_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    expected = context.get("expected_candidate_count")
+    options = value.get("options")
+    for identity_field in ("operation", "capability_id", "result_contract_name"):
+        identity = context.get(identity_field)
+        if not isinstance(identity, str) or not identity:
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="The persisted proposal identity context is incomplete.",
+                    field_path=identity_field,
+                ),
+            )
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected not in {1, 3}:
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The persisted proposal candidate-count context is invalid.",
+                field_path="expected_candidate_count",
+                expected="1 or 3",
+                actual=expected,
+            ),
+        )
+    if not isinstance(options, list):
+        return (
+            StructuredViolation(
+                code="proposal_candidate_count_mismatch",
+                message="The proposal result does not contain an options collection.",
+                field_path="options",
+                expected=expected,
+                actual=None,
+            ),
+        )
+    if len(options) != expected:
+        return (
+            StructuredViolation(
+                code="proposal_candidate_count_mismatch",
+                message="The proposal result count does not match the authoritative request.",
+                field_path="options",
+                expected=expected,
+                actual=len(options),
+            ),
+        )
+    return ()
 
 
 def _storyboard_sequence_window_violations(

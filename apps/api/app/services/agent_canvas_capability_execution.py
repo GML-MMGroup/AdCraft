@@ -21,6 +21,9 @@ from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_proposal_cardinality import (
+    proposal_candidate_count_details,
+)
 from app.services.agent_canvas_capability_supersession import (
     CapabilitySupersessionClassifier,
 )
@@ -54,10 +57,17 @@ class CapabilityGateway(Protocol):
 
 
 class _CapabilityResultValidationError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        details: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.details = details or {}
 
 
 def capability_context_from_envelope(
@@ -68,11 +78,24 @@ def capability_context_from_envelope(
     capability_context = dict(envelope.capability_context)
     if envelope.publication_kind == "internal_document":
         capability_context["journey_stage"] = envelope.journey_stage
+    existing_constraints = capability_context.get("explicit_constraints")
+    explicit_constraints = (
+        dict(existing_constraints) if isinstance(existing_constraints, dict) else {}
+    )
+    explicit_constraints.update(
+        {
+            control.control: control.value
+            for control in envelope.requirement_projection.hard_controls
+        }
+    )
+    if explicit_constraints:
+        capability_context["explicit_constraints"] = explicit_constraints
     return {
         "context_kind": "capability_operation",
         "workflow_id": envelope.workflow_id,
         "conversation_id": envelope.conversation_id,
         "capability_id": envelope.capability_id,
+        "candidate_count": envelope.candidate_count,
         "objective": envelope.objective,
         "context_snapshot_id": envelope.context_snapshot_id,
         "context_snapshot_digest": envelope.context_snapshot_digest,
@@ -98,7 +121,6 @@ class CapabilityExecutionService:
         internal_document_publisher: (
             Callable[[CapabilityCommandEnvelopeV2, BaseModel], str] | None
         ) = None,
-        direct_materializer: Callable[[str], object] | None = None,
     ) -> None:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(database)
         self._gateway = gateway
@@ -106,7 +128,6 @@ class CapabilityExecutionService:
         self._current_session_revision = current_session_revision
         self._publisher = publisher
         self._internal_document_publisher = internal_document_publisher
-        self._direct_materializer = direct_materializer
         self._policy = CapabilityPolicyService()
         self._supersession = CapabilitySupersessionClassifier(database)
 
@@ -155,11 +176,17 @@ class CapabilityExecutionService:
                 details=error.details,
             ) from error
         except PiAgentRuntimeError as error:
+            details: dict[str, object] = {"retryable": error.retryable}
+            if (
+                envelope.publication_kind == "proposal"
+                and error.code == "agent_structured_output_invalid"
+            ):
+                details["proposal_retryable"] = True
             raise V2PersistenceError(
                 error.code,
                 error.message,
                 stage="capability_execution",
-                details={"retryable": error.retryable},
+                details=details,
             ) from error
         except Exception as error:  # noqa: BLE001 - gateway boundary normalization.
             raise V2PersistenceError(
@@ -193,10 +220,14 @@ class CapabilityExecutionService:
                     canonical_script_duration=canonical_script_duration,
                 )
             except _CapabilityResultValidationError as error:
+                details = {**error.details, "repair_attempted": True}
+                if envelope.publication_kind == "proposal":
+                    details.update(retryable=True, proposal_retryable=True)
                 raise V2PersistenceError(
                     error.code,
                     error.message,
                     stage="capability_execution",
+                    details=details,
                 ) from error
         lease_guard()
         proposal_id: str | None = None
@@ -210,20 +241,13 @@ class CapabilityExecutionService:
                 )
             document_receipt_id = self._internal_document_publisher(envelope, result)
         else:
+            self._validate_candidate_count(envelope, result)
             try:
                 proposal_id = self._publisher(envelope, result)
             except V2PersistenceError as error:
                 if error.code == "guidance_revision_conflict":
                     self._raise_if_superseded(envelope)
                 raise
-        if (
-            envelope.publication_kind == "proposal"
-            and envelope.candidate_count == 1
-            and self._direct_materializer is not None
-        ):
-            lease_guard()
-            assert proposal_id is not None
-            self._direct_materializer(proposal_id)
         return CapabilityExecutionResultV1(
             envelope_id=envelope.envelope_id,
             capability_id=envelope.capability_id,
@@ -233,6 +257,20 @@ class CapabilityExecutionService:
             document_receipt_id=document_receipt_id,
             repaired=repaired,
         )
+
+    @staticmethod
+    def _validate_candidate_count(
+        envelope: CapabilityCommandEnvelopeV2,
+        result: BaseModel,
+    ) -> None:
+        details = proposal_candidate_count_details(envelope.candidate_count, result)
+        if details is not None:
+            raise V2PersistenceError(
+                "proposal_candidate_count_mismatch",
+                "Proposal result candidate count conflicts with its immutable envelope.",
+                stage="capability_execution",
+                details=details,
+            )
 
     @staticmethod
     def _canonical_script_duration(
@@ -267,6 +305,14 @@ class CapabilityExecutionService:
                 "capability_contract_invalid",
                 "Capability result remained invalid after one repair.",
             ) from error
+        if envelope.publication_kind == "proposal":
+            details = proposal_candidate_count_details(envelope.candidate_count, result)
+            if details is not None:
+                raise _CapabilityResultValidationError(
+                    "proposal_candidate_count_mismatch",
+                    "Capability result candidate count does not match its immutable envelope.",
+                    details=details,
+                )
         if canonical_script_duration is None:
             return result
         structured_content = getattr(result, "structured_content", None)

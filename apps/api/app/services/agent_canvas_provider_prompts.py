@@ -168,8 +168,17 @@ class AgentCanvasProviderPromptCompiler:
                     "node_prompt_assertion_evidence_missing",
                     "Current prompt assertion evidence is required.",
                 )
-            policy = PromptAssertionPolicyRegistry().resolve(
-                preparation.recipe_id, preparation.recipe_version
+            native_audio_required = (
+                any(
+                    item.name == "generate_audio" and item.value is True
+                    for item in preparation.parameter_origins
+                )
+                or node.parameters.get("generate_audio") is True
+            )
+            policy = PromptAssertionPolicyRegistry().resolve_for_video_audio(
+                preparation.recipe_id,
+                preparation.recipe_version,
+                native_audio_required=native_audio_required,
             )
             PromptAssertionEvidenceValidator().validate_preparation(
                 policy=policy,

@@ -13,9 +13,12 @@ from app.persistence.agent_canvas_post_ready_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+)
 
 
-PostReadyHandler = Callable[[CanvasPostReadyEffectV2], object]
+PostReadyHandler = Callable[[CanvasPostReadyEffectV2], CanvasPostReadyEffectDispositionV1]
 
 
 @dataclass(frozen=True)
@@ -85,24 +88,52 @@ class AgentCanvasPostReadyEffectWorker:
             try:
                 if handler is None:
                     raise LookupError("Post-Ready effect handler is not registered.")
-                handler(effect)
+                disposition = handler(effect)
+                if not isinstance(disposition, CanvasPostReadyEffectDispositionV1):
+                    raise V2PersistenceError(
+                        "post_ready_effect_disposition_missing",
+                        "Post-Ready handler did not return a typed disposition.",
+                        stage="post_ready_effect_worker",
+                    )
                 if lease_lost.is_set():
                     raise RuntimeError("Post-Ready effect lease was lost.")
+                if disposition.outcome == "deferred":
+                    now = self._clock()
+                    self._repository.defer(
+                        effect,
+                        now=now,
+                        retry_at=now + self._base_backoff,
+                        error=CanvasNodeErrorV2(
+                            code="guided_interaction_conflict",
+                            message=disposition.reason_code,
+                            retryable=True,
+                        ),
+                    )
+                    retried += 1
+                else:
+                    self._repository.complete(
+                        effect,
+                        now=self._clock(),
+                        disposition=disposition,
+                    )
+                    completed += 1
             except Exception as error:  # noqa: BLE001 - effects are isolated.
-                guided_interaction_wait = (
-                    isinstance(error, V2PersistenceError)
-                    and error.code == "guided_interaction_conflict"
-                )
+                error_code = error.code if isinstance(error, V2PersistenceError) else None
+                guided_interaction_wait = error_code == "guided_interaction_conflict"
+                non_retryable = error_code in {
+                    "guided_media_result_lineage_invalid",
+                    "post_ready_effect_disposition_missing",
+                }
                 detail = CanvasNodeErrorV2(
                     code=(
                         "post_ready_effect_handler_missing"
                         if handler is None
-                        else error.code
-                        if guided_interaction_wait
+                        else error_code
+                        if isinstance(error, V2PersistenceError)
                         else "post_ready_effect_failed"
                     ),
                     message=str(error)[:1024] or "Post-Ready effect failed.",
-                    retryable=handler is not None,
+                    retryable=handler is not None and not non_retryable,
                 )
                 if guided_interaction_wait:
                     now = self._clock()
@@ -113,7 +144,9 @@ class AgentCanvasPostReadyEffectWorker:
                         error=detail,
                     )
                     retried += 1
-                elif handler is None or effect.attempt_no + 1 >= self._max_attempts:
+                elif (
+                    handler is None or non_retryable or effect.attempt_no + 1 >= self._max_attempts
+                ):
                     self._repository.fail(effect, now=self._clock(), error=detail)
                     failed += 1
                 else:
@@ -125,9 +158,6 @@ class AgentCanvasPostReadyEffectWorker:
                         error=detail,
                     )
                     retried += 1
-            else:
-                self._repository.complete(effect, now=self._clock())
-                completed += 1
             finally:
                 stopped.set()
                 renewer.join(timeout=min(interval, 1.0))

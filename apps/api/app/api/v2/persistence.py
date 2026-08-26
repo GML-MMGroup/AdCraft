@@ -13,7 +13,14 @@ _PAYLOAD_ERROR_CODES = {
     "v2_event_payload_absolute_path",
     "v2_event_payload_too_large",
 }
-_SAFE_STAGES = {"event_import", "event_store", "lock", "payload", "schema"}
+_SAFE_STAGES = {
+    "agent_working_documents",
+    "event_import",
+    "event_store",
+    "lock",
+    "payload",
+    "schema",
+}
 
 
 def require_v2_persistence(request: Request) -> None:
