@@ -29,7 +29,11 @@ export function AudioTrackControls({
         <span>Enabled</span>
       </label>
       <label className="agent-editing-timeline__audio-volume">
-        <span>Volume</span>
+        <img
+          src="/icon/ant-design--audio-filled.svg"
+          alt=""
+          aria-hidden="true"
+        />
         <input
           type="range"
           min="0"

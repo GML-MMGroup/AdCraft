@@ -72,6 +72,15 @@ function seekWithinTolerance(media: HTMLMediaElement, seconds: number) {
   }
 }
 
+function seekExactly(media: HTMLMediaElement, seconds: number) {
+  if (media.currentTime === seconds) return;
+  try {
+    media.currentTime = seconds;
+  } catch {
+    // Media metadata can still be loading; the next controlled update retries.
+  }
+}
+
 function pauseMedia(media: HTMLMediaElement | null) {
   if (media) media.pause();
 }
@@ -262,7 +271,7 @@ export function EditingPreviewStage({
     audio.volume = Math.min(1, Math.max(0, bgm.entry.volume));
 
     if (view === "draft" && sequenceDuration > 0 && bgm.entry.enabled && withinTrim) {
-      seekWithinTolerance(audio, bgmSeconds);
+      seekExactly(audio, bgmSeconds);
     }
 
     if (

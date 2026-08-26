@@ -245,7 +245,10 @@ export function EditingTimelineViewport({
           </div>
           <div
             className="agent-editing-timeline-viewport__playhead"
-            style={{ left: timeOrigin + timeToPixels(clamp(playheadSeconds, 0, safeDuration), pixelsPerSecond) }}
+            style={{
+              left: timeOrigin + timeToPixels(clamp(playheadSeconds, 0, safeDuration), pixelsPerSecond),
+              zIndex: 20,
+            }}
             role="slider"
             tabIndex={safeDuration ? 0 : -1}
             aria-label="Timeline playhead"

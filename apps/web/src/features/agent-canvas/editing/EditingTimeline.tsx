@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 
-import { MuteIcon, UnmuteIcon, VideoIcon } from "../../../icons.tsx";
+import { VideoIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
 import { AudioTrackControls } from "./AudioTrackControls.tsx";
@@ -171,7 +171,13 @@ export function EditingTimeline({
                 role="group"
               >
                 <TrackLabel
-                  icon={inputs.bgm ? <UnmuteIcon /> : <MuteIcon />}
+                  icon={(
+                    <img
+                      src="/icon/arcticons--ambient-music-mod.svg"
+                      alt=""
+                      aria-hidden="true"
+                    />
+                  )}
                   onSelect={inputs.bgm ? () => onSelectReference(inputs.bgm!.referenceId) : undefined}
                   details={inputs.bgm ? (
                     <AudioTrackControls
@@ -193,6 +199,7 @@ export function EditingTimeline({
                       onSetBgm={onSetBgm}
                       playheadSeconds={playheadSeconds}
                       renderedWidth={Math.max(1, Math.min(512, Math.ceil(viewport.contentWidth / 3)))}
+                      timelineDuration={sequenceDuration}
                       trimEndSeconds={inputs.bgm.entry.trim_end_seconds}
                       trimStartSeconds={inputs.bgm.entry.trim_start_seconds}
                     />
