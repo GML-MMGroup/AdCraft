@@ -56,6 +56,7 @@ ProjectAssetSourceTypeV2 = Literal[
     "upload",
     "generated",
     "recommended",
+    "derived",
     "library",
     "editing_export",
 ]

@@ -167,6 +167,10 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
 )
+from app.schemas.agent_canvas_guided_product import (
+    GuidedProductInputCommitRequestV1,
+    GuidedProductInputCommitResponseV1,
+)
 from app.schemas.agent_canvas_execution_settings import (
     AgentExecutionSettingsPatchV2,
     AgentExecutionSettingsV2,
@@ -211,6 +215,13 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
+from app.persistence.agent_canvas_guided_product_repository import (
+    AgentCanvasGuidedProductRepository,
+)
+from app.services.product_upload_multiview_compiler import ProductUploadMultiviewCompiler
+from app.tools.ffmpeg import FfmpegTool
+from app.services.v2_final_composition_renderer import V2MediaProbe
 from app.services.agent_canvas_accepted_background import (
     AcceptedBackgroundOperation,
     AcceptedBackgroundResourceType,
@@ -388,6 +399,7 @@ class AgentCanvasRuntime:
     connected_authoring: AgentCanvasConnectedAuthoringService
     connection_policy: AgentCanvasConnectionPolicyService
     assets: AgentCanvasAssetService
+    guided_product_inputs: GuidedProductInputCommitService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
@@ -483,6 +495,20 @@ def create_agent_canvas_runtime(
             deterministic_media_facts_probe
             if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
             else None
+        ),
+    )
+    guided_product_inputs = GuidedProductInputCommitService(
+        assets=asset_service,
+        asset_repository=asset_repository,
+        workflows=workflow_repository,
+        commits=AgentCanvasGuidedProductRepository(workflow_repository, event_repository),
+        compiler=ProductUploadMultiviewCompiler(
+            ffmpeg=FfmpegTool(ffmpeg_path=settings.ffmpeg_path),
+            probe=V2MediaProbe(),
+            staging_root=settings.media_data_dir / "v2" / "staging",
+            max_total_bytes=64 * 1024 * 1024,
+            max_total_pixels=80_000_000,
+            timeout_seconds=30,
         ),
     )
     conversation_repository = AgentCanvasConversationRepository(
@@ -1378,9 +1404,10 @@ def create_agent_canvas_runtime(
                 )
             ),
         ),
-        connection_policy=connection_policy,
-        assets=asset_service,
-        targets=AgentCanvasTargetService(workflow_repository, asset_service),
+            connection_policy=connection_policy,
+            assets=asset_service,
+            guided_product_inputs=guided_product_inputs,
+            targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
         turn_retries=turn_retries,
         guidance_advances=guidance_advances,
@@ -2143,6 +2170,33 @@ async def upload_asset(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     return ProjectAssetUploadResponseV2(workflow_id=workflow_id, asset=asset)
+
+
+@router.post(
+    "/workflows/{workflow_id}/guided/product-inputs",
+    response_model=GuidedProductInputCommitResponseV1,
+)
+def commit_guided_product_input(
+    workflow_id: str,
+    request: GuidedProductInputCommitRequestV1,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> GuidedProductInputCommitResponseV1:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        committed = runtime.guided_product_inputs.commit(
+            workflow_id,
+            request,
+            expected_workflow_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, committed.workflow_revision)
+    return committed
 
 
 @router.get(
@@ -3238,6 +3292,19 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_not_found": 404,
         "binding_not_found": 404,
         "asset_not_found": 404,
+        "guided_product_asset_not_found": 404,
+        "guided_product_asset_foreign_workflow": 409,
+        "guided_product_asset_not_image": 422,
+        "guided_product_asset_unreadable": 422,
+        "guided_product_input_invalid": 422,
+        "guided_product_stage_invalid": 409,
+        "guided_product_main_required": 422,
+        "guided_product_multiview_count_invalid": 422,
+        "guided_product_ffmpeg_unavailable": 503,
+        "guided_product_multiview_compilation_failed": 422,
+        "guided_product_input_already_committed": 409,
+        "guided_product_persistence_unavailable": 503,
+        "guided_product_source_only_not_runnable": 409,
         "asset_not_ready": 409,
         "editing_export_workflow_mismatch": 409,
         "editing_export_not_ready": 409,

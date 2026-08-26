@@ -13522,6 +13522,292 @@
       "title": "GuidedMediaReviewV1",
       "type": "object"
     },
+    "GuidedProductAssetVersionRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "version_id"
+      ],
+      "title": "GuidedProductAssetVersionRefV1",
+      "type": "object"
+    },
+    "GuidedProductInputCommitReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "committed_at": {
+          "format": "date-time",
+          "title": "Committed At",
+          "type": "string"
+        },
+        "compiled_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compiled Asset Id"
+        },
+        "compiled_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compiled Version Id"
+        },
+        "events_cursor": {
+          "minimum": 0,
+          "title": "Events Cursor",
+          "type": "integer"
+        },
+        "guidance_revision": {
+          "minimum": 1,
+          "title": "Guidance Revision",
+          "type": "integer"
+        },
+        "input_kind": {
+          "enum": [
+            "main",
+            "multiview"
+          ],
+          "title": "Input Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "provenance_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance Digest"
+        },
+        "request_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Version Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "asset_id",
+        "committed_at",
+        "events_cursor",
+        "guidance_revision",
+        "input_kind",
+        "node_id",
+        "operation_id",
+        "request_digest",
+        "version_id",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "GuidedProductInputCommitReceiptV1",
+      "type": "object"
+    },
+    "GuidedProductInputCommitRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_versions": {
+          "items": {
+            "$ref": "#/$defs/GuidedProductAssetVersionRefV1"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Asset Versions",
+          "type": "array"
+        },
+        "expected_guidance_revision": {
+          "minimum": 1,
+          "title": "Expected Guidance Revision",
+          "type": "integer"
+        },
+        "input_kind": {
+          "enum": [
+            "main",
+            "multiview"
+          ],
+          "title": "Input Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_versions",
+        "expected_guidance_revision",
+        "input_kind"
+      ],
+      "title": "GuidedProductInputCommitRequestV1",
+      "type": "object"
+    },
+    "GuidedProductInputCommitResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "compiled_asset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectAssetV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "events_cursor": {
+          "minimum": 0,
+          "title": "Events Cursor",
+          "type": "integer"
+        },
+        "guidance_revision": {
+          "minimum": 1,
+          "title": "Guidance Revision",
+          "type": "integer"
+        },
+        "input_kind": {
+          "enum": [
+            "main",
+            "multiview"
+          ],
+          "title": "Input Kind",
+          "type": "string"
+        },
+        "node": {
+          "$ref": "#/$defs/CanvasNodeV2"
+        },
+        "receipt": {
+          "$ref": "#/$defs/GuidedProductInputCommitReceiptV1"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "events_cursor",
+        "guidance_revision",
+        "input_kind",
+        "node",
+        "receipt",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "GuidedProductInputCommitResponseV1",
+      "type": "object"
+    },
+    "GuidedProductSourceActionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "choice": {
+          "enum": [
+            "generate",
+            "upload"
+          ],
+          "title": "Choice",
+          "type": "string"
+        },
+        "expected_guidance_revision": {
+          "minimum": 1,
+          "title": "Expected Guidance Revision",
+          "type": "integer"
+        },
+        "input_kind": {
+          "enum": [
+            "main",
+            "multiview"
+          ],
+          "title": "Input Kind",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "choice",
+        "expected_guidance_revision",
+        "input_kind",
+        "question_id"
+      ],
+      "title": "GuidedProductSourceActionV1",
+      "type": "object"
+    },
     "GuidedProductionJourneyV2": {
       "additionalProperties": false,
       "properties": {
@@ -16021,6 +16307,7 @@
         "status": {
           "enum": [
             "failed",
+            "not_applicable",
             "queued",
             "ready",
             "superseded",
@@ -17217,6 +17504,392 @@
         "options"
       ],
       "title": "ProductProposalResultV1",
+      "type": "object"
+    },
+    "ProductUploadCompilationProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler_fingerprint": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Compiler Fingerprint",
+          "type": "string"
+        },
+        "kind": {
+          "const": "upload_compilation",
+          "default": "upload_compilation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ordered_inputs": {
+          "items": {
+            "$ref": "#/$defs/ProductUploadInputProvenanceV1"
+          },
+          "maxItems": 8,
+          "minItems": 2,
+          "title": "Ordered Inputs",
+          "type": "array"
+        },
+        "output_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Output Sha256",
+          "type": "string"
+        },
+        "profile_id": {
+          "const": "product-upload-multiview-v1",
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "profile_version": {
+          "minimum": 1,
+          "title": "Profile Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "compiler_fingerprint",
+        "ordered_inputs",
+        "output_sha256",
+        "profile_id",
+        "profile_version"
+      ],
+      "title": "ProductUploadCompilationProvenanceV1",
+      "type": "object"
+    },
+    "ProductUploadInputProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "order": {
+          "maximum": 7,
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "order",
+        "sha256",
+        "version_id"
+      ],
+      "title": "ProductUploadInputProvenanceV1",
+      "type": "object"
+    },
+    "ProjectAssetV2": {
+      "additionalProperties": false,
+      "properties": {
+        "actual_media_facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Actual Media Facts",
+          "type": "object"
+        },
+        "asset_id": {
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "checksum": {
+          "minLength": 1,
+          "title": "Checksum",
+          "type": "string"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "display_name": {
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "generation_provenance": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Generation Provenance",
+          "type": "object"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "video"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "media_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Url"
+        },
+        "mime_type": {
+          "minLength": 1,
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "preview_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preview Url"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "prompt_provenance": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Prompt Provenance",
+          "type": "object"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "quality_metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Quality Metadata",
+          "type": "object"
+        },
+        "semantic_type": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Type"
+        },
+        "size_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "source_execution_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Execution Id"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_semantic_role": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Semantic Role"
+        },
+        "source_type": {
+          "enum": [
+            "derived",
+            "editing_export",
+            "generated",
+            "library",
+            "recommended",
+            "upload"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "storage_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Key"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "asset_id",
+        "checksum",
+        "display_name",
+        "media_type",
+        "mime_type",
+        "source_type",
+        "status"
+      ],
+      "title": "ProjectAssetV2",
       "type": "object"
     },
     "ProjectCreativeMemoryV2": {

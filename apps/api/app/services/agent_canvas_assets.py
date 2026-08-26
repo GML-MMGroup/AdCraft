@@ -190,6 +190,25 @@ class AgentCanvasAssetService:
             )
         return path
 
+    def resolve_asset_version_path(self, asset_id: str, version_id: str) -> Path:
+        """Resolve one exact immutable AssetVersion to a readable object path."""
+
+        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
+        if version is None:
+            raise V2PersistenceError(
+                "asset_version_not_found",
+                "Asset version was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        path = self._storage.resolve_local_path(version.storage_key)
+        if version.status != "ready" or not path.is_file():
+            raise V2PersistenceError(
+                "asset_not_ready",
+                "Asset content is unavailable.",
+                stage="agent_canvas_asset_service",
+            )
+        return path
+
     def publish_generated_bytes(
         self,
         workflow_id: str,
@@ -648,6 +667,7 @@ def _asset_summary(
         "upload",
         "generated",
         "recommended",
+        "derived",
         "library",
         "editing_export",
     }:
