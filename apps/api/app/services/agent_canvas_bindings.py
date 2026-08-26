@@ -559,15 +559,25 @@ class AgentCanvasBindingService:
         self,
         source: CanvasBindingSourceImageAssetV2,
     ) -> ProjectAssetSummaryV2:
-        if source.source_asset_version_id is None:
+        return self._resolve_required_asset_version(
+            source.source_asset_id,
+            source.source_asset_version_id,
+        )
+
+    def _resolve_required_asset_version(
+        self,
+        asset_id: str,
+        version_id: str | None,
+    ) -> ProjectAssetSummaryV2:
+        if version_id is None:
             raise V2PersistenceError(
                 "canvas_asset_reference_version_required",
                 "Direct asset bindings require an immutable asset version.",
                 stage="agent_canvas_binding_service",
             )
         return self.resolve_asset_version(
-            source.source_asset_id,
-            source.source_asset_version_id,
+            asset_id,
+            version_id,
         )
 
     def get_workflow(self, workflow_id: str) -> AgentCanvasWorkflowV2:
@@ -670,7 +680,7 @@ class AgentCanvasBindingService:
                 source_node_id = source.node_id
                 source_semantic_role = source.semantic_role
             else:
-                asset = self.resolve_asset_version(
+                asset = self._resolve_required_asset_version(
                     binding.source_id,
                     binding.source_asset_version_id,
                 )
