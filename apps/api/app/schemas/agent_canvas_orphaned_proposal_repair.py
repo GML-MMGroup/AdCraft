@@ -36,6 +36,9 @@ class OrphanedGuidedProposalRepairAuditV1(BaseModel):
     turn_id: str
     activity_id: str
     continuation_id: str
+    parent_turn_id: str
+    parent_continuation_id: str
+    active_action_id: str
     envelope_id: str
     session_id: str
     workflow_revision: int = Field(ge=1)
@@ -61,10 +64,15 @@ class OrphanedGuidedProposalRepairReceiptV1(BaseModel):
     turn_id: str
     activity_id: str
     continuation_id: str
+    parent_turn_id: str
+    parent_continuation_id: str
+    cleared_action_id: str
     evidence_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     transition_key: str
     event_id: str
     replacement_status: str
+    previous_session_revision: int = Field(ge=1)
+    replacement_session_revision: int = Field(ge=1)
     protected_digests: OrphanedProposalProtectedDigestsV1
     applied_at: str
     replayed: bool

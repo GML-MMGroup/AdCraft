@@ -54,8 +54,11 @@ _PROPOSAL_ID = "proposal_606e79e5713ed578665e2a39e894527b"
 _TURN_ID = "turn_6f7f1877bcfc43a49bfafdc2763a14ec"
 _ACTIVITY_ID = "activity_41d9f6bb5f8cdc29592ac781"
 _CONTINUATION_ID = "continuation_9aa2f77841d9f6bb5f8cdc29"
+_PARENT_TURN_ID = "turn_84d8e0913c179fa31de2d5f9433b9f6a"
+_PARENT_CONTINUATION_ID = "continuation_d748a23912df26f5eff8b5fa"
 _ENVELOPE_ID = "envelope_9aa2f77841d9f6bb5f8cdc29592ac781"
 _SESSION_ID = "guidance_2a63bce845f34e2e909c1afbdd74c9b5"
+_ACTIVE_ACTION_ID = f"journey-action:{_PARENT_TURN_ID}"
 
 
 class OrphanedGuidedProposalRepairService:
@@ -118,9 +121,14 @@ class OrphanedGuidedProposalRepairService:
                     "turn_id": _TURN_ID,
                     "activity_id": _ACTIVITY_ID,
                     "continuation_id": _CONTINUATION_ID,
+                    "parent_turn_id": _PARENT_TURN_ID,
+                    "parent_continuation_id": _PARENT_CONTINUATION_ID,
+                    "cleared_action_id": _ACTIVE_ACTION_ID,
                     "evidence_digest": expected_audit_digest,
                     "transition_key": transition_key,
                     "replacement_status": "superseded",
+                    "previous_session_revision": 8,
+                    "replacement_session_revision": 9,
                     "protected_digests": plan.protected_digests.model_dump(mode="json"),
                     "applied_at": applied_at,
                     "replayed": False,
@@ -186,6 +194,22 @@ class OrphanedGuidedProposalRepairService:
                 AgentCanvasContinuationOutboxRow.continuation_turn_id == _TURN_ID,
             ),
             "The allowlisted Continuation is missing.",
+        )
+        parent_turn = _one(
+            connection,
+            select(AgentCanvasChatTurnRow).where(
+                AgentCanvasChatTurnRow.turn_id == _PARENT_TURN_ID,
+                AgentCanvasChatTurnRow.workflow_id == _WORKFLOW_ID,
+            ),
+            "The allowlisted parent Turn is missing.",
+        )
+        parent_continuation = _one(
+            connection,
+            select(AgentCanvasContinuationOutboxRow).where(
+                AgentCanvasContinuationOutboxRow.continuation_id == _PARENT_CONTINUATION_ID,
+                AgentCanvasContinuationOutboxRow.continuation_turn_id == _PARENT_TURN_ID,
+            ),
+            "The allowlisted parent Continuation is missing.",
         )
         envelope = _one(
             connection,
@@ -260,6 +284,13 @@ class OrphanedGuidedProposalRepairService:
             "activity_operation": activity["operation"],
             "continuation_status": continuation["status"],
             "continuation_operation": continuation["operation"],
+            "continuation_source_turn": continuation["source_turn_id"],
+            "parent_turn_status": parent_turn["status"],
+            "parent_turn_kind": parent_turn["turn_kind"],
+            "parent_turn_stage": parent_turn["operation_stage"],
+            "parent_turn_guidance_revision": parent_turn["guidance_session_revision"],
+            "parent_continuation_status": parent_continuation["status"],
+            "parent_continuation_operation": parent_continuation["operation"],
             "session_status": session["status"],
             "session_revision": session["revision"],
             "session_topic": session["current_topic_id"],
@@ -296,6 +327,13 @@ class OrphanedGuidedProposalRepairService:
             "activity_operation": "propose_product_options",
             "continuation_status": "completed",
             "continuation_operation": "capability_command",
+            "continuation_source_turn": _PARENT_TURN_ID,
+            "parent_turn_status": "completed",
+            "parent_turn_kind": "next_action",
+            "parent_turn_stage": "completed",
+            "parent_turn_guidance_revision": 6,
+            "parent_continuation_status": "completed",
+            "parent_continuation_operation": "next_action",
             "session_status": "active",
             "session_revision": 8,
             "session_topic": "topic_product_design",
@@ -303,10 +341,18 @@ class OrphanedGuidedProposalRepairService:
             "journey_stage": "product",
             "journey_stage_status": "ready",
             "journey_stage_revision": 4,
-            "journey_active_action": None,
+            "journey_active_action": {
+                "action_id": _ACTIVE_ACTION_ID,
+                "action_kind": "invoke_capability:product_design",
+                "occurrence_id": None,
+                "stage": "product",
+                "stage_revision": 4,
+                "status": "reserved",
+                "turn_id": _PARENT_TURN_ID,
+            },
             "candidate_count": 1,
             "envelope_capability": "product_design",
-            "envelope_operation": "propose_product_options",
+            "envelope_operation": None,
             "proposal_requirement_revision": current_requirements.revision_id,
             "proposal_requirement_digest": current_requirements.digest,
             "envelope_requirement_revision": current_requirements.revision_id,
@@ -330,6 +376,9 @@ class OrphanedGuidedProposalRepairService:
             "turn_id": _TURN_ID,
             "activity_id": _ACTIVITY_ID,
             "continuation_id": _CONTINUATION_ID,
+            "parent_turn_id": _PARENT_TURN_ID,
+            "parent_continuation_id": _PARENT_CONTINUATION_ID,
+            "active_action_id": _ACTIVE_ACTION_ID,
             "envelope_id": _ENVELOPE_ID,
             "session_id": _SESSION_ID,
             "workflow_revision": int(workflow["revision"]),
@@ -348,6 +397,16 @@ class OrphanedGuidedProposalRepairService:
         )
 
     def _supersede_exact_lineage(self, connection: Connection, now: str) -> None:
+        session = _one(
+            connection,
+            select(AgentCanvasGuidanceSessionRow).where(
+                AgentCanvasGuidanceSessionRow.session_id == _SESSION_ID,
+                AgentCanvasGuidanceSessionRow.workflow_id == _WORKFLOW_ID,
+            ),
+            "The allowlisted Guidance Session is missing.",
+        )
+        journey = _json_object(session["journey_state_json"])
+        journey["active_action"] = None
         updates = (
             connection.execute(
                 update(AgentCanvasConceptProposalRow)
@@ -398,6 +457,20 @@ class OrphanedGuidedProposalRepairService:
                     updated_at=now,
                 )
             ),
+            connection.execute(
+                update(AgentCanvasGuidanceSessionRow)
+                .where(
+                    AgentCanvasGuidanceSessionRow.session_id == _SESSION_ID,
+                    AgentCanvasGuidanceSessionRow.revision == 8,
+                    AgentCanvasGuidanceSessionRow.journey_state_json
+                    == session["journey_state_json"],
+                )
+                .values(
+                    revision=9,
+                    journey_state_json=json.dumps(journey, sort_keys=True),
+                    updated_at=now,
+                )
+            ),
         )
         if any(result.rowcount != 1 for result in updates):
             raise _conflict("Historical Proposal lineage changed before correction.")
@@ -418,6 +491,12 @@ class OrphanedGuidedProposalRepairService:
                 AgentCanvasGuidanceSessionRow.workflow_id == _WORKFLOW_ID
             ),
         )
+        for row in session:
+            journey = _json_object(row["journey_state_json"])
+            journey["active_action"] = None
+            row["journey_state_json"] = journey
+            row.pop("revision", None)
+            row.pop("updated_at", None)
         current_requirements = self._requirements.get_current_in_transaction(
             connection,
             _WORKFLOW_ID,
