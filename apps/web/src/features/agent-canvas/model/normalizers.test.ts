@@ -1977,6 +1977,7 @@ describe("Agent Canvas normalizers", () => {
             binding_id: "binding-video-1",
             asset_id: null,
             enabled: true,
+            timeline_start_seconds: 5,
             trim_start_seconds: 0,
             trim_end_seconds: null,
             volume: 1,
@@ -1989,6 +1990,7 @@ describe("Agent Canvas normalizers", () => {
         bgm: null,
         output: {},
         manifest_revision: 4,
+        timeline_duration_seconds: 30,
       },
       dirty: true,
       preview: {
@@ -2020,6 +2022,8 @@ describe("Agent Canvas normalizers", () => {
     expect(timeline.items[1]?.item_type).toBe("proposal");
     expect(editing.manifest.bgm).toBeNull();
     expect(editing.manifest.video_entries[0]?.preserve_native_audio).toBe(true);
+    expect(editing.manifest.video_entries[0]?.timeline_start_seconds).toBe(5);
+    expect(editing.manifest.timeline_duration_seconds).toBe(30);
     expect(editing.manifest.output.video_codec).toBe("h264");
   });
 

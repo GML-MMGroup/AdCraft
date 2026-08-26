@@ -12,7 +12,6 @@ import {
 } from "react";
 
 import {
-  clampPixelsPerSecond,
   fitPixelsPerSecond,
   pixelsToTime,
   timeToPixels,
@@ -20,9 +19,6 @@ import {
 
 const TRACK_LABEL_WIDTH = 124;
 const TIME_GUTTER_WIDTH = 18;
-const MIN_ZOOM_LEVEL = 1;
-const MAX_ZOOM_LEVEL = 8;
-const ZOOM_STEP = 0.25;
 
 export interface EditingTimelineViewportRenderState {
   pixelsPerSecond: number;
@@ -63,10 +59,8 @@ export function EditingTimelineViewport({
 }: EditingTimelineViewportProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const playheadDragCancelRef = useRef<(() => void) | null>(null);
-  const zoomAnchorRef = useRef<number | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
-  const [zoomLevel, setZoomLevel] = useState(MIN_ZOOM_LEVEL);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -84,45 +78,10 @@ export function EditingTimelineViewport({
   const timeViewportWidth = Math.max(1, availableTrackWidth - 2 * TIME_GUTTER_WIDTH);
   const timeOrigin = TRACK_LABEL_WIDTH + TIME_GUTTER_WIDTH;
   const fitScale = fitPixelsPerSecond(timeViewportWidth, safeDuration);
-  const pixelsPerSecond = clampPixelsPerSecond(
-    fitScale * zoomLevel,
-    {
-      viewportWidth: timeViewportWidth,
-      duration: safeDuration,
-      max: fitScale * MAX_ZOOM_LEVEL,
-    },
-  );
+  const pixelsPerSecond = fitScale;
   const contentWidth = Math.max(timeViewportWidth, timeToPixels(safeDuration, pixelsPerSecond));
   const timeScrollSurfaceWidth = TIME_GUTTER_WIDTH + contentWidth + TIME_GUTTER_WIDTH;
   const maxScrollLeft = Math.max(0, timeScrollSurfaceWidth - availableTrackWidth);
-
-  const updateZoom = (nextLevel: number) => {
-    const nextZoomLevel = clamp(nextLevel, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
-    if (nextZoomLevel === zoomLevel) return;
-    if (safeDuration && pixelsPerSecond && timeViewportWidth) {
-      zoomAnchorRef.current = clamp(
-        pixelsToTime(scrollLeft + timeViewportWidth / 2, pixelsPerSecond),
-        0,
-        safeDuration,
-      );
-    }
-    setZoomLevel(nextZoomLevel);
-  };
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    const anchorSeconds = zoomAnchorRef.current;
-    if (!viewport || anchorSeconds === null || !pixelsPerSecond) return;
-
-    const nextScrollLeft = clamp(
-      timeToPixels(anchorSeconds, pixelsPerSecond) - timeViewportWidth / 2,
-      0,
-      maxScrollLeft,
-    );
-    viewport.scrollLeft = nextScrollLeft;
-    setScrollLeft(nextScrollLeft);
-    zoomAnchorRef.current = null;
-  }, [maxScrollLeft, pixelsPerSecond, timeViewportWidth]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -134,13 +93,6 @@ export function EditingTimelineViewport({
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-
-    if (event.ctrlKey || event.metaKey) {
-      event.preventDefault();
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      updateZoom(zoomLevel + (delta < 0 ? ZOOM_STEP : -ZOOM_STEP));
-      return;
-    }
 
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
     const nextScrollLeft = clamp(scrollLeft + delta, 0, maxScrollLeft);
@@ -259,51 +211,6 @@ export function EditingTimelineViewport({
 
   return (
     <div className="agent-editing-timeline-viewport">
-      <div className="agent-editing-timeline-viewport__toolbar" role="toolbar" aria-label="Timeline view controls">
-        <button
-          type="button"
-          className="agent-editing-timeline-viewport__zoom-button"
-          aria-label="Zoom out"
-          title="Zoom out"
-          disabled={zoomLevel <= MIN_ZOOM_LEVEL}
-          onClick={() => updateZoom(zoomLevel - ZOOM_STEP)}
-        >
-          <span aria-hidden="true">−</span>
-        </button>
-        <input
-          className="agent-editing-timeline-viewport__zoom-range"
-          type="range"
-          aria-label="Timeline zoom"
-          min={MIN_ZOOM_LEVEL}
-          max={MAX_ZOOM_LEVEL}
-          step={ZOOM_STEP}
-          value={zoomLevel}
-          aria-valuetext={`${Math.round(zoomLevel * 100)}%`}
-          onChange={(event) => updateZoom(Number(event.currentTarget.value))}
-        />
-        <span className="agent-editing-timeline-viewport__zoom-value" aria-live="polite">
-          {Math.round(zoomLevel * 100)}%
-        </span>
-        <button
-          type="button"
-          className="agent-editing-timeline-viewport__zoom-button"
-          aria-label="Fit timeline"
-          title="Fit entire timeline"
-          onClick={() => updateZoom(MIN_ZOOM_LEVEL)}
-        >
-          Fit
-        </button>
-        <button
-          type="button"
-          className="agent-editing-timeline-viewport__zoom-button"
-          aria-label="Zoom in"
-          title="Zoom in"
-          disabled={zoomLevel >= MAX_ZOOM_LEVEL}
-          onClick={() => updateZoom(zoomLevel + ZOOM_STEP)}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-      </div>
       <div
         ref={viewportRef}
         className="agent-editing-timeline-viewport__scroller"

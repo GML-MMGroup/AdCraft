@@ -15,6 +15,7 @@ export interface TimelineClipInput {
   sourceDuration: number;
   trimStart: number;
   trimEnd: number | null;
+  timelineStart?: number;
 }
 
 interface TrimRangeInput {
@@ -81,22 +82,48 @@ export function editedClipDuration(
   return Math.min(sourceDurationOf(sourceDuration), Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start));
 }
 
-export function buildTimelineSegments(clips: readonly TimelineClipInput[]): TimelineSegment[] {
+export function buildTimelineSegments(
+  clips: readonly TimelineClipInput[],
+  _timelineDuration?: number,
+): TimelineSegment[] {
   let timelineStart = 0;
   return clips.map((clip) => {
     const sourceDuration = sourceDurationOf(clip.sourceDuration);
     const range = normalizeTrimRange(sourceDuration, clip.trimStart, clip.trimEnd ?? sourceDuration);
     const duration = Math.min(sourceDuration, Math.max(MIN_EDITED_CLIP_SECONDS, range.end - range.start));
+    const explicitTimelineStart = clip.timelineStart === undefined
+      ? null
+      : Math.max(0, finiteOr(clip.timelineStart, timelineStart));
     const segment = {
       referenceId: clip.referenceId,
-      timelineStart,
+      timelineStart: explicitTimelineStart ?? timelineStart,
       timelineEnd: timelineStart + duration,
       sourceStart: range.start,
       sourceEnd: range.start + duration,
     };
     timelineStart = segment.timelineEnd;
     return segment;
-  });
+  }).map((segment) => ({
+    ...segment,
+    timelineEnd: segment.timelineStart + (segment.sourceEnd - segment.sourceStart),
+  })).sort((left, right) => left.timelineStart - right.timelineStart);
+}
+
+export function roundTimeline(value: number): number {
+  return Math.round(finiteOr(value, 0) * 1_000) / 1_000;
+}
+
+export function clampTimelineStart(start: number, duration: number, timelineDuration: number): number {
+  const clipDuration = Math.max(0, finiteOr(duration, 0));
+  const totalDuration = Math.max(0, finiteOr(timelineDuration, 0));
+  return roundTimeline(Math.max(0, Math.min(Math.max(0, totalDuration - clipDuration), finiteOr(start, 0))));
+}
+
+export function hasTimelineOverlap(segments: readonly TimelineSegment[]): boolean {
+  const sorted = [...segments].sort((left, right) => left.timelineStart - right.timelineStart);
+  return sorted.some((segment, index) => (
+    index > 0 && segment.timelineStart < sorted[index - 1]!.timelineEnd
+  ));
 }
 
 export function fitPixelsPerSecond(viewportWidth: number, duration: number): number {

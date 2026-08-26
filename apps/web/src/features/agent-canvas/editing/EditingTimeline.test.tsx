@@ -91,7 +91,6 @@ function renderTimeline(options: {
     onSelectReference: vi.fn(),
     onSetBgm: vi.fn(),
     onSetBgmVolume: vi.fn(),
-    onStageVideoOrder: vi.fn(),
     onStageVideo: vi.fn(),
     onUpdateVideo: vi.fn(),
   };
@@ -152,41 +151,50 @@ describe("EditingTimeline direct trim", () => {
     expect(onCommitStagedManifest).toHaveBeenCalledTimes(1);
   });
 
-  it("reorders clips from the clip body and commits only after release", () => {
-    const inputs = { videos: [video("video-1", 1), video("video-2", 2), video("video-3", 3)], bgm: null };
-    const callbacks = renderTimeline({ inputs, selectedReferenceId: "video-1" });
-    const boundsByReferenceId: Record<string, { left: number; right: number }> = {
-      "video-1": { left: 0, right: 100 },
-      "video-2": { left: 100, right: 200 },
-      "video-3": { left: 200, right: 300 },
+  it("moves a clip freely on the single track and commits only after release", () => {
+    const inputs = {
+      videos: [
+        video("video-1", 1, { timeline_start_seconds: 0 }),
+        video("video-2", 2, { timeline_start_seconds: 12 }),
+      ],
+      bgm: null,
     };
-    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function getClipBounds() {
-      const referenceId = this.getAttribute("data-reference-id");
-      const bounds = referenceId ? boundsByReferenceId[referenceId] : undefined;
-      const left = bounds?.left ?? 0;
-      const right = bounds?.right ?? 924;
-      return {
-        bottom: 200,
-        height: 200,
-        left,
-        right,
-        top: 0,
-        width: right - left,
-        x: left,
-        y: 0,
-        toJSON: () => ({}),
-      };
-    });
+    const callbacks = renderTimeline({ inputs, selectedReferenceId: "video-1" });
 
     const surface = screen.getByRole("button", { name: "Select Shot 1" });
-    fireEvent.pointerDown(surface, { button: 0, clientX: 50, pointerId: 21 });
-    fireEvent.pointerMove(window, { clientX: 290, pointerId: 21 });
-    expect(callbacks.onStageVideoOrder).not.toHaveBeenCalled();
+    fireEvent.pointerDown(surface, { button: 0, clientX: 100, pointerId: 21 });
+    fireEvent.pointerMove(window, { clientX: 176, pointerId: 21 });
 
-    fireEvent.pointerUp(window, { clientX: 290, pointerId: 21 });
+    expect(callbacks.onStageVideo).not.toHaveBeenCalled();
+    expect(callbacks.onCommitStagedManifest).not.toHaveBeenCalled();
 
-    expect(callbacks.onStageVideoOrder).toHaveBeenCalledWith(["video-2", "video-3", "video-1"]);
+    fireEvent.pointerUp(window, { clientX: 176, pointerId: 21 });
+    expect(callbacks.onStageVideo).toHaveBeenLastCalledWith("video-1", {
+      timeline_start_seconds: expect.any(Number),
+    });
     expect(callbacks.onCommitStagedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a drop that overlaps another clip and keeps the staged manifest unchanged", () => {
+    const inputs = {
+      videos: [
+        video("video-1", 1, { timeline_start_seconds: 0 }),
+        video("video-2", 2, { timeline_start_seconds: 12 }),
+      ],
+      bgm: null,
+    };
+    const callbacks = renderTimeline({ inputs, selectedReferenceId: "video-2" });
+    const surface = screen.getByRole("button", { name: "Select Shot 2" });
+
+    fireEvent.pointerDown(surface, { button: 0, clientX: 300, pointerId: 22 });
+    fireEvent.pointerMove(window, { clientX: 100, pointerId: 22 });
+
+    expect(screen.getByTestId("timeline-clip-video-2").getAttribute("aria-invalid")).toBe("true");
+    expect(callbacks.onStageVideo).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(window, { clientX: 100, pointerId: 22 });
+    expect(callbacks.onDiscardStagedManifest).toHaveBeenCalledTimes(1);
+    expect(callbacks.onCommitStagedManifest).not.toHaveBeenCalled();
   });
 
   it("discards a changed drag on pointer cancellation", () => {
@@ -340,7 +348,7 @@ describe("EditingTimeline retained controls", () => {
 
     const videoTrack = screen.getByRole("group", { name: "Video track" });
     expect(videoTrack.querySelectorAll(".agent-editing-timeline-clip")).toHaveLength(1);
-    expect(screen.getByRole("slider", { name: "Timeline playhead" }).getAttribute("aria-valuemax")).toBe("4");
+    expect(screen.getByRole("slider", { name: "Timeline playhead" }).getAttribute("aria-valuemax")).toBe("30");
 
     const inactive = screen.getByRole("region", { name: "Inactive sources" });
     expect(within(inactive).getByText("Disabled")).toBeTruthy();
@@ -427,7 +435,7 @@ describe("EditingTimeline retained controls", () => {
 });
 
 describe("EditingTimelineViewport", () => {
-  it("zooms the timeline without changing the sequence and restores fit view", () => {
+  it("fits the fixed logical duration without exposing a zoom control", () => {
     render(
       <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={vi.fn()}>
         {(state) => <output data-testid="pixels-per-second">{state.pixelsPerSecond}</output>}
@@ -435,25 +443,15 @@ describe("EditingTimelineViewport", () => {
     );
 
     expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
-    const zoom = screen.getByRole("slider", { name: "Timeline zoom" });
-    expect(zoom.getAttribute("value")).toBe("1");
-    expect(screen.getByRole("button", { name: "Zoom out" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Fit timeline" })).toBeTruthy();
-
-    fireEvent.change(zoom, { target: { value: "2" } });
-
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("76.4");
-    expect(screen.getByTestId("timeline-scroll-viewport").scrollLeft).toBe(382);
-
-    fireEvent.click(screen.getByRole("button", { name: "Fit timeline" }));
-
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
+    expect(screen.queryByRole("slider", { name: "Timeline zoom" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Zoom out" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fit timeline" })).toBeNull();
     expect(screen.getByTestId("timeline-scroll-viewport").scrollLeft).toBe(0);
     expect(document.querySelector(".agent-editing-timeline__scrubber")).toBeNull();
   });
 
-  it("uses modified wheel input for local zoom and normal wheel input for timeline scrolling", () => {
+  it("does not change the fixed scale when the user uses modified wheel input", () => {
     render(
       <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={vi.fn()}>
         {(state) => <output data-testid="pixels-per-second">{state.pixelsPerSecond}</output>}
@@ -462,14 +460,11 @@ describe("EditingTimelineViewport", () => {
 
     const scroller = screen.getByTestId("timeline-scroll-viewport");
     fireEvent.wheel(scroller, { deltaY: -1, ctrlKey: true });
-    expect(screen.getByRole("slider", { name: "Timeline zoom" }).getAttribute("value")).toBe("1.25");
-    expect(screen.getByTestId("pixels-per-second").textContent).toBe("47.75");
-
-    fireEvent.wheel(scroller, { deltaX: 120 });
-    expect(scroller.scrollLeft).toBeGreaterThan(0);
+    expect(screen.getByTestId("pixels-per-second").textContent).toBe("38.2");
+    expect(scroller.scrollLeft).toBe(0);
   });
 
-  it("keeps ruler seeking aligned with the scrolled timeline after zooming", () => {
+  it("keeps ruler seeking aligned with the fixed timeline scale", () => {
     const onPlayheadChange = vi.fn();
     render(
       <EditingTimelineViewport duration={20} playheadSeconds={2} onPlayheadChange={onPlayheadChange}>
@@ -477,7 +472,6 @@ describe("EditingTimelineViewport", () => {
       </EditingTimelineViewport>,
     );
 
-    fireEvent.change(screen.getByRole("slider", { name: "Timeline zoom" }), { target: { value: "2" } });
     fireEvent.click(screen.getByTestId("timeline-ruler"), { clientX: 524 });
 
     expect(onPlayheadChange).toHaveBeenLastCalledWith(10);

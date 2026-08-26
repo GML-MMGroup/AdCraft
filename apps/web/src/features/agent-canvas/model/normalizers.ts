@@ -3843,6 +3843,7 @@ export function normalizeEditingVideoEntryV2(
     "binding_id",
     "asset_id",
     "enabled",
+    "timeline_start_seconds",
     "trim_start_seconds",
     "trim_end_seconds",
     "volume",
@@ -3878,9 +3879,19 @@ export function normalizeEditingVideoEntryV2(
   if (transition === "cut" && transitionDuration !== 0) {
     fail(`${path}.transition_duration_seconds`, "cut transitions cannot have a duration");
   }
+  const timelineStart = record.timeline_start_seconds === undefined
+    ? undefined
+    : editingNumberInRange(
+      record.timeline_start_seconds,
+      `${path}.timeline_start_seconds`,
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
   return {
     ...source,
     enabled: record.enabled === undefined ? true : expectBoolean(record.enabled, `${path}.enabled`),
+    ...(timelineStart === undefined ? {} : { timeline_start_seconds: timelineStart }),
     trim_start_seconds: trimStart,
     trim_end_seconds: trimEnd,
     volume: editingNumberInRange(record.volume, `${path}.volume`, 1, 0, 1),
@@ -3937,7 +3948,13 @@ export function normalizeEditingBgmEntryV2(
 
 export function normalizeEditingManifestV2(value: unknown, path = "editing.manifest"): EditingManifestV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["video_entries", "bgm", "output", "manifest_revision"], path);
+  forbidUnknownFields(record, [
+    "video_entries",
+    "bgm",
+    "output",
+    "manifest_revision",
+    "timeline_duration_seconds",
+  ], path);
   const videoEntries = (record.video_entries === undefined
     ? []
     : expectArray(record.video_entries, `${path}.video_entries`)
@@ -3959,6 +3976,15 @@ export function normalizeEditingManifestV2(value: unknown, path = "editing.manif
   if (bgmKey && sourceKeys.includes(bgmKey)) {
     fail(`${path}.bgm`, "BGM input cannot also be a video input");
   }
+  const timelineDuration = record.timeline_duration_seconds === undefined
+    ? undefined
+    : editingNumberInRange(
+      record.timeline_duration_seconds,
+      `${path}.timeline_duration_seconds`,
+      0,
+      0.001,
+      Number.MAX_SAFE_INTEGER,
+    );
   return {
     video_entries: videoEntries,
     bgm,
@@ -3966,6 +3992,7 @@ export function normalizeEditingManifestV2(value: unknown, path = "editing.manif
     manifest_revision: record.manifest_revision === undefined
       ? 1
       : expectPositiveInteger(record.manifest_revision, `${path}.manifest_revision`),
+    ...(timelineDuration === undefined ? {} : { timeline_duration_seconds: timelineDuration }),
   };
 }
 
