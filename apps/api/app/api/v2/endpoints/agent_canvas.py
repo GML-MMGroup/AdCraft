@@ -168,6 +168,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedMediaReviewSubmitV1,
 )
 from app.schemas.agent_canvas_guided_product import (
+    GuidedProductAssetVersionRefV1,
     GuidedProductInputCommitRequestV1,
     GuidedProductInputCommitResponseV1,
 )
@@ -515,6 +516,9 @@ def create_agent_canvas_runtime(
     conversation_repository = AgentCanvasConversationRepository(
         database,
         event_repository,
+    )
+    guided_product_inputs.set_continuation_writer(
+        conversation_repository.insert_continuation_in_transaction
     )
     guided_interaction_repository = AgentCanvasGuidedInteractionRepository(
         database,
@@ -1269,6 +1273,7 @@ def create_agent_canvas_runtime(
             exclude=guided_media_plan_actions.exclude,
         ).submit,
     )
+    guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -2166,11 +2171,31 @@ async def upload_asset(
             media_type=parsed.media_type,
             idempotency_key=idempotency_key,
         )
+        pending_handoff_id = None
+        if parsed.semantic_role == "product_main":
+            session = runtime.conversation_repository.get_guidance_session_or_none(workflow_id)
+            if session is not None and asset.version_id is not None:
+                pending_handoff_id = runtime.guided_product_inputs.create_pending_handoff(
+                    workflow_id=workflow_id,
+                    session_id=session.session_id,
+                    input_kind="main",
+                    asset_versions=(
+                        GuidedProductAssetVersionRefV1(
+                            asset_id=asset.asset_id,
+                            version_id=asset.version_id,
+                        ),
+                    ),
+                    idempotency_key=f"{idempotency_key}:product-main-handoff",
+                )
     except (ValueError, json.JSONDecodeError) as error:
         raise _http_error("asset_upload_invalid", 422, "Asset metadata is invalid.") from error
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    return ProjectAssetUploadResponseV2(workflow_id=workflow_id, asset=asset)
+    return ProjectAssetUploadResponseV2(
+        workflow_id=workflow_id,
+        asset=asset,
+        pending_handoff_id=pending_handoff_id,
+    )
 
 
 @router.post(

@@ -1304,7 +1304,7 @@ class AgentCanvasGuidedInteractionRow(Base):
     __tablename__ = "agent_canvas_guided_interactions"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification_questionnaire','concept_choice','media_review')",
+            "kind IN ('clarification_questionnaire','concept_choice','product_source','media_review')",
             name="ck_agent_canvas_guided_interactions_kind",
         ),
         CheckConstraint(
@@ -1385,6 +1385,43 @@ class AgentCanvasGuidedInteractionSubmissionRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasGuidedProductHandoffRow(Base):
+    """Durable typed Product AssetVersion handoff before source materialization."""
+
+    __tablename__ = "agent_canvas_guided_product_handoffs"
+    __table_args__ = (
+        CheckConstraint(
+            "input_kind IN ('main','multiview')",
+            name="ck_agent_canvas_guided_product_handoff_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending','consumed')",
+            name="ck_agent_canvas_guided_product_handoff_status",
+        ),
+        Index(
+            "ix_agent_canvas_guided_product_handoffs_workflow_created",
+            "workflow_id",
+            "created_at",
+            "handoff_id",
+        ),
+    )
+
+    handoff_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), nullable=False
+    )
+    input_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_versions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    consumed_at: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentCanvasGuidedMediaResumeDeliveryRow(Base):
     """Private fenced delivery for accepted media-confirmation resume work."""
 
@@ -1453,7 +1490,7 @@ class AgentCanvasGuidanceAwaitingRow(Base):
     __tablename__ = "agent_canvas_guidance_awaiting"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification','concept_selection','media_review',"
+            "kind IN ('clarification','concept_selection','product_source','media_review',"
             "'manual_node_run','milestone_idle')",
             name="ck_agent_canvas_guidance_awaiting_kind",
         ),

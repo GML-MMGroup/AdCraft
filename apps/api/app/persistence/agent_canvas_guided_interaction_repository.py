@@ -54,6 +54,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionAnswerV1,
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
+    GuidedProductSourceQuestionV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
     GuidedSkipAnswerV1,
@@ -289,6 +290,91 @@ class AgentCanvasGuidedInteractionRepository:
     def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
         with self._database.engine.connect() as connection:
             return _awaiting_for_workflow(connection, workflow_id)
+
+    def open_product_source(
+        self,
+        workflow_id: str,
+        *,
+        input_kind: Literal["main", "multiview"],
+        prompt: str | None = None,
+    ) -> GuidedInteractionV1:
+        """Open the typed Product source question at the current Product checkpoint."""
+
+        with self._database.engine.connect() as connection:
+            session = (
+                connection.execute(
+                    select(AgentCanvasGuidanceSessionRow).where(
+                        AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if session is None:
+            raise _error("guided_interaction_not_found", "Guidance session was not found.")
+        journey = _journey(session)
+        if journey.stage != "product":
+            raise _error(
+                "guided_product_stage_invalid",
+                "Product source interaction is only available during the Product stage.",
+            )
+        revision = int(session["revision"])
+        identity = sha256(
+            f"product-source:{workflow_id}:{revision}:{input_kind}".encode("utf-8")
+        ).hexdigest()[:32]
+        interaction_id = f"interaction_product_source_{identity}"
+        checkpoint_id = f"product_source:{journey.stage_revision}:{input_kind}"
+        now = datetime.now(timezone.utc)
+        question = GuidedProductSourceQuestionV1(
+            input_kind=input_kind,
+            question_id=f"product_{input_kind}_source",
+            prompt=prompt
+            or (
+                "Provide one Product Main image."
+                if input_kind == "main"
+                else "Provide two to eight ordered Product Multiview images."
+            ),
+            expected_guidance_revision=revision,
+            min_asset_count=1 if input_kind == "main" else 2,
+            max_asset_count=1 if input_kind == "main" else 8,
+        )
+        interaction = GuidedInteractionV1(
+            interaction_id=interaction_id,
+            workflow_id=workflow_id,
+            session_id=str(session["session_id"]),
+            checkpoint_id=checkpoint_id,
+            kind="product_source",
+            status="open",
+            response_locale=str(session["response_locale"]),
+            expected_session_revision=revision,
+            revision=1,
+            title="Product image source",
+            context="Choose whether to upload or generate the Product source.",
+            content=question,
+            allowed_actions=("select_source",),
+            submit_path=(
+                f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
+            ),
+            created_at=now,
+            updated_at=now,
+        )
+        self.open_with_awaiting(
+            interaction,
+            GuidanceAwaitingV2(
+                awaiting_id=f"awaiting_product_source_{identity}",
+                workflow_id=workflow_id,
+                session_id=str(session["session_id"]),
+                checkpoint_id=checkpoint_id,
+                kind="product_source",
+                requires_user_action=True,
+                resume_policy="submit_interaction",
+                interaction_id=interaction_id,
+                stage="product",
+                stage_revision=journey.stage_revision,
+                created_at=now,
+            ),
+        )
+        return interaction
 
     def get_submission(self, submission_id: str) -> GuidedInteractionSubmissionRecordV1:
         with self._database.engine.connect() as connection:
@@ -1654,6 +1740,7 @@ class AgentCanvasGuidedInteractionRepository:
         expected_awaiting_kind = {
             "clarification_questionnaire": "clarification",
             "concept_choice": "concept_selection",
+            "product_source": "product_source",
             "media_review": "media_review",
         }[interaction.kind]
         if awaiting.kind != expected_awaiting_kind:

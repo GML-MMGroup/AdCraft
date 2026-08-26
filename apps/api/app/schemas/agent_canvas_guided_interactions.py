@@ -290,6 +290,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
     kind: Literal[
         "clarification",
         "concept_selection",
+        "product_source",
         "media_review",
         "manual_node_run",
         "milestone_idle",
@@ -309,7 +310,12 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
 
     @model_validator(mode="after")
     def validate_resume_evidence(self) -> "GuidanceAwaitingV2":
-        interaction_kinds = {"clarification", "concept_selection", "media_review"}
+        interaction_kinds = {
+            "clarification",
+            "concept_selection",
+            "product_source",
+            "media_review",
+        }
         if self.kind in interaction_kinds:
             if (
                 self.interaction_id is None

@@ -644,6 +644,7 @@ class ProjectAssetUploadMetadataV2(_AgentCanvasModel):
 class ProjectAssetUploadResponseV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     asset: ProjectAssetSummaryV2
+    pending_handoff_id: str | None = Field(default=None, min_length=1)
 
 
 class SaveImageToLibraryRequestV2(_AgentCanvasModel):

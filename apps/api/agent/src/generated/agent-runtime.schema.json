@@ -11664,7 +11664,8 @@
             "concept_selection",
             "manual_node_run",
             "media_review",
-            "milestone_idle"
+            "milestone_idle",
+            "product_source"
           ],
           "title": "Kind",
           "type": "string"
@@ -13694,6 +13695,16 @@
           "title": "Expected Guidance Revision",
           "type": "integer"
         },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
         "input_kind": {
           "enum": [
             "main",
@@ -13701,12 +13712,34 @@
           ],
           "title": "Input Kind",
           "type": "string"
+        },
+        "interaction_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Interaction Id",
+          "type": "string"
+        },
+        "pending_handoff_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pending Handoff Id"
         }
       },
       "required": [
         "asset_versions",
         "expected_guidance_revision",
-        "input_kind"
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "input_kind",
+        "interaction_id"
       ],
       "title": "GuidedProductInputCommitRequestV1",
       "type": "object"
@@ -13781,6 +13814,15 @@
     "GuidedProductSourceActionV1": {
       "additionalProperties": false,
       "properties": {
+        "asset_versions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidedProductAssetVersionRefV1"
+          },
+          "maxItems": 8,
+          "title": "Asset Versions",
+          "type": "array"
+        },
         "choice": {
           "enum": [
             "generate",
@@ -13794,6 +13836,15 @@
           "title": "Expected Guidance Revision",
           "type": "integer"
         },
+        "handoff_mode": {
+          "default": "apply",
+          "enum": [
+            "apply",
+            "pending"
+          ],
+          "title": "Handoff Mode",
+          "type": "string"
+        },
         "input_kind": {
           "enum": [
             "main",
@@ -13801,6 +13852,19 @@
           ],
           "title": "Input Kind",
           "type": "string"
+        },
+        "pending_handoff_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pending Handoff Id"
         },
         "question_id": {
           "maxLength": 160,

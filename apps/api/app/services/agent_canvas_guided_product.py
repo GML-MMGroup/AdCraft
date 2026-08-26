@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from sqlalchemy import select
 
@@ -18,10 +19,17 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasGuidanceSessionRow
 from app.schemas.agent_canvas import CanvasNodeV2, CanvasPositionV2
 from app.schemas.agent_canvas_guided_product import (
+    GuidedProductAssetVersionRefV1,
     GuidedProductInputCommitRequestV1,
     GuidedProductInputCommitResponseV1,
     ProductUploadCompilationProvenanceV1,
     ProductUploadInputProvenanceV1,
+)
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidedInteractionAcceptedV1,
+    GuidedInteractionV1,
+    GuidedProductSourceQuestionV1,
+    GuidedProductSourceSubmitV1,
 )
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.v2_persistence import V2EventInsert
@@ -46,6 +54,7 @@ class GuidedProductInputCommitService:
         commits: AgentCanvasGuidedProductRepository,
         compiler: ProductUploadMultiviewCompiler,
         events: EventRepository,
+        continuation_writer: Callable[..., None] | None = None,
     ) -> None:
         self._assets = assets
         self._asset_repository = asset_repository
@@ -53,6 +62,111 @@ class GuidedProductInputCommitService:
         self._commits = commits
         self._compiler = compiler
         self._events = events
+        self._continuation_writer = continuation_writer
+
+    def set_continuation_writer(self, continuation_writer: Callable[..., None]) -> None:
+        """Use the existing conversation continuation writer for Product generation."""
+
+        self._continuation_writer = continuation_writer
+
+    def create_pending_handoff(
+        self,
+        *,
+        workflow_id: str,
+        session_id: str,
+        input_kind: str,
+        asset_versions: tuple[GuidedProductAssetVersionRefV1, ...],
+        idempotency_key: str,
+    ) -> str:
+        """Record an explicitly identified early Product upload."""
+
+        return self._commits.create_pending_handoff(
+            workflow_id=workflow_id,
+            session_id=session_id,
+            input_kind=input_kind,
+            asset_versions=asset_versions,
+            idempotency_key=idempotency_key,
+        )
+
+    def submit_interaction(
+        self,
+        workflow_id: str,
+        interaction: GuidedInteractionV1,
+        request: GuidedProductSourceSubmitV1,
+        *,
+        submission_id: str,
+        idempotency_key: str,
+    ) -> GuidedInteractionAcceptedV1:
+        """Materialize an upload selected by the canonical Product interaction."""
+
+        if not isinstance(interaction.content, GuidedProductSourceQuestionV1):
+            raise V2PersistenceError(
+                "guided_interaction_action_not_allowed",
+                "The current interaction is not a Product source question.",
+                stage="guided_product_service",
+            )
+        action = request.action
+        if (
+            action.input_kind != interaction.content.input_kind
+            or action.question_id != interaction.content.question_id
+            or action.expected_guidance_revision != interaction.content.expected_guidance_revision
+        ):
+            raise V2PersistenceError(
+                "guided_interaction_stale",
+                "Product source action does not match the open interaction question.",
+                stage="guided_product_service",
+            )
+        if action.choice == "upload" and action.handoff_mode == "pending":
+            return self._commits.record_pending_submission(
+                workflow_id=workflow_id,
+                interaction=interaction,
+                request=request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+            )
+        if action.choice == "generate" and action.handoff_mode == "apply":
+            return self._commits.submit_generate(
+                workflow_id=workflow_id,
+                interaction=interaction,
+                request=request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+                continuation_writer=self._continuation_writer,
+            )
+        if action.choice != "upload" or action.handoff_mode != "apply":
+            raise V2PersistenceError(
+                "guided_product_action_requires_continuation",
+                "The selected Product source requires the deterministic Product continuation.",
+                stage="guided_product_service",
+            )
+        workflow = self._workflows.get_workflow(workflow_id)
+        commit_request = GuidedProductInputCommitRequestV1(
+            input_kind=action.input_kind,
+            asset_versions=action.asset_versions,
+            interaction_id=interaction.interaction_id,
+            expected_interaction_revision=request.expected_interaction_revision,
+            expected_session_revision=request.expected_session_revision,
+            expected_guidance_revision=action.expected_guidance_revision,
+            pending_handoff_id=action.pending_handoff_id,
+        )
+        committed = self.commit(
+            workflow_id,
+            commit_request,
+            expected_workflow_revision=workflow.revision,
+            idempotency_key=idempotency_key,
+            submission_id=submission_id,
+            submission_request=request,
+        )
+        return GuidedInteractionAcceptedV1(
+            workflow_id=workflow_id,
+            interaction_id=interaction.interaction_id,
+            submission_id=submission_id,
+            receipt_id=committed.receipt.operation_id,
+            created_node_ids=(committed.node.node_id,),
+            resulting_session_revision=committed.guidance_revision,
+            events_cursor=committed.events_cursor,
+            replayed=committed.replayed,
+        )
 
     def commit(
         self,
@@ -61,6 +175,8 @@ class GuidedProductInputCommitService:
         *,
         expected_workflow_revision: int,
         idempotency_key: str,
+        submission_id: str | None = None,
+        submission_request: GuidedProductSourceSubmitV1 | None = None,
     ) -> GuidedProductInputCommitResponseV1:
         if not idempotency_key:
             raise V2PersistenceError(
@@ -77,6 +193,16 @@ class GuidedProductInputCommitService:
         )
         if replay is not None:
             return replay
+        if any(
+            node.creative_role == "product"
+            and node.metadata.get("source_input_kind") == request.input_kind
+            for node in workflow.nodes
+        ):
+            raise V2PersistenceError(
+                "guided_product_input_already_committed",
+                "This Product input kind already has a canonical source Node.",
+                stage="guided_product_service",
+            )
         self._require_product_stage(workflow_id)
         if workflow.revision != expected_workflow_revision:
             raise V2PersistenceError(
@@ -189,6 +315,8 @@ class GuidedProductInputCommitService:
                 output_asset_id=output_asset_id,
                 output_version_id=output_version_id,
                 provenance_digest=provenance_digest,
+                submission_id=submission_id,
+                submission_request=submission_request,
             )
         except BaseException:
             if compiler_result is not None:

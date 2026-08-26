@@ -31,6 +31,8 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedInteractionV1,
+    GuidedProductSourceQuestionV1,
+    GuidedProductSourceSubmitV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
     GuidedQuestionnaireSubmitV1,
@@ -51,11 +53,13 @@ class GuidedInteractionService:
         materializations: AgentCanvasMaterializationRepository,
         *,
         media_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
+        product_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
         self._materializations = materializations
         self._media_submit = media_submit
+        self._product_submit = product_submit
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
@@ -67,6 +71,14 @@ class GuidedInteractionService:
         awaiting: GuidanceAwaitingV2,
     ) -> GuidedInteractionV1:
         return self._interactions.open_with_awaiting(interaction, awaiting)
+
+    def set_product_submitter(
+        self,
+        submitter: Callable[..., GuidedInteractionAcceptedV1],
+    ) -> None:
+        """Attach the existing Product source authority after runtime wiring."""
+
+        self._product_submit = submitter
 
     def get_interaction(self, workflow_id: str, interaction_id: str) -> GuidedInteractionV1:
         interaction = self._interactions.get(interaction_id)
@@ -172,6 +184,22 @@ class GuidedInteractionService:
                 submission_id=submission_id,
                 idempotency_key=idempotency_key,
                 continuation_writer=self._conversations.insert_continuation_in_transaction,
+            )
+        if isinstance(request, GuidedProductSourceSubmitV1) and isinstance(
+            interaction.content,
+            GuidedProductSourceQuestionV1,
+        ):
+            if self._product_submit is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Product source actions are unavailable.",
+                )
+            return self._product_submit(
+                workflow_id,
+                interaction,
+                request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
             )
         if not isinstance(request, GuidedConceptSubmitV2) or not isinstance(
             interaction.content, GuidedConceptChoiceV2
