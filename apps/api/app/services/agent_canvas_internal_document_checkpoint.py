@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select, update
 
 from app.persistence.agent_canvas_conversation_repository import (
@@ -373,25 +373,31 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
             )
             for window in authority_plan.windows
         )
-        return StoryboardProductionPlanContentV3(
-            narrative_outline=authored_text,
-            requirement_revision_id=requirement.revision_id,
-            requirement_revision_no=requirement.revision_no,
-            global_parameters=StoryboardPlanGlobalParametersV2(
-                aspect_ratio=authority_plan.aspect_ratio,
-                total_duration_seconds=authority_plan.total_duration_seconds,
-                segment_count=len(authority_plan.windows),
-            ),
-            segments=segments,
-            rows=(),
-            segment_materializations=tuple(
-                StoryboardSegmentMaterializationV3(
-                    sequence_id=segment.sequence_id,
-                    materialization_id=f"storyboard-segment:{segment.sequence_id}",
-                )
-                for segment in segments
-            ),
-        )
+        try:
+            return StoryboardProductionPlanContentV3(
+                narrative_outline=authored_text,
+                requirement_revision_id=requirement.revision_id,
+                requirement_revision_no=requirement.revision_no,
+                global_parameters=StoryboardPlanGlobalParametersV2(
+                    aspect_ratio=authority_plan.aspect_ratio,
+                    total_duration_seconds=authority_plan.total_duration_seconds,
+                    segment_count=len(authority_plan.windows),
+                ),
+                segments=segments,
+                rows=(),
+                segment_materializations=tuple(
+                    StoryboardSegmentMaterializationV3(
+                        sequence_id=segment.sequence_id,
+                        materialization_id=f"storyboard-segment:{segment.sequence_id}",
+                    )
+                    for segment in segments
+                ),
+            )
+        except ValidationError as error:
+            raise _error(
+                "agent_working_document_content_invalid",
+                "Agent working document content is invalid.",
+            ) from error
 
     @staticmethod
     def _validate_envelope(envelope: CapabilityCommandEnvelopeV2) -> JourneyStageV2:

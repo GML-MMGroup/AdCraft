@@ -22926,7 +22926,7 @@
           "type": "integer"
         },
         "narrative_outline": {
-          "maxLength": 16384,
+          "maxLength": 65536,
           "minLength": 1,
           "title": "Narrative Outline",
           "type": "string"
@@ -23002,7 +23002,7 @@
           "$ref": "#/$defs/StoryboardPlanGlobalParametersV2"
         },
         "narrative_outline": {
-          "maxLength": 16384,
+          "maxLength": 65536,
           "minLength": 1,
           "title": "Narrative Outline",
           "type": "string"

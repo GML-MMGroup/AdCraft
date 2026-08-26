@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from hashlib import sha256
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
@@ -338,28 +338,35 @@ class CapabilityMaterializationPublicationService:
                 )
                 for window in authority_plan.windows
             )
-            content = StoryboardProductionPlanContentV3(
-                narrative_outline=text,
-                requirement_revision_id=requirement.revision_id,
-                requirement_revision_no=requirement.revision_no,
-                global_parameters=StoryboardPlanGlobalParametersV2(
-                    aspect_ratio=authority_plan.aspect_ratio,
-                    total_duration_seconds=authority_plan.total_duration_seconds,
-                    segment_count=len(authority_plan.windows),
-                ),
-                segments=segments,
-                rows=(),
-                segment_materializations=tuple(
-                    StoryboardSegmentMaterializationV3(
-                        sequence_id=segment.sequence_id,
-                        materialization_id=_sequence_materialization_id(
-                            envelope.materialization_id,
-                            segment.sequence_id,
-                        ),
-                    )
-                    for segment in segments
-                ),
-            )
+            try:
+                content = StoryboardProductionPlanContentV3(
+                    narrative_outline=text,
+                    requirement_revision_id=requirement.revision_id,
+                    requirement_revision_no=requirement.revision_no,
+                    global_parameters=StoryboardPlanGlobalParametersV2(
+                        aspect_ratio=authority_plan.aspect_ratio,
+                        total_duration_seconds=authority_plan.total_duration_seconds,
+                        segment_count=len(authority_plan.windows),
+                    ),
+                    segments=segments,
+                    rows=(),
+                    segment_materializations=tuple(
+                        StoryboardSegmentMaterializationV3(
+                            sequence_id=segment.sequence_id,
+                            materialization_id=_sequence_materialization_id(
+                                envelope.materialization_id,
+                                segment.sequence_id,
+                            ),
+                        )
+                        for segment in segments
+                    ),
+                )
+            except ValidationError as error:
+                raise V2PersistenceError(
+                    "agent_working_document_content_invalid",
+                    "Agent working document content is invalid.",
+                    stage="capability_materialization_publication",
+                ) from error
             document_id = (
                 "adoc_" + _digest(f"{envelope.workflow_id}:{session_id}:storyboard-plan")[:32]
             )

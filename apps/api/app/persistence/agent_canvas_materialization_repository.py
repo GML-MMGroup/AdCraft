@@ -480,7 +480,9 @@ class AgentCanvasMaterializationRepository:
                     for document_write in materialization_plan.document_writes:
                         mutation = document_write.mutation_plan
                         if mutation is None:
-                            document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                            document = self._working_documents.validate_document_payload(
+                                document_write.payload
+                            )
                             document_kinds[document.document_id] = document.kind
                             _validate_authority_document_sources(
                                 connection,
@@ -516,7 +518,7 @@ class AgentCanvasMaterializationRepository:
                                 "agent_document_not_found",
                                 "Agent working document was not found.",
                             )
-                        current_document = _materialization_document(current)
+                        current_document = self._working_documents.validate_document_row(current)
                         document_kinds[current_document.document_id] = current_document.kind
                         next_document = current_document.model_copy(
                             update={
@@ -571,7 +573,9 @@ class AgentCanvasMaterializationRepository:
                     ):
                         if document_result.before_revision is not None:
                             continue
-                        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                        document = self._working_documents.validate_document_payload(
+                            document_write.payload
+                        )
                         _append_authority_document_events(
                             connection,
                             events=self._events,
@@ -2087,7 +2091,7 @@ class AgentCanvasMaterializationRepository:
 
 
 def _materialization_document(row: Mapping[str, object]) -> AgentWorkingDocumentV2:
-    return AgentWorkingDocumentV2.model_validate(
+    return AgentWorkingDocumentRepository.validate_document_payload(
         {
             "document_id": row["document_id"],
             "workflow_id": row["workflow_id"],
@@ -2465,13 +2469,7 @@ def _insert_materialization_document(
             "materialization_document_invalid",
             "Materialization document create payload is missing.",
         )
-    try:
-        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
-    except ValueError as error:
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document payload is invalid.",
-        ) from error
+    document = AgentWorkingDocumentRepository.validate_document_payload(document_write.payload)
     if (
         document.document_id != document_write.document_id
         or document.workflow_id != plan.workflow_id

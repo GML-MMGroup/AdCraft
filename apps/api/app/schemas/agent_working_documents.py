@@ -9,6 +9,9 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 
+PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH = 65_536
+
+
 AgentWorkingDocumentKindV2 = Literal[
     "anchor_registry",
     "storyboard_production_plan",
@@ -287,7 +290,10 @@ class AgentDocumentLinkedNodeRuntimeV2(_WorkingDocumentModel):
 
 
 class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
-    narrative_outline: str = Field(min_length=1, max_length=16_384)
+    narrative_outline: str = Field(
+        min_length=1,
+        max_length=PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH,
+    )
     global_parameters: StoryboardPlanGlobalParametersV2
     segments: tuple[StoryboardNarrativeSegmentV2, ...] = Field(max_length=128)
     rows: tuple[StoryboardPlanRowV2, ...] = Field(max_length=1_152)
@@ -410,7 +416,10 @@ class StoryboardExcludedMediaV3(_AuthoritativeWorkingDocumentModel):
 
 class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
     schema_version: Literal["3"] = "3"
-    narrative_outline: str = Field(min_length=1, max_length=16_384)
+    narrative_outline: str = Field(
+        min_length=1,
+        max_length=PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH,
+    )
     requirement_revision_id: str = Field(min_length=1, max_length=160)
     requirement_revision_no: int = Field(ge=1)
     global_parameters: StoryboardPlanGlobalParametersV2
