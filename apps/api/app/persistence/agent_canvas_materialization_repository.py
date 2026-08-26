@@ -2418,6 +2418,11 @@ def _insert_materialized_node(
                 source_asset_id=(
                     binding.source.asset_id if binding.source.kind == "image_asset" else None
                 ),
+                source_asset_version_id=(
+                    binding.source.source_asset_version_id
+                    if binding.source.kind == "image_asset"
+                    else None
+                ),
                 target_node_id=binding.target_node_id,
                 input_role=binding.input_role,
                 required=binding.required,

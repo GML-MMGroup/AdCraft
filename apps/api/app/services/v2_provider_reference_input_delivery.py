@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import base64
+import hashlib
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
+from collections.abc import Mapping
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -21,6 +23,7 @@ from app.schemas.agent_canvas_runtime import (
 from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
 from app.services.v2_asset_store import V2AssetStoreService
+from app.services.v2_storage_adapter import StorageAdapter
 from app.services.v2_data_boundary import validate_v2_relative_path
 
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
@@ -143,6 +146,7 @@ class V2DeliveredProviderReference(BaseModel):
     provider_input_value: str = Field(exclude=True, repr=False)
     source: Literal["public_url", "local_file", "provider_upload"]
     delivery_status: Literal["ready"] = "ready"
+    rendition_kind: Literal["original", "provider_ready"] = "original"
     checksum: str | None = None
     byte_count: int | None = None
 
@@ -166,6 +170,7 @@ class V2DeliveredProviderReference(BaseModel):
             "provider_input_value": self.provider_input_value,
             "source": self.source,
             "delivery_status": self.delivery_status,
+            "rendition_kind": self.rendition_kind,
             "checksum": self.checksum,
             "byte_count": self.byte_count,
         }
@@ -236,6 +241,7 @@ class V2DeliveredReferenceSet(BaseModel):
                     "source": reference.source,
                     "checksum": reference.checksum,
                     "byte_count": reference.byte_count,
+                    "rendition_kind": reference.rendition_kind,
                 }
                 for reference in self.references
             ],
@@ -444,6 +450,24 @@ class V2ProviderReferenceInputDeliveryService:
         delivery_modes: frozenset[str],
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
+        if input_snapshot.binding_metadata.get("rendition_kind") == "provider_ready":
+            provider_ready = _verified_provider_ready_rendition(
+                metadata,
+                asset_id=input_snapshot.asset_id,
+                version=version,
+                data_dir=self._data_dir,
+            )
+            if provider_ready is not None:
+                input_type, input_value = provider_ready
+                if input_type in delivery_modes:
+                    return _canvas_delivered(
+                        input_snapshot,
+                        version,
+                        input_type=input_type,
+                        input_value=input_value,
+                        source="provider_upload",
+                        rendition_kind="provider_ready",
+                    )
         provider_file_id = _first_mapping_string(
             metadata, "provider_file_id", "file_id", "ark_file_id"
         )
@@ -759,6 +783,7 @@ def _canvas_delivered(
     input_value: str,
     source: Literal["public_url", "local_file", "provider_upload"],
     byte_count: int | None = None,
+    rendition_kind: Literal["original", "provider_ready"] = "original",
 ) -> V2DeliveredProviderReference:
     return V2DeliveredProviderReference(
         asset_id=input_snapshot.asset_id,
@@ -778,6 +803,7 @@ def _canvas_delivered(
         source=source,
         checksum=version.sha256,
         byte_count=byte_count,
+        rendition_kind=rendition_kind,
     )
 
 
@@ -803,6 +829,52 @@ def _first_mapping_string(metadata: dict[str, object], *keys: str) -> str | None
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return None
+
+
+def _verified_provider_ready_rendition(
+    metadata: dict[str, object],
+    *,
+    asset_id: str,
+    version: AssetVersionMetadataV2,
+    data_dir: Path,
+) -> tuple[Literal["provider_file_id", "provider_uploaded_url"], str] | None:
+    candidate = metadata.get("renditions")
+    if not isinstance(candidate, Mapping):
+        return None
+    provider_ready = candidate.get("provider_ready")
+    if not isinstance(provider_ready, Mapping):
+        return None
+    if (
+        provider_ready.get("asset_id") != asset_id
+        or provider_ready.get("version_id") != version.version_id
+        or provider_ready.get("sha256") != version.sha256
+        or provider_ready.get("mime_type") != version.mime_type
+    ):
+        return None
+    storage_key = provider_ready.get("storage_key")
+    if not isinstance(storage_key, str):
+        return None
+    try:
+        path = StorageAdapter(data_dir).resolve_local_path(storage_key)
+    except (OSError, V2PersistenceError):
+        return None
+    if not path.is_file():
+        return None
+    if path.stat().st_size != version.size_bytes:
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != version.sha256:
+        return None
+    provider_file_id = provider_ready.get("provider_file_id")
+    if isinstance(provider_file_id, str) and provider_file_id.strip():
+        return "provider_file_id", provider_file_id.strip()
+    provider_url = provider_ready.get("provider_uploaded_url")
+    if isinstance(provider_url, str) and is_provider_compatible_public_url(provider_url):
+        return "provider_uploaded_url", provider_url.strip()
     return None
 
 

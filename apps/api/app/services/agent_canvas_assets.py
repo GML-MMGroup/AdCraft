@@ -36,6 +36,9 @@ from app.schemas.v2_asset_library import (
     AssetVersionMetadataV2,
 )
 from app.services.v2_storage_adapter import StorageAdapter
+from app.services.agent_canvas_asset_reference_resolver import (
+    AgentCanvasAssetReferenceResolver,
+)
 from app.services.v2_final_composition_renderer import V2MediaProbe, V2MediaProbeResult
 
 
@@ -71,6 +74,7 @@ class AgentCanvasAssetService:
         self._assets = assets
         self._workflows = workflows
         self._storage = StorageAdapter(data_dir)
+        self._reference_resolver = AgentCanvasAssetReferenceResolver(data_dir, assets)
         self._media_facts_probe = media_facts_probe or V2MediaProbe()
 
     def upload_bytes(
@@ -139,21 +143,25 @@ class AgentCanvasAssetService:
                 "Asset was not found.",
                 stage="agent_canvas_asset_service",
             )
-        return self._asset_summary(version)
+        verified = self._reference_resolver.resolve_bound_asset(asset_id, version.version_id)
+        return self._asset_summary(verified.metadata)
 
     def resolve_asset_version(
         self,
         asset_id: str,
         version_id: str,
     ) -> ProjectAssetSummaryV2:
-        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
-        if version is None:
-            raise V2PersistenceError(
-                "asset_version_not_found",
-                "Asset version was not found.",
-                stage="agent_canvas_asset_service",
-            )
-        return self._asset_summary(version)
+        try:
+            verified = self._reference_resolver.resolve_bound_asset(asset_id, version_id)
+        except V2PersistenceError as error:
+            if error.code == "canvas_asset_reference_version_required":
+                raise V2PersistenceError(
+                    "asset_version_not_found",
+                    "Asset version was not found.",
+                    stage="agent_canvas_asset_service",
+                ) from error
+            raise
+        return self._asset_summary(verified.metadata)
 
     def resolve_target_asset(
         self,
@@ -164,6 +172,22 @@ class AgentCanvasAssetService:
         if version is None or (
             version.source_workflow_id is not None and version.source_workflow_id != workflow_id
         ):
+            raise V2PersistenceError(
+                "target_not_found",
+                "Target was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        return self._asset_summary(version)
+
+    def resolve_target_asset_version(
+        self,
+        workflow_id: str,
+        asset_id: str,
+        version_id: str,
+    ) -> ProjectAssetSummaryV2:
+        verified = self._reference_resolver.resolve_bound_asset(asset_id, version_id)
+        version = verified.metadata
+        if version.source_workflow_id is not None and version.source_workflow_id != workflow_id:
             raise V2PersistenceError(
                 "target_not_found",
                 "Target was not found.",
@@ -193,21 +217,7 @@ class AgentCanvasAssetService:
     def resolve_asset_version_path(self, asset_id: str, version_id: str) -> Path:
         """Resolve one exact immutable AssetVersion to a readable object path."""
 
-        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
-        if version is None:
-            raise V2PersistenceError(
-                "asset_version_not_found",
-                "Asset version was not found.",
-                stage="agent_canvas_asset_service",
-            )
-        path = self._storage.resolve_local_path(version.storage_key)
-        if version.status != "ready" or not path.is_file():
-            raise V2PersistenceError(
-                "asset_not_ready",
-                "Asset content is unavailable.",
-                stage="agent_canvas_asset_service",
-            )
-        return path
+        return self._reference_resolver.resolve_bound_asset(asset_id, version_id).path
 
     def publish_generated_bytes(
         self,

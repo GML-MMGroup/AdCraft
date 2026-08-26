@@ -146,6 +146,11 @@ class AgentCanvasRunIntentSnapshotService:
                         if isinstance(binding.source, CanvasBindingSourceNodeV2)
                         else binding.source.source_asset_id
                     ),
+                    source_asset_version_id=(
+                        binding.source.source_asset_version_id
+                        if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                        else None
+                    ),
                     source_node_revision=(
                         next(
                             (
@@ -294,6 +299,11 @@ def _binding_snapshots(
                 binding.source.source_node_id
                 if isinstance(binding.source, CanvasBindingSourceNodeV2)
                 else binding.source.source_asset_id
+            ),
+            source_asset_version_id=(
+                binding.source.source_asset_version_id
+                if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                else None
             ),
             source_node_revision=(
                 workflow_nodes[binding.source.source_node_id].revision

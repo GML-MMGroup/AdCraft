@@ -970,6 +970,11 @@ class AgentCanvasBindingRow(Base):
             "order_index",
             "binding_id",
         ),
+        Index(
+            "ix_agent_canvas_bindings_asset_version",
+            "source_asset_id",
+            "source_asset_version_id",
+        ),
     )
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -979,6 +984,7 @@ class AgentCanvasBindingRow(Base):
     source_kind: Mapped[str] = mapped_column(Text, nullable=False)
     source_node_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"))
     source_asset_id: Mapped[str | None] = mapped_column(Text)
+    source_asset_version_id: Mapped[str | None] = mapped_column(Text)
     target_node_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_nodes.node_id"), nullable=False
     )

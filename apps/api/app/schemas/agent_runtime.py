@@ -667,6 +667,7 @@ AgentNodeRefV2 = Annotated[
 class AgentAssetRefV2(_StrictModel):
     kind: Literal["image_asset"] = "image_asset"
     asset_id: str = Field(min_length=1, max_length=160)
+    version_id: str | None = Field(default=None, max_length=160)
 
 
 class _AgentCommandOperationV2(_StrictModel):

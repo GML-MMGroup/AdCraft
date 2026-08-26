@@ -188,7 +188,7 @@ export type CanvasVariationDraftV2 = { readonly "source_node_id": string; readon
 
 export type CanvasBindingSourceNodeV2 = { readonly "kind"?: "node_output"; readonly "source_node_id": string };
 
-export type CanvasBindingSourceImageAssetV2 = { readonly "kind"?: "image_asset"; readonly "source_asset_id": string };
+export type CanvasBindingSourceImageAssetV2 = { readonly "kind"?: "image_asset"; readonly "source_asset_id": string; readonly "source_asset_version_id"?: string | null };
 
 export type CanvasParameterProvenanceV2 = { readonly "origin": "binding" | "guidance_default" | "manual" | "node_prompt" | "provider_clamp" | "role_default" | "structured_content" | "user_explicit"; readonly "source_node_id"?: string | null; readonly "binding_id"?: string | null; readonly "source_revision"?: number | null; readonly "requested_value": number | number | string | boolean; readonly "effective_value": number | number | string | boolean; readonly "normalization_code"?: string | null };
 
@@ -800,7 +800,7 @@ export type AgentNodeIdRefV2 = { readonly "kind"?: "node_id"; readonly "node_id"
 
 export type AgentOperationResultRefV2 = { readonly "kind"?: "operation_result"; readonly "operation_id": string };
 
-export type AgentAssetRefV2 = { readonly "kind"?: "image_asset"; readonly "asset_id": string };
+export type AgentAssetRefV2 = { readonly "kind"?: "image_asset"; readonly "asset_id": string; readonly "version_id"?: string | null };
 
 export type AgentPlacementHintV2 = { readonly "intent": "after_anchor" | "append_flow" | "near_selection" | "right_sibling"; readonly "anchor_node_id"?: string | null; readonly "group_key"?: string | null };
 

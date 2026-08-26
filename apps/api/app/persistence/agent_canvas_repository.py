@@ -2514,6 +2514,11 @@ def _binding_values(binding: CanvasBindingV2) -> dict[str, object]:
             if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
             else None
         ),
+        "source_asset_version_id": (
+            binding.source.source_asset_version_id
+            if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+            else None
+        ),
         "target_node_id": binding.target_node_id,
         "input_role": binding.input_role,
         "required": binding.required,
@@ -2578,7 +2583,14 @@ def _binding_from_row(row: RowMapping) -> CanvasBindingV2:
     source = (
         CanvasBindingSourceNodeV2(source_node_id=str(row["source_node_id"]))
         if row["source_kind"] == "node_output"
-        else CanvasBindingSourceImageAssetV2(source_asset_id=str(row["source_asset_id"]))
+        else CanvasBindingSourceImageAssetV2(
+            source_asset_id=str(row["source_asset_id"]),
+            source_asset_version_id=(
+                str(row["source_asset_version_id"])
+                if row.get("source_asset_version_id") is not None
+                else None
+            ),
+        )
     )
     return CanvasBindingV2(
         binding_id=str(row["binding_id"]),

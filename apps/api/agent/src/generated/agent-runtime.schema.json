@@ -361,6 +361,19 @@
           "default": "image_asset",
           "title": "Kind",
           "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
         }
       },
       "required": [
@@ -5480,6 +5493,19 @@
           "minLength": 1,
           "title": "Source Asset Id",
           "type": "string"
+        },
+        "source_asset_version_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Version Id"
         }
       },
       "required": [

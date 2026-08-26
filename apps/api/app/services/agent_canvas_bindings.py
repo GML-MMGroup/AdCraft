@@ -21,6 +21,7 @@ from app.schemas.agent_canvas import (
     CanvasBindingPatchRequestV2,
     CanvasBindingMutationResponseV2,
     CanvasBindingSourceNodeV2,
+    CanvasBindingSourceImageAssetV2,
     CanvasBindingV2,
     AgentCanvasPromptContextSnapshotV2,
     AgentCanvasWorkflowV2,
@@ -117,9 +118,21 @@ class AgentCanvasBindingService:
                 input_role=request.input_role,
             )
         else:
-            asset = self._resolve_asset(request.source.asset_id)
+            if not isinstance(request.source, CanvasBindingSourceImageAssetV2):
+                raise _media_incompatible_error()
+            asset = (
+                self.resolve_asset_version(
+                    request.source.asset_id,
+                    request.source.source_asset_version_id,
+                )
+                if request.source.source_asset_version_id is not None
+                else self._resolve_asset(request.source.asset_id)
+            )
             if asset.media_type != "image":
                 raise _media_incompatible_error()
+            normalized_source = request.source.model_copy(
+                update={"source_asset_version_id": asset.version_id}
+            )
             policy_decision = self._connection_policy.decide(
                 source_node_type="image",
                 target_node_type=target.node_type,
@@ -175,7 +188,11 @@ class AgentCanvasBindingService:
         binding = CanvasBindingV2(
             binding_id=f"binding_{uuid4().hex}",
             workflow_id=workflow_id,
-            source=request.source,
+            source=(
+                normalized_source
+                if isinstance(request.source, CanvasBindingSourceImageAssetV2)
+                else request.source
+            ),
             target_node_id=request.target_node_id,
             input_role=policy_decision.input_role or "text_context",
             required=request.required,
@@ -247,7 +264,7 @@ class AgentCanvasBindingService:
                 input_role=request.input_role or existing.input_role,
             )
         else:
-            asset = self._resolve_asset(existing.source.asset_id)
+            asset = self._resolve_direct_asset(existing.source)
             if asset.media_type != "image":
                 raise _media_incompatible_error()
             policy_decision = self._connection_policy.require(
@@ -466,7 +483,7 @@ class AgentCanvasBindingService:
                 source_revision = source.revision
                 source_semantic_role = source.semantic_role
             else:
-                asset = self._resolve_asset(binding.source.asset_id)
+                asset = self._resolve_direct_asset(binding.source)
                 source_kind = "image_asset"
                 source_semantic_role = asset.source_semantic_role
             resolved.append(
@@ -483,7 +500,7 @@ class AgentCanvasBindingService:
                     asset_checksum=asset.checksum,
                     access_descriptor=StorageAccessDescriptorV2(
                         asset_id=asset.asset_id,
-                        media_url=asset.media_url or asset.preview_url or "",
+                        media_url=asset.media_url or "",
                         checksum=asset.checksum,
                     ),
                     binding_id=binding.binding_id,
@@ -503,7 +520,7 @@ class AgentCanvasBindingService:
                 "Binding source asset was not found.",
                 stage="agent_canvas_binding_service",
             ) from error
-        if asset.status != "ready" or not (asset.media_url or asset.preview_url):
+        if asset.status != "ready" or not asset.media_url:
             raise V2PersistenceError(
                 "binding_source_not_ready",
                 "Binding source asset is not ready.",
@@ -537,6 +554,21 @@ class AgentCanvasBindingService:
                 stage="agent_canvas_binding_service",
             )
         return asset
+
+    def _resolve_direct_asset(
+        self,
+        source: CanvasBindingSourceImageAssetV2,
+    ) -> ProjectAssetSummaryV2:
+        if source.source_asset_version_id is None:
+            raise V2PersistenceError(
+                "canvas_asset_reference_version_required",
+                "Direct asset bindings require an immutable asset version.",
+                stage="agent_canvas_binding_service",
+            )
+        return self.resolve_asset_version(
+            source.source_asset_id,
+            source.source_asset_version_id,
+        )
 
     def get_workflow(self, workflow_id: str) -> AgentCanvasWorkflowV2:
         return self._workflows.get_workflow(workflow_id)
@@ -638,7 +670,10 @@ class AgentCanvasBindingService:
                 source_node_id = source.node_id
                 source_semantic_role = source.semantic_role
             else:
-                asset = self._resolve_asset(binding.source_id)
+                asset = self.resolve_asset_version(
+                    binding.source_id,
+                    binding.source_asset_version_id,
+                )
                 source_semantic_role = asset.source_semantic_role
             media_inputs.append(
                 ResolvedMediaInputSnapshotV2(
@@ -656,7 +691,7 @@ class AgentCanvasBindingService:
                     asset_checksum=asset.checksum,
                     access_descriptor=StorageAccessDescriptorV2(
                         asset_id=asset.asset_id,
-                        media_url=asset.media_url or asset.preview_url or "",
+                        media_url=asset.media_url or "",
                         checksum=asset.checksum,
                     ),
                     binding_id=binding.binding_id,
