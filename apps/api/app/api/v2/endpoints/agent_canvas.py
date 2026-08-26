@@ -510,6 +510,7 @@ def create_agent_canvas_runtime(
             max_total_pixels=80_000_000,
             timeout_seconds=30,
         ),
+        events=event_repository,
     )
     conversation_repository = AgentCanvasConversationRepository(
         database,

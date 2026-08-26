@@ -14,6 +14,7 @@ from app.persistence.agent_canvas_guided_product_repository import (
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
+from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasGuidanceSessionRow
 from app.schemas.agent_canvas import CanvasNodeV2, CanvasPositionV2
 from app.schemas.agent_canvas_guided_product import (
@@ -22,6 +23,8 @@ from app.schemas.agent_canvas_guided_product import (
     ProductUploadCompilationProvenanceV1,
     ProductUploadInputProvenanceV1,
 )
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.product_upload_multiview_compiler import (
     ProductUploadMultiviewCompilationError,
@@ -29,7 +32,6 @@ from app.services.product_upload_multiview_compiler import (
     ProductUploadMultiviewInput,
 )
 from app.services.v2_final_composition_renderer import V2MediaProbe
-from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 
 
 class GuidedProductInputCommitService:
@@ -43,12 +45,14 @@ class GuidedProductInputCommitService:
         workflows: AgentCanvasWorkflowRepository,
         commits: AgentCanvasGuidedProductRepository,
         compiler: ProductUploadMultiviewCompiler,
+        events: EventRepository,
     ) -> None:
         self._assets = assets
         self._asset_repository = asset_repository
         self._workflows = workflows
         self._commits = commits
         self._compiler = compiler
+        self._events = events
 
     def commit(
         self,
@@ -105,6 +109,12 @@ class GuidedProductInputCommitService:
                 try:
                     compiler_result = self._compiler.compile(compiler_inputs)
                 except ProductUploadMultiviewCompilationError as error:
+                    self._append_failure_event(
+                        workflow_id=workflow_id,
+                        request=request,
+                        request_digest=digest,
+                        error_code=error.code,
+                    )
                     raise V2PersistenceError(
                         error.code,
                         str(error),
@@ -189,6 +199,40 @@ class GuidedProductInputCommitService:
                 except V2PersistenceError:
                     pass
             raise
+
+    def _append_failure_event(
+        self,
+        *,
+        workflow_id: str,
+        request: GuidedProductInputCommitRequestV1,
+        request_digest: str,
+        error_code: str,
+    ) -> None:
+        """Record one safe compiler failure without masking its domain error."""
+
+        try:
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=workflow_id,
+                    event_type="guided_product_source_failed",
+                    transition_key=(
+                        f"guided-product:{workflow_id}:{request.input_kind}:failure:"
+                        f"{request_digest}"
+                    ),
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    payload={
+                        "input_kind": request.input_kind,
+                        "request_digest": request_digest,
+                        "asset_versions": [
+                            reference.model_dump(mode="json")
+                            for reference in request.asset_versions
+                        ],
+                        "error_code": error_code,
+                    },
+                )
+            )
+        except V2PersistenceError:
+            return
 
     def _resolve_input_version(self, workflow_id: str, asset_id: str, version_id: str):
         version = self._asset_repository.find_version(asset_id=asset_id, version_id=version_id)
