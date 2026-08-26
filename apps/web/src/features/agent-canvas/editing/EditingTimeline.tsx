@@ -1,6 +1,5 @@
 import { useMemo, type ReactNode } from "react";
 
-import { VideoIcon } from "../../../icons.tsx";
 import type { EditingBgmEntryV2, EditingVideoEntryV2 } from "../../../types-v2.ts";
 import { AudioWaveformTrack } from "./AudioWaveformTrack.tsx";
 import { AudioTrackControls } from "./AudioTrackControls.tsx";
@@ -122,7 +121,10 @@ export function EditingTimeline({
           return (
             <div className="agent-editing-timeline__lanes">
               <section className="agent-editing-timeline__track" aria-label="Video track" role="group">
-                <TrackLabel icon={<VideoIcon />} count={activeSequence.videos.length}>Video Track</TrackLabel>
+                <TrackLabel
+                  icon={<img src="/imgs/node-icons/video.svg" alt="" aria-hidden="true" />}
+                  count={activeSequence.videos.length}
+                >Video Track</TrackLabel>
                 <div
                   className="agent-editing-timeline__lane"
                   style={{ width: viewport.contentWidth }}
@@ -171,13 +173,7 @@ export function EditingTimeline({
                 role="group"
               >
                 <TrackLabel
-                  icon={(
-                    <img
-                      src="/icon/arcticons--ambient-music-mod.svg"
-                      alt=""
-                      aria-hidden="true"
-                    />
-                  )}
+                  icon={<img src="/imgs/node-icons/audio.svg" alt="" aria-hidden="true" />}
                   onSelect={inputs.bgm ? () => onSelectReference(inputs.bgm!.referenceId) : undefined}
                   details={inputs.bgm ? (
                     <AudioTrackControls

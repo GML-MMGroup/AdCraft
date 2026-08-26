@@ -348,7 +348,8 @@ describe("EditingTimeline retained controls", () => {
     expect((videoTrack.querySelector(".agent-editing-timeline__lane") as HTMLElement).style.width)
       .toBe(ruler.style.width);
     const controls = within(track).getByRole("region", { name: "Audio track controls" });
-    expect(track.querySelector('img[src="/icon/arcticons--ambient-music-mod.svg"]')).toBeTruthy();
+    expect(videoTrack.querySelector('img[src="/imgs/node-icons/video.svg"]')).toBeTruthy();
+    expect(track.querySelector('img[src="/imgs/node-icons/audio.svg"]')).toBeTruthy();
     expect(within(controls).getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
     expect(within(controls).getByRole("slider", { name: "BGM volume" })).toBeTruthy();
     expect(within(track).queryByRole("spinbutton", { name: "Trim start" })).toBeNull();
