@@ -127,7 +127,7 @@ describe("AgentCanvasStyleSelector", () => {
       .toBe("placeholder");
   });
 
-  it("keeps the search control hidden for a short catalog and declares the two-column rail", async () => {
+  it("keeps search hidden for a short catalog and gives the compact list its own scroll viewport", async () => {
     vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
 
     render(
@@ -144,7 +144,17 @@ describe("AgentCanvasStyleSelector", () => {
 
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
-    expect(css).toMatch(/\.agent-chat__style-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
+    const listRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const cardRule = css.match(/\.agent-chat__style-menu \.agent-chat__style-option\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const previewRule = css.match(/\.agent-chat__style-preview\s*\{([\s\S]*?)\n\}/m)?.[1];
+    expect(listRule).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(listRule).toContain("flex: 1 1 auto");
+    expect(listRule).toContain("min-height: 0");
+    expect(listRule).toContain("overflow-y: auto");
+    expect(cardRule).toContain("grid-template-columns: 96px minmax(0, 1fr)");
+    expect(previewRule).toContain("width: 96px");
+    expect(previewRule).toContain("height: 64px");
+    expect(css).not.toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
   });
 
   it("loads all catalog pages and deduplicates stable Skill versions", async () => {
