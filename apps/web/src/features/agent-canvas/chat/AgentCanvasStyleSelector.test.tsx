@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { agentCanvasApi, V2ApiError } from "../../../api/agentCanvasApi.ts";
 import type { ActiveStyleSkillSummaryV2, VideoSkillCatalogResponseV2 } from "../../../types-v2.ts";
@@ -30,7 +32,7 @@ const catalog: VideoSkillCatalogResponseV2 = {
       category: "cinematic-narrative",
       tags: ["cinematic", "poetic"],
       supported_use_cases: ["brand film"],
-      preview: { kind: "none", summary: "Text-only public preview.", media_url: null },
+      preview: { kind: "image", summary: "Internal preview description.", media_url: "/styles/cinematic.jpg" },
       display_order: 20,
     },
     {
@@ -66,7 +68,7 @@ describe("AgentCanvasStyleSelector", () => {
     );
 
     expect(agentCanvasApi.listVideoSkills).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Style: Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(agentCanvasApi.listVideoSkills).toHaveBeenCalledWith({ limit: 100 });
@@ -78,7 +80,71 @@ describe("AgentCanvasStyleSelector", () => {
       "aria-pressed",
     )).toBe("true");
     expect(within(dialog).queryByRole("img")).toBeNull();
-    expect(within(dialog).getByText("general advertising")).toBeTruthy();
+    expect(within(dialog).queryByText("general advertising")).toBeNull();
+    expect(within(dialog).queryByText("commercial")).toBeNull();
+    expect(within(dialog).getByText("Choose visual language")).toBeTruthy();
+  });
+
+  it("projects each Style as a visual card without internal catalog metadata", async () => {
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+
+    render(
+      <AgentCanvasStyleSelector
+        workflowId="workflow-1"
+        activeStyle={activeStyle}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
+
+    const option = within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ });
+    expect(option.className).toContain("agent-chat__style-option");
+    expect(option.querySelector("img")?.getAttribute("src")).toBe("/styles/cinematic.jpg");
+    expect(within(option).getByText("A restrained cinematic treatment.")).toBeTruthy();
+    expect(within(option).queryByText("Internal preview description.")).toBeNull();
+    expect(within(option).queryByText("cinematic")).toBeNull();
+    expect(within(option).queryByText("brand film")).toBeNull();
+    expect(within(option).queryByText("1.0.0")).toBeNull();
+  });
+
+  it("uses a film placeholder when a Style has no public preview", async () => {
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+
+    render(
+      <AgentCanvasStyleSelector
+        workflowId="workflow-1"
+        activeStyle={activeStyle}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
+    expect(within(dialog).getByRole("button", { name: /Platform Default/ }).getAttribute("data-preview"))
+      .toBe("placeholder");
+  });
+
+  it("keeps the search control hidden for a short catalog and declares the two-column rail", async () => {
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+
+    render(
+      <AgentCanvasStyleSelector
+        workflowId="workflow-1"
+        activeStyle={activeStyle}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
+    expect(within(dialog).queryByRole("searchbox")).toBeNull();
+
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    expect(css).toMatch(/\.agent-chat__style-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
   });
 
   it("loads all catalog pages and deduplicates stable Skill versions", async () => {
@@ -102,7 +168,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style: Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
 
     expect(listVideoSkills).toHaveBeenNthCalledWith(1, { limit: 100 });
@@ -137,7 +203,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style: Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
@@ -176,7 +242,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style: Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
@@ -207,7 +273,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style: Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
