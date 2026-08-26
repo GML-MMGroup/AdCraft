@@ -1155,16 +1155,6 @@
   cursor: pointer;
 }
 
-.agent-editing-panel__warnings {
-  margin: 12px 0 0;
-  padding: 9px 12px 9px 28px;
-  color: #c4c4c4;
-  background: #292929;
-  border: 1px solid #3b3b3b;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
 @media (max-height: 860px) {
   .agent-editing-panel__workspace {
     grid-template-rows: minmax(220px, .88fr) minmax(270px, 1.12fr);

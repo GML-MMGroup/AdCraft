@@ -99,7 +99,7 @@ describe("AgentCanvasEditingPanel", () => {
           bgm_node_id: null,
           bgm_asset_id: null,
           estimated_duration_seconds: 0,
-          warnings: [],
+          warnings: ["binding_guided_editing_d58ce6dc115824f9405f99b3:disabled"],
         },
         last_successful_export: null,
         active_export: null,
@@ -134,6 +134,7 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.queryByRole("button", { name: "Download exported video" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add exported video to canvas" })).toBeNull();
     expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByText("binding_guided_editing_d58ce6dc115824f9405f99b3:disabled")).toBeNull();
   });
 
   it("allows backend export for a ready source without a browser media URL", () => {
