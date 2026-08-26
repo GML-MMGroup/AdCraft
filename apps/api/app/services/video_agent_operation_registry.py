@@ -180,7 +180,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     _definition(
         "author_guided_script_checkpoint",
         "CapabilityInvocationContextV2",
-        "ScriptMaterializationResultV1",
+        "GuidedScriptCheckpointDraftV1",
         capability_id="script_authoring",
         internal_skill_id="video_agent_script_authoring",
         style_projection_role="script",

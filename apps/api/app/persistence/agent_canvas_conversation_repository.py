@@ -3012,6 +3012,16 @@ class AgentCanvasConversationRepository:
                     "capability_turn_id": turn_id,
                     "agent_request_identity": f"capability-retry:{identity}",
                     "created_at": timestamp,
+                    **(
+                        {"result_contract_name": "GuidedScriptCheckpointDraftV1"}
+                        if (
+                            source_envelope.publication_kind == "internal_document"
+                            and source_envelope.capability_id == "script_authoring"
+                            and source_envelope.result_contract_name
+                            == "ScriptMaterializationResultV1"
+                        )
+                        else {}
+                    ),
                 }
             )
         else:

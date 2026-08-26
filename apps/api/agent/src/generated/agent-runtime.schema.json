@@ -13938,6 +13938,37 @@
       "title": "GuidedReferencePreviewV1",
       "type": "object"
     },
+    "GuidedScriptCheckpointDraftV1": {
+      "additionalProperties": false,
+      "description": "Model-owned narrative fields for an internal guided checkpoint.",
+      "properties": {
+        "content": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "GuidedScriptCheckpointDraftV1",
+      "type": "object"
+    },
     "GuidedSessionStateV2": {
       "additionalProperties": false,
       "properties": {
@@ -26917,6 +26948,7 @@
     "V2ShotCellPromptPlan",
     "V2ShotVideoPromptPlan",
     "V2BgmPromptPlan",
+    "GuidedScriptCheckpointDraftV1",
     "WorldSettingMaterializationResultV1",
     "ProductMaterializationResultV1",
     "PropMaterializationResultV1",
@@ -27045,7 +27077,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "author_guided_script_checkpoint",
-      "result_contract_name": "ScriptMaterializationResultV1",
+      "result_contract_name": "GuidedScriptCheckpointDraftV1",
       "style_projection_role": "script",
       "validation_profile": null
     },

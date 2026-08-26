@@ -100,7 +100,10 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        return _ENVELOPE_ADAPTER.validate_json(payload)
+        return _ENVELOPE_ADAPTER.validate_json(
+            payload,
+            context={"allow_retired_historical_envelope": True},
+        )
 
     def get_in_transaction(
         self,
@@ -117,7 +120,10 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        return _ENVELOPE_ADAPTER.validate_json(payload)
+        return _ENVELOPE_ADAPTER.validate_json(
+            payload,
+            context={"allow_retired_historical_envelope": True},
+        )
 
     def validate_identity_in_transaction(
         self,

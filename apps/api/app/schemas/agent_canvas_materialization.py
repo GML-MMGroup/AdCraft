@@ -273,6 +273,14 @@ class ScriptMaterializationContentV1(_MaterializationModel):
     total_duration_seconds: DurationSecondsValueV1
 
 
+class GuidedScriptCheckpointDraftV1(_MaterializationModel):
+    """Model-owned narrative fields for an internal guided checkpoint."""
+
+    title: str = Field(min_length=1, max_length=256)
+    summary_prompt: str = Field(min_length=1, max_length=8_192)
+    content: str = Field(min_length=1, max_length=32_768)
+
+
 class ScriptMaterializationResultV1(_MaterializationResultBaseV1):
     structured_content: ScriptMaterializationContentV1
 

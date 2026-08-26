@@ -488,6 +488,8 @@ export type WorldSettingMaterializationContentV1 = { readonly "content": string;
 
 export type QuickMediaMaterializationContentV1 = { readonly "media_type": "audio" | "image" | "video"; readonly "content_summary": string };
 
+export type GuidedScriptCheckpointDraftV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "content": string };
+
 export type ScriptMaterializationContentV1 = { readonly "content": string; readonly "total_duration_seconds": number };
 
 export type WorldSettingMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "structured_content": WorldSettingMaterializationContentV1 };

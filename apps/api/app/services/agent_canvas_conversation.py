@@ -77,6 +77,7 @@ from app.schemas.agent_canvas_capability_identity import (
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
+    GuidedScriptCheckpointDraftV1,
 )
 from app.schemas.agent_canvas_requirements import RequirementPatchV1
 from app.schemas.agent_canvas_role_prompt_preparation import (
@@ -395,7 +396,17 @@ class DeterministicVideoAgentGateway:
         context: Mapping[str, object],
         repair_error: str | None,
     ) -> BaseModel:
-        contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        if operation == "author_guided_script_checkpoint":
+            return GuidedScriptCheckpointDraftV1(
+                title="Narrative Direction",
+                summary_prompt="A product-first narrative direction.",
+                content="Open on the product and close on refreshment.",
+            )
+        contract = (
+            GuidedScriptCheckpointDraftV1
+            if operation == "author_guided_script_checkpoint"
+            else CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        )
         return contract.model_validate(
             _deterministic_materialization_result(capability_id, context=context)
         )
@@ -597,7 +608,11 @@ class PiVideoAgentGateway:
         context: Mapping[str, object],
         repair_error: str | None,
     ) -> BaseModel:
-        contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        contract = (
+            GuidedScriptCheckpointDraftV1
+            if operation == "author_guided_script_checkpoint"
+            else CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        )
         operation_definition = self._operation_registry.resolve(operation)
         context_model = AGENT_RUN_CONTEXT_REGISTRY.resolve(
             operation_definition.context_contract_name
@@ -718,6 +733,16 @@ class PiVideoAgentGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
+                **(
+                    {
+                        "model_result_contract_name": contract.__name__,
+                        "canonical_result_contract_name": "ScriptMaterializationResultV1",
+                        "normalization_id": "guided-script-checkpoint-v1",
+                        "canonical_duration_seconds": _context_duration_seconds(context),
+                    }
+                    if operation == "author_guided_script_checkpoint"
+                    else {}
+                ),
                 **({"style_skill_lineage": style_lineage} if style_lineage is not None else {}),
             },
         )
@@ -786,6 +811,21 @@ def _completed_structured_run(
         audit=completed.audit,
         model_ref=model_ref,
     )
+
+
+def _context_duration_seconds(context: BaseModel) -> float | None:
+    """Read the already projected duration only for bounded audit metadata."""
+
+    capability_context = getattr(context, "capability_context", None)
+    if not isinstance(capability_context, Mapping):
+        return None
+    constraints = capability_context.get("explicit_constraints")
+    if not isinstance(constraints, Mapping):
+        return None
+    value = constraints.get("duration_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _deterministic_capability_result(

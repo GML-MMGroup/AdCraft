@@ -12,6 +12,7 @@ from pydantic import (
     JsonValue,
     RootModel,
     TypeAdapter,
+    ValidationInfo,
     model_validator,
 )
 
@@ -628,7 +629,10 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
     @model_validator(mode="after")
-    def validate_publication_boundary(self) -> "CapabilityCommandEnvelopeV2":
+    def validate_publication_boundary(
+        self,
+        info: ValidationInfo,
+    ) -> "CapabilityCommandEnvelopeV2":
         internal_stages = {"narrative_direction", "style_lock", "storyboard_plan"}
         if self.publication_kind == "proposal":
             if self.journey_stage is not None:
@@ -637,10 +641,15 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
         if (
             self.capability_id != "script_authoring"
             or self.journey_stage not in internal_stages
-            or self.result_contract_name != "ScriptMaterializationResultV1"
+            or self.result_contract_name
+            not in {"GuidedScriptCheckpointDraftV1", "ScriptMaterializationResultV1"}
             or self.candidate_count != 1
         ):
             raise ValueError("Internal document commands require one fixed Script checkpoint.")
+        if self.result_contract_name == "ScriptMaterializationResultV1" and not (
+            info.context and info.context.get("allow_retired_historical_envelope")
+        ):
+            raise ValueError("The retired direct Script checkpoint contract is not accepted.")
         return self
 
 
