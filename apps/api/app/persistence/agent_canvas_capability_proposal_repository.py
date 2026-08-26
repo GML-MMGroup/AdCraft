@@ -33,7 +33,7 @@ from app.persistence.models import (
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2
 from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
-    GuidedProposalCardResultV3,
+    GuidedProposalAuthoringResultV4,
 )
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
 from app.schemas.agent_canvas_creative_session import (
@@ -92,10 +92,10 @@ class AgentCanvasCapabilityProposalRepository:
                 "Internal document commands cannot publish a public Proposal.",
                 stage="capability_publication",
             )
-        if not isinstance(result, GuidedProposalCardResultV3):
+        if not isinstance(result, GuidedProposalAuthoringResultV4):
             raise V2PersistenceError(
                 "proposal_card_contract_invalid",
-                "Only Guided Proposal Card schema version 3 may be published after cutover.",
+                "Only Guided Proposal Authoring schema version 4 may be published after cutover.",
                 stage="capability_publication",
             )
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
@@ -169,7 +169,9 @@ class AgentCanvasCapabilityProposalRepository:
                         )
                     )
                     incoming_digest = _card_digest(
-                        tuple((str(option.title), str(option.public_summary)) for option in options)
+                        tuple(
+                            (option.title, option.summary) for option in public_projection.options
+                        )
                     )
                     if persisted_digest != incoming_digest:
                         raise V2PersistenceError(
@@ -388,21 +390,16 @@ class AgentCanvasCapabilityProposalRepository:
                         updated_at=timestamp,
                     )
                 )
-                for order, option in enumerate(options):
+                for order, option in enumerate(public_projection.options):
                     option_id = option_ids[order]
-                    public_summary = str(option.public_summary)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
                             proposal_id=proposal_id,
                             display_order=order,
-                            title=str(option.title),
-                            description=public_summary,
-                            key_decisions_json=json.dumps(
-                                list(getattr(option, "key_decisions", ())),
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            ),
+                            title=option.title,
+                            description=option.summary,
+                            key_decisions_json="[]",
                             draft_seed_schema=None,
                             draft_seed_json=None,
                             draft_seed_digest=None,

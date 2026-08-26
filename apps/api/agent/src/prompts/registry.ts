@@ -166,8 +166,9 @@ function instructionForOperation(operation: string): string {
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
       "Return exactly three short, meaningfully distinct directions that all obey the accepted Requirements.",
-      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Keep each title within 64 characters and each public_summary within 240 characters.",
-      "The practical compact-card display limit is title <=64 Unicode characters and public_summary <=240 Unicode characters. Keep the summary concise, but do not split, truncate, or validate it by punctuation-based sentence count.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}.",
+      "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; keep text concise, but return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
+      "Do not split, truncate, or validate text by punctuation-based sentence count.",
       "Python assigns option IDs and owns candidate cardinality; never emit IDs or private authoring data.",
       "Render all option display text in the supplied response_locale.",
       "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
@@ -177,8 +178,9 @@ function instructionForOperation(operation: string): string {
     return [
       "Revise only the supplied capability options.",
       "Return exactly three short, meaningfully distinct directions as replacement options.",
-      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Each option must contain only title and public_summary, with title <=64 and public_summary <=240 Unicode characters; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
-      "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or length violations without truncating or inventing content.",
+      "Use exactly this closed JSON shape: {\"options\":[{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string},{\"title\":string,\"public_summary\":string}]}. Each option must contain only title and public_summary; never emit option IDs, key_decisions, provider prompts, model parameters, or media details.",
+      "The desired public presentation targets are title <=64 Unicode characters and public_summary <=240 Unicode characters. These are not structured-validation maxima; return complete authoring text within the supplied schema safety envelope and let Python project the public cards.",
+      "Keep display text concise without punctuation-dependent sentence-count validation, and repair only reported field, type, cardinality, or safety-length violations without truncating or inventing content.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
   }
