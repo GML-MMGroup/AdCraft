@@ -896,6 +896,8 @@ function normalizeNodePromptPreparationV1(
       "operation_id",
       "attempt_no",
       "context_snapshot_id",
+      "occurrence_id",
+      "character_phase",
       "prompt_digest",
       "role_variant",
       "recipe_id",
@@ -918,6 +920,10 @@ function normalizeNodePromptPreparationV1(
   const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
   const operationId = nullableStringWithDefault(record.operation_id, `${path}.operation_id`);
   const contextSnapshotId = nullableStringWithDefault(record.context_snapshot_id, `${path}.context_snapshot_id`);
+  const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+  const characterPhase = record.character_phase === undefined || record.character_phase === null
+    ? null
+    : expectLiteral(record.character_phase, new Set(["main", "turnaround"] as const), `${path}.character_phase`);
   const promptDigest = nullableStringWithDefault(record.prompt_digest, `${path}.prompt_digest`);
   if (operationId !== null && !operationId.trim()) fail(`${path}.operation_id`, "expected non-empty string");
   if (contextSnapshotId !== null && !contextSnapshotId.trim()) {
@@ -939,6 +945,8 @@ function normalizeNodePromptPreparationV1(
     operation_id: operationId,
     attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
     context_snapshot_id: contextSnapshotId,
+    occurrence_id: occurrenceId,
+    character_phase: characterPhase,
     prompt_digest: promptDigest,
     role_variant: nullableStringWithDefault(record.role_variant, `${path}.role_variant`),
     recipe_id: nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`),

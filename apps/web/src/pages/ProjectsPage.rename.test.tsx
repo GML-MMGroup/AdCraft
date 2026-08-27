@@ -4,6 +4,7 @@ import { ProjectsPage } from "./ProjectsPage.tsx";
 
 const fixture = vi.hoisted(() => ({
   listAgentCanvasProjectAssets: vi.fn(),
+  openProject: vi.fn(),
   renameProject: vi.fn(),
 }));
 
@@ -26,7 +27,7 @@ vi.mock("../AppContextValue", () => ({
       },
     ],
     startNewProject: vi.fn(),
-    openProject: vi.fn(async () => true),
+    openProject: fixture.openProject,
     moveProjectToTrash: vi.fn(async () => true),
     renameProject: fixture.renameProject,
     toggleProjectFavorite: vi.fn(async () => true),
@@ -44,6 +45,7 @@ function openRenameDialog() {
 describe("ProjectsPage project rename", () => {
   beforeEach(() => {
     fixture.listAgentCanvasProjectAssets.mockResolvedValue({ assets: [] });
+    fixture.openProject.mockResolvedValue(true);
     fixture.renameProject.mockResolvedValue(true);
   });
 
@@ -69,6 +71,17 @@ describe("ProjectsPage project rename", () => {
     expect(screen.queryByText(/Last worked/i)).toBeNull();
     expect(screen.queryByText("Draft")).toBeNull();
     expect(screen.queryByText("Open")).toBeNull();
+  });
+
+  it("shows a visible error when opening a project fails", async () => {
+    fixture.openProject.mockRejectedValueOnce(new Error("Workflow contract mismatch."));
+    render(<ProjectsPage navigate={vi.fn()} />);
+
+    fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Project could not be opened. Try again.",
+    );
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {

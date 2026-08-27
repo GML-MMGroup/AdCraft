@@ -1608,6 +1608,8 @@ export interface NodePromptPreparationV1 {
   operation_id: string | null;
   attempt_no: number;
   context_snapshot_id: string | null;
+  occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
   prompt_digest: string | null;
   role_variant: string | null;
   recipe_id: string | null;
