@@ -6,16 +6,18 @@ import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
 
 const assets = vi.hoisted(() => ({
   uploadFilesWithReceipts: vi.fn(),
+  retry: vi.fn(),
+  items: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
   useAgentCanvasAssets: () => ({
-    items: [],
+    items: assets.items,
     loading: false,
     error: null,
     uploading: false,
     uploadError: null,
-    retry: vi.fn(),
+    retry: assets.retry,
     uploadFiles: vi.fn(),
     uploadFilesWithReceipts: assets.uploadFilesWithReceipts,
   }),
@@ -50,6 +52,9 @@ const interaction: GuidedInteractionV1 = {
 
 describe("ProductSourceDecisionDock", () => {
   beforeEach(() => {
+    assets.items = [];
+    assets.retry.mockReset();
+    assets.retry.mockResolvedValue(undefined);
     assets.uploadFilesWithReceipts.mockReset();
     assets.uploadFilesWithReceipts.mockResolvedValue([{
       workflow_id: "workflow-1",
@@ -77,7 +82,7 @@ describe("ProductSourceDecisionDock", () => {
     fireEvent.change(screen.getByLabelText("Upload Product source"), {
       target: { files: [file] },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Use uploaded Product" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
 
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(assets.uploadFilesWithReceipts).toHaveBeenCalledWith(
@@ -153,7 +158,141 @@ describe("ProductSourceDecisionDock", () => {
       target: { files: [file] },
     });
 
-    expect((screen.getByRole("button", { name: "Use uploaded Product" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getAllByText("1 of 2-8 images selected")).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Use selected Product" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("1 of 2-8 images selected")).toBeTruthy();
+  });
+
+  it("submits an existing Ready Project AssetVersion without uploading it", async () => {
+    assets.items = [projectImage("asset-front", "version-front", "Existing Front")];
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith({
+      submission_kind: "product_source",
+      expected_interaction_revision: 3,
+      expected_session_revision: 7,
+      action: {
+        input_kind: "main",
+        choice: "upload",
+        handoff_mode: "apply",
+        asset_versions: [{ asset_id: "asset-front", version_id: "version-front" }],
+        pending_handoff_id: null,
+        expected_guidance_revision: 11,
+        question_id: "product_main_source",
+      },
+    }));
+    expect(assets.uploadFilesWithReceipts).not.toHaveBeenCalled();
+  });
+
+  it("replaces a Main selection with the most recently chosen source", () => {
+    assets.items = [
+      projectImage("asset-front", "version-front", "Existing Front"),
+      projectImage("asset-side", "version-side", "Existing Side"),
+    ];
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Side" }));
+
+    expect(screen.queryByText("Existing Front", { selector: ".agent-chat__product-source-selected-name" })).toBeNull();
+    expect(screen.getByText("Existing Side", { selector: ".agent-chat__product-source-selected-name" })).toBeTruthy();
+  });
+
+  it("orders Multiview AssetVersions from the visible selected-source list", async () => {
+    assets.items = [
+      projectImage("asset-front", "version-front", "Existing Front"),
+      projectImage("asset-side", "version-side", "Existing Side"),
+    ];
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={{
+          ...interaction,
+          content: {
+            ...interaction.content,
+            input_kind: "multiview",
+            min_asset_count: 2,
+            max_asset_count: 8,
+          },
+        }}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Side" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Existing Side up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({
+        asset_versions: [
+          { asset_id: "asset-side", version_id: "version-side" },
+          { asset_id: "asset-front", version_id: "version-front" },
+        ],
+      }),
+    })));
+  });
+
+  it("does not admit unavailable or versionless Project assets", () => {
+    assets.items = [
+      { ...projectImage("asset-unavailable", "version-unavailable", "Unavailable"), status: "unavailable" },
+      projectImage("asset-versionless", null, "Versionless"),
+    ];
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect((screen.getByRole("button", { name: "Select Unavailable" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Select Versionless" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+function projectImage(
+  assetId: string,
+  versionId: string | null,
+  displayName: string,
+) {
+  return {
+    id: `project:${assetId}`,
+    assetId,
+    source: "project",
+    mediaType: "image",
+    displayName,
+    previewUrl: `/${assetId}.png`,
+    mediaUrl: `/${assetId}.png`,
+    status: "ready",
+    tags: [],
+    identity: {
+      source: "project",
+      assetId,
+      entityId: null,
+      versionId,
+    },
+    projectAsset: null,
+  };
+}

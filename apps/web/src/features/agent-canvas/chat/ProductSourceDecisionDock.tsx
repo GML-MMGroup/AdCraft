@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
@@ -8,6 +8,18 @@ import type {
 import { useAgentCanvasAssets } from "../assets/useAgentCanvasAssets.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
+import { ProductSourceAssetPicker } from "./ProductSourceAssetPicker.tsx";
+import {
+  addProductSourceItem,
+  createAssetVersionDraftItem,
+  createLocalFileDraftItem,
+  moveProductSourceItem,
+  removeProductSourceItem,
+  resolveProductSourceAssetVersions,
+  validateProductSourceDraft,
+  type ProductSourceDraftItem,
+} from "./productSourceSelection.ts";
+import type { AgentAssetBrowserItem } from "../assets/assetSelection.ts";
 
 export interface ProductSourceDecisionDockProps {
   interaction: GuidedInteractionV1;
@@ -17,10 +29,6 @@ export interface ProductSourceDecisionDockProps {
 }
 
 type ProductChoice = "upload" | "generate";
-
-function fileIdentity(file: File, index: number): string {
-  return [file.name, file.size, file.type, file.lastModified, index].join(":");
-}
 
 export function ProductSourceDecisionDock({
   interaction,
@@ -37,30 +45,31 @@ export function ProductSourceDecisionDock({
     mediaType: "image",
   });
   const [choice, setChoice] = useState<ProductChoice>("upload");
-  const [files, setFiles] = useState<File[]>([]);
+  const [selected, setSelected] = useState<ProductSourceDraftItem[]>([]);
   const [preparing, setPreparing] = useState(false);
   const [localIssue, setLocalIssue] = useState<DecisionDockIssue | null>(null);
-  const uploadKeysRef = useRef(new Map<string, string>());
+  const previewUrlsRef = useRef(new Set<string>());
 
-  const uploadKeys = useMemo(() => files.map((file, index) => {
-    const identity = fileIdentity(file, index);
-    const existing = uploadKeysRef.current.get(identity);
-    if (existing) return existing;
-    const created = createOperationKey("guided-product-upload");
-    uploadKeysRef.current.set(identity, created);
-    return created;
-  }), [files]);
+  useEffect(() => () => {
+    if (typeof URL.revokeObjectURL !== "function") return;
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+  }, []);
 
   if (!content) return null;
 
-  const countValid = files.length >= content.min_asset_count
-    && files.length <= content.max_asset_count;
+  const validationIssue = validateProductSourceDraft(
+    selected,
+    content.input_kind,
+    content.min_asset_count,
+    content.max_asset_count,
+  );
+  const countValid = validationIssue === null;
   const canSubmit = interaction.allowed_actions.includes("select_source")
     && (choice === "generate" || countValid);
   const busy = pending || preparing || assets.uploading;
   const selectionSummary = content.input_kind === "main"
-    ? `${files.length} of 1 image selected`
-    : `${files.length} of ${content.min_asset_count}-${content.max_asset_count} images selected`;
+    ? `${selected.length} of 1 image selected`
+    : `${selected.length} of ${content.min_asset_count}-${content.max_asset_count} images selected`;
   const effectiveIssue = localIssue ?? issue;
 
   const submit = async () => {
@@ -86,26 +95,30 @@ export function ProductSourceDecisionDock({
 
     setPreparing(true);
     try {
-      const receipts = await assets.uploadFilesWithReceipts(
-        files,
-        {
-          semanticRole: content.input_kind === "main" ? "product_main" : "product_multiview",
-          metadata: { input_kind: content.input_kind },
-        },
-        uploadKeys,
-      );
-      const assetVersions = receipts.map(({ asset }) => {
+      const localItems = selected.filter((item) => item.kind === "local_file");
+      const receipts = localItems.length
+        ? await assets.uploadFilesWithReceipts(
+            localItems.map((item) => item.file),
+            {
+              semanticRole: content.input_kind === "main" ? "product_main" : "product_multiview",
+              metadata: { input_kind: content.input_kind },
+            },
+            localItems.map((item) => item.uploadIdempotencyKey),
+          )
+        : [];
+      const uploadedByDraftKey = new Map(localItems.map((item, index) => {
+        const receipt = receipts[index];
+        const { asset } = receipt;
         if (!asset.version_id) {
           throw new Error("The uploaded Product source did not return an immutable AssetVersion.");
         }
-        return { asset_id: asset.asset_id, version_id: asset.version_id };
-      });
-      const pendingHandoffIds = receipts
-        .map((receipt) => receipt.pending_handoff_id)
-        .filter((id): id is string => Boolean(id));
-      if (pendingHandoffIds.length > 1) {
-        throw new Error("The Product upload returned conflicting pending handoffs.");
-      }
+        return [item.key, {
+          assetId: asset.asset_id,
+          versionId: asset.version_id,
+          pendingHandoffId: receipt.pending_handoff_id,
+        }] as const;
+      }));
+      const resolved = resolveProductSourceAssetVersions(selected, uploadedByDraftKey);
       await onSubmit({
         submission_kind: "product_source",
         expected_interaction_revision: interaction.revision,
@@ -114,23 +127,58 @@ export function ProductSourceDecisionDock({
           input_kind: content.input_kind,
           choice: "upload",
           handoff_mode: "apply",
-          asset_versions: assetVersions,
-          pending_handoff_id: pendingHandoffIds[0] ?? null,
+          asset_versions: resolved.assetVersions,
+          pending_handoff_id: resolved.pendingHandoffId,
           expected_guidance_revision: content.expected_guidance_revision,
           question_id: content.question_id,
         },
       });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unable to upload the Product source.";
+      const detail = error instanceof Error ? error.message : "Unable to prepare the Product source.";
       setLocalIssue({
         summary: "The Product source could not be prepared.",
         detail,
         fieldId: null,
-        retryable: true,
+      retryable: true,
       });
     } finally {
       setPreparing(false);
     }
+  };
+
+  const updateSelected = (operation: () => ProductSourceDraftItem[]) => {
+    try {
+      setSelected(operation());
+      setLocalIssue(null);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unable to select the Product source.";
+      setLocalIssue({ summary: detail, detail: null, fieldId: null, retryable: true });
+    }
+  };
+
+  const selectAsset = (item: AgentAssetBrowserItem) => {
+    const versionId = item.identity.versionId;
+    if (item.source !== "project" || item.mediaType !== "image" || item.status !== "ready" || !versionId) return;
+    const draft = createAssetVersionDraftItem({
+      assetId: item.identity.assetId,
+      versionId,
+      displayName: item.displayName,
+      previewUrl: item.previewUrl,
+    });
+    updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
+  };
+
+  const selectFiles = (files: File[]) => {
+    updateSelected(() => files.reduce((next, file) => {
+      const previewUrl = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
+      if (previewUrl) previewUrlsRef.current.add(previewUrl);
+      const draft = createLocalFileDraftItem(
+        file,
+        createOperationKey("guided-product-upload"),
+        previewUrl,
+      );
+      return addProductSourceItem(next, draft, content.input_kind, content.max_asset_count);
+    }, selected));
   };
 
   return (
@@ -140,7 +188,7 @@ export function ProductSourceDecisionDock({
       pending={busy}
       issue={effectiveIssue}
       footerSummary={choice === "upload" ? selectionSummary : "The Agent will prepare a Product source"}
-      submitLabel={choice === "upload" ? "Use uploaded Product" : "Generate Product"}
+      submitLabel={choice === "upload" ? "Use selected Product" : "Generate Product"}
       submitDisabled={!canSubmit}
       onSubmit={() => { void submit(); }}
     >
@@ -168,22 +216,20 @@ export function ProductSourceDecisionDock({
           </label>
         </div>
         {choice === "upload" ? (
-          <label className="agent-chat__product-source-upload">
-            <span>{content.input_kind === "main" ? "Upload Product source" : "Upload Product sources"}</span>
-            <input
-              aria-label={content.input_kind === "main" ? "Upload Product source" : "Upload Product sources"}
-              type="file"
-              accept="image/*"
-              multiple={content.input_kind === "multiview"}
-              onChange={(event) => {
-                const selected = Array.from(event.currentTarget.files ?? [])
-                  .slice(0, content.max_asset_count);
-                setFiles(selected);
-                setLocalIssue(null);
-              }}
-            />
-            <small>{selectionSummary}</small>
-          </label>
+          <ProductSourceAssetPicker
+            items={assets.items}
+            selected={selected}
+            inputKind={content.input_kind}
+            maxAssetCount={content.max_asset_count}
+            loading={assets.loading}
+            error={assets.error}
+            busy={busy}
+            onRetry={() => { void assets.retry(); }}
+            onSelectAsset={selectAsset}
+            onSelectFiles={selectFiles}
+            onMove={(key, direction) => setSelected((current) => moveProductSourceItem(current, key, direction))}
+            onRemove={(key) => setSelected((current) => removeProductSourceItem(current, key))}
+          />
         ) : null}
       </fieldset>
     </DecisionDockFrame>
