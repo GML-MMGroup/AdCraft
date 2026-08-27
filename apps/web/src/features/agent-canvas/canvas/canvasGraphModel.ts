@@ -76,6 +76,19 @@ export function findAvailableCanvasPosition(
   return findPositionForRects(occupied, preferred, candidateSize);
 }
 
+export function needsInitialCanvasLayout(nodes: readonly PlacementNode[]): boolean {
+  const visibleNodes = nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type));
+  if (visibleNodes.length < 2) return false;
+
+  const seenPositions = new Set<string>();
+  return visibleNodes.some((node) => {
+    const key = `${node.position.x}:${node.position.y}`;
+    if (seenPositions.has(key)) return true;
+    seenPositions.add(key);
+    return false;
+  });
+}
+
 export function incrementalPlacementForNodes(
   nodes: CanvasNodeV2[],
   affectedNodeIds: string[],

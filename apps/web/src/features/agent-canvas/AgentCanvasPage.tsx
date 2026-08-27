@@ -60,6 +60,7 @@ import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
 import {
   installAgentCanvasWorkflowViewport,
+  readAgentCanvasViewport,
   writeAgentCanvasViewport,
 } from "./canvas/agentCanvasViewport.ts";
 import {
@@ -71,6 +72,7 @@ import {
 import {
   findAvailableCanvasPosition,
   highlightNodeRelatedCanvasEdges,
+  needsInitialCanvasLayout,
   reconcileSelectableCanvasEdges,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -198,6 +200,7 @@ export function AgentCanvasPage() {
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const workflowNodesRef = useRef(workflow?.nodes ?? []);
   const canonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
+  const initialLayoutRepairWorkflowIdsRef = useRef(new Set<string>());
   const installedViewportWorkflowIdRef = useRef<string | null>(null);
   const viewportInstallFrameRef = useRef<number | null>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
@@ -524,6 +527,60 @@ export function AgentCanvasPage() {
     () => highlightNodeRelatedCanvasEdges(canonicalEdges, session.state.selectedNodeId),
     [canonicalEdges, session.state.selectedNodeId],
   );
+
+  useEffect(() => {
+    if (!workflow || !needsInitialCanvasLayout(workflow.nodes)) return;
+    const workflowId = workflow.workflow_id;
+    const repairAttempts = initialLayoutRepairWorkflowIdsRef.current;
+    if (repairAttempts.has(workflowId)) return;
+    repairAttempts.add(workflowId);
+
+    const visibleNodeIds = new Set(canonicalNodes.map((node) => node.id));
+    let layoutResult: ReturnType<typeof computeAgentCanvasAutoLayout>;
+    try {
+      layoutResult = computeAgentCanvasAutoLayout(
+        canonicalNodes.map(agentCanvasLayoutNodeFromFlowNode),
+        enabledNodeLayoutEdges(workflow.bindings, visibleNodeIds),
+        {
+          isolatedRowWidth: Math.max(
+            960,
+            (pointerSpotlight.hostRef.current?.clientWidth ?? 960)
+              / (flowRef.current?.getViewport().zoom ?? 1),
+          ),
+        },
+      );
+    } catch (error) {
+      setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be calculated.");
+      return;
+    }
+
+    if (!layoutResult.positions.length) return;
+    if (activeWorkflowIdRef.current !== workflowId) return;
+    void updateNodePositions(layoutResult.positions)
+      .then(() => {
+        if (
+          activeWorkflowIdRef.current !== workflowId
+          || readAgentCanvasViewport(workflowId)
+          || !flowRef.current
+        ) return;
+        const reducedMotion = typeof window.matchMedia === "function"
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        window.requestAnimationFrame(() => {
+          if (activeWorkflowIdRef.current !== workflowId) return;
+          void flowRef.current?.fitView({
+            nodes: layoutResult.positions.map(({ node_id }) => ({ id: node_id })),
+            padding: 0.22,
+            maxZoom: 1,
+            duration: reducedMotion ? 0 : 350,
+          });
+        });
+      })
+      .catch((error) => {
+        if (activeWorkflowIdRef.current === workflowId) {
+          setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
+        }
+      });
+  }, [canonicalNodes, pointerSpotlight.hostRef, updateNodePositions, workflow]);
 
   useEffect(() => {
     latestPresentedNodesRef.current = presentedNodes;

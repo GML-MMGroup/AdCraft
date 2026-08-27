@@ -146,6 +146,20 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).not.toContain("layoutKeepSucceededRef");
   });
 
+  it("repairs overlapping persisted node positions during initial hydration", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("needsInitialCanvasLayout(workflow.nodes)");
+    expect(source).toContain("initialLayoutRepairWorkflowIdsRef");
+    expect(source).toContain("readAgentCanvasViewport(workflowId)");
+    expect(source).toMatch(
+      /computeAgentCanvasAutoLayout\([\s\S]*?enabledNodeLayoutEdges\(workflow\.bindings,[\s\S]*?updateNodePositions\(layoutResult\.positions\)[\s\S]*?fitView\(/,
+    );
+  });
+
   it("animates node transforms only during layout preview and respects reduced motion", () => {
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),

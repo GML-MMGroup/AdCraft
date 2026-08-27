@@ -7,6 +7,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   findAvailableCanvasPosition,
+  needsInitialCanvasLayout,
   highlightNodeRelatedCanvasEdges,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
@@ -135,6 +136,21 @@ const runtime: CanvasRuntimeSnapshotV2 = {
 };
 
 describe("canvasGraphModel", () => {
+  it("detects collapsed persisted positions without rearranging a single or already separated node", () => {
+    expect(needsInitialCanvasLayout([
+      { ...node("first", "image"), position: { x: 0, y: 0 } },
+      { ...node("second", "video"), position: { x: 0, y: 0 } },
+    ])).toBe(true);
+
+    expect(needsInitialCanvasLayout([
+      { ...node("first", "image"), position: { x: 0, y: 0 } },
+      { ...node("second", "video"), position: { x: 320, y: 0 } },
+    ])).toBe(false);
+    expect(needsInitialCanvasLayout([
+      { ...node("only", "image"), position: { x: 0, y: 0 } },
+    ])).toBe(false);
+  });
+
   it("maps canonical nodes, assets and node runtime directly into React Flow data", () => {
     const nodes = toAgentCanvasFlowNodes(workflow, runtime, {
       onRun: vi.fn(),
