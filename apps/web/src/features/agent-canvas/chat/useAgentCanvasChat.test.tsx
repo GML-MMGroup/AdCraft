@@ -380,6 +380,30 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.guidanceSession).toBeNull();
   });
 
+  it("routes timeline refresh failures to the Timeline recovery owner", async () => {
+    api.agentCanvasChatTimeline.mockRejectedValue(new Error(
+      "Invalid chatTimeline.presentation_items[0]",
+    ));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(result.current.state.timelineRecovery).toMatchObject({
+      scope: "timeline",
+      title: "Conversation could not be refreshed",
+      technicalDetail: "Invalid chatTimeline.presentation_items[0]",
+      action: "refresh",
+    });
+    expect(result.current.state.composerRecovery).toBeNull();
+    expect(result.current.state.workflowRecovery).toBeNull();
+  });
+
   it("keeps the newer persisted journey when the timeline response is stale", async () => {
     const direct = guidedSession(6, 12);
     const staleTimelineSession = guidedSession(5, 11);
@@ -656,7 +680,11 @@ describe("useAgentCanvasChat", () => {
     });
 
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
-    expect(result.current.state.error).toBe("post_ready_progression_failed: Script persistence failed.");
+    expect(result.current.state.workflowRecovery).toMatchObject({
+      scope: "workflow",
+      technicalDetail: "post_ready_progression_failed: Script persistence failed.",
+      action: "refresh",
+    });
     expect(result.current.state.agentWorking).toBe(false);
   });
 
@@ -753,7 +781,12 @@ describe("useAgentCanvasChat", () => {
     });
 
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(2);
-    expect(result.current.state.error).toBe("guidance_advance_stale: still stale");
+    expect(result.current.state.workflowRecovery).toMatchObject({
+      title: "Conversation state changed",
+      action: "review",
+    });
+    expect(result.current.state.workflowRecovery?.technicalDetail).toContain("guidance_advance_stale");
+    expect(result.current.state.workflowRecovery?.technicalDetail).toContain("still stale");
   });
 
   it("uses the latest localized presentation item instead of raw or stale timeline rows", async () => {
@@ -1132,7 +1165,7 @@ describe("useAgentCanvasChat", () => {
       retryable: true,
     });
     expect(result.current.state.actingInteractionId).toBeNull();
-    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.workflowRecovery).toBeNull();
   });
 
   it("keeps an invalid duration in the guided interaction field instead of replacing it with a global error", async () => {
@@ -1167,7 +1200,7 @@ describe("useAgentCanvasChat", () => {
       summary: "Choose one of the supported duration values.",
       fieldId: "production_duration_seconds",
     });
-    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.workflowRecovery).toBeNull();
   });
 
   it("routes a Guided Interaction server failure into the Decision Dock", async () => {
@@ -1201,7 +1234,7 @@ describe("useAgentCanvasChat", () => {
       summary: "The agent could not submit this response. Try again.",
       retryable: true,
     });
-    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.workflowRecovery).toBeNull();
   });
 
   it("clears a Decision Dock issue when backend authority replaces the interaction", async () => {
@@ -1347,9 +1380,17 @@ describe("useAgentCanvasChat", () => {
       });
     });
 
-    expect(result.current.state.error).toBe(
-      "proposal_persistence_failed: The proposal could not be persisted.",
+    expect(result.current.state.composerRecovery).toMatchObject({
+      scope: "composer",
+      title: "Response could not be submitted",
+      action: "retry",
+    });
+    expect(result.current.state.composerRecovery?.technicalDetail).toContain("proposal_persistence_failed");
+    expect(result.current.state.composerRecovery?.technicalDetail).toContain(
+      "The proposal could not be persisted.",
     );
+    expect(result.current.state.timelineRecovery).toBeNull();
+    expect(result.current.state.workflowRecovery).toBeNull();
     expect(result.current.state.failedDraft).toMatchObject({
       text: "Create a calm product film.",
     });
@@ -1489,6 +1530,63 @@ describe("useAgentCanvasChat", () => {
       expect.objectContaining({ video_skill_run_id: "style-run-2" }),
       expect.any(String),
     );
+  });
+
+  it("retries a failed message with the Style Skill Run frozen by the original request", async () => {
+    const originalWorkflow = workflow();
+    originalWorkflow.active_style_skill = {
+      skill_run_id: "style-run-original",
+      skill_id: "cinematic-poetic-realism",
+      skill_version: "1.0.0",
+      title: "Cinematic Poetic Realism",
+      summary: "A restrained cinematic treatment.",
+      category: "cinematic-narrative",
+      creative_direction_snapshot_id: "direction-original",
+    };
+    const changedWorkflow = workflow();
+    changedWorkflow.active_style_skill = {
+      ...originalWorkflow.active_style_skill,
+      skill_run_id: "style-run-new",
+      creative_direction_snapshot_id: "direction-new",
+    };
+    api.submitAgentCanvasChatMessage
+      .mockRejectedValueOnce({ code: "agent_runtime_unavailable", message: "Try again." })
+      .mockResolvedValueOnce({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: "message-retry",
+        turn_id: "turn-retry",
+        status: "queued",
+        events_cursor: 6,
+      });
+    const { result, rerender } = renderHook(
+      ({ currentWorkflow }) => useAgentCanvasChat({
+        workflow: currentWorkflow,
+        chatRevision: 0,
+        chatEvents: [],
+      }),
+      { initialProps: { currentWorkflow: originalWorkflow } },
+    );
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Keep this exact treatment.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+      });
+    });
+    const failedDraft = result.current.state.failedDraft;
+    expect(failedDraft).toMatchObject({ videoSkillRunId: "style-run-original" });
+
+    rerender({ currentWorkflow: changedWorkflow });
+    await act(async () => {
+      await result.current.actions.submit(failedDraft!);
+    });
+
+    const firstCall = api.submitAgentCanvasChatMessage.mock.calls[0];
+    const retryCall = api.submitAgentCanvasChatMessage.mock.calls[1];
+    expect(retryCall[1]).toMatchObject({ video_skill_run_id: "style-run-original" });
+    expect(retryCall[2]).toBe(firstCall[2]);
   });
 
   it("hydrates the durable guidance session, actions, and proposal card", async () => {
@@ -1791,8 +1889,8 @@ describe("useAgentCanvasChat", () => {
       status: turnId === "turn-cache-failed-1" ? "failed" : "completed",
       turn_kind: "capability",
       request: {},
-      error_code: null,
-      error_message: null,
+      error_code: turnId === "turn-cache-failed-1" ? "provider_error" : null,
+      error_message: turnId === "turn-cache-failed-1" ? "Provider request failed." : null,
       creation_mode: null,
       guidance_session_revision: null,
       continuation: null,
@@ -1817,6 +1915,7 @@ describe("useAgentCanvasChat", () => {
     expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(2);
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-1");
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-failed-1");
+    expect(result.current.state.timelineRecovery).toBeNull();
   });
 
   it("keeps successful capability hydration when a sibling turn lookup fails", async () => {
@@ -2622,9 +2721,10 @@ describe("useAgentCanvasChat", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.state.error).toBe(
-      "agent_runtime_unavailable: The configured agent runtime is unavailable.",
-    );
+    expect(result.current.state.timelineRecovery).toMatchObject({
+      technicalDetail: "agent_runtime_unavailable: The configured agent runtime is unavailable.",
+      action: "retry",
+    });
     expect(result.current.state.failedDraft).toBeNull();
     expect(result.current.state.retryableFailedTurn?.turn_id).toBe("turn-1");
   });

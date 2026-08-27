@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { TextLoader } from "generative-loaders";
 
 import type {
@@ -60,6 +61,7 @@ export function CapabilityActivityRow({
   onRetry?: () => void;
   onReviseRequest?: () => void;
 }) {
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const retryable = turn?.retryable ?? activity.retryable;
   const errorCode = turn?.operation_failure?.code ?? activity.error_code;
   const errorMessage = turn?.operation_failure?.message ?? activity.message;
@@ -77,6 +79,13 @@ export function CapabilityActivityRow({
     ?? (activity.status === "superseded"
       ? `${activity.capability_display_name} was superseded by later progress`
       : activity.status === "completed" ? activity.message : null);
+  const technicalFailure = activity.status === "failed" && (errorCode || errorMessage)
+    ? JSON.stringify({
+        code: errorCode ?? null,
+        message: errorMessage ?? null,
+        validation_paths: turn?.operation_failure?.validation_paths ?? activity.validation_paths,
+      }, null, 2)
+    : null;
 
   return (
     <section
@@ -100,8 +109,20 @@ export function CapabilityActivityRow({
       ) : null}
       {activity.status === "failed" ? (
         <>
-          {errorCode ? <code>{errorCode}</code> : null}
-          {errorMessage ? <small>{errorMessage}</small> : null}
+          <small>This step could not be completed.</small>
+          {technicalFailure ? (
+            <details open={technicalDetailsOpen}>
+              <summary
+                onClick={(event) => {
+                  event.preventDefault();
+                  setTechnicalDetailsOpen((current) => !current);
+                }}
+              >
+                Technical details
+              </summary>
+              {technicalDetailsOpen ? <code>{technicalFailure}</code> : null}
+            </details>
+          ) : null}
           <div className="agent-chat__activity-actions">
             {retryable && onRetry ? (
               <button

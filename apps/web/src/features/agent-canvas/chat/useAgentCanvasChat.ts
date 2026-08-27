@@ -49,11 +49,16 @@ import {
   isDecisionDockStaleError,
   type DecisionDockIssue,
 } from "./decisionDockIssue.ts";
+import {
+  conversationRecoveryFromError,
+  type ConversationRecoveryView,
+} from "./conversationRecovery.ts";
 
 type SubmitDraft = {
   text: string;
   mentionedNodeIds: string[];
   mentionedImageAssetIds: string[];
+  videoSkillRunId?: string | null;
   idempotencyKey?: string;
 };
 
@@ -208,7 +213,9 @@ export function useAgentCanvasChat({
   const [postReadyBarrier, setPostReadyBarrier] = useState<PendingPostReadyBarrier | null>(null);
   const [postReadyCheckpoint, setPostReadyCheckpoint] = useState<CanvasPostReadyCheckpointV2 | null>(null);
   const [postReadyPollRevision, setPostReadyPollRevision] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [composerRecovery, setComposerRecovery] = useState<ConversationRecoveryView | null>(null);
+  const [timelineRecovery, setTimelineRecovery] = useState<ConversationRecoveryView | null>(null);
+  const [workflowRecovery, setWorkflowRecovery] = useState<ConversationRecoveryView | null>(null);
   const [guidedInteractionIssue, setGuidedInteractionIssue] = useState<DecisionDockIssue | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
@@ -289,8 +296,16 @@ export function useAgentCanvasChat({
       const terminalErrorCode = turn.continuation?.last_error_code ?? turn.error_code;
       const terminalErrorMessage = turn.continuation?.last_error_message ?? turn.error_message;
       const continuationFailed = turn.continuation?.delivery_status === "failed";
-      if ((continuationFailed || turn.status === "failed") && terminalErrorCode) {
-        setError(agentCanvasChatErrorMessage(terminalErrorCode, terminalErrorMessage));
+      if (
+        turn.turn_kind === "message"
+        && (continuationFailed || turn.status === "failed")
+        && terminalErrorCode
+      ) {
+        setTimelineRecovery(conversationRecoveryFromError(
+          "timeline",
+          new Error(agentCanvasChatErrorMessage(terminalErrorCode, terminalErrorMessage)),
+          { retryable: turn.retryable },
+        ));
       }
     } catch {
       // A later timeline refresh remains authoritative after a transient turn lookup failure.
@@ -501,10 +516,10 @@ export function useAgentCanvasChat({
         item.item_type !== "message"
         || !persistedMessageIds.has(item.message_id)
       )));
-      setError(null);
+      setTimelineRecovery(null);
     } catch (refreshError) {
       if (generation !== refreshGenerationRef.current) return;
-      setError(chatRequestErrorMessage(refreshError, "Conversation could not be loaded."));
+      setTimelineRecovery(conversationRecoveryFromError("timeline", refreshError));
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
     }
@@ -536,7 +551,7 @@ export function useAgentCanvasChat({
       return true;
     }
     if (actionError.code) {
-      setError(agentCanvasChatErrorMessage(actionError.code, actionError.message));
+      setWorkflowRecovery(conversationRecoveryFromError("workflow", actionError));
       return true;
     }
     return false;
@@ -562,10 +577,11 @@ export function useAgentCanvasChat({
       return;
     }
     if (handleProposalActionError(proposalId, actionError, setProposalIssues)) return;
-    if (!handleStructuredActionError(actionError)) {
-      setError(chatRequestErrorMessage(actionError, fallbackMessage));
-    }
-  }, [handleStructuredActionError, onWorkflowRefresh, refresh]);
+    setProposalIssues((current) => ({
+      ...current,
+      [proposalId]: chatRequestErrorMessage(actionError, fallbackMessage),
+    }));
+  }, [onWorkflowRefresh, refresh]);
 
   useEffect(() => {
     refreshGenerationRef.current += 1;
@@ -606,7 +622,9 @@ export function useAgentCanvasChat({
     postReadyBarrierRef.current = null;
     guidedInteractionSubmitSeqRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
-    setError(null);
+    setComposerRecovery(null);
+    setTimelineRecovery(null);
+    setWorkflowRecovery(null);
     setGuidedInteractionIssue(null);
     setNotice(null);
     setProposalIssues({});
@@ -715,7 +733,7 @@ export function useAgentCanvasChat({
     submittedGuidanceAuthorityDigestsRef.current.add(precondition.authority_digest);
     guidanceAdvanceInFlightRef.current = precondition.authority_digest;
     setAdvancingGuidance(true);
-    setError(null);
+    setWorkflowRecovery(null);
     try {
       const accepted = await agentCanvasApi.advanceAgentCanvasGuidance(
         workflowId,
@@ -731,9 +749,12 @@ export function useAgentCanvasChat({
       if (isV2ApiError(advanceError) && advanceError.code === "guidance_post_ready_pending") {
         const barrier = pendingPostReadyBarrier(advanceError, precondition, idempotencyKey);
         if (!barrier) {
-          setError(agentCanvasChatErrorMessage(
-            "post_ready_checkpoint_unavailable",
-            advanceError.message,
+          setWorkflowRecovery(conversationRecoveryFromError(
+            "workflow",
+            new Error(agentCanvasChatErrorMessage(
+              "post_ready_checkpoint_unavailable",
+              advanceError.message,
+            )),
           ));
           void refresh();
           void onWorkflowRefresh?.();
@@ -748,7 +769,7 @@ export function useAgentCanvasChat({
       if (isV2ApiError(advanceError) && advanceError.code === "guidance_advance_stale") {
         if (isReplacement) {
           guidanceAdvanceRebaseRef.current = null;
-          setError(agentCanvasChatErrorMessage(advanceError.code, advanceError.message));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", advanceError));
           return;
         }
         guidanceAdvanceRebaseRef.current = {
@@ -759,7 +780,7 @@ export function useAgentCanvasChat({
         await refresh();
         return;
       }
-      setError(chatRequestErrorMessage(advanceError, "The guidance step could not be continued."));
+      setWorkflowRecovery(conversationRecoveryFromError("workflow", advanceError));
     } finally {
       if (workflowGeneration === workflowGenerationRef.current) {
         guidanceAdvanceInFlightRef.current = null;
@@ -797,7 +818,10 @@ export function useAgentCanvasChat({
           || checkpoint.execution_id !== postReadyBarrier.executionId
         ) {
           clearBarrier();
-          setError("post_ready_checkpoint_unavailable: The production checkpoint no longer matches this workflow.");
+          setWorkflowRecovery(conversationRecoveryFromError(
+            "workflow",
+            new Error("post_ready_checkpoint_unavailable: The production checkpoint no longer matches this workflow."),
+          ));
           void refresh();
           void onWorkflowRefresh?.();
           return;
@@ -809,7 +833,10 @@ export function useAgentCanvasChat({
         }
         if (checkpoint.status === "failed") {
           clearBarrier();
-          setError(postReadyFailureMessage(checkpoint));
+          setWorkflowRecovery(conversationRecoveryFromError(
+            "workflow",
+            new Error(postReadyFailureMessage(checkpoint)),
+          ));
           return;
         }
         if (guidanceSession?.awaiting) {
@@ -828,20 +855,14 @@ export function useAgentCanvasChat({
         if (disposed || !isCurrentBarrier()) return;
         if (isV2ApiError(checkpointError) && checkpointError.code === "post_ready_checkpoint_unavailable") {
           clearBarrier();
-          setError(chatRequestErrorMessage(
-            checkpointError,
-            "The production checkpoint could not be loaded.",
-          ));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", checkpointError));
           void refresh();
           void onWorkflowRefresh?.();
           return;
         }
         if (isV2ApiError(checkpointError)) {
           clearBarrier();
-          setError(chatRequestErrorMessage(
-            checkpointError,
-            "The production checkpoint could not be loaded.",
-          ));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", checkpointError));
           return;
         }
         setNotice("Waiting for the current production step to settle.");
@@ -894,6 +915,9 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     const optimisticId = createOperationKey("optimistic");
     const idempotencyKey = draft.idempotencyKey ?? createOperationKey("chat");
+    const videoSkillRunId = draft.videoSkillRunId === undefined
+      ? activeVideoSkillRunId
+      : draft.videoSkillRunId;
     setOptimisticItems((current) => [...current, {
       item_type: "message",
       message_kind: "conversation",
@@ -910,12 +934,13 @@ export function useAgentCanvasChat({
     }]);
     setSending(true);
     setFailedDraft(null);
+    setComposerRecovery(null);
     try {
       const accepted = await agentCanvasApi.submitAgentCanvasChatMessage(workflowId, {
         text: draft.text.trim(),
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
-        video_skill_run_id: activeVideoSkillRunId,
+        video_skill_run_id: videoSkillRunId,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
@@ -930,15 +955,19 @@ export function useAgentCanvasChat({
         )));
       }
       trackAcceptedTurn(accepted);
-      setError(null);
+      setComposerRecovery(null);
       return true;
     } catch (submitError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       setOptimisticItems((current) => current.filter((item) => (
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
-      setFailedDraft({ ...draft, idempotencyKey });
-      setError(chatRequestErrorMessage(submitError, "Message could not be sent."));
+      setFailedDraft({ ...draft, videoSkillRunId, idempotencyKey });
+      setComposerRecovery(conversationRecoveryFromError(
+        "composer",
+        submitError,
+        { retryable: true },
+      ));
       return false;
     } finally {
       if (workflowGeneration === workflowGenerationRef.current) {
@@ -956,7 +985,6 @@ export function useAgentCanvasChat({
     if (!workflowId || actingProposalId || actionDescriptor.action !== "select_option") return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
-    setError(null);
     setProposalIssues((current) => {
       const next = { ...current };
       delete next[proposalId];
@@ -1004,7 +1032,6 @@ export function useAgentCanvasChat({
     ) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
-    setError(null);
     setProposalIssues((current) => {
       const next = { ...current };
       delete next[proposalId];
@@ -1058,7 +1085,6 @@ export function useAgentCanvasChat({
     ) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
-    setError(null);
     setProposalIssues((current) => {
       const next = { ...current };
       delete next[proposalId];
@@ -1107,7 +1133,7 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     pendingCommandPlanIdsRef.current.add(planId);
     setActingCommandPlanId(planId);
-    setError(null);
+    setWorkflowRecovery(null);
     try {
       const accepted = await agentCanvasApi.actOnAgentCanvasCommandPlan(
         workflowId,
@@ -1122,10 +1148,7 @@ export function useAgentCanvasChat({
       pendingCommandPlanIdsRef.current.delete(planId);
       if (workflowGeneration === workflowGenerationRef.current) {
         if (!handleStructuredActionError(actionError)) {
-          setError(chatRequestErrorMessage(
-            actionError,
-            `The command could not be ${action === "confirm" ? "confirmed" : "rejected"}.`,
-          ));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", actionError));
         }
       }
     } finally {
@@ -1139,12 +1162,15 @@ export function useAgentCanvasChat({
     const actionId = action.action_id;
     if (!workflowId || actingGuidedActionId) return;
     if (action.action === "set_creative_authority" && !action.authority) {
-      setError("The creative authority action is incomplete. Refresh the conversation and try again.");
+      setWorkflowRecovery(conversationRecoveryFromError(
+        "workflow",
+        new Error("The creative authority action is incomplete. Refresh the conversation and try again."),
+      ));
       return;
     }
     const workflowGeneration = workflowGenerationRef.current;
     setActingGuidedActionId(actionId);
-    setError(null);
+    setWorkflowRecovery(null);
     try {
       const accepted = await agentCanvasApi.applyAgentCanvasGuidedAction(
         workflowId,
@@ -1165,7 +1191,7 @@ export function useAgentCanvasChat({
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         if (!handleStructuredActionError(actionError)) {
-          setError(chatRequestErrorMessage(actionError, "The guided action could not be applied."));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", actionError));
         }
       }
     } finally {
@@ -1182,7 +1208,7 @@ export function useAgentCanvasChat({
     if (!workflowId || actingDecisionBundleId) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingDecisionBundleId(bundleId);
-    setError(null);
+    setWorkflowRecovery(null);
     try {
       const accepted = await agentCanvasApi.actOnAgentCanvasDecisionBundle(
         workflowId,
@@ -1196,7 +1222,7 @@ export function useAgentCanvasChat({
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         if (!handleStructuredActionError(actionError)) {
-          setError(chatRequestErrorMessage(actionError, "The production decisions could not be saved."));
+          setWorkflowRecovery(conversationRecoveryFromError("workflow", actionError));
         }
       }
     } finally {
@@ -1217,7 +1243,6 @@ export function useAgentCanvasChat({
       (latest, event) => Math.max(latest, event.seq),
       -1,
     );
-    setError(null);
     setGuidedInteractionIssue(null);
     try {
       const accepted = await agentCanvasApi.submitAgentCanvasGuidedInteraction(
@@ -1263,7 +1288,7 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     retryingSourceTurnIdsRef.current.add(turnId);
     setRetryingSourceTurnIds((current) => ({ ...current, [turnId]: "pending" }));
-    setError(null);
+    setTimelineRecovery(null);
     try {
       const accepted = await agentCanvasApi.retryAgentCanvasChatTurn(
         workflowId,
@@ -1294,7 +1319,11 @@ export function useAgentCanvasChat({
         void refresh();
         return false;
       }
-      setError(chatRequestErrorMessage(retryError, "The failed request could not be retried."));
+      setTimelineRecovery(conversationRecoveryFromError(
+        "timeline",
+        retryError,
+        { retryable: true },
+      ));
       return false;
     }
   }, [guidanceSession?.revision, onWorkflowRefresh, refresh, sending, trackAcceptedTurn, workflowId, workflowRevision]);
@@ -1355,7 +1384,9 @@ export function useAgentCanvasChat({
       actingCommandPlanId,
       actingGuidedActionId,
       actingInteractionId,
-      error,
+      composerRecovery,
+      timelineRecovery,
+      workflowRecovery,
       guidedInteractionIssue,
       notice,
       proposalIssues,
@@ -1375,6 +1406,9 @@ export function useAgentCanvasChat({
       retryProposalMaterialization,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turn.retryable),
       clearFailedDraft: () => setFailedDraft(null),
+      clearComposerRecovery: () => setComposerRecovery(null),
+      clearTimelineRecovery: () => setTimelineRecovery(null),
+      clearWorkflowRecovery: () => setWorkflowRecovery(null),
       clearNotice: () => setNotice(null),
     },
   };

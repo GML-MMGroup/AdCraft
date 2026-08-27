@@ -121,7 +121,8 @@ describe("theme styles", () => {
     const jumpBlock = declarationBlock(chatStyles, ".agent-chat__jump-to-latest");
 
     expect(shellBlock).toContain("position: relative");
-    expect(shellBlock).toContain("min-height: 0");
+    expect(shellBlock).toContain("min-height: 56px");
+    expect(shellBlock).toContain("flex: 1 1 72px");
     expect(timelineBlock).toContain("scrollbar-gutter: stable");
     expect(timelineBlock).toContain("scrollbar-width: thin");
     expect(timelineBlock).toContain("overscroll-behavior: contain");
