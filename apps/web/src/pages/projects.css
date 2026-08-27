@@ -165,13 +165,14 @@
   overflow: visible;
   background: rgba(32, 34, 53, 0.12);
   outline: 0;
+  transform: translateZ(0);
   transform-origin: center;
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .project-card:is(:hover, :has(.project-card-open:focus-visible)) {
   box-shadow: 0 24px 60px rgba(32, 34, 53, 0.18), var(--shadow-soft);
-  transform: translateY(-4px) rotate(-1deg) scale(1.02);
+  transform: translateZ(0) translateY(-4px) rotate(-1deg) scale(1.02);
   will-change: transform;
 }
 

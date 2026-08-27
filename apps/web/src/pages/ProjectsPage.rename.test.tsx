@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ProjectsPage } from "./ProjectsPage.tsx";
 
 const fixture = vi.hoisted(() => ({
@@ -69,6 +71,17 @@ describe("ProjectsPage project rename", () => {
     expect(screen.queryByText(/Last worked/i)).toBeNull();
     expect(screen.queryByText("Draft")).toBeNull();
     expect(screen.queryByText("Open")).toBeNull();
+  });
+
+  it("keeps the project glass layer on the same compositing baseline while hovering", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/projects.css"), "utf8");
+    const cardRule = styles.match(/\.project-card\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const hoverRule = styles.match(/\.project-card:is\(:hover, :has\(\.project-card-open:focus-visible\)\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(cardRule).toContain("transform: translateZ(0)");
+    expect(hoverRule).toContain("transform: translateZ(0) translateY(-4px) rotate(-1deg) scale(1.02)");
+    expect(hoverRule).not.toContain("backdrop-filter");
+    expect(hoverRule).not.toContain("background:");
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {
