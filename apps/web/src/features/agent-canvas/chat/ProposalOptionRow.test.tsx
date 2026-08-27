@@ -45,4 +45,25 @@ describe("ProposalOptionRow", () => {
     expect(screen.queryByRole("button", { name: /Clean precision/i })).toBeNull();
     expect(screen.getByText("02")).toBeTruthy();
   });
+
+  it("supports Decision Dock radio semantics and a letter marker", () => {
+    render(
+      <ProposalOptionRow
+        index={1}
+        marker="B"
+        selectionRole="radio"
+        optionId="option-b"
+        title="Precise"
+        summary="Clean product precision."
+        selected
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const option = screen.getByRole("radio", { name: /Precise/i });
+    expect(option.getAttribute("aria-checked")).toBe("true");
+    expect(option.getAttribute("aria-pressed")).toBeNull();
+    expect(screen.getByText("B")).toBeTruthy();
+    expect(screen.getByText("✓")).toBeTruthy();
+  });
 });

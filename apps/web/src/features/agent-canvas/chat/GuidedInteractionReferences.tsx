@@ -7,12 +7,14 @@ export function GuidedInteractionReferences({
   mediaUrls,
   excludedOptionalReferenceKeys,
   disabled,
+  showHeader = true,
   onOptionalReferenceChange,
 }: {
   references: ProposedDraftReferenceV2[] | null;
   mediaUrls: Record<string, string>;
   excludedOptionalReferenceKeys: ReadonlySet<string>;
   disabled: boolean;
+  showHeader?: boolean;
   onOptionalReferenceChange: (referenceKey: string, accepted: boolean) => void;
 }) {
   if (references === null) {
@@ -30,10 +32,12 @@ export function GuidedInteractionReferences({
 
   return (
     <section className="agent-chat__guided-references" aria-label="Proposal references">
-      <header>
-        <strong>References</strong>
-        <span>{references.length}</span>
-      </header>
+      {showHeader ? (
+        <header>
+          <strong>References</strong>
+          <span>{references.length}</span>
+        </header>
+      ) : null}
       <div className="agent-chat__guided-reference-list">
         {references.map((reference) => {
           const key = guidedReferenceKey(reference);
