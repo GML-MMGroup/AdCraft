@@ -843,6 +843,7 @@ button.agent-chat__node-links--related:hover {
   flex: 0 0 auto;
   color: var(--agent-chat-primary);
   font-weight: 600;
+  font-size: 11px;
 }
 
 .agent-chat__artifact svg {

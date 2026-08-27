@@ -153,7 +153,6 @@ export function AgentCanvasChatPanel({
   const conceptContent = conceptInteraction?.content.content_kind === "concept_choice"
     ? conceptInteraction.content
     : null;
-  const selectedConceptOption = conceptContent?.options.find((option) => option.option_id === selectedConceptOptionId) ?? null;
   const conceptInteractionPending = Boolean(
     conceptInteraction
     && (conceptInteraction.status === "submitted"
@@ -737,9 +736,7 @@ export function AgentCanvasChatPanel({
       <div className="agent-chat__composer">
         {conceptInteraction ? (
           <div className="agent-chat__guided-composer-hint" role="status">
-            {selectedConceptOption
-              ? `Selected: ${selectedConceptOption.title}`
-              : "You can also describe your own direction below."}
+            You can also describe your own direction below.
           </div>
         ) : null}
         <textarea
@@ -1107,7 +1104,7 @@ export function ProposalCard({
     <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
         <strong>{proposal.capability_display_name}</strong>
-        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
+        {!readOnly ? <span>{proposal.availability}</span> : null}
       </header>
       {readOnly ? (
         <HistoricalProposalOptions

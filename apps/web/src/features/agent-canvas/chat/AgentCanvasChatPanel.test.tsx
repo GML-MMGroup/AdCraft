@@ -245,6 +245,7 @@ describe("ProposalCard", () => {
     const selectedOption = screen.getByRole("article", { name: "Selected option: Natural sanctuary" });
     expect(selectedOption).toBeTruthy();
     expect(selectedOption.textContent).not.toContain("Selected");
+    expect(screen.queryByText("Selected")).toBeNull();
     expect(screen.getByText("A")).toBeTruthy();
     expect(screen.getByText("B")).toBeTruthy();
     expect(screen.getByText("C")).toBeTruthy();
