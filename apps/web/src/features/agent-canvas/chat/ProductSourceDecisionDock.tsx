@@ -80,7 +80,7 @@ export function ProductSourceDecisionDock({
     setLocalIssue(null);
     try {
       if (choice === "generate") {
-        await onSubmit({
+        const accepted = await onSubmit({
           submission_kind: "product_source",
           expected_interaction_revision: interaction.revision,
           expected_session_revision: interaction.expected_session_revision,
@@ -94,6 +94,7 @@ export function ProductSourceDecisionDock({
             question_id: content.question_id,
           },
         });
+        if (accepted) await assets.retry();
         return;
       }
       const localItems = selected.filter((item) => item.kind === "local_file");
@@ -120,7 +121,7 @@ export function ProductSourceDecisionDock({
         }] as const;
       }));
       const resolved = resolveProductSourceAssetVersions(selected, uploadedByDraftKey);
-      await onSubmit({
+      const accepted = await onSubmit({
         submission_kind: "product_source",
         expected_interaction_revision: interaction.revision,
         expected_session_revision: interaction.expected_session_revision,
@@ -134,6 +135,7 @@ export function ProductSourceDecisionDock({
           question_id: content.question_id,
         },
       });
+      if (accepted) await assets.retry();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to prepare the Product source.";
       setLocalIssue({

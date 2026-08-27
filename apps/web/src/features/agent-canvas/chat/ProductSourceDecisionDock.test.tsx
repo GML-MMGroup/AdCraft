@@ -393,6 +393,23 @@ describe("ProductSourceDecisionDock", () => {
     expect(submit).toHaveBeenCalledTimes(1);
     finishSubmit?.(true);
   });
+
+  it("refreshes Project Assets after the guided Product source is accepted", async () => {
+    assets.items = [projectImage("asset-front", "version-front", "Existing Front")];
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    await waitFor(() => expect(assets.retry).toHaveBeenCalledTimes(1));
+  });
 });
 
 function projectImage(

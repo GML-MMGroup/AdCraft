@@ -546,6 +546,45 @@ describe("useAgentCanvasChat", () => {
     },
   );
 
+  it("does not Advance while a Product source interaction is awaiting submission", async () => {
+    const interaction = guidedProductInteraction();
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: {
+        ...guidedSession(),
+        interaction,
+        awaiting: {
+          awaiting_id: "awaiting-product-source-1",
+          workflow_id: "workflow-1",
+          session_id: "guidance-1",
+          checkpoint_id: interaction.checkpoint_id,
+          kind: "product_source",
+          requires_user_action: true,
+          resume_policy: "submit_interaction",
+          interaction_id: interaction.interaction_id,
+          node_ids: [],
+          stage: "product",
+          stage_revision: 8,
+          created_at: "2026-08-27T10:00:00Z",
+        },
+      },
+      guidanceAdvancePrecondition: guidanceAdvancePrecondition(),
+    }));
+
+    renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+  });
+
   it("waits for post-ready completion then retries the exact same guidance command once", async () => {
     const precondition = guidanceAdvancePrecondition();
     api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
