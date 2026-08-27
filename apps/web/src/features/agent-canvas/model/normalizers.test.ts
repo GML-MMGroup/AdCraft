@@ -262,6 +262,59 @@ function progressiveGuidanceSessionPayload() {
   };
 }
 
+function productSourceGuidanceSessionPayload() {
+  const base = progressiveGuidanceSessionPayload();
+  return {
+    ...base,
+    current_checkpoint: { ...base.current_checkpoint, stage_kind: "product" },
+    journey: {
+      ...base.journey,
+      stage: "product",
+      active_action: { ...base.journey.active_action, stage: "product" },
+    },
+    interaction: {
+      interaction_id: "interaction-product-main-1",
+      workflow_id: "workflow-1",
+      session_id: "guidance-1",
+      checkpoint_id: "checkpoint-1",
+      kind: "product_source",
+      status: "open",
+      response_locale: "zh-CN",
+      expected_session_revision: 3,
+      revision: 2,
+      title: "Choose a Product source",
+      context: "Upload the real Product or generate a visual direction.",
+      content: {
+        content_kind: "product_source",
+        input_kind: "main",
+        question_id: "product_main_source",
+        prompt: "Choose the Product main source.",
+        expected_guidance_revision: 6,
+        min_asset_count: 1,
+        max_asset_count: 1,
+      },
+      allowed_actions: ["select_source"],
+      submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-product-main-1/submit",
+      created_at: "2026-08-27T08:00:00Z",
+      updated_at: "2026-08-27T08:00:00Z",
+    },
+    awaiting: {
+      awaiting_id: "awaiting-product-main-1",
+      workflow_id: "workflow-1",
+      session_id: "guidance-1",
+      checkpoint_id: "checkpoint-1",
+      kind: "product_source",
+      requires_user_action: true,
+      resume_policy: "submit_interaction",
+      interaction_id: "interaction-product-main-1",
+      node_ids: [] as string[],
+      stage: "product",
+      stage_revision: 4,
+      created_at: "2026-08-27T08:00:00Z",
+    },
+  };
+}
+
 describe("Agent Canvas normalizers", () => {
   it("accepts expert_activity_superseded in the canonical chat timeline", () => {
     const timeline = normalizeChatTimelineListResponseV2({
@@ -967,6 +1020,35 @@ describe("Agent Canvas normalizers", () => {
       expected_guidance_revision: 6,
     });
     expect(session.awaiting?.kind).toBe("product_source");
+  });
+
+  it("rejects Product source cardinality and unknown content fields", () => {
+    const wrongCount = productSourceGuidanceSessionPayload();
+    wrongCount.interaction.content.min_asset_count = 2;
+    expect(() => normalizeGuidedSessionStateV2(wrongCount)).toThrow(
+      "Invalid creativeSession.interaction.content: invalid Product source asset count contract",
+    );
+
+    const unknownField = productSourceGuidanceSessionPayload();
+    expect(() => normalizeGuidedSessionStateV2({
+      ...unknownField,
+      interaction: {
+        ...unknownField.interaction,
+        content: { ...unknownField.interaction.content, inferred_prompt: "do not accept" },
+      },
+    })).toThrow("Invalid creativeSession.interaction.content.inferred_prompt: unknown field");
+  });
+
+  it("rejects a Product source awaiting record that is not submit-authoritative", () => {
+    const payload = productSourceGuidanceSessionPayload();
+    expect(() => normalizeGuidedSessionStateV2({
+      ...payload,
+      awaiting: {
+        ...payload.awaiting,
+        resume_policy: "node_terminal",
+        node_ids: ["node-product-1"],
+      },
+    })).toThrow("Invalid creativeSession.awaiting: invalid Product source awaiting authority");
   });
 
   it("retains immutable image AssetVersion identity in a binding source", () => {

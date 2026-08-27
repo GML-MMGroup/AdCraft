@@ -1,8 +1,38 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
+
+vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
+  useAgentCanvasAssets: () => ({
+    items: [{
+      id: "project:asset-front",
+      assetId: "asset-front",
+      source: "project",
+      mediaType: "image",
+      displayName: "Existing Front",
+      previewUrl: "/asset-front.png",
+      mediaUrl: "/asset-front.png",
+      status: "ready",
+      tags: [],
+      identity: {
+        source: "project",
+        assetId: "asset-front",
+        entityId: null,
+        versionId: "version-front",
+      },
+      projectAsset: null,
+    }],
+    loading: false,
+    error: null,
+    uploading: false,
+    uploadError: null,
+    retry: vi.fn(),
+    uploadFiles: vi.fn(),
+    uploadFilesWithReceipts: vi.fn(),
+  }),
+}));
 
 const conceptInteraction: GuidedInteractionV1 = {
   interaction_id: "interaction-concept",
@@ -72,6 +102,23 @@ const mediaReviewInteraction: GuidedInteractionV1 = {
     summary: "The generated video is ready.",
   },
   allowed_actions: ["accept", "retry"],
+};
+
+const productSourceInteraction: GuidedInteractionV1 = {
+  ...conceptInteraction,
+  interaction_id: "interaction-product-1",
+  kind: "product_source",
+  title: "Choose Product source",
+  content: {
+    content_kind: "product_source",
+    input_kind: "main",
+    question_id: "product_main_source",
+    prompt: "Choose one Product image.",
+    expected_guidance_revision: 5,
+    min_asset_count: 1,
+    max_asset_count: 1,
+  },
+  allowed_actions: ["select_source"],
 };
 
 afterEach(cleanup);
@@ -167,5 +214,39 @@ describe("GuidedInteractionCard", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "References" })).toBeNull();
+  });
+
+  it("preserves a Product draft when stale authority replaces the interaction revision", () => {
+    const { rerender } = render(
+      <GuidedInteractionCard
+        interaction={productSourceInteraction}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(false)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    expect(screen.getByText("Existing Front", { selector: ".agent-chat__product-source-selected-name" })).toBeTruthy();
+
+    rerender(
+      <GuidedInteractionCard
+        interaction={{
+          ...productSourceInteraction,
+          interaction_id: "interaction-product-2",
+          expected_session_revision: 8,
+          revision: 4,
+        }}
+        pending={false}
+        issue={{
+          summary: "The workflow changed before this response was saved. Review the latest options and try again.",
+          detail: "guided_interaction_stale",
+          fieldId: null,
+          retryable: true,
+        }}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByText("Existing Front", { selector: ".agent-chat__product-source-selected-name" })).toBeTruthy();
   });
 });

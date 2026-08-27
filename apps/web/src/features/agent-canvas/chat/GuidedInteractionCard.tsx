@@ -60,7 +60,7 @@ export function GuidedInteractionCard({
   if (interaction.content.content_kind === "product_source") {
     return (
       <ProductSourceDecisionDock
-        key={interaction.interaction_id}
+        key={`${interaction.workflow_id}:${interaction.content.question_id}:${interaction.content.input_kind}`}
         interaction={interaction}
         pending={pending}
         issue={issue}
