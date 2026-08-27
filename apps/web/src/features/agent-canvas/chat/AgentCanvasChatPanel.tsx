@@ -61,7 +61,6 @@ import {
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
 import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
-import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
@@ -639,9 +638,6 @@ export function AgentCanvasChatPanel({
           workflowId={workflow.workflow_id}
           eventRevision={settingsRevision}
         />
-        {chat.state.guidanceSession ? (
-          <GuidanceSessionProgress session={chat.state.guidanceSession} />
-        ) : null}
       </header>
 
       <CurrentProductionStep focus={productionFocus} onViewNodes={viewNodes} />
