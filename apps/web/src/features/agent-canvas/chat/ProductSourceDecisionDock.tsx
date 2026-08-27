@@ -49,6 +49,7 @@ export function ProductSourceDecisionDock({
   const [preparing, setPreparing] = useState(false);
   const [localIssue, setLocalIssue] = useState<DecisionDockIssue | null>(null);
   const previewUrlsRef = useRef(new Set<string>());
+  const transactionInFlightRef = useRef(false);
 
   useEffect(() => () => {
     if (typeof URL.revokeObjectURL !== "function") return;
@@ -73,28 +74,28 @@ export function ProductSourceDecisionDock({
   const effectiveIssue = localIssue ?? issue;
 
   const submit = async () => {
-    if (!canSubmit || busy) return;
-    setLocalIssue(null);
-    if (choice === "generate") {
-      await onSubmit({
-        submission_kind: "product_source",
-        expected_interaction_revision: interaction.revision,
-        expected_session_revision: interaction.expected_session_revision,
-        action: {
-          input_kind: content.input_kind,
-          choice: "generate",
-          handoff_mode: "apply",
-          asset_versions: [],
-          pending_handoff_id: null,
-          expected_guidance_revision: content.expected_guidance_revision,
-          question_id: content.question_id,
-        },
-      });
-      return;
-    }
-
+    if (!canSubmit || busy || transactionInFlightRef.current) return;
+    transactionInFlightRef.current = true;
     setPreparing(true);
+    setLocalIssue(null);
     try {
+      if (choice === "generate") {
+        await onSubmit({
+          submission_kind: "product_source",
+          expected_interaction_revision: interaction.revision,
+          expected_session_revision: interaction.expected_session_revision,
+          action: {
+            input_kind: content.input_kind,
+            choice: "generate",
+            handoff_mode: "apply",
+            asset_versions: [],
+            pending_handoff_id: null,
+            expected_guidance_revision: content.expected_guidance_revision,
+            question_id: content.question_id,
+          },
+        });
+        return;
+      }
       const localItems = selected.filter((item) => item.kind === "local_file");
       const receipts = localItems.length
         ? await assets.uploadFilesWithReceipts(
@@ -142,6 +143,7 @@ export function ProductSourceDecisionDock({
       retryable: true,
       });
     } finally {
+      transactionInFlightRef.current = false;
       setPreparing(false);
     }
   };

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
@@ -270,6 +270,129 @@ describe("ProductSourceDecisionDock", () => {
     expect((screen.getByRole("button", { name: "Select Unavailable" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Select Versionless" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("preserves mixed uploaded and existing Multiview order", async () => {
+    assets.items = [projectImage("asset-front", "version-front", "Existing Front")];
+    assets.uploadFilesWithReceipts.mockResolvedValueOnce([{
+      workflow_id: "workflow-1",
+      asset: { asset_id: "asset-side", version_id: "version-side" },
+      pending_handoff_id: null,
+    }]);
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={multiviewInteraction()}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    const side = new File(["side"], "side.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Upload Product sources"), {
+      target: { files: [side] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Move side.png up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({
+        asset_versions: [
+          { asset_id: "asset-side", version_id: "version-side" },
+          { asset_id: "asset-front", version_id: "version-front" },
+        ],
+      }),
+    })));
+  });
+
+  it("reuses the same upload idempotency key when a guided submit must be confirmed again", async () => {
+    const submit = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+    const file = new File(["product"], "product.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Upload Product source"), { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+
+    expect(assets.uploadFilesWithReceipts).toHaveBeenCalledTimes(2);
+    const firstKey = assets.uploadFilesWithReceipts.mock.calls[0][2][0];
+    const secondKey = assets.uploadFilesWithReceipts.mock.calls[1][2][0];
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it("rejects conflicting pending handoffs without submitting", async () => {
+    assets.uploadFilesWithReceipts.mockResolvedValueOnce([
+      {
+        workflow_id: "workflow-1",
+        asset: { asset_id: "asset-front", version_id: "version-front" },
+        pending_handoff_id: "handoff-front",
+      },
+      {
+        workflow_id: "workflow-1",
+        asset: { asset_id: "asset-side", version_id: "version-side" },
+        pending_handoff_id: "handoff-side",
+      },
+    ]);
+    const submit = vi.fn().mockResolvedValue(true);
+    render(
+      <ProductSourceDecisionDock
+        interaction={multiviewInteraction()}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Upload Product sources"), {
+      target: {
+        files: [
+          new File(["front"], "front.png", { type: "image/png" }),
+          new File(["side"], "side.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    expect(await screen.findByText("The Product uploads returned conflicting pending handoffs.")).toBeTruthy();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("allows only one in-flight submit for one confirmation", async () => {
+    assets.items = [projectImage("asset-front", "version-front", "Existing Front")];
+    let finishSubmit: ((value: boolean) => void) | null = null;
+    const submit = vi.fn(() => new Promise<boolean>((resolve) => {
+      finishSubmit = resolve;
+    }));
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        onSubmit={submit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    const confirm = screen.getByRole("button", { name: "Use selected Product" });
+
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(submit).toHaveBeenCalledTimes(1);
+    finishSubmit?.(true);
+  });
 });
 
 function projectImage(
@@ -294,5 +417,17 @@ function projectImage(
       versionId,
     },
     projectAsset: null,
+  };
+}
+
+function multiviewInteraction(): GuidedInteractionV1 {
+  return {
+    ...interaction,
+    content: {
+      ...interaction.content,
+      input_kind: "multiview",
+      min_asset_count: 2,
+      max_asset_count: 8,
+    },
   };
 }
