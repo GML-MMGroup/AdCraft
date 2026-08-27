@@ -1159,6 +1159,10 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toContain("overflow-y: auto");
     expect(css).toMatch(/\.agent-chat__proposal-option:not\(\.is-selected\)[\s\S]*-webkit-line-clamp: 2/);
     expect(css).toMatch(/\.agent-chat__proposal-option\.is-selected[\s\S]*border-color: var\(--agent-chat-primary\)/);
+    expect(css).toMatch(/\.agent-chat__decision-dock-header strong\s*\{[^}]*font-size: 13px/s);
+    expect(css).toMatch(/\.agent-chat__decision-dock-header p\s*\{[^}]*font-size: 12px/s);
+    expect(css).toMatch(/\.agent-chat__proposal-option-copy strong\s*\{[^}]*font-size: 13px/s);
+    expect(css).toMatch(/\.agent-chat__proposal-option-copy > span\s*\{[^}]*font-size: 12px/s);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.agent-chat__decision-dock/);
     expect(css).not.toContain(".agent-chat__guided-proposal-intro");
     expect(css).not.toContain("#e6a34a");

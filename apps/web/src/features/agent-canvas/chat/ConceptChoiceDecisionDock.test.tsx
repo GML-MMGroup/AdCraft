@@ -232,6 +232,6 @@ describe("ConceptChoiceDecisionDock", () => {
     expect((screen.getByRole("radio", { name: /Warm/i }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "More" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole("alert").textContent).toContain("Try again.");
-    expect((screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Submitting" }).getAttribute("aria-disabled")).toBe("true");
   });
 });

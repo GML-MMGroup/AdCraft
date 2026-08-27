@@ -40,7 +40,7 @@ export function QuestionnaireDecisionDock({
   const answeredCount = questions.filter((question) => (
     answerIsValid(answers[question.question_id])
   )).length;
-  const complete = questions.every((question) => (
+  const complete = answeredCount > 0 && questions.every((question) => (
     !question.required || answerIsValid(answers[question.question_id])
   ));
   const canSubmit = complete && interaction.allowed_actions.includes("answer");
@@ -156,6 +156,8 @@ export function QuestionnaireDecisionDock({
                 <button
                   type="button"
                   disabled={pending}
+                  aria-pressed={answer?.kind === "skip"}
+                  className={answer?.kind === "skip" ? "is-selected" : undefined}
                   onClick={() => setAnswers((current) => ({
                     ...current,
                     [question.question_id]: { kind: "skip" },

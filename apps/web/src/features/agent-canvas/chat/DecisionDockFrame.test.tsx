@@ -30,7 +30,24 @@ describe("DecisionDockFrame", () => {
   });
 
   it("locks its footer and announces busy state while submitting", () => {
-    render(
+    const submit = vi.fn();
+    const { rerender } = render(
+      <DecisionDockFrame
+        title="Review media"
+        context="Choose the next action."
+        pending={false}
+        issue={null}
+        footerSummary="Accept this result"
+        submitLabel="Accept"
+        submitDisabled={false}
+        onSubmit={submit}
+      >
+        <p>Media content</p>
+      </DecisionDockFrame>,
+    );
+
+    screen.getByRole("button", { name: "Accept" }).focus();
+    rerender(
       <DecisionDockFrame
         title="Review media"
         context="Choose the next action."
@@ -39,14 +56,19 @@ describe("DecisionDockFrame", () => {
         footerSummary="Accept this result"
         submitLabel="Accept"
         submitDisabled={false}
-        onSubmit={vi.fn()}
+        onSubmit={submit}
       >
         <p>Media content</p>
       </DecisionDockFrame>,
     );
 
+    const pendingAction = screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement;
     expect(screen.getByRole("article").getAttribute("aria-busy")).toBe("true");
-    expect((screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(pendingAction.disabled).toBe(false);
+    expect(pendingAction.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(pendingAction);
+    fireEvent.click(pendingAction);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("keeps technical details closed behind human-readable error copy", () => {

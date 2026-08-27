@@ -59,7 +59,9 @@ describe("QuestionnaireDecisionDock", () => {
 
     expect(screen.getByText("0 of 2 answered")).toBeTruthy();
     fireEvent.click(screen.getByRole("radio", { name: /30 seconds/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Skip Which tone should lead/i }));
+    const skip = screen.getByRole("button", { name: /Skip Which tone should lead/i });
+    fireEvent.click(skip);
+    expect(skip.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("2 of 2 answered")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
 
@@ -80,6 +82,33 @@ describe("QuestionnaireDecisionDock", () => {
     expect(screen.getByText("Recommended")).toBeTruthy();
     expect(screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
     expect((screen.getByRole("button", { name: "Submit answers" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not submit an empty answer list when every question is optional", () => {
+    const optionalQuestion = interaction.content.content_kind === "questionnaire"
+      ? interaction.content.questions[1]
+      : undefined;
+    if (!optionalQuestion) throw new Error("Expected an optional questionnaire item.");
+    const optionalInteraction: GuidedInteractionV1 = {
+      ...interaction,
+      content: {
+        content_kind: "questionnaire",
+        questions: [optionalQuestion],
+      },
+    };
+    render(
+      <QuestionnaireDecisionDock
+        interaction={optionalInteraction}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Submit answers" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Skip Which tone should lead/i }));
+    expect(submit.disabled).toBe(false);
   });
 
   it("uses a numeric custom duration and trims its submitted value", () => {
@@ -143,7 +172,7 @@ describe("QuestionnaireDecisionDock", () => {
 
     expect((screen.getByRole("radio", { name: /30 seconds/i }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("radio", { name: /30 seconds/i }) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Submitting" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Submitting" }).getAttribute("aria-disabled")).toBe("true");
   });
 
   it("shows Skip only when both question and interaction allow it", () => {

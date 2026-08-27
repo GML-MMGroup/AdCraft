@@ -1924,7 +1924,7 @@
 }
 
 .agent-chat__decision-dock-header strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1.35;
 }
@@ -1932,7 +1932,7 @@
 .agent-chat__decision-dock-header p {
   margin: 0;
   color: var(--agent-chat-secondary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -2038,14 +2038,14 @@
 
 .agent-chat__proposal-option-copy strong {
   color: var(--agent-chat-primary);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 620;
   line-height: 1.4;
 }
 
 .agent-chat__proposal-option-copy > span {
   color: var(--agent-chat-secondary);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -2113,7 +2113,8 @@
 .agent-chat__decision-dock-secondary-actions button[aria-pressed="true"],
 .agent-chat__decision-dock-confirmation button:hover:not(:disabled),
 .agent-chat__decision-dock-inline-input > button:hover:not(:disabled),
-.agent-chat__decision-dock-questions fieldset > button:hover:not(:disabled) {
+.agent-chat__decision-dock-questions fieldset > button:hover:not(:disabled),
+.agent-chat__decision-dock-questions fieldset > button[aria-pressed="true"] {
   border-color: var(--agent-chat-strong-line);
   background: var(--agent-chat-selected);
   color: var(--agent-chat-primary);
@@ -2318,7 +2319,8 @@
   font-weight: 650;
 }
 
-.agent-chat__decision-dock-footer > button:disabled {
+.agent-chat__decision-dock-footer > button:disabled,
+.agent-chat__decision-dock-footer > button[aria-disabled="true"] {
   border-color: var(--agent-chat-strong-line);
   background: var(--agent-chat-strong-line);
   color: var(--agent-chat-muted);
@@ -2467,7 +2469,7 @@
     transform 140ms ease;
 }
 
-.agent-chat :is(button, [role="button"]):active:not(:disabled) {
+.agent-chat :is(button, [role="button"]):active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(.98);
 }
 

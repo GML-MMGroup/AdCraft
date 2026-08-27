@@ -27,6 +27,7 @@ export function DecisionDockFrame({
   children,
 }: DecisionDockFrameProps) {
   const issueRef = useRef<HTMLDivElement>(null);
+  const actionLocked = pending || submitDisabled;
 
   useEffect(() => {
     if (issue && !issue.fieldId) issueRef.current?.focus();
@@ -59,8 +60,11 @@ export function DecisionDockFrame({
         <span>{footerSummary}</span>
         <button
           type="button"
-          disabled={pending || submitDisabled}
-          onClick={onSubmit}
+          disabled={submitDisabled && !pending}
+          aria-disabled={actionLocked}
+          onClick={() => {
+            if (!actionLocked) onSubmit();
+          }}
         >
           {pending ? "Submitting" : submitLabel}
         </button>
