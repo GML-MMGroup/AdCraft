@@ -241,6 +241,10 @@ class CapabilityReferencePlanner:
                 else self._model_reference_limit(capability_id)
             ),
         )
+        self._validate_video_character_references(
+            capability_id=capability_id,
+            references=references,
+        )
         payload = {
             "capability_id": capability_id,
             "references": [item.model_dump(mode="json") for item in references],
@@ -258,6 +262,31 @@ class CapabilityReferencePlanner:
             digest=digest,
             warnings=warnings,
         )
+
+    @staticmethod
+    def _validate_video_character_references(
+        *,
+        capability_id: CapabilityIdV1,
+        references: tuple[PlannedCapabilityReferenceV1, ...],
+    ) -> None:
+        if capability_id != "video_direction":
+            return
+        character_references = tuple(
+            item for item in references if item.semantic_reference_role == "subject_reference"
+        )
+        occurrence_ids = tuple(
+            item.occurrence_id for item in character_references if item.occurrence_id is not None
+        )
+        if any(
+            item.source_kind == "node"
+            and (item.occurrence_id is None or item.character_phase != "turnaround")
+            for item in character_references
+        ) or len(occurrence_ids) != len(set(occurrence_ids)):
+            raise V2PersistenceError(
+                "character_reference_mapping_invalid",
+                "Video Character references require distinct explicit Turnaround occurrences.",
+                stage="capability_reference_planning",
+            )
 
     def _target_node_type(self, capability_id: CapabilityIdV1) -> str:
         definition = self._capabilities.definition(capability_id)
@@ -368,6 +397,14 @@ class CapabilityReferencePlanner:
             priority=priority,
             display_name=node.title,
             media_type="text" if node.node_type in {"text", "script"} else node.node_type,
+            occurrence_id=(
+                str(node.metadata["occurrence_id"])
+                if node.creative_role == "character" and node.metadata.get("occurrence_id")
+                else None
+            ),
+            character_phase=(
+                node.metadata.get("character_phase") if node.creative_role == "character" else None
+            ),
         )
 
     @staticmethod

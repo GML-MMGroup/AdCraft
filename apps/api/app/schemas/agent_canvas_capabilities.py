@@ -555,6 +555,14 @@ class PlannedCapabilityReferenceV1(_CapabilityModel):
     priority: int = Field(ge=0, le=10_000)
     display_name: str = Field(min_length=1, max_length=256)
     media_type: Literal["text", "image", "video", "audio"]
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "PlannedCapabilityReferenceV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character reference identity requires occurrence and phase.")
+        return self
 
 
 class CapabilityReferencePlanV1(_CapabilityModel):

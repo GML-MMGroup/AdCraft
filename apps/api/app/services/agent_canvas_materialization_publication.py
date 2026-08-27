@@ -828,7 +828,9 @@ class CapabilityMaterializationPublicationService:
                 session_id=session.session_id,
                 session_revision=outcome.session_revision,
                 stage=outcome.journey_stage,
-                occurrence_id=None,
+                occurrence_id=(
+                    envelope.occurrence_id if envelope.capability_id == "character_design" else None
+                ),
                 node_ids=tuple(item[0] for item in pending_preparations),
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,

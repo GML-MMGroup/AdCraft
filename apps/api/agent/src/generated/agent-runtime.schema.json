@@ -10865,6 +10865,22 @@
           "title": "Binding Kind",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "display_order": {
           "maximum": 127,
           "minimum": 0,
@@ -10880,6 +10896,20 @@
           ],
           "title": "Input Role",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "required": {
           "default": false,
@@ -17152,6 +17182,22 @@
           "default": null,
           "title": "Brief Digest"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_digest": {
           "anyOf": [
             {
@@ -17193,6 +17239,20 @@
           "minimum": 1,
           "title": "Node Revision",
           "type": "integer"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "operation_id": {
           "maxLength": 160,
@@ -17617,6 +17677,22 @@
     "PlannedCapabilityReferenceV1": {
       "additionalProperties": false,
       "properties": {
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "default_selected": {
           "default": true,
           "title": "Default Selected",
@@ -17647,6 +17723,20 @@
           ],
           "title": "Media Type",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "priority": {
           "maximum": 10000,
@@ -19895,6 +19985,22 @@
           "title": "Binding Kind",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "display_name": {
           "maxLength": 256,
           "minLength": 1,
@@ -19926,6 +20032,20 @@
           ],
           "title": "Media Type",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "required": {
           "default": false,
@@ -21803,16 +21923,73 @@
           "title": "Binding Revision",
           "type": "integer"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "display_order": {
           "minimum": 0,
           "title": "Display Order",
           "type": "integer"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "reference_purpose": {
           "maxLength": 80,
           "minLength": 1,
           "title": "Reference Purpose",
           "type": "string"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
         },
         "source_node_id": {
           "anyOf": [
@@ -22000,6 +22177,22 @@
           "title": "Bound Text Controls",
           "type": "array"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -22058,6 +22251,20 @@
           "minimum": 1,
           "title": "Node Revision",
           "type": "integer"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "requirement_facts": {
           "additionalProperties": {

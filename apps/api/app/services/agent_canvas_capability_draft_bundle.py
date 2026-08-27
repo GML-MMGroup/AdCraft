@@ -621,6 +621,28 @@ def _draft_nodes(
                 target_role=node.creative_role,
                 semantic_reference_role=intent.semantic_reference_role,
             )
+            snapshot = next(
+                (
+                    item
+                    for item in envelope.reference_plan.source_snapshots
+                    if item.source_kind == intent.source_kind and item.source_id == intent.source_id
+                ),
+                None,
+            )
+            if snapshot is not None:
+                metadata = {
+                    **metadata,
+                    **(
+                        {"source_node_revision": snapshot.source_revision}
+                        if snapshot.source_revision is not None
+                        else {}
+                    ),
+                    **(
+                        {"source_asset_version_id": snapshot.asset_version_id}
+                        if snapshot.asset_version_id is not None
+                        else {}
+                    ),
+                }
             binding_index = len(bindings)
             bindings.append(
                 CanvasBindingV2(
@@ -640,6 +662,17 @@ def _draft_nodes(
                     updated_at=envelope.created_at,
                 )
             )
+            if intent.occurrence_id is not None:
+                bindings[-1] = bindings[-1].model_copy(
+                    update={
+                        "metadata": {
+                            **bindings[-1].metadata,
+                            "occurrence_id": intent.occurrence_id,
+                            "character_phase": intent.character_phase,
+                            "explicit_occurrence_mapping": True,
+                        }
+                    }
+                )
     return tuple(nodes), tuple(bindings), tuple(preparations)
 
 
@@ -791,6 +824,8 @@ def _reference_intents(
                     "required",
                     "display_order",
                     "semantic_reference_role",
+                    "occurrence_id",
+                    "character_phase",
                 }
             )
         )

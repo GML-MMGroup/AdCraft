@@ -9,6 +9,7 @@ from collections.abc import Callable
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    CanvasBindingV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
     StorageAccessDescriptorV2,
@@ -48,6 +49,7 @@ class AdReferenceBundleResolver:
         nodes = {node.node_id: node for node in workflow.nodes}
         if node_id not in nodes:
             raise _error("node_not_found", "Canvas node was not found.")
+        _validate_video_character_bindings(nodes[node_id], workflow.bindings, nodes)
         references: list[ResolvedAdReferenceV2] = []
         binding_kinds: dict[str, list[ResolvedAdReferenceV2]] = {}
         for binding in workflow.bindings:
@@ -114,6 +116,12 @@ class AdReferenceBundleResolver:
                     else None
                 ),
                 source_semantic_role=source_role,
+                occurrence_id=(
+                    str(binding.metadata["occurrence_id"])
+                    if binding.metadata.get("occurrence_id")
+                    else None
+                ),
+                character_phase=binding.metadata.get("character_phase"),
                 semantic_reference_role=binding.metadata.get("semantic_reference_role"),
                 storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),
                 asset_id=asset.asset_id,
@@ -214,7 +222,15 @@ def canonical_node_reference_facts(node: CanvasNodeV2) -> dict[str, object]:
 
     content = node.structured_content
     if node.creative_role in {"product", "prop", "character"}:
-        return _selected_text_facts(content, ("subject_identity", "design_summary"))
+        facts = _selected_text_facts(content, ("subject_identity", "design_summary"))
+        if node.creative_role == "character":
+            asset_kind = content.get("character_asset_kind")
+            if isinstance(asset_kind, str):
+                facts["character_asset_kind"] = asset_kind
+            occurrence_id = node.metadata.get("occurrence_id")
+            if isinstance(occurrence_id, str):
+                facts["occurrence_id"] = occurrence_id
+        return facts
     if node.creative_role == "scene":
         return _selected_text_facts(
             content,
@@ -249,6 +265,46 @@ def canonical_node_reference_facts(node: CanvasNodeV2) -> dict[str, object]:
             ]
         return facts
     return {}
+
+
+def _validate_video_character_bindings(
+    target: CanvasNodeV2,
+    bindings: tuple[CanvasBindingV2, ...],
+    nodes: dict[str, CanvasNodeV2],
+) -> None:
+    if target.creative_role != "storyboard_video":
+        return
+    occurrence_ids: list[str] = []
+    for binding in bindings:
+        if (
+            getattr(binding, "target_node_id", None) != target.node_id
+            or not getattr(binding, "enabled", False)
+            or getattr(getattr(binding, "source", None), "kind", None) != "node_output"
+        ):
+            continue
+        source = nodes.get(binding.source.source_node_id)
+        if source is None or source.creative_role != "character":
+            continue
+        occurrence_id = binding.metadata.get("occurrence_id")
+        valid = bool(
+            isinstance(occurrence_id, str)
+            and binding.metadata.get("explicit_occurrence_mapping") is True
+            and binding.metadata.get("character_phase") == "turnaround"
+            and source.metadata.get("occurrence_id") == occurrence_id
+            and source.metadata.get("character_phase") == "turnaround"
+            and binding.metadata.get("source_node_revision") == source.revision
+        )
+        if not valid:
+            raise _error(
+                "character_reference_mapping_invalid",
+                "Video Character Binding provenance is ambiguous or stale.",
+            )
+        occurrence_ids.append(occurrence_id)
+    if len(occurrence_ids) != len(set(occurrence_ids)):
+        raise _error(
+            "character_reference_mapping_invalid",
+            "Video Character Bindings contain a duplicate occurrence.",
+        )
 
 
 def _selected_text_facts(

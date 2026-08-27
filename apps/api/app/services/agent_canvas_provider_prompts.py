@@ -581,6 +581,8 @@ def _render_reference_identities(
             "binding_id": reference.binding_id,
             "source_role": reference.source_semantic_role,
             "semantic_reference_role": reference.semantic_reference_role,
+            "occurrence_id": reference.occurrence_id,
+            "character_phase": reference.character_phase,
             "facts": reference.source_identity_facts,
         }
         for reference in reference_bundle.references

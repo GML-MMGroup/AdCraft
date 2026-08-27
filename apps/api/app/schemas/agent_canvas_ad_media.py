@@ -187,6 +187,8 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     source_node_revision: int | None = Field(default=None, ge=1, exclude=True)
     source_sequence_id: str | None = Field(default=None, min_length=1, exclude=True)
     source_semantic_role: str | None = None
+    occurrence_id: str | None = Field(default=None, min_length=1)
+    character_phase: Literal["main", "turnaround"] | None = None
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
     storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
@@ -195,6 +197,12 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     display_order: int = Field(ge=0)
     source_identity_facts: dict[str, JsonValue] = Field(default_factory=dict)
     access_descriptor: StorageAccessDescriptorV2
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "ResolvedAdReferenceV2":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Resolved Character identity requires occurrence and phase.")
+        return self
 
 
 class AdReferenceBundleV2(_AdMediaModel):
