@@ -1144,6 +1144,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const panelRule = css.match(/^\.agent-chat\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const userMessageContainerRule = css.match(/\.agent-chat__message--user\s*\{([\s\S]*?)\n\}/m)?.[1];
     const agentMessageRule = css.match(/\.agent-chat__message--agent\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
     const userMessageRule = css.match(/\.agent-chat__message--user\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
 
@@ -1163,6 +1164,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(panelRule).toContain("backdrop-filter: none");
     expect(panelRule).toContain("border-radius: 0");
     expect(css).toMatch(/\.agent-chat__message--agent > span\s*\{\s*display: none;/);
+    expect(userMessageContainerRule).toContain("width: fit-content");
+    expect(userMessageContainerRule).toContain("max-width: min(86%, 520px)");
     expect(agentMessageRule).toContain("padding: 0");
     expect(agentMessageRule).toContain("background: transparent");
     expect(userMessageRule).toContain("background: var(--agent-chat-raised)");

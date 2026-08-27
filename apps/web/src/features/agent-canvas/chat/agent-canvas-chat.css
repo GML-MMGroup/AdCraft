@@ -483,7 +483,15 @@
 }
 
 .agent-chat__message--user {
+  width: fit-content;
+  max-width: min(86%, 520px);
   align-self: flex-end;
+}
+
+.agent-chat__message--user .agent-chat__message-body {
+  width: fit-content;
+  max-width: 100%;
+  justify-self: end;
 }
 
 .agent-chat__message--agent {
