@@ -198,11 +198,11 @@ export type CanvasBindingV2 = { readonly "binding_id": string; readonly "workflo
 
 export type EditingOutputSettingsV2 = { readonly "resolution"?: string | null; readonly "aspect_ratio"?: string | null; readonly "fps"?: number | null; readonly "video_codec"?: "h264"; readonly "audio_codec"?: "aac"; readonly "container"?: "mp4" };
 
-export type EditingVideoEntryV2 = { readonly "binding_id"?: string | null; readonly "asset_id"?: string | null; readonly "enabled"?: boolean; readonly "trim_start_seconds"?: number; readonly "trim_end_seconds"?: number | null; readonly "volume"?: number; readonly "preserve_native_audio"?: boolean; readonly "transition"?: "cut" | "fade"; readonly "transition_duration_seconds"?: number; readonly "fit_mode"?: "fill" | "fit" };
+export type EditingVideoEntryV2 = { readonly "binding_id"?: string | null; readonly "asset_id"?: string | null; readonly "enabled"?: boolean; readonly "timeline_start_seconds"?: number | null; readonly "trim_start_seconds"?: number; readonly "trim_end_seconds"?: number | null; readonly "volume"?: number; readonly "preserve_native_audio"?: boolean; readonly "transition"?: "cut" | "fade"; readonly "transition_duration_seconds"?: number; readonly "fit_mode"?: "fill" | "fit" };
 
 export type EditingBgmEntryV2 = { readonly "binding_id"?: string | null; readonly "asset_id"?: string | null; readonly "enabled"?: boolean; readonly "trim_start_seconds"?: number; readonly "trim_end_seconds"?: number | null; readonly "volume"?: number; readonly "fade_in_seconds"?: number; readonly "fade_out_seconds"?: number };
 
-export type EditingManifestV2 = { readonly "video_entries"?: ReadonlyArray<EditingVideoEntryV2>; readonly "bgm"?: EditingBgmEntryV2 | null; readonly "output"?: EditingOutputSettingsV2; readonly "manifest_revision"?: number };
+export type EditingManifestV2 = { readonly "video_entries"?: ReadonlyArray<EditingVideoEntryV2>; readonly "bgm"?: EditingBgmEntryV2 | null; readonly "output"?: EditingOutputSettingsV2; readonly "manifest_revision"?: number; readonly "timeline_duration_seconds"?: number | null };
 
 export type VisualStyleContractV2 = { readonly "style_prompt": string; readonly "source": "platform_default" | "references" | "user" | "video_skill"; readonly "negative_style_constraints"?: ReadonlyArray<string> };
 

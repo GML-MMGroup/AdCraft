@@ -10896,6 +10896,19 @@
         "output": {
           "$ref": "#/$defs/EditingOutputSettingsV2"
         },
+        "timeline_duration_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline Duration Seconds"
+        },
         "video_entries": {
           "default": [],
           "items": {
@@ -11018,6 +11031,19 @@
           "default": true,
           "title": "Preserve Native Audio",
           "type": "boolean"
+        },
+        "timeline_start_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline Start Seconds"
         },
         "transition": {
           "default": "cut",
