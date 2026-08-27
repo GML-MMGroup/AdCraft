@@ -34,6 +34,8 @@ RequirementElementKindV1: TypeAlias = Literal[
     "video",
     "audio",
 ]
+CharacterAuthoringPhaseV1: TypeAlias = Literal["main", "turnaround"]
+CharacterOccurrencePresenceV1: TypeAlias = Literal["include", "exclude", "unspecified"]
 RequirementControlNameV1: TypeAlias = Literal[
     "duration_seconds",
     "aspect_ratio",
@@ -390,6 +392,15 @@ class RequirementElementPresencePatchV1(_StrictModel):
     source_quote: str = Field(min_length=1, max_length=2_048)
 
 
+class CharacterOccurrenceV1(_FrozenModel):
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    occurrence_index: int = Field(ge=1, le=32)
+    role: str = Field(min_length=1, max_length=256)
+    identity_summary: str = Field(min_length=1, max_length=2_048)
+    presence: CharacterOccurrencePresenceV1
+    source_revision_no: int = Field(ge=1)
+
+
 class RequirementConflictV1(_FrozenModel):
     conflict_id: str = Field(min_length=1, max_length=160)
     control_names: tuple[RequirementControlNameV1, ...] = Field(default=(), max_length=12)
@@ -447,7 +458,19 @@ class RequirementLedgerV1(_FrozenModel):
     hard_controls: tuple[RequirementControlV1, ...] = Field(default=(), max_length=16)
     active_directives: tuple[RequirementDirectiveV1, ...] = Field(default=(), max_length=256)
     element_presence: tuple[RequirementElementPresenceV1, ...] = Field(default=(), max_length=9)
+    character_occurrences: tuple[CharacterOccurrenceV1, ...] = Field(default=(), max_length=32)
     unresolved_conflicts: tuple[RequirementConflictV1, ...] = Field(default=(), max_length=32)
+
+    @model_validator(mode="after")
+    def validate_character_occurrences(self) -> "RequirementLedgerV1":
+        occurrence_ids = tuple(item.occurrence_id for item in self.character_occurrences)
+        if len(occurrence_ids) != len(set(occurrence_ids)):
+            raise ValueError("Character occurrence IDs must be unique.")
+        occurrence_indexes = tuple(item.occurrence_index for item in self.character_occurrences)
+        expected_indexes = tuple(range(1, len(self.character_occurrences) + 1))
+        if occurrence_indexes != expected_indexes:
+            raise ValueError("Character occurrence indexes must be contiguous and ordered.")
+        return self
 
 
 class RequirementLedgerRevisionV1(_FrozenModel):
@@ -473,6 +496,7 @@ class RequirementLedgerResponseV1(_FrozenModel):
     hard_controls: tuple[RequirementControlV1, ...] = Field(default=(), max_length=16)
     active_directives: tuple[RequirementDirectiveV1, ...] = Field(default=(), max_length=256)
     element_presence: tuple[RequirementElementPresenceV1, ...] = Field(default=(), max_length=9)
+    character_occurrences: tuple[CharacterOccurrenceV1, ...] = Field(default=(), max_length=32)
     unresolved_conflicts: tuple[RequirementConflictV1, ...] = Field(default=(), max_length=32)
     updated_at: datetime
 

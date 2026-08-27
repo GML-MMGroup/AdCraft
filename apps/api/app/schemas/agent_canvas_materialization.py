@@ -17,7 +17,10 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
-from app.schemas.agent_canvas_requirements import DurationSecondsValueV1
+from app.schemas.agent_canvas_requirements import (
+    CharacterAuthoringPhaseV1,
+    DurationSecondsValueV1,
+)
 from app.schemas.agent_canvas_world_setting import WorldSettingCoreV2
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.language import BCP47Tag
@@ -75,6 +78,7 @@ class ParentNodeSnapshotV1(_MaterializationModel):
     node_id: str = Field(min_length=1, max_length=160)
     node_revision: int = Field(ge=1)
     semantic_role: Literal["product_main", "character_main"]
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     prompt_preparation_operation_id: str | None = Field(default=None, min_length=1, max_length=160)
 
 
@@ -106,6 +110,10 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    requirement_revision_no: int | None = Field(default=None, ge=1)
     selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
@@ -133,6 +141,16 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
             parent_snapshot=self.parent_snapshot,
             derivative_intent=self.derivative_intent,
         )
+        _validate_character_operation_identity(
+            self.capability_id,
+            self.operation_kind,
+            occurrence_id=self.occurrence_id,
+            character_phase=self.character_phase,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+            parent_snapshot=self.parent_snapshot,
+            derivative_intent=self.derivative_intent,
+        )
         return self
 
 
@@ -154,6 +172,10 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    requirement_revision_no: int | None = Field(default=None, ge=1)
     selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
@@ -177,6 +199,16 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
         _validate_operation_fields(
             self.capability_id,
             self.operation_kind,
+            parent_snapshot=self.parent_snapshot,
+            derivative_intent=self.derivative_intent,
+        )
+        _validate_character_operation_identity(
+            self.capability_id,
+            self.operation_kind,
+            occurrence_id=self.occurrence_id,
+            character_phase=self.character_phase,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
             parent_snapshot=self.parent_snapshot,
             derivative_intent=self.derivative_intent,
         )
@@ -220,6 +252,46 @@ def _validate_operation_fields(
             raise ValueError("Parent snapshot does not match the derivative capability.")
 
 
+def _validate_character_operation_identity(
+    capability_id: CapabilityIdV1,
+    operation_kind: MaterializationOperationKindV1,
+    *,
+    occurrence_id: str | None,
+    character_phase: CharacterAuthoringPhaseV1 | None,
+    requirement_revision_id: str | None,
+    requirement_revision_no: int | None,
+    parent_snapshot: ParentNodeSnapshotV1 | None,
+    derivative_intent: ParentDerivedMaterializationIntentV1 | None,
+) -> None:
+    identity = (
+        occurrence_id,
+        character_phase,
+        requirement_revision_id,
+        requirement_revision_no,
+    )
+    if capability_id != "character_design":
+        if any(value is not None for value in identity):
+            raise ValueError(
+                "Character occurrence identity is only valid for Character materialization."
+            )
+        return
+    if any(value is None for value in identity):
+        raise ValueError("Character materialization requires occurrence and phase identity.")
+    expected_phase: CharacterAuthoringPhaseV1 = (
+        "main" if operation_kind == "parent" else "turnaround"
+    )
+    if character_phase != expected_phase:
+        raise ValueError("Character operation phase does not match materialization kind.")
+    if operation_kind == "parent" and (
+        derivative_intent is None or derivative_intent.occurrence_id != occurrence_id
+    ):
+        raise ValueError("Character parent intent must preserve occurrence identity.")
+    if operation_kind == "derivative" and (
+        parent_snapshot is None or parent_snapshot.occurrence_id != occurrence_id
+    ):
+        raise ValueError("Character derivative parent must preserve occurrence identity.")
+
+
 ProposalApplicationEnvelopeV1: TypeAlias = (
     CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1
 )
@@ -230,6 +302,10 @@ class CapabilityMaterializationContextV1(_MaterializationModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     capability_id: CapabilityIdV1
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    requirement_revision_no: int | None = Field(default=None, ge=1)
     selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     creative_goal: str = Field(min_length=1, max_length=4_096)
     explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)

@@ -6929,6 +6929,22 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_kind": {
           "const": "capability_materialization",
           "default": "capability_materialization",
@@ -6954,6 +6970,20 @@
           "title": "Explicit Constraints",
           "type": "object"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "reference_summaries": {
           "default": [],
           "items": {
@@ -6978,6 +7008,33 @@
           ],
           "default": null,
           "title": "Repair Error"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
         },
         "response_locale": {
           "default": "und",
@@ -7101,6 +7158,22 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_snapshot_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Context Snapshot Digest",
@@ -7151,6 +7224,20 @@
           "title": "Materialization Id",
           "type": "string"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "operation_kind": {
           "default": "standalone",
           "enum": [
@@ -7185,6 +7272,33 @@
         },
         "reference_plan": {
           "$ref": "#/$defs/ProposalReferencePlanV1"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
         },
         "result_contract_name": {
           "maxLength": 160,
@@ -7830,6 +7944,79 @@
       "title": "CapabilityRequirementProjectionV1",
       "type": "object"
     },
+    "CharacterAuthoringCursorV1": {
+      "additionalProperties": false,
+      "properties": {
+        "ledger_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Ledger Revision Id",
+          "type": "string"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "phase": {
+          "enum": [
+            "main",
+            "turnaround"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ledger_revision_id",
+        "occurrence_id",
+        "occurrence_index",
+        "phase",
+        "stage_revision"
+      ],
+      "title": "CharacterAuthoringCursorV1",
+      "type": "object"
+    },
+    "CharacterAuthoringErrorDefinitionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "character_authoring_phase_invalid",
+            "character_authoring_revision_stale",
+            "character_materialization_duplicate",
+            "character_occurrence_invalid",
+            "character_occurrence_order_invalid",
+            "character_parent_provenance_invalid",
+            "character_prompt_preparation_failed"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "retryable"
+      ],
+      "title": "CharacterAuthoringErrorDefinitionV1",
+      "type": "object"
+    },
     "CharacterCountControlPatchV1": {
       "additionalProperties": false,
       "properties": {
@@ -8236,6 +8423,59 @@
         "title"
       ],
       "title": "CharacterMaterializationResultV1",
+      "type": "object"
+    },
+    "CharacterOccurrenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "identity_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Identity Summary",
+          "type": "string"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "source_revision_no": {
+          "minimum": 1,
+          "title": "Source Revision No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "identity_summary",
+        "occurrence_id",
+        "occurrence_index",
+        "presence",
+        "role",
+        "source_revision_no"
+      ],
+      "title": "CharacterOccurrenceV1",
       "type": "object"
     },
     "CharacterProposalOptionV1": {
@@ -15112,6 +15352,22 @@
           "title": "Action Kind",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "occurrence_id": {
           "anyOf": [
             {
@@ -15279,6 +15535,22 @@
           ],
           "title": "Actor",
           "type": "string"
+        },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
         },
         "evidence_id": {
           "maxLength": 160,
@@ -15466,6 +15738,22 @@
           "default": null,
           "title": "Capability Id"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "expected_stage_revision": {
           "minimum": 1,
           "title": "Expected Stage Revision",
@@ -15537,6 +15825,22 @@
           ],
           "title": "Actor",
           "type": "string"
+        },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
         },
         "evidence_id": {
           "maxLength": 160,
@@ -16372,6 +16676,22 @@
           "default": null,
           "title": "Brief Digest"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_snapshot_id": {
           "anyOf": [
             {
@@ -16404,6 +16724,20 @@
             }
           ],
           "default": null
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "operation_id": {
           "anyOf": [
@@ -17021,6 +17355,20 @@
           "minimum": 1,
           "title": "Node Revision",
           "type": "integer"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "prompt_preparation_operation_id": {
           "anyOf": [
@@ -18856,6 +19204,22 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_snapshot_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Context Snapshot Digest",
@@ -18912,6 +19276,20 @@
           "title": "Materialization Id",
           "type": "string"
         },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
         "operation_kind": {
           "default": "standalone",
           "enum": [
@@ -18946,6 +19324,33 @@
         },
         "reference_plan": {
           "$ref": "#/$defs/ProposalReferencePlanV1"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
         },
         "schema_version": {
           "const": "1",
@@ -20495,6 +20900,15 @@
           "title": "Active Directives",
           "type": "array"
         },
+        "character_occurrences": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CharacterOccurrenceV1"
+          },
+          "maxItems": 32,
+          "title": "Character Occurrences",
+          "type": "array"
+        },
         "digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Digest",
@@ -20747,6 +21161,15 @@
           },
           "maxItems": 256,
           "title": "Active Directives",
+          "type": "array"
+        },
+        "character_occurrences": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CharacterOccurrenceV1"
+          },
+          "maxItems": 32,
+          "title": "Character Occurrences",
           "type": "array"
         },
         "element_presence": {

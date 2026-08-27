@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     prompt_assertion_evidence_digest,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import ResolvedNodeParameterV2
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 __all__ = (
     "NodePromptPreparationV1",
@@ -32,6 +33,8 @@ class NodePromptPreparationV1(BaseModel):
     operation_id: str | None = Field(default=None, min_length=1, max_length=160)
     attempt_no: int = Field(ge=0)
     context_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     prompt_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     role_variant: str | None = Field(default=None, max_length=80)
     recipe_id: str | None = Field(default=None, max_length=160)

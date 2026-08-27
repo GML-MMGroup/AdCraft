@@ -102,6 +102,8 @@ class ContinuationCommitV2(_ConversationModel):
     source_action_id: str
     idempotency_key: str
     video_skill_run_id: str | None = None
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
     max_attempts: int = Field(default=5, ge=1)
 
 
@@ -423,6 +425,8 @@ class AgentActionReceiptV2(_ConversationModel):
     proposal_option_id: str | None = Field(default=None, max_length=160)
     proposal_action: ProposalActionTypeV2 | None = None
     actor_kind: Literal["agent", "user", "system"] = "system"
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
     idempotency_key: str | None = Field(default=None, max_length=256)
     status: Literal[
         "applied",

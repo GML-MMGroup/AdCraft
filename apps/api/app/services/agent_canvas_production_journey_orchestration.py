@@ -82,6 +82,7 @@ class GuidedProductionJourneyService:
             status="reserved",
             turn_id=turn_id,
             occurrence_id=result.occurrence_id,
+            character_phase=result.character_phase,
         )
         journey = session.journey.model_copy(update={"active_action": projection})
         updated = self._conversations.replace_guidance_journey(
@@ -94,6 +95,7 @@ class GuidedProductionJourneyService:
                 "action_id": action_id,
                 "action_kind": projection.action_kind,
                 "occurrence_id": result.occurrence_id,
+                "character_phase": result.character_phase,
             },
         )
         return updated, result
@@ -161,6 +163,7 @@ class GuidedProductionJourneyService:
                 "evidence_kind": evidence.evidence_kind,
                 "action_id": evidence.action_id,
                 "occurrence_id": evidence.occurrence_id,
+                "character_phase": evidence.character_phase,
             },
         )
 

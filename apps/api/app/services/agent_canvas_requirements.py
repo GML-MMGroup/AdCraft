@@ -360,6 +360,7 @@ def requirement_response(
         hard_controls=ledger.hard_controls,
         active_directives=ledger.active_directives,
         element_presence=ledger.element_presence,
+        character_occurrences=ledger.character_occurrences,
         unresolved_conflicts=ledger.unresolved_conflicts,
         updated_at=revision.updated_at,
     )

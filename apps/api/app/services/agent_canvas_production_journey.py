@@ -19,6 +19,7 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyResultV2,
     JourneyStageV2,
 )
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +208,11 @@ class GuidedProductionJourneyPolicyService:
         if descriptor.capability_id is None:
             return _result(journey, "wait_for_user")
         occurrence_id = journey.active_occurrence_id or self._next_occurrence(journey, descriptor)
+        character_phase = (
+            self._next_character_phase(journey, occurrence_id)
+            if journey.stage == "character" and occurrence_id is not None
+            else None
+        )
         action = (
             "invoke_internal_checkpoint"
             if journey.stage in {"narrative_direction", "style_lock", "storyboard_plan"}
@@ -217,6 +223,7 @@ class GuidedProductionJourneyPolicyService:
             action,
             capability_id=descriptor.capability_id,
             occurrence_id=occurrence_id,
+            character_phase=character_phase,
         )
 
     def apply_evidence(
@@ -256,6 +263,32 @@ class GuidedProductionJourneyPolicyService:
             )
         if descriptor.successor is None:
             raise _error("journey_stage_action_mismatch", "Journey stage cannot advance.")
+
+        if (
+            journey.stage == "character"
+            and evidence.evidence_kind == "character_materialized"
+            and evidence.occurrence_id is not None
+            and evidence.character_phase is not None
+        ):
+            expected_phase = self._next_character_phase(journey, evidence.occurrence_id)
+            if evidence.character_phase != expected_phase:
+                raise _error(
+                    "character_authoring_phase_invalid",
+                    "Character materialization does not match the current authoring phase.",
+                )
+            transition = evidence.as_transition(
+                stage=journey.stage,
+                stage_revision=journey.stage_revision,
+                recorded_at=recorded_at,
+            )
+            if evidence.character_phase == "main":
+                return journey.model_copy(
+                    update={
+                        "active_occurrence_id": evidence.occurrence_id,
+                        "active_action": None,
+                        "transition_evidence": (*journey.transition_evidence, transition),
+                    }
+                )
 
         decisions = self._apply_occurrence_outcome(journey, evidence)
         if evidence.occurrence_id is not None and self._has_unresolved_occurrence(
@@ -438,6 +471,22 @@ class GuidedProductionJourneyPolicyService:
     ) -> str | None:
         return self._next_occurrence_from(journey.decisions, descriptor)
 
+    @staticmethod
+    def _next_character_phase(
+        journey: GuidedProductionJourneyV2,
+        occurrence_id: str,
+    ) -> CharacterAuthoringPhaseV1:
+        completed_phases = {
+            item.character_phase
+            for item in journey.transition_evidence
+            if item.stage == "character"
+            and item.stage_revision == journey.stage_revision
+            and item.occurrence_id == occurrence_id
+            and item.evidence_kind == "character_materialized"
+            and item.character_phase is not None
+        }
+        return "turnaround" if "main" in completed_phases else "main"
+
 
 def _result(
     journey: GuidedProductionJourneyV2,
@@ -445,6 +494,7 @@ def _result(
     *,
     capability_id: CapabilityIdV1 | None = None,
     occurrence_id: str | None = None,
+    character_phase: CharacterAuthoringPhaseV1 | None = None,
 ) -> JourneyPolicyResultV2:
     return JourneyPolicyResultV2.model_validate(
         {
@@ -452,6 +502,7 @@ def _result(
             "expected_stage_revision": journey.stage_revision,
             "capability_id": capability_id,
             "occurrence_id": occurrence_id,
+            "character_phase": character_phase,
             "requires_model_call": False,
         }
     )
