@@ -253,6 +253,19 @@ describe("ProposalCard", () => {
     expect(screen.queryByRole("status", { name: "Proposal materialization completed" })).toBeNull();
   });
 
+  it("shows an optimistic selection in the historical proposal card", () => {
+    render(
+      <ProposalCard
+        card={proposalCard}
+        pending
+        readOnly
+        optimisticSelectedOptionId="option-1"
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "Selected option: Hero" })).toBeTruthy();
+  });
+
   it("renders historical option markers without circular chrome", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
@@ -1139,11 +1152,10 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const threadRule = css.match(/\.agent-chat__stage-thread\s*\{([\s\S]*?)\n\}/m)?.[1];
-    const summaryRule = css.match(/\.agent-chat__stage-thread-summary\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(threadRule).toContain("border-top: 1px solid var(--agent-chat-border)");
     expect(threadRule).toContain("background: transparent");
-    expect(summaryRule).toContain("background: var(--agent-chat-selected)");
+    expect(css).not.toContain(".agent-chat__stage-thread-summary");
     expect(css).toContain("--agent-chat-selected: #292929");
     expect(css).toMatch(/\.agent-chat__stage-thread > header span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
     expect(css).toMatch(/\.agent-chat__progress-groups span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);

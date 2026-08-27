@@ -793,32 +793,6 @@
   font-size: 9px;
 }
 
-.agent-chat__stage-thread-summary {
-  display: grid;
-  gap: 3px;
-  padding: 8px 10px;
-  border-radius: 7px;
-  background: var(--agent-chat-selected);
-}
-
-.agent-chat__stage-thread-summary strong {
-  color: var(--agent-chat-primary);
-  font-size: 12px;
-  font-weight: 560;
-  line-height: 1.4;
-}
-
-.agent-chat__stage-thread-summary p {
-  display: -webkit-box;
-  overflow: hidden;
-  margin: 0;
-  color: var(--agent-chat-secondary);
-  font-size: 11px;
-  line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
 .agent-chat__stage-thread-history {
   display: grid;
   gap: 10px;
@@ -831,10 +805,6 @@
   padding: 8px 0;
   border: 0;
   background: transparent;
-}
-
-.agent-chat__stage-thread.is-failed .agent-chat__stage-thread-summary {
-  box-shadow: inset 0 0 0 1px var(--agent-chat-strong-line);
 }
 
 .agent-chat__node-links {

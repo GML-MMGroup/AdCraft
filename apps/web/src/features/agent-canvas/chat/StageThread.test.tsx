@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { StageThreadUnit } from "./stageThreadProjection.ts";
@@ -30,36 +30,17 @@ function stageThread(overrides: Partial<StageThreadUnit> = {}): StageThreadUnit 
 describe("StageThread", () => {
   afterEach(() => cleanup());
 
-  it("collapses a completed proposal to its selected result until history is requested", () => {
+  it("always shows workflow history and places the canvas action in the header", () => {
     render(
-      <StageThread unit={stageThread()}>
+      <StageThread unit={stageThread()} result={<button type="button">View on canvas</button>}>
         <div>Full proposal history</div>
       </StageThread>,
     );
 
-    expect(screen.getByText("Silk Pavilion")).toBeTruthy();
-    expect(screen.queryByText("Full proposal history")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show World Setting Designer history" }));
-
     expect(screen.getByText("Full proposal history")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Hide World Setting Designer history" })).toBeTruthy();
-  });
-
-  it("summarizes repeated Script Writer activity as revisions", () => {
-    render(
-      <StageThread
-        unit={stageThread({
-          key: "stage:script_authoring",
-          capability_id: "script_authoring",
-          capability_display_name: "Script Writer",
-          selected_option: null,
-          completed_activity_count: 3,
-        })}
-      />,
-    );
-
-    expect(screen.getByText("Completed 3 revisions")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View on canvas" })).toBeTruthy();
+    expect(screen.queryByText("Silk Pavilion")).toBeNull();
+    expect(screen.queryByRole("button", { name: /history/i })).toBeNull();
   });
 
   it("keeps working and failed threads expanded", () => {
@@ -70,8 +51,6 @@ describe("StageThread", () => {
     );
 
     expect(screen.getByText("Working detail")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Hide World Setting Designer history" }).getAttribute("aria-expanded")).toBe("true");
-
     rerender(
       <StageThread unit={stageThread({ status: "failed", selected_option: null })}>
         <div>Recovery detail</div>
@@ -81,31 +60,23 @@ describe("StageThread", () => {
     expect(screen.getByText("Recovery detail")).toBeTruthy();
   });
 
-  it("prioritizes a current failure over a historical selected option", () => {
+  it("keeps the status in the header without rendering a selected summary", () => {
     const { rerender } = render(<StageThread unit={stageThread({ status: "failed" })} />);
 
-    expect(screen.getByText("This task needs attention.")).toBeTruthy();
+    expect(screen.getByText("Needs attention")).toBeTruthy();
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
 
     rerender(<StageThread unit={stageThread({ status: "working" })} />);
-    expect(screen.getByText("Working on this task.")).toBeTruthy();
+    expect(screen.getByText("Working")).toBeTruthy();
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
   });
 
-  it("expands a completed thread when an external conversation reveal is requested", () => {
-    const { rerender } = render(
-      <StageThread unit={stageThread()} revealToken={null}>
+  it("always renders completed thread details", () => {
+    render(
+      <StageThread unit={stageThread()}>
         <div>Receipt source</div>
       </StageThread>,
     );
-    expect(screen.queryByText("Receipt source")).toBeNull();
-
-    rerender(
-      <StageThread unit={stageThread()} revealToken={7}>
-        <div>Receipt source</div>
-      </StageThread>,
-    );
-
     expect(screen.getByText("Receipt source")).toBeTruthy();
   });
 });

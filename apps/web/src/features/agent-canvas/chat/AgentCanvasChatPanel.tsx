@@ -121,6 +121,7 @@ export function AgentCanvasChatPanel({
   const collapsed = controlledCollapsed ?? internalCollapsed;
   const [mentionOpen, setMentionOpen] = useState(false);
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
+  const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +168,31 @@ export function AgentCanvasChatPanel({
       ? guidedInteractionReferences(standaloneGuidedInteraction, chat.state.items)
       : []
   ), [chat.state.items, standaloneGuidedInteraction]);
+  const conceptSelectionReady = Boolean(
+    !selectedConceptOptionId
+    || !conceptContent?.proposal_id
+    || standaloneGuidedReferences !== null,
+  );
+
+  useEffect(() => {
+    setOptimisticProposalSelections((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [proposalId, optionId] of Object.entries(current)) {
+        const proposalItem = chat.state.items.find((item) => (
+          item.item_type === "proposal" && item.proposal.proposal_id === proposalId
+        ));
+        const authoritativeOptionId = proposalItem?.item_type === "proposal"
+          ? proposalItem.proposal.latest_application?.option_id
+          : null;
+        if (authoritativeOptionId === optionId) {
+          delete next[proposalId];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [chat.state.items]);
   const stageTimeline = useMemo(
     () => buildStageThreadTimeline(chat.state.items, {
       showUnassociatedPlanning: chat.state.agentWorking,
@@ -271,8 +297,28 @@ export function AgentCanvasChatPanel({
         proposalReferences: standaloneGuidedReferences,
       });
       if (!request) return;
+      const optimisticProposalId = selectedConceptOptionId ? conceptContent?.proposal_id : null;
+      const previousOptimisticOptionId = optimisticProposalId
+        ? optimisticProposalSelections[optimisticProposalId]
+        : undefined;
+      if (optimisticProposalId && selectedConceptOptionId) {
+        setOptimisticProposalSelections((current) => ({
+          ...current,
+          [optimisticProposalId]: selectedConceptOptionId,
+        }));
+      }
       const accepted = await chat.actions.submitGuidedInteraction(conceptInteraction, request);
-      if (!accepted) return;
+      if (!accepted) {
+        if (optimisticProposalId) {
+          setOptimisticProposalSelections((current) => {
+            const next = { ...current };
+            if (previousOptimisticOptionId) next[optimisticProposalId] = previousOptimisticOptionId;
+            else delete next[optimisticProposalId];
+            return next;
+          });
+        }
+        return;
+      }
       setDraft((current) => current === submittedDraft ? "" : current);
       setSelectedConceptOptionId(null);
       setMentionOpen(false);
@@ -411,6 +457,7 @@ export function AgentCanvasChatPanel({
             && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
           )}
           readOnly
+          optimisticSelectedOptionId={optimisticProposalSelections[item.proposal.proposal_id] ?? null}
           issue={chat.state.proposalIssues[item.proposal.proposal_id]}
         />
         {location ? (
@@ -556,7 +603,6 @@ export function AgentCanvasChatPanel({
                 >
                   <StageThread
                     unit={unit}
-                    revealToken={revealRequest?.locationKey === unit.key ? revealRequest.requestId : null}
                     result={location ? (
                       <ConversationNodeLinks
                         location={location}
@@ -769,7 +815,9 @@ export function AgentCanvasChatPanel({
             aria-label={conceptInteraction ? "Submit guided direction" : "Send message"}
             title={conceptInteraction ? "Submit guided direction" : "Send message"}
             disabled={conceptInteraction
-              ? ((!selectedConceptOptionId && (!draft.trim() || !conceptCustomAllowed)) || conceptInteractionPending)
+              ? ((!selectedConceptOptionId && (!draft.trim() || !conceptCustomAllowed))
+                || !conceptSelectionReady
+                || conceptInteractionPending)
               : (!draft.trim() || chat.state.sending)}
             onClick={() => void send()}
           >
@@ -959,6 +1007,7 @@ export function ProposalCard({
   onApplyAction,
   onRetryMaterialization,
   retryingMaterialization = false,
+  optimisticSelectedOptionId = null,
   issue,
   readOnly = false,
 }: {
@@ -978,12 +1027,16 @@ export function ProposalCard({
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   onRetryMaterialization?: (turnId: string) => Promise<boolean>;
   retryingMaterialization?: boolean;
+  optimisticSelectedOptionId?: string | null;
   issue?: string;
   readOnly?: boolean;
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
-  const appliedOptionId = proposal.latest_application?.option_id ?? materialization?.option_id ?? null;
+  const appliedOptionId = optimisticSelectedOptionId
+    ?? proposal.latest_application?.option_id
+    ?? materialization?.option_id
+    ?? null;
   const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(() => (
     proposal.options.find((option) => option.option_id === appliedOptionId) ?? null
   ));
