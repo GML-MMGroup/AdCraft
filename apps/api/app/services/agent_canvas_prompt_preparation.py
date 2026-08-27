@@ -15,7 +15,11 @@ from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
-from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
+from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionEvidenceV1,
+    PromptAssertionSourceSnapshotV1,
+    safe_prompt_assertion_metadata,
+)
 from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
@@ -310,6 +314,87 @@ class NodePromptPreparationService:
                 }
             ),
         )
+
+    def refresh_dependency_evidence(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+    ) -> CanvasNodeV2:
+        """Atomically recompile current dependency evidence without reauthoring."""
+
+        current = self._workflows.get_node(workflow_id, node_id)
+        preparation = current.prompt_preparation
+        if preparation.operation_id != operation_id:
+            raise V2PersistenceError(
+                "node_prompt_preparation_conflict",
+                "Prompt preparation operation identity changed before evidence refresh.",
+                stage="node_prompt_preparation",
+            )
+        if preparation.status != "ready" or preparation.assertion_evidence is None:
+            raise V2PersistenceError(
+                "node_prompt_preparation_not_ready",
+                "Current prompt preparation evidence is not ready for dependency refresh.",
+                stage="node_prompt_preparation",
+                details={"retryable": True},
+            )
+        bindings = self._binding_snapshots(current)
+        binding_sources = tuple(
+            PromptAssertionSourceSnapshotV1(
+                source_kind="binding",
+                binding_id=item.binding_id,
+                binding_revision=item.binding_revision,
+                source_node_id=item.source_node_id,
+                source_node_revision=item.source_node_revision,
+                asset_id=item.asset_id,
+                asset_version_id=item.asset_version_id,
+                reference_purpose=item.reference_purpose,
+                sequence_id=item.source_sequence_id,
+            )
+            for item in bindings
+        )
+        evidence = preparation.assertion_evidence
+        current_sources = binding_sources + tuple(
+            item for item in evidence.source_snapshots if item.source_kind != "binding"
+        )
+        binding_digest = _role_binding_digest(bindings)
+        if (
+            current_sources == evidence.source_snapshots
+            and preparation.binding_digest == binding_digest
+        ):
+            return current
+        refreshed_evidence = PromptAssertionEvidenceV1.build(
+            **evidence.model_dump(
+                mode="python",
+                exclude={"schema_version", "source_snapshots", "evidence_digest"},
+            ),
+            source_snapshots=current_sources,
+        )
+        refreshed = current.model_copy(
+            update={
+                "revision": current.revision + 1,
+                "updated_at": _now(),
+                "metadata": {
+                    **current.metadata,
+                    "prompt_reference_bundle_digest": binding_digest,
+                    "prompt_assertion_evidence_digest": refreshed_evidence.evidence_digest,
+                    "prepared_reference_snapshots": [
+                        item.model_dump(mode="json") for item in bindings
+                    ],
+                },
+                "prompt_preparation": preparation.model_copy(
+                    update={
+                        "attempt_no": preparation.attempt_no + 1,
+                        "binding_digest": binding_digest,
+                        "assertion_evidence": refreshed_evidence,
+                        "attempt_stage": "completed",
+                        "updated_at": _now(),
+                    }
+                ),
+            }
+        )
+        return self._persist(current, refreshed)
 
     def _append_trace(
         self,

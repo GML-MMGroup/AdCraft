@@ -74,6 +74,7 @@ from app.services.agent_canvas_prompt_assertion_policy import (
     current_source_snapshots_for_evidence,
     prompt_assertion_admission_error,
 )
+from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
@@ -276,6 +277,7 @@ class DynamicCanvasScheduler:
         output_preparer: AgentCanvasOutputPreparationService | None = None,
         result_committer: AgentCanvasExecutionResultCommitService | None = None,
         terminal_member_reconciler: TerminalMemberReconciler | None = None,
+        prompt_preparation: NodePromptPreparationService | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -307,6 +309,7 @@ class DynamicCanvasScheduler:
         self._output_preparer = output_preparer
         self._result_committer = result_committer
         self._terminal_member_reconciler = terminal_member_reconciler
+        self._prompt_preparation = prompt_preparation or NodePromptPreparationService(workflows)
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
@@ -585,6 +588,17 @@ class DynamicCanvasScheduler:
                     ),
                 )
             )
+        )
+        self._assert_current_dependency_fence(
+            workflow_id,
+            execution_id,
+            node_id,
+            NodeExecutionContext(
+                execution_id=execution_id,
+                node=node,
+                inputs=(),
+                input_manifest=manifest,
+            ),
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
         if len(manifest.world_setting_inputs) > 1:
@@ -974,11 +988,46 @@ class DynamicCanvasScheduler:
             expected_lease_generation=lease.generation,
         )
         if updated and self._run_snapshots is not None:
+            refreshed_node = None
+            if "prompt_evidence_digest_stale" in details.get("reasons", ()):
+                node = self._workflows.get_node(workflow_id, lease.node_id)
+                operation_id = node.prompt_preparation.operation_id
+                if operation_id is None:
+                    raise V2PersistenceError(
+                        "node_prompt_preparation_conflict",
+                        "Stale prompt evidence has no preparation operation identity.",
+                        stage="agent_canvas_scheduler",
+                    )
+                refreshed_node = self._prompt_preparation.refresh_dependency_evidence(
+                    workflow_id,
+                    lease.node_id,
+                    operation_id=operation_id,
+                )
             self._run_snapshots.refresh_member_intent(
                 lease.execution_id,
                 lease.node_id,
                 now=now,
             )
+            if refreshed_node is not None:
+                self._runtime.update_member(
+                    lease.execution_id,
+                    lease.node_id,
+                    state="waiting",
+                    phase="blocked_by_upstream",
+                    waiting_for_node_ids=source_node_ids,
+                    now=now,
+                    event_type="execution_member_dependency_barrier_reprepared",
+                    event_payload={
+                        "node_id": lease.node_id,
+                        "node_revision": refreshed_node.revision,
+                        "prompt_evidence_digest": (
+                            refreshed_node.prompt_preparation.assertion_evidence.evidence_digest
+                            if refreshed_node.prompt_preparation.assertion_evidence is not None
+                            else None
+                        ),
+                    },
+                    expected_lease_generation=lease.generation,
+                )
         self._runtime.complete_lease(lease, now=now)
 
     def _assert_current_dependency_fence(

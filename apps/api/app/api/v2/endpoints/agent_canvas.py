@@ -830,6 +830,10 @@ def create_agent_canvas_runtime(
         output_preparer=output_preparer,
         result_committer=result_committer,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
+        prompt_preparation=NodePromptPreparationService(
+            workflow_repository,
+            asset_resolver=asset_service.resolve_asset,
+        ),
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
