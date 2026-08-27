@@ -1089,8 +1089,12 @@ describe("useAgentCanvasChat", () => {
   });
 
   it("refreshes authority after a stale guided interaction without resubmitting it", async () => {
-    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    const interaction = guidedQuestionnaireInteraction();
+    const session = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockResolvedValue(session);
     api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 409,
       code: "guided_interaction_stale",
       message: "The interaction is no longer current.",
     });
@@ -1110,7 +1114,7 @@ describe("useAgentCanvasChat", () => {
     api.agentCanvasChatTimeline.mockClear();
 
     await act(async () => {
-      await result.current.actions.submitGuidedInteraction(guidedQuestionnaireInteraction(), {
+      await result.current.actions.submitGuidedInteraction(interaction, {
         submission_kind: "questionnaire",
         expected_interaction_revision: 3,
         expected_session_revision: 8,
@@ -1123,13 +1127,18 @@ describe("useAgentCanvasChat", () => {
     expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledTimes(1);
     expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(1);
     expect(onWorkflowRefresh).toHaveBeenCalledTimes(1);
-    expect(result.current.state.notice).toContain("Your draft was kept");
+    expect(result.current.state.guidedInteractionIssue).toMatchObject({
+      summary: "The workflow changed before this response was saved. Review the latest options and try again.",
+      retryable: true,
+    });
+    expect(result.current.state.actingInteractionId).toBeNull();
     expect(result.current.state.error).toBeNull();
   });
 
   it("keeps an invalid duration in the guided interaction field instead of replacing it with a global error", async () => {
     api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
     api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 422,
       code: "guided_duration_value_invalid",
       message: "Use one of the supported duration values.",
     });
@@ -1154,8 +1163,90 @@ describe("useAgentCanvasChat", () => {
       });
     });
 
-    expect(result.current.state.guidedInteractionError).toBe("Use one of the supported duration values.");
+    expect(result.current.state.guidedInteractionIssue).toMatchObject({
+      summary: "Choose one of the supported duration values.",
+      fieldId: "production_duration_seconds",
+    });
     expect(result.current.state.error).toBeNull();
+  });
+
+  it("routes a Guided Interaction server failure into the Decision Dock", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 500,
+      code: "agent_runtime_unavailable",
+      message: "Request failed with status 500",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(guidedQuestionnaireInteraction(), {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "45" }],
+      });
+    });
+
+    expect(result.current.state.guidedInteractionIssue).toMatchObject({
+      summary: "The agent could not submit this response. Try again.",
+      retryable: true,
+    });
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it("clears a Decision Dock issue when backend authority replaces the interaction", async () => {
+    const interactionA = guidedQuestionnaireInteraction();
+    const interactionB = { ...interactionA, interaction_id: "interaction-duration-2" };
+    const sessionA = { ...guidedSession(), interaction: interactionA, awaiting: null };
+    const sessionB = { ...guidedSession(5, 9), interaction: interactionB, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: sessionA }));
+    api.agentCanvasCreativeSession.mockResolvedValue(sessionA);
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 422,
+      code: "guided_duration_value_invalid",
+      message: "Invalid duration",
+    });
+    const { result, rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interactionA, {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "12" }],
+      });
+    });
+    expect(result.current.state.guidedInteractionIssue).not.toBeNull();
+
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: sessionB }));
+    api.agentCanvasCreativeSession.mockResolvedValue(sessionB);
+    rerender({ chatRevision: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+
+    expect(result.current.state.guidedInteraction?.interaction_id).toBe("interaction-duration-2");
+    expect(result.current.state.guidedInteractionIssue).toBeNull();
   });
 
   it("uses backend content when a presentation message key or locale is unsupported", async () => {

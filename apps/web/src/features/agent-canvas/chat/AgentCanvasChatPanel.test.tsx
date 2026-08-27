@@ -1147,6 +1147,30 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toMatch(/\.agent-chat__progress-groups span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
   });
 
+  it("uses one scrolling monochrome Decision Dock surface", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const currentInteractionRule = css.match(/\.agent-chat__current-interaction\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(css).toContain(".agent-chat__decision-dock");
+    expect(css).toContain(".agent-chat__decision-dock-body");
+    expect(css).toContain(".agent-chat__decision-dock-footer");
+    expect(css).toContain("max-height: min(50vh, 480px)");
+    expect(css).toContain("overflow-y: auto");
+    expect(css).toMatch(/\.agent-chat__proposal-option:not\(\.is-selected\)[\s\S]*-webkit-line-clamp: 2/);
+    expect(css).toMatch(/\.agent-chat__proposal-option\.is-selected[\s\S]*border-color: var\(--agent-chat-primary\)/);
+    expect(css).toMatch(/\.agent-chat__decision-dock-header strong\s*\{[^}]*font-size: 13px/s);
+    expect(css).toMatch(/\.agent-chat__decision-dock-header p\s*\{[^}]*font-size: 12px/s);
+    expect(css).toMatch(/\.agent-chat__proposal-option-copy strong\s*\{[^}]*font-size: 13px/s);
+    expect(css).toMatch(/\.agent-chat__proposal-option-copy > span\s*\{[^}]*font-size: 12px/s);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.agent-chat__decision-dock/);
+    expect(css).not.toContain(".agent-chat__guided-proposal-intro");
+    expect(css).not.toContain("#e6a34a");
+    expect(css).not.toContain("#77c9c2");
+    expect(currentInteractionRule).toContain("overflow: visible");
+    expect(currentInteractionRule).not.toContain("overflow-y: auto");
+  });
+
   it("keeps semantic states and the Style selector inside the monochrome palette", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
