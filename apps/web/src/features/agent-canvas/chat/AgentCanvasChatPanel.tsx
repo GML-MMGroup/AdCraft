@@ -37,7 +37,6 @@ import {
   AgentCanvasDocumentBrowser,
   AgentCanvasDocumentReferenceCard,
 } from "../documents/AgentCanvasDocuments.tsx";
-import { isLikelyMarkdown, renderMarkdownAwareText } from "../canvas/AgentCanvasMarkdown.tsx";
 import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
@@ -57,6 +56,11 @@ import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
+import { ComposerContextTray } from "./ComposerContextTray.tsx";
+import { ConversationRecoverySurface } from "./ConversationRecoverySurface.tsx";
+import { NaturalMessage } from "./NaturalMessage.tsx";
+import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
+import { useComposerContext } from "./useComposerContext.ts";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
@@ -96,13 +100,10 @@ export function AgentCanvasChatPanel({
   const [draft, setDraft] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
-  const [mentionedAssetIds, setMentionedAssetIds] = useState<string[]>([]);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const imageAssets = useMemo(
-    () => workflow.assets.filter((asset) => asset.media_type === "image"),
-    [workflow.assets],
-  );
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const composerContext = useComposerContext({ workflow, onWorkflowRefresh });
+  const imageAssets = composerContext.availableImageAssets;
   const currentTopic = useMemo(() => {
     const session = chat.state.guidanceSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
@@ -133,6 +134,10 @@ export function AgentCanvasChatPanel({
     }),
     [chat.state.agentWorking, chat.state.items],
   );
+  const naturalMessagePresentation = useMemo(
+    () => projectNaturalMessagePresentation(chat.state.items),
+    [chat.state.items],
+  );
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
@@ -162,39 +167,27 @@ export function AgentCanvasChatPanel({
     timelineScroll.followLatest();
     const request = {
       text,
-      mentionedNodeIds,
-      mentionedImageAssetIds: mentionedAssetIds,
+      mentionedNodeIds: composerContext.selectedNodeIds,
+      mentionedImageAssetIds: composerContext.selectedAssetIds,
     };
+    const accepted = await chat.actions.submit(request);
+    if (!accepted) return;
     setDraft("");
     setMentionOpen(false);
-    setMentionedNodeIds([]);
-    setMentionedAssetIds([]);
-    await chat.actions.submit(request);
-  }
-
-  function toggleValue(value: string, selected: string[], setSelected: (next: string[]) => void) {
-    setSelected(selected.includes(value)
-      ? selected.filter((item) => item !== value)
-      : [...selected, value]);
+    composerContext.actions.clearMessageContext();
   }
 
   function renderTimelineItem(item: ChatTimelineItemV2) {
     if (item.item_type === "message") {
-      return (
-        <div
-          className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
-          key={`message-${item.message_id}`}
-        >
-          <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
-          {isLikelyMarkdown(item.text)
-            ? (
-              <div className="agent-chat__markdown">
-                {renderMarkdownAwareText(item.text)}
-              </div>
-            )
-            : <p>{item.text}</p>}
-        </div>
-      );
+      return <NaturalMessage
+        key={`message-${item.message_id}`}
+        message={item}
+        presentation={naturalMessagePresentation.get(item.message_id) ?? {
+          messageId: item.message_id,
+          showAgentIdentity: item.speaker === "adcraft_video_agent",
+          startsSpeakerRun: true,
+        }}
+      />;
     }
     if (item.item_type === "expert_activity") {
       return (
@@ -391,6 +384,22 @@ export function AgentCanvasChatPanel({
               />
             ) : null}
             {chat.state.agentWorking ? <AgentWorkingRow waitingForModel={chat.state.agentWaitingForModel} /> : null}
+            {chat.state.timelineRecovery ? (
+              <ConversationRecoverySurface
+                recovery={chat.state.timelineRecovery}
+                onAction={() => {
+                  if (
+                    chat.state.timelineRecovery?.action === "retry"
+                    && chat.state.retryableFailedTurn
+                  ) {
+                    void chat.actions.retryTurn(chat.state.retryableFailedTurn);
+                  } else {
+                    void chat.actions.refresh();
+                  }
+                }}
+                onDismiss={chat.actions.clearTimelineRecovery}
+              />
+            ) : null}
           </div>
         </div>
         {timelineScroll.hasUnseenContent ? (
@@ -406,35 +415,6 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
 
-      {chat.state.error ? (
-        <div className="agent-chat__error" role="alert">
-          <span>{chat.state.error}</span>
-          {chat.state.failedDraft ? (
-            <button type="button" onClick={() => void chat.actions.submit(chat.state.failedDraft!)}>
-              Retry
-            </button>
-          ) : chat.state.retryableFailedTurn ? (
-            <button
-              type="button"
-              onClick={() => void chat.actions.retryTurn(chat.state.retryableFailedTurn!)}
-              disabled={Boolean(chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id])}
-            >
-              {chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id]
-                ? "Retrying"
-                : "Retry"}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {chat.state.notice ? (
-        <div className="agent-chat__notice" role="status">
-          <span>{chat.state.notice}</span>
-          <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
-            <CloseIcon />
-          </button>
-        </div>
-      ) : null}
-
       {standaloneGuidedInteraction ? (
         <div className="agent-chat__current-interaction" aria-live="polite">
           <GuidedInteractionCard
@@ -449,35 +429,49 @@ export function AgentCanvasChatPanel({
         </div>
       ) : null}
 
+      {chat.state.composerRecovery ? (
+        <ConversationRecoverySurface
+          recovery={chat.state.composerRecovery}
+          onAction={chat.state.failedDraft ? async () => {
+            const accepted = await chat.actions.submit(chat.state.failedDraft!);
+            if (!accepted) return;
+            setDraft("");
+            setMentionOpen(false);
+            composerContext.actions.clearMessageContext();
+          } : undefined}
+          onDismiss={chat.actions.clearComposerRecovery}
+        />
+      ) : chat.state.workflowRecovery ? (
+        <ConversationRecoverySurface
+          recovery={chat.state.workflowRecovery}
+          onAction={() => {
+            void chat.actions.refresh();
+            void onWorkflowRefresh?.();
+            void onRuntimeRefresh?.();
+          }}
+          onDismiss={chat.actions.clearWorkflowRecovery}
+        />
+      ) : null}
+
+      {chat.state.notice ? (
+        <div className="agent-chat__notice" role="status">
+          <span>{chat.state.notice}</span>
+          <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
+            <CloseIcon />
+          </button>
+        </div>
+      ) : null}
+
+      <ComposerContextTray
+        view={composerContext.view}
+        uploadIssue={composerContext.uploadIssue}
+        onFocusNode={onFocusNode}
+        onRemoveNode={composerContext.actions.removeNode}
+        onRemoveAsset={composerContext.actions.removeAsset}
+        onClearUploadIssue={composerContext.actions.clearUploadIssue}
+      />
+
       <div className="agent-chat__composer">
-        {(mentionedNodeIds.length || mentionedAssetIds.length) ? (
-          <div className="agent-chat__mentions">
-            {mentionedNodeIds.map((nodeId) => {
-              const node = workflow.nodes.find((item) => item.node_id === nodeId);
-              return (
-                <button
-                  type="button"
-                  key={nodeId}
-                  onClick={() => setMentionedNodeIds((current) => current.filter((item) => item !== nodeId))}
-                >
-                  @{node?.title ?? nodeId}<CloseIcon />
-                </button>
-              );
-            })}
-            {mentionedAssetIds.map((assetId) => {
-              const asset = imageAssets.find((item) => item.asset_id === assetId);
-              return (
-                <button
-                  type="button"
-                  key={assetId}
-                  onClick={() => setMentionedAssetIds((current) => current.filter((item) => item !== assetId))}
-                >
-                  @{asset?.display_name ?? assetId}<CloseIcon />
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
         <textarea
           ref={composerTextareaRef}
           rows={3}
@@ -504,6 +498,28 @@ export function AgentCanvasChatPanel({
             >
               @
             </button>
+            <button
+              type="button"
+              aria-label="Upload context images"
+              title="Upload context images"
+              onClick={() => uploadInputRef.current?.click()}
+            >
+              <AssetsIcon />
+            </button>
+            <input
+              ref={uploadInputRef}
+              className="agent-chat__context-file-input"
+              type="file"
+              accept="image/*"
+              multiple
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(event) => {
+                const files = event.currentTarget.files;
+                if (files?.length) void composerContext.actions.upload(files);
+                event.currentTarget.value = "";
+              }}
+            />
             <AgentCanvasStyleSelector
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}
@@ -529,8 +545,8 @@ export function AgentCanvasChatPanel({
                 <button
                   type="button"
                   key={node.node_id}
-                  className={mentionedNodeIds.includes(node.node_id) ? "is-selected" : ""}
-                  onClick={() => toggleValue(node.node_id, mentionedNodeIds, setMentionedNodeIds)}
+                  className={composerContext.selectedNodeIds.includes(node.node_id) ? "is-selected" : ""}
+                  onClick={() => composerContext.actions.toggleNode(node.node_id)}
                 >
                   <DocumentIcon />
                   <span>{node.title}</span>
@@ -544,8 +560,8 @@ export function AgentCanvasChatPanel({
                 <button
                   type="button"
                   key={asset.asset_id}
-                  className={mentionedAssetIds.includes(asset.asset_id) ? "is-selected" : ""}
-                  onClick={() => toggleValue(asset.asset_id, mentionedAssetIds, setMentionedAssetIds)}
+                  className={composerContext.selectedAssetIds.includes(asset.asset_id) ? "is-selected" : ""}
+                  onClick={() => composerContext.actions.toggleAsset(asset.asset_id)}
                 >
                   <AssetsIcon />
                   <span>{asset.display_name}</span>
