@@ -29,7 +29,7 @@ export function MediaReviewDecisionDock({
   onSubmit,
 }: MediaReviewDecisionDockProps) {
   const content = interaction.content.content_kind === "media_review" ? interaction.content : null;
-  const modes = useMemo(() => availableModes(interaction), [interaction.allowed_actions]);
+  const modes = useMemo(() => availableModes(interaction), [interaction]);
   const moreId = useId();
   const [mode, setMode] = useState<MediaReviewMode>(() => modes[0] ?? "accept");
   const [instruction, setInstruction] = useState("");
