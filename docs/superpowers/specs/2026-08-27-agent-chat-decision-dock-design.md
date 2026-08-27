@@ -181,13 +181,14 @@ Layout rules:
 
 ### More actions
 
-Place Custom direction, Revise, Defer, Exclude, and Delegate in a `More` disclosure when allowed by the interaction.
+Place Custom direction, Defer, Exclude, and Delegate in a `More` disclosure when allowed by the interaction.
 
-- Custom direction or Revise opens one inline text input above the submit bar.
+- Custom direction opens one inline text input above the submit bar.
 - Activating Custom direction changes the primary label to `Submit direction`.
 - Defer, Exclude, and Delegate require an inline confirmation step before submission.
 - Opening a secondary action clears any incompatible action mode but does not discard the selected option.
 - Returning to the main choice restores `Submit selection` with the previous selection intact.
+- Do not expose `revise` from `GuidedInteractionActionV1` in this Dock because the current `GuidedInteractionSubmitRequestV1` concept request cannot represent it. Existing Proposal revision actions remain on their current Proposal action path.
 
 ## Questionnaire
 
