@@ -842,8 +842,39 @@ describe("command and receipt cards", () => {
     };
     render(<CapabilityActivityRow activity={activity} />);
 
-    expect(screen.getByText("Scene Designer is working")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Scene Designer is working" })).toBeTruthy();
+    expect(screen.getByText("Scene Designer")).toBeTruthy();
+    expect(screen.getByText("Working")).toBeTruthy();
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
+  });
+
+  it("presents backend activity duration and explanation as a compact section", () => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-completed",
+      turn_id: "turn-completed",
+      capability_id: "creative_direction",
+      capability_display_name: "Creative Direction",
+      status: "completed",
+      sequence: 8,
+      started_at: "2026-08-27T00:00:00Z",
+      finished_at: "2026-08-27T00:01:04Z",
+      presentation_text: "Visual language locked for the next production stage.",
+      message: null,
+      error_code: null,
+      elapsed_ms: 64_000,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    }} />);
+
+    expect(screen.getByRole("status", { name: "Creative Direction completed" })).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.getByText("for 1m 4s")).toBeTruthy();
+    expect(screen.getByText("Visual language locked for the next production stage.")).toBeTruthy();
   });
 
   it("shows text generation feedback only while capability work is active", () => {
@@ -1065,7 +1096,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(composerIndex).toBeGreaterThan(pinnedInteractionIndex);
   });
 
-  it("uses an opaque edge-aligned chat rail with plain Agent replies", () => {
+  it("uses the approved monochrome fixed chat rail with plain Agent replies", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const panelRule = css.match(/^\.agent-chat\s*\{([\s\S]*?)\n\}/m)?.[1];
@@ -1075,21 +1106,54 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(panelRule).toContain("top: 0");
     expect(panelRule).toContain("right: 0");
     expect(panelRule).toContain("bottom: 0");
-    expect(panelRule).toContain("background: #282828");
+    expect(panelRule).toContain("--agent-chat-canvas: #0a0a0a");
+    expect(panelRule).toContain("--agent-chat-panel: #151515");
+    expect(panelRule).toContain("--agent-chat-raised: #202020");
+    expect(panelRule).toContain("--agent-chat-border: #353535");
+    expect(panelRule).toContain("--agent-chat-strong-line: #4a4a4a");
+    expect(panelRule).toContain("--agent-chat-primary: #f5f5f5");
+    expect(panelRule).toContain("--agent-chat-secondary: #a3a3a3");
+    expect(panelRule).toContain("--agent-chat-muted: #707070");
+    expect(panelRule).toContain("background: var(--agent-chat-panel)");
     expect(panelRule).toContain("backdrop-filter: none");
     expect(panelRule).toContain("border-radius: 0");
     expect(css).toMatch(/\.agent-chat__message--agent > span\s*\{\s*display: none;/);
     expect(agentMessageRule).toContain("padding: 0");
     expect(agentMessageRule).toContain("background: transparent");
-    expect(userMessageRule).toContain("background: #343434");
+    expect(userMessageRule).toContain("background: var(--agent-chat-raised)");
   });
 
-  it("keeps the Collaboration control visually connected to the chat timeline", () => {
+  it("keeps semantic states and the Style selector inside the monochrome palette", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const errorRule = css.match(/\.agent-chat__error\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const noticeRule = css.match(/\.agent-chat__notice\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const selectedStyleRule = css.match(/\.agent-chat__style-menu \.agent-chat__style-option\.is-selected\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(errorRule).toContain("border-color: var(--agent-chat-strong-line)");
+    expect(errorRule).toContain("color: var(--agent-chat-primary)");
+    expect(noticeRule).toContain("color: var(--agent-chat-secondary)");
+    expect(selectedStyleRule).toContain("border-color: var(--agent-chat-primary)");
+    expect(css).not.toContain("#e6a34a");
+    expect(css).not.toContain("#77c9c2");
+  });
+
+  it("disables chat presentation motion when reduced motion is requested", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const reducedMotion = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*)\}\s*$/m)?.[1];
+
+    expect(reducedMotion).toContain(".agent-chat__message");
+    expect(reducedMotion).toContain(".agent-chat__activity");
+    expect(reducedMotion).toContain("animation: none !important");
+  });
+
+  it("separates the fixed header from the scrolling timeline", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const headerRule = css.match(/\.agent-chat__header\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(headerRule).not.toContain("border-bottom");
+    expect(headerRule).toContain("border-bottom: 1px solid var(--agent-chat-border)");
   });
 
   it("does not include the retired React Flow Mini Map chrome", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { InlineLoader, TextLoader } from "generative-loaders";
+import { InlineLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
 
 import {
@@ -15,12 +15,10 @@ import {
 import type {
   AgentCanvasWorkflowV2,
   AgentCanvasContinuationV2,
-  AgentCanvasChatTurnV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
-  ChatCapabilityActivityV2,
   ChatProposalCardV2,
   CapabilityProposalOptionV2,
   GuidanceSessionActionV2,
@@ -55,9 +53,11 @@ import {
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
+import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
+export { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 
 export function AgentCanvasChatPanel({
   workflow,
@@ -558,102 +558,6 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
       <span>{label}</span>
     </div>
   );
-}
-
-export function CapabilityActivityRow({
-  activity,
-  turn,
-  retrying = false,
-  onRetry,
-  onReviseRequest,
-}: {
-  activity: ChatCapabilityActivityV2;
-  turn?: AgentCanvasChatTurnV2 | null;
-  retrying?: boolean;
-  onRetry?: () => void;
-  onReviseRequest?: () => void;
-}) {
-  const retryable = turn?.retryable ?? activity.retryable;
-  const operationStage = recoveryStageLabel(turn?.operation_stage);
-  const errorCode = turn?.operation_failure?.code ?? activity.error_code;
-  const errorMessage = turn?.operation_failure?.message ?? activity.message;
-  const terminalActivity = activity.status === "completed"
-    || activity.status === "failed"
-    || activity.status === "superseded";
-  const waitingForModel = turn?.operation_stage === "waiting"
-    || turn?.operation_stage === "waiting_provider_response"
-    || turn?.operation_stage === "provider_waiting";
-  const showTextLoader = !terminalActivity
-    && (activity.status === "working" || waitingForModel);
-  const fallbackLabel = retrying
-    ? `${activity.capability_display_name} recovery is working`
-    : activity.status === "working"
-    ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
-    : activity.status === "completed"
-      ? `${activity.capability_display_name} finished`
-      : activity.status === "superseded"
-        ? `${activity.capability_display_name} was superseded by later progress`
-        : `${activity.capability_display_name} failed`;
-  const label = activity.presentation_text ?? fallbackLabel;
-  return (
-    <div className={`agent-chat__activity is-${activity.status}`}>
-      <i aria-hidden="true" />
-      <div>
-        <span>{label}</span>
-        {showTextLoader ? (
-          <TextLoader
-            text="Preparing the next response..."
-            variant="skeleton"
-            className="agent-chat__activity-loader"
-            aria-label={`${activity.capability_display_name} is preparing the next response`}
-          />
-        ) : null}
-        {activity.status === "failed" ? (
-          <>
-            {errorCode ? <code>{errorCode}</code> : null}
-            {errorMessage ? <small>{errorMessage}</small> : null}
-            <div className="agent-chat__activity-actions">
-              {retryable && onRetry ? (
-                <button
-                  type="button"
-                  aria-label={`Retry ${activity.capability_display_name} activity`}
-                  onClick={onRetry}
-                  disabled={retrying}
-                >
-                  {retrying ? "Retrying" : "Retry"}
-                </button>
-              ) : null}
-              {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
-                <button
-                  type="button"
-                  aria-label={`Revise ${activity.capability_display_name} request`}
-                  onClick={onReviseRequest}
-                >
-                  Revise request
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : null}
-        {activity.completion_mode === "deterministic_fallback"
-          && activity.warning_code === "specialist_materialization_fallback" ? (
-            <small className="agent-chat__activity-warning">
-              Draft created with a simplified fallback.
-            </small>
-          ) : null}
-      </div>
-    </div>
-  );
-}
-
-function recoveryStageLabel(stage: string | null | undefined): string | null {
-  if (stage === "waiting" || stage === "waiting_provider_response") return "waiting";
-  if (stage === "retrying") return "retrying";
-  if (stage === "validating") return "validating";
-  if (stage === "publishing") return "publishing";
-  if (stage === "queued") return "queued";
-  if (stage === "running") return "working";
-  return null;
 }
 
 function continuationLabel(continuation: AgentCanvasContinuationV2): string {
