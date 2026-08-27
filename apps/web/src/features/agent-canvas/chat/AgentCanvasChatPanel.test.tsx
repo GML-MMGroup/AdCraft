@@ -1079,7 +1079,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     );
 
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Style · Platform Default" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Skill" })).toBeTruthy();
   });
 
   it("pins the current review outside history immediately above the composer", () => {

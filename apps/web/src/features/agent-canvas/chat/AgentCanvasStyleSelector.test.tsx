@@ -56,6 +56,21 @@ afterEach(() => {
 });
 
 describe("AgentCanvasStyleSelector", () => {
+  it("uses the Skill asset for the compact trigger and exposes a Skill tooltip", () => {
+    render(
+      <AgentCanvasStyleSelector
+        workflowId="workflow-1"
+        activeStyle={activeStyle}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Skill" });
+    expect(trigger.getAttribute("title")).toBe("Skill");
+    expect(trigger.querySelector("img")?.getAttribute("src")).toBe("/imgs/ui-icons/skill.svg");
+    expect(trigger.textContent).toBe("");
+  });
+
   it("loads and orders the backend-driven public catalog when opened", async () => {
     vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
 
@@ -68,7 +83,7 @@ describe("AgentCanvasStyleSelector", () => {
     );
 
     expect(agentCanvasApi.listVideoSkills).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(agentCanvasApi.listVideoSkills).toHaveBeenCalledWith({ limit: 100 });
@@ -96,7 +111,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
 
@@ -121,7 +136,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(within(dialog).getByRole("button", { name: /Platform Default/ }).getAttribute("data-preview"))
       .toBe("placeholder");
@@ -138,7 +153,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(within(dialog).queryByRole("searchbox")).toBeNull();
 
@@ -178,7 +193,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
 
     expect(listVideoSkills).toHaveBeenNthCalledWith(1, { limit: 100 });
@@ -213,7 +228,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
@@ -252,7 +267,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
@@ -283,7 +298,7 @@ describe("AgentCanvasStyleSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Style · Platform Default" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /Cinematic Poetic Realism/ }));
