@@ -109,7 +109,14 @@ class AdReferenceBundleResolver:
                 binding_revision=int(binding.metadata.get("revision") or 1),
                 source_kind=binding.source.kind,
                 source_node_id=source_node_id,
-                source_node_revision=(source.revision if source_node_id is not None else None),
+                source_node_revision=(
+                    int(binding.metadata["source_node_revision"])
+                    if source_node_id is not None
+                    and isinstance(binding.metadata.get("source_node_revision"), int)
+                    else source.revision
+                    if source_node_id is not None
+                    else None
+                ),
                 source_sequence_id=(
                     str(source.metadata["source_sequence_id"])
                     if source_node_id is not None and source.metadata.get("source_sequence_id")

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from hashlib import sha256
 
 from pydantic import BaseModel, ValidationError
@@ -43,6 +44,8 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationAuthoringSnapshotV1,
     MaterializationDocumentWriteV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.agent_working_documents import (
     AgentAnchorRoleSourceV3,
     AgentAnchorNodeSourceV3,
@@ -263,6 +266,13 @@ class CapabilityMaterializationPublicationService:
             ),
             node_ids=outcome.node_ids,
             operation_ids=outcome.prompt_preparation_ids,
+            lease_guard=lease_guard,
+        )
+        self._prepare_storyboard_dependencies(
+            envelope,
+            materialization_context,
+            outcome,
+            session_id=session.session_id,
             lease_guard=lease_guard,
         )
         lease_guard()
@@ -835,6 +845,20 @@ class CapabilityMaterializationPublicationService:
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,
             )
+        context = materialization_context_from_state(
+            envelope,
+            conversations=self._conversations,
+            workflows=self._workflows,
+            asset_resolver=self._asset_resolver,
+            validate_references=False,
+        )
+        self._prepare_storyboard_dependencies(
+            envelope,
+            context,
+            outcome,
+            session_id=session.session_id,
+            lease_guard=lease_guard,
+        )
         lease_guard()
         self._storyboard_promotion.promote(
             outcome,
@@ -1150,6 +1174,7 @@ class CapabilityMaterializationPublicationService:
         node_ids: tuple[str, ...],
         operation_ids: tuple[str, ...],
         lease_guard: Callable[[], None],
+        context_by_node: Mapping[str, StageAuthoringContextV1] | None = None,
     ) -> None:
         if not operation_ids:
             return
@@ -1185,7 +1210,7 @@ class CapabilityMaterializationPublicationService:
                     envelope.workflow_id,
                     node_id,
                     operation_id=operation_id,
-                    context=stage_context,
+                    context=(context_by_node or {}).get(node_id, stage_context),
                 )
             except Exception as error:  # noqa: BLE001 - preserve sibling preparation.
                 errors.append(error)
@@ -1196,6 +1221,133 @@ class CapabilityMaterializationPublicationService:
                 stage="capability_materialization_publication",
                 details={"retryable": True},
             ) from errors[0]
+
+    def _prepare_storyboard_dependencies(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        context: CapabilityMaterializationContextV1,
+        outcome,
+        *,
+        session_id: str,
+        lease_guard: Callable[[], None],
+    ) -> None:
+        """Prepare the transitive source Drafts before strict promotion.
+
+        The materialization commit and continuation identity are the durable
+        retry boundary. An idempotent event records the exact dependency set so
+        restart/replay can resume without a second state machine.
+        """
+
+        if outcome.journey_stage != "storyboard_grids":
+            return
+        workflow = self._workflows.get_workflow(envelope.workflow_id)
+        dependency_discovery = getattr(
+            self._storyboard_promotion,
+            "required_dependency_node_ids",
+            None,
+        )
+        if dependency_discovery is None:
+            return
+        anchor_discovery = getattr(self._storyboard_promotion, "_guided_anchor_node_ids", None)
+        anchors = (
+            anchor_discovery(envelope.workflow_id, session_id)
+            if anchor_discovery is not None
+            else frozenset()
+        )
+        dependency_ids = dependency_discovery(
+            workflow,
+            outcome.node_ids,
+            guided_anchor_node_ids=anchors,
+        )
+        nodes = {node.node_id: node for node in workflow.nodes}
+        pending: list[tuple[str, str]] = []
+        contexts: dict[str, StageAuthoringContextV1] = {}
+        for node_id in dependency_ids:
+            node = nodes.get(node_id)
+            if node is None or node.status != "draft":
+                continue
+            operation_id = node.prompt_preparation.operation_id
+            if node.prompt_preparation.status == "ready":
+                continue
+            if not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_ready_authority_invalid",
+                    "Required Draft source has no prompt preparation operation.",
+                    stage="storyboard_prompt_ready_promotion",
+                    details={"invariant": "required_source_operation"},
+                )
+            occurrence_id = (
+                str(node.metadata["occurrence_id"])
+                if node.creative_role == "character" and node.metadata.get("occurrence_id")
+                else None
+            )
+            source_context = stage_authoring_context_from_materialization(
+                context,
+                session_id=session_id,
+                session_revision=outcome.session_revision,
+                stage=outcome.journey_stage,
+                occurrence_id=occurrence_id,
+                references=envelope.reference_plan.references,
+            )
+            if node.creative_role == "character":
+                source_context = source_context.model_copy(
+                    update={
+                        "internal_skill_ref": (
+                            "agent/skills/video_agent_character_design/SKILL.md"
+                        ),
+                    }
+                )
+            contexts[node_id] = source_context
+            pending.append((node_id, operation_id))
+        if not pending:
+            return
+        pending.sort()
+        action_id = f"storyboard-prompt-ready:{outcome.materialization_id}"
+        turn = self._conversations.get_turn(envelope.action_turn_id)
+        payload = {
+            "materialization_id": outcome.materialization_id,
+            "barrier_status": "pending",
+            "source_node_ids": [item[0] for item in pending],
+            "operation_ids": [item[1] for item in pending],
+        }
+        self._conversations.events.append(
+            V2EventInsert(
+                workflow_id=envelope.workflow_id,
+                node_id=outcome.node_ids[0] if outcome.node_ids else None,
+                conversation_id=turn.conversation_id,
+                turn_id=envelope.action_turn_id,
+                action_id=action_id,
+                event_type="storyboard_prompt_ready_dependency_barrier",
+                transition_key=f"{action_id}:pending",
+                created_at=datetime.now(timezone.utc).isoformat(),
+                payload=payload,
+            )
+        )
+        self._prepare_prompts(
+            envelope,
+            context,
+            session_id=session_id,
+            session_revision=outcome.session_revision,
+            stage=outcome.journey_stage,
+            occurrence_id=None,
+            node_ids=tuple(item[0] for item in pending),
+            operation_ids=tuple(item[1] for item in pending),
+            lease_guard=lease_guard,
+            context_by_node=contexts,
+        )
+        self._conversations.events.append(
+            V2EventInsert(
+                workflow_id=envelope.workflow_id,
+                node_id=outcome.node_ids[0] if outcome.node_ids else None,
+                conversation_id=turn.conversation_id,
+                turn_id=envelope.action_turn_id,
+                action_id=action_id,
+                event_type="storyboard_prompt_ready_dependency_barrier_satisfied",
+                transition_key=f"{action_id}:satisfied",
+                created_at=datetime.now(timezone.utc).isoformat(),
+                payload={**payload, "barrier_status": "satisfied"},
+            )
+        )
 
 
 def _digest(value: str) -> str:

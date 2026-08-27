@@ -704,6 +704,8 @@ def _pair_binding(
         metadata = {
             **metadata,
             "occurrence_id": envelope.occurrence_id,
+            "character_phase": "turnaround",
+            "explicit_occurrence_mapping": True,
             "source_node_revision": envelope.parent_snapshot.node_revision,
         }
     suffix = "main-to-turnaround" if is_character else "main-to-secondary"
