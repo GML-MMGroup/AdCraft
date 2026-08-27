@@ -281,6 +281,36 @@ class NodePromptPreparationService:
             )
             raise error
 
+    def invalidate_for_dependency_change(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+    ) -> CanvasNodeV2:
+        """Invalidate one prepared Draft without changing its operation identity."""
+
+        current = self._workflows.get_node(workflow_id, node_id)
+        if current.prompt_preparation.operation_id != operation_id:
+            raise V2PersistenceError(
+                "node_prompt_preparation_conflict",
+                "Prompt preparation operation identity changed before invalidation.",
+                stage="node_prompt_preparation",
+            )
+        if current.prompt_preparation.status != "ready":
+            return current
+        return self._transition(
+            current,
+            current.prompt_preparation.model_copy(
+                update={
+                    "status": "queued",
+                    "error": None,
+                    "attempt_stage": "queued",
+                    "updated_at": _now(),
+                }
+            ),
+        )
+
     def _append_trace(
         self,
         node: CanvasNodeV2,
@@ -474,7 +504,6 @@ class NodePromptPreparationService:
                     != source_node.metadata.get("occurrence_id")
                     or binding.metadata.get("character_phase") != "turnaround"
                     or source_node.metadata.get("character_phase") != "turnaround"
-                    or binding.metadata.get("source_node_revision") != source_node.revision
                 ):
                     raise V2PersistenceError(
                         "character_reference_mapping_invalid",
@@ -495,14 +524,7 @@ class NodePromptPreparationService:
                     binding_id=binding.binding_id,
                     binding_revision=int(binding.metadata.get("revision") or 1),
                     source_node_id=source_node_id,
-                    source_node_revision=(
-                        int(binding.metadata["source_node_revision"])
-                        if source_node is not None
-                        and isinstance(binding.metadata.get("source_node_revision"), int)
-                        else source_node.revision
-                        if source_node is not None
-                        else None
-                    ),
+                    source_node_revision=source_node.revision if source_node is not None else None,
                     source_role=(source_node.creative_role if source_node is not None else None),
                     asset_id=asset_id,
                     asset_version_id=version_id,

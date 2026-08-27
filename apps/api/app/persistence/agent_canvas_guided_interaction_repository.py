@@ -1207,6 +1207,128 @@ class AgentCanvasGuidedInteractionRepository:
                 raise
         return awaiting
 
+    def reconcile_terminal_member(
+        self,
+        *,
+        workflow_id: str,
+        execution_id: str,
+        member_id: str,
+        node_id: str,
+        error_code: str,
+        retryable: bool,
+    ) -> bool:
+        """Close the matching manual wait when its execution member settles."""
+
+        now = datetime.now(timezone.utc).isoformat()
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                awaiting = _awaiting_for_workflow(connection, workflow_id)
+                if (
+                    awaiting is None
+                    or awaiting.kind != "manual_node_run"
+                    or node_id not in awaiting.node_ids
+                ):
+                    connection.rollback()
+                    return False
+                session = _require_session(
+                    connection,
+                    workflow_id=workflow_id,
+                    session_id=awaiting.session_id,
+                    expected_revision=(
+                        int(
+                            connection.execute(
+                                select(AgentCanvasGuidanceSessionRow.revision).where(
+                                    AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id
+                                )
+                            ).scalar_one()
+                        )
+                    ),
+                )
+                journey = _journey(session)
+                evidence_id = f"execution-member-terminal:{execution_id}:{member_id}"
+                if any(item.evidence_id == evidence_id for item in journey.transition_evidence):
+                    connection.rollback()
+                    return False
+                transition = JourneyEvidenceV2(
+                    evidence_id=evidence_id,
+                    evidence_kind="stage_failed",
+                    source_id=member_id,
+                    stage=awaiting.stage,
+                    stage_revision=awaiting.stage_revision,
+                    actor="system",
+                ).as_transition(
+                    stage=journey.stage,
+                    stage_revision=journey.stage_revision,
+                )
+                next_journey = journey.model_copy(
+                    update={
+                        "stage_status": "working" if retryable else "failed",
+                        "active_action": None,
+                        "transition_evidence": (*journey.transition_evidence, transition),
+                    }
+                )
+                deleted = connection.execute(
+                    delete(AgentCanvasGuidanceAwaitingRow).where(
+                        AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
+                    )
+                )
+                if deleted.rowcount != 1:
+                    connection.rollback()
+                    return False
+                updated = connection.execute(
+                    update(AgentCanvasGuidanceSessionRow)
+                    .where(
+                        AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                    )
+                    .values(
+                        journey_state_json=next_journey.model_dump_json(),
+                        revision=AgentCanvasGuidanceSessionRow.revision + 1,
+                        updated_at=now,
+                    )
+                )
+                if updated.rowcount != 1:
+                    raise _error(
+                        "guidance_revision_conflict",
+                        "Guidance session changed during terminal member reconciliation.",
+                    )
+                payload = {
+                    "awaiting_id": awaiting.awaiting_id,
+                    "execution_id": execution_id,
+                    "member_id": member_id,
+                    "node_id": node_id,
+                    "session_id": awaiting.session_id,
+                    "stage": awaiting.stage,
+                    "stage_revision": awaiting.stage_revision,
+                    "error_code": error_code,
+                    "retryability": "retryable" if retryable else "terminal",
+                }
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=workflow_id,
+                        event_type="execution_member_terminal_reconciled",
+                        transition_key=f"{evidence_id}:execution",
+                        created_at=now,
+                        payload=payload,
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=workflow_id,
+                        event_type="manual_node_run_awaiting_reconciled",
+                        transition_key=f"{evidence_id}:awaiting",
+                        created_at=now,
+                        payload=payload,
+                    ),
+                )
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
     def submit_media_review(
         self,
         interaction: GuidedInteractionV1,

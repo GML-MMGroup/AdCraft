@@ -93,6 +93,9 @@ from app.services.agent_canvas_capability_draft_bundle import (
     stage_draft_title,
 )
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_assertion_policy import (
+    current_source_snapshots_for_evidence,
+)
 from app.services.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptReadyPromotionService,
 )
@@ -1262,12 +1265,59 @@ class CapabilityMaterializationPublicationService:
         nodes = {node.node_id: node for node in workflow.nodes}
         pending: list[tuple[str, str]] = []
         contexts: dict[str, StageAuthoringContextV1] = {}
+        prompt_service = NodePromptPreparationService(self._workflows)
         for node_id in dependency_ids:
             node = nodes.get(node_id)
             if node is None or node.status != "draft":
                 continue
             operation_id = node.prompt_preparation.operation_id
-            if node.prompt_preparation.status == "ready":
+            stale = False
+            evidence = node.prompt_preparation.assertion_evidence
+            if node.prompt_preparation.status == "ready" and evidence is not None:
+                try:
+                    current_sources = current_source_snapshots_for_evidence(
+                        evidence,
+                        workflow,
+                        self._asset_resolver,
+                    )
+                    stale = current_sources != evidence.source_snapshots
+                except V2PersistenceError:
+                    stale = True
+            if stale:
+                if not operation_id:
+                    raise V2PersistenceError(
+                        "storyboard_prompt_ready_authority_invalid",
+                        "Stale Draft source has no prompt preparation operation.",
+                        stage="storyboard_prompt_ready_promotion",
+                    )
+                invalidated = prompt_service.invalidate_for_dependency_change(
+                    envelope.workflow_id,
+                    node_id,
+                    operation_id=operation_id,
+                )
+                turn = self._conversations.get_turn(envelope.action_turn_id)
+                self._conversations.events.append(
+                    V2EventInsert(
+                        workflow_id=envelope.workflow_id,
+                        node_id=node_id,
+                        conversation_id=turn.conversation_id,
+                        turn_id=envelope.action_turn_id,
+                        action_id=f"storyboard-prompt-ready:{outcome.materialization_id}",
+                        event_type="downstream_prompt_evidence_invalidated",
+                        transition_key=(
+                            f"storyboard-prompt-ready:{outcome.materialization_id}:"
+                            f"{node_id}:invalidated:{invalidated.revision}"
+                        ),
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                        payload={
+                            "materialization_id": outcome.materialization_id,
+                            "target_node_id": node_id,
+                            "operation_id": operation_id,
+                            "reason": "required_source_revision_or_asset_version_changed",
+                        },
+                    )
+                )
+            if node.prompt_preparation.status == "ready" and not stale:
                 continue
             if not operation_id:
                 raise V2PersistenceError(
@@ -1335,6 +1385,97 @@ class CapabilityMaterializationPublicationService:
             lease_guard=lease_guard,
             context_by_node=contexts,
         )
+
+        # Upstream preparation can publish new Node revisions or AssetVersions
+        # after a downstream Draft was initially prepared. Re-scan the closure
+        # and prepare another deterministic wave before promotion admits any
+        # execution with stale reference evidence.
+        refreshed_workflow = self._workflows.get_workflow(envelope.workflow_id)
+        refreshed_nodes = {node.node_id: node for node in refreshed_workflow.nodes}
+        followup_pending: list[tuple[str, str]] = []
+        followup_contexts: dict[str, StageAuthoringContextV1] = {}
+        for node_id in dependency_ids:
+            node = refreshed_nodes.get(node_id)
+            if node is None or node.status != "draft":
+                continue
+            evidence = node.prompt_preparation.assertion_evidence
+            if node.prompt_preparation.status != "ready" or evidence is None:
+                continue
+            try:
+                current_sources = current_source_snapshots_for_evidence(
+                    evidence,
+                    refreshed_workflow,
+                    self._asset_resolver,
+                )
+                stale = current_sources != evidence.source_snapshots
+            except V2PersistenceError:
+                stale = True
+            if not stale:
+                continue
+            operation_id = node.prompt_preparation.operation_id
+            if not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_ready_authority_invalid",
+                    "Stale Draft source has no prompt preparation operation.",
+                    stage="storyboard_prompt_ready_promotion",
+                )
+            invalidated = prompt_service.invalidate_for_dependency_change(
+                envelope.workflow_id,
+                node_id,
+                operation_id=operation_id,
+            )
+            self._conversations.events.append(
+                V2EventInsert(
+                    workflow_id=envelope.workflow_id,
+                    node_id=node_id,
+                    conversation_id=turn.conversation_id,
+                    turn_id=envelope.action_turn_id,
+                    action_id=action_id,
+                    event_type="downstream_prompt_evidence_invalidated",
+                    transition_key=f"{action_id}:{node_id}:invalidated:{invalidated.revision}",
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    payload={
+                        "materialization_id": outcome.materialization_id,
+                        "target_node_id": node_id,
+                        "operation_id": operation_id,
+                        "reason": "upstream_dependency_wave_published_new_revision",
+                    },
+                )
+            )
+            occurrence_id = (
+                str(node.metadata["occurrence_id"])
+                if node.creative_role == "character" and node.metadata.get("occurrence_id")
+                else None
+            )
+            followup_contexts[node_id] = stage_authoring_context_from_materialization(
+                context,
+                session_id=session_id,
+                session_revision=outcome.session_revision,
+                stage=outcome.journey_stage,
+                occurrence_id=occurrence_id,
+                references=envelope.reference_plan.references,
+            )
+            if node.creative_role == "character":
+                followup_contexts[node_id] = followup_contexts[node_id].model_copy(
+                    update={
+                        "internal_skill_ref": "agent/skills/video_agent_character_design/SKILL.md"
+                    }
+                )
+            followup_pending.append((node_id, operation_id))
+        if followup_pending:
+            followup_pending.sort()
+            self._prepare_prompts(
+                envelope,
+                context,
+                session_id=session_id,
+                session_revision=outcome.session_revision,
+                stage=outcome.journey_stage,
+                occurrence_id=None,
+                node_ids=tuple(item[0] for item in followup_pending),
+                operation_ids=tuple(item[1] for item in followup_pending),
+                lease_guard=lease_guard,
+                context_by_node=followup_contexts,
+            )
         self._conversations.events.append(
             V2EventInsert(
                 workflow_id=envelope.workflow_id,

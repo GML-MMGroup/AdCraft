@@ -94,6 +94,27 @@ class GuidanceAwaitingService:
     ) -> None:
         self._interactions.resume_awaiting(workflow_id, proof)
 
+    def reconcile_terminal_member(
+        self,
+        workflow_id: str,
+        *,
+        execution_id: str,
+        member_id: str,
+        node_id: str,
+        error_code: str,
+        retryable: bool,
+    ) -> bool:
+        """Reconcile a matching manual wait after one execution member settles."""
+
+        return self._interactions.reconcile_terminal_member(
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            member_id=member_id,
+            node_id=node_id,
+            error_code=error_code,
+            retryable=retryable,
+        )
+
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="guidance_awaiting_service")

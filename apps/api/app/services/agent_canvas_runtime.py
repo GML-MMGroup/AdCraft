@@ -89,6 +89,7 @@ MediaContextPreparer = Callable[
     [CanvasNodeV2, WorldSettingContextEnvelopeV2 | None],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
+TerminalMemberReconciler = Callable[..., bool]
 StageTraceWriter = Callable[
     [NodeExecutionContext, str, dict[str, object], str | None, datetime, datetime],
     None,
@@ -271,6 +272,7 @@ class DynamicCanvasScheduler:
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         output_preparer: AgentCanvasOutputPreparationService | None = None,
         result_committer: AgentCanvasExecutionResultCommitService | None = None,
+        terminal_member_reconciler: TerminalMemberReconciler | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -301,6 +303,7 @@ class DynamicCanvasScheduler:
         self._leases = NodeLeaseService(runtime, clock=clock)
         self._output_preparer = output_preparer
         self._result_committer = result_committer
+        self._terminal_member_reconciler = terminal_member_reconciler
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
@@ -1147,6 +1150,11 @@ class DynamicCanvasScheduler:
             except V2PersistenceError as commit_error:
                 if commit_error.code != "stale_execution_lease":
                     raise
+            self._reconcile_terminal_member(
+                workflow_id,
+                member,
+                detail,
+            )
             return
         if member.state == "succeeded" or not self._state_machine.transition_member(
             self._runtime,
@@ -1159,6 +1167,7 @@ class DynamicCanvasScheduler:
         ):
             self._runtime.complete_lease(lease, now=now)
             return
+        self._reconcile_terminal_member(workflow_id, member, detail)
         self._workflows.set_node_runtime_state(
             workflow_id,
             lease.node_id,
@@ -1174,6 +1183,23 @@ class DynamicCanvasScheduler:
             },
         )
         self._runtime.complete_lease(lease, now=now)
+
+    def _reconcile_terminal_member(
+        self,
+        workflow_id: str,
+        member: CanvasExecutionMembershipV2,
+        error: CanvasNodeErrorV2,
+    ) -> None:
+        if self._terminal_member_reconciler is None:
+            return
+        self._terminal_member_reconciler(
+            workflow_id=workflow_id,
+            execution_id=member.execution_id,
+            member_id=member.member_id,
+            node_id=member.node_id,
+            error_code=error.code,
+            retryable=error.retryable,
+        )
 
     def _finish_if_quiescent(self, execution_id: str) -> None:
         self._state_machine.reconcile(
