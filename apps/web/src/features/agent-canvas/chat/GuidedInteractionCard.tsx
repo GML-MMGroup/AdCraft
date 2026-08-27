@@ -1,7 +1,6 @@
 import type {
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
-  ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
@@ -13,8 +12,8 @@ export interface GuidedInteractionCardProps {
   interaction: GuidedInteractionV1;
   pending: boolean;
   issue?: DecisionDockIssue | null;
-  proposalReferences?: ProposedDraftReferenceV2[] | null;
-  referenceMediaUrls?: Record<string, string>;
+  selectedConceptOptionId?: string | null;
+  onSelectConceptOption?: (optionId: string) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
 }
 
@@ -22,8 +21,8 @@ export function GuidedInteractionCard({
   interaction,
   pending,
   issue = null,
-  proposalReferences,
-  referenceMediaUrls = {},
+  selectedConceptOptionId = null,
+  onSelectConceptOption,
   onSubmit,
 }: GuidedInteractionCardProps) {
   if (interaction.status !== "open" && interaction.status !== "submitted") return null;
@@ -41,18 +40,14 @@ export function GuidedInteractionCard({
   }
 
   if (interaction.content.content_kind === "concept_choice") {
-    const references = proposalReferences === undefined
-      ? interaction.content.proposal_id ? null : []
-      : proposalReferences;
     return (
       <ConceptChoiceDecisionDock
         key={interaction.interaction_id}
         interaction={interaction}
         pending={pending}
         issue={issue}
-        proposalReferences={references}
-        referenceMediaUrls={referenceMediaUrls}
-        onSubmit={onSubmit}
+        selectedOptionId={selectedConceptOptionId}
+        onSelectOption={onSelectConceptOption ?? (() => undefined)}
       />
     );
   }

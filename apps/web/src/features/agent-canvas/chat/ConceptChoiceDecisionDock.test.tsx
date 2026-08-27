@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GuidedInteractionV1, ProposedDraftReferenceV2 } from "../../../types-v2.ts";
+import type { GuidedInteractionV1 } from "../../../types-v2.ts";
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
 
 const interaction: GuidedInteractionV1 = {
@@ -18,7 +18,7 @@ const interaction: GuidedInteractionV1 = {
   context: "Pick the visual approach.",
   content: {
     content_kind: "concept_choice",
-    proposal_id: null,
+    proposal_id: "proposal-1",
     stage: "world_view",
     stage_revision: 4,
     action_id: "action-world-view-1",
@@ -38,200 +38,71 @@ const interaction: GuidedInteractionV1 = {
   updated_at: "2026-08-15T10:00:00Z",
 };
 
-const proposalReferences: ProposedDraftReferenceV2[] = [
-  {
-    source_kind: "node",
-    source_id: "node-character",
-    binding_kind: "image_reference",
-    input_role: "visual_reference",
-    required: true,
-    display_order: 0,
-    semantic_reference_role: "subject_reference",
-    display_name: "Character turnaround",
-    media_type: "image",
-  },
-  {
-    source_kind: "node",
-    source_id: "node-scene",
-    binding_kind: "image_reference",
-    input_role: "visual_reference",
-    required: false,
-    display_order: 1,
-    semantic_reference_role: "environment_reference",
-    display_name: "Scene board",
-    media_type: "image",
-  },
-];
-
 afterEach(cleanup);
 
 describe("ConceptChoiceDecisionDock", () => {
-  it("shows options directly, expands selection, and submits the existing payload", () => {
-    const submit = vi.fn().mockResolvedValue(true);
+  it("shows only the option list and composer hint", () => {
     render(
       <ConceptChoiceDecisionDock
         interaction={interaction}
         pending={false}
         issue={null}
-        proposalReferences={[]}
-        referenceMediaUrls={{}}
-        onSubmit={submit}
+        selectedOptionId={null}
+        onSelectOption={vi.fn()}
       />,
     );
 
     expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(screen.getByText("Choose an option above, or describe your own direction below.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "References" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Submit/i })).toBeNull();
     expect(screen.queryByText("zh-CN")).toBeNull();
-    expect(screen.queryByText("3 options")).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
-    expect(screen.getByText("Selected: Warm")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Submit selection" }));
-
-    expect(submit).toHaveBeenCalledWith({
-      submission_kind: "concept_choice",
-      expected_interaction_revision: 2,
-      expected_session_revision: 4,
-      action: "select",
-      option_id: "option-a",
-      custom_text: null,
-    });
   });
 
-  it("keeps references collapsed and submits accepted references in canonical order", () => {
-    const submit = vi.fn().mockResolvedValue(true);
-    const withProposal: GuidedInteractionV1 = {
-      ...interaction,
-      content: interaction.content.content_kind === "concept_choice"
-        ? { ...interaction.content, proposal_id: "proposal-1" }
-        : interaction.content,
-    };
-    render(
-      <ConceptChoiceDecisionDock
-        interaction={withProposal}
-        pending={false}
-        issue={null}
-        proposalReferences={proposalReferences}
-        referenceMediaUrls={{}}
-        onSubmit={submit}
-      />,
-    );
-
-    expect(screen.queryByText("Character turnaround")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "References · 2" }));
-    expect(screen.getByText("Character turnaround")).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Submit selection" }));
-
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
-      action: "select",
-      accepted_references: proposalReferences,
-    }));
-  });
-
-  it("preserves the selected option while submitting a custom direction", () => {
-    const submit = vi.fn().mockResolvedValue(true);
+  it("reports option selection without submitting", () => {
+    const onSelectOption = vi.fn();
     render(
       <ConceptChoiceDecisionDock
         interaction={interaction}
         pending={false}
         issue={null}
-        proposalReferences={[]}
-        referenceMediaUrls={{}}
-        onSubmit={submit}
+        selectedOptionId={null}
+        onSelectOption={onSelectOption}
       />,
     );
 
-    const warm = screen.getByRole("radio", { name: /Warm/i });
-    fireEvent.click(warm);
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
-    fireEvent.click(screen.getByRole("button", { name: "Custom direction" }));
-    expect(warm.getAttribute("aria-checked")).toBe("true");
-    fireEvent.change(screen.getByRole("textbox", { name: "Custom direction" }), {
-      target: { value: "  Restrained monochrome movement  " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Submit direction" }));
-
-    expect(submit).toHaveBeenCalledWith({
-      submission_kind: "concept_choice",
-      expected_interaction_revision: 2,
-      expected_session_revision: 4,
-      action: "custom",
-      option_id: null,
-      custom_text: "Restrained monochrome movement",
-    });
+    fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
+    expect(onSelectOption).toHaveBeenCalledWith("option-a");
   });
 
-  it.each([
-    ["Exclude this stage", "Confirm exclusion", "exclude"],
-    ["Defer this stage", "Confirm defer", "defer"],
-    ["Let Agent decide", "Confirm delegation", "delegate"],
-  ] as const)("requires confirmation for %s", (actionLabel, confirmLabel, action) => {
-    const submit = vi.fn().mockResolvedValue(true);
+  it("renders the controlled selected state", () => {
     render(
       <ConceptChoiceDecisionDock
         interaction={interaction}
         pending={false}
         issue={null}
-        proposalReferences={[]}
-        referenceMediaUrls={{}}
-        onSubmit={submit}
+        selectedOptionId="option-b"
+        onSelectOption={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
-    fireEvent.click(screen.getByRole("button", { name: actionLabel }));
-    expect(submit).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: confirmLabel }));
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ action }));
+    expect(screen.getByRole("radio", { name: /Precise/i }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: /Warm/i }).getAttribute("aria-checked")).toBe("false");
   });
 
-  it("does not expose unsupported revise and waits for proposal references", () => {
+  it("locks options and keeps the issue visible while pending", () => {
     render(
-      <ConceptChoiceDecisionDock
-        interaction={interaction}
-        pending={false}
-        issue={null}
-        proposalReferences={null}
-        referenceMediaUrls={{}}
-        onSubmit={vi.fn().mockResolvedValue(true)}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
-    expect(screen.queryByRole("button", { name: /Revise/i })).toBeNull();
-    expect(screen.getByText("Preparing references")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Submit selection" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("locks every control while pending and retains the selection and issue", () => {
-    const { rerender } = render(
-      <ConceptChoiceDecisionDock
-        interaction={interaction}
-        pending={false}
-        issue={null}
-        proposalReferences={[]}
-        referenceMediaUrls={{}}
-        onSubmit={vi.fn().mockResolvedValue(true)}
-      />,
-    );
-    fireEvent.click(screen.getByRole("radio", { name: /Warm/i }));
-
-    rerender(
       <ConceptChoiceDecisionDock
         interaction={interaction}
         pending
         issue={{ summary: "Try again.", detail: null, fieldId: null, retryable: true }}
-        proposalReferences={[]}
-        referenceMediaUrls={{}}
-        onSubmit={vi.fn().mockResolvedValue(true)}
+        selectedOptionId="option-a"
+        onSelectOption={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole("radio", { name: /Warm/i }).getAttribute("aria-checked")).toBe("true");
-    expect((screen.getByRole("radio", { name: /Warm/i }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "More" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByRole("radio").every((control) => (control as HTMLButtonElement).disabled)).toBe(true);
     expect(screen.getByRole("alert").textContent).toContain("Try again.");
-    expect(screen.getByRole("button", { name: "Submitting" }).getAttribute("aria-disabled")).toBe("true");
   });
 });

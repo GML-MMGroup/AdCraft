@@ -8,10 +8,11 @@ export interface DecisionDockFrameProps {
   context: string;
   pending: boolean;
   issue: DecisionDockIssue | null;
-  footerSummary: string;
-  submitLabel: string;
-  submitDisabled: boolean;
-  onSubmit: () => void;
+  footerSummary?: string;
+  submitLabel?: string;
+  submitDisabled?: boolean;
+  onSubmit?: () => void;
+  showSubmitBar?: boolean;
   children: ReactNode;
 }
 
@@ -20,10 +21,11 @@ export function DecisionDockFrame({
   context,
   pending,
   issue,
-  footerSummary,
-  submitLabel,
-  submitDisabled,
+  footerSummary = "",
+  submitLabel = "Submit",
+  submitDisabled = false,
   onSubmit,
+  showSubmitBar = true,
   children,
 }: DecisionDockFrameProps) {
   const issueRef = useRef<HTMLDivElement>(null);
@@ -56,19 +58,21 @@ export function DecisionDockFrame({
           ) : null}
         </div>
       ) : null}
-      <footer className="agent-chat__decision-dock-footer">
-        <span>{footerSummary}</span>
-        <button
-          type="button"
-          disabled={submitDisabled && !pending}
-          aria-disabled={actionLocked}
-          onClick={() => {
-            if (!actionLocked) onSubmit();
-          }}
-        >
-          {pending ? "Submitting" : submitLabel}
-        </button>
-      </footer>
+      {showSubmitBar ? (
+        <footer className="agent-chat__decision-dock-footer">
+          <span>{footerSummary}</span>
+          <button
+            type="button"
+            disabled={submitDisabled}
+            aria-disabled={actionLocked}
+            onClick={() => {
+              if (!actionLocked) onSubmit?.();
+            }}
+          >
+            {pending ? "Submitting" : submitLabel}
+          </button>
+        </footer>
+      ) : null}
     </article>
   );
 }

@@ -189,7 +189,7 @@ describe("GuidedInteractionCard", () => {
     expect(screen.getAllByRole("radio").every((control) => control.hasAttribute("disabled"))).toBe(true);
   });
 
-  it("treats omitted proposal references as pending only for proposal-backed choices", () => {
+  it("keeps proposal choices free of references and secondary actions", () => {
     const { rerender } = render(
       <GuidedInteractionCard
         interaction={{
@@ -203,7 +203,9 @@ describe("GuidedInteractionCard", () => {
         onSubmit={vi.fn().mockResolvedValue(true)}
       />,
     );
-    expect(screen.getByRole("button", { name: "References" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "References" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.getByText("Choose an option above, or describe your own direction below.")).toBeTruthy();
 
     rerender(
       <GuidedInteractionCard
@@ -214,6 +216,7 @@ describe("GuidedInteractionCard", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "References" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
   it("preserves a Product draft when stale authority replaces the interaction revision", () => {

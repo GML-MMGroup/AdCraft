@@ -48,9 +48,9 @@ import {
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
 import {
-  guidedInteractionReferenceMediaUrls,
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
+import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
 import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
@@ -120,6 +120,7 @@ export function AgentCanvasChatPanel({
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = controlledCollapsed ?? internalCollapsed;
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -145,14 +146,27 @@ export function AgentCanvasChatPanel({
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const conceptInteraction = standaloneGuidedInteraction?.content.content_kind === "concept_choice"
+    ? standaloneGuidedInteraction
+    : null;
+  const conceptContent = conceptInteraction?.content.content_kind === "concept_choice"
+    ? conceptInteraction.content
+    : null;
+  const selectedConceptOption = conceptContent?.options.find((option) => option.option_id === selectedConceptOptionId) ?? null;
+  const conceptInteractionPending = Boolean(
+    conceptInteraction
+    && (conceptInteraction.status === "submitted"
+      || chat.state.actingInteractionId === conceptInteraction.interaction_id),
+  );
+  const conceptCustomAllowed = Boolean(
+    conceptContent?.allow_custom
+    && conceptInteraction?.allowed_actions.includes("custom"),
+  );
   const standaloneGuidedReferences = useMemo(() => (
     standaloneGuidedInteraction
       ? guidedInteractionReferences(standaloneGuidedInteraction, chat.state.items)
       : []
   ), [chat.state.items, standaloneGuidedInteraction]);
-  const standaloneGuidedReferenceMediaUrls = useMemo(() => (
-    guidedInteractionReferenceMediaUrls(standaloneGuidedReferences ?? [], workflow)
-  ), [standaloneGuidedReferences, workflow]);
   const stageTimeline = useMemo(
     () => buildStageThreadTimeline(chat.state.items, {
       showUnassociatedPlanning: chat.state.agentWorking,
@@ -197,6 +211,14 @@ export function AgentCanvasChatPanel({
   }, [conversationLinkIndex, onConversationLinkIndexChange]);
 
   useEffect(() => {
+    setSelectedConceptOptionId(null);
+  }, [conceptInteraction?.interaction_id]);
+
+  useEffect(() => {
+    if (conceptInteraction?.interaction_id) setMentionOpen(false);
+  }, [conceptInteraction?.interaction_id]);
+
+  useEffect(() => {
     if (!revealRequest || handledRevealRequestRef.current === revealRequest.requestId) return;
     if (collapsed) {
       setInternalCollapsed(false);
@@ -239,7 +261,25 @@ export function AgentCanvasChatPanel({
   async function send() {
     const submittedDraft = draft;
     const text = submittedDraft.trim();
-    if (!text || chat.state.sending) return;
+    if (chat.state.sending || conceptInteractionPending) return;
+
+    if (conceptInteraction) {
+      const request = buildConceptChoiceSubmitRequest({
+        interaction: conceptInteraction,
+        selectedOptionId: selectedConceptOptionId,
+        customText: text,
+        proposalReferences: standaloneGuidedReferences,
+      });
+      if (!request) return;
+      const accepted = await chat.actions.submitGuidedInteraction(conceptInteraction, request);
+      if (!accepted) return;
+      setDraft((current) => current === submittedDraft ? "" : current);
+      setSelectedConceptOptionId(null);
+      setMentionOpen(false);
+      return;
+    }
+
+    if (!text) return;
     timelineScroll.followLatest();
     const submittedNodeIds = [...composerContext.selectedNodeIds];
     const submittedAssetIds = [...composerContext.selectedAssetIds];
@@ -582,8 +622,11 @@ export function AgentCanvasChatPanel({
               || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
             }
             issue={chat.state.guidedInteractionIssue}
-            proposalReferences={standaloneGuidedReferences}
-            referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
+            selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+            onSelectConceptOption={(optionId) => {
+              setSelectedConceptOptionId(optionId);
+              setDraft("");
+            }}
             onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
           />
         </div>
@@ -646,13 +689,26 @@ export function AgentCanvasChatPanel({
       ) : null}
 
       <div className="agent-chat__composer">
+        {conceptInteraction ? (
+          <div className="agent-chat__guided-composer-hint" role="status">
+            {selectedConceptOption
+              ? `Selected: ${selectedConceptOption.title}`
+              : "You can also describe your own direction below."}
+          </div>
+        ) : null}
         <textarea
           ref={composerTextareaRef}
           rows={3}
           value={draft}
-          placeholder="Ask AdCraft Video Agent..."
+          placeholder={conceptInteraction
+            ? "Describe your own direction..."
+            : "Ask AdCraft Video Agent..."}
           aria-label="Message AdCraft Video Agent"
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            const nextDraft = event.target.value;
+            if (conceptInteraction && nextDraft.trim()) setSelectedConceptOptionId(null);
+            setDraft(nextDraft);
+          }}
           onScroll={(event) => snapChatComposerScroll(event.currentTarget)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -668,35 +724,39 @@ export function AgentCanvasChatPanel({
               className={mentionOpen ? "is-active" : ""}
               aria-label="Mention node or image asset"
               title="Mention node or image asset"
-              disabled={chat.state.sending}
+              disabled={Boolean(conceptInteraction) || chat.state.sending}
               onClick={() => setMentionOpen((current) => !current)}
             >
               @
             </button>
-            <button
-              type="button"
-              aria-label="Upload context images"
-              title="Upload context images"
-              disabled={chat.state.sending}
-              onClick={() => uploadInputRef.current?.click()}
-            >
-              <AssetsIcon />
-            </button>
-            <input
-              ref={uploadInputRef}
-              className="agent-chat__context-file-input"
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={chat.state.sending}
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={(event) => {
-                const files = event.currentTarget.files;
-                if (files?.length) void composerContext.actions.upload(files);
-                event.currentTarget.value = "";
-              }}
-            />
+            {!conceptInteraction ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Upload context images"
+                  title="Upload context images"
+                  disabled={chat.state.sending}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  <AssetsIcon />
+                </button>
+                <input
+                  ref={uploadInputRef}
+                  className="agent-chat__context-file-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={chat.state.sending}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(event) => {
+                    const files = event.currentTarget.files;
+                    if (files?.length) void composerContext.actions.upload(files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </>
+            ) : null}
             <AgentCanvasStyleSelector
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}
@@ -706,9 +766,11 @@ export function AgentCanvasChatPanel({
           <button
             type="button"
             className="agent-chat__send"
-            aria-label="Send message"
-            title="Send message"
-            disabled={!draft.trim() || chat.state.sending}
+            aria-label={conceptInteraction ? "Submit guided direction" : "Send message"}
+            title={conceptInteraction ? "Submit guided direction" : "Send message"}
+            disabled={conceptInteraction
+              ? ((!selectedConceptOptionId && (!draft.trim() || !conceptCustomAllowed)) || conceptInteractionPending)
+              : (!draft.trim() || chat.state.sending)}
             onClick={() => void send()}
           >
             <SendIcon />

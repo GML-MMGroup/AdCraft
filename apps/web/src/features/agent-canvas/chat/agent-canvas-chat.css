@@ -1624,7 +1624,7 @@ button.agent-chat__node-links--related:hover {
   min-height: 0;
   flex: 0 1 auto;
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px 12px 0;
   overflow: hidden;
   border-top: 1px solid var(--agent-chat-border);
 }
@@ -2230,10 +2230,10 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__decision-dock-options {
   display: grid;
   min-height: max-content;
-  overflow: hidden;
-  border: 1px solid var(--agent-chat-border);
-  border-radius: 7px;
-  background: var(--agent-chat-panel);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .agent-chat__decision-dock-options .agent-chat__proposal-option {
@@ -2264,7 +2264,7 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__decision-dock-options .agent-chat__proposal-option.is-selected {
   position: relative;
   z-index: 1;
-  margin: -1px 0;
+  margin: 0;
   border: 1px solid var(--agent-chat-primary);
   border-color: var(--agent-chat-primary);
   background: var(--agent-chat-selected);
@@ -2322,6 +2322,22 @@ button.agent-chat__node-links--related:hover {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.agent-chat__decision-dock-composer-hint {
+  margin: 2px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--agent-chat-border);
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.agent-chat__guided-composer-hint {
+  margin: -2px 0 8px;
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .agent-chat__decision-dock-disclosure {
