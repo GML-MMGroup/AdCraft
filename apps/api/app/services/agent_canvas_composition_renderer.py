@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_editing import (
     EditingVideoEntryV2,
 )
 from app.services.agent_canvas_editing import ResolvedEditingInputs, ResolvedEditingMedia
+from app.services.agent_canvas_editing_timeline import TIMELINE_EPSILON
 from app.services.v2_final_composition_renderer import (
     V2MediaProbe,
     V2MediaProbeResult,
@@ -64,6 +65,7 @@ class AgentCanvasCompositionRenderer:
         width, height = _output_geometry(output, probes[0])
         fps = output.fps or probes[0].fps or 30.0
         encoder = self._encoder or self._configured_encoder()
+        timeline_duration = _timeline_duration(inputs, probes)
         if cancelled():
             raise _error("editing_export_cancelled", "Editing Export was cancelled.")
         command = self._command(
@@ -73,6 +75,7 @@ class AgentCanvasCompositionRenderer:
             height=height,
             fps=fps,
             encoder=encoder,
+            timeline_duration=timeline_duration,
             staging_path=staging_path,
         )
         staging_path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,6 +106,7 @@ class AgentCanvasCompositionRenderer:
             or rendered.width != width
             or rendered.height != height
             or not staging_path.is_file()
+            or not _duration_matches(rendered.duration_seconds, timeline_duration)
         ):
             raise _error(
                 "editing_output_invalid",
@@ -112,8 +116,7 @@ class AgentCanvasCompositionRenderer:
             output_path=staging_path,
             width=width,
             height=height,
-            duration_seconds=rendered.duration_seconds
-            or sum(probe.duration_seconds or 0 for probe in probes),
+            duration_seconds=rendered.duration_seconds or timeline_duration,
             ffmpeg_command=tuple(command),
             video_encoder=encoder,
         )
@@ -129,12 +132,17 @@ class AgentCanvasCompositionRenderer:
 
         first = self._require_video(inputs.videos[0].path)
         width, height = _output_geometry(output, first)
+        timeline_duration = _timeline_duration(
+            inputs,
+            tuple(self._require_video(item.path) for item in inputs.videos),
+        )
         rendered = self._probe(staging_path, "video")
         if (
             rendered.error
             or rendered.width != width
             or rendered.height != height
             or not staging_path.is_file()
+            or not _duration_matches(rendered.duration_seconds, timeline_duration)
         ):
             raise _error(
                 "editing_output_invalid",
@@ -144,7 +152,7 @@ class AgentCanvasCompositionRenderer:
             output_path=staging_path,
             width=width,
             height=height,
-            duration_seconds=rendered.duration_seconds or 0,
+            duration_seconds=rendered.duration_seconds or timeline_duration,
             ffmpeg_command=(),
             video_encoder=self._encoder or self._configured_encoder(),
         )
@@ -170,6 +178,7 @@ class AgentCanvasCompositionRenderer:
         height: int,
         fps: float,
         encoder: str,
+        timeline_duration: float,
         staging_path: Path,
     ) -> list[str]:
         command = [self._settings.ffmpeg_path, "-y"]
@@ -179,9 +188,42 @@ class AgentCanvasCompositionRenderer:
             command.extend(["-stream_loop", "-1", "-i", inputs.bgm.path.as_posix()])
         filters: list[str] = []
         concat_inputs: list[str] = []
-        for index, probe in enumerate(probes):
-            entry = _video_entry(inputs.videos[index])
+        render_items = sorted(
+            zip(range(len(inputs.videos)), inputs.videos, probes, strict=True),
+            key=lambda item: (
+                _video_entry(item[1]).timeline_start_seconds
+                if _video_entry(item[1]).timeline_start_seconds is not None
+                else 0.0,
+                _video_entry(item[1]).source_key,
+                item[0],
+            ),
+        )
+        cursor = 0.0
+        piece_index = 0
+        for input_index, media, probe in render_items:
+            entry = _video_entry(media)
             duration = _effective_duration(entry, probe)
+            start = entry.timeline_start_seconds
+            if start is None:
+                start = cursor
+            if start < cursor - TIMELINE_EPSILON:
+                raise _error(
+                    "editing_timeline_overlap",
+                    "Editing video inputs overlap on the fixed timeline.",
+                )
+            if start > cursor + TIMELINE_EPSILON:
+                gap_duration = start - cursor
+                filters.extend(
+                    _gap_filters(
+                        piece_index,
+                        gap_duration,
+                        width=width,
+                        height=height,
+                        fps=fps,
+                    )
+                )
+                concat_inputs.extend((f"[vgap{piece_index}]", f"[agap{piece_index}]"))
+                piece_index += 1
             trim = _trim_filter(
                 entry.trim_start_seconds,
                 entry.trim_end_seconds,
@@ -200,7 +242,7 @@ class AgentCanvasCompositionRenderer:
                     f"fade=t=out:st={fade_start:.6f}:d={entry.transition_duration_seconds:.6f}"
                 )
             video_filters.append("setpts=PTS-STARTPTS")
-            filters.append(f"[{index}:v:0]" + ",".join(video_filters) + f"[v{index}]")
+            filters.append(f"[{input_index}:v:0]" + ",".join(video_filters) + f"[v{piece_index}]")
             if probe.has_audio and entry.preserve_native_audio:
                 audio_filters = [
                     _trim_filter(
@@ -222,26 +264,44 @@ class AgentCanvasCompositionRenderer:
                         "asetpts=PTS-STARTPTS",
                     )
                 )
-                filters.append(f"[{index}:a:0]" + ",".join(audio_filters) + f"[a{index}]")
+                filters.append(
+                    f"[{input_index}:a:0]" + ",".join(audio_filters) + f"[a{piece_index}]"
+                )
             else:
                 filters.append(
                     "anullsrc=r=48000:cl=stereo,"
-                    f"atrim=duration={duration:.6f},asetpts=PTS-STARTPTS[a{index}]"
+                    f"atrim=duration={duration:.6f},asetpts=PTS-STARTPTS[a{piece_index}]"
                 )
-            concat_inputs.extend((f"[v{index}]", f"[a{index}]"))
-        filters.append("".join(concat_inputs) + f"concat=n={len(probes)}:v=1:a=1[vcat][acat]")
+            concat_inputs.extend((f"[v{piece_index}]", f"[a{piece_index}]"))
+            piece_index += 1
+            cursor = start + duration
+            if cursor > timeline_duration + TIMELINE_EPSILON:
+                raise _error(
+                    "editing_timeline_out_of_bounds",
+                    "Editing video inputs exceed the fixed timeline duration.",
+                )
+        if cursor < timeline_duration - TIMELINE_EPSILON:
+            gap_duration = timeline_duration - cursor
+            filters.extend(
+                _gap_filters(
+                    piece_index,
+                    gap_duration,
+                    width=width,
+                    height=height,
+                    fps=fps,
+                )
+            )
+            concat_inputs.extend((f"[vgap{piece_index}]", f"[agap{piece_index}]"))
+            piece_index += 1
+        filters.append("".join(concat_inputs) + f"concat=n={piece_index}:v=1:a=1[vcat][acat]")
         audio_label = "[acat]"
         if inputs.bgm is not None:
             bgm_index = len(probes)
             bgm_entry = _bgm_entry(inputs.bgm)
-            total_duration = sum(
-                _effective_duration(_video_entry(item), probe)
-                for item, probe in zip(inputs.videos, probes, strict=True)
-            )
             bgm_duration = (
                 bgm_entry.trim_end_seconds - bgm_entry.trim_start_seconds
                 if bgm_entry.trim_end_seconds is not None
-                else total_duration
+                else max(timeline_duration - bgm_entry.trim_start_seconds, 0.001)
             )
             bgm_filters = [
                 _trim_filter(
@@ -251,6 +311,8 @@ class AgentCanvasCompositionRenderer:
                 ),
                 f"volume={bgm_entry.volume:.6f}",
             ]
+            if bgm_entry.trim_end_seconds is None:
+                bgm_filters.append(f"atrim=duration={bgm_duration:.6f}")
             if bgm_entry.fade_in_seconds > 0:
                 bgm_filters.append(f"afade=t=in:st=0:d={bgm_entry.fade_in_seconds:.6f}")
             if bgm_entry.fade_out_seconds > 0:
@@ -268,17 +330,25 @@ class AgentCanvasCompositionRenderer:
             filters.append(
                 "[acat][bgm]amix=inputs=2:duration=first:"
                 "dropout_transition=0:normalize=0,"
-                "alimiter=limit=0.95[aout]"
+                "alimiter=limit=0.95[amixed]"
             )
-            audio_label = "[aout]"
+            audio_label = "[amixed]"
+        filters.append(
+            f"[vcat]tpad=stop_mode=add:stop_duration={timeline_duration:.6f},"
+            f"trim=duration={timeline_duration:.6f},setpts=PTS-STARTPTS[vout]"
+        )
+        filters.append(
+            f"{audio_label}apad=pad_dur={timeline_duration:.6f},"
+            f"atrim=duration={timeline_duration:.6f},asetpts=PTS-STARTPTS[aout]"
+        )
         command.extend(
             [
                 "-filter_complex",
                 ";".join(filters),
                 "-map",
-                "[vcat]",
+                "[vout]",
                 "-map",
-                audio_label,
+                "[aout]",
                 "-c:v",
                 encoder,
                 "-c:a",
@@ -335,10 +405,57 @@ def _effective_duration(
     entry: EditingVideoEntryV2,
     probe: V2MediaProbeResult,
 ) -> float:
+    if (
+        probe.duration_seconds is not None
+        and entry.trim_start_seconds >= probe.duration_seconds - TIMELINE_EPSILON
+    ):
+        raise _error(
+            "editing_timeline_duration_invalid",
+            "Editing trim start exceeds the source media duration.",
+        )
     end = entry.trim_end_seconds
     if end is None:
         end = probe.duration_seconds or entry.trim_start_seconds + 0.001
+    if probe.duration_seconds is not None and end > probe.duration_seconds + TIMELINE_EPSILON:
+        raise _error(
+            "editing_timeline_duration_invalid",
+            "Editing trim end exceeds the source media duration.",
+        )
     return max(end - entry.trim_start_seconds, 0.001)
+
+
+def _timeline_duration(
+    inputs: ResolvedEditingInputs,
+    probes: tuple[V2MediaProbeResult, ...],
+) -> float:
+    if inputs.timeline_duration_seconds is not None:
+        if inputs.timeline_duration_seconds <= TIMELINE_EPSILON:
+            raise _error(
+                "editing_timeline_duration_invalid",
+                "Editing timeline duration must be positive.",
+            )
+        return inputs.timeline_duration_seconds
+    return sum(probe.duration_seconds or 0.0 for probe in probes)
+
+
+def _duration_matches(actual: float | None, expected: float) -> bool:
+    return actual is not None and abs(actual - expected) <= max(0.05, expected * 0.02)
+
+
+def _gap_filters(
+    index: int,
+    duration: float,
+    *,
+    width: int,
+    height: int,
+    fps: float,
+) -> tuple[str, str]:
+    return (
+        f"color=c=black:s={width}x{height}:r={fps:.6f}:d={duration:.6f},"
+        f"format=yuv420p,setpts=PTS-STARTPTS[vgap{index}]",
+        f"anullsrc=r=48000:cl=stereo,atrim=duration={duration:.6f},"
+        f"asetpts=PTS-STARTPTS[agap{index}]",
+    )
 
 
 def _trim_filter(

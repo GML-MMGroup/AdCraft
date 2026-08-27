@@ -630,6 +630,7 @@ def create_agent_canvas_runtime(
         documents=working_documents,
         conversations=conversation_repository,
         events=event_repository,
+        asset_resolver=asset_service.resolve_asset,
         closure=guided_closure,
         receipts=production_closure_receipts,
     )
@@ -3409,6 +3410,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_duplicate_bgm": 409,
         "editing_audio_role_invalid": 422,
         "editing_manifest_revision_conflict": 409,
+        "editing_timeline_duration_invalid": 422,
+        "editing_timeline_out_of_bounds": 422,
+        "editing_timeline_overlap": 422,
         "editing_no_ready_video": 409,
         "editing_export_already_active": 409,
         "editing_export_not_found": 404,
