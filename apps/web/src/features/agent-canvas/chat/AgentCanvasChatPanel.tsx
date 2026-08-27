@@ -441,7 +441,7 @@ export function AgentCanvasChatPanel({
             key={standaloneGuidedInteraction.interaction_id}
             interaction={standaloneGuidedInteraction}
             pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
-            error={chat.state.guidedInteractionError}
+            issue={chat.state.guidedInteractionIssue}
             proposalReferences={standaloneGuidedReferences}
             referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
             onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
