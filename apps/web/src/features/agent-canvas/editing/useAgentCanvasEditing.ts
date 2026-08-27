@@ -54,6 +54,7 @@ interface ManifestCommitCoordinator {
 
 const manifestCommitCoordinators = new Map<string, ManifestCommitCoordinator>();
 const manifestCommitListeners = new Map<string, Set<() => void>>();
+const editingExportIdempotencyKeys = new Map<string, string>();
 
 function coordinatorFor(identity: string): ManifestCommitCoordinator {
   const existing = manifestCommitCoordinators.get(identity);
@@ -458,6 +459,16 @@ export function useAgentCanvasEditing(
     setExporting(true);
     setError(null);
     try {
+      const exportScope = `${workflow.workflow_id}:${node.node_id}:${content.manifest.manifest_revision}`;
+      let idempotencyKey = editingExportIdempotencyKeys.get(exportScope);
+      if (!idempotencyKey) {
+        idempotencyKey = createOperationKey("editing-export");
+        editingExportIdempotencyKeys.set(exportScope, idempotencyKey);
+        if (editingExportIdempotencyKeys.size > 64) {
+          const oldest = editingExportIdempotencyKeys.keys().next().value;
+          if (oldest) editingExportIdempotencyKeys.delete(oldest);
+        }
+      }
       await agentCanvasApi.exportAgentCanvasEditingNode(
         workflow.workflow_id,
         node.node_id,
@@ -465,7 +476,7 @@ export function useAgentCanvasEditing(
           expected_manifest_revision: content.manifest.manifest_revision,
           availability_policy: "use_ready_inputs",
         },
-        createOperationKey("editing-export"),
+        idempotencyKey,
       );
     } catch (exportError) {
       setError(errorMessage(exportError, "Unable to start export."));

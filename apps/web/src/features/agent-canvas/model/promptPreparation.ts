@@ -1,10 +1,12 @@
 import type { CanvasNodeV2, NodePromptPreparationV1 } from "../../../types-v2.ts";
+import { isSourceOnlyNode } from "./nodeExecutionMode.ts";
 
 export function promptPreparationForNode(node: CanvasNodeV2): NodePromptPreparationV1 | null {
   return node.prompt_preparation;
 }
 
 export function isNodePromptReady(node: CanvasNodeV2): boolean {
+  if (isSourceOnlyNode(node)) return false;
   const preparation = promptPreparationForNode(node);
   return preparation?.status === "ready"
     && Boolean(node.generation_prompt?.trim())

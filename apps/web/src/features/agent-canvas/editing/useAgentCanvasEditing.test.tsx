@@ -442,6 +442,34 @@ describe("useAgentCanvasEditing", () => {
     }
   });
 
+  it("reuses the semantic idempotency key for repeated export acceptance", async () => {
+    const exportComposition = vi.mocked(agentCanvasApi.exportAgentCanvasEditingNode);
+    exportComposition.mockResolvedValue({
+      workflow_id: "workflow-1",
+      node_id: "editing-1",
+      export_id: "export-1",
+      status: "queued",
+      manifest_revision: 4,
+      ready_video_node_ids: [],
+      skipped_inputs: [],
+      bgm_node_id: null,
+      events_cursor: 10,
+    });
+    const { result } = renderHook(() => (
+      useAgentCanvasEditing(workflow, editingNode(), vi.fn().mockResolvedValue(undefined))
+    ));
+
+    await act(async () => {
+      await result.current.exportComposition();
+    });
+    await act(async () => {
+      await result.current.exportComposition();
+    });
+
+    expect(exportComposition).toHaveBeenCalledTimes(2);
+    expect(exportComposition.mock.calls[1]?.[3]).toBe(exportComposition.mock.calls[0]?.[3]);
+  });
+
   it("discards a staged change back to the manifest visible before staging", async () => {
     const pendingSave = deferred<void>();
     const patchNode = vi.fn(() => pendingSave.promise);

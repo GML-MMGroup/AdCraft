@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeProviderParameters } from "./providerModels.ts";
+import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
+import { normalizeProviderParameters, runnableDraftParameterMigrations } from "./providerModels.ts";
 
 describe("normalizeProviderParameters", () => {
   it("keeps the canonical integer duration and removes retired video keys", () => {
@@ -18,5 +19,18 @@ describe("normalizeProviderParameters", () => {
       parameters: { duration_seconds: 20 },
       migrated: false,
     });
+  });
+
+  it("never migrates source-only Video parameters into Global Run", () => {
+    const node = {
+      node_id: "node-source-video",
+      node_type: "video",
+      status: "draft",
+      execution_mode: "source_only",
+      parameters: { requested_duration_seconds: 15 },
+    } as CanvasNodeV2;
+    const workflow = { nodes: [node] } as AgentCanvasWorkflowV2;
+
+    expect(runnableDraftParameterMigrations(workflow)).toEqual([]);
   });
 });

@@ -426,7 +426,10 @@ export function AgentCanvasChatPanel({
           <GuidedInteractionCard
             key={standaloneGuidedInteraction.interaction_id}
             interaction={standaloneGuidedInteraction}
-            pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            pending={
+              standaloneGuidedInteraction.status === "submitted"
+              || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
+            }
             issue={chat.state.guidedInteractionIssue}
             proposalReferences={standaloneGuidedReferences}
             referenceMediaUrls={standaloneGuidedReferenceMediaUrls}

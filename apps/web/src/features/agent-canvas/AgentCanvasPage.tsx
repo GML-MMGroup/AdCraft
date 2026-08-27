@@ -38,6 +38,7 @@ import {
   type AgentAssetReferenceSelection,
   type AgentAssetSourceNodeSelection,
 } from "./assets/AgentAssetBrowser.tsx";
+import { toImageBindingSource } from "./assets/assetSelection.ts";
 import {
   AgentCanvasNodeRenderer,
   AgentCanvasVideoPreviewDialog,
@@ -357,8 +358,15 @@ export function AgentCanvasPage() {
           formData,
           createOperationKey("node-reference-upload"),
         );
+        if (!uploaded.asset.version_id) {
+          throw new Error(`Uploaded image ${uploaded.asset.display_name} has no immutable AssetVersion.`);
+        }
         await createBinding({
-          source: { kind: "image_asset", source_asset_id: uploaded.asset.asset_id },
+          source: {
+            kind: "image_asset",
+            source_asset_id: uploaded.asset.asset_id,
+            source_asset_version_id: uploaded.asset.version_id,
+          },
           target_node_id: targetNode.node_id,
           input_role: "image_reference",
           required: true,
@@ -637,7 +645,7 @@ export function AgentCanvasPage() {
     const startOrder = workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length;
     for (const [index, selection] of selections.entries()) {
       await createBinding({
-        source: { kind: "image_asset", source_asset_id: selection.assetId },
+        source: toImageBindingSource(selection),
         target_node_id: targetNodeId,
         input_role: "image_reference",
         required: true,

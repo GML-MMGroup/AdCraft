@@ -6,6 +6,7 @@ import type {
 import { ConceptChoiceDecisionDock } from "./ConceptChoiceDecisionDock.tsx";
 import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
+import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
 import { QuestionnaireDecisionDock } from "./QuestionnaireDecisionDock.tsx";
 
 export interface GuidedInteractionCardProps {
@@ -25,7 +26,7 @@ export function GuidedInteractionCard({
   referenceMediaUrls = {},
   onSubmit,
 }: GuidedInteractionCardProps) {
-  if (interaction.status !== "open") return null;
+  if (interaction.status !== "open" && interaction.status !== "submitted") return null;
 
   if (interaction.content.content_kind === "questionnaire") {
     return (
@@ -51,6 +52,18 @@ export function GuidedInteractionCard({
         issue={issue}
         proposalReferences={references}
         referenceMediaUrls={referenceMediaUrls}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+
+  if (interaction.content.content_kind === "product_source") {
+    return (
+      <ProductSourceDecisionDock
+        key={interaction.interaction_id}
+        interaction={interaction}
+        pending={pending}
+        issue={issue}
         onSubmit={onSubmit}
       />
     );

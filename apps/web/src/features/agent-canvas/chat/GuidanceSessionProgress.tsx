@@ -1,4 +1,5 @@
 import type { GuidedJourneyStageV2, GuidedSessionStateV2 } from "../../../types-v2.ts";
+import { CharacterOccurrenceProgress } from "./CharacterOccurrenceProgress.tsx";
 
 const PRODUCTION_STAGES: Array<{ stage: GuidedJourneyStageV2; label: string }> = [
   { stage: "intake", label: "Intake" },
@@ -58,6 +59,7 @@ export function GuidanceSessionProgress({ session }: { session: GuidedSessionSta
           </span>
         ))}
       </div>
+      <CharacterOccurrenceProgress journey={journey} />
     </section>
   );
 }

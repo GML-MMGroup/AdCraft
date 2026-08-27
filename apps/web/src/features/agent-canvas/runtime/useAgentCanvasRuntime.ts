@@ -17,6 +17,7 @@ import {
   normalizeCanvasRuntimeEventV2,
   normalizeProjectAssetSummaryV2,
 } from "../model/normalizers.ts";
+import { isSourceOnlyNode } from "../model/nodeExecutionMode.ts";
 import { runnableDraftParameterMigrations } from "../model/providerModels.ts";
 import { AGENT_CANVAS_SSE_EVENT_TYPES } from "./eventTypes.ts";
 import {
@@ -445,6 +446,7 @@ export function useAgentCanvasRuntime(
   ) => {
     if (!workflowId) return;
     if (!["text", "script", "image", "video", "audio"].includes(node.node_type)) return;
+    if (isSourceOnlyNode(node)) return;
     if (node.status !== "draft" && node.status !== "failed") return;
     setRunPending(true);
     try {

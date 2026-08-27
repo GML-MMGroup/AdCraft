@@ -20,7 +20,9 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { incrementalPlacementForNodes } from "../canvas/canvasGraphModel.ts";
+import { assertGenerativeNode } from "../model/nodeExecutionMode.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
+import { assertValidCanvasBindingWrite } from "./bindingWriteValidation.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
 import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
@@ -87,6 +89,7 @@ export function useAgentCanvasSession() {
     new Map<string, Map<string, CanvasLayoutPositionV2>>(),
   );
   const materializationKeysRef = useRef(new Map<string, string>());
+  const editingExportImportKeysRef = useRef(new Map<string, string>());
   const layoutQueueForWorkflow = useCallback((workflowId: string) => {
     let layoutQueue = layoutQueuesRef.current.get(workflowId);
     if (!layoutQueue) {
@@ -295,6 +298,9 @@ export function useAgentCanvasSession() {
     request: CanvasVariationDraftUpsertV2,
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const source = agentCanvasWorkflow.nodes.find((node) => node.node_id === nodeId);
+    if (!source) throw new Error("The source node is no longer available.");
+    assertGenerativeNode(source);
     const workflowId = agentCanvasWorkflow.workflow_id;
     await queueRef.current!.enqueue(createOperationKey(`variation-save:${nodeId}`), async () => {
       const response = await agentCanvasApi.saveAgentCanvasVariationDraft(workflowId, nodeId, request);
@@ -338,6 +344,7 @@ export function useAgentCanvasSession() {
     action: "create_draft" | "generate",
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    assertGenerativeNode(source);
     if (!["image", "video", "audio"].includes(source.node_type) || source.status !== "ready") {
       throw new Error("Only Ready media nodes can create an editable sibling Draft.");
     }
@@ -416,6 +423,7 @@ export function useAgentCanvasSession() {
 
   const createBinding = useCallback(async (request: CanvasBindingCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    assertValidCanvasBindingWrite(request);
     return queueRef.current!.enqueue(createOperationKey("create-binding"), async () => {
       const response = await agentCanvasApi.createAgentCanvasBinding(agentCanvasWorkflow.workflow_id, request);
       applyWorkflow(response.value.workflow);
@@ -453,6 +461,16 @@ export function useAgentCanvasSession() {
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     const workflowId = agentCanvasWorkflow.workflow_id;
+    const importScope = `${workflowId}:${editingNodeId}:${JSON.stringify(request)}`;
+    let idempotencyKey = editingExportImportKeysRef.current.get(importScope);
+    if (!idempotencyKey) {
+      idempotencyKey = createOperationKey("editing-export-import-request");
+      editingExportImportKeysRef.current.set(importScope, idempotencyKey);
+      if (editingExportImportKeysRef.current.size > 64) {
+        const oldest = editingExportImportKeysRef.current.keys().next().value;
+        if (oldest) editingExportImportKeysRef.current.delete(oldest);
+      }
+    }
     return queueRef.current!.enqueue(
       createOperationKey(`editing-export-import:${editingNodeId}`),
       async () => {
@@ -460,7 +478,7 @@ export function useAgentCanvasSession() {
           workflowId,
           editingNodeId,
           request,
-          createOperationKey("editing-export-import-request"),
+          idempotencyKey,
         );
         setAgentCanvasWorkflow((current) => {
           if (!current || current.workflow_id !== workflowId) return current;

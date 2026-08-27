@@ -1722,9 +1722,19 @@ export interface CanvasBindingSourceNodeV2 {
 export interface CanvasBindingSourceImageAssetV2 {
   kind: "image_asset";
   source_asset_id: string;
+  /** Null only for legacy persisted bindings created before immutable AssetVersion references. */
+  source_asset_version_id: string | null;
 }
 
 export type CanvasBindingSourceV2 = CanvasBindingSourceNodeV2 | CanvasBindingSourceImageAssetV2;
+
+export interface CanvasBindingSourceImageAssetWriteV2 {
+  kind: "image_asset";
+  source_asset_id: string;
+  source_asset_version_id: string;
+}
+
+export type CanvasBindingSourceWriteV2 = CanvasBindingSourceNodeV2 | CanvasBindingSourceImageAssetWriteV2;
 
 export interface CanvasBindingV2 {
   binding_id: string;
@@ -2456,6 +2466,8 @@ export interface ProposedDraftReferenceV2 {
   required: boolean;
   display_order: number;
   semantic_reference_role: SemanticReferenceRoleV2 | null;
+  occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
   display_name: string;
   media_type: "text" | "image" | "video" | "audio";
 }
@@ -2721,6 +2733,8 @@ export interface AgentActionReceiptV2 {
   proposal_option_id: string | null;
   proposal_action: ProposalActionTypeV2 | null;
   actor_kind: "agent" | "user" | "system";
+  occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
   idempotency_key: string | null;
   status: AgentActionReceiptStatusV2;
   summary: string;
@@ -3076,7 +3090,7 @@ export interface CanvasLayoutPatchResponseV2 {
 }
 
 export interface CanvasBindingCreateRequestV2 {
-  source: CanvasBindingSourceV2;
+  source: CanvasBindingSourceWriteV2;
   target_node_id: string;
   input_role: CanvasBindingInputRoleV2;
   required?: boolean;
@@ -3157,6 +3171,7 @@ export interface ProjectAssetUploadMetadataV2 {
 export interface ProjectAssetUploadResponseV2 {
   workflow_id: string;
   asset: ProjectAssetSummaryV2;
+  pending_handoff_id: string | null;
 }
 
 export interface ProjectAssetListResponseV2 {
@@ -3330,6 +3345,7 @@ export interface JourneyActionProjectionV2 {
   status: "reserved" | "working" | "waiting_user";
   turn_id: string | null;
   occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
 }
 
 export interface JourneyTransitionEvidenceV2 {
@@ -3374,6 +3390,7 @@ export interface JourneyTransitionEvidenceV2 {
   stage: GuidedJourneyStageV2;
   stage_revision: number;
   occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
   actor: "user" | "delegated" | "system";
   recorded_at: string;
 }
@@ -3392,11 +3409,13 @@ export interface GuidedProductionJourneyV2 {
 
 export type GuidedInteractionKindV1 =
   | "clarification_questionnaire"
+  | "product_source"
   | "concept_choice"
   | "media_review";
 export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
 export type GuidedInteractionActionV1 =
   | "answer"
+  | "select_source"
   | "select"
   | "custom"
   | "skip"
@@ -3440,10 +3459,36 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
   required: boolean;
   display_order: number;
   semantic_reference_role: string | null;
+  occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
+}
+
+export interface GuidedProductAssetVersionRefV1 {
+  asset_id: string;
+  version_id: string;
+}
+
+export interface GuidedProductSourceActionV1 {
+  input_kind: "main" | "multiview";
+  choice: "upload" | "generate";
+  handoff_mode: "pending" | "apply";
+  asset_versions: GuidedProductAssetVersionRefV1[];
+  pending_handoff_id: string | null;
+  expected_guidance_revision: number;
+  question_id: string;
 }
 
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
+  | {
+      content_kind: "product_source";
+      input_kind: "main" | "multiview";
+      question_id: string;
+      prompt: string;
+      expected_guidance_revision: number;
+      min_asset_count: number;
+      max_asset_count: number;
+    }
   | {
       content_kind: "concept_choice";
       proposal_id: string | null;
@@ -3496,6 +3541,12 @@ export type GuidedInteractionSubmitRequestV1 =
       >;
     }
   | {
+      submission_kind: "product_source";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: GuidedProductSourceActionV1;
+    }
+  | {
       submission_kind: "concept_choice";
       expected_interaction_revision: number;
       expected_session_revision: number;
@@ -3532,7 +3583,7 @@ export interface GuidanceAwaitingV1 {
   workflow_id: string;
   session_id: string;
   checkpoint_id: string;
-  kind: "clarification" | "concept_selection" | "media_review" | "manual_node_run" | "milestone_idle";
+  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "manual_node_run" | "milestone_idle";
   requires_user_action: boolean;
   resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
   interaction_id: string | null;
@@ -3620,6 +3671,9 @@ export interface AgentCanvasContinuationV2 {
   next_attempt_at: string | null;
   source_turn_id: string | null;
   continuation_turn_id: string | null;
+  occurrence_id: string | null;
+  character_phase: "main" | "turnaround" | null;
+  action_owner: "guided_journey" | "targeted_authoring" | "quick_media" | null;
   max_attempts: number | null;
   last_error_code: string | null;
   last_error_message: string | null;

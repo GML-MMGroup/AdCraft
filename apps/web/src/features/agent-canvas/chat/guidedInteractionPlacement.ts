@@ -11,5 +11,5 @@ export function guidedInteractionContentVersion(
 export function shouldRenderStandaloneInteraction(
   interaction: GuidedInteractionV1 | null,
 ): boolean {
-  return interaction?.status === "open";
+  return interaction?.status === "open" || interaction?.status === "submitted";
 }
