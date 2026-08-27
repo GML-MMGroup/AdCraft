@@ -546,6 +546,22 @@
   line-height: 1.3;
 }
 
+.agent-chat__capability-heading {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-chat__capability-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .agent-chat__activity > header strong {
   color: var(--agent-chat-primary);
   font-size: 12px;
@@ -796,6 +812,10 @@
   display: grid;
   min-width: 0;
   gap: 2px;
+}
+
+.agent-chat__stage-thread > header > div > .agent-chat__capability-heading {
+  gap: 6px;
 }
 
 .agent-chat__stage-thread > header strong {

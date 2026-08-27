@@ -869,7 +869,24 @@ describe("command and receipt cards", () => {
     expect(screen.getByRole("status", { name: "Scene Designer is working" })).toBeTruthy();
     expect(screen.getByText("Scene Designer")).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
+    expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
+      .toBe("/imgs/agent-role-icons/scene-designer.png");
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
+  });
+
+  it("puts the matching role icon before an interactive capability proposal", () => {
+    render(
+      <ProposalCard
+        card={proposalCard}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
+      .toBe("/imgs/agent-role-icons/character-designer.png");
   });
 
   it("presents backend activity duration and explanation as a compact section", () => {

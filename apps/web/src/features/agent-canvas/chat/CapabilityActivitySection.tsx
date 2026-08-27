@@ -5,6 +5,7 @@ import type {
   AgentCanvasChatTurnV2,
   ChatCapabilityActivityV2,
 } from "../../../types-v2.ts";
+import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
 
 function recoveryStageLabel(stage: string | null | undefined): string | null {
   if (stage === "waiting" || stage === "waiting_provider_response" || stage === "provider_waiting") {
@@ -94,7 +95,10 @@ export function CapabilityActivityRow({
       aria-label={activityAriaLabel(activity.capability_display_name, stage)}
     >
       <header>
-        <strong>{activity.capability_display_name}</strong>
+        <div className="agent-chat__capability-heading">
+          <AgentCapabilityIcon capabilityId={activity.capability_id} />
+          <strong>{activity.capability_display_name}</strong>
+        </div>
         <span>{stage}</span>
         {duration ? <time>{duration}</time> : null}
       </header>

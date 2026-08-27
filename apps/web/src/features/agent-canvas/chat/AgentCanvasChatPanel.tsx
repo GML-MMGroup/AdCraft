@@ -65,6 +65,7 @@ import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
+import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
 import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
@@ -1207,7 +1208,10 @@ export function ProposalCard({
   return (
     <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
       <header>
-        <strong>{proposal.capability_display_name}</strong>
+        <div className="agent-chat__capability-heading">
+          <AgentCapabilityIcon capabilityId={proposal.capability_id} />
+          <strong>{proposal.capability_display_name}</strong>
+        </div>
         {!readOnly ? <span>{proposal.availability}</span> : null}
       </header>
       {readOnly ? (
