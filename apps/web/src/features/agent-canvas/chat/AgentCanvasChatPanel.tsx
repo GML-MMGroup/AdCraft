@@ -57,7 +57,6 @@ import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
-import { ComposerContextTray } from "./ComposerContextTray.tsx";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
 import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
 import {
@@ -633,15 +632,18 @@ export function AgentCanvasChatPanel({
         </div>
       ) : null}
 
-      <ComposerContextTray
-        view={composerContext.view}
-        uploadIssue={composerContext.uploadIssue}
-        disabled={chat.state.sending}
-        onFocusNode={onFocusNode}
-        onRemoveNode={composerContext.actions.removeNode}
-        onRemoveAsset={composerContext.actions.removeAsset}
-        onClearUploadIssue={composerContext.actions.clearUploadIssue}
-      />
+      {composerContext.view.uploadState === "uploading" ? (
+        <div className="agent-chat__context-uploading" role="status">
+          Uploading context asset…
+        </div>
+      ) : null}
+
+      {composerContext.uploadIssue ? (
+        <ConversationRecoverySurface
+          recovery={composerContext.uploadIssue}
+          onDismiss={composerContext.actions.clearUploadIssue}
+        />
+      ) : null}
 
       <div className="agent-chat__composer">
         <textarea

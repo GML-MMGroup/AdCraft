@@ -190,7 +190,7 @@ describe("Agent Conversation Shell v2", () => {
 
   afterEach(cleanup);
 
-  it("orders Timeline, Decision Dock, Recovery, Context Tray, and Composer", () => {
+  it("orders Timeline, Decision Dock, Recovery, and Composer without a context tray", () => {
     fixture.chat.state.guidedInteraction = interaction();
     fixture.chat.state.composerRecovery = {
       scope: "composer",
@@ -205,7 +205,7 @@ describe("Agent Conversation Shell v2", () => {
     const timeline = panel.querySelector(".agent-chat__timeline-shell")!;
     const dock = panel.querySelector(".agent-chat__current-interaction")!;
     const recovery = panel.querySelector(":scope > .agent-chat__recovery")!;
-    const contextTray = panel.querySelector(":scope > .agent-chat__context-tray")!;
+    const contextTray = panel.querySelector(":scope > .agent-chat__context-tray");
     const composer = panel.querySelector(":scope > .agent-chat__composer")!;
     const follows = (left: Element, right: Element) => Boolean(
       left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -213,8 +213,8 @@ describe("Agent Conversation Shell v2", () => {
 
     expect(follows(timeline, dock)).toBe(true);
     expect(follows(dock, recovery)).toBe(true);
-    expect(follows(recovery, contextTray)).toBe(true);
-    expect(follows(contextTray, composer)).toBe(true);
+    expect(contextTray).toBeNull();
+    expect(follows(recovery, composer)).toBe(true);
   });
 
   it("preserves draft and context on failure, then clears only after acceptance", async () => {
@@ -232,7 +232,8 @@ describe("Agent Conversation Shell v2", () => {
     finish(false);
     await waitFor(() => expect(fixture.chat.actions.submit).toHaveBeenCalledOnce());
     expect(textarea.value).toBe("Use these references.");
-    expect(screen.getByText("Skill · Quiet Product Film")).toBeTruthy();
+    expect(screen.queryByText("Skill · Quiet Product Film")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Message context" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     finish(true);
