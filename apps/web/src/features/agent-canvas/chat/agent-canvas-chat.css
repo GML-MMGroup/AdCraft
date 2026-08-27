@@ -17,6 +17,7 @@
   display: flex;
   flex-direction: column;
   width: min(390px, calc(100vw - 48px));
+  max-width: min(720px, calc(100vw - 24px));
   overflow: hidden;
   border: 0;
   border-left: 1px solid var(--agent-chat-border);
@@ -26,6 +27,50 @@
   color: var(--agent-chat-primary);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.agent-chat.is-resizing {
+  user-select: none;
+}
+
+.agent-chat__resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 9px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.agent-chat__resize-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--agent-chat-strong-line);
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 140ms ease, background-color 140ms ease;
+}
+
+.agent-chat__resize-handle:hover::after,
+.agent-chat__resize-handle:focus-visible::after,
+.agent-chat.is-resizing .agent-chat__resize-handle::after {
+  background: var(--agent-chat-primary);
+  opacity: 1;
+}
+
+.agent-chat__resize-handle:focus-visible {
+  outline: 1px solid var(--agent-chat-strong-line);
+  outline-offset: -1px;
 }
 
 :root .agent-chat {
@@ -3452,6 +3497,12 @@ button.agent-chat__node-links--related:hover {
   .agent-chat__mention-menu section + section {
     border-top: 1px solid var(--agent-chat-border);
     border-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-chat__resize-handle {
+    display: none;
   }
 }
 

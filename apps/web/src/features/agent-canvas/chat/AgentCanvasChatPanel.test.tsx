@@ -1106,6 +1106,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
 
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skill" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resize AdCraft Video Agent panel" })).toBeTruthy();
   });
 
   it("pins the current review outside history immediately above the composer", () => {
@@ -1132,6 +1133,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(panelRule).toContain("top: 0");
     expect(panelRule).toContain("right: 0");
     expect(panelRule).toContain("bottom: 0");
+    expect(panelRule).toContain("max-width: min(720px, calc(100vw - 24px));");
     expect(panelRule).toContain("--agent-chat-canvas: #0a0a0a");
     expect(panelRule).toContain("--agent-chat-panel: #151515");
     expect(panelRule).toContain("--agent-chat-raised: #202020");
@@ -1147,6 +1149,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(agentMessageRule).toContain("padding: 0");
     expect(agentMessageRule).toContain("background: transparent");
     expect(userMessageRule).toContain("background: var(--agent-chat-raised)");
+    expect(css).toContain(".agent-chat__resize-handle");
+    expect(css).toContain("cursor: ew-resize");
   });
 
   it("styles Stage Threads as quiet monochrome timeline sections", () => {

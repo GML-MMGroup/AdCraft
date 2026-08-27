@@ -1,4 +1,14 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { InlineLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
 
@@ -60,6 +70,11 @@ import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
 import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
 import {
+  getAgentChatResizeBounds,
+  resizeAgentChatWidth,
+  type AgentChatResizeBounds,
+} from "./chatPanelResize.ts";
+import {
   buildConversationCanvasLinkIndex,
   type ConversationCanvasLinkIndex,
   type ConversationCanvasLocation,
@@ -71,6 +86,13 @@ import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.
 import { useComposerContext } from "./useComposerContext.ts";
 import { projectProductionFocus } from "./productionFocusProjection.ts";
 import "./agent-canvas-chat.css";
+
+type ChatPanelResizeSession = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  bounds: AgentChatResizeBounds;
+};
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 export { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
@@ -119,11 +141,16 @@ export function AgentCanvasChatPanel({
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = controlledCollapsed ?? internalCollapsed;
+  const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
+  const [chatPanelResizing, setChatPanelResizing] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatPanelRef = useRef<HTMLElement>(null);
+  const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
+  const resizeMinimumWidthRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const conversationElementsRef = useRef(new Map<string, HTMLElement>());
   const revealFrameRef = useRef<number | null>(null);
@@ -172,6 +199,70 @@ export function AgentCanvasChatPanel({
     || !conceptContent?.proposal_id
     || standaloneGuidedReferences !== null,
   );
+
+  function beginChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    const startWidth = panel.getBoundingClientRect().width;
+    const minWidth = resizeMinimumWidthRef.current ?? startWidth;
+    const bounds = getAgentChatResizeBounds(minWidth, window.innerWidth);
+    resizeMinimumWidthRef.current = minWidth;
+    resizeSessionRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth,
+      bounds,
+    };
+    setChatPanelWidth(startWidth);
+    setChatPanelResizing(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function updateChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    setChatPanelWidth(resizeAgentChatWidth({
+      startX: session.startX,
+      startWidth: session.startWidth,
+      pointerX: event.clientX,
+      bounds: session.bounds,
+    }));
+    event.preventDefault();
+  }
+
+  function finishChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    resizeSessionRef.current = null;
+    setChatPanelResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function nudgeChatPanelWidth(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (!(["ArrowLeft", "ArrowRight", "Home", "End"] as string[]).includes(event.key)) return;
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    const currentWidth = panel.getBoundingClientRect().width;
+    const minWidth = resizeMinimumWidthRef.current ?? currentWidth;
+    const bounds = getAgentChatResizeBounds(minWidth, window.innerWidth);
+    resizeMinimumWidthRef.current = minWidth;
+    const nextWidth = event.key === "Home"
+      ? bounds.minWidth
+      : event.key === "End"
+        ? bounds.maxWidth
+        : resizeAgentChatWidth({
+            startX: 0,
+            startWidth: currentWidth,
+            pointerX: event.key === "ArrowLeft" ? -24 : 24,
+            bounds,
+          });
+    setChatPanelWidth(nextWidth);
+    event.preventDefault();
+  }
 
   useEffect(() => {
     setOptimisticProposalSelections((current) => {
@@ -490,7 +581,24 @@ export function AgentCanvasChatPanel({
   }
 
   return (
-    <aside className="agent-chat" aria-label="AdCraft Video Agent">
+    <aside
+      ref={chatPanelRef}
+      className={`agent-chat${chatPanelResizing ? " is-resizing" : ""}`}
+      style={chatPanelWidth === null ? undefined : { width: `${chatPanelWidth}px` }}
+      aria-label="AdCraft Video Agent"
+    >
+      <button
+        className="agent-chat__resize-handle"
+        type="button"
+        aria-label="Resize AdCraft Video Agent panel"
+        aria-valuenow={chatPanelWidth ?? undefined}
+        onPointerDown={beginChatPanelResize}
+        onPointerMove={updateChatPanelResize}
+        onPointerUp={finishChatPanelResize}
+        onPointerCancel={finishChatPanelResize}
+        onLostPointerCapture={finishChatPanelResize}
+        onKeyDown={nudgeChatPanelWidth}
+      />
       <header className="agent-chat__header">
         <div className="agent-chat__identity">
           <strong>AdCraft Video Agent</strong>
