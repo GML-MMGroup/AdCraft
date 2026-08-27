@@ -13,6 +13,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
+  const [projectOpenError, setProjectOpenError] = useState<{ projectId: string; message: string } | null>(null);
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
   const {
     savedProjects,
@@ -50,11 +51,29 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     });
   }, [savedProjects, tab, search]);
 
-  const openSavedProject = useCallback((projectId: string) => {
-    void openProject(projectId).then((opened) => {
-      if (opened) navigate("workflow");
-    });
+  const attemptOpenProject = useCallback(async (projectId: string) => {
+    setProjectOpenError(null);
+    try {
+      const opened = await openProject(projectId);
+      if (opened) {
+        navigate("workflow");
+        return true;
+      }
+    } catch {
+      // Keep the project list mounted so the user can retry without losing their place.
+    }
+    setProjectOpenError({ projectId, message: "Project could not be opened. Try again." });
+    return false;
   }, [navigate, openProject]);
+
+  const openSavedProject = useCallback((projectId: string) => {
+    void attemptOpenProject(projectId);
+  }, [attemptOpenProject]);
+
+  const retryOpeningProject = useCallback(async () => {
+    if (!projectOpenError) return false;
+    return attemptOpenProject(projectOpenError.projectId);
+  }, [attemptOpenProject, projectOpenError]);
 
   const trashSavedProject = useCallback((project: ProjectListItem) => {
     void moveProjectToTrash(project.projectId);
@@ -92,9 +111,9 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
         </div>
       </div>
       <ProjectCatalogNotice
-        error={projectCatalogError}
+        error={projectOpenError?.message ?? projectCatalogError}
         refreshing={projectCatalogRefreshing}
-        onRetry={refreshProjects}
+        onRetry={projectOpenError ? retryOpeningProject : refreshProjects}
       />
       <div className="grid">
         <CreateCard title="New Project" onClick={createProject} />
