@@ -19,6 +19,7 @@ const STALE_AUTHORITY_CODES = new Set([
   "guided_interaction_stale",
   "guided_action_stale",
   "guided_action_superseded",
+  "guidance_advance_stale",
   "guidance_revision_conflict",
   "journey_revision_conflict",
   "proposal_action_stale",
@@ -78,7 +79,8 @@ export function conversationRecoveryFromError(
   const isContractFailure = isV2ApiError(error) && error.status === 422 && scope === "workflow";
   let action: ConversationRecoveryView["action"] = "none";
   if (!isPermissionFailure && !isContractFailure) {
-    if (scope === "timeline" || scope === "workflow") action = "refresh";
+    if (scope === "timeline" && options.retryable) action = "retry";
+    else if (scope === "timeline" || scope === "workflow") action = "refresh";
     else if (options.retryable) action = "retry";
   }
 
