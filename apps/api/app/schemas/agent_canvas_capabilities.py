@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
+    CharacterOccurrencePatchV1,
     EditableRequirementDirectiveV1,
     RequirementControlV1,
     RequirementControlPatchV1,
@@ -263,12 +264,23 @@ class CompactRequirementDirectivePatchV3(RootModel[_CompactRequirementDirectiveV
     """One schema-discriminated compact creative directive."""
 
 
+class CompactCharacterOccurrencePatchV3(_CapabilityModel):
+    occurrence_index: int = Field(ge=1, le=32)
+    role: str = Field(min_length=1, max_length=256)
+    identity_summary: str = Field(min_length=1, max_length=2_048)
+    presence: Literal["include", "exclude", "unspecified"]
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+
 class CompactRequirementPatchV3(_CapabilityModel):
     controls_to_set: CompactRequirementControlsV2 = Field(
         default_factory=CompactRequirementControlsV2
     )
     directives_to_add: tuple[CompactRequirementDirectivePatchV3, ...] = Field(
         default=(), max_length=16
+    )
+    character_occurrences_to_set: tuple[CompactCharacterOccurrencePatchV3, ...] | None = Field(
+        default=None, max_length=32
     )
 
 
@@ -310,6 +322,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
         has_requirement_patch = self.requirement_patch is not None and bool(
             self.requirement_patch.controls_to_set.model_dump(exclude_none=True)
             or self.requirement_patch.directives_to_add
+            or self.requirement_patch.character_occurrences_to_set
         )
         if self.requested_capability or has_explicit_elements or has_requirement_patch:
             raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
@@ -367,6 +380,12 @@ def expand_compact_turn_intent(
             ),
             directive_ids_to_supersede=(),
             conflicts=(),
+            character_occurrences_to_set=tuple(
+                CharacterOccurrencePatchV1.model_validate(item.model_dump())
+                for item in compact_patch.character_occurrences_to_set
+            )
+            if compact_patch.character_occurrences_to_set is not None
+            else None,
         )
     explicit_elements = tuple(
         ExplicitElementIntentV2(

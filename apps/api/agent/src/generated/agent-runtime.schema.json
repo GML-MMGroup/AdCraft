@@ -8425,6 +8425,53 @@
       "title": "CharacterMaterializationResultV1",
       "type": "object"
     },
+    "CharacterOccurrencePatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "identity_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Identity Summary",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_summary",
+        "occurrence_index",
+        "presence",
+        "role",
+        "source_quote"
+      ],
+      "title": "CharacterOccurrencePatchV1",
+      "type": "object"
+    },
     "CharacterOccurrenceV1": {
       "additionalProperties": false,
       "properties": {
@@ -8727,6 +8774,53 @@
         "value"
       ],
       "title": "CompactCharacterCountControlV2",
+      "type": "object"
+    },
+    "CompactCharacterOccurrencePatchV3": {
+      "additionalProperties": false,
+      "properties": {
+        "identity_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Identity Summary",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_summary",
+        "occurrence_index",
+        "presence",
+        "role",
+        "source_quote"
+      ],
+      "title": "CompactCharacterOccurrencePatchV3",
       "type": "object"
     },
     "CompactDurationSecondsControlV2": {
@@ -9093,6 +9187,22 @@
     "CompactRequirementPatchV3": {
       "additionalProperties": false,
       "properties": {
+        "character_occurrences_to_set": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CompactCharacterOccurrencePatchV3"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Occurrences To Set"
+        },
         "controls_to_set": {
           "$ref": "#/$defs/CompactRequirementControlsV2"
         },
@@ -16053,6 +16163,53 @@
       "title": "ManualCharacterCountControlPatchV1",
       "type": "object"
     },
+    "ManualCharacterOccurrencePatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "identity_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Identity Summary",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_summary",
+        "occurrence_index",
+        "presence",
+        "role",
+        "source_text"
+      ],
+      "title": "ManualCharacterOccurrencePatchV1",
+      "type": "object"
+    },
     "ManualDurationSecondsControlPatchV1": {
       "additionalProperties": false,
       "properties": {
@@ -20175,6 +20332,14 @@
           "title": "Added Directive Ids",
           "type": "array"
         },
+        "changed_character_occurrence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Changed Character Occurrence Ids",
+          "type": "array"
+        },
         "changed_control_names": {
           "default": [],
           "items": {
@@ -20216,12 +20381,34 @@
           "title": "Changed Element Kinds",
           "type": "array"
         },
+        "character_occurrence_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Occurrence Count"
+        },
         "conflict_ids": {
           "default": [],
           "items": {
             "type": "string"
           },
           "title": "Conflict Ids",
+          "type": "array"
+        },
+        "superseded_character_occurrence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Superseded Character Occurrence Ids",
           "type": "array"
         },
         "superseded_directive_ids": {
@@ -20803,6 +20990,22 @@
     "RequirementLedgerPatchRequestV1": {
       "additionalProperties": false,
       "properties": {
+        "character_occurrences_to_set": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ManualCharacterOccurrencePatchV1"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Occurrences To Set"
+        },
         "controls_to_set": {
           "default": [],
           "items": {
@@ -21266,6 +21469,22 @@
     "RequirementPatchV1": {
       "additionalProperties": false,
       "properties": {
+        "character_occurrences_to_set": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CharacterOccurrencePatchV1"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Occurrences To Set"
+        },
         "conflicts": {
           "default": [],
           "items": {

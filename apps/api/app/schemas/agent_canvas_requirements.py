@@ -392,6 +392,22 @@ class RequirementElementPresencePatchV1(_StrictModel):
     source_quote: str = Field(min_length=1, max_length=2_048)
 
 
+class CharacterOccurrencePatchV1(_StrictModel):
+    occurrence_index: int = Field(ge=1, le=32)
+    role: str = Field(min_length=1, max_length=256)
+    identity_summary: str = Field(min_length=1, max_length=2_048)
+    presence: CharacterOccurrencePresenceV1
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+
+class ManualCharacterOccurrencePatchV1(_StrictModel):
+    occurrence_index: int = Field(ge=1, le=32)
+    role: str = Field(min_length=1, max_length=256)
+    identity_summary: str = Field(min_length=1, max_length=2_048)
+    presence: CharacterOccurrencePresenceV1
+    source_text: str = Field(min_length=1, max_length=2_048)
+
+
 class CharacterOccurrenceV1(_FrozenModel):
     occurrence_id: str = Field(min_length=1, max_length=160)
     occurrence_index: int = Field(ge=1, le=32)
@@ -428,6 +444,14 @@ class RequirementPatchV1(_StrictModel):
     directives_to_add: tuple[RequirementDirectivePatchV1, ...] = Field(default=(), max_length=16)
     directive_ids_to_supersede: tuple[str, ...] = Field(default=(), max_length=32)
     conflicts: tuple[RequirementConflictPatchV1, ...] = Field(default=(), max_length=8)
+    character_occurrences_to_set: tuple[CharacterOccurrencePatchV1, ...] | None = Field(
+        default=None, max_length=32
+    )
+
+    @model_validator(mode="after")
+    def validate_character_occurrence_patch(self) -> "RequirementPatchV1":
+        _validate_character_occurrence_patch(self.character_occurrences_to_set)
+        return self
 
 
 class RequirementLedgerPatchRequestV1(_StrictModel):
@@ -436,6 +460,9 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
         default=(), max_length=16
     )
     directive_ids_to_supersede: tuple[str, ...] = Field(default=(), max_length=32)
+    character_occurrences_to_set: tuple[ManualCharacterOccurrencePatchV1, ...] | None = Field(
+        default=None, max_length=32
+    )
 
     @model_validator(mode="after")
     def validate_non_empty_unique_patch(self) -> "RequirementLedgerPatchRequestV1":
@@ -443,6 +470,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
             not self.controls_to_set
             and not self.directives_to_add
             and not self.directive_ids_to_supersede
+            and self.character_occurrences_to_set is None
         ):
             raise ValueError("Requirement patches must contain at least one change.")
         control_names = tuple(item.control for item in self.controls_to_set)
@@ -450,6 +478,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
             raise ValueError("Requirement patches cannot set a control more than once.")
         if len(self.directive_ids_to_supersede) != len(set(self.directive_ids_to_supersede)):
             raise ValueError("Requirement patches cannot supersede a directive more than once.")
+        _validate_character_occurrence_patch(self.character_occurrences_to_set)
         return self
 
 
@@ -537,6 +566,9 @@ class RequirementApplicationDeltaV1(_FrozenModel):
     superseded_directive_ids: tuple[str, ...] = ()
     changed_element_kinds: tuple[RequirementElementKindV1, ...] = ()
     conflict_ids: tuple[str, ...] = ()
+    changed_character_occurrence_ids: tuple[str, ...] = ()
+    superseded_character_occurrence_ids: tuple[str, ...] = ()
+    character_occurrence_count: int | None = Field(default=None, ge=0, le=32)
 
 
 class RequirementApplicationResultV1(_FrozenModel):
@@ -556,3 +588,19 @@ def _validate_scope(
         raise ValueError("Capability directives require capability targets only.")
     if scope_kind == "node" and (not target_node_ids or capability_ids):
         raise ValueError("Node directives require node targets only.")
+
+
+def _validate_character_occurrence_patch(
+    occurrences: tuple[CharacterOccurrencePatchV1 | ManualCharacterOccurrencePatchV1, ...] | None,
+) -> None:
+    if not occurrences:
+        return
+    indexes = tuple(item.occurrence_index for item in occurrences)
+    if indexes != tuple(range(1, len(occurrences) + 1)):
+        raise ValueError("Character occurrence patches must be contiguous and ordered.")
+    identities = tuple(
+        (" ".join(item.role.split()).casefold(), " ".join(item.identity_summary.split()).casefold())
+        for item in occurrences
+    )
+    if len(identities) != len(set(identities)):
+        raise ValueError("Character occurrence patches must describe distinct identities.")
