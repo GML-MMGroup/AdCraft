@@ -1180,7 +1180,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const trayRule = css.match(/\.agent-chat__context-tray\s*\{([\s\S]*?)\n\}/m)?.[1];
     const trayGroupsRule = css.match(/\.agent-chat__context-groups\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(panelRule).toContain("grid-template-rows: auto minmax(0, 1fr)");
+    expect(panelRule).toContain("grid-template-rows: auto minmax(72px, 1fr)");
     expect(panelRule).toContain("overflow: hidden");
     expect(timelineRule).toContain("overflow-y: auto");
     expect(recoveryRule).toContain("background: var(--agent-chat-raised)");
