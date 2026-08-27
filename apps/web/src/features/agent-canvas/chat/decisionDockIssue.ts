@@ -73,3 +73,58 @@ export function decisionDockIssueFromError(error: unknown): DecisionDockIssue {
     retryable: true,
   };
 }
+
+const PRODUCT_SOURCE_ASSET_CODES = new Set([
+  "guided_product_asset_not_found",
+  "guided_product_asset_foreign_workflow",
+  "guided_product_asset_not_image",
+  "guided_product_asset_unreadable",
+]);
+
+const PRODUCT_SOURCE_COMPILER_CODES = new Set([
+  "guided_product_multiview_compilation_failed",
+  "guided_product_ffmpeg_unavailable",
+]);
+
+export function productSourceDecisionDockIssueFromCode(
+  code: string,
+  detail = code,
+): DecisionDockIssue {
+  if (code === "guided_product_multiview_count_invalid") {
+    return {
+      summary: "Select the required number of Product images and try again.",
+      detail,
+      fieldId: null,
+      retryable: true,
+    };
+  }
+  if (PRODUCT_SOURCE_ASSET_CODES.has(code)) {
+    return {
+      summary: "One of the selected Product images is unavailable. Replace it and try again.",
+      detail,
+      fieldId: null,
+      retryable: true,
+    };
+  }
+  if (PRODUCT_SOURCE_COMPILER_CODES.has(code)) {
+    return {
+      summary: "The Product views could not be compiled. Your uploaded images are still available.",
+      detail,
+      fieldId: null,
+      retryable: true,
+    };
+  }
+  return {
+    summary: "The Product source could not be applied. Review the selected images and try again.",
+    detail,
+    fieldId: null,
+    retryable: true,
+  };
+}
+
+export function productSourceDecisionDockIssueFromError(error: unknown): DecisionDockIssue {
+  if (isV2ApiError(error) && error.code && !isDecisionDockStaleError(error)) {
+    return productSourceDecisionDockIssueFromCode(error.code, technicalDetail(error) ?? error.code);
+  }
+  return decisionDockIssueFromError(error);
+}

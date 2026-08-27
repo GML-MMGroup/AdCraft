@@ -47,6 +47,8 @@ import {
 import {
   decisionDockIssueFromError,
   isDecisionDockStaleError,
+  productSourceDecisionDockIssueFromCode,
+  productSourceDecisionDockIssueFromError,
   type DecisionDockIssue,
 } from "./decisionDockIssue.ts";
 import {
@@ -754,12 +756,7 @@ export function useAgentCanvasChat({
     const errorCode = typeof failure.payload?.error_code === "string"
       ? failure.payload.error_code
       : "guided_product_source_failed";
-    setGuidedInteractionIssue({
-      summary: "The Product source could not be applied. Uploaded assets remain available.",
-      detail: errorCode,
-      fieldId: null,
-      retryable: true,
-    });
+    setGuidedInteractionIssue(productSourceDecisionDockIssueFromCode(errorCode));
     const submissionIdentity = guidedInteractionSubmissionIdentityRef.current;
     if (submissionIdentity) {
       guidedInteractionIdempotencyKeysRef.current.delete(submissionIdentity);
@@ -1322,7 +1319,11 @@ export function useAgentCanvasChat({
       return true;
     } catch (interactionError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
-      setGuidedInteractionIssue(decisionDockIssueFromError(interactionError));
+      setGuidedInteractionIssue(
+        request.submission_kind === "product_source"
+          ? productSourceDecisionDockIssueFromError(interactionError)
+          : decisionDockIssueFromError(interactionError),
+      );
       if (isDecisionDockStaleError(interactionError)) {
         await refresh();
         await onWorkflowRefresh?.();

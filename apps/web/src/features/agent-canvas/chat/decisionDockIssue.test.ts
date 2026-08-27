@@ -4,6 +4,8 @@ import { V2ApiError } from "../../../api/agentCanvasApi.ts";
 import {
   decisionDockIssueFromError,
   isDecisionDockStaleError,
+  productSourceDecisionDockIssueFromCode,
+  productSourceDecisionDockIssueFromError,
 } from "./decisionDockIssue.ts";
 
 function apiError(status: number, code: string | undefined, message: string) {
@@ -57,5 +59,38 @@ describe("decisionDockIssueFromError", () => {
     expect(isDecisionDockStaleError(apiError(409, "guided_interaction_stale", "Stale"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(409, "guidance_revision_conflict", "Conflict"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(422, "guided_interaction_invalid", "Invalid"))).toBe(false);
+  });
+
+  it("maps Product count and unreadable AssetVersion errors inside the Product Dock", () => {
+    expect(productSourceDecisionDockIssueFromError(apiError(
+      422,
+      "guided_product_multiview_count_invalid",
+      "Expected 2 through 8 images.",
+    ))).toMatchObject({
+      summary: "Select the required number of Product images and try again.",
+      retryable: true,
+    });
+    expect(productSourceDecisionDockIssueFromError(apiError(
+      422,
+      "guided_product_asset_unreadable",
+      "The selected AssetVersion is not Ready.",
+    ))).toMatchObject({
+      summary: "One of the selected Product images is unavailable. Replace it and try again.",
+      retryable: true,
+    });
+  });
+
+  it("maps Product compiler failures without discarding uploaded assets", () => {
+    expect(productSourceDecisionDockIssueFromCode(
+      "guided_product_multiview_compilation_failed",
+    )).toEqual({
+      summary: "The Product views could not be compiled. Your uploaded images are still available.",
+      detail: "guided_product_multiview_compilation_failed",
+      fieldId: null,
+      retryable: true,
+    });
+    expect(productSourceDecisionDockIssueFromCode(
+      "guided_product_ffmpeg_unavailable",
+    ).summary).toContain("uploaded images are still available");
   });
 });
