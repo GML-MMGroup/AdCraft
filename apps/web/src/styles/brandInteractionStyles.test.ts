@@ -38,7 +38,7 @@ describe("blue brand interactions", () => {
     expect(interactionStyles).toContain(
       "color-mix(in srgb, var(--brand) 30%, transparent)",
     );
-    expect(interactionStyles).toContain("--agent-canvas-pointer-dot-color: var(--brand)");
+    expect(interactionStyles).toContain("--agent-canvas-pointer-dot-color: #a3a3a3");
     expect(interactionStyles).toContain("background: var(--brand)");
     expect(interactionStyles).toContain("accent-color: var(--brand)");
     expect(interactionStyles).not.toMatch(
@@ -49,20 +49,20 @@ describe("blue brand interactions", () => {
     expect(interactionStyles).not.toContain("rgb(111 96 168 /");
   });
 
-  it("uses dark inverse text on light-blue primary actions", () => {
+  it("keeps non-chat primary actions branded while Agent Canvas chrome stays monochrome", () => {
     const canvas = source("features/agent-canvas/agent-canvas-page.css");
     const chat = source("features/agent-canvas/chat/agent-canvas-chat.css");
     const assets = source("features/agent-canvas/assets/AgentAssetBrowser.css");
     const editing = source("features/agent-canvas/editing/agent-canvas-editing.css");
 
-    expect(canvas).toMatch(/\.agent-canvas-toolbar__run \{[^}]*color: var\(--text-inverse\) !important;/s);
+    expect(canvas).toMatch(/\.agent-canvas-toolbar__run \{[^}]*color: #111 !important;[^}]*background: #e7e7e7 !important;/s);
     expect(canvas).toMatch(/\.agent-canvas-inspector__primary \{[^}]*color: var\(--text-inverse\);/s);
     expect(canvas).toMatch(/\.agent-canvas-inspector__save \{[^}]*color: var\(--text-inverse\);/s);
-    expect(chat).toMatch(/\.agent-chat__revision button \{[^}]*color: var\(--text-inverse\);/s);
-    expect(chat).toMatch(/\.agent-chat__send \{[^}]*color: var\(--text-inverse\);/s);
+    expect(chat).toMatch(/\.agent-chat__revision button \{[^}]*background: var\(--agent-chat-primary\);[^}]*color: var\(--agent-chat-panel\);/s);
+    expect(chat).toMatch(/\.agent-chat__composer-actions \.agent-chat__send \{[^}]*background: var\(--agent-chat-primary\);[^}]*color: var\(--agent-chat-panel\);/s);
     expect(assets).toMatch(/\.agent-asset-browser__upload \{[^}]*color: var\(--text-inverse\);/s);
     expect(assets).toMatch(/\.agent-asset-browser__add \{[^}]*color: var\(--text-inverse\) !important;/s);
-    expect(editing).toMatch(/\.agent-editing-panel__export \{[^}]*color: var\(--text-inverse\);[^}]*background: var\(--brand\);/s);
+    expect(editing).toMatch(/\.agent-editing-panel__export \{[^}]*color: #111;[^}]*background: #e7e7e7;/s);
   });
 
   it("keeps node-type and semantic color declarations unchanged", () => {

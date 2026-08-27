@@ -1,6 +1,6 @@
 .agent-canvas-page {
-  --agent-canvas-base-dot-color: rgb(81 85 108 / 24%);
-  --agent-canvas-pointer-dot-color: var(--brand);
+  --agent-canvas-base-dot-color: rgb(112 112 112 / 22%);
+  --agent-canvas-pointer-dot-color: #a3a3a3;
 
   position: relative;
   display: grid;
@@ -10,11 +10,9 @@
   min-height: 620px;
   margin: 0 -40px -64px -94px;
   overflow: hidden;
-  grid-template-columns: minmax(0, 1fr) 372px;
-  color: var(--text-primary, #202236);
-  background:
-    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
-    linear-gradient(145deg, rgb(229 231 241 / 84%), rgb(213 219 232 / 72%));
+  grid-template-columns: minmax(0, 1fr) 390px;
+  color: #f5f5f5;
+  background: #0a0a0a;
 }
 
 .agent-canvas-board {
@@ -22,7 +20,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid rgb(255 255 255 / 42%);
+  border-right: 1px solid #353535;
 }
 
 .agent-canvas-page.is-chat-collapsed {
@@ -153,23 +151,23 @@
 
 .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(157 175 230 / 88%))
-    drop-shadow(0 0 4px rgb(157 175 230 / 44%));
+    drop-shadow(0 0 1.5px rgb(163 163 163 / 82%))
+    drop-shadow(0 0 4px rgb(163 163 163 / 36%));
 }
 
 .agent-canvas-board .react-flow__controls {
   bottom: 18px;
   left: 18px;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 64%);
+  border: 1px solid #353535;
   border-radius: 7px;
-  box-shadow: 0 12px 28px rgb(39 39 62 / 14%);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 28%);
 }
 
 .agent-canvas-board .react-flow__controls button {
-  color: #4d5066;
-  background: rgb(249 250 253 / 88%);
-  border-bottom-color: rgb(121 122 145 / 14%);
+  color: #a3a3a3;
+  background: #151515;
+  border-bottom-color: #353535;
 }
 
 .agent-canvas-toolbar {
@@ -245,9 +243,9 @@
   width: 220px;
   gap: 10px;
   padding: 12px;
-  color: #f3f4f8;
-  background: rgb(24 26 34 / 96%);
-  border: 1px solid rgb(255 255 255 / 10%);
+  color: #f5f5f5;
+  background: #151515;
+  border: 1px solid #353535;
   border-radius: 8px;
   box-shadow: 0 18px 42px rgb(0 0 0 / 32%);
   transform: translateX(-50%);
@@ -260,12 +258,12 @@
 }
 
 .agent-canvas-layout-confirmation > p:focus-visible {
-  outline: 2px solid rgb(156 211 142 / 86%);
+  outline: 2px solid #a3a3a3;
   outline-offset: 3px;
 }
 
 .agent-canvas-layout-confirmation__error {
-  color: #f0b8b8;
+  color: #a3a3a3;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -289,11 +287,11 @@
 }
 
 .agent-canvas-layout-confirmation__actions button:first-child {
-  color: #ca6f6f;
+  color: #a3a3a3;
 }
 
 .agent-canvas-layout-confirmation__actions button:last-child {
-  color: #9cd38e;
+  color: #f5f5f5;
 }
 
 .agent-canvas-layout-confirmation__actions button:hover:not(:disabled),
@@ -430,7 +428,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 8px 0 5px;
-  color: #737689;
+  color: #707070;
   font-size: 11px;
   text-transform: capitalize;
 }
@@ -439,21 +437,21 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #a0a3af;
+  background: #707070;
 }
 
 .agent-canvas-toolbar__connection.is-live i {
-  background: #51ac86;
-  box-shadow: 0 0 0 3px rgb(81 172 134 / 13%);
+  background: #f5f5f5;
+  box-shadow: 0 0 0 3px rgb(245 245 245 / 10%);
 }
 
 .agent-canvas-toolbar__connection.is-reconnecting i,
 .agent-canvas-toolbar__connection.is-connecting i {
-  background: #c49850;
+  background: #a3a3a3;
 }
 
 .agent-canvas-toolbar__connection.is-unavailable i {
-  background: #c95a66;
+  background: #4a4a4a;
 }
 
 .agent-canvas-empty {
@@ -972,23 +970,21 @@
 }
 
 :root .agent-canvas-page {
-  --agent-canvas-base-dot-color: rgb(142 146 164 / 20%);
-  --agent-canvas-pointer-dot-color: var(--brand);
+  --agent-canvas-base-dot-color: rgb(112 112 112 / 22%);
+  --agent-canvas-pointer-dot-color: #a3a3a3;
 
-  color: #ecedf5;
-  background:
-    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
-    linear-gradient(145deg, #161820, #101219);
+  color: #f5f5f5;
+  background: #0a0a0a;
 }
 
 :root .agent-canvas-board {
-  border-right-color: rgb(255 255 255 / 10%);
+  border-right-color: #353535;
 }
 
 :root .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(202 212 245 / 92%))
-    drop-shadow(0 0 5px rgb(157 175 230 / 58%));
+    drop-shadow(0 0 1.5px rgb(163 163 163 / 82%))
+    drop-shadow(0 0 5px rgb(163 163 163 / 36%));
 }
 
 :root :is(
@@ -1093,9 +1089,9 @@
 }
 
 :root .agent-canvas-board .react-flow__controls button {
-  color: #d7d9e4;
-  background: rgb(28 31 40 / 88%);
-  border-color: rgb(255 255 255 / 10%);
+  color: #a3a3a3;
+  background: #151515;
+  border-color: #353535;
 }
 
 @media (max-width: 1180px) {

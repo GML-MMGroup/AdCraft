@@ -128,6 +128,15 @@ describe("theme styles", () => {
     expect(jumpBlock).toContain("position: absolute");
   });
 
+  test("uses a pure monochrome Agent Canvas background", () => {
+    const canvasStyles = source("features/agent-canvas/agent-canvas-page.css");
+    const pageBlock = declarationBlock(canvasStyles, ".agent-canvas-page");
+    const boardBlock = declarationBlock(canvasStyles, ".agent-canvas-board");
+
+    expect(pageBlock).toContain("background: #0a0a0a");
+    expect(boardBlock).toContain("border-right: 1px solid #353535");
+  });
+
   test("keeps the node prompt composer free of the global focus outline", () => {
     const workbenchStyles = source(
       "features/agent-canvas/workbench/agent-canvas-inline-workbench.css",
