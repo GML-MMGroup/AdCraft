@@ -75,13 +75,15 @@ describe("ProjectsPage project rename", () => {
     expect(screen.queryByText("Open")).toBeNull();
   });
 
-  it("keeps the project glass layer on the same compositing baseline while hovering", () => {
+  it("keeps the project card overlay equally clear while hovering", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/pages/projects.css"), "utf8");
-    const cardRule = styles.match(/\.project-card\s*\{([\s\S]*?)\n\}/m)?.[1];
     const hoverRule = styles.match(/\.project-card:is\(:hover, :has\(\.project-card-open:focus-visible\)\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const overlayRule = [...styles.matchAll(/^\.project-card-open::after\s*\{([\s\S]*?)\n\}/gm)]
+      .map((match) => match[1])
+      .find((rule) => rule.includes("position: absolute"));
 
-    expect(cardRule).toContain("transform: translateZ(0)");
-    expect(hoverRule).toContain("transform: translateZ(0) translateY(-4px) rotate(-1deg) scale(1.02)");
+    expect(overlayRule).toContain("backdrop-filter: none");
+    expect(overlayRule).toContain("-webkit-backdrop-filter: none");
     expect(hoverRule).not.toContain("backdrop-filter");
     expect(hoverRule).not.toContain("background:");
   });
