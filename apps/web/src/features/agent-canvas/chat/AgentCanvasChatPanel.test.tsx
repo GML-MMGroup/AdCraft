@@ -1153,6 +1153,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
     const currentInteractionRule = css.match(/\.agent-chat__current-interaction\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const currentInteractionDockRule = css.match(/\.agent-chat__current-interaction\s*>\s*\.agent-chat__decision-dock\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const optionsRule = css.match(/\.agent-chat__decision-dock-options\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(css).toContain(".agent-chat__decision-dock");
     expect(css).toContain(".agent-chat__decision-dock-body");
@@ -1171,6 +1173,10 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).not.toContain("#77c9c2");
     expect(currentInteractionRule).toContain("overflow: hidden");
     expect(currentInteractionRule).not.toContain("overflow-y: auto");
+    expect(currentInteractionRule).toContain("display: flex");
+    expect(currentInteractionDockRule).toContain("max-height: 100%");
+    expect(currentInteractionDockRule).toContain("flex: 1 1 auto");
+    expect(optionsRule).toContain("min-height: max-content");
   });
 
   it("keeps recovery and message context as bounded monochrome Shell regions", () => {

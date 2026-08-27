@@ -1620,12 +1620,20 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__current-interaction {
+  display: flex;
   min-height: 0;
   flex: 0 1 auto;
   margin: 0;
   padding: 10px 12px;
   overflow: hidden;
   border-top: 1px solid var(--agent-chat-border);
+}
+
+.agent-chat__current-interaction > .agent-chat__decision-dock {
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  flex: 1 1 auto;
 }
 
 :root .agent-chat__composer {
@@ -2221,6 +2229,7 @@ button.agent-chat__node-links--related:hover {
 
 .agent-chat__decision-dock-options {
   display: grid;
+  min-height: max-content;
   overflow: hidden;
   border: 1px solid var(--agent-chat-border);
   border-radius: 7px;
