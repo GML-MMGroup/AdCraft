@@ -31,8 +31,16 @@ class GuidedAcceptedReferenceV1(_GuidedInteractionModel):
     required: bool = False
     display_order: int = Field(ge=0, le=127)
     semantic_reference_role: str | None = Field(default=None, max_length=80)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
     display_name: str = Field(min_length=1, max_length=256)
     media_type: Literal["text", "image", "video", "audio"]
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "GuidedAcceptedReferenceV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character reference identity requires occurrence and phase.")
+        return self
 
 
 class GuidedChoiceOptionV1(_GuidedInteractionModel):

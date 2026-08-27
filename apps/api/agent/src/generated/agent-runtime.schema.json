@@ -12636,6 +12636,22 @@
           "title": "Binding Kind",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "display_name": {
           "maxLength": 256,
           "minLength": 1,
@@ -12663,6 +12679,20 @@
           ],
           "title": "Media Type",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "required": {
           "default": false,

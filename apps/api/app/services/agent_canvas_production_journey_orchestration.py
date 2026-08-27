@@ -121,7 +121,16 @@ class GuidedProductionJourneyService:
             occurrence_id=result.occurrence_id,
             character_phase=result.character_phase,
         )
-        journey = session.journey.model_copy(update={"active_action": projection})
+        journey = session.journey.model_copy(
+            update={
+                "active_action": projection,
+                "active_occurrence_id": (
+                    result.occurrence_id
+                    if result.occurrence_id is not None
+                    else session.journey.active_occurrence_id
+                ),
+            }
+        )
         updated = self._conversations.replace_guidance_journey(
             session.session_id,
             journey=journey,

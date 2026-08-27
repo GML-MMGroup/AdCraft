@@ -22,7 +22,7 @@ export type GuidedFinalCompletionReceiptV1 = { readonly "receipt_id": string; re
 
 export type GuidedReferencePreviewV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "display_name": string; readonly "media_type": "audio" | "image" | "text" | "video" };
 
-export type GuidedAcceptedReferenceV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "binding_kind": string; readonly "input_role": string; readonly "required"?: boolean; readonly "display_order": number; readonly "semantic_reference_role"?: string | null; readonly "display_name": string; readonly "media_type": "audio" | "image" | "text" | "video" };
+export type GuidedAcceptedReferenceV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "binding_kind": string; readonly "input_role": string; readonly "required"?: boolean; readonly "display_order": number; readonly "semantic_reference_role"?: string | null; readonly "occurrence_id"?: string | null; readonly "character_phase"?: "main" | "turnaround" | null; readonly "display_name": string; readonly "media_type": "audio" | "image" | "text" | "video" };
 
 export type GuidedChoiceOptionV1 = { readonly "option_id": string; readonly "title": string; readonly "summary": string; readonly "difference_tags"?: ReadonlyArray<string>; readonly "recommended"?: boolean; readonly "reference_preview"?: ReadonlyArray<GuidedReferencePreviewV1> };
 
