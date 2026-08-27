@@ -21,6 +21,7 @@ import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLo
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
+import { NodeConversationAction } from "./NodeConversationAction.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import {
@@ -53,6 +54,7 @@ export interface AgentCanvasNodeCallbacks {
   onExport?: (nodeId: string) => void;
   onOpenEditing?: (nodeId: string) => void;
   onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
+  onShowInConversation?: (nodeId: string) => void;
   renderWorkbench?: (node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => ReactNode;
   onOpenConnectedNodeMenu?: (
     nodeId: string,
@@ -69,6 +71,7 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   disabled?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
+  conversationSourceAvailable?: boolean;
 }
 
 export type AgentCanvasFlowNode = Node<AgentCanvasNodeData, "agentCanvas">;
@@ -334,6 +337,21 @@ function AgentCanvasNodeRendererComponent({
           onDoubleClick={(event) => event.stopPropagation()}
         >
           {workbench}
+        </NodeToolbar>
+      ) : null}
+      {selected && data.conversationSourceAvailable && data.onShowInConversation ? (
+        <NodeToolbar
+          nodeId={id}
+          isVisible
+          position={Position.Top}
+          offset={12}
+          align="center"
+          className="agent-canvas-node-conversation-toolbar nodrag nopan"
+        >
+          <NodeConversationAction
+            nodeId={id}
+            onShowInConversation={data.onShowInConversation}
+          />
         </NodeToolbar>
       ) : null}
       {data.showOutputHandle !== false ? (

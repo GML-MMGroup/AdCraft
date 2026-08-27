@@ -90,6 +90,11 @@ import {
 } from "./canvas/useAgentCanvasNodeFocus.ts";
 import { useAgentCanvasLayoutPreview } from "./canvas/useAgentCanvasLayoutPreview.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
+import {
+  conversationLocationForNode,
+  type ConversationCanvasLinkIndex,
+  type ConversationRevealRequest,
+} from "./chat/conversationCanvasLinks.ts";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
   AGENT_CANVAS_ROLE_CONTRACT_VERSION,
@@ -106,6 +111,10 @@ import "@xyflow/react/dist/style.css";
 import "./agent-canvas-page.css";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
+const EMPTY_CONVERSATION_LINK_INDEX: ConversationCanvasLinkIndex = {
+  locations: new Map(),
+  sourceByNodeId: new Map(),
+};
 
 type CanvasInteractionReason = "viewport" | "node-drag";
 
@@ -160,6 +169,14 @@ export function AgentCanvasPage() {
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [conversationLinkState, setConversationLinkState] = useState<{
+    workflowId: string;
+    index: ConversationCanvasLinkIndex;
+  }>(() => ({ workflowId: "no-workflow", index: EMPTY_CONVERSATION_LINK_INDEX }));
+  const conversationLinkIndex = conversationLinkState.workflowId === workflow?.workflow_id
+    ? conversationLinkState.index
+    : EMPTY_CONVERSATION_LINK_INDEX;
+  const [conversationRevealRequest, setConversationRevealRequest] = useState<ConversationRevealRequest | null>(null);
   const [canvasInteracting, setCanvasInteracting] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [videoPreview, setVideoPreview] = useState<{
@@ -191,6 +208,7 @@ export function AgentCanvasPage() {
   const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
+  const conversationRevealRequestIdRef = useRef(0);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
   workflowNodesRef.current = workflow?.nodes ?? [];
   useEffect(() => {
@@ -245,13 +263,44 @@ export function AgentCanvasPage() {
   }, [persistLayoutPreview]);
   const {
     focusedNodeId,
+    highlightedNodeIds,
     focusNode: focusCanvasNode,
+    revealNodes: revealCanvasNodes,
     exitFocus: exitCanvasNodeFocus,
     scheduleExitForNodeSelection,
   } = useAgentCanvasNodeFocus({
     flowRef,
     scopeKey: workflow?.workflow_id ?? "no-workflow",
   });
+  const revealAvailableCanvasNodes = useCallback((nodeIds: string[]) => {
+    const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
+    revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
+  }, [revealCanvasNodes]);
+  const showNodeInConversation = useCallback((nodeId: string) => {
+    const location = conversationLocationForNode(conversationLinkIndex, nodeId);
+    if (!location) return;
+    conversationRevealRequestIdRef.current += 1;
+    setChatCollapsed(false);
+    setConversationRevealRequest({
+      locationKey: location.key,
+      requestId: conversationRevealRequestIdRef.current,
+    });
+  }, [conversationLinkIndex]);
+  const handleConversationLinkIndexChange = useCallback((index: ConversationCanvasLinkIndex) => {
+    if (!workflow) return;
+    setConversationLinkState((current) => (
+      current.workflowId === workflow.workflow_id && current.index === index
+        ? current
+        : { workflowId: workflow.workflow_id, index }
+    ));
+  }, [workflow]);
+  const conversationSourceNodeIds = useMemo(
+    () => new Set(conversationLinkIndex.sourceByNodeId.keys()),
+    [conversationLinkIndex],
+  );
+  useEffect(() => {
+    setConversationRevealRequest(null);
+  }, [workflow?.workflow_id]);
 
   useEffect(() => {
     let active = true;
@@ -436,27 +485,37 @@ export function AgentCanvasPage() {
     onExport: openEditing,
     onOpenEditing: openEditing,
     onOpenVideoPreview: openNodeVideoPreview,
+    onShowInConversation: showNodeInConversation,
     renderWorkbench,
     onOpenConnectedNodeMenu: (nodeId, direction, point) => {
       setSelectedNodeId(nodeId);
       setConnectedNodeMenu({ anchorNodeId: nodeId, direction, point });
     },
-  }), [openEditing, openNodeVideoPreview, renderWorkbench, runNodeById, setSelectedNodeId]);
+  }), [openEditing, openNodeVideoPreview, renderWorkbench, runNodeById, setSelectedNodeId, showNodeInConversation]);
 
   const canonicalNodes = useMemo(() => {
     const nextNodes = workflow
       ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks, {
           previousNodes: canonicalNodesRef.current,
           activeWorkbenchNodeId: session.state.selectedNodeId,
+          conversationSourceNodeIds,
         })
       : [];
     canonicalNodesRef.current = nextNodes;
     return nextNodes;
-  }, [live.state.runtime, nodeCallbacks, session.state.selectedNodeId, workflow]);
-  const presentedNodes = useMemo<AgentCanvasFlowNode[]>(
-    () => overlayLayoutPreview(canonicalNodes) as AgentCanvasFlowNode[],
-    [canonicalNodes, overlayLayoutPreview],
-  );
+  }, [conversationSourceNodeIds, live.state.runtime, nodeCallbacks, session.state.selectedNodeId, workflow]);
+  const presentedNodes = useMemo<AgentCanvasFlowNode[]>(() => {
+    const highlighted = new Set(highlightedNodeIds);
+    return (overlayLayoutPreview(canonicalNodes) as AgentCanvasFlowNode[]).map((node) => {
+      const classNames = (node.className ?? "")
+        .split(/\s+/)
+        .filter((className) => className && className !== "is-conversation-highlighted");
+      if (highlighted.has(node.id)) classNames.push("is-conversation-highlighted");
+      return classNames.join(" ") === (node.className ?? "")
+        ? node
+        : { ...node, className: classNames.join(" ") };
+    });
+  }, [canonicalNodes, highlightedNodeIds, overlayLayoutPreview]);
   const canonicalEdges = useMemo(
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
     [workflow],
@@ -1170,6 +1229,7 @@ export function AgentCanvasPage() {
 
       <AgentCanvasChatPanel
         workflow={workflow}
+        runtime={live.state.runtime}
         chatRevision={live.state.chatRevision}
         chatEvents={live.state.chatEvents}
         settingsRevision={live.state.settingsRevision}
@@ -1178,7 +1238,11 @@ export function AgentCanvasPage() {
         onActionReceipt={placeReceiptNodes}
         onWorkflowRefresh={refreshWorkflow}
         onRuntimeRefresh={refreshRuntime}
+        collapsed={chatCollapsed}
         onCollapsedChange={setChatCollapsed}
+        revealRequest={conversationRevealRequest}
+        onConversationLinkIndexChange={handleConversationLinkIndexChange}
+        onViewNodes={revealAvailableCanvasNodes}
       />
     </div>
   );

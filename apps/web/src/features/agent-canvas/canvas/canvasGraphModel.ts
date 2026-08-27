@@ -47,6 +47,7 @@ export interface FindAvailableCanvasPositionOptions {
 export interface ToAgentCanvasFlowNodesOptions {
   previousNodes?: readonly AgentCanvasFlowNode[];
   activeWorkbenchNodeId?: string | null;
+  conversationSourceNodeIds?: ReadonlySet<string>;
 }
 
 export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasBindingInputRoleV2 {
@@ -159,6 +160,7 @@ export function toAgentCanvasFlowNodes(
       ? size
       : undefined;
     const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
+    const conversationSourceAvailable = options.conversationSourceNodeIds?.has(node.node_id) ?? false;
     if (previous && canReuseFlowNode(
       previous,
       node,
@@ -167,6 +169,7 @@ export function toAgentCanvasFlowNodes(
       callbacks,
       style,
       workbenchActive,
+      conversationSourceAvailable,
     )) {
       return previous;
     }
@@ -180,6 +183,7 @@ export function toAgentCanvasFlowNodes(
         asset,
         runtime: nodeRuntime,
         workbenchActive,
+        conversationSourceAvailable,
         ...callbacks,
       },
     };
@@ -211,6 +215,7 @@ function canReuseFlowNode(
   callbacks: AgentCanvasNodeCallbacks,
   style: AgentCanvasNodeSize | undefined,
   workbenchActive: boolean,
+  conversationSourceAvailable: boolean,
 ): boolean {
   const previousData = previous.data;
   const previousStyle = previous.style as AgentCanvasNodeSize | undefined;
@@ -226,9 +231,11 @@ function canReuseFlowNode(
       ? previousData.runtime === runtime
       : sameAgentCanvasRuntimeCardPresentation(previousData.runtime, runtime))
     && previousData.workbenchActive === workbenchActive
+    && previousData.conversationSourceAvailable === conversationSourceAvailable
     && (!workbenchActive || previousData.renderWorkbench === callbacks.renderWorkbench)
     && previousData.onOpenVideoPreview === callbacks.onOpenVideoPreview
     && previousData.onOpenEditing === callbacks.onOpenEditing
+    && previousData.onShowInConversation === callbacks.onShowInConversation
     && previousStyle?.width === style?.width
     && previousStyle?.height === style?.height;
 }
