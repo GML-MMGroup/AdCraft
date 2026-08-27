@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
-import { CloseIcon, ConfirmIcon, VideoIcon } from "../../../icons.tsx";
+import { CloseIcon, ConfirmIcon } from "../../../icons.tsx";
 import type {
   ActiveStyleSkillSummaryV2,
   VideoSkillCatalogResponseV2,
@@ -246,13 +246,13 @@ export function AgentCanvasStyleSelector({
       <button
         type="button"
         className={`agent-chat__style-trigger${open ? " is-active" : ""}`}
-        aria-label={`Style · ${activeStyle?.title ?? "Platform Default"}`}
+        aria-label="Skill"
+        title="Skill"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => void togglePicker()}
       >
-        <VideoIcon />
-        <span>Style · {activeStyle?.title ?? "Platform Default"}</span>
+        <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
       </button>
 
       {open ? (

@@ -1474,20 +1474,22 @@
 
 .agent-chat__composer-actions .agent-chat__style-trigger {
   display: inline-flex;
-  width: auto;
-  max-width: 170px;
+  width: 30px;
   height: 30px;
-  justify-content: flex-start;
-  gap: 5px;
-  padding: 0 9px;
+  justify-content: center;
+  padding: 0;
   border-radius: 8px;
 }
 
-.agent-chat__style-trigger span {
-  overflow: hidden;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.agent-chat__style-trigger img {
+  width: 17px;
+  height: 17px;
+  filter: invert(72%);
+  transition: filter 140ms ease;
+}
+
+.agent-chat__style-trigger:is(:hover, :focus-visible, .is-active) img {
+  filter: invert(100%);
 }
 
 .agent-chat__style-menu {
