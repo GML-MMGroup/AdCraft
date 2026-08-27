@@ -2,6 +2,7 @@
   --agent-chat-canvas: #0a0a0a;
   --agent-chat-panel: #151515;
   --agent-chat-raised: #202020;
+  --agent-chat-selected: #292929;
   --agent-chat-border: #353535;
   --agent-chat-strong-line: #4a4a4a;
   --agent-chat-primary: #f5f5f5;
@@ -37,7 +38,6 @@
   display: grid;
   min-height: 92px;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
   align-items: center;
   gap: 8px 10px;
   padding: 12px 14px;
@@ -54,6 +54,14 @@
 .agent-chat__header > .agent-execution-mode {
   grid-column: 1 / -1;
   justify-content: space-between;
+}
+
+.agent-chat__header > .agent-chat__recipe {
+  grid-column: 1 / -1;
+  padding-top: 9px;
+  padding-bottom: 0;
+  border-top: 1px solid var(--agent-chat-border);
+  border-bottom: 0;
 }
 
 .agent-chat__header-actions {
@@ -467,120 +475,148 @@
 
 .agent-chat__recipe {
   display: grid;
-  gap: 7px;
-  padding: 10px;
-  border: 1px solid var(--agent-chat-border);
-  border-radius: 7px;
-  background: var(--agent-chat-raised);
+  gap: 9px;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--agent-chat-border);
+  border-radius: 0;
+  background: transparent;
 }
 
 .agent-chat__recipe > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
+  display: grid;
+  gap: 3px;
 }
 
-.agent-chat__recipe > header span,
-.agent-chat__recipe p {
-  margin: 0;
+.agent-chat__recipe > header strong {
+  color: var(--agent-chat-primary);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+.agent-chat__recipe > header span {
   color: var(--agent-chat-secondary);
   font-size: 10px;
-}
-
-.agent-chat__journey-stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 8px;
-  align-items: baseline;
-  padding: 7px 8px;
-  border-radius: 5px;
-  background: var(--agent-chat-panel);
-  font-size: 10px;
-}
-
-.agent-chat__journey-stage > span,
-.agent-chat__journey-stage > small {
-  color: var(--agent-chat-muted);
-  font-size: 9px;
   text-transform: capitalize;
 }
 
-.agent-chat__journey-stage > small {
-  grid-column: 1 / -1;
-}
-
-.agent-chat__recipe ol {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.agent-chat__recipe li {
-  display: grid;
-  grid-template-columns: 7px minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  color: var(--agent-chat-secondary);
-  font-size: 10px;
-}
-
-.agent-chat__recipe li i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--agent-chat-muted);
-}
-
-.agent-chat__recipe li.is-working i,
-.agent-chat__recipe li.is-current i {
-  background: var(--agent-chat-primary);
-  box-shadow: 0 0 0 4px rgb(245 245 245 / 10%);
-}
-
-.agent-chat__recipe li.is-selected i {
-  background: var(--agent-chat-primary);
-}
-
-.agent-chat__recipe li.is-include i,
-.agent-chat__recipe li.is-delegate i {
-  background: var(--agent-chat-secondary);
-}
-
-.agent-chat__recipe li.is-deferred i,
-.agent-chat__recipe li.is-excluded i {
-  background: var(--agent-chat-muted);
-}
-
-.agent-chat__recipe li span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-chat__recipe li small {
-  color: var(--agent-chat-muted);
-  font-size: 9px;
-}
-
-.agent-chat__completion {
+.agent-chat__progress-groups {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px 9px;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid var(--agent-chat-border);
-  color: var(--agent-chat-muted);
-  font-size: 9px;
-  text-transform: capitalize;
+  gap: 5px 12px;
 }
 
-:root .agent-chat__recipe {
-  background: var(--agent-chat-raised);
+.agent-chat__progress-groups span {
+  color: var(--agent-chat-secondary);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat__stage-thread {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--agent-chat-border);
+  background: transparent;
+  animation: agent-chat-section-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.agent-chat__stage-thread > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-chat__stage-thread > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.agent-chat__stage-thread > header strong {
+  color: var(--agent-chat-primary);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+.agent-chat__stage-thread > header span {
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.agent-chat__stage-thread > header button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--agent-chat-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.agent-chat__stage-thread > header button:hover {
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__stage-thread > header button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.agent-chat__stage-thread > header button span {
+  color: inherit;
+  font-size: 9px;
+}
+
+.agent-chat__stage-thread-summary {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--agent-chat-selected);
+}
+
+.agent-chat__stage-thread-summary strong {
+  color: var(--agent-chat-primary);
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.4;
+}
+
+.agent-chat__stage-thread-summary p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.agent-chat__stage-thread-history {
+  display: grid;
+  gap: 10px;
+  margin-left: 5px;
+  padding: 3px 0 2px 11px;
+  border-left: 1px solid var(--agent-chat-border);
+}
+
+.agent-chat__stage-thread-history > .agent-chat__activity {
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+}
+
+.agent-chat__stage-thread.is-failed .agent-chat__stage-thread-summary {
+  box-shadow: inset 0 0 0 1px var(--agent-chat-strong-line);
 }
 
 .agent-chat__artifact svg {
@@ -2225,6 +2261,7 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-chat__message,
   .agent-chat__activity,
+  .agent-chat__stage-thread,
   .agent-chat__proposal-materialization.is-queued > span,
   .agent-chat__proposal-materialization.is-working > span,
   .agent-chat :is(button, [role="button"]) {

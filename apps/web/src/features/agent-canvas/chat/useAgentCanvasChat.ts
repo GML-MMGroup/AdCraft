@@ -895,6 +895,7 @@ export function useAgentCanvasChat({
     const idempotencyKey = draft.idempotencyKey ?? createOperationKey("chat");
     setOptimisticItems((current) => [...current, {
       item_type: "message",
+      message_kind: "conversation",
       message_id: optimisticId,
       conversation_id: "pending",
       speaker: "user",
@@ -902,6 +903,7 @@ export function useAgentCanvasChat({
       linked_node_ids: draft.mentionedNodeIds,
       script_node_id: null,
       proposal_id: null,
+      capability_id: null,
       sequence: Date.now(),
       created_at: new Date().toISOString(),
     }]);
