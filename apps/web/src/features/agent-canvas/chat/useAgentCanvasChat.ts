@@ -572,13 +572,11 @@ export function useAgentCanvasChat({
       return;
     }
     if (handleProposalActionError(proposalId, actionError, setProposalIssues)) return;
-    if (!handleStructuredActionError(actionError)) {
-      setProposalIssues((current) => ({
-        ...current,
-        [proposalId]: chatRequestErrorMessage(actionError, fallbackMessage),
-      }));
-    }
-  }, [handleStructuredActionError, onWorkflowRefresh, refresh]);
+    setProposalIssues((current) => ({
+      ...current,
+      [proposalId]: chatRequestErrorMessage(actionError, fallbackMessage),
+    }));
+  }, [onWorkflowRefresh, refresh]);
 
   useEffect(() => {
     refreshGenerationRef.current += 1;
