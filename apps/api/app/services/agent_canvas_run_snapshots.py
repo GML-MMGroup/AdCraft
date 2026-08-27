@@ -266,6 +266,85 @@ class AgentCanvasRunIntentSnapshotService:
             binding_snapshots=member.run_intent_snapshot.binding_snapshots,
         )
 
+    def refresh_member_intent(
+        self,
+        execution_id: str,
+        node_id: str,
+        *,
+        now: datetime,
+    ) -> NodeRunIntentSnapshotV2:
+        """Replace a queued member snapshot after a dependency wave changes.
+
+        A run intent is immutable while its member is being dispatched.  Once
+        an upstream terminal publication advances a dependency, a queued
+        downstream member must receive a new snapshot before it can be claimed
+        again; retaining the old frozen Node or binding revisions would admit
+        stale prompt/reference evidence.
+        """
+
+        member = next(
+            (item for item in self._runtime.list_members(execution_id) if item.node_id == node_id),
+            None,
+        )
+        if member is None:
+            raise V2PersistenceError(
+                "execution_member_not_found",
+                "Execution member was not found.",
+                stage="agent_canvas_run_snapshots",
+            )
+        workflow = self._workflows.get_workflow(member.workflow_id)
+        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        if node is None:
+            raise V2PersistenceError(
+                "node_not_found",
+                "Execution member references a missing Node.",
+                stage="agent_canvas_run_snapshots",
+            )
+        intent = self.prepare_member_intents(workflow, (node,))[0]
+        frozen = intent.frozen_node
+        snapshot = NodeRunIntentSnapshotV2(
+            snapshot_id=f"run_intent_{intent.snapshot_digest[:24]}",
+            workflow_id=workflow.workflow_id,
+            execution_id=execution_id,
+            member_id=member.member_id,
+            node_id=node_id,
+            node_revision=intent.node_revision,
+            node_type=node.node_type,
+            creative_role=node.creative_role,
+            role_contract_version=node.role_contract_version,
+            summary_prompt=node.summary_prompt,
+            generation_prompt=node.generation_prompt,
+            structured_content_digest=_digest(node.structured_content),
+            model_selection_mode=node.model_selection_mode,
+            model_ref=node.model_ref,
+            requested_parameters=node.parameters,
+            binding_snapshots=intent.binding_snapshots,
+            snapshot_digest=intent.snapshot_digest,
+            created_at=now,
+        )
+        self._runtime.update_member(
+            execution_id,
+            node_id,
+            state=member.state,
+            phase=member.phase,
+            waiting_for_node_ids=member.waiting_for_node_ids,
+            now=now,
+            prompt_metadata={
+                **member.prompt_metadata,
+                "frozen_node": frozen,
+                "run_intent_refresh_reason": "dependency_wave_changed",
+            },
+            run_intent_snapshot=snapshot,
+            event_type="execution_member_intent_refreshed",
+            event_payload={
+                "node_id": node_id,
+                "node_revision": node.revision,
+                "run_intent_snapshot_id": snapshot.snapshot_id,
+                "binding_ids": [item.binding_id for item in intent.binding_snapshots],
+            },
+        )
+        return snapshot
+
 
 def _digest(value: object) -> str:
     return hashlib.sha256(

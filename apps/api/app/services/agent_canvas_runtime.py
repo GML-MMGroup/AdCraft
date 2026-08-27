@@ -70,7 +70,10 @@ from app.services.agent_canvas_output_preparation import (
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
-from app.services.agent_canvas_prompt_assertion_policy import prompt_assertion_admission_error
+from app.services.agent_canvas_prompt_assertion_policy import (
+    current_source_snapshots_for_evidence,
+    prompt_assertion_admission_error,
+)
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
@@ -357,11 +360,28 @@ class DynamicCanvasScheduler:
                             lease.node_id,
                         )
                     except Exception as error:
+                        if self._is_dependency_barrier(error):
+                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            continue
                         self._fail_member(current.workflow_id, lease, error)
                         continue
                     prepared_contexts.append((lease, context))
                 prepared = []
+                dispatchable_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
                 for lease, context in prepared_contexts:
+                    try:
+                        self._assert_current_dependency_fence(
+                            current.workflow_id,
+                            lease.execution_id,
+                            lease.node_id,
+                            context,
+                        )
+                    except Exception as error:
+                        if self._is_dependency_barrier(error):
+                            self._defer_dependency_member(current.workflow_id, lease, error)
+                            continue
+                        self._fail_member(current.workflow_id, lease, error)
+                        continue
                     self._runtime.update_member(
                         lease.execution_id,
                         lease.node_id,
@@ -398,7 +418,8 @@ class DynamicCanvasScheduler:
                         event_type="node_generation_started",
                         event_payload=event_payload,
                     )
-                for lease, context in prepared_contexts:
+                    dispatchable_contexts.append((lease, context))
+                for lease, context in dispatchable_contexts:
                     prepared.append(
                         (
                             lease,
@@ -427,7 +448,14 @@ class DynamicCanvasScheduler:
         for member in members:
             if member.state not in {"queued", "waiting"}:
                 continue
-            required_waiting = _frozen_unready_sources(member, nodes, required=True)
+            required_waiting = tuple(
+                dict.fromkeys(
+                    (
+                        *_frozen_unready_sources(member, nodes, required=True),
+                        *_same_wave_dependency_sources(member, members_by_node),
+                    )
+                )
+            )
             preferred_waiting = tuple(
                 source_node_id
                 for source_node_id in _frozen_unready_sources(member, nodes, required=False)
@@ -505,6 +533,31 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
+        managed_prompt = bool(
+            node.prompt_preparation.role_variant
+            or node.prompt_preparation.recipe_id
+            or node.metadata.get("prompt_recipe_id")
+        )
+        if managed_prompt and node.prompt_preparation.status != "ready":
+            member_snapshot = next(
+                item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
+            ).run_intent_snapshot
+            raise V2PersistenceError(
+                "execution_dependency_barrier_pending",
+                "Current Node prompt evidence is not ready for execution.",
+                stage="agent_canvas_scheduler",
+                details={
+                    "retryable": True,
+                    "reason": "prompt_preparation_pending",
+                    "source_node_ids": [
+                        binding.source_id
+                        for binding in (
+                            member_snapshot.binding_snapshots if member_snapshot else ()
+                        )
+                        if binding.source_kind == "node_output"
+                    ],
+                },
+            )
         node, derived_normalizations = self._execution_parameters.freeze_node(node)
         stored_manifest = member.resolved_input_manifest or member.prompt_metadata.get(
             "resolved_input_manifest"
@@ -877,6 +930,162 @@ class DynamicCanvasScheduler:
                 omitted_optional_inputs=runtime_omissions,
             )
         return prepared
+
+    @staticmethod
+    def _is_dependency_barrier(error: Exception) -> bool:
+        return getattr(error, "code", None) == "execution_dependency_barrier_pending"
+
+    def _defer_dependency_member(
+        self,
+        workflow_id: str,
+        lease: NodeExecutionLeaseV2,
+        error: Exception,
+    ) -> None:
+        """Return a stale member to a durable dependency barrier.
+
+        This path deliberately never enters provider preparation/submission and
+        never creates a manual-node wait.  The next scheduler wave refreshes
+        the member intent after the shared prompt-ready authority publishes
+        current evidence.
+        """
+
+        now = self._clock()
+        details = dict(getattr(error, "details", {}))
+        source_node_ids = tuple(
+            str(item)
+            for item in details.get("source_node_ids", ())
+            if isinstance(item, str) and item
+        )
+        updated = self._runtime.update_member(
+            lease.execution_id,
+            lease.node_id,
+            state="waiting",
+            phase="blocked_by_upstream",
+            waiting_for_node_ids=source_node_ids,
+            now=now,
+            error=None,
+            event_type="execution_member_dependency_barrier",
+            event_payload={
+                "node_id": lease.node_id,
+                "source_node_ids": list(source_node_ids),
+                "reason": details.get("reason", "dependency_snapshot_changed"),
+                "lease_generation": lease.generation,
+            },
+            expected_lease_generation=lease.generation,
+        )
+        if updated and self._run_snapshots is not None:
+            self._run_snapshots.refresh_member_intent(
+                lease.execution_id,
+                lease.node_id,
+                now=now,
+            )
+        self._runtime.complete_lease(lease, now=now)
+
+    def _assert_current_dependency_fence(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        node_id: str,
+        context: NodeExecutionContext,
+    ) -> None:
+        """Validate immutable admission inputs against the latest workflow.
+
+        The check runs after prompt compilation and immediately before the
+        dispatcher is allowed to prepare/submit provider work.  Any changed
+        source revision, AssetVersion, occurrence mapping, or prompt evidence
+        becomes a typed barrier instead of a provider task.
+        """
+
+        workflow = self._workflows.get_workflow(workflow_id)
+        nodes = {node.node_id: node for node in workflow.nodes}
+        reasons: list[str] = []
+        source_node_ids: set[str] = set()
+        current_node = nodes.get(node_id)
+        if current_node is None:
+            reasons.append("target_node_missing")
+
+        manifest = context.input_manifest
+        if manifest is not None:
+            inputs = (*manifest.text_inputs, *manifest.media_inputs, *manifest.world_setting_inputs)
+            for item in inputs:
+                source_id = getattr(item, "source_node_id", None)
+                if not source_id:
+                    continue
+                source_node_ids.add(source_id)
+                source = nodes.get(source_id)
+                expected_revision = getattr(item, "source_node_revision", None)
+                if source is None or (
+                    expected_revision is not None and source.revision != expected_revision
+                ):
+                    reasons.append("source_node_revision_changed")
+                if source is not None:
+                    metadata = getattr(item, "binding_metadata", {})
+                    if metadata.get("explicit_occurrence_mapping") is True and metadata.get(
+                        "occurrence_id"
+                    ) != source.metadata.get("occurrence_id"):
+                        reasons.append("occurrence_mapping_changed")
+                    if source.output_asset_id and hasattr(item, "asset_id"):
+                        if item.asset_id != source.output_asset_id:
+                            reasons.append("source_asset_changed")
+                        current_asset = next(
+                            (
+                                asset
+                                for asset in workflow.assets
+                                if asset.asset_id == source.output_asset_id
+                            ),
+                            None,
+                        )
+                        if (
+                            current_asset is not None
+                            and getattr(item, "asset_version_id", None) is not None
+                            and current_asset.version_id != item.asset_version_id
+                        ):
+                            reasons.append("source_asset_version_changed")
+
+        if current_node is not None and (
+            current_node.prompt_preparation.role_variant
+            or current_node.prompt_preparation.recipe_id
+            or current_node.metadata.get("prompt_recipe_id")
+        ):
+            evidence = current_node.prompt_preparation.assertion_evidence
+            if evidence is None:
+                reasons.append("prompt_evidence_missing")
+            else:
+                try:
+                    current_sources = current_source_snapshots_for_evidence(
+                        evidence,
+                        workflow,
+                    )
+                except V2PersistenceError:
+                    reasons.append("prompt_evidence_sources_unavailable")
+                else:
+                    if any(
+                        expected.source_node_revision != current.source_node_revision
+                        or (expected.asset_id is not None and expected.asset_id != current.asset_id)
+                        or (
+                            expected.asset_version_id is not None
+                            and expected.asset_version_id != current.asset_version_id
+                        )
+                        for expected, current in zip(
+                            evidence.source_snapshots,
+                            current_sources,
+                            strict=True,
+                        )
+                    ):
+                        reasons.append("prompt_evidence_digest_stale")
+
+        if reasons:
+            raise V2PersistenceError(
+                "execution_dependency_barrier_pending",
+                "Execution admission is waiting for the current dependency wave.",
+                stage="agent_canvas_scheduler",
+                details={
+                    "retryable": True,
+                    "reason": reasons[0],
+                    "reasons": sorted(set(reasons)),
+                    "source_node_ids": sorted(source_node_ids),
+                },
+            )
 
     def _execute_member(self, context: NodeExecutionContext) -> NodeExecutionOutcome:
         started_at = self._clock()
@@ -1492,6 +1701,30 @@ def _frozen_unready_sources(
             source=nodes.get(binding.source_id),
             input_role=binding.input_role,
         )
+    )
+
+
+def _same_wave_dependency_sources(
+    member: CanvasExecutionMembershipV2,
+    members_by_node: dict[str, CanvasExecutionMembershipV2],
+) -> tuple[str, ...]:
+    """Fence a downstream member behind unfinished source members.
+
+    A source Node may still be ``ready`` from an earlier publication while its
+    current execution member is queued or running a newer revision.  Treating
+    that source as ready here would place both members in one dispatch wave and
+    let the downstream provider observe the old prompt evidence.
+    """
+
+    snapshot = member.run_intent_snapshot
+    if snapshot is None:
+        return ()
+    return tuple(
+        binding.source_id
+        for binding in snapshot.binding_snapshots
+        if binding.source_kind == "node_output"
+        and (source_member := members_by_node.get(binding.source_id)) is not None
+        and source_member.state in {"queued", "waiting", "running"}
     )
 
 
