@@ -2916,6 +2916,7 @@ function normalizeChatMessageV2(value: unknown, path: string): ChatMessageV2 {
   forbidUnknownFields(record, ["item_type", "message_id", "conversation_id", "speaker", "text", "linked_node_ids", "script_node_id", "proposal_id", "sequence", "created_at"], path);
   return {
     item_type: expectLiteral(record.item_type, new Set<ChatMessageV2["item_type"]>(["message"]), `${path}.item_type`),
+    message_kind: "conversation",
     message_id: expectNonEmptyString(record.message_id, `${path}.message_id`),
     conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
     speaker: expectLiteral(record.speaker, CHAT_MESSAGE_SPEAKERS, `${path}.speaker`),
@@ -2923,6 +2924,7 @@ function normalizeChatMessageV2(value: unknown, path: string): ChatMessageV2 {
     linked_node_ids: optionalStringArray(record.linked_node_ids, `${path}.linked_node_ids`, []),
     script_node_id: record.script_node_id === undefined ? null : nullableString(record.script_node_id, `${path}.script_node_id`),
     proposal_id: record.proposal_id === undefined ? null : nullableString(record.proposal_id, `${path}.proposal_id`),
+    capability_id: null,
     sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
   };
@@ -3571,6 +3573,7 @@ export function normalizeAgentCanvasChatTimelineV2(
         if (!entry.speaker) fail(`${path}.items`, "persisted message requires speaker");
         return [{
           item_type: "message" as const,
+          message_kind: "conversation" as const,
           message_id: entry.entry_id,
           conversation_id: entry.conversation_id,
           speaker: entry.speaker,
@@ -3586,6 +3589,13 @@ export function normalizeAgentCanvasChatTimelineV2(
           proposal_id: typeof entry.metadata.proposal_id === "string"
             ? entry.metadata.proposal_id
             : null,
+          capability_id: entry.metadata.capability_id === undefined
+            ? null
+            : expectLiteral(
+              entry.metadata.capability_id,
+              AGENT_CAPABILITY_IDS,
+              `${path}.items.metadata.capability_id`,
+            ),
           sequence: entry.sequence_no,
           created_at: entry.created_at,
         }];
@@ -3750,13 +3760,23 @@ export function normalizeAgentCanvasChatTimelineV2(
       if (entry.entry_type === "planning_progress") {
         return [{
           item_type: "message",
+          message_kind: "planning_progress",
           message_id: entry.entry_id,
           conversation_id: entry.conversation_id,
           speaker: "adcraft_video_agent",
           text: entry.content,
           linked_node_ids: [],
           script_node_id: null,
-          proposal_id: null,
+          proposal_id: typeof entry.metadata.proposal_id === "string"
+            ? entry.metadata.proposal_id
+            : null,
+          capability_id: entry.metadata.capability_id === undefined
+            ? null
+            : expectLiteral(
+              entry.metadata.capability_id,
+              AGENT_CAPABILITY_IDS,
+              `${path}.items.metadata.capability_id`,
+            ),
           sequence: entry.sequence_no,
           created_at: entry.created_at,
         }];

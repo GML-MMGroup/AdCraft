@@ -20,6 +20,7 @@ import type {
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
+  ChatTimelineItemV2,
   CapabilityProposalOptionV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
@@ -54,6 +55,8 @@ import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
 import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
+import { StageThread } from "./StageThread.tsx";
+import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
@@ -124,6 +127,12 @@ export function AgentCanvasChatPanel({
   const standaloneGuidedReferenceMediaUrls = useMemo(() => (
     guidedInteractionReferenceMediaUrls(standaloneGuidedReferences ?? [], workflow)
   ), [standaloneGuidedReferences, workflow]);
+  const stageTimeline = useMemo(
+    () => buildStageThreadTimeline(chat.state.items, {
+      showUnassociatedPlanning: chat.state.agentWorking,
+    }),
+    [chat.state.agentWorking, chat.state.items],
+  );
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
@@ -167,6 +176,106 @@ export function AgentCanvasChatPanel({
     setSelected(selected.includes(value)
       ? selected.filter((item) => item !== value)
       : [...selected, value]);
+  }
+
+  function renderTimelineItem(item: ChatTimelineItemV2) {
+    if (item.item_type === "message") {
+      return (
+        <div
+          className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
+          key={`message-${item.message_id}`}
+        >
+          <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
+          {isLikelyMarkdown(item.text)
+            ? (
+              <div className="agent-chat__markdown">
+                {renderMarkdownAwareText(item.text)}
+              </div>
+            )
+            : <p>{item.text}</p>}
+        </div>
+      );
+    }
+    if (item.item_type === "expert_activity") {
+      return (
+        <CapabilityActivityRow
+          key={`activity-${item.activity_id}`}
+          activity={item}
+          turn={chat.state.turnsById[item.turn_id] ?? null}
+          retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
+          onRetry={() => void chat.actions.retryCapabilityActivity(item)}
+          onReviseRequest={() => {
+            setDraft(`Revise the ${item.capability_display_name} request: `);
+            window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+          }}
+        />
+      );
+    }
+    if (item.item_type === "artifact") {
+      return (
+        <button
+          className="agent-chat__artifact"
+          key={`artifact-${item.artifact_id}`}
+          type="button"
+          onClick={() => onFocusNode(item.node_id)}
+        >
+          <DocumentIcon />
+          <span>
+            <strong>{item.title}</strong>
+            <small>{item.summary}</small>
+          </span>
+          <b>View Script</b>
+        </button>
+      );
+    }
+    if (item.item_type === "command_plan") {
+      return (
+        <CommandPlanCard
+          key={`command-${item.command_plan.plan_id}`}
+          card={item}
+          pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
+          onAction={chat.actions.actOnCommandPlan}
+        />
+      );
+    }
+    if (item.item_type === "action_receipt") {
+      return <ActionReceiptCard key={`receipt-${item.action_receipt.receipt_id}`} card={item} />;
+    }
+    if (item.item_type === "agent_document") {
+      return (
+        <AgentCanvasDocumentReferenceCard
+          key={`document-${item.document_id}:${item.revision}`}
+          workflowId={workflow.workflow_id}
+          reference={item}
+          documentEvents={documentEvents}
+          onFocusNode={onFocusNode}
+        />
+      );
+    }
+    if (item.item_type === "proposal_pointer" || item.item_type === "decision_bundle_pointer") return null;
+    if (item.item_type === "decision_bundle") {
+      return (
+        <DecisionBundleCard
+          key={`decision-bundle-${item.decision_bundle.bundle_id}`}
+          bundle={item.decision_bundle}
+          pending={chat.state.actingDecisionBundleId === item.decision_bundle.bundle_id}
+          onApply={chat.actions.actOnDecisionBundle}
+        />
+      );
+    }
+    return (
+      <ProposalCard
+        key={`proposal-${item.proposal.proposal_id}`}
+        card={item}
+        pending={false}
+        retryingMaterialization={Boolean(
+          item.proposal.materialization
+          && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
+        )}
+        readOnly
+        issue={chat.state.proposalIssues[item.proposal.proposal_id]}
+      />
+    );
   }
 
   if (collapsed) {
@@ -229,6 +338,9 @@ export function AgentCanvasChatPanel({
           workflowId={workflow.workflow_id}
           eventRevision={settingsRevision}
         />
+        {chat.state.guidanceSession ? (
+          <GuidanceSessionProgress session={chat.state.guidanceSession} />
+        ) : null}
       </header>
 
       <div className="agent-chat__timeline-shell">
@@ -252,112 +364,20 @@ export function AgentCanvasChatPanel({
               .map((continuation) => (
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
-            {chat.state.guidanceSession ? (
-              <GuidanceSessionProgress session={chat.state.guidanceSession} />
-            ) : null}
-            {chat.state.items.map((item) => {
-              if (item.item_type === "message") {
-                return (
-                  <div
-                    className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
-                    key={`message-${item.message_id}`}
-                  >
-                    <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
-                    {isLikelyMarkdown(item.text)
-                      ? (
-                        <div className="agent-chat__markdown">
-                          {renderMarkdownAwareText(item.text)}
-                        </div>
-                      )
-                      : <p>{item.text}</p>}
-                  </div>
-                );
-              }
-              if (item.item_type === "expert_activity") {
-                return (
-                  <CapabilityActivityRow
-                    key={`activity-${item.activity_id}`}
-                    activity={item}
-                    turn={chat.state.turnsById[item.turn_id] ?? null}
-                    retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
-                    onRetry={() => void chat.actions.retryCapabilityActivity(item)}
-                    onReviseRequest={() => {
-                      setDraft(`Revise the ${item.capability_display_name} request: `);
-                      window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
-                    }}
-                  />
-                );
-              }
-              if (item.item_type === "artifact") {
-                return (
-                  <button
-                    className="agent-chat__artifact"
-                    key={`artifact-${item.artifact_id}`}
-                    type="button"
-                    onClick={() => onFocusNode(item.node_id)}
-                  >
-                    <DocumentIcon />
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>{item.summary}</small>
-                    </span>
-                    <b>View Script</b>
-                  </button>
-                );
-              }
-              if (item.item_type === "command_plan") {
-                return (
-                  <CommandPlanCard
-                    key={`command-${item.command_plan.plan_id}`}
-                    card={item}
-                    pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
-                    onAction={chat.actions.actOnCommandPlan}
-                  />
-                );
-              }
-              if (item.item_type === "action_receipt") {
-                return (
-                  <ActionReceiptCard
-                    key={`receipt-${item.action_receipt.receipt_id}`}
-                    card={item}
-                  />
-                );
-              }
-              if (item.item_type === "agent_document") {
-                return (
-                  <AgentCanvasDocumentReferenceCard
-                    key={`document-${item.document_id}:${item.revision}`}
-                    workflowId={workflow.workflow_id}
-                    reference={item}
-                    documentEvents={documentEvents}
-                    onFocusNode={onFocusNode}
-                  />
-                );
-              }
-              if (item.item_type === "proposal_pointer") return null;
-              if (item.item_type === "decision_bundle_pointer") return null;
-              if (item.item_type === "decision_bundle") {
-                return (
-                  <DecisionBundleCard
-                    key={`decision-bundle-${item.decision_bundle.bundle_id}`}
-                    bundle={item.decision_bundle}
-                    pending={chat.state.actingDecisionBundleId === item.decision_bundle.bundle_id}
-                    onApply={chat.actions.actOnDecisionBundle}
-                  />
-                );
-              }
+            {stageTimeline.map((unit) => {
+              if (unit.unit_type === "item") return renderTimelineItem(unit.item);
+              const failedReceipts = unit.receipts.filter(({ action_receipt }) => (
+                action_receipt.status === "failed"
+                || action_receipt.status === "rejected"
+                || action_receipt.status === "not_applied"
+                || action_receipt.status === "applied_with_run_error"
+              ));
               return (
-                <ProposalCard
-                  key={`proposal-${item.proposal.proposal_id}`}
-                  card={item}
-                  pending={false}
-                  retryingMaterialization={Boolean(
-                    item.proposal.materialization
-                    && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
-                  )}
-                  readOnly
-                  issue={chat.state.proposalIssues[item.proposal.proposal_id]}
-                />
+                <StageThread key={unit.key} unit={unit}>
+                  {unit.activities.map((activity) => renderTimelineItem(activity))}
+                  {unit.proposals.map((proposal) => renderTimelineItem(proposal))}
+                  {failedReceipts.map((receipt) => renderTimelineItem(receipt))}
+                </StageThread>
               );
             })}
             {!chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (

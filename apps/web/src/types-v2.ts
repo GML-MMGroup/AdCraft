@@ -2361,6 +2361,7 @@ export interface CapabilityIdentityV2 {
 
 export interface ChatMessageV2 {
   item_type: "message";
+  message_kind: "conversation" | "planning_progress";
   message_id: string;
   conversation_id: string;
   speaker: "user" | "adcraft_video_agent";
@@ -2368,6 +2369,7 @@ export interface ChatMessageV2 {
   linked_node_ids: string[];
   script_node_id: string | null;
   proposal_id: string | null;
+  capability_id: AgentCapabilityIdV2 | null;
   sequence: number;
   created_at: string;
 }

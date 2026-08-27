@@ -671,17 +671,27 @@ describe("progress and action cards", () => {
       updated_at: "2026-08-04T00:00:00Z",
     };
 
-    render(<GuidanceSessionProgress session={session} />);
+    const { rerender } = render(<GuidanceSessionProgress session={session} />);
 
     expect(screen.getByText("Create a launch film.")).toBeTruthy();
-    expect(screen.getByText("Scene")).toBeTruthy();
-    expect(screen.getByText("6/14")).toBeTruthy();
-    expect(screen.getByText("Authoring: not ready")).toBeTruthy();
-    expect(screen.getByText("Delivery: not ready")).toBeTruthy();
-    expect(screen.getByText("Direction: You")).toBeTruthy();
-    expect(screen.queryByText("Checkpoint: scene · waiting user")).toBeNull();
-    expect(screen.getByText("Stage: Scene · waiting user")).toBeTruthy();
-    expect(screen.getByText("Current decision: scene 1 · unresolved")).toBeTruthy();
+    expect(screen.getByText("Scene · waiting user")).toBeTruthy();
+    expect(screen.getByText("Creative 4/5")).toBeTruthy();
+    expect(screen.getByText("Storyboard 0/4")).toBeTruthy();
+    expect(screen.getByText("Delivery 0/3")).toBeTruthy();
+    expect(screen.queryByText("Authoring: not ready")).toBeNull();
+    expect(screen.queryByText("Direction: You")).toBeNull();
+    expect(screen.queryByText("Current decision: scene 1 · unresolved")).toBeNull();
+
+    rerender(<GuidanceSessionProgress session={{
+      ...session,
+      journey: {
+        ...session.journey,
+        stage: "completed",
+        stage_status: "completed",
+      },
+    }} />);
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.queryByText("Completed · completed")).toBeNull();
   });
 
   it("renders only current stop or resume guidance actions", () => {
@@ -1085,7 +1095,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
   it("pins the current review outside history immediately above the composer", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");
-    const timelineItemsIndex = panelSource.indexOf("{chat.state.items.map((item) => {");
+    const timelineItemsIndex = panelSource.indexOf("{stageTimeline.map((unit) => {");
     const timelineShellIndex = panelSource.indexOf('<div className="agent-chat__timeline-shell">');
     const pinnedInteractionIndex = panelSource.indexOf('<div className="agent-chat__current-interaction"');
     const composerIndex = panelSource.indexOf('<div className="agent-chat__composer">');
@@ -1121,6 +1131,20 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(agentMessageRule).toContain("padding: 0");
     expect(agentMessageRule).toContain("background: transparent");
     expect(userMessageRule).toContain("background: var(--agent-chat-raised)");
+  });
+
+  it("styles Stage Threads as quiet monochrome timeline sections", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const threadRule = css.match(/\.agent-chat__stage-thread\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const summaryRule = css.match(/\.agent-chat__stage-thread-summary\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(threadRule).toContain("border-top: 1px solid var(--agent-chat-border)");
+    expect(threadRule).toContain("background: transparent");
+    expect(summaryRule).toContain("background: var(--agent-chat-selected)");
+    expect(css).toContain("--agent-chat-selected: #292929");
+    expect(css).toMatch(/\.agent-chat__stage-thread > header span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
+    expect(css).toMatch(/\.agent-chat__progress-groups span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
   });
 
   it("keeps semantic states and the Style selector inside the monochrome palette", () => {

@@ -2646,6 +2646,37 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("preserves planning progress provenance and typed thread relations", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [{
+        entry_id: "entry-planning-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 8,
+        entry_type: "planning_progress",
+        speaker: null,
+        content: "Preparing the selected direction.",
+        metadata: {
+          capability_id: "world_setting",
+          proposal_id: "proposal-world-1",
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-13T10:10:01Z",
+      }],
+      next_cursor: 8,
+    });
+
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "message",
+      message_kind: "planning_progress",
+      capability_id: "world_setting",
+      proposal_id: "proposal-world-1",
+    });
+  });
+
   it("enforces ready media output and positive revisions", () => {
     expect(() =>
       normalizeCanvasNodeV2({
