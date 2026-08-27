@@ -89,6 +89,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationDocumentResultV1,
     MaterializationOutcomeV1,
     MaterializationPlanV1,
+    StageMaterializedJourneyEventV1,
 )
 from app.schemas.agent_working_documents import (
     AgentAnchorImageAssetVersionSourceV3,
@@ -961,6 +962,21 @@ class AgentCanvasMaterializationRepository:
                         connection,
                         source_turn_id,
                     )
+                    stage_journey_event = (
+                        materialization_plan.journey_event
+                        if isinstance(
+                            materialization_plan.journey_event,
+                            StageMaterializedJourneyEventV1,
+                        )
+                        else None
+                    )
+                    action_owner = (
+                        "targeted_authoring"
+                        if current_journey.suspended_action is not None
+                        else "quick_media"
+                        if str(proposal_state["capability_id"]) == "quick_media"
+                        else "guided_journey"
+                    )
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
@@ -997,6 +1013,17 @@ class AgentCanvasMaterializationRepository:
                                 payload={
                                     "node_type": bundle_node.node_type,
                                     "creative_role": bundle_node.creative_role,
+                                    "occurrence_id": (
+                                        stage_journey_event.occurrence_id
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "character_phase": (
+                                        stage_journey_event.character_phase
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "action_owner": action_owner,
                                     "revision": expected_workflow_revision + 1,
                                     "refresh": ["workflow"],
                                 },
@@ -1034,6 +1061,17 @@ class AgentCanvasMaterializationRepository:
                                     "node_id": primary_node.node_id,
                                     "node_ids": list(node_ids),
                                     "creative_role": primary_node.creative_role,
+                                    "occurrence_id": (
+                                        stage_journey_event.occurrence_id
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "character_phase": (
+                                        stage_journey_event.character_phase
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "action_owner": action_owner,
                                     "completion_mode": (
                                         materialization_mode
                                         if materialization_mode == "deterministic_fallback"
@@ -1149,6 +1187,22 @@ class AgentCanvasMaterializationRepository:
                                         == "stage_materialized"
                                         else None
                                     ),
+                                    "character_phase": (
+                                        stage_journey_event.character_phase
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "ledger_revision_id": (
+                                        stage_journey_event.ledger_revision_id
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "receipt_id": (
+                                        stage_journey_event.receipt_id
+                                        if stage_journey_event is not None
+                                        else None
+                                    ),
+                                    "action_owner": action_owner,
                                 },
                             ),
                         )

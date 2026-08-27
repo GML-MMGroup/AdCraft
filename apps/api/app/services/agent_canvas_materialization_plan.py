@@ -123,8 +123,20 @@ def _continuation(
         envelope.target_node_id is not None
         or envelope.capability_id == "quick_media"
         or snapshot.current_journey.suspended_action is not None
+        or (
+            envelope.capability_id == "character_design"
+            and envelope.character_phase == "turnaround"
+        )
     ):
         return None
+    occurrence_id, character_phase = _next_character_target(envelope, snapshot)
+    action_owner = (
+        "targeted_authoring"
+        if snapshot.current_journey.suspended_action is not None
+        else "quick_media"
+        if envelope.capability_id == "quick_media"
+        else "guided_journey"
+    )
     digest = _digest(f"materialization-next-action:{envelope.materialization_id}")
     return ContinuationCommitV2(
         continuation_id=f"continuation_{digest[:24]}",
@@ -133,6 +145,9 @@ def _continuation(
         source_action_id=envelope.action_turn_id,
         idempotency_key=f"materialization-next-action:{envelope.materialization_id}",
         video_skill_run_id=envelope.style_skill_run_id,
+        occurrence_id=occurrence_id,
+        character_phase=character_phase,
+        action_owner=action_owner,
     )
 
 
@@ -152,6 +167,8 @@ def _receipt(
         proposal_option_id=envelope.selected_option.option_id,
         proposal_action=envelope.action,
         actor_kind=envelope.selection_actor,
+        occurrence_id=envelope.occurrence_id,
+        character_phase=envelope.character_phase,
         status="applied",
         summary=(
             "The selected direction is now an authoritative working document."
@@ -202,10 +219,7 @@ def _journey_event(
         )
     if envelope.capability_id == "quick_media" or journey.active_action is None:
         return None
-    if envelope.operation_kind == "parent" and envelope.capability_id in {
-        "product_design",
-        "character_design",
-    }:
+    if envelope.operation_kind == "parent" and envelope.capability_id == "product_design":
         # Pair completion belongs to the derivative commit, not parent presence.
         return None
     evidence_kind_by_stage = {
@@ -231,10 +245,45 @@ def _journey_event(
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
             "occurrence_id": occurrence_id,
+            "character_phase": envelope.character_phase,
+            "ledger_revision_id": envelope.requirement_revision_id,
+            "materialization_id": envelope.materialization_id,
+            "receipt_id": f"receipt_{envelope.action_turn_id}",
             "storyboard_draft_preparation_queued": storyboard_draft_preparation_queued,
             "recorded_at": envelope.created_at,
         }
     )
+
+
+def _next_character_target(
+    envelope: ProposalApplicationEnvelopeV1,
+    snapshot: MaterializationAuthoringSnapshotV1,
+) -> tuple[str | None, str | None]:
+    if envelope.capability_id != "character_design":
+        return None, None
+    if envelope.character_phase == "main":
+        return envelope.occurrence_id, "turnaround"
+    current_index = next(
+        (
+            item.occurrence_index
+            for item in snapshot.current_journey.decisions
+            if item.element_kind == "character" and item.occurrence_id == envelope.occurrence_id
+        ),
+        None,
+    )
+    if current_index is None:
+        return None, None
+    next_occurrence_id = next(
+        (
+            item.occurrence_id
+            for item in snapshot.current_journey.decisions
+            if item.element_kind == "character"
+            and item.occurrence_index > current_index
+            and item.outcome == "unresolved"
+        ),
+        None,
+    )
+    return (next_occurrence_id, "main") if next_occurrence_id is not None else (None, None)
 
 
 def _has_storyboard_draft_preparation_evidence(

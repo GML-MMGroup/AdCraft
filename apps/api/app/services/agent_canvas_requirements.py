@@ -373,6 +373,17 @@ def requirement_response(
     )
 
 
+def character_occurrences_for_authoring(
+    revision: RequirementLedgerRevisionV1,
+) -> tuple[CharacterOccurrenceV1, ...]:
+    """Return the occurrence-aware authoring view without mutating Ledger authority."""
+
+    return _compatibility_character_occurrences(
+        revision.ledger,
+        revision_no=revision.revision_no,
+    )
+
+
 def _apply_manual_patch(
     connection,
     *,

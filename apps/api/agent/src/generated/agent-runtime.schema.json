@@ -15798,6 +15798,22 @@
           "title": "Clarification Required",
           "type": "boolean"
         },
+        "included_character_occurrence_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Included Character Occurrence Ids"
+        },
         "journey": {
           "$ref": "#/$defs/GuidedProductionJourneyV2"
         }
@@ -16689,6 +16705,32 @@
     "NextActionEnvelopeV1": {
       "additionalProperties": false,
       "properties": {
+        "action_owner": {
+          "default": "guided_journey",
+          "enum": [
+            "guided_journey",
+            "quick_media",
+            "targeted_authoring"
+          ],
+          "title": "Action Owner",
+          "type": "string"
+        },
+        "character_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "main",
+                "turnaround"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "context_snapshot_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Context Snapshot Digest",
@@ -16733,6 +16775,20 @@
           "minLength": 1,
           "title": "Objective",
           "type": "string"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
         },
         "schema_version": {
           "const": "1",

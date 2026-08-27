@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
+    CharacterAuthoringPhaseV1,
     CharacterOccurrencePatchV1,
     EditableRequirementDirectiveV1,
     RequirementControlV1,
@@ -684,7 +685,16 @@ class NextActionEnvelopeV1(_CapabilityModel):
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "NextActionEnvelopeV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character next-action identity requires occurrence and phase.")
+        return self
 
 
 class CapabilityDispatchReceiptV1(_CapabilityModel):

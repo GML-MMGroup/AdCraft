@@ -61,6 +61,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
     WorkflowEventRow,
 )
+from app.schemas.agent_canvas_requirements import CharacterOccurrenceV1
 from app.schemas.agent_canvas_conversation import (
     AgentActionReceiptV2,
     ChatTimelineEntryV2,
@@ -188,6 +189,7 @@ class AgentCanvasConversationRepository:
         *,
         goal: CreativeGoalV2,
         element_decisions: tuple[CreativeElementDecisionV2, ...],
+        character_occurrences: tuple[CharacterOccurrenceV1, ...] | None = None,
         active_style_skill_run_id: str | None,
         response_locale: BCP47Tag = "und",
     ) -> GuidedSessionStateV2:
@@ -231,7 +233,8 @@ class AgentCanvasConversationRepository:
                             active_style_skill_run_id=active_style_skill_run_id,
                             completion_json=completion.model_dump_json(),
                             journey_state_json=initial_production_journey(
-                                element_decisions
+                                element_decisions,
+                                character_occurrences=character_occurrences,
                             ).model_dump_json(),
                             revision=1,
                             created_at=now,
@@ -3559,6 +3562,9 @@ class AgentCanvasConversationRepository:
             objective=goal.summary,
             context_snapshot_id=f"snapshot_{context_digest[:32]}",
             context_snapshot_digest=context_digest,
+            occurrence_id=continuation.occurrence_id,
+            character_phase=continuation.character_phase,
+            action_owner=continuation.action_owner,
             created_at=timestamp,
         )
         journey = parse_production_journey(str(session["journey_state_json"]))
@@ -3630,7 +3636,13 @@ class AgentCanvasConversationRepository:
             source_turn_id=continuation.source_turn_id,
             continuation_turn_id=continuation.continuation_turn_id,
             operation="next_action",
-            payload={"schema_version": "1", "envelope_id": envelope_id},
+            payload={
+                "schema_version": "1",
+                "envelope_id": envelope_id,
+                "occurrence_id": continuation.occurrence_id,
+                "character_phase": continuation.character_phase,
+                "action_owner": continuation.action_owner,
+            },
             max_attempts=continuation.max_attempts,
             now=timestamp,
         )

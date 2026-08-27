@@ -152,7 +152,10 @@ from app.services.agent_canvas_user_presentation import AgentCanvasTimelinePrese
 from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
 )
-from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_requirements import (
+    AgentCanvasRequirementService,
+    character_occurrences_for_authoring,
+)
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -1564,6 +1567,12 @@ class AgentConversationService:
             requirements = applied.revision
             requirement_changed = applied.changed
             existing_session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
+            if existing_session is not None and requirement_changed:
+                existing_session = self._journey.sync_character_occurrences(
+                    turn.workflow_id,
+                    expected_session_revision=existing_session.revision,
+                    idempotency_key=f"sync-character-roster:{requirements.revision_id}",
+                )
         if (
             existing_session is not None
             and intent.response_locale != existing_session.response_locale
@@ -1603,6 +1612,7 @@ class AgentConversationService:
                     },
                 ),
                 element_decisions=decisions,
+                character_occurrences=character_occurrences_for_authoring(requirements),
                 active_style_skill_run_id=(
                     str(turn.request.get("video_skill_run_id"))
                     if turn.request.get("video_skill_run_id")

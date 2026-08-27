@@ -22,7 +22,9 @@ from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
+    reconcile_character_occurrences,
 )
+from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 
 
 class GuidedProductionJourneyService:
@@ -49,7 +51,7 @@ class GuidedProductionJourneyService:
         session = self._conversations.get_guidance_session(workflow_id)
         self._require_stage_duration(workflow_id, session.journey.stage)
         return self._policy.evaluate(
-            _context(session, clarification_required=clarification_required)
+            self._context(session, clarification_required=clarification_required)
         )
 
     def reserve_next_action(
@@ -63,7 +65,42 @@ class GuidedProductionJourneyService:
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
         self._require_stage_duration(workflow_id, session.journey.stage)
-        result = self._policy.evaluate(_context(session))
+        result = self._policy.evaluate(self._context(session))
+        if result.action == "advance_stage":
+            evidence_kind = f"{session.journey.stage}_excluded"
+            next_journey = self._policy.apply_evidence(
+                self._context(session),
+                JourneyEvidenceV2.model_validate(
+                    {
+                        "evidence_id": (
+                            f"auto-skip:{session.journey.stage}:{session.journey.stage_revision}"
+                        ),
+                        "evidence_kind": evidence_kind,
+                        "source_id": action_id,
+                        "stage": session.journey.stage,
+                        "stage_revision": session.journey.stage_revision,
+                    }
+                ),
+            )
+            session = self._conversations.replace_guidance_journey(
+                session.session_id,
+                journey=next_journey,
+                expected_session_revision=expected_session_revision,
+                idempotency_key=(
+                    f"{idempotency_key}:auto-skip:{session.journey.stage}:"
+                    f"{session.journey.stage_revision}"
+                ),
+                event_type="journey_stage_changed",
+                event_payload={
+                    "previous_stage": session.journey.stage,
+                    "next_stage": next_journey.stage,
+                    "evidence_kind": evidence_kind,
+                    "action_owner": "system",
+                },
+            )
+            expected_session_revision = session.revision
+            self._require_stage_duration(workflow_id, session.journey.stage)
+            result = self._policy.evaluate(self._context(session))
         if result.action not in {
             "invoke_capability",
             "invoke_internal_checkpoint",
@@ -104,6 +141,54 @@ class GuidedProductionJourneyService:
         self._duration_authority.require_for_stage(
             self._requirements.get_current(workflow_id),
             stage,
+        )
+
+    def _context(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        clarification_required: bool = False,
+    ) -> JourneyPolicyContextV2:
+        revision = self._requirements.get_current(session.workflow_id)
+        occurrences = character_occurrences_for_authoring(revision)
+        return _context(
+            session,
+            clarification_required=clarification_required,
+            included_character_occurrence_ids=tuple(
+                item.occurrence_id for item in occurrences if item.presence == "include"
+            ),
+        )
+
+    def sync_character_occurrences(
+        self,
+        workflow_id: str,
+        *,
+        expected_session_revision: int,
+        idempotency_key: str,
+    ) -> GuidedSessionStateV2:
+        """Project the latest canonical Ledger roster into the persisted Journey."""
+
+        session = self._conversations.get_guidance_session(workflow_id)
+        revision = self._requirements.get_current(workflow_id)
+        occurrences = character_occurrences_for_authoring(revision)
+        journey = reconcile_character_occurrences(session.journey, occurrences)
+        if journey == session.journey:
+            return session
+        return self._conversations.replace_guidance_journey(
+            session.session_id,
+            journey=journey,
+            expected_session_revision=expected_session_revision,
+            idempotency_key=idempotency_key,
+            event_type="journey_character_roster_changed",
+            event_payload={
+                "requirement_revision_id": revision.revision_id,
+                "requirement_revision_no": revision.revision_no,
+                "character_occurrence_ids": [item.occurrence_id for item in occurrences],
+                "included_character_occurrence_count": sum(
+                    item.presence == "include" for item in occurrences
+                ),
+                "action_owner": "system",
+            },
         )
 
     def require_current_awaiting(self, workflow_id: str) -> None:
@@ -184,7 +269,7 @@ class GuidedProductionJourneyService:
                 }
             )
         return self._policy.apply_evidence(
-            _context(session, clarification_required=clarification_required),
+            self._context(session, clarification_required=clarification_required),
             evidence,
         )
 
@@ -236,8 +321,10 @@ def _context(
     session: GuidedSessionStateV2,
     *,
     clarification_required: bool = False,
+    included_character_occurrence_ids: tuple[str, ...] | None = None,
 ) -> JourneyPolicyContextV2:
     return JourneyPolicyContextV2(
         journey=session.journey,
         clarification_required=clarification_required,
+        included_character_occurrence_ids=included_character_occurrence_ids,
     )
