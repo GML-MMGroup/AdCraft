@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from "../../../icons.tsx";
 import { AgentCanvasNodeIcon } from "../canvas/AgentCanvasNodeIcon.tsx";
@@ -12,21 +12,54 @@ import type { ConversationRecoveryView } from "./conversationRecovery.ts";
 export interface ComposerContextTrayProps {
   view: ComposerContextView;
   uploadIssue: ConversationRecoveryView | null;
+  disabled?: boolean;
   onFocusNode(nodeId: string): void;
   onRemoveNode(nodeId: string): void;
   onRemoveAsset(assetId: string): void;
   onClearUploadIssue(): void;
 }
 
+function ContextGroup({
+  id,
+  title,
+  className = "",
+  children,
+}: {
+  id: string;
+  title: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <section className={`agent-chat__context-group ${className}`.trim()}>
+      <button
+        type="button"
+        className="agent-chat__context-group-toggle"
+        aria-expanded={expanded}
+        aria-controls={id}
+        aria-label={`${expanded ? "Hide" : "Show"} ${title} context`}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span>{title}</span>
+        {expanded ? <ChevronDownIcon /> : <ChevronUpIcon />}
+      </button>
+      {expanded ? <div id={id} className="agent-chat__context-group-body">{children}</div> : null}
+    </section>
+  );
+}
+
 export function ComposerContextTray({
   view,
   uploadIssue,
+  disabled = false,
   onFocusNode,
   onRemoveNode,
   onRemoveAsset,
   onClearUploadIssue,
 }: ComposerContextTrayProps) {
   const [expanded, setExpanded] = useState(false);
+  const contextGroupsId = useId();
   if (!hasComposerContext(view) && !uploadIssue) return null;
 
   return (
@@ -35,6 +68,7 @@ export function ComposerContextTray({
         type="button"
         className="agent-chat__context-summary"
         aria-expanded={expanded}
+        aria-controls={contextGroupsId}
         aria-label={expanded ? "Hide message context" : "Show message context"}
         onClick={() => setExpanded((current) => !current)}
       >
@@ -61,10 +95,9 @@ export function ComposerContextTray({
       ) : null}
 
       {expanded ? (
-        <div className="agent-chat__context-groups">
+        <div className="agent-chat__context-groups" id={contextGroupsId}>
           {view.skill ? (
-            <section className="agent-chat__context-group is-skill">
-              <h4>Skill</h4>
+            <ContextGroup id={`${contextGroupsId}-skill`} title="Skill" className="is-skill">
               <div className="agent-chat__context-skill">
                 <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
                 <span>
@@ -72,12 +105,11 @@ export function ComposerContextTray({
                   <small>{view.skill.summary}</small>
                 </span>
               </div>
-            </section>
+            </ContextGroup>
           ) : null}
 
           {view.assets.length ? (
-            <section className="agent-chat__context-group">
-              <h4>Assets</h4>
+            <ContextGroup id={`${contextGroupsId}-assets`} title="Assets">
               <div className="agent-chat__context-list">
                 {view.assets.map((asset) => (
                   <div className="agent-chat__context-item" key={asset.assetId}>
@@ -90,6 +122,7 @@ export function ComposerContextTray({
                       type="button"
                       aria-label={`Remove ${asset.displayName}`}
                       title={`Remove ${asset.displayName}`}
+                      disabled={disabled}
                       onClick={() => onRemoveAsset(asset.assetId)}
                     >
                       <CloseIcon />
@@ -97,12 +130,11 @@ export function ComposerContextTray({
                   </div>
                 ))}
               </div>
-            </section>
+            </ContextGroup>
           ) : null}
 
           {view.nodes.length ? (
-            <section className="agent-chat__context-group">
-              <h4>Nodes</h4>
+            <ContextGroup id={`${contextGroupsId}-nodes`} title="Nodes">
               <div className="agent-chat__context-list">
                 {view.nodes.map((node) => (
                   <div className="agent-chat__context-item" key={node.nodeId}>
@@ -120,6 +152,7 @@ export function ComposerContextTray({
                       type="button"
                       aria-label={`Remove ${node.title}`}
                       title={`Remove ${node.title}`}
+                      disabled={disabled}
                       onClick={() => onRemoveNode(node.nodeId)}
                     >
                       <CloseIcon />
@@ -127,7 +160,7 @@ export function ComposerContextTray({
                   </div>
                 ))}
               </div>
-            </section>
+            </ContextGroup>
           ) : null}
         </div>
       ) : null}

@@ -158,6 +158,7 @@ function createContextFixture() {
       removeAsset: vi.fn(),
       upload: vi.fn(),
       clearMessageContext: vi.fn(),
+      consumeSubmittedContext: vi.fn(),
       clearUploadIssue: vi.fn(),
     },
   };
@@ -236,7 +237,87 @@ describe("Agent Conversation Shell v2", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     finish(true);
     await waitFor(() => expect(textarea.value).toBe(""));
-    expect(fixture.context.actions.clearMessageContext).toHaveBeenCalledOnce();
+    expect(fixture.context.actions.consumeSubmittedContext).toHaveBeenCalledWith({
+      nodeIds: ["node-1"],
+      assetIds: ["asset-1"],
+    });
+  });
+
+  it("preserves a newer draft while an earlier message is being accepted", async () => {
+    let finish!: (accepted: boolean) => void;
+    fixture.chat.actions.submit.mockImplementation(() => new Promise<boolean>((resolve) => {
+      finish = resolve;
+    }));
+    renderPanel();
+    const textarea = screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Send this first." } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(textarea, { target: { value: "Keep this as my next message." } });
+
+    finish(true);
+    await waitFor(() => expect(textarea.value).toBe("Keep this as my next message."));
+    expect(fixture.context.actions.consumeSubmittedContext).toHaveBeenCalledWith({
+      nodeIds: ["node-1"],
+      assetIds: ["asset-1"],
+    });
+  });
+
+  it("retries the failed request without erasing a newer composer draft", async () => {
+    fixture.chat.state.composerRecovery = {
+      scope: "composer",
+      title: "Response could not be submitted",
+      message: "Your message is still here. Try sending it again.",
+      technicalDetail: "send_failed",
+      action: "retry",
+    };
+    fixture.chat.state.failedDraft = {
+      text: "Original failed request",
+      mentionedNodeIds: ["node-1"],
+      mentionedImageAssetIds: ["asset-1"],
+      idempotencyKey: "message-key-1",
+    };
+    fixture.chat.actions.submit.mockResolvedValue(true);
+    renderPanel();
+    const textarea = screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "A newer unsent request" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(fixture.chat.actions.submit).toHaveBeenCalledWith(
+      fixture.chat.state.failedDraft,
+    ));
+    expect(textarea.value).toBe("A newer unsent request");
+    expect(fixture.context.actions.consumeSubmittedContext).toHaveBeenCalledWith({
+      nodeIds: ["node-1"],
+      assetIds: ["asset-1"],
+    });
+  });
+
+  it("clears workflow recovery after all requested authority refreshes finish", async () => {
+    fixture.chat.state.workflowRecovery = {
+      scope: "workflow",
+      title: "Agent workspace could not be refreshed",
+      message: "Your current workspace state was preserved.",
+      technicalDetail: "workflow_failed",
+      action: "refresh",
+    };
+    const refreshWorkflow = vi.fn().mockResolvedValue(undefined);
+    const refreshRuntime = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasChatPanel
+        workflow={workflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+        onWorkflowRefresh={refreshWorkflow}
+        onRuntimeRefresh={refreshRuntime}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(fixture.chat.actions.clearWorkflowRecovery).toHaveBeenCalledOnce());
+    expect(fixture.chat.actions.refresh).toHaveBeenCalledOnce();
+    expect(refreshWorkflow).toHaveBeenCalledOnce();
+    expect(refreshRuntime).toHaveBeenCalledOnce();
   });
 
   it("renders one Agent identity per run and keeps context out of composer chips", () => {
@@ -247,6 +328,18 @@ describe("Agent Conversation Shell v2", () => {
     expect(document.querySelector(".agent-chat__mentions")).toBeNull();
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Upload context images" })).toBeTruthy();
+  });
+
+  it("locks message-scoped context controls while a message is pending", () => {
+    fixture.chat.state.sending = true;
+    renderPanel();
+
+    expect((screen.getByRole("button", {
+      name: "Mention node or image asset",
+    }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", {
+      name: "Upload context images",
+    }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("keeps Timeline recovery inside Timeline ownership", () => {

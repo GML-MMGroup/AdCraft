@@ -89,13 +89,23 @@ export function useComposerContext({
       await onWorkflowRefresh?.();
     } catch (error) {
       setUploadState("failed");
-      setUploadIssue(conversationRecoveryFromError("context", error, { retryable: true }));
+      setUploadIssue(conversationRecoveryFromError("context", error));
     }
   }, [onWorkflowRefresh, projectAssets]);
 
   const clearMessageContext = useCallback(() => {
     setSelectedNodeIds([]);
     setSelectedAssetIds([]);
+  }, []);
+
+  const consumeSubmittedContext = useCallback((submitted: {
+    nodeIds: string[];
+    assetIds: string[];
+  }) => {
+    const submittedNodeIds = new Set(submitted.nodeIds);
+    const submittedAssetIds = new Set(submitted.assetIds);
+    setSelectedNodeIds((current) => current.filter((id) => !submittedNodeIds.has(id)));
+    setSelectedAssetIds((current) => current.filter((id) => !submittedAssetIds.has(id)));
   }, []);
 
   const view = useMemo(() => buildComposerContextView({
@@ -127,6 +137,7 @@ export function useComposerContext({
       removeAsset: (id: string) => setSelectedAssetIds((current) => current.filter((item) => item !== id)),
       upload,
       clearMessageContext,
+      consumeSubmittedContext,
       clearUploadIssue: () => {
         setUploadState("idle");
         setUploadIssue(null);

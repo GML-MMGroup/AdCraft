@@ -47,12 +47,18 @@ describe("ComposerContextTray", () => {
     renderTray();
 
     const toggle = screen.getByRole("button", { name: "Show message context" });
+    expect(toggle.getAttribute("aria-controls")).toBeTruthy();
     expect(toggle.textContent).toContain("Skill · Quiet Product Film");
     expect(toggle.textContent).toContain("Assets · 1");
     expect(toggle.textContent).toContain("Nodes · 1");
     expect(screen.queryByText("Restrained product cinematography.")).toBeNull();
 
     fireEvent.click(toggle);
+    const controlledRegion = document.getElementById(toggle.getAttribute("aria-controls")!);
+    expect(controlledRegion).toBeTruthy();
+    const skillToggle = screen.getByRole("button", { name: "Hide Skill context" });
+    expect(skillToggle.getAttribute("aria-controls")).toBeTruthy();
+    expect(skillToggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Restrained product cinematography.")).toBeTruthy();
     expect(screen.getByText("Hero bottle reference")).toBeTruthy();
     expect(screen.getByText("Product Main")).toBeTruthy();
@@ -114,5 +120,30 @@ describe("ComposerContextTray", () => {
     );
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText("Context could not be updated")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("keeps context inspectable but prevents removal while a message is pending", () => {
+    render(
+      <ComposerContextTray
+        view={context}
+        uploadIssue={null}
+        disabled
+        onFocusNode={vi.fn()}
+        onRemoveNode={vi.fn()}
+        onRemoveAsset={vi.fn()}
+        onClearUploadIssue={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show message context" }));
+
+    expect((screen.getByRole("button", {
+      name: "Remove Product Main",
+    }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", {
+      name: "Remove Hero bottle reference",
+    }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Focus Product Main" }) as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 });

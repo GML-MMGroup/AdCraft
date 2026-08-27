@@ -162,19 +162,25 @@ export function AgentCanvasChatPanel({
   }, [draft]);
 
   async function send() {
-    const text = draft.trim();
+    const submittedDraft = draft;
+    const text = submittedDraft.trim();
     if (!text || chat.state.sending) return;
     timelineScroll.followLatest();
+    const submittedNodeIds = [...composerContext.selectedNodeIds];
+    const submittedAssetIds = [...composerContext.selectedAssetIds];
     const request = {
       text,
-      mentionedNodeIds: composerContext.selectedNodeIds,
-      mentionedImageAssetIds: composerContext.selectedAssetIds,
+      mentionedNodeIds: submittedNodeIds,
+      mentionedImageAssetIds: submittedAssetIds,
     };
     const accepted = await chat.actions.submit(request);
     if (!accepted) return;
-    setDraft("");
+    setDraft((current) => current === submittedDraft ? "" : current);
     setMentionOpen(false);
-    composerContext.actions.clearMessageContext();
+    composerContext.actions.consumeSubmittedContext({
+      nodeIds: submittedNodeIds,
+      assetIds: submittedAssetIds,
+    });
   }
 
   function renderTimelineItem(item: ChatTimelineItemV2) {
@@ -433,21 +439,31 @@ export function AgentCanvasChatPanel({
         <ConversationRecoverySurface
           recovery={chat.state.composerRecovery}
           onAction={chat.state.failedDraft ? async () => {
-            const accepted = await chat.actions.submit(chat.state.failedDraft!);
+            const failedDraft = chat.state.failedDraft!;
+            const draftAtRetry = draft;
+            const accepted = await chat.actions.submit(failedDraft);
             if (!accepted) return;
-            setDraft("");
+            if (draftAtRetry.trim() === failedDraft.text) {
+              setDraft((current) => current === draftAtRetry ? "" : current);
+            }
             setMentionOpen(false);
-            composerContext.actions.clearMessageContext();
+            composerContext.actions.consumeSubmittedContext({
+              nodeIds: failedDraft.mentionedNodeIds,
+              assetIds: failedDraft.mentionedImageAssetIds,
+            });
           } : undefined}
           onDismiss={chat.actions.clearComposerRecovery}
         />
       ) : chat.state.workflowRecovery ? (
         <ConversationRecoverySurface
           recovery={chat.state.workflowRecovery}
-          onAction={() => {
-            void chat.actions.refresh();
-            void onWorkflowRefresh?.();
-            void onRuntimeRefresh?.();
+          onAction={async () => {
+            await Promise.all([
+              chat.actions.refresh(),
+              onWorkflowRefresh?.(),
+              onRuntimeRefresh?.(),
+            ]);
+            chat.actions.clearWorkflowRecovery();
           }}
           onDismiss={chat.actions.clearWorkflowRecovery}
         />
@@ -465,6 +481,7 @@ export function AgentCanvasChatPanel({
       <ComposerContextTray
         view={composerContext.view}
         uploadIssue={composerContext.uploadIssue}
+        disabled={chat.state.sending}
         onFocusNode={onFocusNode}
         onRemoveNode={composerContext.actions.removeNode}
         onRemoveAsset={composerContext.actions.removeAsset}
@@ -494,6 +511,7 @@ export function AgentCanvasChatPanel({
               className={mentionOpen ? "is-active" : ""}
               aria-label="Mention node or image asset"
               title="Mention node or image asset"
+              disabled={chat.state.sending}
               onClick={() => setMentionOpen((current) => !current)}
             >
               @
@@ -502,6 +520,7 @@ export function AgentCanvasChatPanel({
               type="button"
               aria-label="Upload context images"
               title="Upload context images"
+              disabled={chat.state.sending}
               onClick={() => uploadInputRef.current?.click()}
             >
               <AssetsIcon />
@@ -512,6 +531,7 @@ export function AgentCanvasChatPanel({
               type="file"
               accept="image/*"
               multiple
+              disabled={chat.state.sending}
               tabIndex={-1}
               aria-hidden="true"
               onChange={(event) => {
@@ -546,6 +566,7 @@ export function AgentCanvasChatPanel({
                   type="button"
                   key={node.node_id}
                   className={composerContext.selectedNodeIds.includes(node.node_id) ? "is-selected" : ""}
+                  disabled={chat.state.sending}
                   onClick={() => composerContext.actions.toggleNode(node.node_id)}
                 >
                   <DocumentIcon />
@@ -561,6 +582,7 @@ export function AgentCanvasChatPanel({
                   type="button"
                   key={asset.asset_id}
                   className={composerContext.selectedAssetIds.includes(asset.asset_id) ? "is-selected" : ""}
+                  disabled={chat.state.sending}
                   onClick={() => composerContext.actions.toggleAsset(asset.asset_id)}
                 >
                   <AssetsIcon />

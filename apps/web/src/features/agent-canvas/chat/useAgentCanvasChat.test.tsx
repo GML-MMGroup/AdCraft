@@ -783,9 +783,10 @@ describe("useAgentCanvasChat", () => {
     expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(2);
     expect(result.current.state.workflowRecovery).toMatchObject({
       title: "Conversation state changed",
-      technicalDetail: "guidance_advance_stale: still stale",
       action: "review",
     });
+    expect(result.current.state.workflowRecovery?.technicalDetail).toContain("guidance_advance_stale");
+    expect(result.current.state.workflowRecovery?.technicalDetail).toContain("still stale");
   });
 
   it("uses the latest localized presentation item instead of raw or stale timeline rows", async () => {
@@ -1382,9 +1383,12 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.composerRecovery).toMatchObject({
       scope: "composer",
       title: "Response could not be submitted",
-      technicalDetail: "proposal_persistence_failed: The proposal could not be persisted.",
       action: "retry",
     });
+    expect(result.current.state.composerRecovery?.technicalDetail).toContain("proposal_persistence_failed");
+    expect(result.current.state.composerRecovery?.technicalDetail).toContain(
+      "The proposal could not be persisted.",
+    );
     expect(result.current.state.timelineRecovery).toBeNull();
     expect(result.current.state.workflowRecovery).toBeNull();
     expect(result.current.state.failedDraft).toMatchObject({
@@ -1526,6 +1530,63 @@ describe("useAgentCanvasChat", () => {
       expect.objectContaining({ video_skill_run_id: "style-run-2" }),
       expect.any(String),
     );
+  });
+
+  it("retries a failed message with the Style Skill Run frozen by the original request", async () => {
+    const originalWorkflow = workflow();
+    originalWorkflow.active_style_skill = {
+      skill_run_id: "style-run-original",
+      skill_id: "cinematic-poetic-realism",
+      skill_version: "1.0.0",
+      title: "Cinematic Poetic Realism",
+      summary: "A restrained cinematic treatment.",
+      category: "cinematic-narrative",
+      creative_direction_snapshot_id: "direction-original",
+    };
+    const changedWorkflow = workflow();
+    changedWorkflow.active_style_skill = {
+      ...originalWorkflow.active_style_skill,
+      skill_run_id: "style-run-new",
+      creative_direction_snapshot_id: "direction-new",
+    };
+    api.submitAgentCanvasChatMessage
+      .mockRejectedValueOnce({ code: "agent_runtime_unavailable", message: "Try again." })
+      .mockResolvedValueOnce({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: "message-retry",
+        turn_id: "turn-retry",
+        status: "queued",
+        events_cursor: 6,
+      });
+    const { result, rerender } = renderHook(
+      ({ currentWorkflow }) => useAgentCanvasChat({
+        workflow: currentWorkflow,
+        chatRevision: 0,
+        chatEvents: [],
+      }),
+      { initialProps: { currentWorkflow: originalWorkflow } },
+    );
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Keep this exact treatment.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+      });
+    });
+    const failedDraft = result.current.state.failedDraft;
+    expect(failedDraft).toMatchObject({ videoSkillRunId: "style-run-original" });
+
+    rerender({ currentWorkflow: changedWorkflow });
+    await act(async () => {
+      await result.current.actions.submit(failedDraft!);
+    });
+
+    const firstCall = api.submitAgentCanvasChatMessage.mock.calls[0];
+    const retryCall = api.submitAgentCanvasChatMessage.mock.calls[1];
+    expect(retryCall[1]).toMatchObject({ video_skill_run_id: "style-run-original" });
+    expect(retryCall[2]).toBe(firstCall[2]);
   });
 
   it("hydrates the durable guidance session, actions, and proposal card", async () => {
@@ -1828,8 +1889,8 @@ describe("useAgentCanvasChat", () => {
       status: turnId === "turn-cache-failed-1" ? "failed" : "completed",
       turn_kind: "capability",
       request: {},
-      error_code: null,
-      error_message: null,
+      error_code: turnId === "turn-cache-failed-1" ? "provider_error" : null,
+      error_message: turnId === "turn-cache-failed-1" ? "Provider request failed." : null,
       creation_mode: null,
       guidance_session_revision: null,
       continuation: null,
@@ -1854,6 +1915,7 @@ describe("useAgentCanvasChat", () => {
     expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(2);
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-1");
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-cache-failed-1");
+    expect(result.current.state.timelineRecovery).toBeNull();
   });
 
   it("keeps successful capability hydration when a sibling turn lookup fails", async () => {

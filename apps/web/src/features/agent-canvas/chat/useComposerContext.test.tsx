@@ -113,7 +113,7 @@ describe("useComposerContext", () => {
 
     expect(result.current.selectedAssetIds).toEqual(["asset-1"]);
     expect(result.current.view.uploadState).toBe("failed");
-    expect(result.current.uploadIssue).toMatchObject({ scope: "context", action: "retry" });
+    expect(result.current.uploadIssue).toMatchObject({ scope: "context", action: "none" });
   });
 
   it("clears message context without clearing the workflow Skill", () => {
@@ -127,6 +127,27 @@ describe("useComposerContext", () => {
     expect(result.current.view.skill?.title).toBe("Quiet Product Film");
     expect(result.current.view.assets).toEqual([]);
     expect(result.current.view.nodes).toEqual([]);
+  });
+
+  it("consumes only context included in an accepted request", () => {
+    const { result } = renderHook(() => useComposerContext({ workflow: {
+      ...workflow(),
+      nodes: [node("node-1"), node("node-2")],
+      assets: [asset("asset-1"), asset("asset-2")],
+    } }));
+    act(() => {
+      result.current.actions.toggleNode("node-1");
+      result.current.actions.toggleAsset("asset-1");
+      result.current.actions.toggleNode("node-2");
+      result.current.actions.toggleAsset("asset-2");
+      result.current.actions.consumeSubmittedContext({
+        nodeIds: ["node-1"],
+        assetIds: ["asset-1"],
+      });
+    });
+
+    expect(result.current.selectedNodeIds).toEqual(["node-2"]);
+    expect(result.current.selectedAssetIds).toEqual(["asset-2"]);
   });
 
   it("drops transient context when switching workflow authority", async () => {

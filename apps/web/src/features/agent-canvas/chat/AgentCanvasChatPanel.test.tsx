@@ -983,7 +983,9 @@ describe("command and receipt cards", () => {
       warning_code: null,
     }} onRetry={onRetry} onReviseRequest={onReviseRequest} />);
 
-    expect(screen.getByText("agent_deadline_exceeded")).toBeTruthy();
+    expect(screen.queryByText("agent_deadline_exceeded")).toBeNull();
+    fireEvent.click(screen.getByText("Technical details"));
+    expect(screen.getByText(/agent_deadline_exceeded/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry Scene Designer activity" }));
     fireEvent.click(screen.getByRole("button", { name: "Revise Scene Designer request" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -1167,7 +1169,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).not.toContain(".agent-chat__guided-proposal-intro");
     expect(css).not.toContain("#e6a34a");
     expect(css).not.toContain("#77c9c2");
-    expect(currentInteractionRule).toContain("overflow: visible");
+    expect(currentInteractionRule).toContain("overflow: hidden");
     expect(currentInteractionRule).not.toContain("overflow-y: auto");
   });
 
@@ -1180,7 +1182,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const trayRule = css.match(/\.agent-chat__context-tray\s*\{([\s\S]*?)\n\}/m)?.[1];
     const trayGroupsRule = css.match(/\.agent-chat__context-groups\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(panelRule).toContain("grid-template-rows: auto minmax(72px, 1fr)");
+    expect(panelRule).toContain("display: flex");
+    expect(panelRule).toContain("flex-direction: column");
     expect(panelRule).toContain("overflow: hidden");
     expect(timelineRule).toContain("overflow-y: auto");
     expect(recoveryRule).toContain("background: var(--agent-chat-raised)");

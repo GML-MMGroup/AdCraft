@@ -27,7 +27,16 @@ const STALE_AUTHORITY_CODES = new Set([
 
 function technicalDetail(error: unknown): string | null {
   if (isV2ApiError(error)) {
-    return error.code ? `${error.code}: ${error.message}` : error.message;
+    const diagnostics: Record<string, unknown> = {
+      status: error.status,
+      code: error.code ?? null,
+      message: error.message,
+    };
+    if (error.stage) diagnostics.stage = error.stage;
+    if (error.details && Object.keys(error.details).length) diagnostics.details = error.details;
+    if (error.violations?.length) diagnostics.violations = error.violations;
+    if (error.suggestedActions?.length) diagnostics.suggested_actions = error.suggestedActions;
+    return JSON.stringify(diagnostics, null, 2);
   }
   return error instanceof Error ? error.message : null;
 }
@@ -76,7 +85,7 @@ export function conversationRecoveryFromError(
   }
 
   const isPermissionFailure = isV2ApiError(error) && (error.status === 401 || error.status === 403);
-  const isContractFailure = isV2ApiError(error) && error.status === 422 && scope === "workflow";
+  const isContractFailure = isV2ApiError(error) && error.status === 422;
   let action: ConversationRecoveryView["action"] = "none";
   if (!isPermissionFailure && !isContractFailure) {
     if (scope === "timeline" && options.retryable) action = "retry";
@@ -87,6 +96,9 @@ export function conversationRecoveryFromError(
   return {
     scope,
     ...copy,
+    message: isContractFailure && scope === "composer"
+      ? "Review your message and context before sending again."
+      : copy.message,
     technicalDetail: detail,
     action,
   };

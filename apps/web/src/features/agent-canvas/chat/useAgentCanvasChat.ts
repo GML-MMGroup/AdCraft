@@ -58,6 +58,7 @@ type SubmitDraft = {
   text: string;
   mentionedNodeIds: string[];
   mentionedImageAssetIds: string[];
+  videoSkillRunId?: string | null;
   idempotencyKey?: string;
 };
 
@@ -295,7 +296,11 @@ export function useAgentCanvasChat({
       const terminalErrorCode = turn.continuation?.last_error_code ?? turn.error_code;
       const terminalErrorMessage = turn.continuation?.last_error_message ?? turn.error_message;
       const continuationFailed = turn.continuation?.delivery_status === "failed";
-      if ((continuationFailed || turn.status === "failed") && terminalErrorCode) {
+      if (
+        turn.turn_kind === "message"
+        && (continuationFailed || turn.status === "failed")
+        && terminalErrorCode
+      ) {
         setTimelineRecovery(conversationRecoveryFromError(
           "timeline",
           new Error(agentCanvasChatErrorMessage(terminalErrorCode, terminalErrorMessage)),
@@ -910,6 +915,9 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     const optimisticId = createOperationKey("optimistic");
     const idempotencyKey = draft.idempotencyKey ?? createOperationKey("chat");
+    const videoSkillRunId = draft.videoSkillRunId === undefined
+      ? activeVideoSkillRunId
+      : draft.videoSkillRunId;
     setOptimisticItems((current) => [...current, {
       item_type: "message",
       message_kind: "conversation",
@@ -932,7 +940,7 @@ export function useAgentCanvasChat({
         text: draft.text.trim(),
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
-        video_skill_run_id: activeVideoSkillRunId,
+        video_skill_run_id: videoSkillRunId,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
@@ -954,7 +962,7 @@ export function useAgentCanvasChat({
       setOptimisticItems((current) => current.filter((item) => (
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
-      setFailedDraft({ ...draft, idempotencyKey });
+      setFailedDraft({ ...draft, videoSkillRunId, idempotencyKey });
       setComposerRecovery(conversationRecoveryFromError(
         "composer",
         submitError,

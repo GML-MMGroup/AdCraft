@@ -23,12 +23,16 @@ describe("conversationRecoveryFromError", () => {
       { retryable: true },
     );
 
-    expect(recovery).toEqual({
+    expect(recovery).toMatchObject({
       scope: "composer",
       title: "Response could not be submitted",
       message: "Your message is still here. Try sending it again.",
-      technicalDetail: "provider_unavailable: Request failed with status 500",
       action: "retry",
+    });
+    expect(JSON.parse(recovery.technicalDetail!)).toEqual({
+      status: 500,
+      code: "provider_unavailable",
+      message: "Request failed with status 500",
     });
     expect(`${recovery.title} ${recovery.message}`).not.toMatch(/Request failed|Invalid|\[\d+\]/i);
   });
@@ -54,6 +58,30 @@ describe("conversationRecoveryFromError", () => {
       "workflow",
       apiError(422, "workflow_contract_invalid", "Invalid workflow.nodes[0]"),
     )).toMatchObject({ action: "none" });
+    expect(conversationRecoveryFromError(
+      "composer",
+      apiError(422, "chat_message_invalid", "Invalid message payload"),
+      { retryable: true },
+    )).toMatchObject({ action: "none" });
+  });
+
+  it("keeps structured backend diagnostics behind technical details", () => {
+    const recovery = conversationRecoveryFromError("workflow", new V2ApiError({
+      status: 409,
+      code: "workflow_revision_conflict",
+      message: "The workflow changed.",
+      details: { expected_revision: 8, current_revision: 9 },
+      stage: "publishing",
+      violations: [{ path: "workflow.revision", message: "stale" }],
+      suggestedActions: [{ action: "refresh" }],
+      payload: null,
+    }));
+
+    expect(recovery.technicalDetail).toContain('"status": 409');
+    expect(recovery.technicalDetail).toContain('"stage": "publishing"');
+    expect(recovery.technicalDetail).toContain('"expected_revision": 8');
+    expect(recovery.technicalDetail).toContain('"path": "workflow.revision"');
+    expect(recovery.technicalDetail).toContain('"action": "refresh"');
   });
 
   it("asks the user to review refreshed authority after a stale response", () => {
