@@ -236,6 +236,8 @@ export function useAgentCanvasChat({
   const guidanceAdvanceInFlightRef = useRef<string | null>(null);
   const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
   const guidedInteractionSubmitSeqRef = useRef<number | null>(null);
+  const guidedInteractionIdempotencyKeysRef = useRef(new Map<string, string>());
+  const guidedInteractionSubmissionIdentityRef = useRef<string | null>(null);
   const previousInteractionIdRef = useRef<string | null>(null);
   const guidanceAdvanceRebaseRef = useRef<{
     stalePrecondition: GuidanceAdvancePreconditionV1;
@@ -621,6 +623,8 @@ export function useAgentCanvasChat({
     guidanceAdvanceInFlightRef.current = null;
     postReadyBarrierRef.current = null;
     guidedInteractionSubmitSeqRef.current = null;
+    guidedInteractionIdempotencyKeysRef.current.clear();
+    guidedInteractionSubmissionIdentityRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
     setComposerRecovery(null);
     setTimelineRecovery(null);
@@ -685,11 +689,20 @@ export function useAgentCanvasChat({
   }, [chatRevision, refresh]);
 
   useEffect(() => {
-    if (!actingInteractionId || !guidanceSession) return;
+    if (!guidanceSession) return;
     const authoritativeInteraction = guidanceSession.interaction;
+    if (!actingInteractionId) {
+      if (authoritativeInteraction?.status === "submitted") {
+        setActingInteractionId(authoritativeInteraction.interaction_id);
+      }
+      return;
+    }
     if (
       authoritativeInteraction?.interaction_id === actingInteractionId
-      && authoritativeInteraction.status === "open"
+      && (
+        authoritativeInteraction.status === "open"
+        || authoritativeInteraction.status === "submitted"
+      )
     ) return;
     guidedInteractionSubmitSeqRef.current = null;
     setActingInteractionId(null);
@@ -712,9 +725,48 @@ export function useAgentCanvasChat({
       && event.seq > (guidedInteractionSubmitSeqRef.current ?? -1)
     ));
     if (materializationFailed) {
+      const submissionIdentity = guidedInteractionSubmissionIdentityRef.current;
+      if (submissionIdentity) {
+        guidedInteractionIdempotencyKeysRef.current.delete(submissionIdentity);
+        guidedInteractionSubmissionIdentityRef.current = null;
+      }
       guidedInteractionSubmitSeqRef.current = null;
       setActingInteractionId(null);
     }
+  }, [actingInteractionId, chatEvents, guidanceSession, workflowId]);
+
+  useEffect(() => {
+    if (!actingInteractionId) return;
+    const interaction = guidanceSession?.interaction;
+    if (
+      !interaction
+      || interaction.interaction_id !== actingInteractionId
+      || interaction.content.content_kind !== "product_source"
+    ) return;
+    const inputKind = interaction.content.input_kind;
+    const failure = chatEvents.find((event) => (
+      event.workflow_id === workflowId
+      && event.event_type === "guided_product_source_failed"
+      && event.payload?.input_kind === inputKind
+      && event.seq > (guidedInteractionSubmitSeqRef.current ?? -1)
+    ));
+    if (!failure) return;
+    const errorCode = typeof failure.payload?.error_code === "string"
+      ? failure.payload.error_code
+      : "guided_product_source_failed";
+    setGuidedInteractionIssue({
+      summary: "The Product source could not be applied. Uploaded assets remain available.",
+      detail: errorCode,
+      fieldId: null,
+      retryable: true,
+    });
+    const submissionIdentity = guidedInteractionSubmissionIdentityRef.current;
+    if (submissionIdentity) {
+      guidedInteractionIdempotencyKeysRef.current.delete(submissionIdentity);
+      guidedInteractionSubmissionIdentityRef.current = null;
+    }
+    guidedInteractionSubmitSeqRef.current = null;
+    setActingInteractionId(null);
   }, [actingInteractionId, chatEvents, guidanceSession, workflowId]);
 
   const submitGuidanceAdvance = useCallback(async (
@@ -1245,11 +1297,22 @@ export function useAgentCanvasChat({
     );
     setGuidedInteractionIssue(null);
     try {
+      const submissionIdentity = `${interaction.interaction_id}:${interaction.revision}:${JSON.stringify(request)}`;
+      guidedInteractionSubmissionIdentityRef.current = submissionIdentity;
+      let idempotencyKey = guidedInteractionIdempotencyKeysRef.current.get(submissionIdentity);
+      if (!idempotencyKey) {
+        idempotencyKey = createOperationKey(`guided-interaction-${interaction.kind}`);
+        guidedInteractionIdempotencyKeysRef.current.set(submissionIdentity, idempotencyKey);
+        if (guidedInteractionIdempotencyKeysRef.current.size > 64) {
+          const oldest = guidedInteractionIdempotencyKeysRef.current.keys().next().value;
+          if (oldest) guidedInteractionIdempotencyKeysRef.current.delete(oldest);
+        }
+      }
       const accepted = await agentCanvasApi.submitAgentCanvasGuidedInteraction(
         workflowId,
         interaction.interaction_id,
         request,
-        createOperationKey(`guided-interaction-${interaction.kind}`),
+        idempotencyKey,
       );
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       setNotice(accepted.replayed ? "The existing submission is still being processed." : null);

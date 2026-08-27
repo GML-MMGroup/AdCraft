@@ -1194,10 +1194,14 @@ function normalizeCanvasBindingSourceNodeV2(value: unknown, path: string): Canva
 
 function normalizeCanvasBindingSourceImageAssetV2(value: unknown, path: string): CanvasBindingSourceImageAssetV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["kind", "source_asset_id"], path);
+  forbidUnknownFields(record, ["kind", "source_asset_id", "source_asset_version_id"], path);
   return {
     kind: expectLiteral(record.kind, new Set<CanvasBindingSourceImageAssetV2["kind"]>(["image_asset"]), `${path}.kind`),
     source_asset_id: expectNonEmptyString(record.source_asset_id, `${path}.source_asset_id`),
+    source_asset_version_id: nullableStringWithDefault(
+      record.source_asset_version_id,
+      `${path}.source_asset_version_id`,
+    ),
   };
 }
 
@@ -2705,11 +2709,24 @@ function normalizeProposedDraftReferenceV2(
       "required",
       "display_order",
       "semantic_reference_role",
+      "occurrence_id",
+      "character_phase",
       "display_name",
       "media_type",
     ],
     path,
   );
+  const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+  const characterPhase = record.character_phase === undefined || record.character_phase === null
+    ? null
+    : expectLiteral(
+        record.character_phase,
+        new Set(["main", "turnaround"] as const),
+        `${path}.character_phase`,
+      );
+  if ((occurrenceId === null) !== (characterPhase === null)) {
+    fail(path, "Character reference identity requires occurrence and phase");
+  }
   return {
     source_kind: expectLiteral(
       record.source_kind,
@@ -2729,6 +2746,8 @@ function normalizeProposedDraftReferenceV2(
             SEMANTIC_REFERENCE_ROLES,
             `${path}.semantic_reference_role`,
           ),
+    occurrence_id: occurrenceId,
+    character_phase: characterPhase,
     display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
     media_type: expectLiteral(
       record.media_type,
@@ -3326,6 +3345,9 @@ function normalizeAgentCanvasContinuationV2(
     "source_turn_id",
     "continuation_turn_id",
     "operation",
+    "occurrence_id",
+    "character_phase",
+    "action_owner",
     "payload_digest",
     "delivery_status",
     "status",
@@ -3366,6 +3388,17 @@ function normalizeAgentCanvasContinuationV2(
       record.continuation_turn_id,
       `${path}.continuation_turn_id`,
     ),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main", "turnaround"] as const), `${path}.character_phase`),
+    action_owner: record.action_owner === undefined || record.action_owner === null
+      ? null
+      : expectLiteral(
+          record.action_owner,
+          new Set(["guided_journey", "targeted_authoring", "quick_media"] as const),
+          `${path}.action_owner`,
+        ),
     max_attempts: record.max_attempts === undefined || record.max_attempts === null
       ? null
       : expectPositiveInteger(record.max_attempts, `${path}.max_attempts`),
@@ -3388,6 +3421,8 @@ export function normalizeAgentActionReceiptV2(
     "proposal_option_id",
     "proposal_action",
     "actor_kind",
+    "occurrence_id",
+    "character_phase",
     "idempotency_key",
     "status",
     "summary",
@@ -3421,6 +3456,10 @@ export function normalizeAgentActionReceiptV2(
     actor_kind: record.actor_kind === undefined
       ? "system"
       : expectLiteral(record.actor_kind, new Set(["agent", "user", "system"] as const), `${path}.actor_kind`),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main", "turnaround"] as const), `${path}.character_phase`),
     idempotency_key: nullableStringWithDefault(record.idempotency_key, `${path}.idempotency_key`),
     status: expectLiteral(record.status, RECEIPT_STATUSES, `${path}.status`),
     summary: expectNonEmptyString(record.summary, `${path}.summary`),
@@ -4239,10 +4278,11 @@ export function normalizeProjectAssetUploadResponseV2(
   path = "assetUpload",
 ): ProjectAssetUploadResponseV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["workflow_id", "asset"], path);
+  forbidUnknownFields(record, ["workflow_id", "asset", "pending_handoff_id"], path);
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     asset: normalizeProjectAssetSummaryV2(record.asset, `${path}.asset`),
+    pending_handoff_id: nullableStringWithDefault(record.pending_handoff_id, `${path}.pending_handoff_id`),
   };
 }
 
@@ -4705,12 +4745,12 @@ export function normalizeGuidanceAdvancePreconditionV1(
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "concept_choice", "media_review"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
   return {
     interaction_id: expectNonEmptyString(record.interaction_id, `${path}.interaction_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind,
     status: expectLiteral(record.status, new Set<GuidedInteractionV1["status"]>(["open", "submitted", "closed", "superseded"]), `${path}.status`), response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`), expected_session_revision: expectPositiveInteger(record.expected_session_revision, `${path}.expected_session_revision`), revision: expectPositiveInteger(record.revision, `${path}.revision`), title: expectNonEmptyString(record.title, `${path}.title`), context: expectNonEmptyString(record.context, `${path}.context`), content,
-    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
+    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
     submit_path: expectNonEmptyString(record.submit_path, `${path}.submit_path`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`), updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
@@ -4725,6 +4765,37 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     const questions = expectArray(record.questions, `${path}.questions`).map((item, index) => normalizeGuidedQuestionV1(item, `${path}.questions[${index}]`));
     if (kind !== "clarification_questionnaire" || questions.length < 1 || questions.length > 4) fail(path, "invalid questionnaire interaction content");
     return { content_kind: "questionnaire", questions };
+  }
+  if (contentKind === "product_source") {
+    forbidUnknownFields(record, [
+      "content_kind",
+      "input_kind",
+      "question_id",
+      "prompt",
+      "expected_guidance_revision",
+      "min_asset_count",
+      "max_asset_count",
+    ], path);
+    if (kind !== "product_source") fail(path, "invalid Product source interaction content");
+    const inputKind = expectLiteral(record.input_kind, new Set(["main", "multiview"] as const), `${path}.input_kind`);
+    const minAssetCount = expectPositiveInteger(record.min_asset_count, `${path}.min_asset_count`);
+    const maxAssetCount = expectPositiveInteger(record.max_asset_count, `${path}.max_asset_count`);
+    const expectedCounts = inputKind === "main" ? [1, 1] : [2, 8];
+    if (minAssetCount !== expectedCounts[0] || maxAssetCount !== expectedCounts[1]) {
+      fail(path, "invalid Product source asset count contract");
+    }
+    return {
+      content_kind: "product_source",
+      input_kind: inputKind,
+      question_id: expectNonEmptyString(record.question_id, `${path}.question_id`),
+      prompt: expectNonEmptyString(record.prompt, `${path}.prompt`),
+      expected_guidance_revision: expectPositiveInteger(
+        record.expected_guidance_revision,
+        `${path}.expected_guidance_revision`,
+      ),
+      min_asset_count: minAssetCount,
+      max_asset_count: maxAssetCount,
+    };
   }
   if (contentKind === "concept_choice") {
     forbidUnknownFields(record, [
@@ -4798,7 +4869,7 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  return { awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind: expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`), requires_user_action: expectBoolean(record.requires_user_action, `${path}.requires_user_action`), resume_policy: expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`), interaction_id: nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`), node_ids: optionalStringArray(record.node_ids, `${path}.node_ids`, []), stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`), stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`) };
+  return { awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind: expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`), requires_user_action: expectBoolean(record.requires_user_action, `${path}.requires_user_action`), resume_policy: expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`), interaction_id: nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`), node_ids: optionalStringArray(record.node_ids, `${path}.node_ids`, []), stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`), stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`) };
 }
 
 export function normalizeGuidedInteractionAcceptedV1(value: unknown, path = "guidedInteractionAccepted"): GuidedInteractionAcceptedV1 {
@@ -4896,6 +4967,7 @@ function normalizeJourneyActionProjectionV2(value: unknown, path: string): Journ
     "status",
     "turn_id",
     "occurrence_id",
+    "character_phase",
   ], path);
   return {
     action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
@@ -4909,6 +4981,9 @@ function normalizeJourneyActionProjectionV2(value: unknown, path: string): Journ
     occurrence_id: record.occurrence_id === undefined || record.occurrence_id === null
       ? null
       : expectNonEmptyString(record.occurrence_id, `${path}.occurrence_id`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main", "turnaround"] as const), `${path}.character_phase`),
   };
 }
 
@@ -4925,6 +5000,7 @@ function normalizeJourneyTransitionEvidenceV2(
     "stage",
     "stage_revision",
     "occurrence_id",
+    "character_phase",
     "actor",
     "recorded_at",
   ], path);
@@ -4938,6 +5014,9 @@ function normalizeJourneyTransitionEvidenceV2(
     stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
     stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
     occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main", "turnaround"] as const), `${path}.character_phase`),
     actor: record.actor === undefined
       ? "system"
       : expectLiteral(record.actor, JOURNEY_DECISION_SOURCES, `${path}.actor`),

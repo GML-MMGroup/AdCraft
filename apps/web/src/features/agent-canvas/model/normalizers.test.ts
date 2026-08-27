@@ -28,6 +28,7 @@ import {
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
   normalizeGuidedSessionStateV2,
+  normalizeProjectAssetUploadResponseV2,
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
@@ -880,6 +881,284 @@ describe("Agent Canvas normalizers", () => {
     expect(session.awaiting?.kind).toBe("concept_selection");
   });
 
+  it("accepts the canonical Product source interaction and upload handoff", () => {
+    const upload = normalizeProjectAssetUploadResponseV2({
+      workflow_id: "workflow-1",
+      asset: {
+        asset_id: "asset-product-main",
+        version_id: "version-product-main-1",
+        project_id: "project-1",
+        workflow_id: "workflow-1",
+        media_type: "image",
+        source_type: "upload",
+        status: "ready",
+        display_name: "Product main source",
+        mime_type: "image/png",
+        width: 1600,
+        height: 1600,
+        duration_seconds: null,
+        checksum: "sha256-product-main",
+        preview_url: "/api/v2/assets/asset-product-main/content",
+        media_url: "/api/v2/assets/asset-product-main/content",
+        created_at: "2026-08-27T08:00:00Z",
+      },
+      pending_handoff_id: "handoff-product-main-1",
+    });
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      current_checkpoint: {
+        ...progressiveGuidanceSessionPayload().current_checkpoint,
+        stage_kind: "product",
+      },
+      journey: {
+        ...progressiveGuidanceSessionPayload().journey,
+        stage: "product",
+        active_action: {
+          ...progressiveGuidanceSessionPayload().journey.active_action,
+          stage: "product",
+        },
+      },
+      interaction: {
+        interaction_id: "interaction-product-main-1",
+        workflow_id: "workflow-1",
+        session_id: "guidance-1",
+        checkpoint_id: "checkpoint-1",
+        kind: "product_source",
+        status: "open",
+        response_locale: "zh-CN",
+        expected_session_revision: 3,
+        revision: 2,
+        title: "Choose a Product source",
+        context: "Upload the real Product or generate a visual direction.",
+        content: {
+          content_kind: "product_source",
+          input_kind: "main",
+          question_id: "product_main_source",
+          prompt: "Choose the Product main source.",
+          expected_guidance_revision: 6,
+          min_asset_count: 1,
+          max_asset_count: 1,
+        },
+        allowed_actions: ["select_source"],
+        submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-product-main-1/submit",
+        created_at: "2026-08-27T08:00:00Z",
+        updated_at: "2026-08-27T08:00:00Z",
+      },
+      awaiting: {
+        awaiting_id: "awaiting-product-main-1",
+        workflow_id: "workflow-1",
+        session_id: "guidance-1",
+        checkpoint_id: "checkpoint-1",
+        kind: "product_source",
+        requires_user_action: true,
+        resume_policy: "submit_interaction",
+        interaction_id: "interaction-product-main-1",
+        node_ids: [],
+        stage: "product",
+        stage_revision: 4,
+        created_at: "2026-08-27T08:00:00Z",
+      },
+    });
+
+    expect(upload.pending_handoff_id).toBe("handoff-product-main-1");
+    expect(session.interaction?.content).toMatchObject({
+      content_kind: "product_source",
+      input_kind: "main",
+      expected_guidance_revision: 6,
+    });
+    expect(session.awaiting?.kind).toBe("product_source");
+  });
+
+  it("retains immutable image AssetVersion identity in a binding source", () => {
+    const binding = normalizeCanvasBindingV2({
+      binding_id: "binding-versioned-image-1",
+      workflow_id: "workflow-1",
+      source: {
+        kind: "image_asset",
+        source_asset_id: "asset-product-main",
+        source_asset_version_id: "version-product-main-1",
+      },
+      target_node_id: "node-image-1",
+      input_role: "image_reference",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: "Product main",
+      metadata: {},
+      created_at: "2026-08-27T08:00:00Z",
+      updated_at: "2026-08-27T08:00:00Z",
+    });
+
+    expect(binding.source).toEqual({
+      kind: "image_asset",
+      source_asset_id: "asset-product-main",
+      source_asset_version_id: "version-product-main-1",
+    });
+  });
+
+  it("accepts canonical Character occurrence identity across journey, receipt, and continuation projections", () => {
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      journey: {
+        ...progressiveGuidanceSessionPayload().journey,
+        stage: "character",
+        decisions: [{
+          decision_id: "decision:character:2",
+          element_kind: "character",
+          occurrence_id: "occurrence:character:2",
+          occurrence_index: 2,
+          outcome: "include",
+          source: "user",
+          source_revision: 6,
+          requirements: {
+            role: "Supporting athlete",
+            identity_summary: "A calm teammate in the locker room.",
+            presence: "required",
+          },
+        }],
+        active_occurrence_id: "occurrence:character:2",
+        active_action: {
+          action_id: "action-character-2-turnaround",
+          action_kind: "prepare_character_turnaround",
+          stage: "character",
+          stage_revision: 4,
+          status: "working",
+          turn_id: "turn-character-2",
+          occurrence_id: "occurrence:character:2",
+          character_phase: "turnaround",
+        },
+        transition_evidence: [{
+          evidence_id: "evidence-character-2-main",
+          evidence_kind: "character_materialized",
+          source_id: "node-character-2-main",
+          source_revision: 3,
+          stage: "character",
+          stage_revision: 4,
+          occurrence_id: "occurrence:character:2",
+          character_phase: "main",
+          actor: "system",
+          recorded_at: "2026-08-27T08:00:00Z",
+        }],
+      },
+    });
+    const receipt = normalizeAgentActionReceiptV2({
+      receipt_id: "receipt-character-2-main",
+      workflow_id: "workflow-1",
+      plan_id: null,
+      action_id: "action-character-2-main",
+      proposal_id: null,
+      proposal_option_id: null,
+      proposal_action: null,
+      actor_kind: "system",
+      occurrence_id: "occurrence:character:2",
+      character_phase: "main",
+      idempotency_key: "character-2-main",
+      status: "applied",
+      summary: "Character main source published.",
+      created_node_ids: ["node-character-2-main"],
+      updated_node_ids: [],
+      deleted_node_ids: [],
+      created_binding_ids: [],
+      deleted_binding_ids: [],
+      queued_execution_ids: [],
+      run_queue_errors: [],
+      operation_results: [],
+      workflow_revision: 12,
+      before_workflow_revision: 11,
+      placement_hints: [],
+      continuation_turn_id: "turn-character-2-turnaround",
+      superseded_by: null,
+      error_code: null,
+      error_message: null,
+      created_at: "2026-08-27T08:00:00Z",
+    });
+    const timeline = normalizeAgentCanvasChatTimelineResponseV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      continuations: [{
+        continuation_id: "continuation-character-2-turnaround",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        source_turn_id: "turn-character-2-main",
+        continuation_turn_id: "turn-character-2-turnaround",
+        operation: "continue_guidance",
+        occurrence_id: "occurrence:character:2",
+        character_phase: "turnaround",
+        action_owner: "guided_journey",
+        payload_digest: "digest-character-2",
+        status: "queued",
+        attempt_count: 0,
+        max_attempts: 5,
+        next_attempt_at: "2026-08-27T08:00:01Z",
+        lease_owner: null,
+        lease_generation: 0,
+        lease_expires_at: null,
+        last_error_code: null,
+        last_error_message: null,
+        created_at: "2026-08-27T08:00:00Z",
+        updated_at: "2026-08-27T08:00:00Z",
+      }],
+      items: [],
+      next_cursor: 0,
+    });
+
+    expect(session.journey.active_action?.character_phase).toBe("turnaround");
+    expect(session.journey.transition_evidence[0]?.character_phase).toBe("main");
+    expect(receipt).toMatchObject({ occurrence_id: "occurrence:character:2", character_phase: "main" });
+    expect(timeline.continuations[0]).toMatchObject({
+      occurrence_id: "occurrence:character:2",
+      character_phase: "turnaround",
+      action_owner: "guided_journey",
+    });
+  });
+
+  it("preserves Character occurrence identity on proposed references", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-character",
+      workflow_id: "workflow-1",
+      turn_id: "turn-1",
+      video_skill_run_id: null,
+      topic_id: null,
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "character",
+      capability_id: "character_design",
+      capability_display_name: "Character Designer",
+      options: [{ option_id: "option-1", title: "Lead", public_summary: "A composed lead." }],
+      proposed_references: [{
+        source_kind: "node",
+        source_id: "node-character-main",
+        binding_kind: "image_reference",
+        input_role: "image_reference",
+        required: true,
+        display_order: 0,
+        semantic_reference_role: "subject_reference",
+        occurrence_id: "occurrence:character:2",
+        character_phase: "main",
+        display_name: "Lead main image",
+        media_type: "image",
+      }],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      materialization: null,
+      guidance_session_id: "session-1",
+      guidance_session_revision: 1,
+      actions: [],
+      created_at: "2026-08-27T00:00:00Z",
+      updated_at: "2026-08-27T00:00:00Z",
+    });
+
+    expect(proposal.proposed_references[0]).toMatchObject({
+      occurrence_id: "occurrence:character:2",
+      character_phase: "main",
+    });
+  });
+
   it("normalizes the complete guidance completion projection", () => {
     const session = normalizeGuidedSessionStateV2({
       ...progressiveGuidanceSessionPayload(),
@@ -1226,6 +1505,7 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.bindings[1]?.source).toEqual({
       kind: "image_asset",
       source_asset_id: "asset-library-1",
+      source_asset_version_id: null,
     });
   });
 

@@ -399,4 +399,32 @@ describe("runtimeEventPolicy", () => {
       });
     }
   });
+
+  it("refreshes Product source authority and imported Editing graph data", () => {
+    expect(runtimeEventPolicy(event("guided_product_source_pending"))).toMatchObject({
+      refreshAssets: true,
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: true,
+    });
+    expect(runtimeEventPolicy(event("guided_product_source_materialized"))).toMatchObject({
+      refreshAssets: true,
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshRuntime: true,
+    });
+    expect(runtimeEventPolicy(event("guided_product_source_failed"))).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshRuntime: true,
+    });
+    expect(runtimeEventPolicy(event("editing_export_imported_to_canvas", {
+      node_id: "node-imported-video-1",
+    }))).toMatchObject({
+      refreshAssets: true,
+      refreshWorkflow: true,
+      refreshRuntime: true,
+      refreshNodeId: "node-imported-video-1",
+    });
+  });
 });

@@ -40,11 +40,15 @@ describe("guided interaction placement", () => {
     expect(shouldRenderStandaloneInteraction(questionnaire)).toBe(true);
   });
 
-  it("does not pin interactions that are no longer open", () => {
+  it("keeps submitted interactions pinned until the authoritative interaction closes", () => {
     expect(shouldRenderStandaloneInteraction({
       ...interaction,
       status: "submitted",
-    })).toBe(false);
+    })).toBe(true);
+  });
+
+  it.each(["closed", "superseded"] as const)("does not pin %s interactions", (status) => {
+    expect(shouldRenderStandaloneInteraction({ ...interaction, status })).toBe(false);
   });
 
   it("changes the timeline content version when the active review changes", () => {

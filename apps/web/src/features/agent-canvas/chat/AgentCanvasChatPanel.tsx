@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InlineLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
 
@@ -17,6 +17,7 @@ import type {
   AgentCanvasContinuationV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
+  CanvasRuntimeSnapshotV2,
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
@@ -57,10 +58,19 @@ import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ComposerContextTray } from "./ComposerContextTray.tsx";
+import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
+import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
+import {
+  buildConversationCanvasLinkIndex,
+  type ConversationCanvasLinkIndex,
+  type ConversationCanvasLocation,
+  type ConversationRevealRequest,
+} from "./conversationCanvasLinks.ts";
 import { ConversationRecoverySurface } from "./ConversationRecoverySurface.tsx";
 import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
+import { projectProductionFocus } from "./productionFocusProjection.ts";
 import "./agent-canvas-chat.css";
 
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
@@ -76,7 +86,12 @@ export function AgentCanvasChatPanel({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  runtime = null,
+  collapsed: controlledCollapsed,
   onCollapsedChange,
+  revealRequest = null,
+  onConversationLinkIndexChange,
+  onViewNodes,
 }: {
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
@@ -87,7 +102,12 @@ export function AgentCanvasChatPanel({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  runtime?: CanvasRuntimeSnapshotV2 | null;
+  collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  revealRequest?: ConversationRevealRequest | null;
+  onConversationLinkIndexChange?: (index: ConversationCanvasLinkIndex) => void;
+  onViewNodes?: (nodeIds: string[]) => void;
 }) {
   const chat = useAgentCanvasChat({
     workflow,
@@ -98,10 +118,16 @@ export function AgentCanvasChatPanel({
     onRuntimeRefresh,
   });
   const [draft, setDraft] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = controlledCollapsed ?? internalCollapsed;
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const conversationElementsRef = useRef(new Map<string, HTMLElement>());
+  const revealFrameRef = useRef<number | null>(null);
+  const revealHighlightTimerRef = useRef<number | null>(null);
+  const handledRevealRequestRef = useRef<number | null>(null);
   const composerContext = useComposerContext({ workflow, onWorkflowRefresh });
   const imageAssets = composerContext.availableImageAssets;
   const currentTopic = useMemo(() => {
@@ -134,6 +160,18 @@ export function AgentCanvasChatPanel({
     }),
     [chat.state.agentWorking, chat.state.items],
   );
+  const conversationLinkIndex = useMemo(
+    () => buildConversationCanvasLinkIndex(stageTimeline, chat.state.guidanceAwaiting),
+    [chat.state.guidanceAwaiting, stageTimeline],
+  );
+  const productionFocus = useMemo(() => projectProductionFocus({
+    nodes: workflow.nodes,
+    runtime,
+    guidanceAwaiting: chat.state.guidanceAwaiting,
+  }), [chat.state.guidanceAwaiting, runtime, workflow.nodes]);
+  const viewNodes = onViewNodes ?? ((nodeIds: string[]) => {
+    if (nodeIds[0]) onFocusNode(nodeIds[0]);
+  });
   const naturalMessagePresentation = useMemo(
     () => projectNaturalMessagePresentation(chat.state.items),
     [chat.state.items],
@@ -155,6 +193,44 @@ export function AgentCanvasChatPanel({
     contentVersion: timelineContentVersion,
     resetKey: workflow.workflow_id,
   });
+  useEffect(() => {
+    onConversationLinkIndexChange?.(conversationLinkIndex);
+  }, [conversationLinkIndex, onConversationLinkIndexChange]);
+
+  useEffect(() => {
+    if (!revealRequest || handledRevealRequestRef.current === revealRequest.requestId) return;
+    if (collapsed) {
+      setInternalCollapsed(false);
+      onCollapsedChange?.(false);
+      return;
+    }
+    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
+    if (revealHighlightTimerRef.current !== null) {
+      window.clearTimeout(revealHighlightTimerRef.current);
+      revealHighlightTimerRef.current = null;
+    }
+    setHighlightedConversationKey(null);
+    revealFrameRef.current = window.requestAnimationFrame(() => {
+      revealFrameRef.current = window.requestAnimationFrame(() => {
+        revealFrameRef.current = null;
+        const element = conversationElementsRef.current.get(revealRequest.locationKey);
+        if (!element) return;
+        handledRevealRequestRef.current = revealRequest.requestId;
+        element.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        element.focus({ preventScroll: true });
+        setHighlightedConversationKey(revealRequest.locationKey);
+        revealHighlightTimerRef.current = window.setTimeout(() => {
+          revealHighlightTimerRef.current = null;
+          setHighlightedConversationKey(null);
+        }, 1500);
+      });
+    });
+  }, [collapsed, conversationLinkIndex, onCollapsedChange, revealRequest]);
+
+  useEffect(() => () => {
+    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
+    if (revealHighlightTimerRef.current !== null) window.clearTimeout(revealHighlightTimerRef.current);
+  }, []);
   useLayoutEffect(() => {
     if (composerTextareaRef.current) {
       resizeChatComposerTextarea(composerTextareaRef.current);
@@ -183,7 +259,10 @@ export function AgentCanvasChatPanel({
     });
   }
 
-  function renderTimelineItem(item: ChatTimelineItemV2) {
+  function renderTimelineItem(
+    item: ChatTimelineItemV2,
+    location: ConversationCanvasLocation | null = null,
+  ) {
     if (item.item_type === "message") {
       return <NaturalMessage
         key={`message-${item.message_id}`}
@@ -193,6 +272,14 @@ export function AgentCanvasChatPanel({
           showAgentIdentity: item.speaker === "adcraft_video_agent",
           startsSpeakerRun: true,
         }}
+        related={location ? (
+          <ConversationNodeLinks
+            location={location}
+            nodes={workflow.nodes}
+            variant="related"
+            onViewNodes={viewNodes}
+          />
+        ) : null}
       />;
     }
     if (item.item_type === "expert_activity") {
@@ -216,7 +303,7 @@ export function AgentCanvasChatPanel({
           className="agent-chat__artifact"
           key={`artifact-${item.artifact_id}`}
           type="button"
-          onClick={() => onFocusNode(item.node_id)}
+          onClick={() => viewNodes([item.node_id])}
         >
           <DocumentIcon />
           <span>
@@ -238,7 +325,20 @@ export function AgentCanvasChatPanel({
       );
     }
     if (item.item_type === "action_receipt") {
-      return <ActionReceiptCard key={`receipt-${item.action_receipt.receipt_id}`} card={item} />;
+      return (
+        <ActionReceiptCard
+          key={`receipt-${item.action_receipt.receipt_id}`}
+          card={item}
+          nodeLinks={location ? (
+            <ConversationNodeLinks
+              location={location}
+              nodes={workflow.nodes}
+              variant="receipt"
+              onViewNodes={viewNodes}
+            />
+          ) : null}
+        />
+      );
     }
     if (item.item_type === "agent_document") {
       return (
@@ -263,17 +363,26 @@ export function AgentCanvasChatPanel({
       );
     }
     return (
-      <ProposalCard
-        key={`proposal-${item.proposal.proposal_id}`}
-        card={item}
-        pending={false}
-        retryingMaterialization={Boolean(
-          item.proposal.materialization
-          && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
-        )}
-        readOnly
-        issue={chat.state.proposalIssues[item.proposal.proposal_id]}
-      />
+      <Fragment key={`proposal-${item.proposal.proposal_id}`}>
+        <ProposalCard
+          card={item}
+          pending={false}
+          retryingMaterialization={Boolean(
+            item.proposal.materialization
+            && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
+          )}
+          readOnly
+          issue={chat.state.proposalIssues[item.proposal.proposal_id]}
+        />
+        {location ? (
+          <ConversationNodeLinks
+            location={location}
+            nodes={workflow.nodes}
+            variant="result"
+            onViewNodes={viewNodes}
+          />
+        ) : null}
+      </Fragment>
     );
   }
 
@@ -285,7 +394,7 @@ export function AgentCanvasChatPanel({
         aria-label="Open AdCraft Bot panel"
         title="Open AdCraft Bot"
         onClick={() => {
-          setCollapsed(false);
+          setInternalCollapsed(false);
           onCollapsedChange?.(false);
         }}
       >
@@ -326,7 +435,7 @@ export function AgentCanvasChatPanel({
             aria-label="Collapse AdCraft Bot panel"
             title="Collapse AdCraft Bot"
             onClick={() => {
-              setCollapsed(true);
+              setInternalCollapsed(true);
               onCollapsedChange?.(true);
             }}
           >
@@ -341,6 +450,8 @@ export function AgentCanvasChatPanel({
           <GuidanceSessionProgress session={chat.state.guidanceSession} />
         ) : null}
       </header>
+
+      <CurrentProductionStep focus={productionFocus} onViewNodes={viewNodes} />
 
       <div className="agent-chat__timeline-shell">
         <div
@@ -364,7 +475,29 @@ export function AgentCanvasChatPanel({
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
             {stageTimeline.map((unit) => {
-              if (unit.unit_type === "item") return renderTimelineItem(unit.item);
+              const location = conversationLinkIndex.locations.get(unit.key) ?? null;
+              const locationClassName = [
+                "agent-chat__conversation-location",
+                highlightedConversationKey === unit.key ? "is-highlighted" : "",
+              ].filter(Boolean).join(" ");
+              if (unit.unit_type === "item") {
+                const content = renderTimelineItem(unit.item, location);
+                if (!content) return null;
+                return (
+                  <div
+                    key={unit.key}
+                    ref={(element) => {
+                      if (element) conversationElementsRef.current.set(unit.key, element);
+                      else conversationElementsRef.current.delete(unit.key);
+                    }}
+                    className={locationClassName}
+                    data-conversation-location={unit.key}
+                    tabIndex={-1}
+                  >
+                    {content}
+                  </div>
+                );
+              }
               const failedReceipts = unit.receipts.filter(({ action_receipt }) => (
                 action_receipt.status === "failed"
                 || action_receipt.status === "rejected"
@@ -372,16 +505,35 @@ export function AgentCanvasChatPanel({
                 || action_receipt.status === "applied_with_run_error"
               ));
               return (
-                <StageThread key={unit.key} unit={unit}>
-                  {unit.activities.map((activity) => renderTimelineItem(activity))}
-                  {unit.proposals.map((proposal) => renderTimelineItem(proposal))}
-                  {failedReceipts.map((receipt) => renderTimelineItem(receipt))}
-                </StageThread>
+                <div
+                  key={unit.key}
+                  ref={(element) => {
+                    if (element) conversationElementsRef.current.set(unit.key, element);
+                    else conversationElementsRef.current.delete(unit.key);
+                  }}
+                  className={locationClassName}
+                  data-conversation-location={unit.key}
+                  tabIndex={-1}
+                >
+                  <StageThread
+                    unit={unit}
+                    revealToken={revealRequest?.locationKey === unit.key ? revealRequest.requestId : null}
+                    result={location ? (
+                      <ConversationNodeLinks
+                        location={location}
+                        nodes={workflow.nodes}
+                        variant="result"
+                        onViewNodes={viewNodes}
+                      />
+                    ) : null}
+                  >
+                    {unit.activities.map((activity) => renderTimelineItem(activity))}
+                    {unit.proposals.map((proposal) => renderTimelineItem(proposal))}
+                    {failedReceipts.map((receipt) => renderTimelineItem(receipt))}
+                  </StageThread>
+                </div>
               );
             })}
-            {!chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
-              <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
-            ) : null}
             {chat.state.currentSessionActions.length ? (
               <GuidedActionsCard
                 actions={chat.state.currentSessionActions}
@@ -426,7 +578,10 @@ export function AgentCanvasChatPanel({
           <GuidedInteractionCard
             key={standaloneGuidedInteraction.interaction_id}
             interaction={standaloneGuidedInteraction}
-            pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+            pending={
+              standaloneGuidedInteraction.status === "submitted"
+              || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
+            }
             issue={chat.state.guidedInteractionIssue}
             proposalReferences={standaloneGuidedReferences}
             referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
@@ -703,8 +858,10 @@ export function CommandPlanCard({
 
 export function ActionReceiptCard({
   card,
+  nodeLinks,
 }: {
   card: ChatActionReceiptCardV2;
+  nodeLinks?: ReactNode;
 }) {
   const receipt = card.action_receipt;
   const isNoop = receipt.status === "not_applied";
@@ -716,6 +873,7 @@ export function ActionReceiptCard({
         <span>{receipt.status.replaceAll("_", " ")}</span>
       </header>
       <p>{receipt.summary}</p>
+      {nodeLinks}
       {receipt.run_queue_errors.length ? (
         <ul>
           {receipt.run_queue_errors.map((error) => <li key={error}>{error}</li>)}

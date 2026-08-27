@@ -56,6 +56,10 @@ describe("Agent Canvas SSE subscriptions", () => {
       "storyboard_segment_materialized",
       "guided_editing_updated",
       "guided_completion_failed",
+      "guided_product_source_pending",
+      "guided_product_source_materialized",
+      "guided_product_source_failed",
+      "editing_export_imported_to_canvas",
     ]));
     expect(AGENT_CANVAS_SSE_EVENT_TYPES).not.toEqual(expect.arrayContaining([
       "asset_published",

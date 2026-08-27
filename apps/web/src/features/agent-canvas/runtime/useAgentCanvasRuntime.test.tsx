@@ -353,6 +353,55 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200);
   });
 
+  it("refreshes a Product handoff once when its typed transition is replayed", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    const event = (sequence_no: number) => ({
+      sequence_no,
+      workflow_id: "workflow-1",
+      event_type: "guided_product_source_pending",
+      project_id: "project-1",
+      execution_id: null,
+      node_id: null,
+      asset_id: null,
+      binding_id: null,
+      conversation_id: "conversation-1",
+      turn_id: null,
+      action_id: "interaction-product-main-1",
+      trace_id: null,
+      span_id: null,
+      transition_key: "guided-product:workflow-1:main:pending:request-1",
+      attempt: 1,
+      created_at: "2026-08-27T00:00:00Z",
+      payload: {
+        input_kind: "main",
+        pending_handoff_id: "handoff-product-main-1",
+        asset_versions: [{ asset_id: "asset-product", version_id: "version-product" }],
+      },
+    });
+
+    eventSource.emit("guided_product_source_pending", event(43));
+    await waitFor(() => expect(result.current.state.chatRevision).toBe(1));
+    eventSource.emit("guided_product_source_pending", event(44));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.current.state.chatRevision).toBe(1);
+  });
+
   it("keeps one provider-waiting chat event across an SSE replay", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

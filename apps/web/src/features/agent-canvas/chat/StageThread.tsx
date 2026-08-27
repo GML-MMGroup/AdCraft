@@ -65,9 +65,13 @@ function threadSummary(unit: StageThreadUnit): { title: string; detail: string |
 export function StageThread({
   unit,
   children,
+  result,
+  revealToken = null,
 }: {
   unit: StageThreadUnit;
   children?: ReactNode;
+  result?: ReactNode;
+  revealToken?: number | null;
 }) {
   const shouldExpand = unit.status === "working" || unit.status === "failed";
   const [expanded, setExpanded] = useState(shouldExpand);
@@ -77,6 +81,10 @@ export function StageThread({
   useEffect(() => {
     setExpanded(unit.status === "working" || unit.status === "failed");
   }, [unit.status]);
+
+  useEffect(() => {
+    if (revealToken !== null) setExpanded(true);
+  }, [revealToken]);
 
   return (
     <section className={`agent-chat__stage-thread is-${unit.status}`}>
@@ -104,6 +112,7 @@ export function StageThread({
         <strong>{summary.title}</strong>
         {summary.detail ? <p>{summary.detail}</p> : null}
       </div>
+      {result}
       {expanded && children ? (
         <div className="agent-chat__stage-thread-history">{children}</div>
       ) : null}

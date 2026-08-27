@@ -91,4 +91,21 @@ describe("StageThread", () => {
     expect(screen.getByText("Working on this task.")).toBeTruthy();
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
   });
+
+  it("expands a completed thread when an external conversation reveal is requested", () => {
+    const { rerender } = render(
+      <StageThread unit={stageThread()} revealToken={null}>
+        <div>Receipt source</div>
+      </StageThread>,
+    );
+    expect(screen.queryByText("Receipt source")).toBeNull();
+
+    rerender(
+      <StageThread unit={stageThread()} revealToken={7}>
+        <div>Receipt source</div>
+      </StageThread>,
+    );
+
+    expect(screen.getByText("Receipt source")).toBeTruthy();
+  });
 });

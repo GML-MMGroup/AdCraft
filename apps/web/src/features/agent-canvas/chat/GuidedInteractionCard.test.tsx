@@ -128,6 +128,20 @@ describe("GuidedInteractionCard", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("keeps a submitted interaction visible and non-interactive while authority is pending", () => {
+    render(
+      <GuidedInteractionCard
+        interaction={{ ...conceptInteraction, status: "submitted" }}
+        pending
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: conceptInteraction.title })).toBeTruthy();
+    expect(screen.getAllByRole("radio").every((control) => control.hasAttribute("disabled"))).toBe(true);
+  });
+
   it("treats omitted proposal references as pending only for proposal-backed choices", () => {
     const { rerender } = render(
       <GuidedInteractionCard

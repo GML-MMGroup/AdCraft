@@ -71,6 +71,8 @@ describe("Agent Canvas prompt preparation authority", () => {
 
     expect(isNodePromptReady(ready)).toBe(true);
     expect(hasPromptReadyDraft([node(null), ready])).toBe(true);
+    expect(isNodePromptReady({ ...ready, execution_mode: "source_only" })).toBe(false);
+    expect(hasPromptReadyDraft([{ ...ready, execution_mode: "source_only" }])).toBe(false);
   });
 
   it("does not expose Global Run when no existing Draft has a prepared prompt", () => {

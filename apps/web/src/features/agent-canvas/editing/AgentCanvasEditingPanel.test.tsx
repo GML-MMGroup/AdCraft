@@ -346,7 +346,7 @@ describe("AgentCanvasEditingPanel", () => {
     expect(screen.getByText("Shot 1")).toBeTruthy();
     expect(screen.getByText("Transition")).toBeTruthy();
     expect(screen.getByText("Transition duration")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Fit timeline" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Fit timeline" })).toBeNull();
     expect(screen.getByRole("combobox", { name: "Fit" })).toBeTruthy();
     expect(screen.queryByText("Fade in")).toBeNull();
     expect(screen.queryByText("Fade out")).toBeNull();

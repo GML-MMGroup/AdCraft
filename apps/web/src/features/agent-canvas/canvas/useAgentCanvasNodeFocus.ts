@@ -17,6 +17,7 @@ interface UseAgentCanvasNodeFocusOptions {
 }
 
 const OTHER_NODE_EXIT_DELAY_MS = 220;
+const CONVERSATION_LINK_HIGHLIGHT_MS = 1500;
 export const AGENT_CANVAS_FOCUS_MAX_ZOOM = 4;
 
 export function useAgentCanvasNodeFocus({
@@ -24,8 +25,10 @@ export function useAgentCanvasNodeFocus({
   scopeKey,
 }: UseAgentCanvasNodeFocusOptions) {
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
   const previousViewportRef = useRef<Viewport | null>(null);
   const exitTimerRef = useRef<number | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
   const fitFrameRef = useRef<number | null>(null);
   const scopeKeyRef = useRef(scopeKey);
 
@@ -40,6 +43,13 @@ export function useAgentCanvasNodeFocus({
     if (fitFrameRef.current !== null) {
       window.cancelAnimationFrame(fitFrameRef.current);
       fitFrameRef.current = null;
+    }
+  }, []);
+
+  const cancelPendingHighlight = useCallback(() => {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
     }
   }, []);
 
@@ -75,6 +85,32 @@ export function useAgentCanvasNodeFocus({
     });
   }, [cancelPendingExit, cancelPendingFit, flowRef]);
 
+  const revealNodes = useCallback((nodeIds: string[]) => {
+    const instance = flowRef.current;
+    const uniqueNodeIds = [...new Set(nodeIds.filter(Boolean))];
+    if (!instance || !uniqueNodeIds.length) return;
+    cancelPendingExit();
+    cancelPendingFit();
+    cancelPendingHighlight();
+    previousViewportRef.current = null;
+    setFocusedNodeId(null);
+    setHighlightedNodeIds(uniqueNodeIds);
+    highlightTimerRef.current = window.setTimeout(() => {
+      highlightTimerRef.current = null;
+      setHighlightedNodeIds([]);
+    }, CONVERSATION_LINK_HIGHLIGHT_MS);
+    fitFrameRef.current = window.requestAnimationFrame(() => {
+      fitFrameRef.current = null;
+      void instance.fitView({
+        nodes: uniqueNodeIds.map((id) => ({ id })),
+        padding: uniqueNodeIds.length === 1 ? 0.55 : 0.2,
+        duration: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 420,
+        minZoom: 0.05,
+        maxZoom: 1.15,
+      });
+    });
+  }, [cancelPendingExit, cancelPendingFit, cancelPendingHighlight, flowRef]);
+
   const scheduleExitForNodeSelection = useCallback((nodeId: string) => {
     cancelPendingExit();
     if (!focusedNodeId || focusedNodeId === nodeId) return;
@@ -97,18 +133,23 @@ export function useAgentCanvasNodeFocus({
     scopeKeyRef.current = scopeKey;
     cancelPendingExit();
     cancelPendingFit();
+    cancelPendingHighlight();
     previousViewportRef.current = null;
     setFocusedNodeId(null);
-  }, [cancelPendingExit, cancelPendingFit, scopeKey]);
+    setHighlightedNodeIds([]);
+  }, [cancelPendingExit, cancelPendingFit, cancelPendingHighlight, scopeKey]);
 
   useEffect(() => () => {
     cancelPendingExit();
     cancelPendingFit();
-  }, [cancelPendingExit, cancelPendingFit]);
+    cancelPendingHighlight();
+  }, [cancelPendingExit, cancelPendingFit, cancelPendingHighlight]);
 
   return {
     focusedNodeId,
+    highlightedNodeIds,
     focusNode,
+    revealNodes,
     exitFocus,
     scheduleExitForNodeSelection,
   };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ChatMessageV2 } from "../../../types-v2.ts";
 import {
@@ -10,6 +10,7 @@ import type { NaturalMessagePresentation } from "./naturalMessagePresentation.ts
 export interface NaturalMessageProps {
   message: ChatMessageV2;
   presentation: NaturalMessagePresentation;
+  related?: ReactNode;
 }
 
 function isLongMessage(text: string): boolean {
@@ -25,7 +26,7 @@ function displayTime(value: string): string {
   }).format(date);
 }
 
-export function NaturalMessage({ message, presentation }: NaturalMessageProps) {
+export function NaturalMessage({ message, presentation, related }: NaturalMessageProps) {
   const [expanded, setExpanded] = useState(false);
   const long = isLongMessage(message.text);
   const isAgent = message.speaker === "adcraft_video_agent";
@@ -49,6 +50,7 @@ export function NaturalMessage({ message, presentation }: NaturalMessageProps) {
           ? <div className="agent-chat__markdown">{renderMarkdownAwareText(message.text)}</div>
           : <p>{message.text}</p>}
       </div>
+      {related}
       <footer className="agent-chat__message-meta">
         {long ? (
           <button
