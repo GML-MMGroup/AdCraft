@@ -27,7 +27,7 @@ function location(overrides: Partial<ConversationCanvasLocation> = {}): Conversa
 }
 
 describe("ConversationNodeLinks", () => {
-  it("summarizes stage results and locates only nodes that still exist", () => {
+  it("hides node-count summaries and keeps the canvas locator", () => {
     const onViewNodes = vi.fn();
     render(
       <ConversationNodeLinks
@@ -38,7 +38,7 @@ describe("ConversationNodeLinks", () => {
       />,
     );
 
-    expect(screen.getByText("1 node created · 1 node updated")).toBeTruthy();
+    expect(screen.queryByText(/created|updated|deleted/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "View result nodes on canvas" }));
     expect(onViewNodes).toHaveBeenCalledWith(["node-1"]);
     expect(document.body.textContent).not.toContain("missing-node");
@@ -63,7 +63,7 @@ describe("ConversationNodeLinks", () => {
       .toBe("Related · Storyboard 01 · Video 01");
   });
 
-  it("keeps deletion counts but does not offer navigation to deleted-only changes", () => {
+  it("does not render deleted-only changes without a navigable node", () => {
     render(
       <ConversationNodeLinks
         location={location({
@@ -78,7 +78,7 @@ describe("ConversationNodeLinks", () => {
       />,
     );
 
-    expect(screen.getByText("1 node deleted")).toBeTruthy();
+    expect(screen.queryByText(/node|deleted/)).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
   });
 });

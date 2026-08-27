@@ -3,19 +3,6 @@ import type { ConversationCanvasLocation } from "./conversationCanvasLinks.ts";
 
 type ConversationNodeLinksVariant = "result" | "related" | "receipt";
 
-function countLabel(count: number, noun: string): string | null {
-  if (!count) return null;
-  return `${count} ${count === 1 ? "node" : "nodes"} ${noun}`;
-}
-
-function resultSummary(location: ConversationCanvasLocation): string {
-  return [
-    countLabel(location.createdNodeIds.length, "created"),
-    countLabel(location.updatedNodeIds.length, "updated"),
-    countLabel(location.deletedNodeIds.length, "deleted"),
-  ].filter(Boolean).join(" · ");
-}
-
 export function ConversationNodeLinks({
   location,
   nodes,
@@ -44,21 +31,17 @@ export function ConversationNodeLinks({
     );
   }
 
-  const summary = resultSummary(location);
-  if (!summary) return null;
   const isReceipt = variant === "receipt";
+  if (!navigableNodeIds.length) return null;
   return (
     <div className={`agent-chat__node-links agent-chat__node-links--${variant}`}>
-      <span>{summary}</span>
-      {navigableNodeIds.length ? (
-        <button
-          type="button"
-          aria-label={isReceipt ? "View canvas changes" : "View result nodes on canvas"}
-          onClick={() => onViewNodes(navigableNodeIds)}
-        >
-          {isReceipt ? "View changes" : "View on canvas"}
-        </button>
-      ) : null}
+      <button
+        type="button"
+        aria-label={isReceipt ? "View canvas changes" : "View result nodes on canvas"}
+        onClick={() => onViewNodes(navigableNodeIds)}
+      >
+        {isReceipt ? "View changes" : "View on canvas"}
+      </button>
     </div>
   );
 }
