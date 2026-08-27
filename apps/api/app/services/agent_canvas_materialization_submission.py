@@ -15,6 +15,9 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import (
     ChatTurnAcceptedV2,
@@ -35,6 +38,7 @@ from app.schemas.agent_canvas_materialization import (
     SelectedProposalCardV2,
     SelectedConceptOptionV1,
 )
+from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 
 
 class _ProposalSelectionSubmissionService:
@@ -254,6 +258,90 @@ class _ProposalSelectionSubmissionService:
             "materialization_"
             + _digest(f"{proposal.proposal_id}:{accepted.turn_id}:{attempt_no}")[:32]
         )
+        result_contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[
+            proposal.capability_id
+        ].__name__
+        session = self._conversations.get_guidance_session(proposal.workflow_id)
+        stage_revision = session.journey.stage_revision
+        operation_kind = (
+            "parent"
+            if proposal.capability_id in {"product_design", "character_design"}
+            else "standalone"
+        )
+        occurrence_id = None
+        character_phase = None
+        requirement_revision_id = None
+        requirement_revision_no = None
+        journey_action_id = accepted.turn_id
+        if proposal.capability_id == "character_design":
+            current_action = session.journey.active_action
+            if (
+                session.journey.stage != "character"
+                or current_action is None
+                or current_action.occurrence_id is None
+                or session.journey.active_occurrence_id != current_action.occurrence_id
+            ):
+                raise _error(
+                    "character_occurrence_invalid",
+                    "Character materialization does not match the current occurrence.",
+                )
+            if current_action.character_phase != "main":
+                raise _error(
+                    "character_authoring_phase_invalid",
+                    "Character Proposal selection requires the current Main phase.",
+                )
+            requirement = AgentCanvasRequirementRepository(
+                self._conversations.database
+            ).get_current(proposal.workflow_id)
+            occurrence = next(
+                (
+                    item
+                    for item in character_occurrences_for_authoring(requirement)
+                    if item.occurrence_id == current_action.occurrence_id
+                    and item.presence == "include"
+                ),
+                None,
+            )
+            if occurrence is None:
+                raise _error(
+                    "character_occurrence_invalid",
+                    "Character materialization does not match the current Ledger occurrence.",
+                )
+            occurrence_id = occurrence.occurrence_id
+            character_phase = current_action.character_phase
+            requirement_revision_id = requirement.revision_id
+            requirement_revision_no = requirement.revision_no
+            journey_action_id = current_action.action_id
+        if proposal.capability_id == "character_design":
+            materialization_id = (
+                "materialization_"
+                + _digest(
+                    ":".join(
+                        (
+                            proposal.workflow_id,
+                            requirement_revision_id or "",
+                            occurrence_id or "",
+                            character_phase or "",
+                            journey_action_id,
+                            accepted.turn_id,
+                            proposal.target_node_id or "",
+                            str(proposal.target_node_revision or ""),
+                            str(attempt_no),
+                        )
+                    )
+                )[:32]
+            )
+        derivative_intent = (
+            _parent_derivative_intent(
+                workflow_id=proposal.workflow_id,
+                materialization_id=materialization_id,
+                stage_revision=stage_revision,
+                capability_id=proposal.capability_id,
+                occurrence_id=occurrence_id,
+            )
+            if operation_kind == "parent"
+            else None
+        )
         context_payload = {
             "workflow_id": proposal.workflow_id,
             "proposal_id": proposal.proposal_id,
@@ -262,28 +350,19 @@ class _ProposalSelectionSubmissionService:
             "reference_plan_digest": reference_plan.digest,
             "capability_id": proposal.capability_id,
         }
-        context_digest = _json_digest(context_payload)
-        result_contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[
-            proposal.capability_id
-        ].__name__
-        stage_revision = self._conversations.get_guidance_session(
-            proposal.workflow_id
-        ).journey.stage_revision
-        operation_kind = (
-            "parent"
-            if proposal.capability_id in {"product_design", "character_design"}
-            else "standalone"
-        )
-        derivative_intent = (
-            _parent_derivative_intent(
-                workflow_id=proposal.workflow_id,
-                materialization_id=materialization_id,
-                stage_revision=stage_revision,
-                capability_id=proposal.capability_id,
+        if proposal.capability_id == "character_design":
+            context_payload.update(
+                {
+                    "occurrence_id": occurrence_id,
+                    "character_phase": character_phase,
+                    "requirement_revision_id": requirement_revision_id,
+                    "requirement_revision_no": requirement_revision_no,
+                    "journey_action_id": journey_action_id,
+                    "target_node_id": proposal.target_node_id,
+                    "target_node_revision": proposal.target_node_revision,
+                }
             )
-            if operation_kind == "parent"
-            else None
-        )
+        context_digest = _json_digest(context_payload)
         request_identity = f"capability-materialization:{materialization_id}:attempt:{attempt_no}"
         return self._create_envelope(
             payload={
@@ -298,6 +377,10 @@ class _ProposalSelectionSubmissionService:
                 "selection_actor": ("agent" if action.action == "delegate_choice" else "user"),
                 "selection_reason": selection_reason,
                 "capability_id": proposal.capability_id,
+                "occurrence_id": occurrence_id,
+                "character_phase": character_phase,
+                "requirement_revision_id": requirement_revision_id,
+                "requirement_revision_no": requirement_revision_no,
                 "selected_option": option,
                 "reference_plan": reference_plan,
                 "expected_session_revision": action.expected_session_revision,
@@ -397,6 +480,7 @@ def _parent_derivative_intent(
     materialization_id: str,
     stage_revision: int,
     capability_id: str,
+    occurrence_id: str | None = None,
 ) -> ParentDerivedMaterializationIntentV1:
     is_character = capability_id == "character_design"
     node_id = "node_" + _digest(f"{materialization_id}:main")[:32]
@@ -407,11 +491,14 @@ def _parent_derivative_intent(
         intent_id="derivative_" + _digest(f"{materialization_id}:{derivative_role}")[:32],
         workflow_id=workflow_id,
         stage_revision=stage_revision,
-        occurrence_id="character-1" if is_character else "product-1",
+        occurrence_id=(
+            occurrence_id if is_character and occurrence_id is not None else "product-1"
+        ),
         parent=ParentNodeSnapshotV1(
             node_id=node_id,
             node_revision=1,
             semantic_role=semantic_role,
+            occurrence_id=occurrence_id if is_character else None,
             prompt_preparation_operation_id=prompt_operation_id,
         ),
         derivative_role=derivative_role,

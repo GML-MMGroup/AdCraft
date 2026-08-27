@@ -647,11 +647,22 @@ def _validate_delivery_envelope(
 ) -> None:
     try:
         payload = json.loads(str(delivery["payload_json"]))
+        required_keys = {"schema_version", "envelope_id"}
+        allowed_keys = {
+            *required_keys,
+            "occurrence_id",
+            "character_phase",
+            "action_owner",
+        }
         if (
             not isinstance(payload, dict)
-            or set(payload) != {"schema_version", "envelope_id"}
+            or not required_keys <= set(payload) <= allowed_keys
             or payload.get("schema_version") != "1"
             or not str(payload.get("envelope_id") or "").strip()
+            or (payload.get("occurrence_id") is None) != (payload.get("character_phase") is None)
+            or payload.get("character_phase") not in {None, "main", "turnaround"}
+            or payload.get("action_owner")
+            not in {None, "guided_journey", "targeted_authoring", "quick_media"}
         ):
             raise ValueError("invalid continuation envelope reference")
         operation = _CONTINUATION_OPERATION_ADAPTER.validate_python(delivery["operation"])

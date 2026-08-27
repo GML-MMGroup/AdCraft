@@ -248,6 +248,8 @@ class CapabilityMaterializationPublicationService:
                 "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
             ) from error
+        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         self._prepare_prompts(
             envelope,
             materialization_context,
@@ -270,7 +272,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent":
+        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
             self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 
@@ -796,6 +798,8 @@ class CapabilityMaterializationPublicationService:
         )
         if outcome is None:
             return None
+        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
+            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         pending_preparations = tuple(
             (node_id, operation_id)
             for node_id, operation_id in zip(
@@ -836,7 +840,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent":
+        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
             self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
 

@@ -1265,6 +1265,20 @@ class AgentCanvasMaterializationRepository:
                                 "turn_id": source_turn_id,
                                 "node_ids": list(node_ids),
                                 "binding_ids": [binding.binding_id for binding in bindings],
+                                **(
+                                    {
+                                        "occurrence_id": stage_journey_event.occurrence_id,
+                                        "character_phase": stage_journey_event.character_phase,
+                                        "ledger_revision_id": (
+                                            stage_journey_event.ledger_revision_id
+                                        ),
+                                        "receipt_id": stage_journey_event.receipt_id,
+                                        "action_owner": action_owner,
+                                    }
+                                    if stage_journey_event is not None
+                                    and stage_journey_event.occurrence_id is not None
+                                    else {}
+                                ),
                             },
                         ),
                     )
@@ -1609,17 +1623,51 @@ class AgentCanvasMaterializationRepository:
                             "proposal_action_stale",
                             "Concept proposal revision is stale.",
                         )
-                    session_revision = connection.execute(
-                        select(AgentCanvasGuidanceSessionRow.revision).where(
-                            AgentCanvasGuidanceSessionRow.session_id
-                            == proposal["guidance_session_id"]
+                    session_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceSessionRow).where(
+                                AgentCanvasGuidanceSessionRow.session_id
+                                == proposal["guidance_session_id"]
+                            )
                         )
-                    ).scalar_one()
-                    if int(session_revision) != envelope.expected_session_revision:
+                        .mappings()
+                        .one()
+                    )
+                    if int(session_row["revision"]) != envelope.expected_session_revision:
                         raise _error(
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
                         )
+                    if envelope.capability_id == "character_design":
+                        journey = parse_production_journey(str(session_row["journey_state_json"]))
+                        active_action = journey.active_action
+                        if (
+                            journey.stage != "character"
+                            or active_action is None
+                            or journey.active_occurrence_id != envelope.occurrence_id
+                            or active_action.occurrence_id != envelope.occurrence_id
+                        ):
+                            raise _error(
+                                "character_occurrence_invalid",
+                                "Character materialization does not own the current occurrence.",
+                            )
+                        if active_action.character_phase != envelope.character_phase:
+                            raise _error(
+                                "character_authoring_phase_invalid",
+                                "Character materialization does not own the current phase.",
+                            )
+                        requirement = self._requirements.get_current_in_transaction(
+                            connection,
+                            envelope.workflow_id,
+                        )
+                        if (
+                            requirement.revision_id != envelope.requirement_revision_id
+                            or requirement.revision_no != envelope.requirement_revision_no
+                        ):
+                            raise _error(
+                                "character_authoring_revision_stale",
+                                "Character materialization uses an obsolete Requirement revision.",
+                            )
                     if envelope.action != "custom_direction":
                         option_exists = connection.execute(
                             select(AgentCanvasConceptOptionRow.option_id).where(
@@ -1657,7 +1705,19 @@ class AgentCanvasMaterializationRepository:
                         source_turn_id=str(proposal["turn_id"]),
                         continuation_turn_id=envelope.action_turn_id,
                         operation="capability_materialization",
-                        payload={"schema_version": "1", "envelope_id": envelope.envelope_id},
+                        payload={
+                            "schema_version": "1",
+                            "envelope_id": envelope.envelope_id,
+                            **(
+                                {
+                                    "occurrence_id": envelope.occurrence_id,
+                                    "character_phase": envelope.character_phase,
+                                    "action_owner": "guided_journey",
+                                }
+                                if envelope.capability_id == "character_design"
+                                else {}
+                            ),
+                        },
                         max_attempts=max_attempts,
                         now=now,
                     )
@@ -1753,6 +1813,16 @@ class AgentCanvasMaterializationRepository:
                                 "option_id": envelope.selected_option.option_id,
                                 "capability_id": envelope.capability_id,
                                 "turn_id": envelope.action_turn_id,
+                                **(
+                                    {
+                                        "occurrence_id": envelope.occurrence_id,
+                                        "character_phase": envelope.character_phase,
+                                        "ledger_revision_id": envelope.requirement_revision_id,
+                                        "action_owner": "guided_journey",
+                                    }
+                                    if envelope.capability_id == "character_design"
+                                    else {}
+                                ),
                             },
                         ),
                     )
@@ -1846,6 +1916,28 @@ class AgentCanvasMaterializationRepository:
                             "parent_materialization_revision_stale",
                             "The parent Node no longer matches the derived operation.",
                         )
+                    if envelope.capability_id == "character_design":
+                        requirement = self._requirements.get_current_in_transaction(
+                            connection,
+                            envelope.workflow_id,
+                        )
+                        if (
+                            requirement.revision_id != envelope.requirement_revision_id
+                            or requirement.revision_no != envelope.requirement_revision_no
+                        ):
+                            raise _error(
+                                "character_authoring_revision_stale",
+                                "Character derivative uses an obsolete Requirement revision.",
+                            )
+                        parent_metadata = json.loads(str(parent["metadata_json"]))
+                        if (
+                            envelope.parent_snapshot.occurrence_id != envelope.occurrence_id
+                            or parent_metadata.get("occurrence_id") != envelope.occurrence_id
+                        ):
+                            raise _error(
+                                "character_parent_provenance_invalid",
+                                "Character derivative parent occurrence does not match.",
+                            )
                     persisted_envelope = self._envelopes.create_in_transaction(connection, envelope)
                     existing = (
                         connection.execute(
@@ -1880,7 +1972,19 @@ class AgentCanvasMaterializationRepository:
                             source_turn_id=source_turn_id,
                             continuation_turn_id=envelope.action_turn_id,
                             operation="capability_materialization",
-                            payload={"schema_version": "1", "envelope_id": envelope.envelope_id},
+                            payload={
+                                "schema_version": "1",
+                                "envelope_id": envelope.envelope_id,
+                                **(
+                                    {
+                                        "occurrence_id": envelope.occurrence_id,
+                                        "character_phase": envelope.character_phase,
+                                        "action_owner": "guided_journey",
+                                    }
+                                    if envelope.capability_id == "character_design"
+                                    else {}
+                                ),
+                            },
                             max_attempts=max_attempts,
                             now=now,
                         )
@@ -1913,6 +2017,18 @@ class AgentCanvasMaterializationRepository:
                                     "materialization_id": envelope.materialization_id,
                                     "parent_node_id": envelope.parent_snapshot.node_id,
                                     "parent_node_revision": envelope.parent_snapshot.node_revision,
+                                    **(
+                                        {
+                                            "occurrence_id": envelope.occurrence_id,
+                                            "character_phase": envelope.character_phase,
+                                            "ledger_revision_id": (
+                                                envelope.requirement_revision_id
+                                            ),
+                                            "action_owner": "guided_journey",
+                                        }
+                                        if envelope.capability_id == "character_design"
+                                        else {}
+                                    ),
                                     "derivative_role": envelope.derivative_intent.derivative_role
                                     if envelope.derivative_intent is not None
                                     else None,
@@ -1999,6 +2115,16 @@ class AgentCanvasMaterializationRepository:
                             "option_id": envelope.selected_option.option_id,
                             "capability_id": envelope.capability_id,
                             "turn_id": envelope.action_turn_id,
+                            **(
+                                {
+                                    "occurrence_id": envelope.occurrence_id,
+                                    "character_phase": envelope.character_phase,
+                                    "ledger_revision_id": envelope.requirement_revision_id,
+                                    "action_owner": "guided_journey",
+                                }
+                                if envelope.capability_id == "character_design"
+                                else {}
+                            ),
                         },
                     ),
                 )
