@@ -838,10 +838,13 @@ export const v2Api = {
     return requestV2(`/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
   },
 
-  agentCanvasCreativeSession(workflowId: string): Promise<GuidedSessionStateV2> {
+  agentCanvasCreativeSession(
+    workflowId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<GuidedSessionStateV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/creative-session`,
-      {},
+      { signal: options.signal },
       normalizeGuidedSessionStateV2,
     );
   },
@@ -878,6 +881,7 @@ export const v2Api = {
     workflowId: string,
     afterSeq = 0,
     limit = 100,
+    options: { signal?: AbortSignal } = {},
   ): Promise<AgentCanvasChatViewTimelineV2> {
     const query = new URLSearchParams({
       after_seq: String(afterSeq),
@@ -885,7 +889,7 @@ export const v2Api = {
     });
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
-      {},
+      { signal: options.signal },
       normalizeAgentCanvasChatTimelineV2,
     );
   },

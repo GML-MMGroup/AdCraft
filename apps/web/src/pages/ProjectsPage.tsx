@@ -7,6 +7,7 @@ import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
+import { useProjectDisplayNames } from "../projects/useProjectDisplayNames.ts";
 import "./projects.css";
 
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
@@ -26,6 +27,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     projectCatalogRefreshing,
     refreshProjects,
   } = useApp();
+  const projectDisplayNames = useProjectDisplayNames(savedProjects);
 
   const createProject = useCallback(() => {
     void startNewProject().then((created) => {
@@ -38,7 +40,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
       key: project.project_id,
       source: "saved" as const,
       projectId: project.project_id,
-      name: project.name,
+      name: projectDisplayNames[project.project_id] ?? project.name,
       time: formatSavedProjectTime(project.updated_at),
       updatedAt: project.updated_at,
       favorite: project.is_favorite,
@@ -49,7 +51,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
       const visibleBySearch = project.name.toLowerCase().includes(search.toLowerCase());
       return visibleByTab && visibleBySearch;
     });
-  }, [savedProjects, tab, search]);
+  }, [projectDisplayNames, savedProjects, tab, search]);
 
   const attemptOpenProject = useCallback(async (projectId: string) => {
     setProjectOpenError(null);
