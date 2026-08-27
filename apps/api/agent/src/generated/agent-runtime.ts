@@ -332,6 +332,8 @@ export type CompactCapabilityRequirementDirectivePatchV3 = { readonly "source_qu
 
 export type CompactRequirementDirectivePatchV3 = CompactGlobalRequirementDirectivePatchV3 | CompactCapabilityRequirementDirectivePatchV3;
 
+export type CompactCharacterOccurrencePatchV3 = { readonly "occurrence_index": number; readonly "role": string; readonly "identity_summary": string; readonly "presence": "exclude" | "include" | "unspecified"; readonly "source_quote": string };
+
 export type CompactRequirementPatchV3 = { readonly "controls_to_set"?: CompactRequirementControlsV2; readonly "directives_to_add"?: ReadonlyArray<CompactRequirementDirectivePatchV3>; readonly "character_occurrences_to_set"?: ReadonlyArray<CompactCharacterOccurrencePatchV3> | null };
 
 export type CompactTurnIntentDecisionV3 = { readonly "mode": "guided_production" | "ordinary_conversation" | "quick_media" | "targeted_authoring"; readonly "objective": string; readonly "requested_capability"?: "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting" | null; readonly "explicit_elements"?: CompactExplicitElementsV3; readonly "assistant_message"?: string | null; readonly "requirement_patch"?: CompactRequirementPatchV3 | null; readonly "response_locale"?: string | null };
@@ -402,6 +404,8 @@ export type StoryboardSequenceCountControlPatchV1 = { readonly "source_quote": s
 
 export type VideoSegmentCountControlPatchV1 = { readonly "source_quote": string; readonly "control"?: "video_segment_count"; readonly "value": number };
 
+export type CharacterOccurrencePatchV1 = { readonly "occurrence_index": number; readonly "role": string; readonly "identity_summary": string; readonly "presence": "exclude" | "include" | "unspecified"; readonly "source_quote": string };
+
 export type ManualDurationSecondsControlPatchV1 = { readonly "source_text": string; readonly "control"?: "duration_seconds"; readonly "value": number };
 
 export type ManualAspectRatioControlPatchV1 = { readonly "source_text": string; readonly "control"?: "aspect_ratio"; readonly "value": string };
@@ -425,6 +429,8 @@ export type ManualSceneCountControlPatchV1 = { readonly "source_text": string; r
 export type ManualStoryboardSequenceCountControlPatchV1 = { readonly "source_text": string; readonly "control"?: "storyboard_sequence_count"; readonly "value": number };
 
 export type ManualVideoSegmentCountControlPatchV1 = { readonly "source_text": string; readonly "control"?: "video_segment_count"; readonly "value": number };
+
+export type ManualCharacterOccurrencePatchV1 = { readonly "occurrence_index": number; readonly "role": string; readonly "identity_summary": string; readonly "presence": "exclude" | "include" | "unspecified"; readonly "source_text": string };
 
 export type RequirementDirectiveV1 = { readonly "directive_id": string; readonly "source_kind": "accepted_proposal" | "decision_bundle_answer" | "manual_edit" | "user_message"; readonly "source_turn_id"?: string | null; readonly "source_proposal_id"?: string | null; readonly "source_bundle_id"?: string | null; readonly "source_question_id"?: string | null; readonly "source_option_id"?: string | null; readonly "source_node_id"?: string | null; readonly "source_text": string; readonly "normalized_meaning": string; readonly "scope_kind": "capability" | "global" | "node"; readonly "capability_ids"?: ReadonlyArray<"bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting">; readonly "target_node_ids"?: ReadonlyArray<string>; readonly "strength": "hard" | "preference"; readonly "created_revision_no": number };
 
