@@ -48,6 +48,7 @@ runtime-data/
 
 # Local agent, skill, planning, and code-intelligence artifacts
 .superpowers/
+AGENT_PROPOSAL_CARD_UI.md
 .codex/
 openspec/
 docs/superpowers/
