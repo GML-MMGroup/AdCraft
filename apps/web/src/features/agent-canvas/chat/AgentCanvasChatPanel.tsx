@@ -149,6 +149,9 @@ export function AgentCanvasChatPanel({
   const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
   const [chatPanelResizing, setChatPanelResizing] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [selectedSkillTitle, setSelectedSkillTitle] = useState<string | null>(
+    workflow.active_style_skill?.title ?? null,
+  );
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
@@ -163,6 +166,10 @@ export function AgentCanvasChatPanel({
   const handledRevealRequestRef = useRef<number | null>(null);
   const composerContext = useComposerContext({ workflow, onWorkflowRefresh });
   const imageAssets = composerContext.availableImageAssets;
+
+  useEffect(() => {
+    setSelectedSkillTitle(workflow.active_style_skill?.title ?? null);
+  }, [workflow.active_style_skill?.skill_run_id, workflow.workflow_id]);
   const currentTopic = useMemo(() => {
     const session = chat.state.guidanceSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
@@ -437,10 +444,12 @@ export function AgentCanvasChatPanel({
     timelineScroll.followLatest();
     const submittedNodeIds = [...composerContext.selectedNodeIds];
     const submittedAssetIds = [...composerContext.selectedAssetIds];
+    const submittedSkillTitle = selectedSkillTitle?.trim() || null;
     const request = {
       text,
       mentionedNodeIds: submittedNodeIds,
       mentionedImageAssetIds: submittedAssetIds,
+      skillTitle: submittedSkillTitle,
     };
     const accepted = await chat.actions.submit(request);
     if (!accepted) return;
@@ -461,6 +470,7 @@ export function AgentCanvasChatPanel({
       return <NaturalMessage
         key={`message-${item.message_id}`}
         message={item}
+        skillTitle={chat.state.messageSkillTitles?.[item.message_id] ?? null}
         presentation={naturalMessagePresentation.get(item.message_id) ?? {
           messageId: item.message_id,
           showAgentIdentity: item.speaker === "adcraft_video_agent",
@@ -880,6 +890,12 @@ export function AgentCanvasChatPanel({
             You can also describe your own direction below.
           </div>
         ) : null}
+        {selectedSkillTitle ? (
+          <div className="agent-chat__selected-skill" role="status" aria-label={`Selected Skill: ${selectedSkillTitle}`}>
+            <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
+            <span>{selectedSkillTitle}</span>
+          </div>
+        ) : null}
         <textarea
           ref={composerTextareaRef}
           rows={3}
@@ -945,6 +961,7 @@ export function AgentCanvasChatPanel({
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}
               onWorkflowRefresh={() => onWorkflowRefresh?.()}
+              onSkillSelected={setSelectedSkillTitle}
             />
           </div>
           <button

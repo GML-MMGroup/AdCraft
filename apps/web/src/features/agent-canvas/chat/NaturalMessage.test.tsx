@@ -45,6 +45,34 @@ describe("NaturalMessage", () => {
     expect(document.querySelector(".agent-chat__message--user")).toBeTruthy();
   });
 
+  it("shows a frontend-only Skill marker on the sent user message", () => {
+    render(
+      <NaturalMessage
+        message={message("user", "Create a quiet product film.")}
+        presentation={presentation(false)}
+        skillTitle="Cinematic Poetic Realism"
+      />,
+    );
+
+    expect(screen.getByText("Cinematic Poetic Realism")).toBeTruthy();
+    const icon = document.querySelector<HTMLImageElement>(".agent-chat__message-skill img");
+    expect(icon?.getAttribute("src")).toBe("/imgs/ui-icons/skill.svg");
+    expect(icon?.getAttribute("alt")).toBe("");
+  });
+
+  it("does not attach a Skill marker to Agent messages", () => {
+    render(
+      <NaturalMessage
+        message={message("adcraft_video_agent", "The direction is ready.")}
+        presentation={presentation(true)}
+        skillTitle="Cinematic Poetic Realism"
+      />,
+    );
+
+    expect(screen.queryByText("Cinematic Poetic Realism")).toBeNull();
+    expect(document.querySelector(".agent-chat__message-skill")).toBeNull();
+  });
+
   it("shows Agent identity only when the run projection requests it", () => {
     const agentMessage = message("adcraft_video_agent", "The direction is ready.");
     const { rerender } = render(

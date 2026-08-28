@@ -14,6 +14,7 @@ type StyleSelectorProps = {
   workflowId: string;
   activeStyle: ActiveStyleSkillSummaryV2 | null;
   onWorkflowRefresh: () => Promise<void> | void;
+  onSkillSelected?: (title: string | null) => void;
 };
 
 const STYLE_CATALOG_PAGE_SIZE = 100;
@@ -109,6 +110,7 @@ export function AgentCanvasStyleSelector({
   workflowId,
   activeStyle,
   onWorkflowRefresh,
+  onSkillSelected,
 }: StyleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
@@ -202,6 +204,7 @@ export function AgentCanvasStyleSelector({
 
   async function activateStyle(skill: VideoSkillPublicDetailV2) {
     if (activatingSkillId) return;
+    onSkillSelected?.(skill.title);
     setActivatingSkillId(skill.skill_id);
     setError(null);
     try {
@@ -220,6 +223,7 @@ export function AgentCanvasStyleSelector({
       await onWorkflowRefresh();
       setOpen(false);
     } catch (activationError) {
+      onSkillSelected?.(activeStyle?.title ?? null);
       if (isV2ApiError(activationError)) {
         if (activationError.code === "style_skill_activation_conflict") {
           try {

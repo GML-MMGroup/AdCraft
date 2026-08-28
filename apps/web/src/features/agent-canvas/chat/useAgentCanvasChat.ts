@@ -64,6 +64,8 @@ type SubmitDraft = {
   mentionedImageAssetIds: string[];
   videoSkillRunId?: string | null;
   idempotencyKey?: string;
+  /** Local presentation metadata; deliberately excluded from the backend request. */
+  skillTitle?: string | null;
 };
 
 type PendingPostReadyBarrier = {
@@ -199,6 +201,7 @@ export function useAgentCanvasChat({
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
+  const [messageSkillTitles, setMessageSkillTitles] = useState<Record<string, string>>({});
   const [pendingAgentTurnIds, setPendingAgentTurnIds] = useState<string[]>([]);
   const [presentationStreamIds, setPresentationStreamIds] = useState<string[]>([]);
   const [turnsById, setTurnsById] = useState<Record<string, AgentCanvasChatTurnV2>>({});
@@ -623,6 +626,7 @@ export function useAgentCanvasChat({
     workflowGenerationRef.current += 1;
     setPersistedItems([]);
     setOptimisticItems([]);
+    setMessageSkillTitles({});
     setPendingAgentTurnIds([]);
     setPresentationStreamIds([]);
     setTurnsById({});
@@ -1000,6 +1004,13 @@ export function useAgentCanvasChat({
     const videoSkillRunId = draft.videoSkillRunId === undefined
       ? activeVideoSkillRunId
       : draft.videoSkillRunId;
+    const skillTitle = draft.skillTitle?.trim() || null;
+    if (skillTitle) {
+      setMessageSkillTitles((current) => ({
+        ...current,
+        [optimisticId]: skillTitle,
+      }));
+    }
     setOptimisticItems((current) => [...current, {
       item_type: "message",
       message_kind: "conversation",
@@ -1033,8 +1044,16 @@ export function useAgentCanvasChat({
                 message_id: accepted.message_id!,
                 conversation_id: accepted.conversation_id,
               }
-          : item
+            : item
         )));
+        if (skillTitle) {
+          setMessageSkillTitles((current) => {
+            const next = { ...current };
+            delete next[optimisticId];
+            next[accepted.message_id!] = skillTitle;
+            return next;
+          });
+        }
       }
       trackAcceptedTurn(accepted);
       setComposerRecovery(null);
@@ -1044,6 +1063,12 @@ export function useAgentCanvasChat({
       setOptimisticItems((current) => current.filter((item) => (
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
+      setMessageSkillTitles((current) => {
+        if (!(optimisticId in current)) return current;
+        const next = { ...current };
+        delete next[optimisticId];
+        return next;
+      });
       setFailedDraft({ ...draft, videoSkillRunId, idempotencyKey });
       setComposerRecovery(conversationRecoveryFromError(
         "composer",
@@ -1463,6 +1488,7 @@ export function useAgentCanvasChat({
   return {
     state: {
       items,
+      messageSkillTitles,
       guidanceSession,
       guidedInteraction: guidanceSession?.interaction ?? null,
       guidanceAwaiting: guidanceSession?.awaiting ?? null,

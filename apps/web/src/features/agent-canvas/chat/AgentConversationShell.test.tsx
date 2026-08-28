@@ -90,6 +90,7 @@ function createChatFixture() {
       turnsById: {},
       retryingSourceTurnIds: {},
       retryableFailedTurn: null,
+      messageSkillTitles: {},
       loading: false,
       sending: false,
       agentWorking: false,
@@ -242,6 +243,20 @@ describe("Agent Conversation Shell v2", () => {
       nodeIds: ["node-1"],
       assetIds: ["asset-1"],
     });
+  });
+
+  it("passes the active Skill title as display-only metadata when sending", async () => {
+    renderPanel();
+    const textarea = screen.getByRole("textbox", { name: "Message AdCraft Video Agent" });
+    fireEvent.change(textarea, { target: { value: "Use the selected visual language." } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => expect(fixture.chat.actions.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Use the selected visual language.",
+        skillTitle: "Quiet Product Film",
+      }),
+    ));
   });
 
   it("preserves a newer draft while an earlier message is being accepted", async () => {
