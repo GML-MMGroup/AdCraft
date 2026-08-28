@@ -5,7 +5,7 @@ import type {
   AgentCanvasChatTurnV2,
   ChatCapabilityActivityV2,
 } from "../../../types-v2.ts";
-import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
+import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
 
 function recoveryStageLabel(stage: string | null | undefined): string | null {
   if (stage === "waiting" || stage === "waiting_provider_response" || stage === "provider_waiting") {
@@ -87,6 +87,12 @@ export function CapabilityActivityRow({
         validation_paths: turn?.operation_failure?.validation_paths ?? activity.validation_paths,
       }, null, 2)
     : null;
+  const fallbackWarning = activity.completion_mode === "deterministic_fallback"
+    && activity.warning_code === "specialist_materialization_fallback";
+  const hasActivityContent = Boolean(body)
+    || showTextLoader
+    || activity.status === "failed"
+    || fallbackWarning;
 
   return (
     <section
@@ -94,68 +100,71 @@ export function CapabilityActivityRow({
       role="status"
       aria-label={activityAriaLabel(activity.capability_display_name, stage)}
     >
-      <header>
-        <div className="agent-chat__capability-heading">
-          <AgentCapabilityIcon capabilityId={activity.capability_id} />
-          <strong>{activity.capability_display_name}</strong>
-        </div>
-        <span>{stage}</span>
+      <header className="agent-chat__activity-header">
+        <AgentCapabilityIdentity
+          capabilityId={activity.capability_id}
+          displayName={activity.capability_display_name}
+          detail={stage}
+        />
         {duration ? <time>{duration}</time> : null}
       </header>
-      {body ? <p>{body}</p> : null}
-      {showTextLoader ? (
-        <TextLoader
-          text="Preparing the next response..."
-          variant="skeleton"
-          className="agent-chat__activity-loader"
-          aria-label={`${activity.capability_display_name} is preparing the next response`}
-        />
-      ) : null}
-      {activity.status === "failed" ? (
-        <>
-          <small>This step could not be completed.</small>
-          {technicalFailure ? (
-            <details open={technicalDetailsOpen}>
-              <summary
-                onClick={(event) => {
-                  event.preventDefault();
-                  setTechnicalDetailsOpen((current) => !current);
-                }}
-              >
-                Technical details
-              </summary>
-              {technicalDetailsOpen ? <code>{technicalFailure}</code> : null}
-            </details>
+      {hasActivityContent ? (
+        <div className="agent-chat__activity-content">
+          {body ? <p>{body}</p> : null}
+          {showTextLoader ? (
+            <TextLoader
+              text="Preparing the next response..."
+              variant="skeleton"
+              className="agent-chat__activity-loader"
+              aria-label={`${activity.capability_display_name} is preparing the next response`}
+            />
           ) : null}
-          <div className="agent-chat__activity-actions">
-            {retryable && onRetry ? (
-              <button
-                type="button"
-                aria-label={`Retry ${activity.capability_display_name} activity`}
-                onClick={onRetry}
-                disabled={retrying}
-              >
-                {retrying ? "Retrying" : "Retry"}
-              </button>
-            ) : null}
-            {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
-              <button
-                type="button"
-                aria-label={`Revise ${activity.capability_display_name} request`}
-                onClick={onReviseRequest}
-              >
-                Revise request
-              </button>
-            ) : null}
-          </div>
-        </>
+          {activity.status === "failed" ? (
+            <>
+              <small>This step could not be completed.</small>
+              {technicalFailure ? (
+                <details open={technicalDetailsOpen}>
+                  <summary
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setTechnicalDetailsOpen((current) => !current);
+                    }}
+                  >
+                    Technical details
+                  </summary>
+                  {technicalDetailsOpen ? <code>{technicalFailure}</code> : null}
+                </details>
+              ) : null}
+              <div className="agent-chat__activity-actions">
+                {retryable && onRetry ? (
+                  <button
+                    type="button"
+                    aria-label={`Retry ${activity.capability_display_name} activity`}
+                    onClick={onRetry}
+                    disabled={retrying}
+                  >
+                    {retrying ? "Retrying" : "Retry"}
+                  </button>
+                ) : null}
+                {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
+                  <button
+                    type="button"
+                    aria-label={`Revise ${activity.capability_display_name} request`}
+                    onClick={onReviseRequest}
+                  >
+                    Revise request
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+          {fallbackWarning ? (
+            <small className="agent-chat__activity-warning">
+              Draft created with a simplified fallback.
+            </small>
+          ) : null}
+        </div>
       ) : null}
-      {activity.completion_mode === "deterministic_fallback"
-        && activity.warning_code === "specialist_materialization_fallback" ? (
-          <small className="agent-chat__activity-warning">
-            Draft created with a simplified fallback.
-          </small>
-        ) : null}
     </section>
   );
 }
