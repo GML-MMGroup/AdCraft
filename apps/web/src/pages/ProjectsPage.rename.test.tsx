@@ -103,6 +103,16 @@ describe("ProjectsPage project rename", () => {
     );
   });
 
+  it("passes the catalog workflow identity to the open operation", async () => {
+    const navigate = vi.fn();
+    render(<ProjectsPage navigate={navigate} />);
+
+    fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
+
+    await waitFor(() => expect(fixture.openProject).toHaveBeenCalledWith("project-1", "workflow-1"));
+    expect(navigate).toHaveBeenCalledWith("workflow");
+  });
+
   it("opens an accessible custom dialog from an icon-only rename action", () => {
     const promptSpy = vi.spyOn(window, "prompt");
     render(<ProjectsPage navigate={vi.fn()} />);

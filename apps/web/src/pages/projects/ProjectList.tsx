@@ -28,7 +28,7 @@ export type ProjectListItem = {
 type ProjectListProps = {
   projects: ProjectListItem[];
   leading?: ReactNode;
-  onOpenProject: (projectId: string) => void;
+  onOpenProject: (projectId: string, workflowId?: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
@@ -65,6 +65,12 @@ export function __resetProjectCoverResourceForTests() {
   projectCoverResource = createSettledQueryResource<ProjectCoverLookup>();
   projectCoverAuthorityResource = createSettledQueryResource<V2ProjectCover | null>();
   projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
+}
+
+/** Stop background cover work before a project opens without discarding settled covers. */
+export function cancelProjectCoverRequests() {
+  projectCoverResource.cancelPending();
+  projectCoverAuthorityResource.cancelPending();
 }
 
 export function ProjectList({
@@ -215,7 +221,7 @@ const ProjectListCard = memo(function ProjectListCard({
 }: {
   project: ProjectListItem;
   coverPriority: number;
-  onOpenProject: (projectId: string) => void;
+  onOpenProject: (projectId: string, workflowId?: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
@@ -227,6 +233,10 @@ const ProjectListCard = memo(function ProjectListCard({
   const trashProject = useCallback(() => onTrashProject(project), [onTrashProject, project]);
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
   const renameProject = useCallback((trigger: HTMLButtonElement) => onRenameProject(project, trigger), [onRenameProject, project]);
+  const openProject = useCallback(() => {
+    cancelProjectCoverRequests();
+    onOpenProject(project.projectId, project.workflowId);
+  }, [onOpenProject, project.projectId, project.workflowId]);
   const cover = useProjectCover(project, coverPriority);
 
   return (
@@ -238,7 +248,7 @@ const ProjectListCard = memo(function ProjectListCard({
       cover={cover}
       coverPriority={coverPriority}
       workflowId={project.workflowId}
-      onOpen={onOpenProject}
+      onOpen={openProject}
       onTrash={trashProject}
       onToggleFavorite={toggleFavorite}
       onRename={renameProject}

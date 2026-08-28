@@ -1,4 +1,4 @@
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectList, __resetProjectCoverResourceForTests, type ProjectListItem } from "./ProjectList.tsx";
@@ -126,6 +126,28 @@ describe("ProjectList covers", () => {
     expect(controlled.active()).toBe(4);
     expect(controlled.maxActive()).toBe(4);
     expect(view.container.querySelector("[data-project-list-virtualized=\"true\"]")).toBeTruthy();
+  });
+
+  it("cancels pending cover requests before opening a project", async () => {
+    const controlled = installControlledCoverRequests();
+    const onOpenProject = vi.fn();
+    const view = render(
+      <ProjectList
+        projects={projects(5)}
+        onOpenProject={onOpenProject}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    fireEvent.click(view.container.querySelector('[data-project-id="project-0"] .project-card-open') as HTMLElement);
+
+    expect(controlled.aborted).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+    ]);
+    expect(onOpenProject).toHaveBeenCalledWith("project-0", "workflow-0");
   });
 
   it("completing one cover does not abort or restart sibling jobs", async () => {

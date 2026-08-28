@@ -72,10 +72,10 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     return () => window.clearTimeout(timeout);
   }, [selectionNotice]);
 
-  const attemptOpenProject = useCallback(async (projectId: string) => {
+  const attemptOpenProject = useCallback(async (projectId: string, workflowId?: string) => {
     setProjectOpenError(null);
     try {
-      const opened = await openProject(projectId);
+      const opened = await openProject(projectId, workflowId);
       if (opened) {
         navigate("workflow");
         return true;
@@ -87,8 +87,8 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     return false;
   }, [navigate, openProject]);
 
-  const openSavedProject = useCallback((projectId: string) => {
-    void attemptOpenProject(projectId);
+  const openSavedProject = useCallback((projectId: string, workflowId?: string) => {
+    void attemptOpenProject(projectId, workflowId);
   }, [attemptOpenProject]);
 
   const retryOpeningProject = useCallback(async () => {
