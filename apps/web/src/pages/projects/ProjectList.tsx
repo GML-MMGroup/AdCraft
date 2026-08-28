@@ -3,6 +3,7 @@ import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createRequestQueue } from "../../collections/requestQueue.ts";
 import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
+import { loadProjectCoverCache, saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 import type { ProjectAssetSummaryV2 } from "../../types-v2.ts";
 import {
@@ -272,7 +273,8 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       return undefined;
     }
 
-    setEntry(null);
+    const cachedCover = loadProjectCoverCache(requestKey);
+    setEntry(cachedCover ? { cover: cachedCover } : null);
     let active = true;
     let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
     const subscription = projectCoverResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (signal) => (
@@ -291,6 +293,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
     ));
     void subscription.promise.then((lookup) => {
       if (!active) return;
+      if (lookup.cover) saveProjectCoverCache(requestKey, lookup.cover);
       setEntry({ cover: lookup.cover });
       if (!lookup.needsAuthority) return;
 
@@ -302,7 +305,9 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
         )
       ));
       void authoritySubscription.promise.then((authoritativeCover) => {
-        if (active) setEntry({ cover: authoritativeCover ?? lookup.cover });
+        const nextCover = authoritativeCover ?? lookup.cover;
+        if (nextCover) saveProjectCoverCache(requestKey, nextCover);
+        if (active) setEntry({ cover: nextCover });
       }).catch(() => {
         // The preliminary cover remains usable when optional authority lookup fails.
       });
@@ -341,7 +346,7 @@ function directProjectCover(assetId: string): V2ProjectCover {
     assetId,
     versionId: assetId,
     mediaType: "image" as const,
-    mediaPath: `/api/v2/assets/${encodeURIComponent(assetId)}/content`,
+    mediaPath: `/api/v2/assets/${encodeURIComponent(assetId)}/content?v=${encodeURIComponent(assetId)}`,
     posterPath: null,
   };
   directProjectCoverCache.set(assetId, cover);

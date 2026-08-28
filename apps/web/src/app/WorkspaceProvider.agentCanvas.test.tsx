@@ -29,6 +29,7 @@ vi.mock("../api/v2Client", () => ({
 import { useApp } from "../AppContextValue.ts";
 import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
 import { normalizeCanvasNodeV2 } from "../features/agent-canvas/model/normalizers.ts";
+import { saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
 import { WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_WORKFLOW_KEY } from "../projects/newProject.ts";
 import { WorkspaceProvider } from "./WorkspaceProvider.tsx";
 
@@ -102,6 +103,33 @@ afterEach(() => {
 });
 
 describe("WorkspaceProvider Agent Canvas authority", () => {
+  it("renders the persisted project catalog before the refresh completes", async () => {
+    saveProjectCatalogCache({
+      active: [{
+        project_id: "cached-project",
+        workflow_id: "cached-workflow",
+        name: "Cached campaign",
+        status: "active",
+        is_favorite: false,
+        cover_asset_id: null,
+        project_version: 1,
+        updated_at: "2026-08-28T00:00:00Z",
+      }],
+      trashed: [],
+      savedAt: Date.now(),
+    });
+
+    render(
+      <WorkspaceProvider restoreActiveWorkflow={false} projectCatalogScope="active">
+        <Probe />
+      </WorkspaceProvider>,
+    );
+
+    expect(screen.getByText("projects:1")).toBeTruthy();
+    await screen.findByText("hydrated");
+    expect(screen.getByText("projects:0")).toBeTruthy();
+  });
+
   it("loads the active project catalog without restoring a workflow for a catalog-only route", async () => {
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
 

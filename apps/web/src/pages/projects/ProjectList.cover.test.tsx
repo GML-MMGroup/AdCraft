@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectList, __resetProjectCoverResourceForTests, type ProjectListItem } from "./ProjectList.tsx";
+import { stableQueryKey } from "../../collections/settledQueryResource.ts";
+import { saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 
 const fixture = vi.hoisted(() => ({
   agentCanvasWorkflowWithEtag: vi.fn(),
@@ -97,6 +99,7 @@ function installControlledCoverRequests() {
 
 describe("ProjectList covers", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     __resetProjectCoverResourceForTests();
     fixture.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: { nodes: [] }, etag: '"workflow-r1"' });
   });
@@ -279,6 +282,38 @@ describe("ProjectList covers", () => {
     expect(image.src).not.toContain("/media/api/v2/");
     expect(image.getAttribute("loading")).toBe("eager");
     expect(image.getAttribute("fetchpriority")).toBe("high");
+  });
+
+  it("shows a persisted cover while the background refresh is pending", async () => {
+    const controlled = installControlledCoverRequests();
+    const project = projects(1)[0];
+    if (!project) throw new Error("Expected a project fixture.");
+    saveProjectCoverCache(stableQueryKey({
+      workflowId: project.workflowId,
+      coverAssetId: "fallback",
+      updatedAt: project.updatedAt,
+    }), {
+      assetId: "cached-cover",
+      versionId: "cached-cover-version",
+      mediaType: "image",
+      mediaPath: "/api/v2/assets/cached-cover/content?v=cached-cover-version",
+      posterPath: null,
+    });
+
+    const view = render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("cached-cover/content?v=cached-cover-version");
+    expect(controlled.active()).toBe(1);
   });
 
   it("loads source node authority when product assets have ambiguous public roles", async () => {

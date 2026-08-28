@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentCanvasWorkflowV2,
   ChatMessageV2,
+  CanvasRuntimeEventV2,
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
 
@@ -216,6 +217,77 @@ describe("Agent Conversation Shell v2", () => {
     expect(follows(dock, recovery)).toBe(true);
     expect(contextTray).toBeNull();
     expect(follows(recovery, composer)).toBe(true);
+  });
+
+  it("optimistically hides the submitted interaction and restores it when submission fails", async () => {
+    let finish!: (accepted: boolean) => void;
+    fixture.chat.state.guidedInteraction = interaction();
+    fixture.chat.actions.submitGuidedInteraction.mockImplementation(() => new Promise<boolean>((resolve) => {
+      finish = resolve;
+    }));
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("radio", { name: /30 seconds/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+
+    expect(screen.queryByRole("button", { name: "Submit answers" })).toBeNull();
+    expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy();
+
+    finish(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Submit answers" })).toBeTruthy());
+  });
+
+  it("keeps the interaction hidden after acceptance until the authoritative interaction closes", async () => {
+    let finish!: (accepted: boolean) => void;
+    fixture.chat.state.guidedInteraction = interaction();
+    fixture.chat.actions.submitGuidedInteraction.mockImplementation(() => new Promise<boolean>((resolve) => {
+      finish = resolve;
+    }));
+    const view = renderPanel();
+
+    fireEvent.click(screen.getByRole("radio", { name: /30 seconds/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    finish(true);
+    await waitFor(() => expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy());
+
+    fixture.chat.state.guidedInteraction = null;
+    view.rerender(
+      <AgentCanvasChatPanel
+        workflow={workflow}
+        chatRevision={1}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("status", { name: "Guided interaction submitted" })).toBeNull();
+  });
+
+  it("restores the interaction when a later materialization failure event arrives", async () => {
+    fixture.chat.state.guidedInteraction = interaction();
+    fixture.chat.actions.submitGuidedInteraction.mockResolvedValue(true);
+    const view = renderPanel();
+
+    fireEvent.click(screen.getByRole("radio", { name: /30 seconds/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "Guided interaction submitted" })).toBeTruthy());
+
+    const failedEvent = {
+      workflow_id: "workflow-1",
+      event_type: "proposal_materialization_failed",
+      seq: 1,
+      action_id: "interaction-1",
+      payload: { interaction_id: "interaction-1" },
+    } as unknown as CanvasRuntimeEventV2;
+    view.rerender(
+      <AgentCanvasChatPanel
+        workflow={workflow}
+        chatRevision={1}
+        chatEvents={[failedEvent]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Submit answers" })).toBeTruthy());
   });
 
   it("preserves draft and context on failure, then clears only after acceptance", async () => {
