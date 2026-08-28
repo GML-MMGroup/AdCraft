@@ -1103,7 +1103,11 @@ button.agent-chat__node-links--related:hover {
   color: black;
 }
 
-.agent-chat__node-links--result > button:active {
+.agent-chat .agent-chat__node-links--result > button {
+  transition: none;
+}
+
+.agent-chat .agent-chat__node-links--result > button:active:not(:disabled):not([aria-disabled="true"]) {
   transform: translate(0.05em, 0.05em);
   box-shadow: 0.05em 0.05em;
   color: black;
