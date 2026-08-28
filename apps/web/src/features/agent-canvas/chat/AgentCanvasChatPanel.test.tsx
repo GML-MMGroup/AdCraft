@@ -994,6 +994,36 @@ describe("command and receipt cards", () => {
       .toContain("Character Designer");
   });
 
+  it.each([
+    ["World Setting", "World Setting 已完成。"],
+    ["Product Designer", "Product Designer finished."],
+  ])("hides the redundant completion body for %s", (_capability, redundantBody) => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: `activity-redundant-${_capability}`,
+      turn_id: `turn-redundant-${_capability}`,
+      capability_id: "world_setting",
+      capability_display_name: _capability,
+      status: "completed",
+      sequence: 7,
+      started_at: "2026-08-27T00:00:00Z",
+      finished_at: "2026-08-27T00:01:00Z",
+      presentation_text: redundantBody,
+      message: null,
+      error_code: null,
+      elapsed_ms: 60_000,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    }} />);
+
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.queryByText(redundantBody)).toBeNull();
+  });
+
   it("presents backend activity duration and explanation as a compact section", () => {
     render(<CapabilityActivityRow activity={{
       item_type: "expert_activity",

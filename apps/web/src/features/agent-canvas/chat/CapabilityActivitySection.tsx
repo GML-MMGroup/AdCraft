@@ -35,6 +35,35 @@ function activityAriaLabel(capabilityName: string, stage: string): string {
     : `${capabilityName} ${stage.toLowerCase()}`;
 }
 
+function normalizedStatusText(value: string): string {
+  return value
+    .trim()
+    .replace(/[.!?。！？]+$/g, "")
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+function isRedundantCompletionText(
+  activity: ChatCapabilityActivityV2,
+  body: string | null,
+): boolean {
+  if (activity.status !== "completed" || !body?.trim()) return false;
+  const normalizedBody = normalizedStatusText(body);
+  const displayName = activity.capability_display_name.trim();
+  const shortDisplayName = displayName.replace(
+    /\s+(designer|artist|director|writer|author)$/i,
+    "",
+  ).trim();
+  const names = new Set([displayName, shortDisplayName].map(normalizedStatusText));
+  return [...names].some((name) => [
+    `${name} 已完成`,
+    `${name} finished`,
+    `${name} completed`,
+    `${name} is complete`,
+    `${name} complete`,
+  ].includes(normalizedBody));
+}
+
 export function formatActivityDuration(elapsedMs: number | null): string | null {
   if (elapsedMs === null) return null;
   const totalSeconds = Math.max(1, Math.round(elapsedMs / 1_000));
@@ -78,10 +107,11 @@ export function CapabilityActivityRow({
     && (activity.status === "working" || waitingForModel);
   const stage = activityStageLabel(activity, turn, retrying);
   const duration = formatActivityDuration(activity.elapsed_ms);
-  const body = activity.presentation_text
+  const rawBody = activity.presentation_text
     ?? (activity.status === "superseded"
       ? `${activity.capability_display_name} was superseded by later progress`
       : activity.status === "completed" ? activity.message : null);
+  const body = isRedundantCompletionText(activity, rawBody) ? null : rawBody;
   const technicalFailure = activity.status === "failed" && (errorCode || errorMessage)
     ? JSON.stringify({
         code: errorCode ?? null,

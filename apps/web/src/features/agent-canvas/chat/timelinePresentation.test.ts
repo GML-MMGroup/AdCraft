@@ -67,6 +67,41 @@ function supersededActivityPresentation(
   };
 }
 
+function completedActivityPresentation(
+  responseLocale: string,
+): ChatTimelinePresentationViewItemV2 {
+  return {
+    presentation_key: "activity:world-setting-1:completed",
+    presentation_revision: 1,
+    source_entry_ids: ["activity-entry-completed"],
+    message_key: "expert_activity.completed",
+    message_args: {
+      capability_display_name: "World Setting",
+    },
+    response_locale: responseLocale,
+    item: {
+      item_type: "expert_activity",
+      activity_id: "activity-world-setting-1",
+      turn_id: "turn-world-setting-1",
+      capability_id: "world_setting",
+      capability_display_name: "World Setting Designer",
+      status: "completed",
+      sequence: 12,
+      started_at: "2026-08-21T06:17:00Z",
+      finished_at: "2026-08-21T06:18:00Z",
+      message: null,
+      error_code: null,
+      elapsed_ms: 60000,
+      attempt_stage: "initial",
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    },
+  };
+}
+
 describe("media review timeline presentation", () => {
   it("localizes the pending review title and canonical actions in English", () => {
     expect(localizeTimelinePresentationItem(
@@ -97,6 +132,14 @@ describe("media review timeline presentation", () => {
 });
 
 describe("expert activity timeline presentation", () => {
+  it.each(["en-US", "zh-CN"])(
+    "does not manufacture a redundant completion body for %s",
+    (responseLocale) => {
+      const presentation = completedActivityPresentation(responseLocale);
+      expect(localizeTimelinePresentationItem(presentation)).toBe(presentation.item);
+    },
+  );
+
   it("localizes expert_activity_superseded without failure semantics", () => {
     expect(localizeTimelinePresentationItem(
       supersededActivityPresentation("zh-CN"),
