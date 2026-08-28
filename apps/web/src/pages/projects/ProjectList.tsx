@@ -32,6 +32,10 @@ type ProjectListProps = {
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  selectionMode?: boolean;
+  selectedProjectIds?: ReadonlySet<string>;
+  selectionDisabled?: boolean;
+  onToggleSelect?: (projectId: string) => void;
 };
 
 type ViewportMetrics = {
@@ -70,6 +74,10 @@ export function ProjectList({
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
+  selectionMode = false,
+  selectedProjectIds,
+  selectionDisabled = false,
+  onToggleSelect,
 }: ProjectListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<ViewportMetrics>(() => ({
@@ -159,9 +167,13 @@ export function ProjectList({
         onTrashProject={onTrashProject}
         onToggleFavorite={onToggleFavorite}
         onRenameProject={onRenameProject}
+        selectionMode={selectionMode}
+        selected={selectedProjectIds?.has(project.projectId) ?? false}
+        selectionDisabled={selectionDisabled}
+        onToggleSelect={onToggleSelect ? () => onToggleSelect(project.projectId) : undefined}
       />
     );
-  }, [columnCount, firstVisibleRow, hasLeading, lastVisibleRow, leading, onOpenProject, onRenameProject, onToggleFavorite, onTrashProject, projects]);
+  }, [columnCount, firstVisibleRow, hasLeading, lastVisibleRow, leading, onOpenProject, onRenameProject, onToggleFavorite, onToggleSelect, onTrashProject, projects, selectedProjectIds, selectionDisabled, selectionMode]);
 
   return (
     <div
@@ -196,6 +208,10 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
+  selectionMode,
+  selected,
+  selectionDisabled,
+  onToggleSelect,
 }: {
   project: ProjectListItem;
   coverPriority: number;
@@ -203,6 +219,10 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  selectionMode: boolean;
+  selected: boolean;
+  selectionDisabled: boolean;
+  onToggleSelect?: () => void;
 }) {
   const trashProject = useCallback(() => onTrashProject(project), [onTrashProject, project]);
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
@@ -222,6 +242,10 @@ const ProjectListCard = memo(function ProjectListCard({
       onTrash={trashProject}
       onToggleFavorite={toggleFavorite}
       onRename={renameProject}
+      selectionMode={selectionMode}
+      selected={selected}
+      selectionDisabled={selectionDisabled}
+      onSelect={onToggleSelect}
     />
   );
 });

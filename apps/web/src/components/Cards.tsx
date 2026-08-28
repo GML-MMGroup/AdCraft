@@ -15,6 +15,10 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash,
   onToggleFavorite,
   onRename,
+  selectionMode = false,
+  selected = false,
+  selectionDisabled = false,
+  onSelect,
   cardRef,
 }: {
   projectId: string;
@@ -28,6 +32,10 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash?: () => void;
   onToggleFavorite?: () => void;
   onRename?: (trigger: HTMLButtonElement) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  selectionDisabled?: boolean;
+  onSelect?: () => void;
   cardRef?: Ref<HTMLElement>;
 }) {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -64,16 +72,37 @@ export const ProjectCard = memo(function ProjectCard({
   }
 
   return (
-    <article ref={cardRef} className="project-card" data-project-id={projectId} data-project-card={name.toLowerCase()}>
-      <button className="project-card-open" type="button" onClick={() => onOpen(projectId)}>
+    <article ref={cardRef} className={`project-card${selectionMode ? " is-selection-mode" : ""}${selected ? " is-selected" : ""}`} data-project-id={projectId} data-project-card={name.toLowerCase()}>
+      <button
+        className="project-card-open"
+        type="button"
+        aria-label={selectionMode ? `${selected ? "Deselect" : "Select"} ${name}` : undefined}
+        aria-pressed={selectionMode ? selected : undefined}
+        disabled={selectionMode && selectionDisabled}
+        onClick={() => {
+          if (selectionMode) onSelect?.();
+          else onOpen(projectId);
+        }}
+      >
         <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} coverPriority={coverPriority} name={name} />
         <div className="card-body">
           <h3>{name}</h3>
           <p>{time}</p>
         </div>
       </button>
+      {selectionMode ? (
+        <input
+          className="project-card-select"
+          type="checkbox"
+          checked={selected}
+          disabled={selectionDisabled}
+          aria-label={`Select ${name}`}
+          onClick={(event) => event.stopPropagation()}
+          onChange={onSelect}
+        />
+      ) : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Menu container only tracks hover/focus state; all actions are native buttons. */}
-      <div className={`project-action-menu ${actionsOpen ? "is-open" : ""}`} onPointerEnter={handleActionMenuEnter} onPointerLeave={handleActionMenuLeave} onBlur={handleActionMenuBlur}>
+      {!selectionMode ? <div className={`project-action-menu ${actionsOpen ? "is-open" : ""}`} onPointerEnter={handleActionMenuEnter} onPointerLeave={handleActionMenuLeave} onBlur={handleActionMenuBlur}>
         <button
           ref={actionTriggerRef}
           className="project-action-trigger"
@@ -118,7 +147,7 @@ export const ProjectCard = memo(function ProjectCard({
             <StarIcon />
           </button>
         </div>
-      </div>
+      </div> : null}
     </article>
   );
 });

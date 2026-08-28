@@ -62,7 +62,8 @@ describe("ProjectsPage project rename", () => {
     const toolbar = document.querySelector(".projects-toolbar");
     expect(toolbar).toBeTruthy();
     expect(document.querySelector(".page-toolbar")).toBeNull();
-    expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(3);
+    expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Select" })).toBeTruthy();
     expect(toolbar?.querySelector(".toolbar-new-project")).toBeNull();
     expect(screen.getByPlaceholderText("Search projects").classList.contains("is-active")).toBe(true);
 

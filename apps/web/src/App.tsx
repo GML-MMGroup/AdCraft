@@ -44,7 +44,7 @@ function AppRoutes() {
         <Route element={<WorkspaceRoute />}>
           <Route path="/projects" element={<ProjectsPage navigate={navigateRoute} />} />
           <Route path="/workflow" element={<WorkflowPage />} />
-          <Route path="/trash" element={<TrashPage />} />
+          <Route path="/trash" element={<TrashPage navigate={navigateRoute} />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
