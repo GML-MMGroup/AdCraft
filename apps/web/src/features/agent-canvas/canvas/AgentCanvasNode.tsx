@@ -103,7 +103,7 @@ function MediaSurface({
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
   label: string;
 }) {
-  const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
+  const mediaUrl = asset?.preview_url ?? asset?.media_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
   if (node.node_type === "video" && videoUrl && asset) {
     return (
@@ -115,7 +115,7 @@ function MediaSurface({
           aria-label={asset.display_name || "Video output"}
           muted
           playsInline
-          preload="metadata"
+          preload="none"
         />
         {onOpenVideoPreview ? (
           <button
@@ -147,7 +147,7 @@ function MediaSurface({
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
       draggable={false}
-      loading="eager"
+      loading="lazy"
       decoding="async"
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;

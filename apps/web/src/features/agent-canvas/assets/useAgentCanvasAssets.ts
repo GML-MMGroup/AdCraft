@@ -26,6 +26,8 @@ export interface UseAgentCanvasAssetsOptions {
   category?: string | null;
   mediaType?: AgentAssetMediaFilter;
   search?: string;
+  /** Load remote project assets only when the owning UI exposes the picker. */
+  enabled?: boolean;
 }
 
 export interface UseAgentCanvasAssetsResult {
@@ -145,13 +147,17 @@ export function useAgentCanvasAssets({
   category = null,
   mediaType = "all",
   search = "",
+  enabled = true,
 }: UseAgentCanvasAssetsOptions): UseAgentCanvasAssetsResult {
   const [allItems, setAllItems] = useState<AgentAssetBrowserItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const queryKey = `${scope}:${workflowId ?? ""}:${category ?? ""}`;
   const requestIdRef = useRef(0);
+  const activeQueryRef = useRef(queryKey);
+  const loadedQueryRef = useRef<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
@@ -172,7 +178,10 @@ export function useAgentCanvasAssets({
           return normalized ? [normalized] : [];
         });
       }
-      if (requestId === requestIdRef.current) setAllItems(nextItems);
+      if (requestId === requestIdRef.current) {
+        setAllItems(nextItems);
+        loadedQueryRef.current = queryKey;
+      }
     } catch (loadError) {
       if (requestId === requestIdRef.current) {
         setAllItems([]);
@@ -181,14 +190,25 @@ export function useAgentCanvasAssets({
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [category, scope, workflowId]);
+  }, [category, queryKey, scope, workflowId]);
 
   useEffect(() => {
+    if (activeQueryRef.current !== queryKey) {
+      activeQueryRef.current = queryKey;
+      loadedQueryRef.current = null;
+      setAllItems([]);
+    }
+    if (!enabled) {
+      requestIdRef.current += 1;
+      setLoading(false);
+      return undefined;
+    }
+    if (loadedQueryRef.current === queryKey) return undefined;
     void load();
     return () => {
       requestIdRef.current += 1;
     };
-  }, [load]);
+  }, [enabled, load, queryKey]);
 
   const uploadFilesWithReceipts = useCallback(async (
     files: Iterable<File>,

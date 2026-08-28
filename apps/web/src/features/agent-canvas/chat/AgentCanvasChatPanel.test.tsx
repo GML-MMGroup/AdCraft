@@ -18,6 +18,7 @@ import {
   AgentCanvasChatPanel,
   AgentWorkingRow,
   PresentationStreamRow,
+  TimelineHydrationSkeleton,
   CapabilityActivityRow,
   CommandPlanCard,
   GuidanceSessionProgress,
@@ -106,6 +107,17 @@ describe("PresentationStreamRow", () => {
     expect(screen.getByRole("status", { name: "AdCraft Video Agent is generating a response" })).toBeTruthy();
     expect(screen.getByText("The next production step is ready.")).toBeTruthy();
     expect(screen.getByText("Generating response")).toBeTruthy();
+  });
+});
+
+describe("TimelineHydrationSkeleton", () => {
+  afterEach(() => cleanup());
+
+  it("keeps pointer-backed decisions visible while their details load", () => {
+    render(<TimelineHydrationSkeleton itemType="proposal" />);
+
+    expect(screen.getByRole("status", { name: "Loading proposal" })).toBeTruthy();
+    expect(screen.getByText("Loading proposal…")).toBeTruthy();
   });
 });
 
@@ -1281,7 +1293,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     const panelRule = css.match(/^\.agent-chat\s*\{([\s\S]*?)\n\}/m)?.[1];
     const userMessageContainerRule = css.match(/\.agent-chat__message--user\s*\{([\s\S]*?)\n\}/m)?.[1];
     const agentMessageRule = css.match(/\.agent-chat__message--agent\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
-    const userMessageRule = css.match(/\.agent-chat__message--user\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const userMessageBodyRule = css.match(/\.agent-chat__message--user \.agent-chat__message-body\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(panelRule).toContain("top: 0");
     expect(panelRule).toContain("right: 0");
@@ -1303,7 +1315,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(userMessageContainerRule).toContain("max-width: min(86%, 520px)");
     expect(agentMessageRule).toContain("padding: 0");
     expect(agentMessageRule).toContain("background: transparent");
-    expect(userMessageRule).toContain("background: var(--agent-chat-raised)");
+    expect(userMessageBodyRule).toContain("background: var(--agent-chat-raised)");
     expect(css).toContain(".agent-chat__resize-handle");
     expect(css).toContain("cursor: ew-resize");
   });
@@ -1328,20 +1340,20 @@ describe("AgentCanvasChatPanel Style integration", () => {
   it("styles View on canvas as a white physical action button", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
-    const canvasActionRule = css.match(/\.agent-chat__node-links--result\s*>\s*button\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const canvasActionRule = css.match(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(canvasActionRule).toContain("background: #fff");
     expect(canvasActionRule).toContain("color: black");
     expect(canvasActionRule).toContain("font-family: inherit");
-    expect(canvasActionRule).toContain("padding: 0.6em 1.3em");
+    expect(canvasActionRule).toContain("padding: 0.35em 0.8em");
     expect(canvasActionRule).toContain("font-weight: 900");
-    expect(canvasActionRule).toContain("font-size: 18px");
-    expect(canvasActionRule).toContain("border: 3px solid black");
-    expect(canvasActionRule).toContain("box-shadow: 0.1em 0.1em;");
+    expect(canvasActionRule).toContain("font-size: 10px");
+    expect(canvasActionRule).toContain("border: 1px solid black");
+    expect(canvasActionRule).toContain("box-shadow: 0.18em 0.18em;");
     expect(canvasActionRule).toContain("cursor: pointer");
-    expect(css).toMatch(/\.agent-chat__node-links--result\s*>\s*button:hover\s*\{[\s\S]*?transform: translate\(-0\.05em, -0\.05em\);[\s\S]*?box-shadow: 0\.15em 0\.15em;/m);
-    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button\s*\{[\s\S]*?transition: none;/m);
-    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button:active:not\(:disabled\):not\(\[aria-disabled="true"\]\)\s*\{[\s\S]*?transform: translate\(0\.05em, 0\.05em\);[\s\S]*?box-shadow: 0\.05em 0\.05em;/m);
+    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button:hover\s*\{[\s\S]*?transform: translate\(-0\.05em, -0\.05em\);[\s\S]*?box-shadow: 0\.24em 0\.24em;/m);
+    expect(canvasActionRule).toContain("transition: none");
+    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button:active:not\(:disabled\):not\(\[aria-disabled="true"\]\)\s*\{[\s\S]*?transform: translate\(0\.05em, 0\.05em\);[\s\S]*?box-shadow: 0\.1em 0\.1em;/m);
   });
 
   it("styles Stage Threads as quiet monochrome timeline sections", () => {

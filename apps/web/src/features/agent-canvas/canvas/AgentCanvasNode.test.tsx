@@ -478,6 +478,7 @@ describe("AgentCanvasNodeCard", () => {
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
+    expect(document.querySelector("audio")?.getAttribute("preload")).toBe("none");
     expect(screen.queryByText("Draft")).toBeNull();
     expect(screen.getByLabelText("General Audio node type")).toBeTruthy();
   });
@@ -687,7 +688,7 @@ describe("AgentCanvasNodeCard", () => {
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,
     );
     const image = screen.getByRole("img", { name: "image output" });
-    expect(image.getAttribute("loading")).toBe("eager");
+    expect(image.getAttribute("loading")).toBe("lazy");
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(image.classList.contains("agent-canvas-node__media--contain")).toBe(true);
     expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(false);
@@ -697,6 +698,7 @@ describe("AgentCanvasNodeCard", () => {
     const video = screen.getByLabelText("video output");
     expect(video.tagName).toBe("VIDEO");
     expect(video.getAttribute("src")).toBe("/media/video-output");
+    expect(video.getAttribute("preload")).toBe("none");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
   });
@@ -882,7 +884,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
+    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.preview_url);
     expect(screen.getByLabelText("General Image node type")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });

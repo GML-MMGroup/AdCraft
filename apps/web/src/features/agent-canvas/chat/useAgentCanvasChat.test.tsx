@@ -959,6 +959,69 @@ describe("useAgentCanvasChat", () => {
     }]);
   });
 
+  it("shows Timeline before proposal hydration and loads Creative Session in parallel", async () => {
+    let resolveProposal!: (value: ConceptProposalV2) => void;
+    let resolveSession!: (value: GuidedSessionStateV2) => void;
+    api.agentCanvasProposal.mockImplementation(() => new Promise((resolve) => {
+      resolveProposal = resolve;
+    }));
+    api.agentCanvasCreativeSession.mockImplementation(() => new Promise((resolve) => {
+      resolveSession = resolve;
+    }));
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [
+        {
+          item_type: "message",
+          message_id: "message-first-paint",
+          conversation_id: "conversation-1",
+          speaker: "adcraft_video_agent",
+          text: "The creative plan is being prepared.",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          sequence: 1,
+          created_at: "2026-08-27T10:00:00Z",
+        },
+        {
+          item_type: "proposal_pointer",
+          proposal_id: "proposal-late-hydration",
+          sequence: 2,
+          created_at: "2026-08-27T10:00:01Z",
+        },
+      ],
+      next_cursor: 2,
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(api.agentCanvasCreativeSession).toHaveBeenCalledOnce();
+    expect(result.current.state.loading).toBe(false);
+    expect(result.current.state.items).toMatchObject([
+      { item_type: "message", message_id: "message-first-paint" },
+      { item_type: "proposal_pointer", proposal_id: "proposal-late-hydration" },
+    ]);
+
+    resolveProposal({ proposal_id: "proposal-late-hydration" } as ConceptProposalV2);
+    resolveSession(guidedSession(5, 9));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.items).toMatchObject([
+      { item_type: "message", message_id: "message-first-paint" },
+      { item_type: "proposal", proposal: { proposal_id: "proposal-late-hydration" } },
+    ]);
+    expect(result.current.state.guidanceSession).toMatchObject({ revision: 9 });
+  });
+
   it("refreshes Timeline, Session, Graph, and Runtime in order after a typed submit", async () => {
     const order: string[] = [];
     api.agentCanvasChatTimeline.mockImplementation(async () => {
@@ -1039,7 +1102,9 @@ describe("useAgentCanvasChat", () => {
       });
     });
 
-    expect(order).toEqual(["submit", "timeline", "session", "graph", "runtime"]);
+    expect(order[0]).toBe("submit");
+    expect(new Set(order.slice(1, 3))).toEqual(new Set(["timeline", "session"]));
+    expect(order.slice(3)).toEqual(["graph", "runtime"]);
     expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
   });
 

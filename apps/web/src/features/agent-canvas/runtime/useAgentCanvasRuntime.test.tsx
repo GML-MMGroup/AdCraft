@@ -235,6 +235,25 @@ describe("useAgentCanvasRuntime", () => {
     expect(result.current.state.chatEvents).toEqual([]);
   });
 
+  it("reuses the baseline runtime after replay instead of fetching it again", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+
+    renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
+  });
+
   it("retains a sanitized provider input audit without creating client-side graph state", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

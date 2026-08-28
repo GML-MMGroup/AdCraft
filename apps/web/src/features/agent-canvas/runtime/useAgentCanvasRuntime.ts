@@ -343,7 +343,6 @@ export function useAgentCanvasRuntime(
           cursorRef.current = Math.max(cursorRef.current, replay.next_cursor);
           if (replay.events.length < 200 || cursorRef.current <= before) break;
         }
-        await refreshRuntime();
         if (cancelled) return;
         eventSource = agentCanvasApi.openAgentCanvasEventStream(workflowId, cursorRef.current);
         eventSource.onmessage = handleMessage;

@@ -152,6 +152,29 @@ describe("useAgentCanvasAssets", () => {
     expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
   });
 
+  it("defers project asset loading until the caller enables the browser", async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAgentCanvasAssets({
+        workflowId: "workflow-1",
+        scope: "project",
+        mediaType: "image",
+        enabled,
+      }),
+      { initialProps: { enabled: false } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledOnce());
+
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledOnce();
+  });
+
   it("uploads multipart file metadata, refreshes project assets, and never persists file data", async () => {
     const uploaded = projectAsset("uploaded-video", "video");
     fixture.uploadAgentCanvasAsset.mockResolvedValue({

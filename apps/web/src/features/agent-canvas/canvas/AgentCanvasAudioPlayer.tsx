@@ -75,7 +75,7 @@ export function AgentCanvasAudioPlayer({
       className={`agent-canvas-audio-player agent-canvas-audio-player--${status}`}
       aria-label="Audio player"
     >
-      <audio ref={playback.audioRef} src={src ?? undefined} preload="metadata" />
+      <audio ref={playback.audioRef} src={src ?? undefined} preload="none" />
 
       <div
         className="agent-canvas-audio-player__title"

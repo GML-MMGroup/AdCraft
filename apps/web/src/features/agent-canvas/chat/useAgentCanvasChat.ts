@@ -81,6 +81,21 @@ type GuidanceAdvanceAttemptOptions = {
   allowAuthorityReplay?: boolean;
 };
 
+type HydratableTimelinePointer = Extract<
+  ChatTimelineItemV2,
+  { item_type: "proposal_pointer" | "decision_bundle_pointer" }
+>;
+
+function matchesTimelinePointer(
+  item: ChatTimelineItemV2,
+  pointer: HydratableTimelinePointer,
+): boolean {
+  if (pointer.item_type === "proposal_pointer") {
+    return item.item_type === "proposal_pointer" && item.proposal_id === pointer.proposal_id;
+  }
+  return item.item_type === "decision_bundle_pointer" && item.bundle_id === pointer.bundle_id;
+}
+
 const PROPOSAL_ACTION_ERROR_CODES = new Set([
   "proposal_reference_unavailable",
   "proposal_snapshot_unavailable",
@@ -392,11 +407,89 @@ export function useAgentCanvasChat({
     });
   }, [applyTurnProjection, workflowId]);
 
+  const hydrateTimelineItem = useCallback((item: ChatTimelineItemV2): Promise<ChatTimelineItemV2> => {
+    if (!workflowId) return Promise.resolve(item);
+    if (item.item_type === "proposal_pointer") {
+      const cached = proposalPointerHydrationsRef.current.get(item.proposal_id);
+      const hydration = cached ?? agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
+      if (!cached) {
+        proposalPointerHydrationsRef.current.set(item.proposal_id, hydration);
+        void hydration.catch(() => {
+          if (proposalPointerHydrationsRef.current.get(item.proposal_id) === hydration) {
+            proposalPointerHydrationsRef.current.delete(item.proposal_id);
+          }
+        });
+      }
+      return hydration.then((proposal) => ({
+        item_type: "proposal" as const,
+        proposal,
+        sequence: item.sequence,
+        created_at: item.created_at,
+      }));
+    }
+    if (item.item_type === "decision_bundle_pointer") {
+      const cached = decisionBundlePointerHydrationsRef.current.get(item.bundle_id);
+      const hydration = cached ?? agentCanvasApi.agentCanvasDecisionBundle(workflowId, item.bundle_id);
+      if (!cached) {
+        decisionBundlePointerHydrationsRef.current.set(item.bundle_id, hydration);
+        void hydration.catch(() => {
+          if (decisionBundlePointerHydrationsRef.current.get(item.bundle_id) === hydration) {
+            decisionBundlePointerHydrationsRef.current.delete(item.bundle_id);
+          }
+        });
+      }
+      return hydration.then((decisionBundle) => ({
+        item_type: "decision_bundle" as const,
+        decision_bundle: decisionBundle,
+        sequence: item.sequence,
+        created_at: item.created_at,
+      }));
+    }
+    return Promise.resolve(item);
+  }, [workflowId]);
+
+  const hydrateTimelineItems = useCallback((
+    items: ChatTimelineItemV2[],
+    generation: number,
+    usingPresentationProjection: boolean,
+  ) => {
+    const pointers = items.filter((item): item is HydratableTimelinePointer => (
+      item.item_type === "proposal_pointer" || item.item_type === "decision_bundle_pointer"
+    ));
+    pointers.forEach((pointer) => {
+      void hydrateTimelineItem(pointer).then((hydrated) => {
+        if (generation !== refreshGenerationRef.current) return;
+        if (usingPresentationProjection) {
+          const nextPresentationItems = new Map(presentationItemsByKeyRef.current);
+          let changed = false;
+          nextPresentationItems.forEach((presentation, key) => {
+            if (!matchesTimelinePointer(presentation.item, pointer)) return;
+            nextPresentationItems.set(key, { ...presentation, item: hydrated });
+            changed = true;
+          });
+          if (changed) {
+            presentationItemsByKeyRef.current = nextPresentationItems;
+            setPersistedItems(visibleTimelinePresentationItems(nextPresentationItems));
+          }
+          return;
+        }
+        setPersistedItems((current) => current.map((existing) => {
+          return matchesTimelinePointer(existing, pointer) ? hydrated : existing;
+        }));
+      }).catch((hydrationError) => {
+        if (generation !== refreshGenerationRef.current) return;
+        setTimelineRecovery(conversationRecoveryFromError("timeline", hydrationError));
+      });
+    });
+  }, [hydrateTimelineItem]);
+
   const refresh = useCallback(async () => {
     if (!workflowId) return;
     const generation = refreshGenerationRef.current + 1;
     refreshGenerationRef.current = generation;
     setLoading(true);
+    const creativeSessionPromise = agentCanvasApi.agentCanvasCreativeSession(workflowId)
+      .catch(() => null);
     try {
       const rawItems: ChatTimelineItemV2[] = [];
       let presentationItems = new Map(presentationItemsByKeyRef.current);
@@ -414,74 +507,17 @@ export function useAgentCanvasChat({
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });
-        const hydrateTimelineItem = async (item: ChatTimelineItemV2): Promise<ChatTimelineItemV2> => {
-          if (item.item_type === "proposal_pointer") {
-            const cached = proposalPointerHydrationsRef.current.get(item.proposal_id);
-            const hydration = cached
-              ?? agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
-            if (!cached) {
-              proposalPointerHydrationsRef.current.set(item.proposal_id, hydration);
-              void hydration.catch(() => {
-                if (proposalPointerHydrationsRef.current.get(item.proposal_id) === hydration) {
-                  proposalPointerHydrationsRef.current.delete(item.proposal_id);
-                }
-              });
-            }
-            const proposal = await hydration;
-            return {
-              item_type: "proposal" as const,
-              proposal,
-              sequence: item.sequence,
-              created_at: item.created_at,
-            };
-          }
-          if (item.item_type === "decision_bundle_pointer") {
-            const cached = decisionBundlePointerHydrationsRef.current.get(item.bundle_id);
-            const hydration = cached
-              ?? agentCanvasApi.agentCanvasDecisionBundle(workflowId, item.bundle_id);
-            if (!cached) {
-              decisionBundlePointerHydrationsRef.current.set(item.bundle_id, hydration);
-              void hydration.catch(() => {
-                if (decisionBundlePointerHydrationsRef.current.get(item.bundle_id) === hydration) {
-                  decisionBundlePointerHydrationsRef.current.delete(item.bundle_id);
-                }
-              });
-            }
-            const decisionBundle = await hydration;
-            return {
-              item_type: "decision_bundle" as const,
-              decision_bundle: decisionBundle,
-              sequence: item.sequence,
-              created_at: item.created_at,
-            };
-          }
-          return item;
-        };
         if (timeline.presentationItems !== null) {
           usingPresentationProjection = true;
-          const hydratedPresentationItems = await Promise.all(
-            timeline.presentationItems.map(async (presentation) => ({
-              ...presentation,
-              item: await hydrateTimelineItem(presentation.item),
-            })),
-          );
           presentationItems = mergeTimelinePresentationItems(
             presentationItems,
-            hydratedPresentationItems,
+            timeline.presentationItems,
           );
         } else {
-          rawItems.push(...await Promise.all(timeline.items.map(hydrateTimelineItem)));
+          rawItems.push(...timeline.items);
         }
         if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
         cursor = timeline.next_cursor;
-      }
-      try {
-        nextGuidanceSession = mergeGuidedSessionState(
-          nextGuidanceSession,
-          await agentCanvasApi.agentCanvasCreativeSession(workflowId),
-        );
-      } catch {
-        // The timeline remains a compatible read model while a direct session read is unavailable.
       }
       if (generation !== refreshGenerationRef.current) return;
       setGuidanceSession((current) => mergeGuidedSessionState(current, nextGuidanceSession));
@@ -497,6 +533,7 @@ export function useAgentCanvasChat({
         presentationItemsByKeyRef.current.clear();
       }
       setPersistedItems(items);
+      hydrateTimelineItems(items, generation, usingPresentationProjection);
       hydrateCapabilityTurns(items, generation);
       items.forEach((item) => {
         if (item.item_type !== "action_receipt") return;
@@ -534,13 +571,17 @@ export function useAgentCanvasChat({
         || !persistedMessageIds.has(item.message_id)
       )));
       setTimelineRecovery(null);
+      void creativeSessionPromise.then((session) => {
+        if (generation !== refreshGenerationRef.current || !session) return;
+        setGuidanceSession((current) => mergeGuidedSessionState(current, session));
+      });
     } catch (refreshError) {
       if (generation !== refreshGenerationRef.current) return;
       setTimelineRecovery(conversationRecoveryFromError("timeline", refreshError));
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
     }
-  }, [hydrateCapabilityTurns, onActionReceipt, workflowId]);
+  }, [hydrateCapabilityTurns, hydrateTimelineItems, onActionReceipt, workflowId]);
 
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,

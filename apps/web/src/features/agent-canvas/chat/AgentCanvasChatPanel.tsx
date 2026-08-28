@@ -99,6 +99,22 @@ type TimelineRenderOptions = {
   compactCapability?: boolean;
 };
 
+export function TimelineHydrationSkeleton({
+  itemType,
+}: {
+  itemType: "proposal" | "decision_bundle";
+}) {
+  const label = itemType === "proposal" ? "proposal" : "decision bundle";
+  return (
+    <div className="agent-chat__timeline-hydration" role="status" aria-label={`Loading ${label}`}>
+      <span className="agent-chat__timeline-hydration-kicker">{itemType === "proposal" ? "Decision" : "Guidance"}</span>
+      <span className="agent-chat__timeline-hydration-line agent-chat__timeline-hydration-line--wide" />
+      <span className="agent-chat__timeline-hydration-line" />
+      <small>Loading {label}…</small>
+    </div>
+  );
+}
+
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 export { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 
@@ -165,12 +181,20 @@ export function AgentCanvasChatPanel({
   const revealFrameRef = useRef<number | null>(null);
   const revealHighlightTimerRef = useRef<number | null>(null);
   const handledRevealRequestRef = useRef<number | null>(null);
-  const composerContext = useComposerContext({ workflow, onWorkflowRefresh });
+  const composerContext = useComposerContext({
+    workflow,
+    onWorkflowRefresh,
+    assetsEnabled: mentionOpen,
+  });
   const imageAssets = composerContext.availableImageAssets;
 
   useEffect(() => {
     setSelectedSkillTitle(workflow.active_style_skill?.title ?? null);
-  }, [workflow.active_style_skill?.skill_run_id, workflow.workflow_id]);
+  }, [
+    workflow.active_style_skill?.skill_run_id,
+    workflow.active_style_skill?.title,
+    workflow.workflow_id,
+  ]);
   useEffect(() => {
     setPendingContextFiles([]);
   }, [workflow.workflow_id]);
@@ -560,7 +584,12 @@ export function AgentCanvasChatPanel({
         />
       );
     }
-    if (item.item_type === "proposal_pointer" || item.item_type === "decision_bundle_pointer") return null;
+    if (item.item_type === "proposal_pointer") {
+      return <TimelineHydrationSkeleton itemType="proposal" />;
+    }
+    if (item.item_type === "decision_bundle_pointer") {
+      return <TimelineHydrationSkeleton itemType="decision_bundle" />;
+    }
     if (item.item_type === "decision_bundle") {
       return (
         <DecisionBundleCard

@@ -49,14 +49,17 @@ interface ComposerUploadOptions {
 export function useComposerContext({
   workflow,
   onWorkflowRefresh,
+  assetsEnabled = false,
 }: {
   workflow: AgentCanvasWorkflowV2;
   onWorkflowRefresh?: () => Promise<void> | void;
+  assetsEnabled?: boolean;
 }) {
   const projectAssets = useAgentCanvasAssets({
     workflowId: workflow.workflow_id,
     scope: "project",
     mediaType: "image",
+    enabled: assetsEnabled,
   });
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
