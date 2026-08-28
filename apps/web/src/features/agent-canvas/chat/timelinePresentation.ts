@@ -26,7 +26,7 @@ const EN_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   },
   "planning_progress.next_action": () => "Planning the next creative action.",
   "expert_activity.working": (args) => capabilityLabel(args, "is working."),
-  "expert_activity.completed": (args) => capabilityLabel(args, "finished."),
+  "expert_activity.completed": () => null,
   "expert_activity.failed": (args) => capabilityLabel(args, "failed."),
   "expert_activity.superseded": (args) => capabilityLabel(args, "was superseded by later progress."),
   "draft.materialized": (args) => {
@@ -45,7 +45,7 @@ const ZH_MESSAGES: Record<PresentationMessageKey, PresentationTemplate> = {
   },
   "planning_progress.next_action": () => "正在规划下一项创作操作。",
   "expert_activity.working": (args) => capabilityLabel(args, "正在工作。"),
-  "expert_activity.completed": (args) => capabilityLabel(args, "已完成。"),
+  "expert_activity.completed": () => null,
   "expert_activity.failed": (args) => capabilityLabel(args, "失败。"),
   "expert_activity.superseded": (args) => capabilityLabel(args, "任务已被后续进度取代。"),
   "draft.materialized": (args) => {
