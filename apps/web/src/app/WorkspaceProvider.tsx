@@ -243,11 +243,11 @@ export function WorkspaceProvider({
     return request;
   }, [invalidateWorkspaceRestoreRequests, refreshProjects, workflow?.workflow_id]);
 
-  const openProject = useCallback(async (projectId: string) => {
+  const openProject = useCallback(async (projectId: string, workflowId?: string) => {
     const requestGeneration = invalidateWorkspaceRestoreRequests();
     const { v2Api } = await import("../api/v2Client");
-    const project = await v2Api.projectWithEtag(projectId);
-    const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+    const project = workflowId ? null : await v2Api.projectWithEtag(projectId);
+    const response = await v2Api.agentCanvasWorkflowWithEtag(workflowId ?? project!.value.workflow_id);
     if (requestGeneration !== workspaceSessionGenerationRef.current) return false;
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
     const nextWorkflow = response.value;

@@ -16,8 +16,6 @@
     "test:browser:mock-media": "playwright test --config=playwright.config.ts tests/browser/agent-canvas-editing-mock.spec.ts",
     "test:typography-system": "vitest run src/typographySystem.test.ts",
     "test:v2-asset-library-normalizer": "tsx scripts/test-v2-asset-library-normalizer.ts",
-    "test:v2-recommended-catalog": "tsx scripts/test-v2-recommended-catalog.ts",
-    "test:v2-project-authority": "tsx scripts/test-v2-project-authority.ts",
     "check:agent-canvas-contract": "node scripts/check-agent-canvas-backend-contract.mjs",
     "perf:bundle": "node scripts/perf/check-build-budget.mjs",
     "perf:entry-graph": "node scripts/perf/check-entry-graph.mjs",

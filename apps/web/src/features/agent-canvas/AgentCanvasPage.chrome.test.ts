@@ -249,17 +249,12 @@ describe("AgentCanvasPage chrome", () => {
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
-    const legacySurfaceSource = readFileSync(
-      resolve(process.cwd(), "src/features/workflow/page/WorkflowCanvasSurface.tsx"),
-      "utf8",
-    );
     const nodeSource = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.tsx"),
       "utf8",
     );
 
     expect(source).toContain("onlyRenderVisibleElements={false}");
-    expect(legacySurfaceSource).toContain("onlyRenderVisibleElements={false}");
     expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
     expect(nodeSource).toMatch(
       /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,

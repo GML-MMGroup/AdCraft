@@ -38,7 +38,7 @@ export interface AppContextValue {
   setAgentCanvasWorkflow: Dispatch<SetStateAction<AgentCanvasWorkflowV2 | null>>;
   saveProject: (state?: ProjectSessionState) => SavedWorkflowProject | null;
   startNewProject: () => Promise<boolean>;
-  openProject: (projectId: string) => Promise<boolean>;
+  openProject: (projectId: string, workflowId?: string) => Promise<boolean>;
   moveProjectToTrash: (projectId: string) => Promise<boolean>;
   restoreTrashedProject: (projectId: string) => Promise<boolean>;
   renameProject: (projectId: string, name: string) => Promise<boolean>;

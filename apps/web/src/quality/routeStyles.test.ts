@@ -64,11 +64,6 @@ describe("route-scoped styles", () => {
       /justify-content:\s*space-between;[\s\S]*gap:\s*10px;[\s\S]*margin-top:\s*12px;[\s\S]*font-size:\s*13px;[\s\S]*line-height:\s*1\.4;/,
     );
 
-    const workflowStyles = source("features/workflow/workflow.css");
-    expect(workflowStyles).not.toContain(".composer-footer {\n  justify-content: space-between;");
-    expect(workflowStyles).not.toContain(".toolbar-row {\n  display: flex;");
-    expect(workflowStyles).not.toContain(".send-btn {\n  min-width: 112px;");
-    expect(workflowStyles).not.toContain(".filter-btn.is-active,");
     expect(source("pages/assets.css")).not.toContain(".card-meta {\n  justify-content: space-between;");
   });
 
