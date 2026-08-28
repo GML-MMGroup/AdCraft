@@ -59,6 +59,7 @@ class ChatTurnAcceptedV2(_ConversationModel):
     retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     retry_attempt_no: int = Field(default=1, ge=1)
     replayed: bool = False
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
 
 
 class ChatTurnRetryRequestV1(_ConversationModel):

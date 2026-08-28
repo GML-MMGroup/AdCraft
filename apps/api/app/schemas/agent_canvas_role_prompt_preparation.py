@@ -161,6 +161,7 @@ class RolePromptPreparationRequestV2(_RolePromptModel):
 class NodePromptPreparationV2(_RolePromptModel):
     status: Literal["queued", "working", "ready", "failed", "superseded"]
     operation_id: str = Field(min_length=1, max_length=160)
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
     attempt_no: int = Field(ge=0)
     role_variant: RolePromptVariantV2
     recipe_id: str = Field(min_length=1, max_length=160)

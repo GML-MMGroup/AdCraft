@@ -100,6 +100,7 @@ from app.schemas.agent_operation_contexts import (
 from app.schemas.agent_runtime import (
     AgentActionEnvelopeV2,
     AgentCommandPlanDraftV2,
+    AgentPresentationDeltaV1,
     AgentRunRequest,
     AgentRunCompletedPayload,
 )
@@ -426,12 +427,14 @@ class PiVideoAgentGateway:
         model_resolution: ModelResolutionService,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
         on_provider_waiting: Callable[..., object] | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> None:
         self._durable_runner = durable_runner
         self._timeout_seconds = timeout_seconds
         self._model_resolution = model_resolution
         self._operation_policies = operation_policies or AgentOperationPolicyRegistryV2()
         self._on_provider_waiting = on_provider_waiting
+        self._on_presentation = on_presentation
         self._operation_registry = VideoAgentOperationRegistry()
         self._request_factory = AgentRunRequestFactory(
             policy_registry=self._operation_policies,
@@ -749,6 +752,8 @@ class PiVideoAgentGateway:
                 **({"style_skill_lineage": style_lineage} if style_lineage is not None else {}),
             },
         )
+        if operation in {"decide_turn_intent", "decide_next_action", "author_decision_bundle"}:
+            request = request.model_copy(update={"presentation_channel": "assistant"})
         if operation == "decide_turn_intent":
             schema_bytes = len(
                 json.dumps(
@@ -798,6 +803,7 @@ class PiVideoAgentGateway:
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
             on_dispatch_owned=on_dispatch_owned,
+            on_presentation=self._on_presentation,
         )
         return _completed_structured_run(result, model_ref=resolution.model_ref)
 

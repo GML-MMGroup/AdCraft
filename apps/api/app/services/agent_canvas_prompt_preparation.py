@@ -36,10 +36,18 @@ from app.services.agent_canvas_role_prompt_context import (
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.services.agent_trace import V2AgentTraceWriter
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
+
+
+def _prompt_stream_id(workflow_id: str, node_id: str, operation_id: str) -> str:
+    """Derive a stable opaque identity for one prompt generation."""
+
+    digest = sha256(f"prompt:{workflow_id}:{node_id}:{operation_id}".encode("utf-8")).hexdigest()
+    return f"prs_{digest[:32]}"
 
 
 class NodePromptPreparationService:
@@ -51,10 +59,12 @@ class NodePromptPreparationService:
         *,
         role_brief_author: RoleBriefAuthor | None = None,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
+        presentation_publisher: PresentationStreamPublisher | None = None,
     ) -> None:
         self._workflows = workflows
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
+        self._presentation_publisher = presentation_publisher
         self._projector = RolePromptContextProjector()
         self._recipes = RolePromptRecipeRegistry()
         self._parameter_resolver = RolePromptParameterResolver()
@@ -78,11 +88,26 @@ class NodePromptPreparationService:
         ):
             return current
         snapshot_digest = context_digest(context)
+        presentation_stream = None
+        if self._presentation_publisher is not None:
+            presentation_stream = self._presentation_publisher.create_prompt_stream(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                node_revision=current.revision,
+                generation_id=operation_id,
+                stream_id=_prompt_stream_id(workflow_id, node_id, operation_id),
+                idempotency_key=f"prompt:{workflow_id}:{node_id}:{operation_id}",
+            )
+            if presentation_stream is not None:
+                self._presentation_publisher.started(presentation_stream)
         working = self._transition(
             current,
             NodePromptPreparationV1(
                 status="working",
                 operation_id=operation_id,
+                presentation_stream_id=(
+                    presentation_stream.stream_id if presentation_stream is not None else None
+                ),
                 attempt_no=current.prompt_preparation.attempt_no + 1,
                 context_snapshot_id=snapshot_digest,
                 occurrence_id=(
@@ -194,6 +219,11 @@ class NodePromptPreparationService:
                     "prompt_preparation": NodePromptPreparationV1(
                         status="ready",
                         operation_id=operation_id,
+                        presentation_stream_id=(
+                            presentation_stream.stream_id
+                            if presentation_stream is not None
+                            else None
+                        ),
                         attempt_no=working.prompt_preparation.attempt_no,
                         context_snapshot_id=snapshot_digest,
                         prompt_digest=digest,
@@ -225,6 +255,13 @@ class NodePromptPreparationService:
                 started_at=started_at,
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
+            if presentation_stream is not None and self._presentation_publisher is not None:
+                self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                self._presentation_publisher.commit(
+                    presentation_stream,
+                    authoritative_id=f"{node_id}:{persisted.revision}",
+                    content=prompt,
+                )
             return persisted
         except Exception as error:
             error_code = (
@@ -242,6 +279,11 @@ class NodePromptPreparationService:
                     "prompt_preparation": NodePromptPreparationV1(
                         status="failed",
                         operation_id=operation_id,
+                        presentation_stream_id=(
+                            presentation_stream.stream_id
+                            if presentation_stream is not None
+                            else None
+                        ),
                         attempt_no=working.prompt_preparation.attempt_no,
                         context_snapshot_id=snapshot_digest,
                         occurrence_id=working.prompt_preparation.occurrence_id,
@@ -283,6 +325,8 @@ class NodePromptPreparationService:
                 started_at=started_at,
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
+            if presentation_stream is not None and self._presentation_publisher is not None:
+                self._presentation_publisher.fail(presentation_stream, error_code)
             raise error
 
     def invalidate_for_dependency_change(
@@ -303,6 +347,16 @@ class NodePromptPreparationService:
             )
         if current.prompt_preparation.status != "ready":
             return current
+        if (
+            self._presentation_publisher is not None
+            and current.prompt_preparation.presentation_stream_id is not None
+        ):
+            stream = self._presentation_publisher.get(
+                workflow_id,
+                current.prompt_preparation.presentation_stream_id,
+            )
+            if stream is not None:
+                self._presentation_publisher.supersede(stream)
         return self._transition(
             current,
             current.prompt_preparation.model_copy(

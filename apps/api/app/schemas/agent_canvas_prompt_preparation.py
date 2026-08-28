@@ -31,6 +31,7 @@ class NodePromptPreparationV1(BaseModel):
 
     status: Literal["queued", "working", "ready", "failed", "superseded", "not_applicable"]
     operation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
     attempt_no: int = Field(ge=0)
     context_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -62,6 +63,7 @@ class NodePromptPreparationV1(BaseModel):
                 value is not None
                 for value in (
                     self.operation_id,
+                    self.presentation_stream_id,
                     self.context_snapshot_id,
                     self.prompt_digest,
                     self.role_variant,

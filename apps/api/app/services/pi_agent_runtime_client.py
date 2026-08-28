@@ -9,7 +9,12 @@ from typing import Any, Callable
 import httpx
 from pydantic import ValidationError
 
-from app.schemas.agent_runtime import AgentRunRequest, AgentRuntimeEvent, AgentRuntimeHealth
+from app.schemas.agent_runtime import (
+    AgentPresentationDeltaV1,
+    AgentRunRequest,
+    AgentRuntimeEvent,
+    AgentRuntimeHealth,
+)
 from app.services.v2_agent_runtime_manifest import V2AgentRuntimeManifestService
 
 
@@ -99,6 +104,7 @@ class PiAgentRuntimeClient:
         request: AgentRunRequest,
         *,
         on_event: Callable[[AgentRuntimeEvent], None] | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> PiAgentRunOutcome:
         if request.protocol_version != self._protocol_version:
             raise _protocol_error()
@@ -154,6 +160,10 @@ class PiAgentRuntimeClient:
                     last_seq = event.seq
                     if on_event is not None:
                         on_event(event)
+                    if event.event_type == "presentation_delta" and on_presentation is not None:
+                        presentation = AgentPresentationDeltaV1.model_validate(event.payload)
+                        if request.presentation_channel == presentation.channel:
+                            on_presentation(presentation)
         except PiAgentRuntimeError:
             raise
         except (httpx.HTTPError, OSError) as error:
