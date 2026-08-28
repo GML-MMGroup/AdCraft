@@ -78,4 +78,35 @@ describe("Agent Canvas prompt preparation authority", () => {
   it("does not expose Global Run when no existing Draft has a prepared prompt", () => {
     expect(hasPromptReadyDraft([node(null)])).toBe(false);
   });
+
+  it("does not treat not-applicable preparation as Ready or a pending preparation", () => {
+    const sourceOnly = node({
+      status: "not_applicable",
+      operation_id: null,
+      presentation_stream_id: null,
+      attempt_no: 0,
+      context_snapshot_id: null,
+      occurrence_id: null,
+      character_phase: null,
+      prompt_digest: null,
+      role_variant: null,
+      recipe_id: null,
+      recipe_version: null,
+      recipe_digest: null,
+      requirement_revision_id: null,
+      requirement_revision_no: null,
+      document_revisions: {},
+      binding_digest: null,
+      style_projection_digest: null,
+      brief_digest: null,
+      parameter_origins: [],
+      assertion_evidence: null,
+      attempt_stage: null,
+      error: null,
+      updated_at: "2026-08-20T00:00:00Z",
+    });
+
+    expect(isNodePromptReady(sourceOnly)).toBe(false);
+    expect(hasPromptReadyDraft([sourceOnly])).toBe(false);
+  });
 });

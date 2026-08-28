@@ -166,6 +166,7 @@ const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status
   "ready",
   "failed",
   "superseded",
+  "not_applicable",
 ]);
 const CANVAS_MODEL_SELECTION_MODES = new Set<CanvasModelSelectionModeV2>(["default", "explicit"]);
 const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>([
@@ -894,6 +895,7 @@ function normalizeNodePromptPreparationV1(
     [
       "status",
       "operation_id",
+      "presentation_stream_id",
       "attempt_no",
       "context_snapshot_id",
       "occurrence_id",
@@ -919,6 +921,10 @@ function normalizeNodePromptPreparationV1(
   );
   const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
   const operationId = nullableStringWithDefault(record.operation_id, `${path}.operation_id`);
+  const presentationStreamId = nullableStringWithDefault(
+    record.presentation_stream_id,
+    `${path}.presentation_stream_id`,
+  );
   const contextSnapshotId = nullableStringWithDefault(record.context_snapshot_id, `${path}.context_snapshot_id`);
   const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
   const characterPhase = record.character_phase === undefined || record.character_phase === null
@@ -935,14 +941,43 @@ function normalizeNodePromptPreparationV1(
   const error = record.error === null
     ? null
     : normalizeCanvasNodeErrorV2(record.error, `${path}.error`);
+  const documentRevisions = normalizeDocumentRevisions(record.document_revisions, `${path}.document_revisions`);
+  const parameterOrigins = expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
+    normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
+  ));
+  if (status === "not_applicable" && (
+    [
+      operationId,
+      presentationStreamId,
+      contextSnapshotId,
+      promptDigest,
+      record.role_variant,
+      record.recipe_id,
+      record.recipe_version,
+      record.recipe_digest,
+      record.requirement_revision_id,
+      record.binding_digest,
+      record.style_projection_digest,
+      record.brief_digest,
+      record.assertion_evidence,
+      error,
+    ].some((value) => value !== null && value !== undefined)
+    || Object.keys(documentRevisions).length > 0
+    || parameterOrigins.length > 0
+  )) {
+    fail(`${path}.status`, "not_applicable prompt preparation cannot have preparation data");
+  }
   if (status === "failed" && !error) fail(`${path}.error`, "failed prompt preparation requires a safe error");
-  if (status !== "failed" && error) fail(`${path}.error`, "only failed prompt preparation may expose an error");
+  if (status !== "failed" && status !== "superseded" && error) {
+    fail(`${path}.error`, "only failed or superseded prompt preparation may expose an error");
+  }
   if (status === "ready" && !promptDigest) {
     fail(`${path}.prompt_digest`, "ready prompt preparation requires a prompt digest");
   }
   return {
     status,
     operation_id: operationId,
+    presentation_stream_id: presentationStreamId,
     attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
     context_snapshot_id: contextSnapshotId,
     occurrence_id: occurrenceId,
@@ -959,13 +994,11 @@ function normalizeNodePromptPreparationV1(
     requirement_revision_no: record.requirement_revision_no === undefined || record.requirement_revision_no === null
       ? null
       : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
-    document_revisions: normalizeDocumentRevisions(record.document_revisions, `${path}.document_revisions`),
+    document_revisions: documentRevisions,
     binding_digest: nullableDigest(record.binding_digest, `${path}.binding_digest`),
     style_projection_digest: nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`),
     brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
-    parameter_origins: expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
-      normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
-    )),
+    parameter_origins: parameterOrigins,
     assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
       ? null
       : normalizePromptAssertionEvidenceV1(
@@ -5358,6 +5391,7 @@ export function normalizeChatTurnAcceptedV2(
       "retry_of_turn_id",
       "retry_attempt_no",
       "replayed",
+      "presentation_stream_id",
     ],
     path,
   );
@@ -5380,6 +5414,10 @@ export function normalizeChatTurnAcceptedV2(
     replayed: record.replayed === undefined
       ? false
       : expectBoolean(record.replayed, `${path}.replayed`),
+    presentation_stream_id: nullableStringWithDefault(
+      record.presentation_stream_id,
+      `${path}.presentation_stream_id`,
+    ),
   };
 }
 
@@ -5413,7 +5451,7 @@ export function normalizeAgentCanvasChatTurnV2(
     path,
   );
   const status = expectString(record.status, `${path}.status`);
-  if (!["queued", "running", "completed", "failed"].includes(status)) {
+  if (!["queued", "running", "completed", "failed", "superseded"].includes(status)) {
     fail(`${path}.status`, "invalid chat turn status");
   }
   const turnKind = expectString(record.turn_kind, `${path}.turn_kind`);
@@ -5427,6 +5465,12 @@ export function normalizeAgentCanvasChatTurnV2(
     && turnKind !== "guidance_advance"
   ) {
     fail(`${path}.turn_kind`, "invalid chat turn kind");
+  }
+  const retryable = record.retryable === undefined
+    ? false
+    : expectBoolean(record.retryable, `${path}.retryable`);
+  if (status === "superseded" && retryable) {
+    fail(`${path}.retryable`, "superseded turns are terminal and non-retryable");
   }
   return {
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
@@ -5453,9 +5497,7 @@ export function normalizeAgentCanvasChatTurnV2(
     retry_attempt_no: record.retry_attempt_no === undefined
       ? 1
       : expectPositiveInteger(record.retry_attempt_no, `${path}.retry_attempt_no`),
-    retryable: record.retryable === undefined
-      ? false
-      : expectBoolean(record.retryable, `${path}.retryable`),
+    retryable,
     operation_stage: record.operation_stage === undefined
       ? null
       : nullableString(record.operation_stage, `${path}.operation_stage`),

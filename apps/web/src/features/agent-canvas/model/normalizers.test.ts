@@ -617,6 +617,7 @@ describe("Agent Canvas normalizers", () => {
       retry_of_turn_id: "turn-failed-1",
       retry_attempt_no: 2,
       replayed: false,
+      presentation_stream_id: "presentation-stream-1",
     });
 
     expect(turn).toMatchObject({
@@ -629,6 +630,7 @@ describe("Agent Canvas normalizers", () => {
       retry_of_turn_id: "turn-failed-1",
       retry_attempt_no: 2,
       replayed: false,
+      presentation_stream_id: "presentation-stream-1",
     });
   });
 
@@ -2448,6 +2450,7 @@ describe("Agent Canvas normalizers", () => {
       prompt_preparation: {
         status: "working",
         operation_id: "prompt-operation-1",
+        presentation_stream_id: "presentation-stream-1",
         attempt_no: 1,
         context_snapshot_id: "snapshot-1",
         occurrence_id: null,
@@ -2462,6 +2465,7 @@ describe("Agent Canvas normalizers", () => {
     expect(normalized.prompt_preparation).toMatchObject({
       status: "working",
       operation_id: "prompt-operation-1",
+      presentation_stream_id: "presentation-stream-1",
       attempt_no: 1,
       context_snapshot_id: "snapshot-1",
       occurrence_id: null,
@@ -2470,6 +2474,76 @@ describe("Agent Canvas normalizers", () => {
       error: null,
       updated_at: "2026-08-11T10:00:00Z",
     });
+  });
+
+  it("accepts the explicit not-applicable prompt preparation state", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      execution_mode: "source_only",
+      generation_prompt: null,
+      error: null,
+      prompt_preparation: {
+        status: "not_applicable",
+        operation_id: null,
+        presentation_stream_id: null,
+        attempt_no: 0,
+        context_snapshot_id: null,
+        occurrence_id: null,
+        character_phase: null,
+        prompt_digest: null,
+        role_variant: null,
+        recipe_id: null,
+        recipe_version: null,
+        recipe_digest: null,
+        requirement_revision_id: null,
+        requirement_revision_no: null,
+        document_revisions: {},
+        binding_digest: null,
+        style_projection_digest: null,
+        brief_digest: null,
+        parameter_origins: [],
+        assertion_evidence: null,
+        attempt_stage: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    });
+
+    expect(normalized.prompt_preparation).toMatchObject({
+      status: "not_applicable",
+      presentation_stream_id: null,
+    });
+  });
+
+  it("accepts a superseded chat turn as terminal and non-retryable", () => {
+    const normalized = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-superseded-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "superseded",
+      turn_kind: "message",
+      request: {},
+      error_code: null,
+      error_message: null,
+      retryable: false,
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:00:01Z",
+    });
+
+    expect(normalized.status).toBe("superseded");
+    expect(() => normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-superseded-2",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "superseded",
+      turn_kind: "message",
+      request: {},
+      error_code: null,
+      error_message: null,
+      retryable: true,
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:00:01Z",
+    })).toThrowError(/superseded.*retryable/i);
   });
 
   it("accepts role-specific prompt preparation and V3 authoritative document projections", () => {

@@ -11,7 +11,7 @@ const PREPARATION_LABELS = {
 
 export function NodePromptPreparationState({ node }: { node: CanvasNodeV2 }) {
   const preparation = promptPreparationForNode(node);
-  if (preparation?.status === "ready") return null;
+  if (preparation?.status === "ready" || preparation?.status === "not_applicable") return null;
 
   const summary = node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
   const status = preparation?.status ?? "queued";

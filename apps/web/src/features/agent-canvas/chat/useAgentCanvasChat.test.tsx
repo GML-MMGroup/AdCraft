@@ -1694,6 +1694,47 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.retryableFailedTurn).toBeNull();
   });
 
+  it("removes a superseded turn from the pending working state", async () => {
+    api.agentCanvasChatTurn.mockResolvedValue({
+      turn_id: "turn-superseded-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "superseded",
+      turn_kind: "message",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 1,
+      retryable: false,
+      operation_stage: null,
+      operation_failure: null,
+      created_at: "2026-08-12T00:00:00Z",
+      updated_at: "2026-08-12T00:00:01Z",
+    });
+    const { result, rerender } = renderHook(
+      ({ chatEvents }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision: 0,
+        chatEvents,
+      }),
+      { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+
+    rerender({ chatEvents: [turnEvent("agent_turn_waiting", "turn-superseded-1")] });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.turnsById["turn-superseded-1"]?.status).toBe("superseded");
+    expect(result.current.state.agentWorking).toBe(false);
+  });
+
   it("sends the active Workflow Style Skill Run with Director messages", async () => {
     api.submitAgentCanvasChatMessage.mockResolvedValue({
       workflow_id: "workflow-1",

@@ -265,7 +265,9 @@ export function useAgentCanvasChat({
 
   const applyTurnProjection = useCallback((turn: AgentCanvasChatTurnV2) => {
     setTurnsById((current) => ({ ...current, [turn.turn_id]: turn }));
-    const terminal = turn.status === "completed" || turn.status === "failed";
+    const terminal = turn.status === "completed"
+      || turn.status === "failed"
+      || turn.status === "superseded";
     setPendingAgentTurnIds((current) => {
       const next = new Set(current);
       if (terminal) next.delete(turn.turn_id);
@@ -353,7 +355,7 @@ export function useAgentCanvasChat({
       const hydration = agentCanvasApi.agentCanvasChatTurn(workflowId, turnId).then((turn) => {
         if (
           workflowGeneration === workflowGenerationRef.current
-          && (turn.status === "completed" || turn.status === "failed")
+          && (turn.status === "completed" || turn.status === "failed" || turn.status === "superseded")
         ) {
           completedCapabilityTurnIdsRef.current.add(turnId);
         }

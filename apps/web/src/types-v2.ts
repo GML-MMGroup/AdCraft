@@ -1551,7 +1551,7 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
-export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded";
+export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded" | "not_applicable";
 
 export interface ResolvedNodeParameterV2 {
   name: string;
@@ -1606,6 +1606,7 @@ export interface PromptAssertionEvidenceV1 {
 export interface NodePromptPreparationV1 {
   status: NodePromptPreparationStatusV1;
   operation_id: string | null;
+  presentation_stream_id: string | null;
   attempt_no: number;
   context_snapshot_id: string | null;
   occurrence_id: string | null;
@@ -2913,6 +2914,7 @@ export interface ChatTurnAcceptedV2 {
   retry_of_turn_id: string | null;
   retry_attempt_no: number;
   replayed: boolean;
+  presentation_stream_id: string | null;
 }
 
 export interface EditingOutputSettingsV2 {
@@ -3730,7 +3732,7 @@ export interface AgentCanvasChatTurnV2 {
   turn_id: string;
   workflow_id: string;
   conversation_id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "superseded";
   turn_kind:
     | "message"
     | "proposal_action"
