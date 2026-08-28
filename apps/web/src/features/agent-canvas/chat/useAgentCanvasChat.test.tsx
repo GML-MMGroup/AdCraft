@@ -1563,6 +1563,45 @@ describe("useAgentCanvasChat", () => {
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-1");
   });
 
+  it("keeps the selected Skill in frontend-only message presentation metadata", async () => {
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: "message-with-skill",
+      turn_id: "turn-with-skill",
+      status: "queued",
+      events_cursor: 4,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Use this visual language.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+        skillTitle: "Cinematic Poetic Realism",
+      });
+    });
+
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith(
+      "workflow-1",
+      {
+        text: "Use this visual language.",
+        mentioned_node_ids: [],
+        mentioned_image_asset_ids: [],
+        video_skill_run_id: null,
+      },
+      expect.any(String),
+    );
+    expect(result.current.state.messageSkillTitles).toEqual({
+      "message-with-skill": "Cinematic Poetic Realism",
+    });
+  });
+
   it("preserves an exact backend code when message submission is rejected", async () => {
     api.submitAgentCanvasChatMessage.mockRejectedValue({
       code: "proposal_persistence_failed",
