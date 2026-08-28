@@ -1,6 +1,31 @@
 name: adcraft
 
 services:
+  cpa:
+    build:
+      context: ./cpa
+      dockerfile: Dockerfile
+      args:
+        CLI_PROXY_IMAGE: ${CLI_PROXY_IMAGE:-eceasy/cli-proxy-api:latest}
+    image: adcraft-cpa:local
+    environment:
+      DEPLOY: ${DEPLOY:-}
+    ports:
+      - "${CLI_PROXY_HOST:-127.0.0.1}:${CLI_PROXY_PORT:-8317}:8317"
+    volumes:
+      - ${CLI_PROXY_CONFIG_PATH:-./cpa/config.yaml}:/CLIProxyAPI/config.yaml:ro
+      - ${CLI_PROXY_AUTH_PATH:-./cpa/auths}:/root/.cli-proxy-api
+      - ${CLI_PROXY_LOG_PATH:-./cpa/logs}:/CLIProxyAPI/logs
+    healthcheck:
+      test: ["CMD-SHELL", "code=$$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8317/v1/models || true); case \"$$code\" in 200|401|404) exit 0;; *) exit 1;; esac"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - adcraft-internal
+
   agent:
     build:
       context: ./apps/api
@@ -34,6 +59,8 @@ services:
     environment:
       HOME: /tmp
       MEDIA_DATA_DIR: /app/data
+      LLM_BASE_URL: ${ADCRAFT_LLM_BASE_URL:-http://cpa:8317/v1}
+      LLM_API_KEY: ${ADCRAFT_LLM_API_KEY:-}
       LOCAL_SETTINGS_ALLOWED_ORIGINS: "http://127.0.0.1:${ADCRAFT_PORT},http://localhost:${ADCRAFT_PORT}"
       AGENT_RUNTIME_BASE_URL: http://agent:8765
       AGENT_RUNTIME_INTERNAL_TOKEN: ${ADCRAFT_AGENT_RUNTIME_TOKEN:?Run the deployment launcher to create the internal Agent token.}
@@ -55,6 +82,8 @@ services:
       retries: 20
       start_period: 20s
     depends_on:
+      cpa:
+        condition: service_healthy
       agent:
         condition: service_healthy
     restart: unless-stopped
