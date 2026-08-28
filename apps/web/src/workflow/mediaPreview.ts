@@ -1,7 +1,9 @@
 export type MediaAssetLike = {
+  asset_id?: string | null;
   public_url?: string | null;
   remote_url?: string | null;
   url?: string | null;
+  media_url?: string | null;
   local_path?: string | null;
   thumbnail_path?: string | null;
   thumbnail_url?: string | null;
@@ -25,7 +27,20 @@ export type MediaAssetLike = {
 const EXTERNAL_MEDIA_URL_PATTERN = /^(https?:\/\/|\/\/|data:|blob:)/i;
 
 export function mediaAssetOriginalPath(asset?: MediaAssetLike | null) {
-  return withMediaVersion(firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.local_path), asset);
+  return withMediaVersion(firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
+}
+
+/**
+ * Return the immutable AssetVersion content endpoint when the backend identity
+ * is available. Display URLs remain a fallback for older/library responses.
+ */
+export function mediaAssetContentPath(asset?: MediaAssetLike | null) {
+  const assetId = stringValue(asset?.asset_id);
+  const versionId = stringValue(asset?.version_id);
+  if (assetId && versionId) {
+    return `/api/v2/assets/${encodeURIComponent(assetId)}/content?v=${encodeURIComponent(versionId)}`;
+  }
+  return mediaAssetOriginalPath(asset);
 }
 
 export function mediaAssetPreviewPath(asset?: MediaAssetLike | null) {
@@ -37,7 +52,7 @@ export function mediaAssetPreviewPath(asset?: MediaAssetLike | null) {
     asset?.preview_path,
     asset?.preview_url,
   );
-  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.local_path), asset);
+  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
 }
 
 export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {

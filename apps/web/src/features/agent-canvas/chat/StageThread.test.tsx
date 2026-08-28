@@ -40,7 +40,7 @@ describe("StageThread", () => {
     expect(screen.getByText("Full proposal history")).toBeTruthy();
     expect(screen.getByRole("button", { name: "View on canvas" })).toBeTruthy();
     expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
-      .toBe("/imgs/agent-role-icons/world-setting.png");
+      .toBe("/imgs/agent-role-icons/world-setting.png?v=2026-08-28");
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
     expect(screen.queryByRole("button", { name: /history/i })).toBeNull();
   });

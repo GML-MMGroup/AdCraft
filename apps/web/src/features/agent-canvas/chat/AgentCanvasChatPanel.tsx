@@ -42,6 +42,8 @@ import {
   resizeChatComposerTextarea,
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
+import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
 import { AgentCanvasStyleSelector } from "./AgentCanvasStyleSelector.tsx";
 import {
@@ -1044,7 +1046,14 @@ export function AgentCanvasChatPanel({
         {composerContext.productMainHandoff ? (
           <div className="agent-chat__product-main-handoff" role="status">
             {composerContext.productMainHandoff.previewUrl ? (
-              <img src={composerContext.productMainHandoff.previewUrl} alt="" />
+              <StableMediaPreview
+                src={mediaAssetContentPath({
+                  asset_id: composerContext.productMainHandoff.assetId,
+                  version_id: composerContext.productMainHandoff.versionId,
+                  media_url: composerContext.productMainHandoff.previewUrl,
+                })}
+                alt=""
+              />
             ) : null}
             <span>
               <strong>Product Main</strong>

@@ -257,7 +257,7 @@ describe("ProjectList covers", () => {
     await act(async () => {
       controlled.resolve("workflow-0", [coverAsset("fresh", "/media/fresh.webp")]);
     });
-    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("/api/v2/assets/fresh/content?v=fresh-version");
   });
 
   it("renders canonical V2 asset content URLs without a legacy media prefix", async () => {

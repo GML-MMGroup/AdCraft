@@ -1,4 +1,5 @@
 import type { AgentAssetBrowserItem } from "../agent-canvas/assets/assetSelection.ts";
+import { StableMediaPreview } from "../../workflow/StableMediaPreview.tsx";
 
 type GalleryPlacement = "feature" | "support" | "flow";
 type GallerySize = "feature" | "support" | "wide" | "medium" | "compact";
@@ -112,7 +113,7 @@ function AssetContactSheetCard({
       onClick={(event) => onSelect(asset, event.currentTarget)}
     >
       {asset.previewUrl
-        ? <img className="v2-asset-media" src={asset.previewUrl} alt={asset.displayName} loading="lazy" decoding="async" />
+        ? <StableMediaPreview className="v2-asset-media" src={asset.previewUrl} alt={asset.displayName} loading="lazy" decoding="async" />
         : <span className="v2-asset-media is-empty">{asset.displayName.slice(0, 1).toUpperCase()}</span>}
       <span className="v2-asset-entity-card-title">{asset.displayName}</span>
     </button>

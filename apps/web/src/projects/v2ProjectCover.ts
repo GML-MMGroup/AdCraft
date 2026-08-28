@@ -1,5 +1,5 @@
 import type { CanvasNodeV2, ProjectAssetSummaryV2 } from "../types-v2.ts";
-import { versionedMediaPath } from "../workflow/mediaPreview.ts";
+import { mediaAssetContentPath } from "../workflow/mediaPreview.ts";
 
 export type V2ProjectCover = {
   assetId: string;
@@ -70,7 +70,7 @@ export function needsV2ProjectCoverNodeAuthority(assets: readonly ProjectAssetSu
 
 function coverFromUsableAsset(asset: ProjectAssetSummaryV2 & { media_type: "image" }): V2ProjectCover | null {
   if (!asset.version_id) return null;
-  const mediaPath = versionedMediaPath(asset.preview_url ?? asset.media_url, asset);
+  const mediaPath = mediaAssetContentPath(asset);
   if (!mediaPath) return null;
   return {
     assetId: asset.asset_id,

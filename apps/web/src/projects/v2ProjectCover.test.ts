@@ -79,7 +79,7 @@ describe("resolveV2ProjectCover", () => {
       }],
     });
 
-    expect(resolveV2ProjectCover(null, response.assets)?.mediaPath).toBe("/api/v2/assets/product-asset/preview?v=product-version");
+    expect(resolveV2ProjectCover(null, response.assets)?.mediaPath).toBe("/api/v2/assets/product-asset/content?v=product-version");
   });
 
   it("uses source node authority when Product Main also consumes image references", () => {

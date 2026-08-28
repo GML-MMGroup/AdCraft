@@ -18,6 +18,7 @@ import {
   type TimelineSegment,
 } from "./editingTimelineMath.ts";
 import { VideoTimelineClip } from "./VideoTimelineClip.tsx";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 export interface EditingTimelineProps {
   inputs: EditingInputs;
@@ -331,7 +332,7 @@ export function EditingTimeline({
                 <div className="agent-editing-timeline__lane agent-editing-timeline__lane--audio" style={{ width: viewport.contentWidth }}>
                   {inputs.bgm ? (
                     <AudioWaveformTrack
-                      audioUrl={inputs.bgm.asset?.media_url ?? null}
+                      audioUrl={inputs.bgm.asset ? mediaAssetContentPath(inputs.bgm.asset) || null : null}
                       disabled={exportRunning}
                       durationSeconds={inputs.bgm.asset?.duration_seconds ?? sequenceDuration}
                       name="BGM"

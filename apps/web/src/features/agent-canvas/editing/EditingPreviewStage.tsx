@@ -10,6 +10,7 @@ import {
 
 import { VideoIcon } from "../../../icons.tsx";
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
+import { mediaAssetContentPath, mediaAssetPosterPath } from "../../../workflow/mediaPreview.ts";
 import { mapTimelineTimeToSource } from "./editingTimelineMath.ts";
 import type { EditingInputs } from "./editingModel.ts";
 import {
@@ -126,7 +127,7 @@ export function EditingPreviewStage({
   const activeInput = mapping
     ? activeSequence.videos.find((input) => input.referenceId === mapping.referenceId) ?? null
     : null;
-  const activeMediaUrl = activeInput?.asset?.media_url ?? null;
+  const activeMediaUrl = activeInput?.asset ? mediaAssetContentPath(activeInput.asset) || null : null;
   const loadIdentity = activeInput && activeMediaUrl
     ? JSON.stringify([activeInput.referenceId, activeMediaUrl])
     : null;
@@ -141,7 +142,9 @@ export function EditingPreviewStage({
     };
   }
   const loadToken = loadGenerationRef.current.token;
-  const exportedMediaUrl = exportedAsset?.status === "ready" ? exportedAsset.media_url : null;
+  const exportedMediaUrl = exportedAsset?.status === "ready" && exportedAsset
+    ? mediaAssetContentPath(exportedAsset) || null
+    : null;
   const ratio = parseAspectRatio(outputAspectRatio)
     ?? parseResolution(outputResolution)
     ?? assetRatio(exportedAsset)
@@ -150,7 +153,9 @@ export function EditingPreviewStage({
   const ratioValue = ratio[0] / ratio[1];
   const frameSize = fitContainedFrame(canvasSize.width, canvasSize.height, ratioValue);
   const bgm = inputs.bgm;
-  const bgmUrl = bgm?.asset?.status === "ready" ? bgm.asset.media_url : null;
+  const bgmUrl = bgm?.asset?.status === "ready" && bgm.asset
+    ? mediaAssetContentPath(bgm.asset) || null
+    : null;
   const atTimelineEnd = sequenceDuration > 0
     && playheadSeconds >= sequenceDuration - TIMELINE_END_TOLERANCE_SECONDS;
 
@@ -431,7 +436,7 @@ export function EditingPreviewStage({
               data-testid="editing-preview-video"
               data-load-token={loadToken ?? undefined}
               src={activeMediaUrl}
-              poster={activeInput?.asset?.preview_url ?? undefined}
+              poster={activeInput?.asset ? mediaAssetPosterPath(activeInput.asset) || undefined : undefined}
               aria-label="Draft timeline preview"
               playsInline
               preload="auto"
@@ -461,7 +466,7 @@ export function EditingPreviewStage({
               className="agent-editing-preview__video agent-editing-preview__video--contain"
               data-testid="editing-preview-export"
               src={exportedMediaUrl}
-              poster={exportedAsset?.preview_url ?? undefined}
+              poster={exportedAsset ? mediaAssetPosterPath(exportedAsset) || undefined : undefined}
               controls
               playsInline
               preload="metadata"

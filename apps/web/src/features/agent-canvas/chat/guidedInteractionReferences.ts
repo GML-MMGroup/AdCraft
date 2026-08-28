@@ -4,6 +4,7 @@ import type {
   GuidedInteractionV1,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 export function guidedReferenceKey(reference: Pick<ProposedDraftReferenceV2, "source_kind" | "source_id">) {
   return `${reference.source_kind}:${reference.source_id}`;
@@ -35,7 +36,7 @@ export function guidedInteractionReferenceMediaUrls(
       : workflow.nodes.find((node) => node.node_id === reference.source_id)?.output_asset_id;
     if (!assetId) return [];
     const asset = workflow.assets.find((candidate) => candidate.asset_id === assetId);
-    const mediaUrl = asset?.preview_url ?? asset?.media_url;
+    const mediaUrl = asset ? mediaAssetContentPath(asset) : "";
     return mediaUrl ? [[guidedReferenceKey(reference), mediaUrl]] : [];
   }));
 }

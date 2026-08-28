@@ -1,16 +1,18 @@
 import type { AgentCapabilityIdV2 } from "../../../types-v2.ts";
 
+const AGENT_ICON_ASSET_VERSION = "2026-08-28";
+
 const AGENT_CAPABILITY_ICON_PATHS: Partial<Record<AgentCapabilityIdV2, string>> = {
-  world_setting: "/imgs/agent-role-icons/world-setting.png",
-  product_design: "/imgs/agent-role-icons/product-designer.png",
-  prop_design: "/imgs/agent-role-icons/prop-designer.png",
-  character_design: "/imgs/agent-role-icons/character-designer.png",
-  scene_design: "/imgs/agent-role-icons/scene-designer.png",
-  script_authoring: "/imgs/agent-role-icons/script-writer.png",
-  storyboard_design: "/imgs/agent-role-icons/storyboard-artist.png",
-  video_direction: "/imgs/agent-role-icons/video-director.png",
-  bgm_direction: "/imgs/agent-role-icons/bgm-director.png",
-  quick_media: "/imgs/agent-role-icons/quick-media.png",
+  world_setting: `/imgs/agent-role-icons/world-setting.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  product_design: `/imgs/agent-role-icons/product-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  prop_design: `/imgs/agent-role-icons/prop-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  character_design: `/imgs/agent-role-icons/character-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  scene_design: `/imgs/agent-role-icons/scene-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  script_authoring: `/imgs/agent-role-icons/script-writer.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  storyboard_design: `/imgs/agent-role-icons/storyboard-artist.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  video_direction: `/imgs/agent-role-icons/video-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  bgm_direction: `/imgs/agent-role-icons/bgm-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
+  quick_media: `/imgs/agent-role-icons/quick-media.png?v=${AGENT_ICON_ASSET_VERSION}`,
 };
 
 const preloadedIconSources = new Set<string>();

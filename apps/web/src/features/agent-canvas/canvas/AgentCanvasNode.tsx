@@ -25,6 +25,8 @@ import { NodeConversationAction } from "./NodeConversationAction.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { requestNativeVideoFirstFrame } from "./nativeVideoFirstFrame.ts";
+import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
+import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
@@ -91,7 +93,6 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   mediaDimensions?: { width: number; height: number } | null;
 }
 
-/* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- Image load only reports intrinsic media dimensions; the image remains non-interactive. */
 function MediaSurface({
   node,
   asset,
@@ -105,8 +106,10 @@ function MediaSurface({
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
   label: string;
 }) {
-  const mediaUrl = asset?.preview_url ?? asset?.media_url ?? null;
-  const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
+  const mediaUrl = asset
+    ? asset.media_type === "image" ? mediaAssetContentPath(asset) : mediaAssetPreviewPath(asset)
+    : null;
+  const videoUrl = asset?.media_type === "video" ? mediaAssetContentPath(asset) : null;
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoPosterUrl = useAgentCanvasVideoPoster(asset, videoRef);
   if (node.node_type === "video" && videoUrl && asset) {
@@ -151,7 +154,7 @@ function MediaSurface({
   }
 
   return (
-    <img
+    <StableMediaPreview
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
@@ -167,8 +170,6 @@ function MediaSurface({
     />
   );
 }
-/* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
-
 function NodeSurface({
   node,
   asset,

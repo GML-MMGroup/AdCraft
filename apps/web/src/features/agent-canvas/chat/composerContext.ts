@@ -5,6 +5,7 @@ import type {
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 export interface ComposerSkillContext {
   title: string;
@@ -58,7 +59,7 @@ export function buildComposerContextView(input: ComposerContextInput): ComposerC
         assetId: asset.asset_id,
         displayName: asset.display_name,
         mediaType: asset.media_type,
-        thumbnailUrl: asset.preview_url ?? asset.media_url,
+        thumbnailUrl: mediaAssetContentPath(asset) || null,
       }] : [];
     }),
     nodes: unique(input.selectedNodeIds).flatMap((nodeId) => {
