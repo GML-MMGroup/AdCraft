@@ -2349,6 +2349,98 @@
       "title": "AgentPlacementHintV2",
       "type": "object"
     },
+    "AgentPresentationDeltaV1": {
+      "additionalProperties": false,
+      "description": "Explicit user-visible text emitted only through an approved channel.",
+      "properties": {
+        "channel": {
+          "enum": [
+            "assistant",
+            "node_prompt"
+          ],
+          "title": "Channel",
+          "type": "string"
+        },
+        "generation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Revision"
+        },
+        "response_locale": {
+          "anyOf": [
+            {
+              "maxLength": 35,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Locale"
+        },
+        "text": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "generation_id",
+        "text",
+        "workflow_id"
+      ],
+      "title": "AgentPresentationDeltaV1",
+      "type": "object"
+    },
     "AgentProviderConformanceBudgetPlanV1": {
       "additionalProperties": false,
       "properties": {
@@ -3115,6 +3207,22 @@
         "policy": {
           "$ref": "#/$defs/AgentRunPolicy"
         },
+        "presentation_channel": {
+          "anyOf": [
+            {
+              "enum": [
+                "assistant",
+                "node_prompt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Channel"
+        },
         "protocol_version": {
           "const": "1",
           "default": "1",
@@ -3233,6 +3341,7 @@
           "enum": [
             "heartbeat",
             "output_delta",
+            "presentation_delta",
             "run_cancelled",
             "run_completed",
             "run_failed",
@@ -17044,6 +17153,19 @@
           "title": "Parameter Origins",
           "type": "array"
         },
+        "presentation_stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Stream Id"
+        },
         "prompt_digest": {
           "anyOf": [
             {
@@ -17307,6 +17429,19 @@
           "maxItems": 32,
           "title": "Parameter Origins",
           "type": "array"
+        },
+        "presentation_stream_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Presentation Stream Id"
         },
         "prompt_digest": {
           "anyOf": [
@@ -17963,6 +18098,518 @@
         "slot_type"
       ],
       "title": "PlanningSlotSummary",
+      "type": "object"
+    },
+    "PresentationStreamEventV1": {
+      "additionalProperties": false,
+      "description": "One stream-local SSE envelope; sequence numbers are never lifecycle cursors.",
+      "properties": {
+        "authoritative_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authoritative Id"
+        },
+        "content_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Digest"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "event_type": {
+          "enum": [
+            "committed",
+            "delta",
+            "failed",
+            "heartbeat",
+            "reset",
+            "started",
+            "superseded"
+          ],
+          "title": "Event Type",
+          "type": "string"
+        },
+        "generation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Revision"
+        },
+        "reset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PresentationStreamResetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "response_locale": {
+          "anyOf": [
+            {
+              "maxLength": 35,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Locale"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sequence_no": {
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        },
+        "stream_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "stream_kind": {
+          "enum": [
+            "assistant",
+            "node_prompt"
+          ],
+          "title": "Stream Kind",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_type",
+        "generation_id",
+        "sequence_no",
+        "stream_id",
+        "stream_kind",
+        "workflow_id"
+      ],
+      "title": "PresentationStreamEventV1",
+      "type": "object"
+    },
+    "PresentationStreamMetadataV1": {
+      "additionalProperties": false,
+      "description": "Immutable identity and bounded status for one presentation generation.",
+      "properties": {
+        "authoritative_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authoritative Id"
+        },
+        "content_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Digest"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "generation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "last_sequence_no": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Last Sequence No",
+          "type": "integer"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Revision"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "open",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stream_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "stream_kind": {
+          "enum": [
+            "assistant",
+            "node_prompt"
+          ],
+          "title": "Stream Kind",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation_id",
+        "status",
+        "stream_id",
+        "stream_kind",
+        "workflow_id"
+      ],
+      "title": "PresentationStreamMetadataV1",
+      "type": "object"
+    },
+    "PresentationStreamResetV1": {
+      "additionalProperties": false,
+      "description": "Safe reset details used when a replay cursor is outside retention.",
+      "properties": {
+        "authoritative_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authoritative Id"
+        },
+        "reason": {
+          "enum": [
+            "cursor_expired",
+            "store_recovered"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "resource_kind": {
+          "enum": [
+            "message",
+            "prompt",
+            "workflow"
+          ],
+          "title": "Resource Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "resource_kind"
+      ],
+      "title": "PresentationStreamResetV1",
+      "type": "object"
+    },
+    "PresentationTimingV1": {
+      "additionalProperties": false,
+      "description": "Bounded phase timings with no content or credential fields.",
+      "properties": {
+        "accepted": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accepted"
+        },
+        "authoritative_persisted": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authoritative Persisted"
+        },
+        "context_ready": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Ready"
+        },
+        "first_presentation_byte": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Presentation Byte"
+        },
+        "media_scheduled": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Scheduled"
+        },
+        "model_finished": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Finished"
+        },
+        "model_started": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Started"
+        },
+        "prompt_compiled": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Compiled"
+        },
+        "queued": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queued"
+        },
+        "structured_validated": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structured Validated"
+        }
+      },
+      "title": "PresentationTimingV1",
       "type": "object"
     },
     "ProductCountControlPatchV1": {
@@ -22525,6 +23172,105 @@
         "recipe_version"
       ],
       "title": "RolePromptPreparationRequestV2",
+      "type": "object"
+    },
+    "SafePresentationDeltaV1": {
+      "additionalProperties": false,
+      "description": "Typed input accepted from a runtime safe-presentation callback.",
+      "properties": {
+        "generation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Revision"
+        },
+        "response_locale": {
+          "anyOf": [
+            {
+              "maxLength": 35,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Locale"
+        },
+        "stream_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "stream_kind": {
+          "enum": [
+            "assistant",
+            "node_prompt"
+          ],
+          "title": "Stream Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation_id",
+        "stream_id",
+        "stream_kind",
+        "text",
+        "workflow_id"
+      ],
+      "title": "SafePresentationDeltaV1",
       "type": "object"
     },
     "SceneBoardPanelV2": {

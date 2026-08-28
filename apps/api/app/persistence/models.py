@@ -144,6 +144,66 @@ class WorkflowRevisionRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class PresentationStreamRow(Base):
+    """Bounded delivery metadata, separate from authoring and lifecycle state."""
+
+    __tablename__ = "presentation_streams"
+    __table_args__ = (
+        CheckConstraint(
+            "stream_kind IN ('assistant', 'node_prompt')",
+            name="ck_presentation_streams_kind",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'completed', 'failed', 'superseded')",
+            name="ck_presentation_streams_status",
+        ),
+        CheckConstraint("last_sequence_no >= 0", name="ck_presentation_streams_sequence"),
+        UniqueConstraint("idempotency_key", name="uq_presentation_streams_idempotency"),
+        Index("ix_presentation_streams_workflow", "workflow_id", "updated_at"),
+    )
+
+    stream_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    stream_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    generation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    turn_id: Mapped[str | None] = mapped_column(Text)
+    node_id: Mapped[str | None] = mapped_column(Text)
+    node_revision: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    last_sequence_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    authoritative_id: Mapped[str | None] = mapped_column(Text)
+    content_digest: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    timing_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    terminal_at: Mapped[str | None] = mapped_column(Text)
+
+
+class PresentationStreamChunkRow(Base):
+    """One coalesced, replayable presentation envelope."""
+
+    __tablename__ = "presentation_stream_chunks"
+    __table_args__ = (
+        UniqueConstraint("stream_id", "sequence_no", name="uq_presentation_chunks_sequence"),
+        UniqueConstraint("stream_id", "event_key", name="uq_presentation_chunks_event_key"),
+        Index("ix_presentation_chunks_stream_sequence", "stream_id", "sequence_no"),
+    )
+
+    chunk_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stream_id: Mapped[str] = mapped_column(
+        ForeignKey("presentation_streams.stream_id", ondelete="CASCADE"), nullable=False
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_key: Mapped[str] = mapped_column(Text, nullable=False)
+    event_json: Mapped[str] = mapped_column(Text, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AssetCatalogRow(Base):
     """One durable recommended-catalog installation record."""
 
