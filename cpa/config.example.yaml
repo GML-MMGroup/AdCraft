@@ -5,5 +5,7 @@ api-keys:
   - "replace-with-a-local-cpa-key"
 ws-auth: true
 remote-management:
-  allow-remote: false
+  # Required when the management page is opened through the Compose bridge.
+  # compose.yaml still binds the host port to 127.0.0.1 by default.
+  allow-remote: true
   secret-key: ""
