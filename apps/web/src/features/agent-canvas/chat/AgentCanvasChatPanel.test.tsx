@@ -1308,6 +1308,14 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toContain("cursor: ew-resize");
   });
 
+  it("aligns user message containers to the right inside conversation locations", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const userMessageContainerRule = css.match(/\.agent-chat__message--user\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(userMessageContainerRule).toContain("justify-self: end");
+  });
+
   it("styles Stage Threads as quiet monochrome timeline sections", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
