@@ -53,12 +53,14 @@ export function CapabilityActivityRow({
   activity,
   turn,
   retrying = false,
+  compact = false,
   onRetry,
   onReviseRequest,
 }: {
   activity: ChatCapabilityActivityV2;
   turn?: AgentCanvasChatTurnV2 | null;
   retrying?: boolean;
+  compact?: boolean;
   onRetry?: () => void;
   onReviseRequest?: () => void;
 }) {
@@ -96,16 +98,23 @@ export function CapabilityActivityRow({
 
   return (
     <section
-      className={`agent-chat__activity is-${activity.status}`}
+      className={`agent-chat__activity is-${activity.status}${compact ? " is-compact" : ""}`}
       role="status"
       aria-label={activityAriaLabel(activity.capability_display_name, stage)}
     >
       <header className="agent-chat__activity-header">
-        <AgentCapabilityIdentity
-          capabilityId={activity.capability_id}
-          displayName={activity.capability_display_name}
-          detail={stage}
-        />
+        {compact ? (
+          <div className="agent-chat__compact-capability-heading">
+            <strong>{activity.capability_display_name}</strong>
+            <span>{stage}</span>
+          </div>
+        ) : (
+          <AgentCapabilityIdentity
+            capabilityId={activity.capability_id}
+            displayName={activity.capability_display_name}
+            detail={stage}
+          />
+        )}
         {duration ? <time>{duration}</time> : null}
       </header>
       {hasActivityContent ? (

@@ -95,6 +95,10 @@ type ChatPanelResizeSession = {
   bounds: AgentChatResizeBounds;
 };
 
+type TimelineRenderOptions = {
+  compactCapability?: boolean;
+};
+
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
 export { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 
@@ -451,6 +455,7 @@ export function AgentCanvasChatPanel({
   function renderTimelineItem(
     item: ChatTimelineItemV2,
     location: ConversationCanvasLocation | null = null,
+    options: TimelineRenderOptions = {},
   ) {
     if (item.item_type === "message") {
       return <NaturalMessage
@@ -476,6 +481,7 @@ export function AgentCanvasChatPanel({
         <CapabilityActivityRow
           key={`activity-${item.activity_id}`}
           activity={item}
+          compact={options.compactCapability}
           turn={chat.state.turnsById[item.turn_id] ?? null}
           retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
           onRetry={() => void chat.actions.retryCapabilityActivity(item)}
@@ -556,6 +562,7 @@ export function AgentCanvasChatPanel({
         <ProposalCard
           card={item}
           pending={false}
+          compact={options.compactCapability}
           retryingMaterialization={Boolean(
             item.proposal.materialization
             && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
@@ -730,9 +737,21 @@ export function AgentCanvasChatPanel({
                       />
                     ) : null}
                   >
-                    {unit.activities.map((activity) => renderTimelineItem(activity))}
-                    {unit.proposals.map((proposal) => renderTimelineItem(proposal))}
-                    {failedReceipts.map((receipt) => renderTimelineItem(receipt))}
+                    {unit.activities.map((activity) => renderTimelineItem(
+                      activity,
+                      null,
+                      { compactCapability: true },
+                    ))}
+                    {unit.proposals.map((proposal) => renderTimelineItem(
+                      proposal,
+                      null,
+                      { compactCapability: true },
+                    ))}
+                    {failedReceipts.map((receipt) => renderTimelineItem(
+                      receipt,
+                      null,
+                      { compactCapability: true },
+                    ))}
                   </StageThread>
                 </div>
               );
@@ -1146,6 +1165,7 @@ export function ProposalCard({
   optimisticSelectedOptionId = null,
   issue,
   readOnly = false,
+  compact = false,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
@@ -1166,6 +1186,7 @@ export function ProposalCard({
   optimisticSelectedOptionId?: string | null;
   issue?: string;
   readOnly?: boolean;
+  compact?: boolean;
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
@@ -1240,13 +1261,20 @@ export function ProposalCard({
   }
 
   return (
-    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
+    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}${compact ? " is-compact" : ""}`}>
       <header>
-        <AgentCapabilityIdentity
-          capabilityId={proposal.capability_id}
-          displayName={proposal.capability_display_name}
-          detail={!readOnly ? proposal.availability : null}
-        />
+        {compact ? (
+          <div className="agent-chat__compact-capability-heading">
+            <strong>{proposal.capability_display_name}</strong>
+            {!readOnly ? <span>{proposal.availability}</span> : null}
+          </div>
+        ) : (
+          <AgentCapabilityIdentity
+            capabilityId={proposal.capability_id}
+            displayName={proposal.capability_display_name}
+            detail={!readOnly ? proposal.availability : null}
+          />
+        )}
       </header>
       {readOnly ? (
         <HistoricalProposalOptions

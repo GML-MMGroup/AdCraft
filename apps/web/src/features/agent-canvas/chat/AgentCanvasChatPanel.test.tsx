@@ -932,6 +932,38 @@ describe("command and receipt cards", () => {
     expect(identity && content?.contains(identity)).toBe(false);
   });
 
+  it("renders nested capability activity as a compact record without its duplicate identity icon", () => {
+    render(<CapabilityActivityRow
+      compact
+      activity={{
+        item_type: "expert_activity",
+        activity_id: "activity-compact",
+        turn_id: "turn-compact",
+        capability_id: "product_design",
+        capability_display_name: "Product Designer",
+        status: "completed",
+        sequence: 6,
+        started_at: "2026-08-27T00:00:00Z",
+        finished_at: "2026-08-27T00:01:00Z",
+        presentation_text: "The product direction is ready.",
+        message: null,
+        error_code: null,
+        elapsed_ms: 60_000,
+        attempt_stage: null,
+        retryable: false,
+        validation_paths: [],
+        suggested_actions: [],
+        completion_mode: null,
+        warning_code: null,
+      }}
+    />);
+
+    expect(document.querySelector('[data-testid="agent-capability-icon"]')).toBeNull();
+    expect(document.querySelector(".agent-chat__compact-capability-heading")?.textContent)
+      .toContain("Product Designer");
+    expect(screen.getByText("The product direction is ready.")).toBeTruthy();
+  });
+
   it("puts the matching role icon before an interactive capability proposal", () => {
     render(
       <ProposalCard
@@ -945,6 +977,21 @@ describe("command and receipt cards", () => {
 
     expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
       .toBe("/imgs/agent-role-icons/character-designer.png");
+  });
+
+  it("renders nested proposal history without repeating the capability identity icon", () => {
+    render(
+      <ProposalCard
+        card={proposalCard}
+        pending={false}
+        readOnly
+        compact
+      />,
+    );
+
+    expect(document.querySelector('[data-testid="agent-capability-icon"]')).toBeNull();
+    expect(document.querySelector(".agent-chat__compact-capability-heading")?.textContent)
+      .toContain("Character Designer");
   });
 
   it("presents backend activity duration and explanation as a compact section", () => {
@@ -1242,6 +1289,19 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(css).toContain("--agent-chat-selected: #292929");
     expect(css).toMatch(/\.agent-chat__stage-thread > header span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
     expect(css).toMatch(/\.agent-chat__progress-groups span\s*\{[^}]*color: var\(--agent-chat-secondary\)/s);
+  });
+
+  it("keeps the full capability identity only on the Stage Thread header", () => {
+    const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
+    const panelSource = readFileSync(panelPath, "utf8");
+
+    expect(panelSource).toMatch(
+      /unit\.activities\.map\(\(activity\) => renderTimelineItem\(\s*activity,\s*null,\s*\{\s*compactCapability:\s*true,?\s*\},?\s*\)\)\}/,
+    );
+    expect(panelSource).toMatch(
+      /unit\.proposals\.map\(\(proposal\) => renderTimelineItem\(\s*proposal,\s*null,\s*\{\s*compactCapability:\s*true,?\s*\},?\s*\)\)\}/,
+    );
+    expect(panelSource).toMatch(/<StageThread\s+\n?\s+unit=\{unit\}/);
   });
 
   it("uses one scrolling monochrome Decision Dock surface", () => {
