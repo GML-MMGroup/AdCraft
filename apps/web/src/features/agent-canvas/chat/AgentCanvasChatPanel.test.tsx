@@ -1340,7 +1340,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(canvasActionRule).toContain("box-shadow: 0.1em 0.1em;");
     expect(canvasActionRule).toContain("cursor: pointer");
     expect(css).toMatch(/\.agent-chat__node-links--result\s*>\s*button:hover\s*\{[\s\S]*?transform: translate\(-0\.05em, -0\.05em\);[\s\S]*?box-shadow: 0\.15em 0\.15em;/m);
-    expect(css).toMatch(/\.agent-chat__node-links--result\s*>\s*button:active\s*\{[\s\S]*?transform: translate\(0\.05em, 0\.05em\);[\s\S]*?box-shadow: 0\.05em 0\.05em;/m);
+    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button\s*\{[\s\S]*?transition: none;/m);
+    expect(css).toMatch(/\.agent-chat\s+\.agent-chat__node-links--result\s*>\s*button:active:not\(:disabled\):not\(\[aria-disabled="true"\]\)\s*\{[\s\S]*?transform: translate\(0\.05em, 0\.05em\);[\s\S]*?box-shadow: 0\.05em 0\.05em;/m);
   });
 
   it("styles Stage Threads as quiet monochrome timeline sections", () => {
