@@ -6,7 +6,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
 import type {
@@ -24,6 +24,7 @@ import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { NodeConversationAction } from "./NodeConversationAction.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
+import { requestNativeVideoFirstFrame } from "./nativeVideoFirstFrame.ts";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
@@ -106,18 +107,24 @@ function MediaSurface({
 }) {
   const mediaUrl = asset?.preview_url ?? asset?.media_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
-  const videoPosterUrl = useAgentCanvasVideoPoster(asset);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoPosterUrl = useAgentCanvasVideoPoster(asset, videoRef);
   if (node.node_type === "video" && videoUrl && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
         <video
+          ref={videoRef}
           className="agent-canvas-node__media agent-canvas-node__media--cover"
           src={videoUrl}
           poster={videoPosterUrl ?? undefined}
           aria-label={asset.display_name || "Video output"}
           muted
           playsInline
-          preload="none"
+          preload="metadata"
+          onLoadedMetadata={({ currentTarget }) => {
+            if (!Number.isFinite(currentTarget.duration) || currentTarget.duration <= 0) return;
+            void requestNativeVideoFirstFrame(currentTarget);
+          }}
         />
         {onOpenVideoPreview ? (
           <button
