@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage } from "node:http";
-import { API_METADATA_CACHE_CONTROL, mediaCacheControl } from "./mediaCachePolicy";
+import { API_METADATA_CACHE_CONTROL, isVersionedAssetContentRequest, mediaCacheControl } from "./mediaCachePolicy";
 import { resolveBackendOrigin } from "./src/config/devServer.ts";
 
 const FRONTEND_PORT = 5189;
@@ -12,7 +12,12 @@ type ProxyWithResponseEvents = {
 };
 
 function configureApiMetadataProxy(proxy: ProxyWithResponseEvents) {
-  proxy.on("proxyRes", (proxyResponse) => {
+  proxy.on("proxyRes", (proxyResponse, request) => {
+    if (isVersionedAssetContentRequest(request.url ?? "")) {
+      proxyResponse.headers["cache-control"] = mediaCacheControl(request.url ?? "");
+      delete proxyResponse.headers.pragma;
+      return;
+    }
     proxyResponse.headers["cache-control"] = API_METADATA_CACHE_CONTROL;
     proxyResponse.headers.pragma = "no-cache";
   });

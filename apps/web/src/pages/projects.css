@@ -114,6 +114,36 @@
   gap: 16px;
 }
 
+.project-list-virtual {
+  position: relative;
+  width: 100%;
+}
+
+.project-list-virtual__window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  grid-auto-rows: 292px;
+  align-items: stretch;
+  will-change: transform;
+}
+
+.project-list-virtual__item {
+  min-width: 0;
+  height: 292px;
+}
+
+.project-list-virtual__item > .project-card {
+  height: 100%;
+}
+
+.project-list-virtual__item > .create-card {
+  height: 100%;
+  width: 100%;
+}
+
 .create-card,
 .project-card,
 .asset-card,

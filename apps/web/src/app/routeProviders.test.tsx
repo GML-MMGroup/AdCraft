@@ -295,7 +295,7 @@ describe("route providers", () => {
     await screen.findByText("Workflow page workflow-restored");
     expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-restored");
     expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-restored");
-    expect(v2Api.listProjects).toHaveBeenCalledTimes(2);
+    expect(v2Api.listProjects).toHaveBeenCalledTimes(1);
   });
 
   test("hydrates projects after leaving a fresh workflow draft", async () => {
@@ -327,7 +327,7 @@ describe("route providers", () => {
     await screen.findByText("Restored project list");
     expect(screen.getByText("Projects page hydrated")).toBeTruthy();
     expect(v2Api.listProjects).toHaveBeenCalledWith("active", 100, undefined);
-    expect(v2Api.listProjects).toHaveBeenCalledWith("trashed", 100, undefined);
+    expect(v2Api.listProjects).not.toHaveBeenCalledWith("trashed", 100, undefined);
   });
 
   test.each([

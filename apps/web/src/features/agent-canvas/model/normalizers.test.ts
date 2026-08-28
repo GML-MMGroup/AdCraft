@@ -28,6 +28,7 @@ import {
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
   normalizeGuidedSessionStateV2,
+  normalizeProjectAssetListResponseV2,
   normalizeProjectAssetUploadResponseV2,
   normalizeProjectAssetSummaryV2,
   normalizePresentationStreamEventV1,
@@ -3188,6 +3189,32 @@ describe("Agent Canvas normalizers", () => {
     expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, width: 0 })).toThrowError(/width/i);
     expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, duration_seconds: -1 })).toThrowError(/duration_seconds/i);
     expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, media_url: "/tmp/private.png" })).toThrowError(/media_url/i);
+  });
+
+  it("accepts derived assets in workflow and project asset responses", () => {
+    const derivedAsset = {
+      ...validWorkflowPayload().assets[1],
+      asset_id: "asset-product-multiview",
+      source_type: "derived",
+      semantic_type: "product_multiview",
+      display_name: "Product Multi-view",
+    };
+
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      assets: [derivedAsset],
+    });
+    const assetList = normalizeProjectAssetListResponseV2({
+      workflow_id: "workflow-1",
+      assets: [derivedAsset],
+    });
+
+    expect(workflow.assets[0]).toMatchObject({
+      asset_id: "asset-product-multiview",
+      source_type: "derived",
+      semantic_type: "product_multiview",
+    });
+    expect(assetList.assets[0]?.source_type).toBe("derived");
   });
 
   it("accepts canonical asset version and generation metadata from workflow reads", () => {

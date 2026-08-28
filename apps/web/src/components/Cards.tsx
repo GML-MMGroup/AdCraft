@@ -9,6 +9,7 @@ export const ProjectCard = memo(function ProjectCard({
   time,
   favorite,
   cover,
+  coverPriority = 1,
   workflowId,
   onOpen,
   onTrash,
@@ -21,6 +22,7 @@ export const ProjectCard = memo(function ProjectCard({
   time: string;
   favorite: boolean;
   cover?: V2ProjectCover | null;
+  coverPriority?: number;
   workflowId?: string;
   onOpen: (projectId: string) => void;
   onTrash?: () => void;
@@ -64,7 +66,7 @@ export const ProjectCard = memo(function ProjectCard({
   return (
     <article ref={cardRef} className="project-card" data-project-id={projectId} data-project-card={name.toLowerCase()}>
       <button className="project-card-open" type="button" onClick={() => onOpen(projectId)}>
-        <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} name={name} />
+        <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} coverPriority={coverPriority} name={name} />
         <div className="card-body">
           <h3>{name}</h3>
           <p>{time}</p>
@@ -125,11 +127,13 @@ function ProjectPreviewImage({
   projectId,
   workflowId,
   cover,
+  coverPriority,
   name,
 }: {
   projectId: string;
   workflowId?: string;
   cover?: V2ProjectCover | null;
+  coverPriority: number;
   name: string;
 }) {
   const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
@@ -187,7 +191,14 @@ function ProjectPreviewImage({
   return (
     <span className="preview project-preview-image">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Image load failure switches to the noninteractive no-cover state. */}
-      <img src={previewUrl} alt="" loading="lazy" decoding="async" onError={() => setPreviewFailed(true)} />
+      <img
+        src={previewUrl}
+        alt=""
+        loading={coverPriority >= 3 ? "eager" : "lazy"}
+        fetchPriority={coverPriority >= 3 ? "high" : "auto"}
+        decoding="async"
+        onError={() => setPreviewFailed(true)}
+      />
       <span className="sr-only">{name}</span>
     </span>
   );

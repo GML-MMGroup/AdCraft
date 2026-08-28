@@ -86,6 +86,9 @@ describe("ProjectsPage project rename", () => {
     expect(overlayRule).toContain("-webkit-backdrop-filter: none");
     expect(hoverRule).not.toContain("backdrop-filter");
     expect(hoverRule).not.toContain("background:");
+
+    const virtualCreateRule = styles.match(/\.project-list-virtual__item > \.create-card\s*\{([\s\S]*?)\n\}/m)?.[1];
+    expect(virtualCreateRule).toContain("width: 100%");
   });
 
   it("shows a visible error when opening a project fails", async () => {

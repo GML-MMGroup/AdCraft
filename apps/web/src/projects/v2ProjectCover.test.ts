@@ -61,7 +61,7 @@ describe("resolveV2ProjectCover", () => {
         size_bytes: 1024,
         storage_key: "assets/product.jpg",
         media_url: "/api/v2/assets/product-asset/content",
-        preview_url: "/api/v2/assets/product-asset/content",
+        preview_url: "/api/v2/assets/product-asset/preview",
         width: 2048,
         height: 2048,
         duration_seconds: null,
@@ -79,7 +79,7 @@ describe("resolveV2ProjectCover", () => {
       }],
     });
 
-    expect(resolveV2ProjectCover(null, response.assets)?.mediaPath).toBe("/api/v2/assets/product-asset/content?v=product-version");
+    expect(resolveV2ProjectCover(null, response.assets)?.mediaPath).toBe("/api/v2/assets/product-asset/preview?v=product-version");
   });
 
   it("uses source node authority when Product Main also consumes image references", () => {

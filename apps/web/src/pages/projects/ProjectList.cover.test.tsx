@@ -15,26 +15,6 @@ vi.mock("../../api/agentCanvasApi.ts", () => ({
   },
 }));
 
-class TestIntersectionObserver {
-  static instances: TestIntersectionObserver[] = [];
-  readonly elements = new Set<Element>();
-
-  constructor(private readonly callback: IntersectionObserverCallback) {
-    TestIntersectionObserver.instances.push(this);
-  }
-
-  observe(element: Element) { this.elements.add(element); }
-  unobserve(element: Element) { this.elements.delete(element); }
-  disconnect() { this.elements.clear(); }
-  takeRecords(): IntersectionObserverEntry[] { return []; }
-
-  static revealAll() {
-    for (const observer of TestIntersectionObserver.instances) {
-      observer.callback([...observer.elements].map((target) => ({ isIntersecting: true, target }) as IntersectionObserverEntry), observer as unknown as IntersectionObserver);
-    }
-  }
-}
-
 function projects(count: number): ProjectListItem[] {
   return Array.from({ length: count }, (_, index) => ({
     key: `project-${index}`,
@@ -117,16 +97,35 @@ function installControlledCoverRequests() {
 
 describe("ProjectList covers", () => {
   beforeEach(() => {
-    vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
-    TestIntersectionObserver.instances = [];
     __resetProjectCoverResourceForTests();
     fixture.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: { nodes: [] }, etag: '"workflow-r1"' });
   });
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it("keeps cover work bounded to the mounted virtual window", async () => {
+    const controlled = installControlledCoverRequests();
+    const view = render(
+      <ProjectList
+        projects={projects(100)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(view.container.querySelectorAll(".project-card").length).toBe(16);
+    expect(controlled.requests.map((request) => request.workflowId)).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+    ]);
+    expect(controlled.active()).toBe(4);
+    expect(controlled.maxActive()).toBe(4);
+    expect(view.container.querySelector("[data-project-list-virtualized=\"true\"]")).toBeTruthy();
   });
 
   it("completing one cover does not abort or restart sibling jobs", async () => {
@@ -141,8 +140,7 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(4);
     expect(controlled.active()).toBe(4);
     expect(controlled.maxActive()).toBe(4);
@@ -179,7 +177,7 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     const obsoleteRequest = controlled.requests[0];
 
     view.rerender(
@@ -191,8 +189,8 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
-    expect(obsoleteRequest.signal.aborted).toBe(true);
+    await act(async () => {});
+    expect(obsoleteRequest?.signal.aborted).toBe(true);
     expect(controlled.aborted).toEqual(["workflow-0"]);
     expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(2);
 
@@ -214,7 +212,7 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     await act(async () => {
       controlled.resolve("workflow-0", [coverAsset("product-cover", "/api/v2/assets/product-cover/content")]);
     });
@@ -222,19 +220,16 @@ describe("ProjectList covers", () => {
     const image = view.container.querySelector(".project-preview-image img") as HTMLImageElement;
     expect(image.src).toContain("/api/v2/assets/product-cover/content?v=product-cover-version");
     expect(image.src).not.toContain("/media/api/v2/");
+    expect(image.getAttribute("loading")).toBe("eager");
+    expect(image.getAttribute("fetchpriority")).toBe("high");
   });
 
   it("loads source node authority when product assets have ambiguous public roles", async () => {
     const controlled = installControlledCoverRequests();
-    fixture.agentCanvasWorkflowWithEtag.mockResolvedValueOnce({
-      value: {
-        nodes: [
-          { node_id: "product-main-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_main" } },
-          { node_id: "product-multiview-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_multiview" } },
-        ],
-      },
-      etag: '"workflow-r1"',
-    });
+    let resolveAuthority: ((value: unknown) => void) | undefined;
+    fixture.agentCanvasWorkflowWithEtag.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAuthority = resolve;
+    }));
     const view = render(
       <ProjectList
         projects={projects(1)}
@@ -245,19 +240,32 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     await act(async () => {
       controlled.resolve("workflow-0", [
+        coverAsset("known-product-main", "/api/v2/assets/known-product-main/content"),
         coarseProductAsset("product-main", "product-main-node", ["reference-version"]),
         coarseProductAsset("product-multiview", "product-multiview-node", ["product-main-version"]),
       ]);
     });
 
     await waitFor(() => {
-      expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("product-main/content");
+      expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("known-product-main/content");
     });
     expect(fixture.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-0", {
       signal: expect.any(AbortSignal),
+    });
+
+    await act(async () => {
+      resolveAuthority?.({
+        value: {
+          nodes: [
+            { node_id: "product-main-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_main" } },
+            { node_id: "product-multiview-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_multiview" } },
+          ],
+        },
+        etag: '"workflow-r1"',
+      });
     });
   });
 
@@ -273,7 +281,7 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     expect(controlled.requests.map((request) => request.workflowId)).toEqual([
       "workflow-0", "workflow-1", "workflow-2", "workflow-3",
     ]);
@@ -294,7 +302,7 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
 
     expect(controlled.requests.map((request) => request.workflowId)).toEqual([
       "workflow-0", "workflow-1", "workflow-2", "workflow-3",

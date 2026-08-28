@@ -289,6 +289,7 @@ const ASSET_SOURCE_TYPES = new Set<ProjectAssetSummaryV2["source_type"]>([
   "recommended",
   "library",
   "editing_export",
+  "derived",
 ]);
 const PROJECT_ASSET_STATUSES = new Set<ProjectAssetStatusV2>(["ready", "unavailable"]);
 const AGENT_CAPABILITY_IDS = new Set<AgentCapabilityIdV2>([

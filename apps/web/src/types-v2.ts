@@ -1524,7 +1524,13 @@ export type CanvasBindingKindV2 = CanvasBindingInputRoleV2;
 
 export type AgentCanvasAssetMediaTypeV2 = "image" | "video" | "audio";
 
-export type AgentCanvasAssetSourceTypeV2 = "upload" | "generated" | "recommended" | "library" | "editing_export";
+export type AgentCanvasAssetSourceTypeV2 =
+  | "upload"
+  | "generated"
+  | "recommended"
+  | "library"
+  | "editing_export"
+  | "derived";
 
 export type ProjectAssetStatusV2 = "ready" | "unavailable";
 

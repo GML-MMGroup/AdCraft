@@ -70,7 +70,7 @@ export function needsV2ProjectCoverNodeAuthority(assets: readonly ProjectAssetSu
 
 function coverFromUsableAsset(asset: ProjectAssetSummaryV2 & { media_type: "image" }): V2ProjectCover | null {
   if (!asset.version_id) return null;
-  const mediaPath = versionedMediaPath(asset.media_url, asset);
+  const mediaPath = versionedMediaPath(asset.preview_url ?? asset.media_url, asset);
   if (!mediaPath) return null;
   return {
     assetId: asset.asset_id,
