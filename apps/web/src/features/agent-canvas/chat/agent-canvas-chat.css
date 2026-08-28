@@ -2036,14 +2036,37 @@ button.agent-chat__node-links--related:hover {
   filter: invert(100%);
 }
 
-.agent-chat__style-menu {
+.agent-chat__style-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 48px);
+  background: rgb(5 5 5 / 72%);
+  backdrop-filter: blur(3px);
+}
+
+.agent-chat__style-backdrop {
   position: absolute;
-  z-index: 30;
-  right: 0;
-  bottom: 108px;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agent-chat__style-menu {
+  position: relative;
+  z-index: 1;
+  right: auto;
+  bottom: auto;
+  left: auto;
   display: flex;
-  max-height: min(590px, 72vh);
+  width: min(760px, calc(100vw - 36px));
+  max-height: min(780px, calc(100dvh - 36px));
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--agent-chat-border);

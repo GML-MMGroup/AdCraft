@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
@@ -119,6 +120,7 @@ export function AgentCanvasStyleSelector({
   const [loading, setLoading] = useState(false);
   const [activatingSkillId, setActivatingSkillId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const lastActiveStyleRunIdRef = useRef<string | null>(
     activeStyle?.skill_run_id ?? null,
   );
@@ -183,11 +185,18 @@ export function AgentCanvasStyleSelector({
 
   useEffect(() => {
     if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const returnFocusTarget = triggerRef.current;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !activatingSkillId) setOpen(false);
     };
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      returnFocusTarget?.focus();
+    };
   }, [activatingSkillId, open]);
 
   const categories = catalog?.categories ?? [];
@@ -249,6 +258,7 @@ export function AgentCanvasStyleSelector({
     <div className="agent-chat__style-selector">
       <button
         type="button"
+        ref={triggerRef}
         className={`agent-chat__style-trigger${open ? " is-active" : ""}`}
         aria-label="Skill"
         title="Skill"
@@ -259,12 +269,23 @@ export function AgentCanvasStyleSelector({
         <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
       </button>
 
-      {open ? (
-        <section
-          className="agent-chat__style-menu"
-          role="dialog"
-          aria-label="Choose video Style"
-        >
+      {open && typeof document !== "undefined" ? createPortal(
+        <div className="agent-chat__style-overlay">
+          <button
+            type="button"
+            className="agent-chat__style-backdrop"
+            aria-label="Dismiss Choose video Style"
+            tabIndex={-1}
+            onClick={() => {
+              if (!activatingSkillId) setOpen(false);
+            }}
+          />
+          <section
+            className="agent-chat__style-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose video Style"
+          >
           <header className="agent-chat__style-menu-header">
             <div>
               <strong>Choose visual language</strong>
@@ -273,6 +294,7 @@ export function AgentCanvasStyleSelector({
             <button
               type="button"
               aria-label="Close Style picker"
+              autoFocus
               disabled={Boolean(activatingSkillId)}
               onClick={() => setOpen(false)}
             >
@@ -337,7 +359,9 @@ export function AgentCanvasStyleSelector({
               </div>
             </>
           ) : null}
-        </section>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
