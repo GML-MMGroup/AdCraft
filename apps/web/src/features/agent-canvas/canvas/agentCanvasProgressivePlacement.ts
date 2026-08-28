@@ -34,6 +34,13 @@ export interface ProgressiveNodePlacementInput {
   assets?: readonly ProjectAssetSummaryV2[];
 }
 
+export interface ProgressiveRevealPlanFromPositionsInput {
+  nodes: readonly CanvasNodeV2[];
+  bindings: readonly CanvasBindingV2[];
+  affectedNodeIds: readonly string[];
+  positions: readonly CanvasLayoutPositionV2[];
+}
+
 interface PlacementRect {
   position: CanvasPositionV2;
   size: AgentCanvasNodeSize;
@@ -120,6 +127,55 @@ export function planProgressiveNodePlacement(
 
   return {
     positions,
+    levels: [...groupedLevels.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([level, nodeIds]) => ({ level, nodeIds })),
+    orderedNodeIds,
+  };
+}
+
+export function progressiveRevealPlanFromPositions(
+  input: ProgressiveRevealPlanFromPositionsInput,
+): ProgressiveNodePlacementPlan {
+  const visibleNodeIds = new Set(
+    input.nodes
+      .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
+      .map((node) => node.node_id),
+  );
+  const levelsByNodeId = computeNodeLevels(visibleNodeIds, input.bindings);
+  const positionsByNodeId = new Map(input.positions.map((position) => [position.node_id, position]));
+  const seen = new Set<string>();
+  const ordered = input.affectedNodeIds
+    .flatMap((nodeId, originalIndex) => {
+      if (
+        !visibleNodeIds.has(nodeId)
+        || !positionsByNodeId.has(nodeId)
+        || seen.has(nodeId)
+      ) return [];
+      seen.add(nodeId);
+      return [{
+        nodeId,
+        originalIndex,
+        level: levelsByNodeId.get(nodeId) ?? 0,
+      }];
+    })
+    .sort((left, right) => (
+      left.level - right.level
+      || left.originalIndex - right.originalIndex
+      || left.nodeId.localeCompare(right.nodeId)
+    ));
+  const groupedLevels = new Map<number, string[]>();
+  ordered.forEach(({ nodeId, level }) => {
+    const nodeIds = groupedLevels.get(level) ?? [];
+    nodeIds.push(nodeId);
+    groupedLevels.set(level, nodeIds);
+  });
+  const orderedNodeIds = ordered.map(({ nodeId }) => nodeId);
+  return {
+    positions: orderedNodeIds.flatMap((nodeId) => {
+      const position = positionsByNodeId.get(nodeId);
+      return position ? [position] : [];
+    }),
     levels: [...groupedLevels.entries()]
       .sort(([left], [right]) => left - right)
       .map(([level, nodeIds]) => ({ level, nodeIds })),

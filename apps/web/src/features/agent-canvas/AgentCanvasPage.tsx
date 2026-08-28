@@ -892,13 +892,8 @@ export function AgentCanvasPage() {
   }, [connectedNodeMenu, createConnectedNode, workflow]);
 
   const placeReceiptNodes = useCallback((receipt: Parameters<typeof placeActionReceiptNodes>[0]) => {
-    const boardRect = pointerSpotlight.hostRef.current?.getBoundingClientRect();
-    const viewportAnchor = flowRef.current?.screenToFlowPosition({
-      x: boardRect ? boardRect.left + boardRect.width * 0.46 : window.innerWidth * 0.46,
-      y: boardRect ? boardRect.top + boardRect.height * 0.42 : window.innerHeight * 0.42,
-    }) ?? { x: 160, y: 120 };
     reserveRevealNodeIds(receipt.created_node_ids);
-    void placeActionReceiptNodes(receipt, viewportAnchor)
+    void placeActionReceiptNodes(receipt)
       .then((plan) => {
         if (!plan) {
           releaseRevealNodeIds(receipt.created_node_ids);
@@ -911,10 +906,9 @@ export function AgentCanvasPage() {
         enqueueReveal(plan);
       })
       .catch((error) => {
-        releaseRevealNodeIds(receipt.created_node_ids);
         setSurfaceError(error instanceof Error ? error.message : "New canvas nodes could not be positioned.");
       });
-  }, [enqueueReveal, placeActionReceiptNodes, pointerSpotlight.hostRef, releaseRevealNodeIds, reserveRevealNodeIds]);
+  }, [enqueueReveal, placeActionReceiptNodes, releaseRevealNodeIds, reserveRevealNodeIds]);
 
   const organizeCanvas = useCallback(() => {
     const instance = flowRef.current;

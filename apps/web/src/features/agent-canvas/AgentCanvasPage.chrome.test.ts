@@ -169,14 +169,26 @@ describe("AgentCanvasPage chrome", () => {
       resolve(process.cwd(), "src/features/agent-canvas/session/useAgentCanvasSession.ts"),
       "utf8",
     );
+    const receiptStart = source.indexOf("const placeReceiptNodes");
+    const receiptEnd = source.indexOf("const organizeCanvas", receiptStart);
+    const receiptSource = source.slice(receiptStart, receiptEnd);
 
     expect(source).toContain("useAgentCanvasNodeRevealQueue");
     expect(source).toContain("reserveRevealNodeIds(receipt.created_node_ids)");
     expect(source).toContain("syncRevealCanonicalNodeIds(canonicalNodes.map((node) => node.id))");
     expect(source).toContain("visibleCanonicalNodes");
     expect(source).toContain("interruptReveal()");
-    expect(sessionSource).toContain("planProgressiveNodePlacement({");
-    expect(sessionSource).toContain("overlayAgentCanvasPositions(merged, [...positionsById.values()])");
+    expect(sessionSource).toContain("buildAgentCanvasPreRevealLayout({");
+    expect(sessionSource).toContain("await updateNodePositions(preRevealLayout.positions)");
+    expect(sessionSource).not.toContain("planProgressiveNodePlacement({");
+    expect(sessionSource).toMatch(
+      /const preRevealLayout = buildAgentCanvasPreRevealLayout\([\s\S]*?applyWorkflow\(latest\.value\);[\s\S]*?await updateNodePositions\(preRevealLayout\.positions\);[\s\S]*?return preRevealLayout\.revealPlan;/,
+    );
+    expect(receiptSource).toContain("placeActionReceiptNodes(receipt)");
+    expect(receiptSource).not.toContain("screenToFlowPosition({");
+    expect(receiptSource).not.toContain("viewportAnchor");
+    const receiptFailureSource = receiptSource.slice(receiptSource.indexOf(".catch((error) =>"));
+    expect(receiptFailureSource).not.toContain("releaseRevealNodeIds(receipt.created_node_ids)");
   });
 
   it("animates node transforms only during layout preview and respects reduced motion", () => {
