@@ -80,6 +80,9 @@ const AUTHORING_EVENTS = new Set([
   "storyboard_segment_materialized",
   "guided_editing_updated",
   "guided_completion_failed",
+  "guided_product_source_materialized",
+  "guided_product_source_failed",
+  "editing_export_imported_to_canvas",
 ]);
 
 const CHAT_EVENTS = new Set([
@@ -151,6 +154,9 @@ const CHAT_EVENTS = new Set([
   "storyboard_segment_materialized",
   "guided_editing_updated",
   "guided_completion_failed",
+  "guided_product_source_pending",
+  "guided_product_source_materialized",
+  "guided_product_source_failed",
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([
@@ -197,6 +203,8 @@ const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
   "storyboard_segment_materialized",
   "guided_editing_updated",
   "guided_completion_failed",
+  "guided_product_source_materialized",
+  "guided_product_source_failed",
 ]);
 
 const GUIDED_CHAT_EVENTS = new Set([
@@ -240,7 +248,10 @@ export function runtimeEventPolicy(
   event: CanvasRuntimeEventV2,
 ): AgentCanvasRuntimeRefreshPolicy {
   const type = event.event_type;
-  const editing = type.startsWith("editing_export_");
+  const editingImported = type === "editing_export_imported_to_canvas";
+  const editing = type.startsWith("editing_export_") && !editingImported;
+  const productSource = type.startsWith("guided_product_source_");
+  const productSourcePending = type === "guided_product_source_pending";
   const editingPrepared = type === "editing_prepared" || type === "guided_editing_ready";
   const projectAssetPublished = type === "project_asset_published";
   const publishesOutput = type === "node_output_published";
@@ -255,14 +266,14 @@ export function runtimeEventPolicy(
     : null;
 
   return {
-    refreshRuntime: projectAssetPublished || RUNTIME_EVENTS.has(type) || guidedCanonicalRefresh,
-    refreshWorkflow: editing || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
-    refreshAssets: projectAssetPublished || publishesOutput,
+    refreshRuntime: projectAssetPublished || productSource || editingImported || RUNTIME_EVENTS.has(type) || guidedCanonicalRefresh,
+    refreshWorkflow: editing || editingImported || (!productSourcePending && productSource) || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
+    refreshAssets: projectAssetPublished || publishesOutput || productSource || editingImported,
     refreshChat: CHAT_EVENTS.has(type) || GUIDED_CHAT_EVENTS.has(type) || documentEvent,
     refreshSettings: type === "agent_settings_updated",
     refreshDocuments: documentEvent,
     refreshDocumentId: documentId,
-    refreshNodeId: NODE_DETAIL_EVENTS.has(type) ? event.node_id : null,
+    refreshNodeId: NODE_DETAIL_EVENTS.has(type) || editingImported ? event.node_id : null,
     refreshEditingNodeId: editing || editingPrepared ? event.node_id : null,
   };
 }

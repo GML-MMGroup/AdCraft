@@ -1,5 +1,53 @@
 {
   "schemas": {
+    "NodePromptPreparationV1": {
+      "properties": [
+        "status",
+        "operation_id",
+        "presentation_stream_id",
+        "attempt_no",
+        "context_snapshot_id",
+        "occurrence_id",
+        "character_phase",
+        "prompt_digest",
+        "role_variant",
+        "recipe_id",
+        "recipe_version",
+        "recipe_digest",
+        "requirement_revision_id",
+        "requirement_revision_no",
+        "document_revisions",
+        "binding_digest",
+        "style_projection_digest",
+        "brief_digest",
+        "parameter_origins",
+        "assertion_evidence",
+        "attempt_stage",
+        "error",
+        "updated_at"
+      ],
+      "enums": {
+        "status": ["queued", "working", "ready", "failed", "superseded", "not_applicable"],
+        "character_phase": ["main", "turnaround"]
+      }
+    },
+    "ChatTurnAcceptedV2": {
+      "properties": [
+        "workflow_id",
+        "conversation_id",
+        "message_id",
+        "turn_id",
+        "status",
+        "events_cursor",
+        "retry_of_turn_id",
+        "retry_attempt_no",
+        "replayed",
+        "presentation_stream_id"
+      ],
+      "enums": {
+        "status": ["queued"]
+      }
+    },
     "StoryboardNarrativeSegmentV2": {
       "properties": [
         "sequence_id",
@@ -38,7 +86,7 @@
         "updated_at"
       ],
       "enums": {
-        "status": ["queued", "running", "completed", "failed"],
+        "status": ["queued", "running", "completed", "failed", "superseded"],
         "turn_kind": [
           "message",
           "proposal_action",

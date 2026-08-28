@@ -52,6 +52,9 @@ export function areAgentCanvasNodePropsEqual(
     && previousData.node.revision === nextData.node.revision
     && previousData.node.status === nextData.node.status
     && previousData.node.output_asset_id === nextData.node.output_asset_id
+    && previousData.node.prompt_preparation?.occurrence_id === nextData.node.prompt_preparation?.occurrence_id
+    && previousData.node.prompt_preparation?.character_phase === nextData.node.prompt_preparation?.character_phase
+    && previousData.node.prompt_preparation?.role_variant === nextData.node.prompt_preparation?.role_variant
   );
   const sameWorkbench = previousData.workbenchActive === nextData.workbenchActive
     && (!nextData.workbenchActive
@@ -68,6 +71,9 @@ export function areAgentCanvasNodePropsEqual(
     && sameRuntime
     && sameWorkbench
     && previousData.onOpenVideoPreview === nextData.onOpenVideoPreview
+    && previousData.onOpenEditing === nextData.onOpenEditing
+    && previousData.onShowInConversation === nextData.onShowInConversation
+    && previousData.conversationSourceAvailable === nextData.conversationSourceAvailable
     && previousData.showInputHandle === nextData.showInputHandle
     && previousData.showOutputHandle === nextData.showOutputHandle;
 }

@@ -1,15 +1,18 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ProjectsPage } from "./ProjectsPage.tsx";
 
 const fixture = vi.hoisted(() => ({
-  listWorkflowAssets: vi.fn(),
+  listAgentCanvasProjectAssets: vi.fn(),
+  openProject: vi.fn(),
   renameProject: vi.fn(),
 }));
 
-vi.mock("../api/v2Client.ts", () => ({
-  v2Api: {
-    listWorkflowAssets: fixture.listWorkflowAssets,
+vi.mock("../api/agentCanvasApi.ts", () => ({
+  agentCanvasApi: {
+    listAgentCanvasProjectAssets: fixture.listAgentCanvasProjectAssets,
   },
 }));
 
@@ -26,7 +29,7 @@ vi.mock("../AppContextValue", () => ({
       },
     ],
     startNewProject: vi.fn(),
-    openProject: vi.fn(async () => true),
+    openProject: fixture.openProject,
     moveProjectToTrash: vi.fn(async () => true),
     renameProject: fixture.renameProject,
     toggleProjectFavorite: vi.fn(async () => true),
@@ -43,13 +46,71 @@ function openRenameDialog() {
 
 describe("ProjectsPage project rename", () => {
   beforeEach(() => {
-    fixture.listWorkflowAssets.mockResolvedValue({ assets: [] });
+    fixture.listAgentCanvasProjectAssets.mockResolvedValue({ assets: [] });
+    fixture.openProject.mockResolvedValue(true);
     fixture.renameProject.mockResolvedValue(true);
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("renders single-layer glass project controls without a toolbar create button", () => {
+    render(<ProjectsPage navigate={vi.fn()} />);
+
+    const toolbar = document.querySelector(".projects-toolbar");
+    expect(toolbar).toBeTruthy();
+    expect(document.querySelector(".page-toolbar")).toBeNull();
+    expect(toolbar?.querySelectorAll(".clear-glass-control")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Select" })).toBeTruthy();
+    expect(toolbar?.querySelector(".toolbar-new-project")).toBeNull();
+    expect(screen.getByPlaceholderText("Search projects").classList.contains("is-active")).toBe(true);
+
+    const createProjectCard = screen.getByRole("button", { name: "New Project" });
+    expect(createProjectCard.classList.contains("create-card--new-project")).toBe(true);
+    expect(createProjectCard.classList.contains("clear-glass-control")).toBe(true);
+    expect(screen.getByText("7/24/2026")).toBeTruthy();
+    expect(screen.queryByText(/Last worked/i)).toBeNull();
+    expect(screen.queryByText("Draft")).toBeNull();
+    expect(screen.queryByText("Open")).toBeNull();
+  });
+
+  it("keeps the project card overlay equally clear while hovering", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/projects.css"), "utf8");
+    const hoverRule = styles.match(/\.project-card:is\(:hover, :has\(\.project-card-open:focus-visible\)\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const overlayRule = [...styles.matchAll(/^\.project-card-open::after\s*\{([\s\S]*?)\n\}/gm)]
+      .map((match) => match[1])
+      .find((rule) => rule.includes("position: absolute"));
+
+    expect(overlayRule).toContain("backdrop-filter: none");
+    expect(overlayRule).toContain("-webkit-backdrop-filter: none");
+    expect(hoverRule).not.toContain("backdrop-filter");
+    expect(hoverRule).not.toContain("background:");
+
+    const virtualCreateRule = styles.match(/\.project-list-virtual__item > \.create-card\s*\{([\s\S]*?)\n\}/m)?.[1];
+    expect(virtualCreateRule).toContain("width: 100%");
+  });
+
+  it("shows a visible error when opening a project fails", async () => {
+    fixture.openProject.mockRejectedValueOnce(new Error("Workflow contract mismatch."));
+    render(<ProjectsPage navigate={vi.fn()} />);
+
+    fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Project could not be opened. Try again.",
+    );
+  });
+
+  it("passes the catalog workflow identity to the open operation", async () => {
+    const navigate = vi.fn();
+    render(<ProjectsPage navigate={navigate} />);
+
+    fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
+
+    await waitFor(() => expect(fixture.openProject).toHaveBeenCalledWith("project-1", "workflow-1"));
+    expect(navigate).toHaveBeenCalledWith("workflow");
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {

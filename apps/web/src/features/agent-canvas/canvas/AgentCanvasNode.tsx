@@ -1,5 +1,6 @@
 import {
   Handle,
+  NodeToolbar,
   Position,
   useUpdateNodeInternals,
   type Node,
@@ -18,14 +19,18 @@ import type {
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
+import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
+import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
+import { NodeConversationAction } from "./NodeConversationAction.tsx";
+import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
-import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
+import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -44,19 +49,13 @@ const NODE_STATUS_LABELS: Record<CanvasNodeStatusV2, string> = {
   failed: "Failed",
 };
 
-const IMAGE_ROLE_LABELS: Partial<Record<CanvasNodeV2["creative_role"], string>> = {
-  product: "Product",
-  prop: "Prop",
-  character: "Character",
-  scene: "Scene",
-  storyboard_sequence: "Storyboard Sequence",
-};
-
 export interface AgentCanvasNodeCallbacks {
   onRun?: (nodeId: string) => void;
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
+  onOpenEditing?: (nodeId: string) => void;
   onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
+  onShowInConversation?: (nodeId: string) => void;
   renderWorkbench?: (node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => ReactNode;
   onOpenConnectedNodeMenu?: (
     nodeId: string,
@@ -73,6 +72,7 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   disabled?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
+  conversationSourceAvailable?: boolean;
 }
 
 export type AgentCanvasFlowNode = Node<AgentCanvasNodeData, "agentCanvas">;
@@ -87,19 +87,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   disabled?: boolean;
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
   onScriptContentHeightResolved?: (height: number) => void;
-}
-
-function semanticNodeLabel(node: CanvasNodeV2): string {
-  if (node.node_type === "text" && node.creative_role === "world_setting") return "World Setting";
-  if (node.node_type !== "image") return NODE_TYPE_LABELS[node.node_type];
-  return IMAGE_ROLE_LABELS[node.creative_role] ?? NODE_TYPE_LABELS.image;
-}
-
-function typeIconLabel(node: CanvasNodeV2, label: string): string {
-  if (node.creative_role === "world_setting") return label;
-  return node.node_type === "image" && IMAGE_ROLE_LABELS[node.creative_role]
-    ? `${label} image`
-    : node.node_type;
+  mediaDimensions?: { width: number; height: number } | null;
 }
 
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- Image load only reports intrinsic media dimensions; the image remains non-interactive. */
@@ -116,19 +104,20 @@ function MediaSurface({
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
   label: string;
 }) {
-  const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
+  const mediaUrl = asset?.preview_url ?? asset?.media_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
+  const videoPosterUrl = useAgentCanvasVideoPoster(asset);
   if (node.node_type === "video" && videoUrl && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
         <video
           className="agent-canvas-node__media agent-canvas-node__media--cover"
           src={videoUrl}
-          poster={asset.preview_url ?? undefined}
+          poster={videoPosterUrl ?? undefined}
           aria-label={asset.display_name || "Video output"}
           muted
           playsInline
-          preload="metadata"
+          preload="none"
         />
         {onOpenVideoPreview ? (
           <button
@@ -150,7 +139,11 @@ function MediaSurface({
     );
   }
 
-  return mediaUrl ? (
+  if (!mediaUrl) {
+    return <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />;
+  }
+
+  return (
     <img
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
@@ -165,7 +158,7 @@ function MediaSurface({
         }
       }}
     />
-  ) : <AgentCanvasNodeContent node={node} iconLabel={typeIconLabel(node, label)} />;
+  );
 }
 /* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
 
@@ -174,21 +167,24 @@ function NodeSurface({
   asset,
   status,
   onOpenVideoPreview,
+  onOpenEditing,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   label,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onOpenEditing" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <AgentCanvasNodeContent
         node={node}
-        iconLabel={typeIconLabel(node, label)}
         onScriptContentHeightResolved={onScriptContentHeightResolved}
       />
     );
   }
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
+  }
+  if (node.node_type === "editing") {
+    return <EditingNodeSurface onOpenEditing={onOpenEditing ? () => onOpenEditing(node.node_id) : undefined} />;
   }
   return (
     <MediaSurface
@@ -207,15 +203,17 @@ export function AgentCanvasNodeCard({
   runtime,
   selected = false,
   onOpenVideoPreview,
+  onOpenEditing,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
+  mediaDimensions,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
-  const label = semanticNodeLabel(node);
-  const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
-    || Boolean(runtime?.blocked_by_node_ids.length);
-  const promptPreparation = promptPreparationForNode(node);
-  const hasPromptPreparationFailure = promptPreparation?.status === "failed";
+  const label = creativeRoleDisplayName(node.creative_role);
+  const resolvedMediaDimensions = mediaDimensions
+    ?? (validAgentCanvasMediaDimensions(asset)
+      ? { width: asset.width, height: asset.height }
+      : null);
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
 
@@ -232,16 +230,15 @@ export function AgentCanvasNodeCard({
       data-node-status={status}
       aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
     >
+      <AgentCanvasNodeHeader node={node} status={status} dimensions={resolvedMediaDimensions} />
       <div className="agent-canvas-node__surface">
-        <span className="agent-canvas-node__type-label">
-          {NODE_TYPE_LABELS[node.node_type].toLowerCase()}
-        </span>
         <NodeSurface
           node={node}
           asset={asset}
           status={status}
           label={label}
           onOpenVideoPreview={onOpenVideoPreview}
+          onOpenEditing={onOpenEditing}
           onMediaDimensionsResolved={onMediaDimensionsResolved}
           onScriptContentHeightResolved={onScriptContentHeightResolved}
         />
@@ -253,22 +250,7 @@ export function AgentCanvasNodeCard({
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
           </div>
         ) : null}
-        {status === "failed" && !hasPromptPreparationFailure ? (
-          <div className="agent-canvas-node__error" title={runtime?.error?.message ?? node.error?.message ?? "Generation failed"}>
-            <span aria-hidden="true">!</span>
-          </div>
-        ) : null}
       </div>
-
-      {node.node_type !== "audio" ? (
-        <span
-          className={`agent-canvas-node__status agent-canvas-node__status--${status}${blockedByUpstream ? " agent-canvas-node__status--blocked" : ""}`}
-          title={blockedByUpstream ? "Waiting for required upstream nodes." : undefined}
-        >
-          <i aria-hidden="true" />
-          {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
-        </span>
-      ) : null}
 
       {usedDeterministicFallback ? (
         <span className="agent-canvas-node__fallback-warning" role="status">
@@ -291,8 +273,10 @@ function AgentCanvasNodeRendererComponent({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const [scriptContentHeight, setScriptContentHeight] = useState(0);
-  const label = semanticNodeLabel(data.node);
-  const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
+  const label = creativeRoleDisplayName(data.node.creative_role);
+  const workbench = data.node.node_type === "editing"
+    ? null
+    : data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
@@ -331,6 +315,7 @@ function AgentCanvasNodeRendererComponent({
         runtime={data.runtime}
         selected={selected}
         onOpenVideoPreview={data.onOpenVideoPreview}
+        onOpenEditing={data.onOpenEditing}
         onMediaDimensionsResolved={validAgentCanvasMediaDimensions(data.asset)
           ? undefined
           : ({ width, height }) => setIntrinsicDimensions({
@@ -341,15 +326,35 @@ function AgentCanvasNodeRendererComponent({
         onScriptContentHeightResolved={data.node.node_type === "script"
           ? handleScriptContentHeightResolved
           : undefined}
+        mediaDimensions={validAgentCanvasMediaDimensions(assetDimensions) ? assetDimensions : null}
       />
       {workbench ? (
-        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- The embedded form remains keyboard-accessible; this boundary only prevents node-level double-click focus.
-        <div
-          className="agent-canvas-node-workbench-anchor nodrag nopan nowheel"
+        <NodeToolbar
+          nodeId={id}
+          isVisible
+          position={Position.Bottom}
+          offset={18}
+          align="center"
+          className="agent-canvas-node-workbench-toolbar nodrag nopan nowheel"
           onDoubleClick={(event) => event.stopPropagation()}
         >
           {workbench}
-        </div>
+        </NodeToolbar>
+      ) : null}
+      {selected && data.conversationSourceAvailable && data.onShowInConversation ? (
+        <NodeToolbar
+          nodeId={id}
+          isVisible
+          position={Position.Top}
+          offset={12}
+          align="center"
+          className="agent-canvas-node-conversation-toolbar nodrag nopan"
+        >
+          <NodeConversationAction
+            nodeId={id}
+            onShowInConversation={data.onShowInConversation}
+          />
+        </NodeToolbar>
       ) : null}
       {data.showOutputHandle !== false ? (
         <Handle

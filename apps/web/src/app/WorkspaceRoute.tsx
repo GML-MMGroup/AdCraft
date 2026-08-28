@@ -10,6 +10,7 @@ type WorkspaceRouteState = {
 export function WorkspaceRoute() {
   const location = useLocation();
   const navigate = useNavigate();
+  const normalizedPath = location.pathname.toLowerCase();
   const state = location.state as WorkspaceRouteState | null;
   const newProjectRouteRef = useRef<string | null>(
     state?.startNewProject === true ? location.pathname : null,
@@ -43,7 +44,11 @@ export function WorkspaceRoute() {
   ]);
 
   return (
-    <WorkspaceProvider startWithNewProject={startWithNewProject}>
+    <WorkspaceProvider
+      startWithNewProject={startWithNewProject}
+      restoreActiveWorkflow={normalizedPath.startsWith("/workflow")}
+      projectCatalogScope={normalizedPath === "/trash" ? "trashed" : "active"}
+    >
       <Layout>
         <Outlet />
       </Layout>

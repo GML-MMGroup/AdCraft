@@ -1,4 +1,5 @@
 import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
+import { isSourceOnlyNode } from "./nodeExecutionMode.ts";
 
 export function normalizeProviderParameters(
   nodeType: CanvasNodeV2["node_type"],
@@ -36,7 +37,7 @@ export function runnableDraftParameterMigrations(
   workflow: AgentCanvasWorkflowV2,
 ): Array<{ node_id: string; parameters: Record<string, unknown> }> {
   return workflow.nodes.flatMap((node) => {
-    if (node.status !== "draft" || node.node_type !== "video") return [];
+    if (node.status !== "draft" || node.node_type !== "video" || isSourceOnlyNode(node)) return [];
     const normalized = normalizeProviderParameters(node.node_type, node.parameters);
     if (!normalized.migrated) return [];
     return [{

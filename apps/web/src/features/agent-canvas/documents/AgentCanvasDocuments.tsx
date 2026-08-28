@@ -64,11 +64,13 @@ function AgentCanvasDocumentContent({
           </div>
         </header>
         {document.content.anchors.length ? (
-          <ul className="agent-document-card__anchors">
+          <section className="agent-document-card__section" aria-labelledby={`${document.document_id}-anchors-heading`}>
+            <h3 id={`${document.document_id}-anchors-heading`}>Anchors</h3>
+            <ul className="agent-document-card__anchors">
             {document.content.anchors.map((anchor) => {
               const isV3Anchor = "lifecycle" in anchor;
               return <li key={anchor.alias}>
-                <div>
+                <div className="agent-document-card__anchor-meta">
                   <code>{anchor.alias}</code>
                   <span className={`is-${isV3Anchor ? anchor.lifecycle : anchor.availability}`}>
                     {isV3Anchor ? anchor.lifecycle : anchor.availability}
@@ -93,7 +95,8 @@ function AgentCanvasDocumentContent({
                 ) : null}
               </li>;
             })}
-          </ul>
+            </ul>
+          </section>
         ) : (
           <p className="agent-document-card__empty">No anchors recorded yet.</p>
         )}
@@ -120,46 +123,62 @@ function AgentCanvasDocumentContent({
         <span><strong>{content.global_parameters.segment_count}</strong>Segments</span>
         <span><strong>{panelCount}/{content.rows.length}</strong>Panels ready</span>
       </div>
-      <p className="agent-document-card__outline">{content.narrative_outline}</p>
+      <section className="agent-document-card__section agent-document-card__section--outline" aria-labelledby={`${document.document_id}-outline-heading`}>
+        <h3 id={`${document.document_id}-outline-heading`}>Narrative outline</h3>
+        <p className="agent-document-card__outline">{content.narrative_outline}</p>
+      </section>
       {content.segments.length ? (
-        <ol className="agent-document-card__segments">
-          {content.segments.map((segment) => (
-            <li key={segment.sequence_id}>
-              <span>{segment.order}</span>
-              <div>
-                <strong>{segment.narrative_goal}</strong>
-                <small>{seconds(segment.start_seconds)}–{seconds(segment.end_seconds)}</small>
-                <p>{segment.start_state} → {segment.end_state}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <section className="agent-document-card__section" aria-labelledby={`${document.document_id}-segments-heading`}>
+          <h3 id={`${document.document_id}-segments-heading`}>Segments</h3>
+          <ol className="agent-document-card__segments">
+            {content.segments.map((segment) => (
+              <li key={segment.sequence_id}>
+                <span className="agent-document-card__segment-index">{segment.order}</span>
+                <div>
+                  <div className="agent-document-card__segment-heading">
+                    <strong>{segment.narrative_goal}</strong>
+                    <small>{seconds(segment.start_seconds)}–{seconds(segment.end_seconds)}</small>
+                  </div>
+                  <p>{segment.start_state} <span aria-hidden="true">→</span> {segment.end_state}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
       ) : null}
       {content.rows.length ? (
-        <div className="agent-document-card__rows">
-          {content.rows.map((row) => (
-            <div key={`${row.sequence_id}:${row.panel_index}`}>
-              <span>{row.panel_index}</span>
-              <p>{row.content_beat}</p>
-              <small>{row.camera_description}</small>
-            </div>
-          ))}
-        </div>
+        <section className="agent-document-card__section" aria-labelledby={`${document.document_id}-panels-heading`}>
+          <h3 id={`${document.document_id}-panels-heading`}>Storyboard panels</h3>
+          <div className="agent-document-card__rows">
+            {content.rows.map((row) => (
+              <div key={`${row.sequence_id}:${row.panel_index}`}>
+                <span className="agent-document-card__row-index">{row.panel_index}</span>
+                <div>
+                  <p>{row.content_beat}</p>
+                  <small>{row.camera_description}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
       {plannedNodes.length ? (
-        <div className="agent-document-card__linked" aria-label="Planned production nodes">
-          {plannedNodes.map((planned) => (
-            <button
-              type="button"
-              key={`${planned.node_id}:${planned.node_role}`}
-              aria-label={`Open planned ${nodeRoleLabel(planned.node_role)} node`}
-              onClick={() => onFocusNode(planned.node_id)}
-            >
-              <span>{nodeRoleLabel(planned.node_role)}</span>
-              <small>{planned.sequence_id ?? "Global"}</small>
-            </button>
-          ))}
-        </div>
+        <section className="agent-document-card__section agent-document-card__section--linked" aria-labelledby={`${document.document_id}-planned-heading`}>
+          <h3 id={`${document.document_id}-planned-heading`}>Production nodes</h3>
+          <div className="agent-document-card__linked" aria-label="Planned production nodes">
+            {plannedNodes.map((planned) => (
+              <button
+                type="button"
+                key={`${planned.node_id}:${planned.node_role}`}
+                aria-label={`Open planned ${nodeRoleLabel(planned.node_role)} node`}
+                onClick={() => onFocusNode(planned.node_id)}
+              >
+                <span>{nodeRoleLabel(planned.node_role)}</span>
+                <small>{planned.sequence_id ?? "Global"}</small>
+              </button>
+            ))}
+          </div>
+        </section>
       ) : null}
       {isV3 && content.visual_anchor ? (
         <button

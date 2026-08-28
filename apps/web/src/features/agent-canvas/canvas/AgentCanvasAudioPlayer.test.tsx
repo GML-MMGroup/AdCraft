@@ -79,18 +79,7 @@ describe("AgentCanvasAudioPlayer", () => {
   });
 
   it("keeps the empty player composition visible before generation", () => {
-    const node = {
-      ...audioNode("draft", "A calm ambient score"),
-      prompt_preparation: {
-        status: "ready",
-        operation_id: "prompt-operation-1",
-        attempt_no: 1,
-        context_snapshot_id: "prompt-context-1",
-        prompt_digest: "prompt-digest-1",
-        error: null,
-        updated_at: "2026-08-04T00:00:00Z",
-      },
-    } satisfies CanvasNodeV2;
+    const node = audioNode("draft", "A calm ambient score");
 
     render(<AgentCanvasAudioPlayer node={node} status="draft" asset={null} />);
 

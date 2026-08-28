@@ -27,6 +27,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     providerModelsError = null,
     modelResolution = null,
     onClose,
+    onWorkflowRefresh,
     onOpenAssets,
     onUploadReferences,
     onOpenEditing,
@@ -40,6 +41,10 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
+
+  if (node.execution_mode === "source_only") {
+    return null;
+  }
 
   const references = node.node_type === "editing" ? null : (
     <NodeReferenceStrip
@@ -60,7 +65,9 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       nodeType={node.node_type}
     >
       {references}
-      {promptPreparing ? <NodePromptPreparationState node={node} /> : null}
+      {promptPreparing ? (
+        <NodePromptPreparationState node={node} onWorkflowRefresh={onWorkflowRefresh} />
+      ) : null}
       {node.node_type === "text" ? (
         <TextWorkbench
           node={node}

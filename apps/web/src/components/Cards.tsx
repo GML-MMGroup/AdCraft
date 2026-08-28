@@ -9,11 +9,16 @@ export const ProjectCard = memo(function ProjectCard({
   time,
   favorite,
   cover,
+  coverPriority = 1,
   workflowId,
   onOpen,
   onTrash,
   onToggleFavorite,
   onRename,
+  selectionMode = false,
+  selected = false,
+  selectionDisabled = false,
+  onSelect,
   cardRef,
 }: {
   projectId: string;
@@ -21,11 +26,16 @@ export const ProjectCard = memo(function ProjectCard({
   time: string;
   favorite: boolean;
   cover?: V2ProjectCover | null;
+  coverPriority?: number;
   workflowId?: string;
   onOpen: (projectId: string) => void;
   onTrash?: () => void;
   onToggleFavorite?: () => void;
   onRename?: (trigger: HTMLButtonElement) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  selectionDisabled?: boolean;
+  onSelect?: () => void;
   cardRef?: Ref<HTMLElement>;
 }) {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -62,20 +72,37 @@ export const ProjectCard = memo(function ProjectCard({
   }
 
   return (
-    <article ref={cardRef} className="project-card" data-project-id={projectId} data-project-card={name.toLowerCase()}>
-      <button className="project-card-open" type="button" onClick={() => onOpen(projectId)}>
-        <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} name={name} />
+    <article ref={cardRef} className={`project-card${selectionMode ? " is-selection-mode" : ""}${selected ? " is-selected" : ""}`} data-project-id={projectId} data-project-card={name.toLowerCase()}>
+      <button
+        className="project-card-open"
+        type="button"
+        aria-label={selectionMode ? `${selected ? "Deselect" : "Select"} ${name}` : undefined}
+        aria-pressed={selectionMode ? selected : undefined}
+        disabled={selectionMode && selectionDisabled}
+        onClick={() => {
+          if (selectionMode) onSelect?.();
+          else onOpen(projectId);
+        }}
+      >
+        <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} coverPriority={coverPriority} name={name} />
         <div className="card-body">
           <h3>{name}</h3>
           <p>{time}</p>
-          <div className="card-meta">
-            <span>{favorite ? "Favorite" : "Draft"}</span>
-            <span>Open</span>
-          </div>
         </div>
       </button>
+      {selectionMode ? (
+        <input
+          className="project-card-select"
+          type="checkbox"
+          checked={selected}
+          disabled={selectionDisabled}
+          aria-label={`Select ${name}`}
+          onClick={(event) => event.stopPropagation()}
+          onChange={onSelect}
+        />
+      ) : null}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Menu container only tracks hover/focus state; all actions are native buttons. */}
-      <div className={`project-action-menu ${actionsOpen ? "is-open" : ""}`} onPointerEnter={handleActionMenuEnter} onPointerLeave={handleActionMenuLeave} onBlur={handleActionMenuBlur}>
+      {!selectionMode ? <div className={`project-action-menu ${actionsOpen ? "is-open" : ""}`} onPointerEnter={handleActionMenuEnter} onPointerLeave={handleActionMenuLeave} onBlur={handleActionMenuBlur}>
         <button
           ref={actionTriggerRef}
           className="project-action-trigger"
@@ -120,7 +147,7 @@ export const ProjectCard = memo(function ProjectCard({
             <StarIcon />
           </button>
         </div>
-      </div>
+      </div> : null}
     </article>
   );
 });
@@ -129,16 +156,18 @@ function ProjectPreviewImage({
   projectId,
   workflowId,
   cover,
+  coverPriority,
   name,
 }: {
   projectId: string;
   workflowId?: string;
   cover?: V2ProjectCover | null;
+  coverPriority: number;
   name: string;
 }) {
   const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
   const [previewFailed, setPreviewFailed] = useState(false);
-  const sourceUrl = cover ? mediaUrl(cover.posterPath || cover.mediaPath) : "";
+  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.mediaPath) : "";
   const generatedPosterKey = cover?.mediaType === "video" && !cover.posterPath
     ? `${cover.assetId}:${cover.versionId}:${cover.mediaPath}`
     : "";
@@ -163,7 +192,7 @@ function ProjectPreviewImage({
         public_url: cover.mediaPath,
         version: cover.versionId,
       },
-      videoUrl: mediaUrl(cover.mediaPath),
+      videoUrl: projectCoverMediaUrl(cover.mediaPath),
     })).then((record) => {
       if (cancelled || !record?.poster_blob) return;
       objectUrl = URL.createObjectURL(record.poster_blob);
@@ -191,17 +220,30 @@ function ProjectPreviewImage({
   return (
     <span className="preview project-preview-image">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Image load failure switches to the noninteractive no-cover state. */}
-      <img src={previewUrl} alt="" loading="lazy" decoding="async" onError={() => setPreviewFailed(true)} />
+      <img
+        src={previewUrl}
+        alt=""
+        loading={coverPriority >= 3 ? "eager" : "lazy"}
+        fetchPriority={coverPriority >= 3 ? "high" : "auto"}
+        decoding="async"
+        onError={() => setPreviewFailed(true)}
+      />
       <span className="sr-only">{name}</span>
     </span>
   );
 }
 
+function projectCoverMediaUrl(path: string) {
+  const value = path.trim();
+  if (/^\/?api\/v2\/assets\//i.test(value)) return value.startsWith("/") ? value : `/${value}`;
+  return mediaUrl(value);
+}
+
 export function CreateCard({ title, onClick }: { title: string; onClick: () => void }) {
   return (
-    <button className="create-card" onClick={onClick}>
+    <button className="create-card create-card--new-project clear-glass-control" type="button" onClick={onClick}>
       <div>
-        <span className="create-plus">+</span>
+        <span className="create-plus" aria-hidden="true">+</span>
         <h3>{title}</h3>
       </div>
     </button>

@@ -12,11 +12,30 @@ function difference(left, right) {
   return sorted(left.filter((value) => !rightValues.has(value)));
 }
 
-function enumValues(schema) {
+function resolveReference(root, reference) {
+  if (typeof reference !== "string" || !reference.startsWith("#/")) return null;
+  return reference.slice(2).split("/").reduce((value, segment) => {
+    if (!value || typeof value !== "object") return null;
+    return value[segment.replaceAll("~1", "/").replaceAll("~0", "~")];
+  }, root);
+}
+
+function enumValues(schema, root = schema, seen = new Set()) {
   if (!schema || typeof schema !== "object") return [];
+  if (typeof schema.$ref === "string") {
+    if (seen.has(schema.$ref)) return [];
+    const resolved = resolveReference(root, schema.$ref);
+    if (!resolved) return [];
+    const nextSeen = new Set(seen);
+    nextSeen.add(schema.$ref);
+    return enumValues(resolved, root, nextSeen);
+  }
+  if (typeof schema.const === "string") return [schema.const];
   if (Array.isArray(schema.enum)) return schema.enum.filter((value) => typeof value === "string");
-  if (!Array.isArray(schema.anyOf)) return [];
-  return schema.anyOf.flatMap(enumValues);
+  if (Array.isArray(schema.anyOf)) return schema.anyOf.flatMap((member) => enumValues(member, root, seen));
+  if (Array.isArray(schema.oneOf)) return schema.oneOf.flatMap((member) => enumValues(member, root, seen));
+  if (Array.isArray(schema.allOf)) return schema.allOf.flatMap((member) => enumValues(member, root, seen));
+  return [];
 }
 
 export function agentCanvasContractMismatches(openApi, contractManifest = manifest) {
@@ -42,7 +61,7 @@ export function agentCanvasContractMismatches(openApi, contractManifest = manife
     }
 
     Object.entries(expected.enums ?? {}).forEach(([property, expectedValues]) => {
-      const actualValues = enumValues(actual.properties?.[property]);
+      const actualValues = enumValues(actual.properties?.[property], openApi);
       const backendEnumOnly = difference(actualValues, expectedValues);
       const frontendEnumOnly = difference(expectedValues, actualValues);
       if (backendEnumOnly.length || frontendEnumOnly.length) {

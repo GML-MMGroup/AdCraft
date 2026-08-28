@@ -1,5 +1,5 @@
-import type { WorkflowAssetListRowV2 } from "../types-v2.ts";
-import { mediaAssetOriginalPath, mediaAssetPosterPath } from "../workflow/mediaPreview.ts";
+import type { CanvasNodeV2, ProjectAssetSummaryV2 } from "../types-v2.ts";
+import { versionedMediaPath } from "../workflow/mediaPreview.ts";
 
 export type V2ProjectCover = {
   assetId: string;
@@ -9,72 +9,111 @@ export type V2ProjectCover = {
   posterPath: string | null;
 };
 
-type RankedCover = V2ProjectCover & { rank: number };
+type ProductCoverCandidate = {
+  cover: V2ProjectCover;
+  createdAt: number;
+};
 
-const EXCLUDED_STATES = new Set(["working", "history", "reference", "implicit_reference", "archived", "rejected"]);
-const EXCLUDED_STATUSES = new Set(["queued", "running", "waiting", "pending", "blocked", "failed", "partial_failed", "cancelled", "cancellation_requested"]);
+const PRODUCT_MAIN_ROLES = new Set(["product_main", "product_main_image"]);
+const PRODUCT_MULTIVIEW_ROLES = new Set([
+  "product_multiview",
+  "product_multi_view",
+  "product_multi_view_grid",
+  "product_view_board",
+]);
 
 export function resolveV2ProjectCover(
   coverAssetId: string | null | undefined,
-  assets: readonly WorkflowAssetListRowV2[],
+  assets: readonly ProjectAssetSummaryV2[],
+  sourceNodes: readonly CanvasNodeV2[] = [],
 ): V2ProjectCover | null {
-  const usableAssets = assets.filter(isCoverAsset);
+  const sourceNodeRoles = new Map(sourceNodes.map((node) => [node.node_id, nodeRecipeRole(node)]));
+  const productImages = assets.filter((asset): asset is ProjectAssetSummaryV2 & { media_type: "image" } => (
+    isProductMainCoverAsset(asset, sourceNodeRoles)
+  ));
 
   if (coverAssetId) {
-    const explicit = usableAssets.find((asset) => asset.asset_id === coverAssetId);
+    const explicit = productImages.find((asset) => asset.asset_id === coverAssetId);
     const cover = explicit ? coverFromUsableAsset(explicit) : null;
     if (cover) return cover;
   }
 
-  const candidates = usableAssets
-    .map(coverFromAsset)
-    .filter((cover): cover is RankedCover => Boolean(cover));
-  candidates.sort((left, right) => left.rank - right.rank || right.versionId.localeCompare(left.versionId));
-  return candidates[0] ? removeRank(candidates[0]) : null;
+  const candidates = productImages
+    .map((asset): ProductCoverCandidate | null => {
+      const cover = coverFromUsableAsset(asset);
+      return cover ? { cover, createdAt: timestamp(asset.created_at) } : null;
+    })
+    .filter((candidate): candidate is ProductCoverCandidate => Boolean(candidate));
+  candidates.sort((left, right) => right.createdAt - left.createdAt || right.cover.versionId.localeCompare(left.cover.versionId));
+  return candidates[0]?.cover ?? null;
 }
 
-function coverFromAsset(asset: WorkflowAssetListRowV2 & { media_type: "image" | "video" }): RankedCover | null {
-  const cover = coverFromUsableAsset(asset);
-  if (!cover) return null;
-  const rank = coverRank(asset);
-  return rank === null ? null : { ...cover, rank };
+export function needsV2ProjectCoverNodeAuthority(assets: readonly ProjectAssetSummaryV2[]) {
+  const coarseProductAssets = assets.filter((asset) => {
+    if (!isUsableGeneratedImage(asset)) return false;
+    const roles = publicAssetRoles(asset);
+    return roles.includes("product") && !roles.some((role) => PRODUCT_MAIN_ROLES.has(role) || PRODUCT_MULTIVIEW_ROLES.has(role));
+  });
+  if (coarseProductAssets.length === 0) return false;
+  const provenanceRoots = coarseProductAssets.filter((asset) => {
+    const sources = asset.generation_provenance.source_asset_version_ids;
+    return Array.isArray(sources) && sources.length === 0;
+  });
+  if (provenanceRoots.length !== 1 || !provenanceRoots[0].version_id) return true;
+  const root = provenanceRoots[0];
+  return coarseProductAssets.some((asset) => {
+    if (asset.asset_id === root.asset_id && asset.version_id === root.version_id) return false;
+    const sources = asset.generation_provenance.source_asset_version_ids;
+    return !Array.isArray(sources) || !sources.includes(root.version_id);
+  });
 }
 
-function coverFromUsableAsset(asset: WorkflowAssetListRowV2 & { media_type: "image" | "video" }): V2ProjectCover | null {
-  const mediaPath = mediaAssetOriginalPath(asset);
+function coverFromUsableAsset(asset: ProjectAssetSummaryV2 & { media_type: "image" }): V2ProjectCover | null {
+  if (!asset.version_id) return null;
+  const mediaPath = versionedMediaPath(asset.preview_url ?? asset.media_url, asset);
   if (!mediaPath) return null;
   return {
     assetId: asset.asset_id,
     versionId: asset.version_id,
-    mediaType: asset.media_type,
+    mediaType: "image",
     mediaPath,
-    posterPath: asset.media_type === "video" ? mediaAssetPosterPath(asset) || null : null,
+    posterPath: null,
   };
 }
 
-function isCoverAsset(asset: WorkflowAssetListRowV2): asset is WorkflowAssetListRowV2 & { media_type: "image" | "video" } {
-  return (
-    (asset.media_type === "image" || asset.media_type === "video") &&
-    !EXCLUDED_STATES.has(normalize(asset.state)) &&
-    !EXCLUDED_STATUSES.has(normalize(asset.status)) &&
-    normalize(asset.source_type) !== "reference" &&
-    normalize(asset.source_type) !== "implicit_reference"
-  );
+function isProductMainCoverAsset(asset: ProjectAssetSummaryV2, sourceNodeRoles: ReadonlyMap<string, string>) {
+  if (!isUsableGeneratedImage(asset)) return false;
+  const sourceNodeRole = sourceNodeRoles.get(asset.source_node_id ?? "") ?? "";
+  if (PRODUCT_MULTIVIEW_ROLES.has(sourceNodeRole)) return false;
+  if (PRODUCT_MAIN_ROLES.has(sourceNodeRole)) return true;
+
+  const roles = publicAssetRoles(asset);
+  if (roles.some((role) => PRODUCT_MULTIVIEW_ROLES.has(role))) return false;
+  if (roles.some((role) => PRODUCT_MAIN_ROLES.has(role))) return true;
+  if (!roles.includes("product")) return false;
+
+  const sources = asset.generation_provenance.source_asset_version_ids;
+  return Array.isArray(sources) && sources.length === 0;
 }
 
-function coverRank(asset: WorkflowAssetListRowV2): number | null {
-  const nodeId = normalize(asset.node_id);
-  const semanticType = normalize(asset.semantic_type);
-  if (nodeId === "final-composition" || nodeId === "final_composition" || semanticType.includes("final_composition") || semanticType.includes("final-composition")) return 0;
-  if (nodeId === "storyboard" || semanticType.includes("storyboard") || semanticType.includes("shot")) return asset.media_type === "video" ? 1 : 2;
-  if (nodeId.includes("product") || semanticType.includes("product")) return 3;
-  if (nodeId.includes("scene") || semanticType.includes("scene")) return 4;
-  if (nodeId.includes("character") || semanticType.includes("character") || semanticType.includes("role")) return 5;
-  return null;
+function isUsableGeneratedImage(asset: ProjectAssetSummaryV2): asset is ProjectAssetSummaryV2 & { media_type: "image" } {
+  return asset.media_type === "image" && asset.status === "ready" && asset.source_type === "generated";
 }
 
-function removeRank({ rank: _rank, ...cover }: RankedCover): V2ProjectCover {
-  return cover;
+function publicAssetRoles(asset: ProjectAssetSummaryV2) {
+  return [normalize(asset.source_semantic_role), normalize(asset.semantic_type)].filter(Boolean);
+}
+
+function nodeRecipeRole(node: CanvasNodeV2) {
+  const recipeId = typeof node.metadata.prompt_recipe_id === "string" ? normalize(node.metadata.prompt_recipe_id) : "";
+  const recipeRole = recipeId.split(".").at(-1) ?? "";
+  return recipeRole || normalize(node.creative_role);
+}
+
+function timestamp(value: string | null | undefined) {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function normalize(value: string | null | undefined) {

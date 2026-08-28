@@ -7,6 +7,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   findAvailableCanvasPosition,
+  needsInitialCanvasLayout,
   highlightNodeRelatedCanvasEdges,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
@@ -135,6 +136,21 @@ const runtime: CanvasRuntimeSnapshotV2 = {
 };
 
 describe("canvasGraphModel", () => {
+  it("detects collapsed persisted positions without rearranging a single or already separated node", () => {
+    expect(needsInitialCanvasLayout([
+      { ...node("first", "image"), position: { x: 0, y: 0 } },
+      { ...node("second", "video"), position: { x: 0, y: 0 } },
+    ])).toBe(true);
+
+    expect(needsInitialCanvasLayout([
+      { ...node("first", "image"), position: { x: 0, y: 0 } },
+      { ...node("second", "video"), position: { x: 320, y: 0 } },
+    ])).toBe(false);
+    expect(needsInitialCanvasLayout([
+      { ...node("only", "image"), position: { x: 0, y: 0 } },
+    ])).toBe(false);
+  });
+
   it("maps canonical nodes, assets and node runtime directly into React Flow data", () => {
     const nodes = toAgentCanvasFlowNodes(workflow, runtime, {
       onRun: vi.fn(),
@@ -185,6 +201,75 @@ describe("canvasGraphModel", () => {
     expect(refreshed[0]).toBe(first[0]);
     expect(refreshed[0]?.data).toBe(first[0]?.data);
     expect(refreshed[1]).toBe(first[1]);
+  });
+
+  it("projects conversation-source availability and rebuilds only nodes whose source changes", () => {
+    const callbacks = { onShowInConversation: vi.fn() };
+    const first = toAgentCanvasFlowNodes(workflow, runtime, callbacks, {
+      conversationSourceNodeIds: new Set(["image-1"]),
+    });
+    const refreshed = toAgentCanvasFlowNodes(workflow, runtime, callbacks, {
+      previousNodes: first,
+      conversationSourceNodeIds: new Set(["video-1"]),
+    });
+
+    expect(first[0]?.data.conversationSourceAvailable).toBe(true);
+    expect(first[1]?.data.conversationSourceAvailable).toBe(false);
+    expect(refreshed[0]).not.toBe(first[0]);
+    expect(refreshed[1]).not.toBe(first[1]);
+    expect(refreshed[0]?.data.conversationSourceAvailable).toBe(false);
+    expect(refreshed[1]?.data.conversationSourceAvailable).toBe(true);
+  });
+
+  it("keeps the last media asset while a canonical refresh temporarily omits it", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const refreshed = toAgentCanvasFlowNodes(
+      { ...workflow, assets: [] },
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBe(first[0]?.data.asset);
+    expect(refreshed[0]?.data.asset?.asset_id).toBe("asset-1");
+  });
+
+  it("does not keep stale media when the node points to a different asset", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const changedWorkflow = {
+      ...workflow,
+      nodes: workflow.nodes.map((item) => item.node_id === "image-1"
+        ? { ...item, output_asset_id: "asset-2" }
+        : item),
+      assets: [],
+    };
+
+    const refreshed = toAgentCanvasFlowNodes(
+      changedWorkflow,
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBeNull();
+  });
+
+  it("does not keep the previous version when the asset version changes", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const changedAsset = {
+      ...workflow.assets[0]!,
+      version_id: "asset-version-2",
+      preview_url: null,
+      media_url: null,
+    };
+    const refreshed = toAgentCanvasFlowNodes(
+      { ...workflow, assets: [changedAsset] },
+      runtime,
+      {},
+      { previousNodes: first },
+    );
+
+    expect(refreshed[0]?.data.asset).toBe(changedAsset);
   });
 
   it("rebuilds only the changed node and the active workbench node", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentAssetBrowserItem } from "./assetSelection.ts";
-import { toSourceNodeSelection } from "./assetSelection.ts";
+import { toImageBindingSource, toSourceNodeSelection } from "./assetSelection.ts";
 
 describe("toSourceNodeSelection", () => {
   it("preserves image dimensions for adaptive Ready source-node sizing", () => {
@@ -55,5 +55,33 @@ describe("toSourceNodeSelection", () => {
       width: 1080,
       height: 1920,
     });
+  });
+});
+
+describe("toImageBindingSource", () => {
+  it("requires and preserves the immutable AssetVersion identity", () => {
+    expect(toImageBindingSource({
+      source: "project",
+      assetId: "asset-product-1",
+      entityId: null,
+      versionId: "version-product-1",
+      mediaType: "image",
+      displayName: "Product main",
+    })).toEqual({
+      kind: "image_asset",
+      source_asset_id: "asset-product-1",
+      source_asset_version_id: "version-product-1",
+    });
+  });
+
+  it("rejects a new image binding when the AssetVersion is unavailable", () => {
+    expect(() => toImageBindingSource({
+      source: "project",
+      assetId: "legacy-asset",
+      entityId: null,
+      versionId: null,
+      mediaType: "image",
+      displayName: "Legacy image",
+    })).toThrowError(/immutable asset version/i);
   });
 });

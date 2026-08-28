@@ -13,7 +13,6 @@ import type {
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
-import { promptPreparationForNode } from "../model/promptPreparation.ts";
 
 const AUDIO_TITLE_LIMIT = 58;
 const AUDIO_SKIP_SECONDS = 5;
@@ -31,10 +30,7 @@ function playerTitle(
   status: CanvasNodeStatusV2,
   asset?: ProjectAssetSummaryV2 | null,
 ) {
-  const promptPreparation = promptPreparationForNode(node);
-  if (status === "draft") {
-    return promptPreparation?.status === "ready" ? "No audio yet" : promptExcerpt(node, asset);
-  }
+  if (status === "draft") return "No audio yet";
   if (status === "working") return "Generating...";
   if (status === "failed") return "Generation failed";
   return promptExcerpt(node, asset);
@@ -79,7 +75,7 @@ export function AgentCanvasAudioPlayer({
       className={`agent-canvas-audio-player agent-canvas-audio-player--${status}`}
       aria-label="Audio player"
     >
-      <audio ref={playback.audioRef} src={src ?? undefined} preload="metadata" />
+      <audio ref={playback.audioRef} src={src ?? undefined} preload="none" />
 
       <div
         className="agent-canvas-audio-player__title"

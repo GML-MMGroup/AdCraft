@@ -44,7 +44,7 @@ describe("useAgentCanvasNodeFocus", () => {
     expect(flowRef.current.getViewport).toHaveBeenCalledOnce();
     expect(flowRef.current.fitView).toHaveBeenCalledWith({
       nodes: [{ id: "image-1" }],
-      padding: 0.12,
+      padding: 2 / 3,
       duration: 420,
       minZoom: 0.05,
       maxZoom: 4,
@@ -96,5 +96,50 @@ describe("useAgentCanvasNodeFocus", () => {
     expect(result.current.focusedNodeId).toBe("video-1");
     expect(flowRef.current.getViewport).toHaveBeenCalledOnce();
     expect(flowRef.current.setViewport).not.toHaveBeenCalled();
+  });
+
+  it("reveals one conversation-linked node without entering double-click focus mode", () => {
+    const flowRef = createFlowRef();
+    const { result } = renderHook(() => useAgentCanvasNodeFocus({
+      flowRef,
+      scopeKey: "workflow-1",
+    }));
+
+    act(() => result.current.revealNodes(["image-1"]));
+
+    expect(result.current.focusedNodeId).toBeNull();
+    expect(result.current.highlightedNodeIds).toEqual(["image-1"]);
+    expect(flowRef.current.getViewport).not.toHaveBeenCalled();
+    expect(flowRef.current.fitView).toHaveBeenCalledWith({
+      nodes: [{ id: "image-1" }],
+      padding: 0.55,
+      duration: 420,
+      minZoom: 0.05,
+      maxZoom: 1.15,
+    });
+  });
+
+  it("fits multiple linked nodes together and clears their highlight after 1.5 seconds", () => {
+    const flowRef = createFlowRef();
+    const { result } = renderHook(() => useAgentCanvasNodeFocus({
+      flowRef,
+      scopeKey: "workflow-1",
+    }));
+
+    act(() => result.current.revealNodes(["image-1", "video-1", "image-1"]));
+
+    expect(result.current.highlightedNodeIds).toEqual(["image-1", "video-1"]);
+    expect(flowRef.current.fitView).toHaveBeenCalledWith({
+      nodes: [{ id: "image-1" }, { id: "video-1" }],
+      padding: 0.2,
+      duration: 420,
+      minZoom: 0.05,
+      maxZoom: 1.15,
+    });
+
+    act(() => vi.advanceTimersByTime(1499));
+    expect(result.current.highlightedNodeIds).toEqual(["image-1", "video-1"]);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current.highlightedNodeIds).toEqual([]);
   });
 });

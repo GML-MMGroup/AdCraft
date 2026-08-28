@@ -214,6 +214,39 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
   });
 
+  it("does not expose generation controls for a source-only Video node", () => {
+    const node = {
+      ...makeNode("video", "ready"),
+      execution_mode: "source_only" as const,
+      generation_prompt: "This prompt must not become an editable source-only control.",
+      output_asset_id: "editing-export-asset",
+    };
+
+    renderWorkbench(node);
+
+    expect(screen.queryByLabelText("Generation prompt")).toBeNull();
+    expect(screen.queryByLabelText("Choose model")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run video node" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate video variation" })).toBeNull();
+  });
+
+  it("does not expose generation controls for a source-only Product node", () => {
+    const node = {
+      ...makeNode("image", "ready"),
+      creative_role: "product" as const,
+      execution_mode: "source_only" as const,
+      generation_prompt: "This source provenance is not a generation prompt.",
+      output_asset_id: "product-source-asset",
+    };
+
+    renderWorkbench(node);
+
+    expect(screen.queryByLabelText("Generation prompt")).toBeNull();
+    expect(screen.queryByLabelText("Choose model")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate image variation" })).toBeNull();
+  });
+
   it("keeps a guided Draft visible while its generation prompt is being prepared and disables only that node Run action", () => {
     const node = {
       ...makeNode("image"),

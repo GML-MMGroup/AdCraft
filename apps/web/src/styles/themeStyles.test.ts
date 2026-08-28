@@ -84,9 +84,6 @@ describe("theme styles", () => {
       "pages/projects.css",
       "pages/assets.css",
       "pages/api-space.css",
-      "features/workflow/workflow.css",
-      "features/workflow/final-composition/final-composition.css",
-      "features/workflow/v2/screenplay/screenplay.css",
     ]) {
       expect(source(path)).toContain(":root");
       expect(source(path)).not.toContain("data-theme");
@@ -121,11 +118,21 @@ describe("theme styles", () => {
     const jumpBlock = declarationBlock(chatStyles, ".agent-chat__jump-to-latest");
 
     expect(shellBlock).toContain("position: relative");
-    expect(shellBlock).toContain("min-height: 0");
+    expect(shellBlock).toContain("min-height: 56px");
+    expect(shellBlock).toContain("flex: 1 1 72px");
     expect(timelineBlock).toContain("scrollbar-gutter: stable");
     expect(timelineBlock).toContain("scrollbar-width: thin");
     expect(timelineBlock).toContain("overscroll-behavior: contain");
     expect(jumpBlock).toContain("position: absolute");
+  });
+
+  test("uses a pure monochrome Agent Canvas background", () => {
+    const canvasStyles = source("features/agent-canvas/agent-canvas-page.css");
+    const pageBlock = declarationBlock(canvasStyles, ".agent-canvas-page");
+    const boardBlock = declarationBlock(canvasStyles, ".agent-canvas-board");
+
+    expect(pageBlock).toContain("background: #0a0a0a");
+    expect(boardBlock).toContain("border-right: 1px solid #353535");
   });
 
   test("keeps the node prompt composer free of the global focus outline", () => {
@@ -150,6 +157,22 @@ describe("theme styles", () => {
     expect(brandBlock).toContain("transform: scale(1.06)");
     expect(brandBlock).toContain("drop-shadow(0 0 16px rgba(180, 220, 255, 0.72))");
     expect(brandBlock).toContain("drop-shadow(0 0 28px rgba(202, 177, 255, 0.38))");
+  });
+
+  test("uses the homepage glass topbar treatment on the Workflow shell", () => {
+    const themeStyles = source("styles/theme.css");
+
+    expect(themeStyles).toMatch(
+      /:root \.app-shell--cosmic \.topbar,\s*:root \.app-shell--workflow \.topbar\s*\{([\s\S]*?)\n\}/,
+    );
+
+    const workflowTopbar = themeStyles.match(
+      /:root \.app-shell--cosmic \.topbar,\s*:root \.app-shell--workflow \.topbar\s*\{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+
+    expect(workflowTopbar).toContain("border-bottom-color: rgba(255, 255, 255, 0.12)");
+    expect(workflowTopbar).toContain("background: rgba(8, 9, 13, 0.72)");
+    expect(workflowTopbar).toContain("backdrop-filter: blur(22px) saturate(1.08)");
   });
 
   test("loads fixed theme rules with the initial style entry", () => {
@@ -183,23 +206,23 @@ describe("theme styles", () => {
     expect(themeStyles).toContain("background-position: 50% 63%");
   });
 
-  test("keeps clear-glass navigation buttons inside the home navigation rail", () => {
+  test("shares the home clear-glass navigation rail across primary content routes", () => {
     const themeStyles = source("styles/theme.css");
     const homeRail = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .floating-rail',
+      ":root .floating-rail--clear-glass",
     );
     const homeRailItem = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item',
+      ":root .clear-glass-control",
     );
     const homeActiveRailItem = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item.is-active',
+      ":root .clear-glass-control.is-active",
     );
     const homeRailItemHover = declarationBlock(
       themeStyles,
-      ':root:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible)',
+      ":root .clear-glass-control:is(:hover, :focus-visible)",
     );
 
     expect(homeRail).toContain("background: rgba(255, 255, 255, 0.008)");
@@ -210,10 +233,55 @@ describe("theme styles", () => {
     expect(homeRailItem).toContain("border-color: rgba(255, 255, 255, 0.075)");
     expect(homeRailItem).toContain("blur(1.5px) saturate(114%) brightness(1.025)");
     expect(homeRailItem).toContain("box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12)");
-    expect(homeActiveRailItem).toContain("background: rgba(255, 255, 255, 0.018)");
-    expect(homeActiveRailItem).toContain("border-color: rgba(255, 255, 255, 0.13)");
-    expect(homeActiveRailItem).toContain("box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17)");
+    expect(homeActiveRailItem).toContain("background: color-mix(in srgb, #9DAFE6 10%, transparent)");
+    expect(homeActiveRailItem).toContain("#9DAFE6 62%");
+    expect(homeActiveRailItem).toContain("0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent)");
     expect(homeActiveRailItem).not.toContain("transform:");
     expect(homeRailItemHover).toContain("transform: translateY(-1px)");
+    expect(homeRailItemHover).toContain("#9DAFE6 54%");
+    expect(homeRailItemHover).toContain("0 0 16px color-mix(in srgb, #9DAFE6 28%, transparent)");
+
+    const layout = source("components/Layout.tsx");
+    expect(layout).toContain('"/projects", "/assets", "/trash"');
+    expect(layout).toContain('location.pathname.startsWith("/workflow")');
+    expect(layout).toContain('floating-rail--clear-glass');
+  });
+
+  test("hides the project search placeholder on focus and uses the approved caret color", () => {
+    const themeStyles = source("styles/theme.css");
+    const projectStyles = source("pages/projects.css");
+    const selectedControl = declarationBlock(themeStyles, ":root .clear-glass-control.is-active");
+    const searchBox = declarationBlock(projectStyles, ".projects-toolbar .search-box");
+    const interactiveSearchBox = declarationBlock(
+      projectStyles,
+      ".projects-toolbar .search-box.clear-glass-control.is-active:is(:hover, :focus, :focus-visible, :active)",
+    );
+
+    expect(searchBox).toContain("caret-color: #9DAFE6");
+    expect(searchBox).not.toContain("border-color");
+    for (const selectedStyle of [
+      "border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13))",
+      "background: color-mix(in srgb, #9DAFE6 10%, transparent)",
+      "0 0 0 1px color-mix(in srgb, #9DAFE6 22%, transparent)",
+      "0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent)",
+    ]) {
+      expect(selectedControl).toContain(selectedStyle);
+      expect(interactiveSearchBox).toContain(selectedStyle);
+    }
+    expect(interactiveSearchBox).toContain("transform: none");
+    expect(declarationBlock(projectStyles, ".projects-toolbar .search-box:focus::placeholder")).toContain("color: transparent");
+  });
+
+  test("keeps the new project card on the shared clear-glass control treatment", () => {
+    const projectStyles = source("pages/projects.css");
+    const createCard = declarationBlock(projectStyles, ":root .create-card--new-project.clear-glass-control");
+    const createCardPlus = declarationBlock(projectStyles, ":root .create-card--new-project .create-plus");
+
+    expect(createCard).toContain("color: rgba(255, 255, 255, 0.8)");
+    expect(createCardPlus).toContain("width: 48px");
+    expect(createCardPlus).toContain("height: 48px");
+    expect(createCardPlus).toContain("border-radius: 50%");
+    expect(createCardPlus).toContain("background: rgba(255, 255, 255, 0.12)");
+    expect(createCardPlus).toContain("color: currentColor");
   });
 });

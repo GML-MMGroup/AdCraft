@@ -9,6 +9,7 @@ import type {
 import {
   buildEditingInputs,
   moveEditingVideoEntry,
+  reorderEditingVideoEntries,
   replaceEditingManifest,
 } from "./editingModel.ts";
 
@@ -214,6 +215,14 @@ describe("editingModel", () => {
         "binding-video-2",
       ]);
     expect(moveEditingVideoEntry(content.manifest, "missing", 1)).toBe(content.manifest);
+  });
+
+  it("reorders the visible video entries without changing their binding IDs", () => {
+    expect(reorderEditingVideoEntries(content.manifest, ["binding-video-1", "binding-video-2"])
+      .video_entries.map((entry) => entry.binding_id)).toEqual([
+        "binding-video-1",
+        "binding-video-2",
+      ]);
   });
 
   it("resolves a direct Project Asset entry without inventing a Binding or Node", () => {

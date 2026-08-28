@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -338,6 +339,39 @@ export function HomeShowcase({
   const isInteractive = mode === "interactive";
   const recentState = recentReveal?.revealState ?? "visible";
   const discoverState = discoverReveal?.revealState ?? "visible";
+  const productFilmRef = useRef<HTMLDivElement>(null);
+  const [productFilmLoaded, setProductFilmLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!isInteractive || !hasIntroVideo || !productVideoUrl) {
+      setProductFilmLoaded(false);
+      return undefined;
+    }
+
+    const prefersReducedMotion = typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      setProductFilmLoaded(true);
+      return undefined;
+    }
+
+    const film = productFilmRef.current;
+    if (!film) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setProductFilmLoaded(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setProductFilmLoaded(true);
+      observer.disconnect();
+    }, { rootMargin: "200px" });
+    observer.observe(film);
+    return () => observer.disconnect();
+  }, [hasIntroVideo, isInteractive, productVideoUrl]);
 
   return (
     <div className={`home-page home-page--${mode}`}>
@@ -363,8 +397,14 @@ export function HomeShowcase({
           </div>
         </div>
 
-        <div className="home-product-film" aria-label="AdCraft product introduction media" data-media-slot="product-introduction">
-          {isInteractive && hasIntroVideo && productVideoUrl ? (
+        <div
+          ref={productFilmRef}
+          className="home-product-film"
+          aria-label="AdCraft product introduction media"
+          data-media-slot="product-introduction"
+          data-video-loaded={productFilmLoaded ? "true" : "false"}
+        >
+          {isInteractive && hasIntroVideo && productVideoUrl && productFilmLoaded ? (
             <video
               src={productVideoUrl}
               autoPlay

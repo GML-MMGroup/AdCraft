@@ -3,7 +3,9 @@ import { Graph, layout } from "@dagrejs/dagre";
 import type {
   CanvasBindingV2,
   CanvasLayoutPositionV2,
+  CanvasNodeV2,
   CanvasPositionV2,
+  ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
 import {
@@ -70,6 +72,23 @@ export function agentCanvasLayoutNodeFromFlowNode(
       width: measuredWidth && measuredWidth > 0 ? measuredWidth : fallback.width,
       height: measuredHeight && measuredHeight > 0 ? measuredHeight : fallback.height,
     },
+  };
+}
+
+export function agentCanvasLayoutNodeFromCanvasNode(
+  node: Pick<CanvasNodeV2, "node_id" | "node_type" | "output_asset_id" | "position">,
+  assets: readonly ProjectAssetSummaryV2[] = [],
+): AgentCanvasLayoutNode {
+  const asset = node.output_asset_id
+    ? assets.find((candidate) => candidate.asset_id === node.output_asset_id)
+    : null;
+  return {
+    id: node.node_id,
+    position: node.position,
+    size: agentCanvasNodePlacementSize(
+      node.node_type,
+      asset ? { width: asset.width, height: asset.height } : null,
+    ),
   };
 }
 

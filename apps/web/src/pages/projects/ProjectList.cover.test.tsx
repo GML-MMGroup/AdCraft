@@ -1,33 +1,19 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectList, __resetProjectCoverResourceForTests, type ProjectListItem } from "./ProjectList.tsx";
 
-const fixture = vi.hoisted(() => ({ listWorkflowAssets: vi.fn() }));
-
-vi.mock("../../api/v2Client.ts", () => ({
-  v2Api: { listWorkflowAssets: fixture.listWorkflowAssets },
+const fixture = vi.hoisted(() => ({
+  agentCanvasWorkflowWithEtag: vi.fn(),
+  listAgentCanvasProjectAssets: vi.fn(),
 }));
 
-class TestIntersectionObserver {
-  static instances: TestIntersectionObserver[] = [];
-  readonly elements = new Set<Element>();
-
-  constructor(private readonly callback: IntersectionObserverCallback) {
-    TestIntersectionObserver.instances.push(this);
-  }
-
-  observe(element: Element) { this.elements.add(element); }
-  unobserve(element: Element) { this.elements.delete(element); }
-  disconnect() { this.elements.clear(); }
-  takeRecords(): IntersectionObserverEntry[] { return []; }
-
-  static revealAll() {
-    for (const observer of TestIntersectionObserver.instances) {
-      observer.callback([...observer.elements].map((target) => ({ isIntersecting: true, target }) as IntersectionObserverEntry), observer as unknown as IntersectionObserver);
-    }
-  }
-}
+vi.mock("../../api/agentCanvasApi.ts", () => ({
+  agentCanvasApi: {
+    agentCanvasWorkflowWithEtag: fixture.agentCanvasWorkflowWithEtag,
+    listAgentCanvasProjectAssets: fixture.listAgentCanvasProjectAssets,
+  },
+}));
 
 function projects(count: number): ProjectListItem[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -62,9 +48,8 @@ function installControlledCoverRequests() {
   let active = 0;
   let maxActive = 0;
 
-  fixture.listWorkflowAssets.mockImplementation((
+  fixture.listAgentCanvasProjectAssets.mockImplementation((
     workflowId: string,
-    _filters: unknown,
     options?: { signal?: AbortSignal },
   ) => new Promise((resolve, reject) => {
     if (!options?.signal) {
@@ -112,15 +97,57 @@ function installControlledCoverRequests() {
 
 describe("ProjectList covers", () => {
   beforeEach(() => {
-    vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
-    TestIntersectionObserver.instances = [];
     __resetProjectCoverResourceForTests();
+    fixture.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: { nodes: [] }, etag: '"workflow-r1"' });
   });
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it("keeps cover work bounded to the mounted virtual window", async () => {
+    const controlled = installControlledCoverRequests();
+    const view = render(
+      <ProjectList
+        projects={projects(100)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(view.container.querySelectorAll(".project-card").length).toBe(16);
+    expect(controlled.requests.map((request) => request.workflowId)).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+    ]);
+    expect(controlled.active()).toBe(4);
+    expect(controlled.maxActive()).toBe(4);
+    expect(view.container.querySelector("[data-project-list-virtualized=\"true\"]")).toBeTruthy();
+  });
+
+  it("cancels pending cover requests before opening a project", async () => {
+    const controlled = installControlledCoverRequests();
+    const onOpenProject = vi.fn();
+    const view = render(
+      <ProjectList
+        projects={projects(5)}
+        onOpenProject={onOpenProject}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    fireEvent.click(view.container.querySelector('[data-project-id="project-0"] .project-card-open') as HTMLElement);
+
+    expect(controlled.aborted).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+    ]);
+    expect(onOpenProject).toHaveBeenCalledWith("project-0", "workflow-0");
   });
 
   it("completing one cover does not abort or restart sibling jobs", async () => {
@@ -135,32 +162,64 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    expect(fixture.listWorkflowAssets).not.toHaveBeenCalled();
-    await act(async () => { TestIntersectionObserver.revealAll(); });
-    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(4);
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(4);
     expect(controlled.active()).toBe(4);
     expect(controlled.maxActive()).toBe(4);
 
     await act(async () => { controlled.resolve("workflow-0"); });
-    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(5);
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(5);
     expect(controlled.aborted).toEqual([]);
     expect(controlled.active()).toBe(4);
     expect(controlled.maxActive()).toBe(4);
     for (let index = 0; index < 5; index += 1) {
-      expect(fixture.listWorkflowAssets).toHaveBeenCalledWith(
-        `workflow-${index}`,
-        {},
-        { signal: expect.any(AbortSignal) },
-      );
+      expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledWith(`workflow-${index}`, {
+        signal: expect.any(AbortSignal),
+      });
     }
 
     await act(async () => {
       for (let index = 1; index < 5; index += 1) controlled.resolve(`workflow-${index}`);
     });
-    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(5);
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(5);
     expect(controlled.aborted).toEqual([]);
     expect(controlled.active()).toBe(0);
     expect(controlled.maxActive()).toBe(4);
+  });
+
+  it("does not restart a cover request when the project object is recreated unchanged", async () => {
+    const controlled = installControlledCoverRequests();
+    const initial = projects(1);
+    const onOpenProject = vi.fn();
+    const onTrashProject = vi.fn();
+    const onToggleFavorite = vi.fn();
+    const onRenameProject = vi.fn();
+    const view = render(
+      <ProjectList
+        projects={initial}
+        onOpenProject={onOpenProject}
+        onTrashProject={onTrashProject}
+        onToggleFavorite={onToggleFavorite}
+        onRenameProject={onRenameProject}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ProjectList
+        projects={[{ ...initial[0] }]}
+        onOpenProject={onOpenProject}
+        onTrashProject={onTrashProject}
+        onToggleFavorite={onToggleFavorite}
+        onRenameProject={onRenameProject}
+      />,
+    );
+    await act(async () => {});
+
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
+    controlled.resolve("workflow-0");
   });
 
   it("aborts an obsolete project identity and keeps the fresh cover", async () => {
@@ -175,7 +234,7 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     const obsoleteRequest = controlled.requests[0];
 
     view.rerender(
@@ -187,15 +246,84 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
-    expect(obsoleteRequest.signal.aborted).toBe(true);
+    await act(async () => {});
+    expect(obsoleteRequest?.signal.aborted).toBe(true);
     expect(controlled.aborted).toEqual(["workflow-0"]);
-    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(2);
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       controlled.resolve("workflow-0", [coverAsset("fresh", "/media/fresh.webp")]);
     });
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
+  });
+
+  it("renders canonical V2 asset content URLs without a legacy media prefix", async () => {
+    const controlled = installControlledCoverRequests();
+    const view = render(
+      <ProjectList
+        projects={projects(1)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("product-cover", "/api/v2/assets/product-cover/content")]);
+    });
+
+    const image = view.container.querySelector(".project-preview-image img") as HTMLImageElement;
+    expect(image.src).toContain("/api/v2/assets/product-cover/content?v=product-cover-version");
+    expect(image.src).not.toContain("/media/api/v2/");
+    expect(image.getAttribute("loading")).toBe("eager");
+    expect(image.getAttribute("fetchpriority")).toBe("high");
+  });
+
+  it("loads source node authority when product assets have ambiguous public roles", async () => {
+    const controlled = installControlledCoverRequests();
+    let resolveAuthority: ((value: unknown) => void) | undefined;
+    fixture.agentCanvasWorkflowWithEtag.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAuthority = resolve;
+    }));
+    const view = render(
+      <ProjectList
+        projects={projects(1)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    await act(async () => {
+      controlled.resolve("workflow-0", [
+        coverAsset("known-product-main", "/api/v2/assets/known-product-main/content"),
+        coarseProductAsset("product-main", "product-main-node", ["reference-version"]),
+        coarseProductAsset("product-multiview", "product-multiview-node", ["product-main-version"]),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("known-product-main/content");
+    });
+    expect(fixture.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-0", {
+      signal: expect.any(AbortSignal),
+    });
+
+    await act(async () => {
+      resolveAuthority?.({
+        value: {
+          nodes: [
+            { node_id: "product-main-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_main" } },
+            { node_id: "product-multiview-node", metadata: { prompt_recipe_id: "adcraft.agent_canvas.product_multiview" } },
+          ],
+        },
+        etag: '"workflow-r1"',
+      });
+    });
   });
 
   it("drops queued covers on unmount so a new page gets queue slots", async () => {
@@ -210,7 +338,7 @@ describe("ProjectList covers", () => {
       />,
     );
 
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
     expect(controlled.requests.map((request) => request.workflowId)).toEqual([
       "workflow-0", "workflow-1", "workflow-2", "workflow-3",
     ]);
@@ -220,7 +348,7 @@ describe("ProjectList covers", () => {
     expect(controlled.requests.every((request) => request.signal.aborted)).toBe(true);
     expect(controlled.aborted).toEqual(["workflow-0", "workflow-1", "workflow-2", "workflow-3"]);
     expect(controlled.active()).toBe(0);
-    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(4);
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(4);
 
     render(
       <ProjectList
@@ -231,7 +359,7 @@ describe("ProjectList covers", () => {
         onRenameProject={vi.fn()}
       />,
     );
-    await act(async () => { TestIntersectionObserver.revealAll(); });
+    await act(async () => {});
 
     expect(controlled.requests.map((request) => request.workflowId)).toEqual([
       "workflow-0", "workflow-1", "workflow-2", "workflow-3",
@@ -247,11 +375,21 @@ function coverAsset(assetId: string, publicUrl: string) {
     asset_id: assetId,
     version_id: `${assetId}-version`,
     media_type: "image",
-    public_url: publicUrl,
-    state: "selected",
+    media_url: publicUrl,
+    preview_url: publicUrl,
     status: "ready",
     source_type: "generated",
-    node_id: "product",
-    semantic_type: "product_main",
+    semantic_type: "product",
+    source_semantic_role: "product_main",
+    generation_provenance: { source_asset_version_ids: [] },
+  };
+}
+
+function coarseProductAsset(assetId: string, sourceNodeId: string, sourceAssetVersionIds: string[]) {
+  return {
+    ...coverAsset(assetId, `/api/v2/assets/${assetId}/content`),
+    source_semantic_role: "product",
+    source_node_id: sourceNodeId,
+    generation_provenance: { source_asset_version_ids: sourceAssetVersionIds },
   };
 }

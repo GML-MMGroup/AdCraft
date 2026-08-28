@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
-import { CloseIcon, StarIcon } from "../../../icons.tsx";
+import { CloseIcon, ConfirmIcon } from "../../../icons.tsx";
 import type {
   ActiveStyleSkillSummaryV2,
   VideoSkillCatalogResponseV2,
@@ -14,9 +15,11 @@ type StyleSelectorProps = {
   workflowId: string;
   activeStyle: ActiveStyleSkillSummaryV2 | null;
   onWorkflowRefresh: () => Promise<void> | void;
+  onSkillSelected?: (title: string | null) => void;
 };
 
 const STYLE_CATALOG_PAGE_SIZE = 100;
+const STYLE_SEARCH_THRESHOLD = 8;
 
 function compareDisplayOrder(
   left: { display_order: number; title: string },
@@ -30,11 +33,82 @@ function matchesPublicMetadata(skill: VideoSkillPublicDetailV2, query: string) {
   return [
     skill.title,
     skill.summary,
-    skill.category,
     ...skill.tags,
     ...skill.supported_use_cases,
-    skill.preview?.summary ?? "",
   ].some((value) => value.toLocaleLowerCase().includes(query));
+}
+
+function StylePreview({ skill }: { skill: VideoSkillPublicDetailV2 }) {
+  if (skill.preview?.kind === "image" && skill.preview.media_url) {
+    return <img src={skill.preview.media_url} alt="" loading="lazy" />;
+  }
+  if (skill.preview?.kind === "video" && skill.preview.media_url) {
+    return <video src={skill.preview.media_url} muted playsInline preload="metadata" />;
+  }
+  return (
+    <span className="agent-chat__style-preview-placeholder" data-preview="placeholder" aria-label="No preview available">
+      <span className="agent-chat__style-preview-sprockets" aria-hidden="true">
+        {Array.from({ length: 7 }, (_, index) => <i key={index} />)}
+      </span>
+      <span aria-hidden="true">No preview</span>
+    </span>
+  );
+}
+
+function StyleLoadingState() {
+  return (
+    <div className="agent-chat__style-loading" role="status" aria-label="Loading Style previews">
+      <span className="agent-chat__style-loading-label" aria-hidden="true">Loading Styles...</span>
+      {Array.from({ length: 4 }, (_, index) => (
+        <div
+          key={index}
+          className="agent-chat__style-loading-card"
+          data-testid="style-loading-card"
+          aria-hidden="true"
+        >
+          <span />
+          <span />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type StyleCardProps = {
+  skill: VideoSkillPublicDetailV2;
+  selected: boolean;
+  activating: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+};
+
+function StyleCard({ skill, selected, activating, disabled, onSelect }: StyleCardProps) {
+  return (
+    <button
+      type="button"
+      className={`agent-chat__style-option${selected ? " is-selected" : ""}`}
+      aria-pressed={selected}
+      data-preview={skill.preview?.kind ?? "placeholder"}
+      disabled={disabled}
+      onClick={onSelect}
+    >
+      <span className="agent-chat__style-preview">
+        <StylePreview skill={skill} />
+        {selected ? (
+          <span className="agent-chat__style-selected-mark" aria-label="Selected">
+            <ConfirmIcon />
+          </span>
+        ) : null}
+        {activating ? (
+          <span className="agent-chat__style-applying" role="status">Applying…</span>
+        ) : null}
+      </span>
+      <span className="agent-chat__style-option-copy">
+        <strong>{skill.title}</strong>
+        <small>{skill.summary}</small>
+      </span>
+    </button>
+  );
 }
 
 function mergeCatalogPages(pages: VideoSkillCatalogResponseV2[]): VideoSkillCatalogResponseV2 {
@@ -56,6 +130,7 @@ export function AgentCanvasStyleSelector({
   workflowId,
   activeStyle,
   onWorkflowRefresh,
+  onSkillSelected,
 }: StyleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
@@ -64,6 +139,7 @@ export function AgentCanvasStyleSelector({
   const [loading, setLoading] = useState(false);
   const [activatingSkillId, setActivatingSkillId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const lastActiveStyleRunIdRef = useRef<string | null>(
     activeStyle?.skill_run_id ?? null,
   );
@@ -128,11 +204,18 @@ export function AgentCanvasStyleSelector({
 
   useEffect(() => {
     if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const returnFocusTarget = triggerRef.current;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !activatingSkillId) setOpen(false);
     };
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      returnFocusTarget?.focus();
+    };
   }, [activatingSkillId, open]);
 
   const categories = catalog?.categories ?? [];
@@ -149,6 +232,7 @@ export function AgentCanvasStyleSelector({
 
   async function activateStyle(skill: VideoSkillPublicDetailV2) {
     if (activatingSkillId) return;
+    onSkillSelected?.(skill.title);
     setActivatingSkillId(skill.skill_id);
     setError(null);
     try {
@@ -167,6 +251,7 @@ export function AgentCanvasStyleSelector({
       await onWorkflowRefresh();
       setOpen(false);
     } catch (activationError) {
+      onSkillSelected?.(activeStyle?.title ?? null);
       if (isV2ApiError(activationError)) {
         if (activationError.code === "style_skill_activation_conflict") {
           try {
@@ -192,30 +277,43 @@ export function AgentCanvasStyleSelector({
     <div className="agent-chat__style-selector">
       <button
         type="button"
+        ref={triggerRef}
         className={`agent-chat__style-trigger${open ? " is-active" : ""}`}
-        aria-label={`Style: ${activeStyle?.title ?? "Platform Default"}`}
+        aria-label="Skill"
+        title="Skill"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => void togglePicker()}
       >
-        <StarIcon />
-        <span>{activeStyle?.title ?? "Style"}</span>
+        <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
       </button>
 
-      {open ? (
-        <section
-          className="agent-chat__style-menu"
-          role="dialog"
-          aria-label="Choose video Style"
-        >
+      {open && typeof document !== "undefined" ? createPortal(
+        <div className="agent-chat__style-overlay">
+          <button
+            type="button"
+            className="agent-chat__style-backdrop"
+            aria-label="Dismiss Choose video Style"
+            tabIndex={-1}
+            onClick={() => {
+              if (!activatingSkillId) setOpen(false);
+            }}
+          />
+          <section
+            className="agent-chat__style-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose video Style"
+          >
           <header className="agent-chat__style-menu-header">
             <div>
-              <strong>Video Style</strong>
-              <small>Applies to future Agent-created drafts</small>
+              <strong>Choose visual language</strong>
+              <small>Using · {activeStyle?.title ?? "Platform Default"}</small>
             </div>
             <button
               type="button"
               aria-label="Close Style picker"
+              autoFocus
               disabled={Boolean(activatingSkillId)}
               onClick={() => setOpen(false)}
             >
@@ -223,7 +321,7 @@ export function AgentCanvasStyleSelector({
             </button>
           </header>
 
-          {loading ? <p className="agent-chat__style-status" role="status">Loading Styles...</p> : null}
+          {loading ? <StyleLoadingState /> : null}
           {error ? (
             <div className="agent-chat__style-error" role="alert">
               <span>{error}</span>
@@ -248,49 +346,30 @@ export function AgentCanvasStyleSelector({
                   </button>
                 ))}
               </div>
-              <input
-                className="agent-chat__style-search"
-                type="search"
-                value={searchQuery}
-                aria-label="Search video Styles"
-                placeholder="Search Styles"
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
+              {catalog.items.length > STYLE_SEARCH_THRESHOLD ? (
+                <input
+                  className="agent-chat__style-search"
+                  type="search"
+                  value={searchQuery}
+                  aria-label="Search video Styles"
+                  placeholder="Search Styles"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+              ) : null}
               <div className="agent-chat__style-list">
                 {visibleSkills.map((skill) => {
                   const selected = skill.skill_id === activeStyle?.skill_id
                     && skill.version === activeStyle.skill_version;
                   const activating = activatingSkillId === skill.skill_id;
                   return (
-                    <button
-                      type="button"
-                      className={`agent-chat__style-option${selected ? " is-selected" : ""}`}
+                    <StyleCard
                       key={`${skill.skill_id}@${skill.version}`}
-                      aria-pressed={selected}
+                      skill={skill}
+                      selected={selected}
+                      activating={activating}
                       disabled={Boolean(activatingSkillId)}
-                      onClick={() => void activateStyle(skill)}
-                    >
-                      {skill.preview?.media_url && skill.preview.kind === "image" ? (
-                        <img src={skill.preview.media_url} alt="" />
-                      ) : null}
-                      {skill.preview?.media_url && skill.preview.kind === "video" ? (
-                        <video src={skill.preview.media_url} muted playsInline preload="metadata" />
-                      ) : null}
-                      <span className="agent-chat__style-option-copy">
-                        <strong>{skill.title}</strong>
-                        <small>{skill.summary}</small>
-                        {skill.preview?.summary ? <em>{skill.preview.summary}</em> : null}
-                        <span className="agent-chat__style-tags">
-                          {skill.tags.map((tag) => <i key={tag}>{tag}</i>)}
-                          {skill.supported_use_cases.map((useCase) => (
-                            <i className="is-use-case" key={`use-case:${useCase}`}>{useCase}</i>
-                          ))}
-                        </span>
-                      </span>
-                      <span className="agent-chat__style-option-state">
-                        {activating ? "Applying..." : selected ? "Active" : ""}
-                      </span>
-                    </button>
+                      onSelect={() => void activateStyle(skill)}
+                    />
                   );
                 })}
                 {!visibleSkills.length ? (
@@ -299,7 +378,9 @@ export function AgentCanvasStyleSelector({
               </div>
             </>
           ) : null}
-        </section>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

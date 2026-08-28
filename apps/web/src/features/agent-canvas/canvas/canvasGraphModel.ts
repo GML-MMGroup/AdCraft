@@ -47,6 +47,7 @@ export interface FindAvailableCanvasPositionOptions {
 export interface ToAgentCanvasFlowNodesOptions {
   previousNodes?: readonly AgentCanvasFlowNode[];
   activeWorkbenchNodeId?: string | null;
+  conversationSourceNodeIds?: ReadonlySet<string>;
 }
 
 export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasBindingInputRoleV2 {
@@ -73,6 +74,19 @@ export function findAvailableCanvasPosition(
     options.candidateDimensions,
   );
   return findPositionForRects(occupied, preferred, candidateSize);
+}
+
+export function needsInitialCanvasLayout(nodes: readonly PlacementNode[]): boolean {
+  const visibleNodes = nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type));
+  if (visibleNodes.length < 2) return false;
+
+  const seenPositions = new Set<string>();
+  return visibleNodes.some((node) => {
+    const key = `${node.position.x}:${node.position.y}`;
+    if (seenPositions.has(key)) return true;
+    seenPositions.add(key);
+    return false;
+  });
 }
 
 export function incrementalPlacementForNodes(
@@ -146,7 +160,12 @@ export function toAgentCanvasFlowNodes(
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
   const previousNodes = new Map((options.previousNodes ?? []).map((node) => [node.id, node]));
   return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
-    const asset = node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null;
+    const previous = previousNodes.get(node.node_id);
+    const asset = resolveCanvasNodeAsset(
+      node,
+      node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null,
+      previous?.data.asset ?? null,
+    );
     const nodeRuntime = runtime?.node_runtime[node.node_id] ?? null;
     const dimensions = asset ? { width: asset.width, height: asset.height } : null;
     const size = agentCanvasNodeSize(node.node_type, dimensions);
@@ -154,7 +173,7 @@ export function toAgentCanvasFlowNodes(
       ? size
       : undefined;
     const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
-    const previous = previousNodes.get(node.node_id);
+    const conversationSourceAvailable = options.conversationSourceNodeIds?.has(node.node_id) ?? false;
     if (previous && canReuseFlowNode(
       previous,
       node,
@@ -163,6 +182,7 @@ export function toAgentCanvasFlowNodes(
       callbacks,
       style,
       workbenchActive,
+      conversationSourceAvailable,
     )) {
       return previous;
     }
@@ -176,10 +196,28 @@ export function toAgentCanvasFlowNodes(
         asset,
         runtime: nodeRuntime,
         workbenchActive,
+        conversationSourceAvailable,
         ...callbacks,
       },
     };
   });
+}
+
+function resolveCanvasNodeAsset(
+  node: CanvasNodeV2,
+  currentAsset: ProjectAssetSummaryV2 | null,
+  previousAsset: ProjectAssetSummaryV2 | null,
+): ProjectAssetSummaryV2 | null {
+  if (currentAsset?.media_url || currentAsset?.preview_url) return currentAsset;
+  if (
+    node.output_asset_id
+    && (!currentAsset || currentAsset.version_id === previousAsset?.version_id)
+    && previousAsset?.asset_id === node.output_asset_id
+    && (previousAsset.media_url || previousAsset.preview_url)
+  ) {
+    return previousAsset;
+  }
+  return currentAsset;
 }
 
 function canReuseFlowNode(
@@ -190,6 +228,7 @@ function canReuseFlowNode(
   callbacks: AgentCanvasNodeCallbacks,
   style: AgentCanvasNodeSize | undefined,
   workbenchActive: boolean,
+  conversationSourceAvailable: boolean,
 ): boolean {
   const previousData = previous.data;
   const previousStyle = previous.style as AgentCanvasNodeSize | undefined;
@@ -205,8 +244,11 @@ function canReuseFlowNode(
       ? previousData.runtime === runtime
       : sameAgentCanvasRuntimeCardPresentation(previousData.runtime, runtime))
     && previousData.workbenchActive === workbenchActive
+    && previousData.conversationSourceAvailable === conversationSourceAvailable
     && (!workbenchActive || previousData.renderWorkbench === callbacks.renderWorkbench)
     && previousData.onOpenVideoPreview === callbacks.onOpenVideoPreview
+    && previousData.onOpenEditing === callbacks.onOpenEditing
+    && previousData.onShowInConversation === callbacks.onShowInConversation
     && previousStyle?.width === style?.width
     && previousStyle?.height === style?.height;
 }

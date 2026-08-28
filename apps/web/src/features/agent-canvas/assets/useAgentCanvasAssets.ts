@@ -4,6 +4,7 @@ import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasAssetMediaTypeV2,
+  ProjectAssetUploadResponseV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import type {
@@ -25,6 +26,8 @@ export interface UseAgentCanvasAssetsOptions {
   category?: string | null;
   mediaType?: AgentAssetMediaFilter;
   search?: string;
+  /** Load remote project assets only when the owning UI exposes the picker. */
+  enabled?: boolean;
 }
 
 export interface UseAgentCanvasAssetsResult {
@@ -38,6 +41,11 @@ export interface UseAgentCanvasAssetsResult {
     files: Iterable<File>,
     options?: AgentAssetUploadOptions,
   ) => Promise<ProjectAssetSummaryV2[]>;
+  uploadFilesWithReceipts: (
+    files: Iterable<File>,
+    options?: AgentAssetUploadOptions,
+    idempotencyKeys?: readonly string[],
+  ) => Promise<ProjectAssetUploadResponseV2[]>;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -78,7 +86,7 @@ function projectItem(asset: ProjectAssetSummaryV2): AgentAssetBrowserItem {
       source: "project",
       assetId: asset.asset_id,
       entityId: null,
-      versionId: null,
+      versionId: asset.version_id ?? null,
     },
     projectAsset: asset,
   };
@@ -139,13 +147,17 @@ export function useAgentCanvasAssets({
   category = null,
   mediaType = "all",
   search = "",
+  enabled = true,
 }: UseAgentCanvasAssetsOptions): UseAgentCanvasAssetsResult {
   const [allItems, setAllItems] = useState<AgentAssetBrowserItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const queryKey = `${scope}:${workflowId ?? ""}:${category ?? ""}`;
   const requestIdRef = useRef(0);
+  const activeQueryRef = useRef(queryKey);
+  const loadedQueryRef = useRef<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
@@ -166,7 +178,10 @@ export function useAgentCanvasAssets({
           return normalized ? [normalized] : [];
         });
       }
-      if (requestId === requestIdRef.current) setAllItems(nextItems);
+      if (requestId === requestIdRef.current) {
+        setAllItems(nextItems);
+        loadedQueryRef.current = queryKey;
+      }
     } catch (loadError) {
       if (requestId === requestIdRef.current) {
         setAllItems([]);
@@ -175,31 +190,46 @@ export function useAgentCanvasAssets({
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [category, scope, workflowId]);
+  }, [category, queryKey, scope, workflowId]);
 
   useEffect(() => {
+    if (activeQueryRef.current !== queryKey) {
+      activeQueryRef.current = queryKey;
+      loadedQueryRef.current = null;
+      setAllItems([]);
+    }
+    if (!enabled) {
+      requestIdRef.current += 1;
+      setLoading(false);
+      return undefined;
+    }
+    if (loadedQueryRef.current === queryKey) return undefined;
     void load();
     return () => {
       requestIdRef.current += 1;
     };
-  }, [load]);
+  }, [enabled, load, queryKey]);
 
-  const uploadFiles = useCallback(async (
+  const uploadFilesWithReceipts = useCallback(async (
     files: Iterable<File>,
     options: AgentAssetUploadOptions = {},
-  ): Promise<ProjectAssetSummaryV2[]> => {
+    idempotencyKeys?: readonly string[],
+  ): Promise<ProjectAssetUploadResponseV2[]> => {
     if (scope !== "project") {
       throw new Error("Uploads are available only in Project Assets.");
     }
     if (!workflowId) throw new Error("Project assets require a workflow.");
     const selectedFiles = Array.from(files);
     if (selectedFiles.length === 0) return [];
+    if (idempotencyKeys && idempotencyKeys.length !== selectedFiles.length) {
+      throw new Error("Each upload requires one stable idempotency key.");
+    }
 
     setUploading(true);
     setUploadError(null);
     try {
-      const uploaded: ProjectAssetSummaryV2[] = [];
-      for (const file of selectedFiles) {
+      const uploaded: ProjectAssetUploadResponseV2[] = [];
+      for (const [index, file] of selectedFiles.entries()) {
         const metadata = {
           media_type: mediaTypeForFile(file),
           title: titleForFile(file),
@@ -212,9 +242,9 @@ export function useAgentCanvasAssets({
         const response = await agentCanvasApi.uploadAgentCanvasAsset(
           workflowId,
           formData,
-          createOperationKey("asset-upload"),
+          idempotencyKeys?.[index] ?? createOperationKey("asset-upload"),
         );
-        uploaded.push(response.asset);
+        uploaded.push(response);
       }
       await load();
       return uploaded;
@@ -226,6 +256,13 @@ export function useAgentCanvasAssets({
       setUploading(false);
     }
   }, [load, scope, workflowId]);
+
+  const uploadFiles = useCallback(async (
+    files: Iterable<File>,
+    options: AgentAssetUploadOptions = {},
+  ): Promise<ProjectAssetSummaryV2[]> => (
+    await uploadFilesWithReceipts(files, options)
+  ).map((response) => response.asset), [uploadFilesWithReceipts]);
 
   const items = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -245,5 +282,6 @@ export function useAgentCanvasAssets({
     uploadError,
     retry: load,
     uploadFiles,
+    uploadFilesWithReceipts,
   };
 }

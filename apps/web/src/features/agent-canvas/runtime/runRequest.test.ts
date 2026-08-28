@@ -46,4 +46,17 @@ describe("nodeRunRequest", () => {
       source_action: "node_run",
     });
   });
+
+  it("rejects source-only Product and Video nodes before creating a Provider request", () => {
+    expect(() => nodeRunRequest({
+      ...draftNode(),
+      node_type: "image",
+      creative_role: "product",
+      execution_mode: "source_only",
+    })).toThrowError(/source-only/i);
+    expect(() => nodeRunRequest({
+      ...draftNode(),
+      execution_mode: "source_only",
+    })).toThrowError(/source-only/i);
+  });
 });

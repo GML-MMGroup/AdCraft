@@ -21,6 +21,7 @@ function projectAsset(
 ): ProjectAssetSummaryV2 {
   return {
     asset_id: assetId,
+    version_id: `${assetId}-version`,
     media_type: mediaType,
     source_type: "upload",
     display_name: `${mediaType} ${assetId}`,
@@ -103,6 +104,7 @@ describe("useAgentCanvasAssets", () => {
 
     await waitFor(() => expect(result.current.items).toHaveLength(3));
     expect(result.current.items.map((item) => item.mediaType)).toEqual(["image", "video", "audio"]);
+    expect(result.current.items[0]?.identity.versionId).toBe("project-image-version");
 
     rerender({ scope: "my" });
     await waitFor(() => expect(result.current.items).toHaveLength(1));
@@ -150,6 +152,29 @@ describe("useAgentCanvasAssets", () => {
     expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
   });
 
+  it("defers project asset loading until the caller enables the browser", async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useAgentCanvasAssets({
+        workflowId: "workflow-1",
+        scope: "project",
+        mediaType: "image",
+        enabled,
+      }),
+      { initialProps: { enabled: false } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledOnce());
+
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledOnce();
+  });
+
   it("uploads multipart file metadata, refreshes project assets, and never persists file data", async () => {
     const uploaded = projectAsset("uploaded-video", "video");
     fixture.uploadAgentCanvasAsset.mockResolvedValue({
@@ -188,6 +213,43 @@ describe("useAgentCanvasAssets", () => {
     expect(result.current.items.map((item) => item.assetId)).toEqual(["uploaded-video"]);
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it("returns the full Product upload handoff and honors caller-owned stable idempotency keys", async () => {
+    const uploaded = {
+      ...projectAsset("uploaded-product", "image"),
+      version_id: "version-product-1",
+    };
+    fixture.uploadAgentCanvasAsset.mockResolvedValue({
+      workflow_id: "workflow-1",
+      asset: uploaded,
+      pending_handoff_id: "handoff-product-1",
+    });
+    const { result } = renderHook(() => useAgentCanvasAssets({
+      workflowId: "workflow-1",
+      scope: "project",
+    }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const file = new File(["image"], "product.png", { type: "image/png" });
+    let receipts: Awaited<ReturnType<typeof result.current.uploadFilesWithReceipts>> = [];
+
+    await act(async () => {
+      receipts = await result.current.uploadFilesWithReceipts(
+        [file],
+        { semanticRole: "product_main" },
+        ["product-upload-stable-1"],
+      );
+    });
+
+    expect(fixture.uploadAgentCanvasAsset).toHaveBeenCalledWith(
+      "workflow-1",
+      expect.any(FormData),
+      "product-upload-stable-1",
+    );
+    expect(receipts[0]).toMatchObject({
+      pending_handoff_id: "handoff-product-1",
+      asset: { asset_id: "uploaded-product", version_id: "version-product-1" },
+    });
   });
 
   it("exposes a bounded error and retries the current scope", async () => {

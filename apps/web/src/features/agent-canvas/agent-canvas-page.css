@@ -1,6 +1,6 @@
 .agent-canvas-page {
-  --agent-canvas-base-dot-color: rgb(81 85 108 / 24%);
-  --agent-canvas-pointer-dot-color: var(--brand);
+  --agent-canvas-base-dot-color: rgb(112 112 112 / 22%);
+  --agent-canvas-pointer-dot-color: #a3a3a3;
 
   position: relative;
   display: grid;
@@ -10,11 +10,9 @@
   min-height: 620px;
   margin: 0 -40px -64px -94px;
   overflow: hidden;
-  grid-template-columns: minmax(0, 1fr) 372px;
-  color: var(--text-primary, #202236);
-  background:
-    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
-    linear-gradient(145deg, rgb(229 231 241 / 84%), rgb(213 219 232 / 72%));
+  grid-template-columns: minmax(0, 1fr) 390px;
+  color: #f5f5f5;
+  background: #0a0a0a;
 }
 
 .agent-canvas-board {
@@ -22,7 +20,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid rgb(255 255 255 / 42%);
+  border-right: 1px solid #353535;
 }
 
 .agent-canvas-page.is-chat-collapsed {
@@ -41,6 +39,24 @@
 
 .agent-canvas-board.is-layout-previewing .react-flow__node {
   transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
+}
+
+.agent-canvas-board .react-flow__node.is-progressive-reveal .agent-canvas-node {
+  outline: 1px solid rgb(245 245 245 / 82%);
+  outline-offset: 5px;
+  box-shadow: 0 0 0 1px rgb(112 112 112 / 42%), 0 10px 28px rgb(0 0 0 / 34%);
+  animation: agent-canvas-progressive-reveal 420ms ease-out both;
+}
+
+@keyframes agent-canvas-progressive-reveal {
+  from {
+    opacity: .48;
+    transform: scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .agent-canvas-board .react-flow__pane {
@@ -94,12 +110,10 @@
 }
 
 .agent-canvas-board.is-interacting :is(
-  .agent-canvas-node__type-label,
   .agent-canvas-node__video-play,
   .agent-canvas-audio-player,
-  .agent-canvas-node__status,
-  .agent-canvas-node__fallback-warning,
-  .agent-canvas-node__error
+  .agent-canvas-node__header,
+  .agent-canvas-node__fallback-warning
 ) {
   box-shadow: none;
   backdrop-filter: none;
@@ -108,13 +122,13 @@
 
 .agent-canvas-board.is-interacting :is(
   .agent-canvas-audio-player__waveform i,
+  .agent-canvas-node__generation-star,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen
 ) {
   animation-play-state: paused;
 }
 
-.agent-canvas-board.is-interacting .agent-canvas-node__center-icon img,
 .agent-canvas-board.is-interacting .agent-canvas-pointer-dot {
   filter: none;
 }
@@ -155,23 +169,23 @@
 
 .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(157 175 230 / 88%))
-    drop-shadow(0 0 4px rgb(157 175 230 / 44%));
+    drop-shadow(0 0 1.5px rgb(163 163 163 / 82%))
+    drop-shadow(0 0 4px rgb(163 163 163 / 36%));
 }
 
 .agent-canvas-board .react-flow__controls {
   bottom: 18px;
   left: 18px;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 64%);
+  border: 1px solid #353535;
   border-radius: 7px;
-  box-shadow: 0 12px 28px rgb(39 39 62 / 14%);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 28%);
 }
 
 .agent-canvas-board .react-flow__controls button {
-  color: #4d5066;
-  background: rgb(249 250 253 / 88%);
-  border-bottom-color: rgb(121 122 145 / 14%);
+  color: #a3a3a3;
+  background: #151515;
+  border-bottom-color: #353535;
 }
 
 .agent-canvas-toolbar {
@@ -184,13 +198,13 @@
   align-items: center;
   gap: 6px;
   padding: 5px;
-  color: #4f5267;
-  background: rgb(248 249 253 / 78%);
-  border: 1px solid rgb(255 255 255 / 72%);
+  color: #dedede;
+  background: #151515;
+  border: 1px solid #353535;
   border-radius: 8px;
-  box-shadow: 0 14px 34px rgb(43 43 67 / 16%);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 42%);
   transform: translateX(-50%);
-  backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: none;
 }
 
 .agent-canvas-toolbar > button,
@@ -212,13 +226,13 @@
 .agent-canvas-toolbar__add > button:hover,
 .agent-canvas-toolbar__layout > button:hover:not(:disabled),
 .agent-canvas-toolbar button.is-active {
-  color: var(--brand-hover);
-  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: #fff;
+  background: #303030;
 }
 
 .agent-canvas-toolbar__run {
-  color: var(--text-inverse) !important;
-  background: var(--brand) !important;
+  color: #111 !important;
+  background: #e7e7e7 !important;
 }
 
 .agent-canvas-toolbar > button:disabled,
@@ -247,9 +261,9 @@
   width: 220px;
   gap: 10px;
   padding: 12px;
-  color: #f3f4f8;
-  background: rgb(24 26 34 / 96%);
-  border: 1px solid rgb(255 255 255 / 10%);
+  color: #f5f5f5;
+  background: #151515;
+  border: 1px solid #353535;
   border-radius: 8px;
   box-shadow: 0 18px 42px rgb(0 0 0 / 32%);
   transform: translateX(-50%);
@@ -262,12 +276,12 @@
 }
 
 .agent-canvas-layout-confirmation > p:focus-visible {
-  outline: 2px solid rgb(156 211 142 / 86%);
+  outline: 2px solid #a3a3a3;
   outline-offset: 3px;
 }
 
 .agent-canvas-layout-confirmation__error {
-  color: #f0b8b8;
+  color: #a3a3a3;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -291,11 +305,11 @@
 }
 
 .agent-canvas-layout-confirmation__actions button:first-child {
-  color: #ca6f6f;
+  color: #a3a3a3;
 }
 
 .agent-canvas-layout-confirmation__actions button:last-child {
-  color: #9cd38e;
+  color: #f5f5f5;
 }
 
 .agent-canvas-layout-confirmation__actions button:hover:not(:disabled),
@@ -313,11 +327,11 @@
   display: grid;
   width: 164px;
   padding: 6px;
-  background: rgb(249 250 253 / 96%);
-  border: 1px solid rgb(255 255 255 / 76%);
+  background: #1d1d1d;
+  border: 1px solid #3a3a3a;
   border-radius: 7px;
-  box-shadow: 0 18px 40px rgb(35 35 58 / 20%);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
 }
 
 .agent-canvas-add-menu {
@@ -333,7 +347,7 @@
   grid-template-columns: 24px 1fr;
   gap: 9px;
   padding: 0 10px;
-  color: #34374c;
+  color: #cfcfcf;
   text-align: left;
   background: transparent;
   border: 0;
@@ -342,7 +356,14 @@
 }
 
 .agent-canvas-node-picker button:hover {
-  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: #fff;
+  background: #2d2d2d;
+}
+
+.agent-canvas-node-picker .agent-canvas-node-icon {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
 }
 
 .agent-canvas-node-picker span {
@@ -367,14 +388,12 @@
   z-index: 32;
   min-width: 188px;
   padding: 6px;
-  color: #313448;
-  background: rgb(249 250 255 / 70%);
-  border: 1px solid rgb(255 255 255 / 82%);
-  border-radius: 18px;
-  box-shadow:
-    0 20px 44px rgb(30 31 54 / 24%),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
-  backdrop-filter: blur(28px) saturate(1.35);
+  color: #dedede;
+  background: #151515;
+  border: 1px solid #353535;
+  border-radius: 8px;
+  box-shadow: 0 20px 44px rgb(0 0 0 / 46%);
+  backdrop-filter: none;
 }
 
 .agent-canvas-context-menu__action {
@@ -398,8 +417,8 @@
 
 .agent-canvas-context-menu__action:hover,
 .agent-canvas-context-menu__action:focus-visible {
-  color: var(--brand-hover);
-  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: #fff;
+  background: #303030;
   outline: 0;
 }
 
@@ -413,12 +432,13 @@
   padding: 0;
   background: transparent;
   border: 0;
+  border-radius: 0;
   box-shadow: none;
   backdrop-filter: none;
 }
 
 .agent-canvas-context-menu__node-picker button {
-  border-radius: 13px;
+  border-radius: 4px;
 }
 
 .agent-canvas-toolbar__connection {
@@ -426,7 +446,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 8px 0 5px;
-  color: #737689;
+  color: #707070;
   font-size: 11px;
   text-transform: capitalize;
 }
@@ -435,21 +455,21 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #a0a3af;
+  background: #707070;
 }
 
 .agent-canvas-toolbar__connection.is-live i {
-  background: #51ac86;
-  box-shadow: 0 0 0 3px rgb(81 172 134 / 13%);
+  background: #f5f5f5;
+  box-shadow: 0 0 0 3px rgb(245 245 245 / 10%);
 }
 
 .agent-canvas-toolbar__connection.is-reconnecting i,
 .agent-canvas-toolbar__connection.is-connecting i {
-  background: #c49850;
+  background: #a3a3a3;
 }
 
 .agent-canvas-toolbar__connection.is-unavailable i {
-  background: #c95a66;
+  background: #4a4a4a;
 }
 
 .agent-canvas-empty {
@@ -968,27 +988,24 @@
 }
 
 :root .agent-canvas-page {
-  --agent-canvas-base-dot-color: rgb(142 146 164 / 20%);
-  --agent-canvas-pointer-dot-color: var(--brand);
+  --agent-canvas-base-dot-color: rgb(112 112 112 / 22%);
+  --agent-canvas-pointer-dot-color: #a3a3a3;
 
-  color: #ecedf5;
-  background:
-    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
-    linear-gradient(145deg, #161820, #101219);
+  color: #f5f5f5;
+  background: #0a0a0a;
 }
 
 :root .agent-canvas-board {
-  border-right-color: rgb(255 255 255 / 10%);
+  border-right-color: #353535;
 }
 
 :root .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(202 212 245 / 92%))
-    drop-shadow(0 0 5px rgb(157 175 230 / 58%));
+    drop-shadow(0 0 1.5px rgb(163 163 163 / 82%))
+    drop-shadow(0 0 5px rgb(163 163 163 / 36%));
 }
 
 :root :is(
-  .agent-canvas-toolbar,
   .agent-canvas-add-menu,
   .agent-canvas-context-menu,
   .agent-canvas-inspector,
@@ -997,6 +1014,81 @@
   color: #e4e5ee;
   background: rgb(24 27 35 / 92%);
   border-color: rgb(255 255 255 / 12%);
+}
+
+:root .agent-canvas-toolbar {
+  color: #dedede;
+  background: #151515;
+  border-color: #353535;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-toolbar > button:hover:not(:disabled),
+:root .agent-canvas-toolbar__add > button:hover,
+:root .agent-canvas-toolbar__layout > button:hover:not(:disabled),
+:root .agent-canvas-toolbar button.is-active {
+  color: #fff;
+  background: #303030;
+}
+
+:root .agent-canvas-toolbar__run {
+  color: #111 !important;
+  background: #e7e7e7 !important;
+}
+
+:root .agent-canvas-add-menu {
+  color: #dedede;
+  background: #1d1d1d;
+  border-color: #3a3a3a;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-add-menu button {
+  color: #cfcfcf;
+}
+
+:root .agent-canvas-add-menu button:hover {
+  color: #fff;
+  background: #2d2d2d;
+}
+
+:root .agent-canvas-context-menu {
+  color: #dedede;
+  background: #151515;
+  border-color: #353535;
+  box-shadow: 0 20px 44px rgb(0 0 0 / 46%);
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-context-menu__action {
+  color: #dedede;
+}
+
+:root .agent-canvas-context-menu__action:hover,
+:root .agent-canvas-context-menu__action:focus-visible {
+  color: #fff;
+  background: #303030;
+}
+
+:root .agent-canvas-context-menu__node-picker {
+  color: #dedede;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+:root .agent-canvas-context-menu__node-picker button {
+  color: #cfcfcf;
+}
+
+:root .agent-canvas-context-menu__node-picker button:hover,
+:root .agent-canvas-context-menu__node-picker button:focus-visible {
+  color: #fff;
+  background: #2d2d2d;
 }
 
 :root :is(
@@ -1015,9 +1107,9 @@
 }
 
 :root .agent-canvas-board .react-flow__controls button {
-  color: #d7d9e4;
-  background: rgb(28 31 40 / 88%);
-  border-color: rgb(255 255 255 / 10%);
+  color: #a3a3a3;
+  background: #151515;
+  border-color: #353535;
 }
 
 @media (max-width: 1180px) {
@@ -1040,6 +1132,10 @@
 
   .agent-canvas-board.is-layout-previewing .react-flow__node {
     transition: none;
+  }
+
+  .agent-canvas-board .react-flow__node.is-progressive-reveal .agent-canvas-node {
+    animation: none;
   }
 
   .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,

@@ -9,6 +9,7 @@ import type {
   CanvasBindingCreateRequestV2,
   CanvasBindingPatchRequestV2,
   CanvasConnectedNodeCreateRequestV2,
+  CanvasEditingExportImportRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasLayoutPositionV2,
   CanvasNodeCreateRequestV2,
@@ -19,7 +20,10 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { incrementalPlacementForNodes } from "../canvas/canvasGraphModel.ts";
+import { buildAgentCanvasPreRevealLayout } from "../canvas/agentCanvasPreRevealLayout.ts";
+import { assertGenerativeNode } from "../model/nodeExecutionMode.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
+import { assertValidCanvasBindingWrite } from "./bindingWriteValidation.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
 import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
@@ -28,6 +32,7 @@ import {
   mergeAgentCanvasLayout,
   mergeAgentCanvasBindingMutation,
   mergeAgentCanvasConnectedNode,
+  mergeAgentCanvasEditingExportImport,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -85,6 +90,7 @@ export function useAgentCanvasSession() {
     new Map<string, Map<string, CanvasLayoutPositionV2>>(),
   );
   const materializationKeysRef = useRef(new Map<string, string>());
+  const editingExportImportKeysRef = useRef(new Map<string, string>());
   const layoutQueueForWorkflow = useCallback((workflowId: string) => {
     let layoutQueue = layoutQueuesRef.current.get(workflowId);
     if (!layoutQueue) {
@@ -293,6 +299,9 @@ export function useAgentCanvasSession() {
     request: CanvasVariationDraftUpsertV2,
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const source = agentCanvasWorkflow.nodes.find((node) => node.node_id === nodeId);
+    if (!source) throw new Error("The source node is no longer available.");
+    assertGenerativeNode(source);
     const workflowId = agentCanvasWorkflow.workflow_id;
     await queueRef.current!.enqueue(createOperationKey(`variation-save:${nodeId}`), async () => {
       const response = await agentCanvasApi.saveAgentCanvasVariationDraft(workflowId, nodeId, request);
@@ -336,6 +345,7 @@ export function useAgentCanvasSession() {
     action: "create_draft" | "generate",
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    assertGenerativeNode(source);
     if (!["image", "video", "audio"].includes(source.node_type) || source.status !== "ready") {
       throw new Error("Only Ready media nodes can create an editable sibling Draft.");
     }
@@ -384,22 +394,28 @@ export function useAgentCanvasSession() {
 
   const placeActionReceiptNodes = useCallback(async (
     receipt: AgentActionReceiptV2,
-    viewportAnchor: CanvasPositionV2,
   ) => {
     const current = workflowRef.current;
-    if (!current || current.workflow_id !== receipt.workflow_id || !receipt.created_node_ids.length) return;
+    if (!current || current.workflow_id !== receipt.workflow_id) return null;
     const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(receipt.workflow_id);
-    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return;
+    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return null;
+    if (!receipt.created_node_ids.length) {
+      applyWorkflow(latest.value);
+      return null;
+    }
+
+    const preRevealLayout = buildAgentCanvasPreRevealLayout({
+      nodes: latest.value.nodes,
+      bindings: latest.value.bindings,
+      affectedNodeIds: receipt.created_node_ids,
+      assets: latest.value.assets,
+    });
     applyWorkflow(latest.value);
-    const positions = incrementalPlacementForNodes(
-      latest.value.nodes,
-      receipt.created_node_ids,
-      receipt.placement_hints,
-      viewportAnchor,
-      latest.value.assets,
-    );
-    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return;
-    if (positions.length) await updateNodePositions(positions);
+    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return null;
+    if (!preRevealLayout.positions.length || !preRevealLayout.revealPlan.orderedNodeIds.length) return null;
+    await updateNodePositions(preRevealLayout.positions);
+    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return null;
+    return preRevealLayout.revealPlan;
   }, [applyWorkflow, updateNodePositions]);
 
   const deleteNode = useCallback(async (nodeId: string) => {
@@ -414,6 +430,7 @@ export function useAgentCanvasSession() {
 
   const createBinding = useCallback(async (request: CanvasBindingCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    assertValidCanvasBindingWrite(request);
     return queueRef.current!.enqueue(createOperationKey("create-binding"), async () => {
       const response = await agentCanvasApi.createAgentCanvasBinding(agentCanvasWorkflow.workflow_id, request);
       applyWorkflow(response.value.workflow);
@@ -443,6 +460,44 @@ export function useAgentCanvasSession() {
       setAuthoringError(null);
       return response.value.node;
     });
+  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+
+  const importEditingExport = useCallback(async (
+    editingNodeId: string,
+    request: CanvasEditingExportImportRequestV2,
+  ) => {
+    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const workflowId = agentCanvasWorkflow.workflow_id;
+    const importScope = `${workflowId}:${editingNodeId}:${JSON.stringify(request)}`;
+    let idempotencyKey = editingExportImportKeysRef.current.get(importScope);
+    if (!idempotencyKey) {
+      idempotencyKey = createOperationKey("editing-export-import-request");
+      editingExportImportKeysRef.current.set(importScope, idempotencyKey);
+      if (editingExportImportKeysRef.current.size > 64) {
+        const oldest = editingExportImportKeysRef.current.keys().next().value;
+        if (oldest) editingExportImportKeysRef.current.delete(oldest);
+      }
+    }
+    return queueRef.current!.enqueue(
+      createOperationKey(`editing-export-import:${editingNodeId}`),
+      async () => {
+        const response = await agentCanvasApi.importAgentCanvasEditingExport(
+          workflowId,
+          editingNodeId,
+          request,
+          idempotencyKey,
+        );
+        setAgentCanvasWorkflow((current) => {
+          if (!current || current.workflow_id !== workflowId) return current;
+          const next = mergeAgentCanvasEditingExportImport(current, response.value);
+          workflowRef.current = next;
+          return next;
+        });
+        setSelectedNodeId(response.value.node.node_id);
+        setAuthoringError(null);
+        return response.value;
+      },
+    );
   }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
 
   const patchBinding = useCallback(async (
@@ -538,6 +593,7 @@ export function useAgentCanvasSession() {
       rollbackNodePositions,
       createNode,
       createConnectedNode,
+      importEditingExport,
       saveVariationDraft,
       discardVariationDraft,
       materializeVariationDraft,

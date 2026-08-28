@@ -98,7 +98,8 @@
   background: rgba(13, 15, 20, 0.94);
 }
 
-:root .app-shell--cosmic .topbar {
+:root .app-shell--cosmic .topbar,
+:root .app-shell--workflow .topbar {
   border-bottom-color: rgba(255, 255, 255, 0.12);
   background: rgba(8, 9, 13, 0.72);
   backdrop-filter: blur(22px) saturate(1.08);
@@ -142,8 +143,8 @@
   background: #202530;
 }
 
-/* The home rail and its controls are separate clear-glass surfaces. */
-:root:has(.main-view[data-route="/"]) .floating-rail {
+/* Primary application routes share the home rail's clear-glass surfaces. */
+:root .floating-rail--clear-glass {
   border-color: rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.008);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -151,7 +152,7 @@
   backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item {
+:root .clear-glass-control {
   border-color: rgba(255, 255, 255, 0.075);
   background: rgba(255, 255, 255, 0.008);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -165,28 +166,34 @@
     transform 220ms ease;
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item.is-active {
-  border-color: rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.018);
-  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+:root .clear-glass-control.is-active {
+  border-color: color-mix(in srgb, #9DAFE6 62%, rgba(255, 255, 255, 0.13));
+  background: color-mix(in srgb, #9DAFE6 10%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #9DAFE6 22%, transparent),
+    0 0 20px color-mix(in srgb, #9DAFE6 36%, transparent),
+    0 11px 26px rgba(0, 13, 24, 0.17);
   color: rgba(255, 255, 255, 0.96);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible) {
-  border-color: rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.018);
-  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+:root .clear-glass-control:is(:hover, :focus-visible) {
+  border-color: color-mix(in srgb, #9DAFE6 54%, rgba(255, 255, 255, 0.13));
+  background: color-mix(in srgb, #9DAFE6 7%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #9DAFE6 18%, transparent),
+    0 0 16px color-mix(in srgb, #9DAFE6 28%, transparent),
+    0 11px 26px rgba(0, 13, 24, 0.17);
   color: rgba(255, 255, 255, 0.96);
   transform: translateY(-1px);
 }
 
-:root:has(.main-view[data-route="/"]) .rail-item:active {
+:root .clear-glass-control:active {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   transform: scale(0.975);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
-  :root:has(.main-view[data-route="/"]) .rail-item {
+  :root .clear-glass-control {
     background: rgba(20, 24, 40, 0.2);
   }
 }

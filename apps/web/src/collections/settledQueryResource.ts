@@ -18,6 +18,8 @@ export type SettledQueryResource<T> = {
   subscribe(keyParts: unknown, fetcher: (signal: AbortSignal) => Promise<T>): QuerySubscription<T>;
   /** Discard cached values and abort matching in-flight work. */
   invalidate(keyParts?: unknown): void;
+  /** Abort all in-flight work while retaining settled cache entries. */
+  cancelPending(): void;
   /** Prevent future reuse while allowing current subscribers to finish. */
   evict(keyParts: unknown): void;
   clear(): void;
@@ -144,6 +146,10 @@ export function createSettledQueryResource<T = unknown>({
     entry.controller.abort();
   }
 
+  function cancelPending() {
+    for (const entry of pendingEntries) entry.controller.abort();
+  }
+
   return {
     get(keyParts, fetcher) {
       const key = stableQueryKey(keyParts);
@@ -173,6 +179,7 @@ export function createSettledQueryResource<T = unknown>({
       };
     },
     invalidate,
+    cancelPending,
     evict(keyParts) {
       const key = stableQueryKey(keyParts);
       const entry = entries.get(key);

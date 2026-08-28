@@ -1,25 +1,9 @@
-import type { ReactNode } from "react";
-
-import {
-  EditIcon,
-  ImageIcon,
-  MuteIcon,
-  VideoIcon,
-} from "../../../icons.tsx";
-import type { CanvasNodeTypeV2 } from "../../../types-v2.ts";
 import {
   AGENT_CANVAS_NODE_LABELS,
   AGENT_CANVAS_VISIBLE_NODE_TYPES,
   type AgentCanvasVisibleNodeTypeV2,
 } from "../model/nodeDefaults.ts";
-
-function nodeIcon(type: CanvasNodeTypeV2): ReactNode {
-  if (type === "text") return <EditIcon />;
-  if (type === "image") return <ImageIcon />;
-  if (type === "video") return <VideoIcon />;
-  if (type === "audio") return <MuteIcon />;
-  return <EditIcon />;
-}
+import { AgentCanvasNodeIcon } from "./AgentCanvasNodeIcon.tsx";
 
 interface AgentCanvasNodePickerProps {
   className?: string;
@@ -42,7 +26,7 @@ export function AgentCanvasNodePicker({
           aria-label={`Add ${AGENT_CANVAS_NODE_LABELS[type]} node`}
           onClick={() => onSelect(type)}
         >
-          {nodeIcon(type)}
+          <AgentCanvasNodeIcon nodeType={type} />
           <span>{AGENT_CANVAS_NODE_LABELS[type]}</span>
         </button>
       ))}

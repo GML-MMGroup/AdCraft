@@ -32,7 +32,21 @@ type WorkspaceRestoreRequest = {
   activeProjectId: string | null;
 };
 
-export function WorkspaceProvider({ children, startWithNewProject = false }: { children: ReactNode; startWithNewProject?: boolean }) {
+export type WorkspaceProjectCatalogScope = "active" | "trashed" | "both";
+
+type WorkspaceProviderProps = {
+  children: ReactNode;
+  startWithNewProject?: boolean;
+  restoreActiveWorkflow?: boolean;
+  projectCatalogScope?: WorkspaceProjectCatalogScope;
+};
+
+export function WorkspaceProvider({
+  children,
+  startWithNewProject = false,
+  restoreActiveWorkflow = true,
+  projectCatalogScope = "both",
+}: WorkspaceProviderProps) {
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<UploadedAsset[]>([]);
   const [promptLibraryEntities, setPromptLibraryEntities] = useState<AssetLibraryEntitySummary[]>([]);
@@ -149,19 +163,25 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     setProjectCatalogRefreshing(true);
     const { v2Api } = await import("../api/v2Client");
     const [active, trashed] = await Promise.allSettled([
-      loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
-      loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
+      projectCatalogScope === "trashed"
+        ? Promise.resolve(null)
+        : loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
+      projectCatalogScope === "active"
+        ? Promise.resolve(null)
+        : loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
     ]);
     if (generation !== projectCatalogGenerationRef.current) return false;
-    if (active.status === "fulfilled") setSavedProjects(active.value);
-    if (trashed.status === "fulfilled") setTrashedProjects(trashed.value);
-    const succeeded = active.status === "fulfilled" && trashed.status === "fulfilled";
+    if (projectCatalogScope !== "trashed" && active.status === "fulfilled" && active.value) setSavedProjects(active.value);
+    if (projectCatalogScope !== "active" && trashed.status === "fulfilled" && trashed.value) setTrashedProjects(trashed.value);
+    const activeSucceeded = projectCatalogScope === "trashed" || (active.status === "fulfilled" && Boolean(active.value));
+    const trashedSucceeded = projectCatalogScope === "active" || (trashed.status === "fulfilled" && Boolean(trashed.value));
+    const succeeded = activeSucceeded && trashedSucceeded;
     setProjectCatalogError(succeeded
       ? null
       : "Projects could not be refreshed. Existing projects are still shown.");
     setProjectCatalogRefreshing(false);
     return succeeded;
-  }, []);
+  }, [projectCatalogScope]);
 
   const beginWorkspaceRestoreRequest = useCallback((): WorkspaceRestoreRequest => {
     return {
@@ -223,11 +243,11 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     return request;
   }, [invalidateWorkspaceRestoreRequests, refreshProjects, workflow?.workflow_id]);
 
-  const openProject = useCallback(async (projectId: string) => {
+  const openProject = useCallback(async (projectId: string, workflowId?: string) => {
     const requestGeneration = invalidateWorkspaceRestoreRequests();
     const { v2Api } = await import("../api/v2Client");
-    const project = await v2Api.projectWithEtag(projectId);
-    const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+    const project = workflowId ? null : await v2Api.projectWithEtag(projectId);
+    const response = await v2Api.agentCanvasWorkflowWithEtag(workflowId ?? project!.value.workflow_id);
     if (requestGeneration !== workspaceSessionGenerationRef.current) return false;
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
     const nextWorkflow = response.value;
@@ -308,6 +328,11 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
       return undefined;
     }
     routeProjectCreationStartedRef.current = false;
+    if (restoreActiveWorkflow && activeWorkflowIdRef.current) {
+      setWorkspaceRestoreError(null);
+      setWorkspaceHydrated(true);
+      return undefined;
+    }
     let cancelled = false;
     async function hydrateBackendWorkspace() {
       const restoreRequest = beginWorkspaceRestoreRequest();
@@ -315,6 +340,15 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
         const { v2Api, isV2ApiError, isNetworkError } = await import("../api/v2Client");
         await refreshProjects();
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
+        if (!restoreActiveWorkflow) {
+          activeWorkflowIdRef.current = null;
+          setWorkflow(null);
+          setAgentCanvasWorkflow(null);
+          setMessages([]);
+          setWorkspaceRestoreError(null);
+          setWorkspaceHydrated(true);
+          return;
+        }
         const storedProjectId = loadActiveProjectId(window.localStorage);
         if (storedProjectId) {
           try {
@@ -368,6 +402,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
   }, [
     beginWorkspaceRestoreRequest,
     refreshProjects,
+    restoreActiveWorkflow,
     shouldApplyWorkspaceRestoreRequest,
     startNewProject,
     startWithNewProject,

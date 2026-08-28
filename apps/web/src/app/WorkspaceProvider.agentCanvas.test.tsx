@@ -102,6 +102,22 @@ afterEach(() => {
 });
 
 describe("WorkspaceProvider Agent Canvas authority", () => {
+  it("loads the active project catalog without restoring a workflow for a catalog-only route", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+
+    render(
+      <WorkspaceProvider restoreActiveWorkflow={false} projectCatalogScope="active">
+        <Probe />
+      </WorkspaceProvider>,
+    );
+
+    await screen.findByText("hydrated");
+    expect(v2Api.listProjects).toHaveBeenCalledWith("active", 100, undefined);
+    expect(v2Api.listProjects).not.toHaveBeenCalledWith("trashed", 100, undefined);
+    expect(v2Api.projectWithEtag).not.toHaveBeenCalled();
+    expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
+  });
+
   it("creates the backend project before exposing a new workflow", async () => {
     render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
     await screen.findByText("hydrated");

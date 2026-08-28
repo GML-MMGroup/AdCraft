@@ -10,9 +10,6 @@ const styles = [
   "pages/projects.css",
   "pages/assets.css",
   "pages/api-space.css",
-  "features/workflow/workflow.css",
-  "features/workflow/v2/screenplay/screenplay.css",
-  "features/workflow/final-composition/final-composition.css",
 ].map((path) => readFileSync(resolve(appRoot, "src", path), "utf8")).join("\n");
 const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
 const labLoader = readFileSync(

@@ -22,7 +22,10 @@ class IntersectionObserverMock {
   static instances: IntersectionObserverMock[] = [];
 
   readonly callback: IntersectionCallback;
-  readonly observe = vi.fn();
+  observedTarget: Element | null = null;
+  readonly observe = vi.fn((target: Element) => {
+    this.observedTarget = target;
+  });
   readonly unobserve = vi.fn();
   readonly disconnect = vi.fn();
   readonly takeRecords = vi.fn(() => []);
@@ -153,9 +156,14 @@ describe("HomePage motion", () => {
     expect(recentSection?.getAttribute("data-reveal-state")).toBe("pending");
     expect(discoverSection?.getAttribute("data-reveal-state")).toBe("pending");
     expect(recentSection?.querySelectorAll(".recent-card[data-reveal-item]")).toHaveLength(4);
-    expect(IntersectionObserverMock.instances).toHaveLength(2);
+    expect(IntersectionObserverMock.instances).toHaveLength(3);
 
-    const recentObserver = IntersectionObserverMock.instances[0];
+    const recentObserver = IntersectionObserverMock.instances.find(
+      (observer) => observer.observedTarget === recentSection,
+    );
+    const discoverObserver = IntersectionObserverMock.instances.find(
+      (observer) => observer.observedTarget === discoverSection,
+    );
     act(() => recentObserver?.setIntersection(
       recentSection as Element,
       { isIntersecting: true, ratio: 0.4 },
@@ -178,7 +186,9 @@ describe("HomePage motion", () => {
     const discoverSection = screen
       .getByRole("heading", { level: 2, name: "Discover" })
       .closest("section");
-    const discoverObserver = IntersectionObserverMock.instances[1];
+    const discoverObserver = IntersectionObserverMock.instances.find(
+      (observer) => observer.observedTarget === discoverSection,
+    );
 
     act(() => discoverObserver?.setIntersection(
       discoverSection as Element,

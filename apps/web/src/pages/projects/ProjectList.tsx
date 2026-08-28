@@ -1,9 +1,17 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { v2Api } from "../../api/v2Client.ts";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createRequestQueue } from "../../collections/requestQueue.ts";
 import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
-import { resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
+import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
+import type { ProjectAssetSummaryV2 } from "../../types-v2.ts";
+import {
+  getProjectGridColumnCount,
+  getVirtualProjectWindow,
+  PROJECT_GRID_GAP,
+  PROJECT_GRID_ROW_HEIGHT,
+  PROJECT_VIRTUAL_OVERSCAN_ROWS,
+} from "./projectListVirtualization.ts";
 
 export type ProjectListItem = {
   key: string;
@@ -17,206 +25,219 @@ export type ProjectListItem = {
   coverAssetId: string | null;
 };
 
-const PROJECT_PAGE_SIZE = 36;
-const PROJECT_COVER_REQUEST_LIMIT = 4;
+type ProjectListProps = {
+  projects: ProjectListItem[];
+  leading?: ReactNode;
+  onOpenProject: (projectId: string, workflowId?: string) => void;
+  onTrashProject: (project: ProjectListItem) => void;
+  onToggleFavorite: (project: ProjectListItem) => void;
+  onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  selectionMode?: boolean;
+  selectedProjectIds?: ReadonlySet<string>;
+  selectionDisabled?: boolean;
+  onToggleSelect?: (projectId: string) => void;
+};
 
+type ViewportMetrics = {
+  width: number;
+  scrollTop: number;
+  viewportHeight: number;
+};
+
+const PROJECT_DEFAULT_VIEWPORT_WIDTH = 1024;
+const PROJECT_COVER_REQUEST_LIMIT = 4;
 type ProjectCoverEntry = {
-  requestKey: string;
   cover: V2ProjectCover | null;
 };
 
-type ProjectCoverSubscription = {
-  requestKey: string;
-  release(): void;
+type ProjectCoverLookup = {
+  cover: V2ProjectCover | null;
+  assets: readonly ProjectAssetSummaryV2[];
+  needsAuthority: boolean;
 };
 
-let projectCoverResource = createSettledQueryResource<V2ProjectCover | null>();
+let projectCoverResource = createSettledQueryResource<ProjectCoverLookup>();
+let projectCoverAuthorityResource = createSettledQueryResource<V2ProjectCover | null>();
 let projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
 
 // eslint-disable-next-line react-refresh/only-export-components -- Tests reset the module-scoped cover scheduler between cases.
 export function __resetProjectCoverResourceForTests() {
-  projectCoverResource = createSettledQueryResource<V2ProjectCover | null>();
+  projectCoverResource = createSettledQueryResource<ProjectCoverLookup>();
+  projectCoverAuthorityResource = createSettledQueryResource<V2ProjectCover | null>();
   projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
 }
 
-type ProjectListProps = {
-  projects: ProjectListItem[];
-  onOpenProject: (projectId: string) => void;
-  onTrashProject: (project: ProjectListItem) => void;
-  onToggleFavorite: (project: ProjectListItem) => void;
-  onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
-};
-
-export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleFavorite, onRenameProject }: ProjectListProps) {
-  const [visibleCount, setVisibleCount] = useState(PROJECT_PAGE_SIZE);
-  const [coversByProjectId, setCoversByProjectId] = useState<Record<string, ProjectCoverEntry>>({});
-  const coversByProjectIdRef = useRef(coversByProjectId);
-  const activeCoverRequestKeysRef = useRef(new Map<string, string>());
-  const coverSubscriptionsRef = useRef(new Map<string, ProjectCoverSubscription>());
-  const cardElementsRef = useRef(new Map<string, HTMLElement>());
-  const [visibleProjectIds, setVisibleProjectIds] = useState<Set<string>>(new Set());
-  const visibleProjects = useMemo(() => projects.slice(0, visibleCount), [projects, visibleCount]);
-  const hasMore = visibleCount < projects.length;
-
-  useEffect(() => {
-    setVisibleCount(PROJECT_PAGE_SIZE);
-  }, [projects]);
-
-  useEffect(() => {
-    const projectIds = new Set(visibleProjects.map((project) => project.projectId));
-    if (typeof IntersectionObserver === "undefined") {
-      setVisibleProjectIds(projectIds);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      setVisibleProjectIds((current) => {
-        const next = new Set([...current].filter((projectId) => projectIds.has(projectId)));
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const projectId = entry.target.getAttribute("data-project-id");
-          if (projectId) next.add(projectId);
-        }
-        if (next.size === current.size && [...next].every((projectId) => current.has(projectId))) return current;
-        return next;
-      });
-    }, { rootMargin: "240px" });
-    for (const project of visibleProjects) {
-      const element = cardElementsRef.current.get(project.projectId);
-      if (element) observer.observe(element);
-    }
-    return () => observer.disconnect();
-  }, [visibleProjects]);
-
-  useEffect(() => {
-    const activeRequestKeys = new Map<string, string>();
-    for (const project of visibleProjects) {
-      if (!visibleProjectIds.has(project.projectId)) continue;
-      const requestKey = projectCoverRequestKey(project);
-      activeRequestKeys.set(project.projectId, requestKey);
-    }
-    activeCoverRequestKeysRef.current = activeRequestKeys;
-
-    for (const [projectId, subscription] of coverSubscriptionsRef.current) {
-      if (activeRequestKeys.get(projectId) === subscription.requestKey) continue;
-      subscription.release();
-      coverSubscriptionsRef.current.delete(projectId);
-    }
-
-    for (const project of visibleProjects) {
-      const requestKey = activeRequestKeys.get(project.projectId);
-      if (!requestKey) continue;
-      if (coverSubscriptionsRef.current.get(project.projectId)?.requestKey === requestKey) continue;
-      if (coversByProjectIdRef.current[project.projectId]?.requestKey === requestKey) continue;
-      const subscription = projectCoverResource.subscribe(projectCoverIdentity(project), (signal) => (
-        projectCoverQueue.schedule(
-          () => v2Api.listWorkflowAssets(project.workflowId, {}, { signal })
-            .then((response) => resolveV2ProjectCover(project.coverAssetId, response.assets)),
-          { signal },
-        )
-      ));
-      coverSubscriptionsRef.current.set(project.projectId, {
-        requestKey,
-        release: subscription.release,
-      });
-      void subscription.promise.then((cover) => {
-        if (activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
-        setCoversByProjectId((current) => {
-          if (current[project.projectId]?.requestKey === requestKey) return current;
-          const next = { ...current, [project.projectId]: { requestKey, cover } };
-          coversByProjectIdRef.current = next;
-          return next;
-        });
-      }).catch(() => {
-        if (activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
-        setCoversByProjectId((current) => {
-          if (current[project.projectId]?.requestKey === requestKey) return current;
-          const next = { ...current, [project.projectId]: { requestKey, cover: null } };
-          coversByProjectIdRef.current = next;
-          return next;
-        });
-      });
-    }
-  }, [visibleProjectIds, visibleProjects]);
-
-  useEffect(() => {
-    const subscriptions = coverSubscriptionsRef.current;
-    return () => {
-      activeCoverRequestKeysRef.current.clear();
-      for (const subscription of subscriptions.values()) subscription.release();
-      subscriptions.clear();
-    };
-  }, []);
-
-  const registerProjectCard = useCallback((projectId: string, element: HTMLElement | null) => {
-    if (element) cardElementsRef.current.set(projectId, element);
-    else cardElementsRef.current.delete(projectId);
-  }, []);
-
-  const loadMore = useCallback(() => {
-    setVisibleCount((count) => Math.min(count + PROJECT_PAGE_SIZE, projects.length));
-  }, [projects.length]);
-
-  return (
-    <>
-      {visibleProjects.map((project) => (
-        <ProjectListCard
-          key={project.key}
-          project={project}
-          cover={coversByProjectId[project.projectId]?.requestKey === projectCoverRequestKey(project)
-            ? coversByProjectId[project.projectId]?.cover
-            : undefined}
-          onOpenProject={onOpenProject}
-          onTrashProject={onTrashProject}
-          onToggleFavorite={onToggleFavorite}
-          onRenameProject={onRenameProject}
-          onCardElement={registerProjectCard}
-        />
-      ))}
-      {hasMore ? (
-        <button className="create-card project-load-more" type="button" onClick={loadMore}>
-          <div>
-            <span className="create-plus">+</span>
-            <h3>Load more</h3>
-          </div>
-        </button>
-      ) : null}
-    </>
-  );
+/** Stop background cover work before a project opens without discarding settled covers. */
+export function cancelProjectCoverRequests() {
+  projectCoverResource.cancelPending();
+  projectCoverAuthorityResource.cancelPending();
 }
 
-function projectCoverRequestKey(project: ProjectListItem) {
-  return stableQueryKey(projectCoverIdentity(project));
-}
-
-function projectCoverIdentity(project: ProjectListItem) {
-  return {
-    workflowId: project.workflowId,
-    coverAssetId: project.coverAssetId ?? "fallback",
-    updatedAt: project.updatedAt,
-  };
-}
-
-const ProjectListCard = memo(function ProjectListCard({
-  project,
-  cover,
+export function ProjectList({
+  projects,
+  leading,
   onOpenProject,
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
-  onCardElement,
+  selectionMode = false,
+  selectedProjectIds,
+  selectionDisabled = false,
+  onToggleSelect,
+}: ProjectListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<ViewportMetrics>(() => ({
+    width: getWindowWidth(),
+    scrollTop: 0,
+    viewportHeight: getWindowHeight(),
+  }));
+  const hasLeading = leading !== undefined && leading !== null;
+  const itemCount = projects.length + (hasLeading ? 1 : 0);
+  const columnCount = useMemo(
+    () => getProjectGridColumnCount(viewport.width || PROJECT_DEFAULT_VIEWPORT_WIDTH),
+    [viewport.width],
+  );
+  const virtualWindow = useMemo(() => getVirtualProjectWindow({
+    itemCount,
+    columnCount,
+    scrollTop: viewport.scrollTop,
+    viewportHeight: viewport.viewportHeight,
+    rowHeight: PROJECT_GRID_ROW_HEIGHT,
+    overscanRows: PROJECT_VIRTUAL_OVERSCAN_ROWS,
+  }), [columnCount, itemCount, viewport.scrollTop, viewport.viewportHeight]);
+  const firstVisibleRow = Math.floor(Math.max(0, viewport.scrollTop) / PROJECT_GRID_ROW_HEIGHT);
+  const lastVisibleRow = Math.max(
+    firstVisibleRow + 1,
+    Math.ceil((Math.max(0, viewport.scrollTop) + viewport.viewportHeight) / PROJECT_GRID_ROW_HEIGHT),
+  );
+
+  useEffect(() => {
+    const element = listRef.current;
+    if (!element) return undefined;
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const rect = element.getBoundingClientRect();
+      const pageScrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+      const listTop = rect.top + pageScrollTop;
+      const next = {
+        width: rect.width || element.clientWidth || getWindowWidth(),
+        scrollTop: Math.max(0, pageScrollTop - listTop),
+        viewportHeight: getWindowHeight(),
+      };
+      setViewport((current) => (
+        current.width === next.width
+          && current.scrollTop === next.scrollTop
+          && current.viewportHeight === next.viewportHeight
+          ? current
+          : next
+      ));
+    };
+
+    const scheduleMeasure = () => {
+      if (frame) return;
+      if (typeof window.requestAnimationFrame !== "function") {
+        measure();
+        return;
+      }
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    measure();
+    window.addEventListener("scroll", scheduleMeasure, { passive: true });
+    window.addEventListener("resize", scheduleMeasure, { passive: true });
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleMeasure);
+    resizeObserver?.observe(element);
+
+    return () => {
+      window.removeEventListener("scroll", scheduleMeasure);
+      window.removeEventListener("resize", scheduleMeasure);
+      resizeObserver?.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const renderItem = useCallback((index: number) => {
+    if (hasLeading && index === 0) return leading;
+    const projectIndex = index - (hasLeading ? 1 : 0);
+    const project = projects[projectIndex];
+    if (!project) return null;
+    const row = Math.floor(index / columnCount);
+    return (
+      <ProjectListCard
+        key={project.key}
+        project={project}
+        coverPriority={row === firstVisibleRow ? 3 : row < lastVisibleRow ? 2 : 1}
+        onOpenProject={onOpenProject}
+        onTrashProject={onTrashProject}
+        onToggleFavorite={onToggleFavorite}
+        onRenameProject={onRenameProject}
+        selectionMode={selectionMode}
+        selected={selectedProjectIds?.has(project.projectId) ?? false}
+        selectionDisabled={selectionDisabled}
+        onToggleSelect={onToggleSelect ? () => onToggleSelect(project.projectId) : undefined}
+      />
+    );
+  }, [columnCount, firstVisibleRow, hasLeading, lastVisibleRow, leading, onOpenProject, onRenameProject, onToggleFavorite, onToggleSelect, onTrashProject, projects, selectedProjectIds, selectionDisabled, selectionMode]);
+
+  return (
+    <div
+      ref={listRef}
+      className="project-list-virtual"
+      data-project-list-virtualized="true"
+      data-project-list-mounted-count={Math.max(0, virtualWindow.endIndex - virtualWindow.startIndex)}
+      style={{ height: `${virtualWindow.totalHeight}px` }}
+    >
+      <div
+        className="project-list-virtual__window"
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          gap: `${PROJECT_GRID_GAP}px`,
+          transform: `translateY(${virtualWindow.startRow * PROJECT_GRID_ROW_HEIGHT}px)`,
+        }}
+      >
+        {Array.from({ length: virtualWindow.endIndex - virtualWindow.startIndex }, (_, offset) => (
+          <div className="project-list-virtual__item" key={virtualWindow.startIndex + offset}>
+            {renderItem(virtualWindow.startIndex + offset)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ProjectListCard = memo(function ProjectListCard({
+  project,
+  coverPriority,
+  onOpenProject,
+  onTrashProject,
+  onToggleFavorite,
+  onRenameProject,
+  selectionMode,
+  selected,
+  selectionDisabled,
+  onToggleSelect,
 }: {
   project: ProjectListItem;
-  cover: V2ProjectCover | null | undefined;
-  onOpenProject: (projectId: string) => void;
+  coverPriority: number;
+  onOpenProject: (projectId: string, workflowId?: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
-  onCardElement: (projectId: string, element: HTMLElement | null) => void;
+  selectionMode: boolean;
+  selected: boolean;
+  selectionDisabled: boolean;
+  onToggleSelect?: () => void;
 }) {
   const trashProject = useCallback(() => onTrashProject(project), [onTrashProject, project]);
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
   const renameProject = useCallback((trigger: HTMLButtonElement) => onRenameProject(project, trigger), [onRenameProject, project]);
-  const cardRef = useCallback((element: HTMLElement | null) => onCardElement(project.projectId, element), [onCardElement, project.projectId]);
+  const openProject = useCallback(() => {
+    cancelProjectCoverRequests();
+    onOpenProject(project.projectId, project.workflowId);
+  }, [onOpenProject, project.projectId, project.workflowId]);
+  const cover = useProjectCover(project, coverPriority);
 
   return (
     <ProjectCard
@@ -225,12 +246,114 @@ const ProjectListCard = memo(function ProjectListCard({
       time={project.time}
       favorite={project.favorite}
       cover={cover}
+      coverPriority={coverPriority}
       workflowId={project.workflowId}
-      onOpen={onOpenProject}
+      onOpen={openProject}
       onTrash={trashProject}
       onToggleFavorite={toggleFavorite}
       onRename={renameProject}
-      cardRef={cardRef}
+      selectionMode={selectionMode}
+      selected={selected}
+      selectionDisabled={selectionDisabled}
+      onSelect={onToggleSelect}
     />
   );
 });
+
+function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
+  const { workflowId, coverAssetId, updatedAt } = project;
+  const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
+  const directCover = coverAssetId ? directProjectCover(coverAssetId) : null;
+  const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
+
+  useEffect(() => {
+    if (directCover) {
+      setEntry({ cover: directCover });
+      return undefined;
+    }
+
+    setEntry(null);
+    let active = true;
+    let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
+    const subscription = projectCoverResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (signal) => (
+      projectCoverQueue.schedule(
+        () => agentCanvasApi.listAgentCanvasProjectAssets(workflowId, { signal })
+          .then((response) => {
+            const preliminary = resolveV2ProjectCover(coverAssetId, response.assets);
+            return {
+              cover: preliminary,
+              assets: response.assets,
+              needsAuthority: needsV2ProjectCoverNodeAuthority(response.assets),
+            };
+          }),
+        { signal, priority: coverPriority },
+      )
+    ));
+    void subscription.promise.then((lookup) => {
+      if (!active) return;
+      setEntry({ cover: lookup.cover });
+      if (!lookup.needsAuthority) return;
+
+      authoritySubscription = projectCoverAuthorityResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (authoritySignal) => (
+        projectCoverQueue.schedule(
+          () => agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId, { signal: authoritySignal })
+            .then((workflow) => resolveV2ProjectCover(coverAssetId, lookup.assets, workflow.value.nodes)),
+          { signal: authoritySignal, priority: coverPriority },
+        )
+      ));
+      void authoritySubscription.promise.then((authoritativeCover) => {
+        if (active) setEntry({ cover: authoritativeCover ?? lookup.cover });
+      }).catch(() => {
+        // The preliminary cover remains usable when optional authority lookup fails.
+      });
+    }).catch(() => {
+      if (active) setEntry({ cover: null });
+    });
+
+    return () => {
+      active = false;
+      subscription.release();
+      authoritySubscription?.release();
+    };
+  }, [coverAssetId, coverPriority, directCover, requestKey, updatedAt, workflowId]);
+
+  return directCover ?? entry?.cover;
+}
+
+function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
+  return stableQueryKey(projectCoverIdentity(project));
+}
+
+function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
+  return {
+    workflowId: project.workflowId,
+    coverAssetId: project.coverAssetId ?? "fallback",
+    updatedAt: project.updatedAt,
+  };
+}
+
+const directProjectCoverCache = new Map<string, V2ProjectCover>();
+
+function directProjectCover(assetId: string): V2ProjectCover {
+  const cached = directProjectCoverCache.get(assetId);
+  if (cached) return cached;
+  const cover: V2ProjectCover = {
+    assetId,
+    versionId: assetId,
+    mediaType: "image" as const,
+    mediaPath: `/api/v2/assets/${encodeURIComponent(assetId)}/content`,
+    posterPath: null,
+  };
+  directProjectCoverCache.set(assetId, cover);
+  return cover;
+}
+
+function getWindowWidth() {
+  if (typeof window === "undefined") return PROJECT_DEFAULT_VIEWPORT_WIDTH;
+  return window.innerWidth || PROJECT_DEFAULT_VIEWPORT_WIDTH;
+}
+
+function getWindowHeight() {
+  if (typeof window === "undefined") return 768;
+  return window.innerHeight || 768;
+}

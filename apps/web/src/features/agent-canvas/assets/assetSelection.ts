@@ -1,5 +1,6 @@
 import type {
   AgentCanvasAssetMediaTypeV2,
+  CanvasBindingSourceImageAssetWriteV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 
@@ -60,6 +61,19 @@ export function toReferenceSelection(
     versionId: item.identity.versionId,
     mediaType: "image",
     displayName: item.displayName,
+  };
+}
+
+export function toImageBindingSource(
+  selection: AgentAssetReferenceSelection,
+): CanvasBindingSourceImageAssetWriteV2 {
+  if (!selection.versionId) {
+    throw new Error(`Image reference ${selection.displayName} has no immutable asset version.`);
+  }
+  return {
+    kind: "image_asset",
+    source_asset_id: selection.assetId,
+    source_asset_version_id: selection.versionId,
   };
 }
 

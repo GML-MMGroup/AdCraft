@@ -1,4 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { InlineLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
 
@@ -15,13 +25,13 @@ import {
 import type {
   AgentCanvasWorkflowV2,
   AgentCanvasContinuationV2,
-  AgentCanvasChatTurnV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
+  CanvasRuntimeSnapshotV2,
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
-  ChatCapabilityActivityV2,
   ChatProposalCardV2,
+  ChatTimelineItemV2,
   CapabilityProposalOptionV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
@@ -38,7 +48,6 @@ import {
   AgentCanvasDocumentBrowser,
   AgentCanvasDocumentReferenceCard,
 } from "../documents/AgentCanvasDocuments.tsx";
-import { isLikelyMarkdown, renderMarkdownAwareText } from "../canvas/AgentCanvasMarkdown.tsx";
 import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
@@ -49,14 +58,65 @@ import {
   shouldRenderStandaloneInteraction,
 } from "./guidedInteractionPlacement.ts";
 import {
-  guidedInteractionReferenceMediaUrls,
   guidedInteractionReferences,
 } from "./guidedInteractionReferences.ts";
-import { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
+import { buildConceptChoiceSubmitRequest } from "./conceptChoiceSubmission.ts";
 import { HistoricalProposalOptions } from "./HistoricalProposalOptions.tsx";
+import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
+import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
+import { StageThread } from "./StageThread.tsx";
+import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
+import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
+import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
+import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
+import {
+  getAgentChatResizeBounds,
+  resizeAgentChatWidth,
+  type AgentChatResizeBounds,
+} from "./chatPanelResize.ts";
+import {
+  buildConversationCanvasLinkIndex,
+  type ConversationCanvasLinkIndex,
+  type ConversationCanvasLocation,
+  type ConversationRevealRequest,
+} from "./conversationCanvasLinks.ts";
+import { ConversationRecoverySurface } from "./ConversationRecoverySurface.tsx";
+import { NaturalMessage } from "./NaturalMessage.tsx";
+import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
+import { useComposerContext } from "./useComposerContext.ts";
+import { projectProductionFocus } from "./productionFocusProjection.ts";
+import type { PresentationStreamView as PresentationStreamRuntimeView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import "./agent-canvas-chat.css";
 
+type ChatPanelResizeSession = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  bounds: AgentChatResizeBounds;
+};
+
+type TimelineRenderOptions = {
+  compactCapability?: boolean;
+};
+
+export function TimelineHydrationSkeleton({
+  itemType,
+}: {
+  itemType: "proposal" | "decision_bundle";
+}) {
+  const label = itemType === "proposal" ? "proposal" : "decision bundle";
+  return (
+    <div className="agent-chat__timeline-hydration" role="status" aria-label={`Loading ${label}`}>
+      <span className="agent-chat__timeline-hydration-kicker">{itemType === "proposal" ? "Decision" : "Guidance"}</span>
+      <span className="agent-chat__timeline-hydration-line agent-chat__timeline-hydration-line--wide" />
+      <span className="agent-chat__timeline-hydration-line" />
+      <small>Loading {label}…</small>
+    </div>
+  );
+}
+
 export { GuidanceSessionProgress } from "./GuidanceSessionProgress.tsx";
+export { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 
 export function AgentCanvasChatPanel({
   workflow,
@@ -68,7 +128,12 @@ export function AgentCanvasChatPanel({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  runtime = null,
+  collapsed: controlledCollapsed,
   onCollapsedChange,
+  revealRequest = null,
+  onConversationLinkIndexChange,
+  onViewNodes,
 }: {
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
@@ -79,7 +144,12 @@ export function AgentCanvasChatPanel({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  runtime?: CanvasRuntimeSnapshotV2 | null;
+  collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  revealRequest?: ConversationRevealRequest | null;
+  onConversationLinkIndexChange?: (index: ConversationCanvasLinkIndex) => void;
+  onViewNodes?: (nodeIds: string[]) => void;
 }) {
   const chat = useAgentCanvasChat({
     workflow,
@@ -90,15 +160,44 @@ export function AgentCanvasChatPanel({
     onRuntimeRefresh,
   });
   const [draft, setDraft] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = controlledCollapsed ?? internalCollapsed;
+  const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
+  const [chatPanelResizing, setChatPanelResizing] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
-  const [mentionedAssetIds, setMentionedAssetIds] = useState<string[]>([]);
-  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const imageAssets = useMemo(
-    () => workflow.assets.filter((asset) => asset.media_type === "image"),
-    [workflow.assets],
+  const [selectedSkillTitle, setSelectedSkillTitle] = useState<string | null>(
+    workflow.active_style_skill?.title ?? null,
   );
+  const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
+  const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
+  const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatPanelRef = useRef<HTMLElement>(null);
+  const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
+  const resizeMinimumWidthRef = useRef<number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [pendingContextFiles, setPendingContextFiles] = useState<File[]>([]);
+  const conversationElementsRef = useRef(new Map<string, HTMLElement>());
+  const revealFrameRef = useRef<number | null>(null);
+  const revealHighlightTimerRef = useRef<number | null>(null);
+  const handledRevealRequestRef = useRef<number | null>(null);
+  const composerContext = useComposerContext({
+    workflow,
+    onWorkflowRefresh,
+    assetsEnabled: mentionOpen,
+  });
+  const imageAssets = composerContext.availableImageAssets;
+
+  useEffect(() => {
+    setSelectedSkillTitle(workflow.active_style_skill?.title ?? null);
+  }, [
+    workflow.active_style_skill?.skill_run_id,
+    workflow.active_style_skill?.title,
+    workflow.workflow_id,
+  ]);
+  useEffect(() => {
+    setPendingContextFiles([]);
+  }, [workflow.workflow_id]);
   const currentTopic = useMemo(() => {
     const session = chat.state.guidanceSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
@@ -111,35 +210,217 @@ export function AgentCanvasChatPanel({
     )) ?? null,
     [chat.state.continuations],
   );
+  const activePresentationStreams = useMemo(
+    () => Object.values(chat.state.presentationStreams ?? {})
+      .filter((stream) => (
+        stream.stream_kind === "assistant"
+        && ["connecting", "open", "reconnecting"].includes(stream.status)
+        && stream.text.trim().length > 0
+      )),
+    [chat.state.presentationStreams],
+  );
   const standaloneGuidedInteraction = chat.state.guidedInteraction
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const conceptInteraction = standaloneGuidedInteraction?.content.content_kind === "concept_choice"
+    ? standaloneGuidedInteraction
+    : null;
+  const conceptContent = conceptInteraction?.content.content_kind === "concept_choice"
+    ? conceptInteraction.content
+    : null;
+  const conceptInteractionPending = Boolean(
+    conceptInteraction
+    && (conceptInteraction.status === "submitted"
+      || chat.state.actingInteractionId === conceptInteraction.interaction_id),
+  );
+  const conceptCustomAllowed = Boolean(
+    conceptContent?.allow_custom
+    && conceptInteraction?.allowed_actions.includes("custom"),
+  );
   const standaloneGuidedReferences = useMemo(() => (
     standaloneGuidedInteraction
       ? guidedInteractionReferences(standaloneGuidedInteraction, chat.state.items)
       : []
   ), [chat.state.items, standaloneGuidedInteraction]);
-  const standaloneGuidedReferenceMediaUrls = useMemo(() => (
-    guidedInteractionReferenceMediaUrls(standaloneGuidedReferences ?? [], workflow)
-  ), [standaloneGuidedReferences, workflow]);
+  const conceptSelectionReady = Boolean(
+    !selectedConceptOptionId
+    || !conceptContent?.proposal_id
+    || standaloneGuidedReferences !== null,
+  );
+
+  function beginChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    const startWidth = panel.getBoundingClientRect().width;
+    const minWidth = resizeMinimumWidthRef.current ?? startWidth;
+    const bounds = getAgentChatResizeBounds(minWidth, window.innerWidth);
+    resizeMinimumWidthRef.current = minWidth;
+    resizeSessionRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth,
+      bounds,
+    };
+    setChatPanelWidth(startWidth);
+    setChatPanelResizing(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function updateChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    setChatPanelWidth(resizeAgentChatWidth({
+      startX: session.startX,
+      startWidth: session.startWidth,
+      pointerX: event.clientX,
+      bounds: session.bounds,
+    }));
+    event.preventDefault();
+  }
+
+  function finishChatPanelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    resizeSessionRef.current = null;
+    setChatPanelResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function nudgeChatPanelWidth(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (!(["ArrowLeft", "ArrowRight", "Home", "End"] as string[]).includes(event.key)) return;
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    const currentWidth = panel.getBoundingClientRect().width;
+    const minWidth = resizeMinimumWidthRef.current ?? currentWidth;
+    const bounds = getAgentChatResizeBounds(minWidth, window.innerWidth);
+    resizeMinimumWidthRef.current = minWidth;
+    const nextWidth = event.key === "Home"
+      ? bounds.minWidth
+      : event.key === "End"
+        ? bounds.maxWidth
+        : resizeAgentChatWidth({
+            startX: 0,
+            startWidth: currentWidth,
+            pointerX: event.key === "ArrowLeft" ? -24 : 24,
+            bounds,
+          });
+    setChatPanelWidth(nextWidth);
+    event.preventDefault();
+  }
+
+  useEffect(() => {
+    setOptimisticProposalSelections((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [proposalId, optionId] of Object.entries(current)) {
+        const proposalItem = chat.state.items.find((item) => (
+          item.item_type === "proposal" && item.proposal.proposal_id === proposalId
+        ));
+        const authoritativeOptionId = proposalItem?.item_type === "proposal"
+          ? proposalItem.proposal.latest_application?.option_id
+          : null;
+        if (authoritativeOptionId === optionId) {
+          delete next[proposalId];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [chat.state.items]);
+  const stageTimeline = useMemo(
+    () => buildStageThreadTimeline(chat.state.items, {
+      showUnassociatedPlanning: chat.state.agentWorking,
+    }),
+    [chat.state.agentWorking, chat.state.items],
+  );
+  const conversationLinkIndex = useMemo(
+    () => buildConversationCanvasLinkIndex(stageTimeline, chat.state.guidanceAwaiting),
+    [chat.state.guidanceAwaiting, stageTimeline],
+  );
+  const productionFocus = useMemo(() => projectProductionFocus({
+    nodes: workflow.nodes,
+    runtime,
+    guidanceAwaiting: chat.state.guidanceAwaiting,
+  }), [chat.state.guidanceAwaiting, runtime, workflow.nodes]);
+  const viewNodes = onViewNodes ?? ((nodeIds: string[]) => {
+    if (nodeIds[0]) onFocusNode(nodeIds[0]);
+  });
+  const naturalMessagePresentation = useMemo(
+    () => projectNaturalMessagePresentation(chat.state.items),
+    [chat.state.items],
+  );
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
       .map((action) => `${action.action_id}:${action.state}`)
       .join(",");
     const interactionVersion = guidedInteractionContentVersion(chat.state.guidedInteraction);
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${chat.state.agentWorking}`;
+    const presentationVersion = Object.values(chat.state.presentationStreams ?? {})
+      .map((stream) => `${stream.stream_id}:${stream.last_sequence_no}:${stream.status}`)
+      .join(",");
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${presentationVersion}:${chat.state.agentWorking}`;
   }, [
     chat.state.agentWorking,
     chat.state.currentSessionActions,
     chat.state.guidedInteraction,
     chat.state.items,
+    chat.state.presentationStreams,
   ]);
   const timelineScroll = useChatTimelineScroll({
     contentVersion: timelineContentVersion,
     resetKey: workflow.workflow_id,
   });
+  useEffect(() => {
+    onConversationLinkIndexChange?.(conversationLinkIndex);
+  }, [conversationLinkIndex, onConversationLinkIndexChange]);
+
+  useEffect(() => {
+    setSelectedConceptOptionId(null);
+  }, [conceptInteraction?.interaction_id]);
+
+  useEffect(() => {
+    if (conceptInteraction?.interaction_id) setMentionOpen(false);
+  }, [conceptInteraction?.interaction_id]);
+
+  useEffect(() => {
+    if (!revealRequest || handledRevealRequestRef.current === revealRequest.requestId) return;
+    if (collapsed) {
+      setInternalCollapsed(false);
+      onCollapsedChange?.(false);
+      return;
+    }
+    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
+    if (revealHighlightTimerRef.current !== null) {
+      window.clearTimeout(revealHighlightTimerRef.current);
+      revealHighlightTimerRef.current = null;
+    }
+    setHighlightedConversationKey(null);
+    revealFrameRef.current = window.requestAnimationFrame(() => {
+      revealFrameRef.current = window.requestAnimationFrame(() => {
+        revealFrameRef.current = null;
+        const element = conversationElementsRef.current.get(revealRequest.locationKey);
+        if (!element) return;
+        handledRevealRequestRef.current = revealRequest.requestId;
+        element.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        element.focus({ preventScroll: true });
+        setHighlightedConversationKey(revealRequest.locationKey);
+        revealHighlightTimerRef.current = window.setTimeout(() => {
+          revealHighlightTimerRef.current = null;
+          setHighlightedConversationKey(null);
+        }, 1500);
+      });
+    });
+  }, [collapsed, conversationLinkIndex, onCollapsedChange, revealRequest]);
+
+  useEffect(() => () => {
+    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
+    if (revealHighlightTimerRef.current !== null) window.clearTimeout(revealHighlightTimerRef.current);
+  }, []);
   useLayoutEffect(() => {
     if (composerTextareaRef.current) {
       resizeChatComposerTextarea(composerTextareaRef.current);
@@ -147,25 +428,202 @@ export function AgentCanvasChatPanel({
   }, [draft]);
 
   async function send() {
-    const text = draft.trim();
-    if (!text || chat.state.sending) return;
+    const submittedDraft = draft;
+    const text = submittedDraft.trim();
+    if (chat.state.sending || conceptInteractionPending) return;
+
+    if (conceptInteraction) {
+      const request = buildConceptChoiceSubmitRequest({
+        interaction: conceptInteraction,
+        selectedOptionId: selectedConceptOptionId,
+        customText: text,
+        proposalReferences: standaloneGuidedReferences,
+      });
+      if (!request) return;
+      const optimisticProposalId = selectedConceptOptionId ? conceptContent?.proposal_id : null;
+      const previousOptimisticOptionId = optimisticProposalId
+        ? optimisticProposalSelections[optimisticProposalId]
+        : undefined;
+      if (optimisticProposalId && selectedConceptOptionId) {
+        setOptimisticProposalSelections((current) => ({
+          ...current,
+          [optimisticProposalId]: selectedConceptOptionId,
+        }));
+      }
+      const accepted = await chat.actions.submitGuidedInteraction(conceptInteraction, request);
+      if (!accepted) {
+        if (optimisticProposalId) {
+          setOptimisticProposalSelections((current) => {
+            const next = { ...current };
+            if (previousOptimisticOptionId) next[optimisticProposalId] = previousOptimisticOptionId;
+            else delete next[optimisticProposalId];
+            return next;
+          });
+        }
+        return;
+      }
+      setDraft((current) => current === submittedDraft ? "" : current);
+      setSelectedConceptOptionId(null);
+      setMentionOpen(false);
+      return;
+    }
+
+    if (!text) return;
     timelineScroll.followLatest();
+    const submittedNodeIds = [...composerContext.selectedNodeIds];
+    const submittedAssetIds = [...composerContext.selectedAssetIds];
+    const submittedSkillTitle = selectedSkillTitle?.trim() || null;
     const request = {
       text,
-      mentionedNodeIds,
-      mentionedImageAssetIds: mentionedAssetIds,
+      mentionedNodeIds: submittedNodeIds,
+      mentionedImageAssetIds: submittedAssetIds,
+      skillTitle: submittedSkillTitle,
     };
-    setDraft("");
+    const accepted = await chat.actions.submit(request);
+    if (!accepted) return;
+    setDraft((current) => current === submittedDraft ? "" : current);
     setMentionOpen(false);
-    setMentionedNodeIds([]);
-    setMentionedAssetIds([]);
-    await chat.actions.submit(request);
+    composerContext.actions.consumeSubmittedContext({
+      nodeIds: submittedNodeIds,
+      assetIds: submittedAssetIds,
+    });
   }
 
-  function toggleValue(value: string, selected: string[], setSelected: (next: string[]) => void) {
-    setSelected(selected.includes(value)
-      ? selected.filter((item) => item !== value)
-      : [...selected, value]);
+  function renderTimelineItem(
+    item: ChatTimelineItemV2,
+    location: ConversationCanvasLocation | null = null,
+    options: TimelineRenderOptions = {},
+  ) {
+    if (item.item_type === "message") {
+      return <NaturalMessage
+        key={`message-${item.message_id}`}
+        message={item}
+        skillTitle={chat.state.messageSkillTitles?.[item.message_id] ?? null}
+        presentation={naturalMessagePresentation.get(item.message_id) ?? {
+          messageId: item.message_id,
+          showAgentIdentity: item.speaker === "adcraft_video_agent",
+          startsSpeakerRun: true,
+        }}
+        related={location ? (
+          <ConversationNodeLinks
+            location={location}
+            nodes={workflow.nodes}
+            variant="related"
+            onViewNodes={viewNodes}
+          />
+        ) : null}
+      />;
+    }
+    if (item.item_type === "expert_activity") {
+      return (
+        <CapabilityActivityRow
+          key={`activity-${item.activity_id}`}
+          activity={item}
+          compact={options.compactCapability}
+          turn={chat.state.turnsById[item.turn_id] ?? null}
+          retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
+          onRetry={() => void chat.actions.retryCapabilityActivity(item)}
+          onReviseRequest={() => {
+            setDraft(`Revise the ${item.capability_display_name} request: `);
+            window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+          }}
+        />
+      );
+    }
+    if (item.item_type === "artifact") {
+      return (
+        <button
+          className="agent-chat__artifact"
+          key={`artifact-${item.artifact_id}`}
+          type="button"
+          onClick={() => viewNodes([item.node_id])}
+        >
+          <DocumentIcon />
+          <span>
+            <strong>{item.title}</strong>
+            <small>{item.summary}</small>
+          </span>
+          <b>View Script</b>
+        </button>
+      );
+    }
+    if (item.item_type === "command_plan") {
+      return (
+        <CommandPlanCard
+          key={`command-${item.command_plan.plan_id}`}
+          card={item}
+          pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
+          onAction={chat.actions.actOnCommandPlan}
+        />
+      );
+    }
+    if (item.item_type === "action_receipt") {
+      return (
+        <ActionReceiptCard
+          key={`receipt-${item.action_receipt.receipt_id}`}
+          card={item}
+          nodeLinks={location ? (
+            <ConversationNodeLinks
+              location={location}
+              nodes={workflow.nodes}
+              variant="receipt"
+              onViewNodes={viewNodes}
+            />
+          ) : null}
+        />
+      );
+    }
+    if (item.item_type === "agent_document") {
+      return (
+        <AgentCanvasDocumentReferenceCard
+          key={`document-${item.document_id}:${item.revision}`}
+          workflowId={workflow.workflow_id}
+          reference={item}
+          documentEvents={documentEvents}
+          onFocusNode={onFocusNode}
+        />
+      );
+    }
+    if (item.item_type === "proposal_pointer") {
+      return <TimelineHydrationSkeleton itemType="proposal" />;
+    }
+    if (item.item_type === "decision_bundle_pointer") {
+      return <TimelineHydrationSkeleton itemType="decision_bundle" />;
+    }
+    if (item.item_type === "decision_bundle") {
+      return (
+        <DecisionBundleCard
+          key={`decision-bundle-${item.decision_bundle.bundle_id}`}
+          bundle={item.decision_bundle}
+          pending={chat.state.actingDecisionBundleId === item.decision_bundle.bundle_id}
+          onApply={chat.actions.actOnDecisionBundle}
+        />
+      );
+    }
+    return (
+      <Fragment key={`proposal-${item.proposal.proposal_id}`}>
+        <ProposalCard
+          card={item}
+          pending={false}
+          compact={options.compactCapability}
+          retryingMaterialization={Boolean(
+            item.proposal.materialization
+            && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
+          )}
+          readOnly
+          optimisticSelectedOptionId={optimisticProposalSelections[item.proposal.proposal_id] ?? null}
+          issue={chat.state.proposalIssues[item.proposal.proposal_id]}
+        />
+        {location ? (
+          <ConversationNodeLinks
+            location={location}
+            nodes={workflow.nodes}
+            variant="result"
+            onViewNodes={viewNodes}
+          />
+        ) : null}
+      </Fragment>
+    );
   }
 
   if (collapsed) {
@@ -176,7 +634,7 @@ export function AgentCanvasChatPanel({
         aria-label="Open AdCraft Bot panel"
         title="Open AdCraft Bot"
         onClick={() => {
-          setCollapsed(false);
+          setInternalCollapsed(false);
           onCollapsedChange?.(false);
         }}
       >
@@ -187,7 +645,24 @@ export function AgentCanvasChatPanel({
   }
 
   return (
-    <aside className="agent-chat" aria-label="AdCraft Video Agent">
+    <aside
+      ref={chatPanelRef}
+      className={`agent-chat${chatPanelResizing ? " is-resizing" : ""}`}
+      style={chatPanelWidth === null ? undefined : { width: `${chatPanelWidth}px` }}
+      aria-label="AdCraft Video Agent"
+    >
+      <button
+        className="agent-chat__resize-handle"
+        type="button"
+        aria-label="Resize AdCraft Video Agent panel"
+        aria-valuenow={chatPanelWidth ?? undefined}
+        onPointerDown={beginChatPanelResize}
+        onPointerMove={updateChatPanelResize}
+        onPointerUp={finishChatPanelResize}
+        onPointerCancel={finishChatPanelResize}
+        onLostPointerCapture={finishChatPanelResize}
+        onKeyDown={nudgeChatPanelWidth}
+      />
       <header className="agent-chat__header">
         <div className="agent-chat__identity">
           <strong>AdCraft Video Agent</strong>
@@ -217,7 +692,7 @@ export function AgentCanvasChatPanel({
             aria-label="Collapse AdCraft Bot panel"
             title="Collapse AdCraft Bot"
             onClick={() => {
-              setCollapsed(true);
+              setInternalCollapsed(true);
               onCollapsedChange?.(true);
             }}
           >
@@ -229,6 +704,8 @@ export function AgentCanvasChatPanel({
           eventRevision={settingsRevision}
         />
       </header>
+
+      <CurrentProductionStep focus={productionFocus} onViewNodes={viewNodes} />
 
       <div className="agent-chat__timeline-shell">
         <div
@@ -251,117 +728,77 @@ export function AgentCanvasChatPanel({
               .map((continuation) => (
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
-            {chat.state.guidanceSession ? (
-              <GuidanceSessionProgress session={chat.state.guidanceSession} />
-            ) : null}
-            {chat.state.items.map((item) => {
-              if (item.item_type === "message") {
+            {stageTimeline.map((unit) => {
+              const location = conversationLinkIndex.locations.get(unit.key) ?? null;
+              const locationClassName = [
+                "agent-chat__conversation-location",
+                highlightedConversationKey === unit.key ? "is-highlighted" : "",
+              ].filter(Boolean).join(" ");
+              if (unit.unit_type === "item") {
+                const content = renderTimelineItem(unit.item, location);
+                if (!content) return null;
                 return (
                   <div
-                    className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
-                    key={`message-${item.message_id}`}
+                    key={unit.key}
+                    ref={(element) => {
+                      if (element) conversationElementsRef.current.set(unit.key, element);
+                      else conversationElementsRef.current.delete(unit.key);
+                    }}
+                    className={locationClassName}
+                    data-conversation-location={unit.key}
+                    tabIndex={-1}
                   >
-                    <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
-                    {isLikelyMarkdown(item.text)
-                      ? (
-                        <div className="agent-chat__markdown">
-                          {renderMarkdownAwareText(item.text)}
-                        </div>
-                      )
-                      : <p>{item.text}</p>}
+                    {content}
                   </div>
                 );
               }
-              if (item.item_type === "expert_activity") {
-                return (
-                  <CapabilityActivityRow
-                    key={`activity-${item.activity_id}`}
-                    activity={item}
-                    turn={chat.state.turnsById[item.turn_id] ?? null}
-                    retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
-                    onRetry={() => void chat.actions.retryCapabilityActivity(item)}
-                    onReviseRequest={() => {
-                      setDraft(`Revise the ${item.capability_display_name} request: `);
-                      window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
-                    }}
-                  />
-                );
-              }
-              if (item.item_type === "artifact") {
-                return (
-                  <button
-                    className="agent-chat__artifact"
-                    key={`artifact-${item.artifact_id}`}
-                    type="button"
-                    onClick={() => onFocusNode(item.node_id)}
-                  >
-                    <DocumentIcon />
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>{item.summary}</small>
-                    </span>
-                    <b>View Script</b>
-                  </button>
-                );
-              }
-              if (item.item_type === "command_plan") {
-                return (
-                  <CommandPlanCard
-                    key={`command-${item.command_plan.plan_id}`}
-                    card={item}
-                    pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
-                    onAction={chat.actions.actOnCommandPlan}
-                  />
-                );
-              }
-              if (item.item_type === "action_receipt") {
-                return (
-                  <ActionReceiptCard
-                    key={`receipt-${item.action_receipt.receipt_id}`}
-                    card={item}
-                  />
-                );
-              }
-              if (item.item_type === "agent_document") {
-                return (
-                  <AgentCanvasDocumentReferenceCard
-                    key={`document-${item.document_id}:${item.revision}`}
-                    workflowId={workflow.workflow_id}
-                    reference={item}
-                    documentEvents={documentEvents}
-                    onFocusNode={onFocusNode}
-                  />
-                );
-              }
-              if (item.item_type === "proposal_pointer") return null;
-              if (item.item_type === "decision_bundle_pointer") return null;
-              if (item.item_type === "decision_bundle") {
-                return (
-                  <DecisionBundleCard
-                    key={`decision-bundle-${item.decision_bundle.bundle_id}`}
-                    bundle={item.decision_bundle}
-                    pending={chat.state.actingDecisionBundleId === item.decision_bundle.bundle_id}
-                    onApply={chat.actions.actOnDecisionBundle}
-                  />
-                );
-              }
+              const failedReceipts = unit.receipts.filter(({ action_receipt }) => (
+                action_receipt.status === "failed"
+                || action_receipt.status === "rejected"
+                || action_receipt.status === "not_applied"
+                || action_receipt.status === "applied_with_run_error"
+              ));
               return (
-                <ProposalCard
-                  key={`proposal-${item.proposal.proposal_id}`}
-                  card={item}
-                  pending={false}
-                  retryingMaterialization={Boolean(
-                    item.proposal.materialization
-                    && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
-                  )}
-                  readOnly
-                  issue={chat.state.proposalIssues[item.proposal.proposal_id]}
-                />
+                <div
+                  key={unit.key}
+                  ref={(element) => {
+                    if (element) conversationElementsRef.current.set(unit.key, element);
+                    else conversationElementsRef.current.delete(unit.key);
+                  }}
+                  className={locationClassName}
+                  data-conversation-location={unit.key}
+                  tabIndex={-1}
+                >
+                  <StageThread
+                    unit={unit}
+                    result={location ? (
+                      <ConversationNodeLinks
+                        location={location}
+                        nodes={workflow.nodes}
+                        variant="result"
+                        onViewNodes={viewNodes}
+                      />
+                    ) : null}
+                  >
+                    {unit.activities.map((activity) => renderTimelineItem(
+                      activity,
+                      null,
+                      { compactCapability: true },
+                    ))}
+                    {unit.proposals.map((proposal) => renderTimelineItem(
+                      proposal,
+                      null,
+                      { compactCapability: true },
+                    ))}
+                    {failedReceipts.map((receipt) => renderTimelineItem(
+                      receipt,
+                      null,
+                      { compactCapability: true },
+                    ))}
+                  </StageThread>
+                </div>
               );
             })}
-            {!chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
-              <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
-            ) : null}
             {chat.state.currentSessionActions.length ? (
               <GuidedActionsCard
                 actions={chat.state.currentSessionActions}
@@ -369,7 +806,26 @@ export function AgentCanvasChatPanel({
                 onApply={chat.actions.applyGuidedAction}
               />
             ) : null}
+            {activePresentationStreams.map((stream) => (
+              <PresentationStreamRow key={stream.stream_id} stream={stream} />
+            ))}
             {chat.state.agentWorking ? <AgentWorkingRow waitingForModel={chat.state.agentWaitingForModel} /> : null}
+            {chat.state.timelineRecovery ? (
+              <ConversationRecoverySurface
+                recovery={chat.state.timelineRecovery}
+                onAction={() => {
+                  if (
+                    chat.state.timelineRecovery?.action === "retry"
+                    && chat.state.retryableFailedTurn
+                  ) {
+                    void chat.actions.retryTurn(chat.state.retryableFailedTurn);
+                  } else {
+                    void chat.actions.refresh();
+                  }
+                }}
+                onDismiss={chat.actions.clearTimelineRecovery}
+              />
+            ) : null}
           </div>
         </div>
         {timelineScroll.hasUnseenContent ? (
@@ -385,26 +841,62 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
 
-      {chat.state.error ? (
-        <div className="agent-chat__error" role="alert">
-          <span>{chat.state.error}</span>
-          {chat.state.failedDraft ? (
-            <button type="button" onClick={() => void chat.actions.submit(chat.state.failedDraft!)}>
-              Retry
-            </button>
-          ) : chat.state.retryableFailedTurn ? (
-            <button
-              type="button"
-              onClick={() => void chat.actions.retryTurn(chat.state.retryableFailedTurn!)}
-              disabled={Boolean(chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id])}
-            >
-              {chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id]
-                ? "Retrying"
-                : "Retry"}
-            </button>
-          ) : null}
+      {standaloneGuidedInteraction ? (
+        <div className="agent-chat__current-interaction" aria-live="polite">
+          <GuidedInteractionCard
+            key={standaloneGuidedInteraction.interaction_id}
+            interaction={standaloneGuidedInteraction}
+            pending={
+              standaloneGuidedInteraction.status === "submitted"
+              || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
+            }
+            issue={chat.state.guidedInteractionIssue}
+            pendingProductMainHandoff={composerContext.productMainHandoff}
+            onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
+            selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+            onSelectConceptOption={(optionId) => {
+              setSelectedConceptOptionId(optionId);
+              setDraft("");
+            }}
+            onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
+          />
         </div>
       ) : null}
+
+      {chat.state.composerRecovery ? (
+        <ConversationRecoverySurface
+          recovery={chat.state.composerRecovery}
+          onAction={chat.state.failedDraft ? async () => {
+            const failedDraft = chat.state.failedDraft!;
+            const draftAtRetry = draft;
+            const accepted = await chat.actions.submit(failedDraft);
+            if (!accepted) return;
+            if (draftAtRetry.trim() === failedDraft.text) {
+              setDraft((current) => current === draftAtRetry ? "" : current);
+            }
+            setMentionOpen(false);
+            composerContext.actions.consumeSubmittedContext({
+              nodeIds: failedDraft.mentionedNodeIds,
+              assetIds: failedDraft.mentionedImageAssetIds,
+            });
+          } : undefined}
+          onDismiss={chat.actions.clearComposerRecovery}
+        />
+      ) : chat.state.workflowRecovery ? (
+        <ConversationRecoverySurface
+          recovery={chat.state.workflowRecovery}
+          onAction={async () => {
+            await Promise.all([
+              chat.actions.refresh(),
+              onWorkflowRefresh?.(),
+              onRuntimeRefresh?.(),
+            ]);
+            chat.actions.clearWorkflowRecovery();
+          }}
+          onDismiss={chat.actions.clearWorkflowRecovery}
+        />
+      ) : null}
+
       {chat.state.notice ? (
         <div className="agent-chat__notice" role="status">
           <span>{chat.state.notice}</span>
@@ -414,55 +906,111 @@ export function AgentCanvasChatPanel({
         </div>
       ) : null}
 
-      {standaloneGuidedInteraction ? (
-        <div className="agent-chat__current-interaction" aria-live="polite">
-          <GuidedInteractionCard
-            key={`${standaloneGuidedInteraction.interaction_id}:${standaloneGuidedInteraction.revision}`}
-            interaction={standaloneGuidedInteraction}
-            pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
-            proposalReferences={standaloneGuidedReferences}
-            referenceMediaUrls={standaloneGuidedReferenceMediaUrls}
-            onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
-          />
+      {composerContext.view.uploadState === "uploading" ? (
+        <div className="agent-chat__context-uploading" role="status">
+          Uploading context asset…
         </div>
       ) : null}
 
+      {composerContext.uploadIssue ? (
+        <ConversationRecoverySurface
+          recovery={composerContext.uploadIssue}
+          onDismiss={composerContext.actions.clearUploadIssue}
+        />
+      ) : null}
+
       <div className="agent-chat__composer">
-        {(mentionedNodeIds.length || mentionedAssetIds.length) ? (
-          <div className="agent-chat__mentions">
-            {mentionedNodeIds.map((nodeId) => {
-              const node = workflow.nodes.find((item) => item.node_id === nodeId);
-              return (
-                <button
-                  type="button"
-                  key={nodeId}
-                  onClick={() => setMentionedNodeIds((current) => current.filter((item) => item !== nodeId))}
-                >
-                  @{node?.title ?? nodeId}<CloseIcon />
-                </button>
-              );
-            })}
-            {mentionedAssetIds.map((assetId) => {
-              const asset = imageAssets.find((item) => item.asset_id === assetId);
-              return (
-                <button
-                  type="button"
-                  key={assetId}
-                  onClick={() => setMentionedAssetIds((current) => current.filter((item) => item !== assetId))}
-                >
-                  @{asset?.display_name ?? assetId}<CloseIcon />
-                </button>
-              );
-            })}
+        {pendingContextFiles.length ? (
+          <div className="agent-chat__product-upload-choice" role="status">
+            <span>
+              {pendingContextFiles.length === 1
+                ? "Use this image as Product Main?"
+                : "Use the first image as Product Main?"}
+            </span>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  const files = pendingContextFiles;
+                  setPendingContextFiles([]);
+                  void (async () => {
+                    await composerContext.actions.upload(files.slice(0, 1), { semanticRole: "product_main" });
+                    if (files.length > 1) {
+                      await composerContext.actions.upload(files.slice(1), {
+                        semanticRole: null,
+                        preserveProductMainHandoff: true,
+                      });
+                    }
+                  })();
+                }}
+                disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
+              >
+                Product Main
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const files = pendingContextFiles;
+                  setPendingContextFiles([]);
+                  void composerContext.actions.upload(files, { semanticRole: null });
+                }}
+                disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
+              >
+                Keep unclassified
+              </button>
+              <button
+                type="button"
+                aria-label="Cancel image upload"
+                onClick={() => setPendingContextFiles([])}
+                disabled={chat.state.sending}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {composerContext.productMainHandoff ? (
+          <div className="agent-chat__product-main-handoff" role="status">
+            {composerContext.productMainHandoff.previewUrl ? (
+              <img src={composerContext.productMainHandoff.previewUrl} alt="" />
+            ) : null}
+            <span>
+              <strong>Product Main</strong>
+              <small>{composerContext.productMainHandoff.displayName}</small>
+            </span>
+            <button
+              type="button"
+              aria-label="Clear Product Main handoff"
+              onClick={composerContext.actions.clearProductMainHandoff}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ) : null}
+        {conceptInteraction ? (
+          <div className="agent-chat__guided-composer-hint" role="status">
+            You can also describe your own direction below.
+          </div>
+        ) : null}
+        {selectedSkillTitle ? (
+          <div className="agent-chat__selected-skill" role="status" aria-label={`Selected Skill: ${selectedSkillTitle}`}>
+            <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
+            <span>{selectedSkillTitle}</span>
           </div>
         ) : null}
         <textarea
           ref={composerTextareaRef}
           rows={3}
           value={draft}
-          placeholder="Ask AdCraft Video Agent..."
+          placeholder={conceptInteraction
+            ? "Describe your own direction..."
+            : "Ask AdCraft Video Agent..."}
           aria-label="Message AdCraft Video Agent"
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            const nextDraft = event.target.value;
+            if (conceptInteraction && nextDraft.trim()) setSelectedConceptOptionId(null);
+            setDraft(nextDraft);
+          }}
           onScroll={(event) => snapChatComposerScroll(event.currentTarget)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -478,22 +1026,56 @@ export function AgentCanvasChatPanel({
               className={mentionOpen ? "is-active" : ""}
               aria-label="Mention node or image asset"
               title="Mention node or image asset"
+              disabled={Boolean(conceptInteraction) || chat.state.sending}
               onClick={() => setMentionOpen((current) => !current)}
             >
               @
             </button>
+            {!conceptInteraction ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Upload context images"
+                  title="Upload context images"
+                  disabled={chat.state.sending}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  <AssetsIcon />
+                </button>
+                <input
+                  ref={uploadInputRef}
+                  className="agent-chat__context-file-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={chat.state.sending}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(event) => {
+                    const files = event.currentTarget.files;
+                    if (files?.length) setPendingContextFiles(Array.from(files));
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </>
+              ) : null}
             <AgentCanvasStyleSelector
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}
               onWorkflowRefresh={() => onWorkflowRefresh?.()}
+              onSkillSelected={setSelectedSkillTitle}
             />
           </div>
           <button
             type="button"
             className="agent-chat__send"
-            aria-label="Send message"
-            title="Send message"
-            disabled={!draft.trim() || chat.state.sending}
+            aria-label={conceptInteraction ? "Submit guided direction" : "Send message"}
+            title={conceptInteraction ? "Submit guided direction" : "Send message"}
+            disabled={conceptInteraction
+              ? ((!selectedConceptOptionId && (!draft.trim() || !conceptCustomAllowed))
+                || !conceptSelectionReady
+                || conceptInteractionPending)
+              : (!draft.trim() || chat.state.sending)}
             onClick={() => void send()}
           >
             <SendIcon />
@@ -507,8 +1089,9 @@ export function AgentCanvasChatPanel({
                 <button
                   type="button"
                   key={node.node_id}
-                  className={mentionedNodeIds.includes(node.node_id) ? "is-selected" : ""}
-                  onClick={() => toggleValue(node.node_id, mentionedNodeIds, setMentionedNodeIds)}
+                  className={composerContext.selectedNodeIds.includes(node.node_id) ? "is-selected" : ""}
+                  disabled={chat.state.sending}
+                  onClick={() => composerContext.actions.toggleNode(node.node_id)}
                 >
                   <DocumentIcon />
                   <span>{node.title}</span>
@@ -522,8 +1105,9 @@ export function AgentCanvasChatPanel({
                 <button
                   type="button"
                   key={asset.asset_id}
-                  className={mentionedAssetIds.includes(asset.asset_id) ? "is-selected" : ""}
-                  onClick={() => toggleValue(asset.asset_id, mentionedAssetIds, setMentionedAssetIds)}
+                  className={composerContext.selectedAssetIds.includes(asset.asset_id) ? "is-selected" : ""}
+                  disabled={chat.state.sending}
+                  onClick={() => composerContext.actions.toggleAsset(asset.asset_id)}
                 >
                   <AssetsIcon />
                   <span>{asset.display_name}</span>
@@ -558,84 +1142,21 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
   );
 }
 
-export function CapabilityActivityRow({
-  activity,
-  turn,
-  retrying = false,
-  onRetry,
-  onReviseRequest,
+export function PresentationStreamRow({
+  stream,
 }: {
-  activity: ChatCapabilityActivityV2;
-  turn?: AgentCanvasChatTurnV2 | null;
-  retrying?: boolean;
-  onRetry?: () => void;
-  onReviseRequest?: () => void;
+  stream: PresentationStreamRuntimeView;
 }) {
-  const retryable = turn?.retryable ?? activity.retryable;
-  const operationStage = recoveryStageLabel(turn?.operation_stage);
-  const errorCode = turn?.operation_failure?.code ?? activity.error_code;
-  const errorMessage = turn?.operation_failure?.message ?? activity.message;
-  const fallbackLabel = retrying
-    ? `${activity.capability_display_name} recovery is working`
-    : activity.status === "working"
-    ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
-    : activity.status === "completed"
-      ? `${activity.capability_display_name} finished`
-      : activity.status === "superseded"
-        ? `${activity.capability_display_name} was superseded by later progress`
-        : `${activity.capability_display_name} failed`;
-  const label = activity.presentation_text ?? fallbackLabel;
   return (
-    <div className={`agent-chat__activity is-${activity.status}`}>
-      <i aria-hidden="true" />
-      <div>
-        <span>{label}</span>
-        {activity.status === "failed" ? (
-          <>
-            {errorCode ? <code>{errorCode}</code> : null}
-            {errorMessage ? <small>{errorMessage}</small> : null}
-            <div className="agent-chat__activity-actions">
-              {retryable && onRetry ? (
-                <button
-                  type="button"
-                  aria-label={`Retry ${activity.capability_display_name} activity`}
-                  onClick={onRetry}
-                  disabled={retrying}
-                >
-                  {retrying ? "Retrying" : "Retry"}
-                </button>
-              ) : null}
-              {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
-                <button
-                  type="button"
-                  aria-label={`Revise ${activity.capability_display_name} request`}
-                  onClick={onReviseRequest}
-                >
-                  Revise request
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : null}
-        {activity.completion_mode === "deterministic_fallback"
-          && activity.warning_code === "specialist_materialization_fallback" ? (
-            <small className="agent-chat__activity-warning">
-              Draft created with a simplified fallback.
-            </small>
-          ) : null}
-      </div>
+    <div
+      className="agent-chat__presentation-stream"
+      role="status"
+      aria-label="AdCraft Video Agent is generating a response"
+    >
+      <p>{stream.text}</p>
+      <span>Generating response</span>
     </div>
   );
-}
-
-function recoveryStageLabel(stage: string | null | undefined): string | null {
-  if (stage === "waiting" || stage === "waiting_provider_response") return "waiting";
-  if (stage === "retrying") return "retrying";
-  if (stage === "validating") return "validating";
-  if (stage === "publishing") return "publishing";
-  if (stage === "queued") return "queued";
-  if (stage === "running") return "working";
-  return null;
 }
 
 function continuationLabel(continuation: AgentCanvasContinuationV2): string {
@@ -723,8 +1244,10 @@ export function CommandPlanCard({
 
 export function ActionReceiptCard({
   card,
+  nodeLinks,
 }: {
   card: ChatActionReceiptCardV2;
+  nodeLinks?: ReactNode;
 }) {
   const receipt = card.action_receipt;
   const isNoop = receipt.status === "not_applied";
@@ -736,6 +1259,7 @@ export function ActionReceiptCard({
         <span>{receipt.status.replaceAll("_", " ")}</span>
       </header>
       <p>{receipt.summary}</p>
+      {nodeLinks}
       {receipt.run_queue_errors.length ? (
         <ul>
           {receipt.run_queue_errors.map((error) => <li key={error}>{error}</li>)}
@@ -757,8 +1281,10 @@ export function ProposalCard({
   onApplyAction,
   onRetryMaterialization,
   retryingMaterialization = false,
+  optimisticSelectedOptionId = null,
   issue,
   readOnly = false,
+  compact = false,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
@@ -776,12 +1302,17 @@ export function ProposalCard({
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   onRetryMaterialization?: (turnId: string) => Promise<boolean>;
   retryingMaterialization?: boolean;
+  optimisticSelectedOptionId?: string | null;
   issue?: string;
   readOnly?: boolean;
+  compact?: boolean;
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
-  const appliedOptionId = proposal.latest_application?.option_id ?? materialization?.option_id ?? null;
+  const appliedOptionId = optimisticSelectedOptionId
+    ?? proposal.latest_application?.option_id
+    ?? materialization?.option_id
+    ?? null;
   const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(() => (
     proposal.options.find((option) => option.option_id === appliedOptionId) ?? null
   ));
@@ -849,10 +1380,20 @@ export function ProposalCard({
   }
 
   return (
-    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}`}>
+    <article className={`agent-chat__proposal${readOnly ? " is-read-only" : ""}${compact ? " is-compact" : ""}`}>
       <header>
-        <strong>{proposal.capability_display_name}</strong>
-        <span>{readOnly ? (appliedOptionId ? "Selected" : "Options") : proposal.availability}</span>
+        {compact ? (
+          <div className="agent-chat__compact-capability-heading">
+            <strong>{proposal.capability_display_name}</strong>
+            {!readOnly ? <span>{proposal.availability}</span> : null}
+          </div>
+        ) : (
+          <AgentCapabilityIdentity
+            capabilityId={proposal.capability_id}
+            displayName={proposal.capability_display_name}
+            detail={!readOnly ? proposal.availability : null}
+          />
+        )}
       </header>
       {readOnly ? (
         <HistoricalProposalOptions
@@ -860,20 +1401,18 @@ export function ProposalCard({
           selectedOptionId={appliedOptionId}
         />
       ) : (
-        <div className="agent-chat__options">
-          {displayOptions.map((option) => (
-            <button
-              type="button"
+        <div className="agent-chat__options" aria-label="Creative direction options">
+          {displayOptions.map((option, index) => (
+            <ProposalOptionRow
               key={option.option_id}
-              className={selected?.option_id === option.option_id ? "is-selected" : ""}
+              index={index}
+              optionId={option.option_id}
+              title={option.title}
+              summary={option.public_summary}
+              selected={selected?.option_id === option.option_id}
               disabled={!canSelect || pending}
-              onClick={() => setSelected(option)}
-            >
-              <strong>
-                {option.title}
-              </strong>
-              <span>{option.public_summary}</span>
-            </button>
+              onSelect={() => setSelected(option)}
+            />
           ))}
         </div>
       )}

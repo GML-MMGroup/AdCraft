@@ -6,16 +6,50 @@ import { describe, expect, it } from "vitest";
 describe("AgentCanvasPage chrome", () => {
   it("hides the React Flow attribution panel", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
     expect(source).toContain("proOptions={{ hideAttribution: true }}");
   });
 
+  it("uses a monochrome treatment for the workflow toolbar and add-node menu", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-toolbar \{[\s\S]*?color: #dedede;[\s\S]*?background: #151515;[\s\S]*?border: 1px solid #353535;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-toolbar__run \{[\s\S]*?color: #111 !important;[\s\S]*?background: #e7e7e7 !important;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-node-picker \{[\s\S]*?background: #1d1d1d;[\s\S]*?border: 1px solid #3a3a3a;/,
+    );
+  });
+
+  it("uses one monochrome panel for the canvas context menu and node picker", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu \{[\s\S]*?color: #dedede;[\s\S]*?background: #151515;[\s\S]*?border: 1px solid #353535;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu__action:hover,[\s\S]*?background: #303030;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-context-menu__node-picker \{[\s\S]*?background: transparent;[\s\S]*?border: 0;[\s\S]*?border-radius: 0;/,
+    );
+  });
+
   it("suppresses the browser menu across the canvas while preserving the pane menu", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -57,7 +91,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("keeps backend edges selectable and animates only the selected monochrome dash", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const canvasCss = readFileSync(
@@ -83,7 +117,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("restores canonical bindings immediately when a delete mutation fails", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -94,7 +128,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("integrates one-click layout as a reversible node preview", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -112,6 +146,51 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).not.toContain("layoutKeepSucceededRef");
   });
 
+  it("repairs overlapping persisted node positions during initial hydration", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("needsInitialCanvasLayout(visibleCanonicalNodes.map((node) => node.data.node))");
+    expect(source).toContain("initialLayoutRepairWorkflowIdsRef");
+    expect(source).toContain("readAgentCanvasViewport(workflowId)");
+    expect(source).toMatch(
+      /computeAgentCanvasAutoLayout\([\s\S]*?enabledNodeLayoutEdges\(workflow\.bindings,[\s\S]*?updateNodePositions\(layoutResult\.positions\)[\s\S]*?fitView\(/,
+    );
+  });
+
+  it("stages receipt nodes before rendering and reveals them through the progressive queue", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const sessionSource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/session/useAgentCanvasSession.ts"),
+      "utf8",
+    );
+    const receiptStart = source.indexOf("const placeReceiptNodes");
+    const receiptEnd = source.indexOf("const organizeCanvas", receiptStart);
+    const receiptSource = source.slice(receiptStart, receiptEnd);
+
+    expect(source).toContain("useAgentCanvasNodeRevealQueue");
+    expect(source).toContain("reserveRevealNodeIds(receipt.created_node_ids)");
+    expect(source).toContain("syncRevealCanonicalNodeIds(canonicalNodes.map((node) => node.id))");
+    expect(source).toContain("visibleCanonicalNodes");
+    expect(source).toContain("interruptReveal()");
+    expect(sessionSource).toContain("buildAgentCanvasPreRevealLayout({");
+    expect(sessionSource).toContain("await updateNodePositions(preRevealLayout.positions)");
+    expect(sessionSource).not.toContain("planProgressiveNodePlacement({");
+    expect(sessionSource).toMatch(
+      /const preRevealLayout = buildAgentCanvasPreRevealLayout\([\s\S]*?applyWorkflow\(latest\.value\);[\s\S]*?await updateNodePositions\(preRevealLayout\.positions\);[\s\S]*?return preRevealLayout\.revealPlan;/,
+    );
+    expect(receiptSource).toContain("placeActionReceiptNodes(receipt)");
+    expect(receiptSource).not.toContain("screenToFlowPosition({");
+    expect(receiptSource).not.toContain("viewportAnchor");
+    const receiptFailureSource = receiptSource.slice(receiptSource.indexOf(".catch((error) =>"));
+    expect(receiptFailureSource).not.toContain("releaseRevealNodeIds(receipt.created_node_ids)");
+  });
+
   it("animates node transforms only during layout preview and respects reduced motion", () => {
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
@@ -127,7 +206,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("defers runtime node replacement until drag stop rebuilds the complete snapshot", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -145,7 +224,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("cleans interrupted drag sessions and recovers failed layout persistence", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -165,9 +244,9 @@ describe("AgentCanvasPage chrome", () => {
     );
   });
 
-  it("culls nodes outside the viewport and memoizes node card rendering", () => {
+  it("keeps workflow nodes mounted so media previews survive viewport changes", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const nodeSource = readFileSync(
@@ -175,7 +254,7 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain("onlyRenderVisibleElements");
+    expect(source).toContain("onlyRenderVisibleElements={false}");
     expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
     expect(nodeSource).toMatch(
       /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,
@@ -184,7 +263,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("uses a lightweight visual mode only while the canvas is moving", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const canvasCss = readFileSync(
