@@ -8,13 +8,8 @@
 
 **从一个模糊想法到成片交付，AdCraft 全流程自动化你的广告视频生产。**
 
-[![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
-[![Stars](https://img.shields.io/github/stars/GML-MMGroup/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
-[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/GML-MMGroup/AdCraft/releases)
-[![Discord](https://img.shields.io/badge/Discord-加入-5865F2.svg)](https://discord.gg/yourlink)
 
-[English](./README.md) · **简体中文** · [在线体验](#) · [使用文档](#)
-
+[English](./README.md) · **简体中文** 
 </div>
 
 ---
@@ -376,6 +371,9 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 全程由 AI Agent 编排，在无限画布上自由编辑。
 
 ---
+## 🤝 贡献
+
+欢迎提交 Pull Request，为 AdCraft 贡献代码、功能改进、Bug 修复或其他优化，并成为项目贡献者。
 
 ## 💬 联系我们
 
