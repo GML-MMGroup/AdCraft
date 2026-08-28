@@ -113,6 +113,7 @@ class GuidedProductionJourneyService:
             interaction_context=(
                 "Confirm the number of characters before Character authoring begins."
             ),
+            expected_requirement_revision=requirements.revision_no,
         )
 
     def next_action(

@@ -56,6 +56,7 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
+    AgentCanvasRequirementLedgerRow,
     AgentCanvasNodeRow,
     AgentCanvasSkillRunRow,
     AgentCanvasWorkflowRow,
@@ -372,6 +373,7 @@ class AgentCanvasConversationRepository:
         checkpoint_id: str | None = None,
         interaction_title: str | None = None,
         interaction_context: str | None = None,
+        expected_requirement_revision: int | None = None,
     ) -> ChatTurnV2:
         """Atomically publish clarification authority and complete its source Turn."""
 
@@ -400,6 +402,21 @@ class AgentCanvasConversationRepository:
                         workflow_id,
                     )
                     session_id = str(session_row["session_id"])
+                    if expected_requirement_revision is not None:
+                        requirement_row = connection.execute(
+                            select(AgentCanvasRequirementLedgerRow).where(
+                                AgentCanvasRequirementLedgerRow.workflow_id == workflow_id
+                            )
+                        ).mappings().one_or_none()
+                        if (
+                            requirement_row is None
+                            or int(requirement_row["current_revision_no"])
+                            != expected_requirement_revision
+                        ):
+                            raise _error(
+                                "journey_revision_conflict",
+                                "Requirements changed before this clarification transition.",
+                            )
                     event_transition_key = f"journey:{session_id}:{transition_key}"
                     existing_event = (
                         connection.execute(
