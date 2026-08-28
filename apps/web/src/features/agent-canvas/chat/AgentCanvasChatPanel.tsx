@@ -66,6 +66,7 @@ import { ProposalOptionRow } from "./ProposalOptionRow.tsx";
 import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
 import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
+import { preloadAgentCapabilityIconLink } from "./AgentCapabilityIcon.tsx";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
 import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
@@ -344,6 +345,16 @@ export function AgentCanvasChatPanel({
     }),
     [chat.state.agentWorking, chat.state.items],
   );
+  const currentStageCapabilityId = useMemo(() => {
+    const stages = stageTimeline.filter((unit) => unit.unit_type === "stage_thread");
+    const activeStage = [...stages].reverse().find((stage) => (
+      stage.status === "working" || stage.status === "waiting_user"
+    ));
+    return activeStage?.capability_id ?? stages.at(-1)?.capability_id ?? null;
+  }, [stageTimeline]);
+  useEffect(() => {
+    if (currentStageCapabilityId) preloadAgentCapabilityIconLink(currentStageCapabilityId);
+  }, [currentStageCapabilityId]);
   const conversationLinkIndex = useMemo(
     () => buildConversationCanvasLinkIndex(stageTimeline, chat.state.guidanceAwaiting),
     [chat.state.guidanceAwaiting, stageTimeline],
