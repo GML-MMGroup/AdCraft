@@ -61,6 +61,11 @@ class GuidedProductionJourneyService:
         session = self._conversations.get_guidance_session(workflow_id)
         if session.journey.stage != "character":
             return None
+        if (
+            session.journey.active_action is not None
+            or session.journey.suspended_action is not None
+        ):
+            return None
         requirements = self._requirements.get_current(workflow_id)
         questionnaire = self._character_authority.questionnaire(
             requirements,
