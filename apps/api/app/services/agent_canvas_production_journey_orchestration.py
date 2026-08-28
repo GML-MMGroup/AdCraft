@@ -24,7 +24,9 @@ from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
     reconcile_character_occurrences,
 )
-from app.services.agent_canvas_requirements import character_occurrences_for_authoring
+from app.services.agent_canvas_requirements import (
+    character_occurrence_authority_for_authoring,
+)
 
 
 class GuidedProductionJourneyService:
@@ -159,12 +161,14 @@ class GuidedProductionJourneyService:
         clarification_required: bool = False,
     ) -> JourneyPolicyContextV2:
         revision = self._requirements.get_current(session.workflow_id)
-        occurrences = character_occurrences_for_authoring(revision)
+        authority = character_occurrence_authority_for_authoring(revision)
         return _context(
             session,
             clarification_required=clarification_required,
-            included_character_occurrence_ids=tuple(
-                item.occurrence_id for item in occurrences if item.presence == "include"
+            included_character_occurrence_ids=(
+                tuple(item.occurrence_id for item in authority.occurrences)
+                if authority.status != "unresolved"
+                else None
             ),
         )
 
@@ -179,7 +183,8 @@ class GuidedProductionJourneyService:
 
         session = self._conversations.get_guidance_session(workflow_id)
         revision = self._requirements.get_current(workflow_id)
-        occurrences = character_occurrences_for_authoring(revision)
+        authority = character_occurrence_authority_for_authoring(revision)
+        occurrences = authority.occurrences
         journey = reconcile_character_occurrences(session.journey, occurrences)
         if journey == session.journey:
             return session

@@ -19,18 +19,18 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
-    AgentCanvasIdempotencyRow,
+    AgentCanvasBindingRow,
     AgentCanvasConceptProposalRow,
     AgentCanvasCreativeMemoryRow,
     AgentCanvasGuidanceSessionRow,
+    AgentCanvasIdempotencyRow,
+    AgentCanvasMaterializationCommitRow,
     AgentCanvasNodeRow,
 )
 from app.schemas.agent_canvas_requirements import (
-    CharacterOccurrencePatchV1,
     CharacterOccurrenceV1,
     EditableRequirementDirectiveV1,
     ManualRequirementControlPatchV1,
-    ManualCharacterOccurrencePatchV1,
     RequirementApplicationDeltaV1,
     RequirementApplicationResultV1,
     RequirementConflictV1,
@@ -52,6 +52,15 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.services.agent_canvas_requirement_directives import (
     canonicalize_requirement_directives,
+)
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthorityError,
+    CharacterOccurrenceAuthorityPatch,
+    CharacterOccurrenceAuthorityProjection,
+    CharacterOccurrenceAuthoritySource,
+    CharacterOccurrenceReconciliationResult,
+    reconcile_character_occurrence_authority,
+    validate_character_occurrence_authority,
 )
 
 
@@ -355,10 +364,7 @@ def requirement_response(
     revision: RequirementLedgerRevisionV1,
 ) -> RequirementLedgerResponseV1:
     ledger = revision.ledger
-    character_occurrences = _compatibility_character_occurrences(
-        ledger,
-        revision_no=revision.revision_no,
-    )
+    character_occurrences = character_occurrence_authority_for_authoring(revision).occurrences
     return RequirementLedgerResponseV1(
         workflow_id=revision.workflow_id,
         revision_id=revision.revision_id,
@@ -378,10 +384,23 @@ def character_occurrences_for_authoring(
 ) -> tuple[CharacterOccurrenceV1, ...]:
     """Return the occurrence-aware authoring view without mutating Ledger authority."""
 
-    return _compatibility_character_occurrences(
-        revision.ledger,
-        revision_no=revision.revision_no,
-    )
+    return character_occurrence_authority_for_authoring(revision).occurrences
+
+
+def character_occurrence_authority_for_authoring(
+    revision: RequirementLedgerRevisionV1,
+) -> CharacterOccurrenceAuthorityProjection:
+    """Return validated resolved-zero, resolved-positive, or unresolved authority."""
+
+    try:
+        return validate_character_occurrence_authority(revision.ledger)
+    except CharacterOccurrenceAuthorityError as error:
+        raise V2PersistenceError(
+            error.code,
+            str(error),
+            stage="agent_canvas_requirement_service",
+            details=error.details,
+        ) from error
 
 
 def _apply_manual_patch(
@@ -431,45 +450,31 @@ def _apply_manual_patch(
         candidates,
         directive_ids_to_supersede=request.directive_ids_to_supersede,
     )
-    character_occurrences = current.ledger.character_occurrences
-    character_occurrences_changed = request.character_occurrences_to_set is not None
-    if request.character_occurrences_to_set is not None:
-        character_occurrences = _canonicalize_character_occurrences(
-            current.ledger.character_occurrences,
-            request.character_occurrences_to_set,
-            revision_no=revision_no,
-        )
-        character_occurrences_changed = (
-            character_occurrences != current.ledger.character_occurrences
-        )
     ledger = current.ledger.model_copy(
         update={
             "hard_controls": tuple(controls[key] for key in sorted(controls)),
             "active_directives": canonical.active_directives,
-            "character_occurrences": character_occurrences,
         }
     )
-    return ledger, RequirementApplicationDeltaV1(
+    base_delta = RequirementApplicationDeltaV1(
         changed_control_names=tuple(sorted(changed_control_names)),
         added_directive_ids=canonical.added_directive_ids,
         superseded_directive_ids=canonical.superseded_directive_ids,
-        changed_character_occurrence_ids=(
-            tuple(item.occurrence_id for item in character_occurrences)
-            if character_occurrences_changed
-            else ()
-        ),
-        superseded_character_occurrence_ids=(
-            _superseded_character_occurrence_ids(
-                current.ledger.character_occurrences,
-                character_occurrences,
-            )
-            if character_occurrences_changed
-            else ()
-        ),
-        character_occurrence_count=(
-            len(character_occurrences) if character_occurrences_changed else None
-        ),
     )
+    reconciliation = reconcile_character_occurrence_authority_in_transaction(
+        connection,
+        workflow_id=workflow_id,
+        current=current.ledger,
+        candidate=ledger,
+        occurrence_patches=request.character_occurrences_to_set,
+        revision_no=revision_no,
+        source=_manual_character_source(request, current.ledger),
+        explicit_character_count=any(
+            item.control == "character_count" for item in request.controls_to_set
+        ),
+        explicit_character_presence=False,
+    )
+    return reconciliation.ledger, _merge_occurrence_delta(base_delta, reconciliation.delta)
 
 
 def _apply_user_patch(
@@ -524,18 +529,6 @@ def _apply_user_patch(
         directive_ids_to_supersede=patch.directive_ids_to_supersede,
     )
 
-    character_occurrences = current.ledger.character_occurrences
-    character_occurrences_changed = patch.character_occurrences_to_set is not None
-    if patch.character_occurrences_to_set is not None:
-        character_occurrences = _canonicalize_character_occurrences(
-            current.ledger.character_occurrences,
-            patch.character_occurrences_to_set,
-            revision_no=revision_no,
-        )
-        character_occurrences_changed = (
-            character_occurrences != current.ledger.character_occurrences
-        )
-
     elements = {item.element_kind: item for item in current.ledger.element_presence}
     for element in explicit_elements:
         elements[element.element_kind] = RequirementElementPresenceV1(
@@ -568,33 +561,37 @@ def _apply_user_patch(
             "hard_controls": tuple(controls[key] for key in sorted(controls)),
             "active_directives": canonical.active_directives,
             "element_presence": tuple(elements[key] for key in sorted(elements)),
-            "character_occurrences": character_occurrences,
             "unresolved_conflicts": tuple(conflicts),
         }
     )
-    return ledger, RequirementApplicationDeltaV1(
+    base_delta = RequirementApplicationDeltaV1(
         changed_control_names=tuple(sorted(changed_control_names)),
         added_directive_ids=canonical.added_directive_ids,
         superseded_directive_ids=canonical.superseded_directive_ids,
         changed_element_kinds=tuple(sorted(item.element_kind for item in explicit_elements)),
         conflict_ids=tuple(conflict_ids),
-        changed_character_occurrence_ids=(
-            tuple(item.occurrence_id for item in character_occurrences)
-            if character_occurrences_changed
-            else ()
+    )
+    reconciliation = reconcile_character_occurrence_authority_in_transaction(
+        connection,
+        workflow_id=workflow_id,
+        current=current.ledger,
+        candidate=ledger,
+        occurrence_patches=patch.character_occurrences_to_set,
+        revision_no=revision_no,
+        source=_user_character_source(
+            patch,
+            explicit_elements=explicit_elements,
+            current=current.ledger,
+            source_turn_id=source_turn_id,
         ),
-        superseded_character_occurrence_ids=(
-            _superseded_character_occurrence_ids(
-                current.ledger.character_occurrences,
-                character_occurrences,
-            )
-            if character_occurrences_changed
-            else ()
+        explicit_character_count=any(
+            item.control == "character_count" for item in patch.controls_to_set
         ),
-        character_occurrence_count=(
-            len(character_occurrences) if character_occurrences_changed else None
+        explicit_character_presence=any(
+            item.element_kind == "character" for item in explicit_elements
         ),
     )
+    return reconciliation.ledger, _merge_occurrence_delta(base_delta, reconciliation.delta)
 
 
 def _stored_control(
@@ -689,119 +686,190 @@ def _request_fingerprint(request: RequirementLedgerPatchRequestV1) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _canonicalize_character_occurrences(
-    current: tuple[CharacterOccurrenceV1, ...],
-    patches: tuple[CharacterOccurrencePatchV1 | ManualCharacterOccurrencePatchV1, ...],
+def reconcile_character_occurrence_authority_in_transaction(
+    connection,
     *,
+    workflow_id: str,
+    current: RequirementLedgerV1,
+    candidate: RequirementLedgerV1,
+    occurrence_patches: tuple[CharacterOccurrenceAuthorityPatch, ...] | None,
     revision_no: int,
-) -> tuple[CharacterOccurrenceV1, ...]:
-    current_by_identity: dict[tuple[str, str], CharacterOccurrenceV1] = {}
-    for occurrence in current:
-        identity = _character_identity_key(occurrence.role, occurrence.identity_summary)
-        if identity in current_by_identity:
-            raise V2PersistenceError(
-                "character_occurrence_invalid",
-                "The current Character occurrence roster has ambiguous identities.",
-                stage="agent_canvas_requirement_service",
-            )
-        current_by_identity[identity] = occurrence
+    source: CharacterOccurrenceAuthoritySource,
+    explicit_character_count: bool,
+    explicit_character_presence: bool,
+) -> CharacterOccurrenceReconciliationResult:
+    """Reconcile with protected facts loaded through the caller-owned transaction."""
 
-    used_ids = {item.occurrence_id for item in current}
-    next_numeric_id = (
-        max(
-            (
-                int(suffix)
-                for item in current
-                if (suffix := item.occurrence_id.removeprefix("character-")).isdigit()
-            ),
-            default=0,
+    try:
+        return reconcile_character_occurrence_authority(
+            current,
+            candidate,
+            occurrence_patches=occurrence_patches,
+            revision_no=revision_no,
+            source=source,
+            explicit_character_count=explicit_character_count,
+            explicit_character_presence=explicit_character_presence,
+            protected_occurrence_ids=_protected_character_occurrence_ids(connection, workflow_id),
         )
-        + 1
-    )
-    normalized: list[CharacterOccurrenceV1] = []
-    for patch in patches:
-        identity = _character_identity_key(patch.role, patch.identity_summary)
-        existing = current_by_identity.get(identity)
-        if existing is None:
-            while f"character-{next_numeric_id}" in used_ids:
-                next_numeric_id += 1
-            occurrence_id = f"character-{next_numeric_id}"
-            next_numeric_id += 1
-            used_ids.add(occurrence_id)
-            source_revision_no = revision_no
-        else:
-            occurrence_id = existing.occurrence_id
-            source_revision_no = (
-                existing.source_revision_no
-                if existing.occurrence_index == patch.occurrence_index
-                and existing.role == " ".join(patch.role.split())
-                and existing.identity_summary == " ".join(patch.identity_summary.split())
-                and existing.presence == patch.presence
-                else revision_no
-            )
-        normalized.append(
-            CharacterOccurrenceV1(
-                occurrence_id=occurrence_id,
-                occurrence_index=patch.occurrence_index,
-                role=" ".join(patch.role.split()),
-                identity_summary=" ".join(patch.identity_summary.split()),
-                presence=patch.presence,
-                source_revision_no=source_revision_no,
-            )
-        )
-    return tuple(normalized)
+    except CharacterOccurrenceAuthorityError as error:
+        raise V2PersistenceError(
+            error.code,
+            str(error),
+            stage="agent_canvas_requirement_service",
+            details=error.details,
+        ) from error
 
 
-def _character_identity_key(role: str, identity_summary: str) -> tuple[str, str]:
-    return (
-        " ".join(role.split()).casefold(),
-        " ".join(identity_summary.split()).casefold(),
-    )
-
-
-def _superseded_character_occurrence_ids(
-    current: tuple[CharacterOccurrenceV1, ...],
-    replacement: tuple[CharacterOccurrenceV1, ...],
-) -> tuple[str, ...]:
-    replacement_ids = {item.occurrence_id for item in replacement}
-    return tuple(
-        item.occurrence_id for item in current if item.occurrence_id not in replacement_ids
-    )
-
-
-def _compatibility_character_occurrences(
-    ledger: RequirementLedgerV1,
-    *,
-    revision_no: int,
-) -> tuple[CharacterOccurrenceV1, ...]:
-    if ledger.character_occurrences:
-        return ledger.character_occurrences
-    presence = next(
-        (
-            item
-            for item in ledger.element_presence
-            if item.element_kind == "character" and item.presence == "include"
-        ),
+def _manual_character_source(
+    request: RequirementLedgerPatchRequestV1,
+    current: RequirementLedgerV1,
+) -> CharacterOccurrenceAuthoritySource:
+    count_patch = next(
+        (item for item in request.controls_to_set if item.control == "character_count"),
         None,
     )
-    if presence is None:
-        return ()
-    character_count = next(
-        (item.value for item in ledger.hard_controls if item.control == "character_count"),
-        1,
+    occurrence_patch = next(iter(request.character_occurrences_to_set or ()), None)
+    source_text = (
+        count_patch.source_text
+        if count_patch is not None
+        else occurrence_patch.source_text
+        if occurrence_patch is not None
+        else _existing_character_source_text(current)
     )
-    if character_count != 1:
-        return ()
+    return CharacterOccurrenceAuthoritySource(
+        source_kind="manual_edit",
+        source_text=source_text,
+    )
+
+
+def _user_character_source(
+    patch: RequirementPatchV1,
+    *,
+    explicit_elements: tuple[RequirementElementPresencePatchV1, ...],
+    current: RequirementLedgerV1,
+    source_turn_id: str,
+) -> CharacterOccurrenceAuthoritySource:
+    count_patch = next(
+        (item for item in patch.controls_to_set if item.control == "character_count"),
+        None,
+    )
+    presence_patch = next(
+        (item for item in explicit_elements if item.element_kind == "character"),
+        None,
+    )
+    occurrence_patch = next(iter(patch.character_occurrences_to_set or ()), None)
+    source_text = (
+        count_patch.source_quote
+        if count_patch is not None
+        else presence_patch.source_quote
+        if presence_patch is not None
+        else occurrence_patch.source_quote
+        if occurrence_patch is not None
+        else _existing_character_source_text(current)
+    )
+    return CharacterOccurrenceAuthoritySource(
+        source_kind="user_message",
+        source_text=source_text,
+        source_turn_id=source_turn_id,
+    )
+
+
+def _existing_character_source_text(ledger: RequirementLedgerV1) -> str:
+    control = next(
+        (item for item in ledger.hard_controls if item.control == "character_count"),
+        None,
+    )
+    if control is not None:
+        return control.source_text
+    presence = next(
+        (item for item in ledger.element_presence if item.element_kind == "character"),
+        None,
+    )
     return (
-        CharacterOccurrenceV1(
-            occurrence_id="character-1",
-            occurrence_index=1,
-            role="Character",
-            identity_summary=presence.source_text,
-            presence="include",
-            source_revision_no=min(presence.created_revision_no, revision_no),
-        ),
+        presence.source_text
+        if presence is not None
+        else "Canonical Character occurrence reconciliation."
     )
+
+
+def _merge_occurrence_delta(
+    base: RequirementApplicationDeltaV1,
+    occurrence: RequirementApplicationDeltaV1,
+) -> RequirementApplicationDeltaV1:
+    occurrence_fields = {
+        "changed_character_occurrence_ids",
+        "superseded_character_occurrence_ids",
+        "character_occurrence_count",
+        "reserved_character_occurrence_ids",
+        "specified_character_occurrence_ids",
+        "reserved_character_occurrence_count",
+        "specified_character_occurrence_count",
+    }
+    return base.model_copy(
+        update={
+            key: value
+            for key, value in occurrence.model_dump(mode="python").items()
+            if key in occurrence_fields
+        }
+    )
+
+
+def _protected_character_occurrence_ids(connection, workflow_id: str) -> frozenset[str]:
+    protected: set[str] = set()
+    session = (
+        connection.execute(
+            select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if session is not None:
+        journey = json.loads(str(session["journey_state_json"]))
+        for evidence in journey.get("transition_evidence", []):
+            _add_occurrence_id(protected, evidence)
+        for key in ("active_action", "suspended_action"):
+            _add_occurrence_id(protected, journey.get(key))
+
+    for row in connection.execute(
+        select(AgentCanvasNodeRow.metadata_json).where(
+            AgentCanvasNodeRow.workflow_id == workflow_id,
+            AgentCanvasNodeRow.creative_role == "character",
+        )
+    ).mappings():
+        _add_occurrence_id(protected, json.loads(str(row["metadata_json"])))
+    for row in connection.execute(
+        select(AgentCanvasBindingRow.metadata_json).where(
+            AgentCanvasBindingRow.workflow_id == workflow_id
+        )
+    ).mappings():
+        _add_occurrence_id(protected, json.loads(str(row["metadata_json"])))
+    for row in connection.execute(
+        select(AgentCanvasMaterializationCommitRow.outcome_json).where(
+            AgentCanvasMaterializationCommitRow.workflow_id == workflow_id
+        )
+    ).mappings():
+        _collect_occurrence_ids(protected, json.loads(str(row["outcome_json"])))
+    return frozenset(protected)
+
+
+def _add_occurrence_id(protected: set[str], payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    occurrence_id = payload.get("occurrence_id")
+    if isinstance(occurrence_id, str) and occurrence_id:
+        protected.add(occurrence_id)
+
+
+def _collect_occurrence_ids(protected: set[str], payload: object) -> None:
+    if isinstance(payload, dict):
+        _add_occurrence_id(protected, payload)
+        for value in payload.values():
+            _collect_occurrence_ids(protected, value)
+    elif isinstance(payload, list):
+        for value in payload:
+            _collect_occurrence_ids(protected, value)
 
 
 def update_requirement_compatibility_projection_in_transaction(

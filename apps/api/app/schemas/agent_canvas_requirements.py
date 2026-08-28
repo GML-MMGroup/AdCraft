@@ -36,6 +36,7 @@ RequirementElementKindV1: TypeAlias = Literal[
 ]
 CharacterAuthoringPhaseV1: TypeAlias = Literal["main", "turnaround"]
 CharacterOccurrencePresenceV1: TypeAlias = Literal["include", "exclude", "unspecified"]
+CharacterOccurrenceSpecificationStateV1: TypeAlias = Literal["reserved", "specified"]
 RequirementControlNameV1: TypeAlias = Literal[
     "duration_seconds",
     "aspect_ratio",
@@ -415,6 +416,20 @@ class CharacterOccurrenceV1(_FrozenModel):
     identity_summary: str = Field(min_length=1, max_length=2_048)
     presence: CharacterOccurrencePresenceV1
     source_revision_no: int = Field(ge=1)
+    specification_state: CharacterOccurrenceSpecificationStateV1 = "specified"
+
+    @model_validator(mode="after")
+    def validate_specification_state(self) -> "CharacterOccurrenceV1":
+        reserved_role = f"Character slot {self.occurrence_index}"
+        reserved_summary = f"Reserved character occurrence {self.occurrence_index}."
+        uses_reserved_labels = (
+            self.role == reserved_role and self.identity_summary == reserved_summary
+        )
+        if self.specification_state == "reserved" and not uses_reserved_labels:
+            raise ValueError("Reserved Character occurrences require the exact reserved labels.")
+        if self.specification_state == "specified" and uses_reserved_labels:
+            raise ValueError("Specified Character occurrences cannot use the reserved labels.")
+        return self
 
 
 class RequirementConflictV1(_FrozenModel):
@@ -492,13 +507,11 @@ class RequirementLedgerV1(_FrozenModel):
 
     @model_validator(mode="after")
     def validate_character_occurrences(self) -> "RequirementLedgerV1":
-        occurrence_ids = tuple(item.occurrence_id for item in self.character_occurrences)
-        if len(occurrence_ids) != len(set(occurrence_ids)):
-            raise ValueError("Character occurrence IDs must be unique.")
-        occurrence_indexes = tuple(item.occurrence_index for item in self.character_occurrences)
-        expected_indexes = tuple(range(1, len(self.character_occurrences) + 1))
-        if occurrence_indexes != expected_indexes:
-            raise ValueError("Character occurrence indexes must be contiguous and ordered.")
+        from app.services.agent_canvas_character_occurrence_authority import (
+            validate_character_occurrence_authority,
+        )
+
+        validate_character_occurrence_authority(self)
         return self
 
 
@@ -569,6 +582,10 @@ class RequirementApplicationDeltaV1(_FrozenModel):
     changed_character_occurrence_ids: tuple[str, ...] = ()
     superseded_character_occurrence_ids: tuple[str, ...] = ()
     character_occurrence_count: int | None = Field(default=None, ge=0, le=32)
+    reserved_character_occurrence_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    specified_character_occurrence_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    reserved_character_occurrence_count: int | None = Field(default=None, ge=0, le=32)
+    specified_character_occurrence_count: int | None = Field(default=None, ge=0, le=32)
 
 
 class RequirementApplicationResultV1(_FrozenModel):

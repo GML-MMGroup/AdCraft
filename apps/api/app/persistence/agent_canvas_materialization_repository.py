@@ -104,7 +104,9 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionSubmitRequestV1,
 )
 from app.schemas.agent_canvas_requirements import (
+    CharacterOccurrenceV1,
     RequirementDirectiveV1,
+    RequirementLedgerV1,
     RequirementLedgerRevisionV1,
 )
 from app.schemas.v2_persistence import V2EventInsert
@@ -113,7 +115,11 @@ from app.services.agent_canvas_requirement_directives import (
 )
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.services.agent_canvas_requirements import (
+    reconcile_character_occurrence_authority_in_transaction,
     update_requirement_compatibility_projection_in_transaction,
+)
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthoritySource,
 )
 from app.services.response_locale_resolver import ResponseLocaleResolverV1
 from app.services.agent_canvas_production_journey_reducer import (
@@ -634,13 +640,46 @@ class AgentCanvasMaterializationRepository:
                             requirement_head.ledger.active_directives,
                             commitments,
                         )
+                        reconciliation = reconcile_character_occurrence_authority_in_transaction(
+                            connection,
+                            workflow_id=proposal.workflow_id,
+                            current=requirement_head.ledger,
+                            candidate=requirement_head.ledger.model_copy(
+                                update={"active_directives": canonical.active_directives}
+                            ),
+                            occurrence_patches=_accepted_character_occurrence_patch(
+                                requirement_head.ledger,
+                                capability_id=proposal.capability_id,
+                                occurrence_id=(
+                                    materialization_plan.journey_event.occurrence_id
+                                    if materialization_plan.journey_event is not None
+                                    else None
+                                ),
+                                character_phase=(
+                                    materialization_plan.journey_event.character_phase
+                                    if materialization_plan.journey_event is not None
+                                    else None
+                                ),
+                                title=selected_option.title,
+                                public_summary=selected_option.public_summary,
+                                revision_no=requirement_head.revision_no + 1,
+                            ),
+                            revision_no=requirement_head.revision_no + 1,
+                            source=CharacterOccurrenceAuthoritySource(
+                                source_kind="accepted_proposal",
+                                source_text="Accepted Proposal requirement publication.",
+                                source_turn_id=source_turn_id,
+                                source_proposal_id=proposal_id,
+                                source_node_id=(primary_node.node_id if primary_node else None),
+                            ),
+                            explicit_character_count=False,
+                            explicit_character_presence=False,
+                        )
                         requirement_revision = self._requirements.append_in_transaction(
                             connection,
                             workflow_id=proposal.workflow_id,
                             expected_revision_no=requirement_head.revision_no,
-                            next_ledger=requirement_head.ledger.model_copy(
-                                update={"active_directives": canonical.active_directives}
-                            ),
+                            next_ledger=reconciliation.ledger,
                             source_kind="proposal_selection",
                             source_turn_id=source_turn_id,
                             source_proposal_id=proposal_id,
@@ -673,6 +712,7 @@ class AgentCanvasMaterializationRepository:
                                         "superseded_directive_ids": list(
                                             canonical.superseded_directive_ids
                                         ),
+                                        **reconciliation.delta.model_dump(mode="json"),
                                         "refresh": ["requirements"],
                                     },
                                 ),
@@ -2883,6 +2923,42 @@ def _projection(row) -> ProposalMaterializationProjectionV2:
         error=error,
         created_at=str(row["materialization_created_at"]),
         updated_at=str(row["materialization_updated_at"]),
+    )
+
+
+def _accepted_character_occurrence_patch(
+    ledger: RequirementLedgerV1,
+    *,
+    capability_id: str,
+    occurrence_id: str | None,
+    character_phase: str | None,
+    title: str,
+    public_summary: str,
+    revision_no: int,
+) -> tuple[CharacterOccurrenceV1, ...] | None:
+    if capability_id != "character_design" or occurrence_id is None or character_phase != "main":
+        return None
+    target = next(
+        (item for item in ledger.character_occurrences if item.occurrence_id == occurrence_id),
+        None,
+    )
+    if target is None:
+        raise _error(
+            "character_occurrence_invalid",
+            "Character Proposal occurrence authority was not found.",
+        )
+    return tuple(
+        item
+        if item.occurrence_id != occurrence_id
+        else item.model_copy(
+            update={
+                "role": " ".join(title.split()),
+                "identity_summary": " ".join(public_summary.split()),
+                "source_revision_no": revision_no,
+                "specification_state": "specified",
+            }
+        )
+        for item in ledger.character_occurrences
     )
 
 

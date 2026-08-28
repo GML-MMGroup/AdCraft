@@ -3354,6 +3354,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,
+        "character_occurrence_reconciliation_conflict": 409,
+        "character_occurrence_cardinality_mismatch": 409,
         "requirement_scope_invalid": 422,
         "requirement_directive_not_found": 422,
         "requirement_projection_budget_exceeded": 422,

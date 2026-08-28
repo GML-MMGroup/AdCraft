@@ -8512,6 +8512,15 @@
           "minimum": 1,
           "title": "Source Revision No",
           "type": "integer"
+        },
+        "specification_state": {
+          "default": "specified",
+          "enum": [
+            "reserved",
+            "specified"
+          ],
+          "title": "Specification State",
+          "type": "string"
         }
       },
       "required": [
@@ -20607,6 +20616,52 @@
             "type": "string"
           },
           "title": "Conflict Ids",
+          "type": "array"
+        },
+        "reserved_character_occurrence_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reserved Character Occurrence Count"
+        },
+        "reserved_character_occurrence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Reserved Character Occurrence Ids",
+          "type": "array"
+        },
+        "specified_character_occurrence_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specified Character Occurrence Count"
+        },
+        "specified_character_occurrence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Specified Character Occurrence Ids",
           "type": "array"
         },
         "superseded_character_occurrence_ids": {

@@ -49,6 +49,12 @@ from app.services.agent_canvas_requirement_directives import (
     RequirementDirectiveCanonicalizationResult,
     canonicalize_requirement_directives,
 )
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthoritySource,
+)
+from app.services.agent_canvas_requirements import (
+    reconcile_character_occurrence_authority_in_transaction,
+)
 
 
 class AgentCanvasDecisionBundleRepository:
@@ -373,11 +379,30 @@ class AgentCanvasDecisionBundleRepository:
                         answers=answers,
                         next_revision_no=current.revision_no + 1,
                     )
+                    explicit_count, explicit_presence = _character_authority_effects(
+                        bundle, answers
+                    )
+                    reconciliation = reconcile_character_occurrence_authority_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        current=current.ledger,
+                        candidate=next_ledger,
+                        occurrence_patches=None,
+                        revision_no=current.revision_no + 1,
+                        source=CharacterOccurrenceAuthoritySource(
+                            source_kind="decision_bundle_answer",
+                            source_text="Decision Bundle option selection",
+                            source_turn_id=bundle.source_turn_id,
+                            source_bundle_id=bundle.bundle_id,
+                        ),
+                        explicit_character_count=explicit_count,
+                        explicit_character_presence=explicit_presence,
+                    )
                     next_revision = self.requirements.append_in_transaction(
                         connection,
                         workflow_id=workflow_id,
                         expected_revision_no=current.revision_no,
-                        next_ledger=next_ledger,
+                        next_ledger=reconciliation.ledger,
                         source_kind="decision_bundle_answer",
                         source_turn_id=bundle.source_turn_id,
                         source_bundle_id=bundle.bundle_id,
@@ -405,6 +430,7 @@ class AgentCanvasDecisionBundleRepository:
                                     "superseded_directive_ids": list(
                                         canonical.superseded_directive_ids
                                     ),
+                                    **reconciliation.delta.model_dump(mode="json"),
                                     "refresh": ["requirements"],
                                 },
                             ),
@@ -759,3 +785,26 @@ def _apply_answers_to_ledger(
             "element_presence": tuple(elements.values()),
         }
     ), canonical
+
+
+def _character_authority_effects(
+    bundle: DecisionBundleV1,
+    answers: tuple[DecisionBundleAnswerV1, ...],
+) -> tuple[bool, bool]:
+    by_question = {question.question_id: question for question in bundle.questions}
+    explicit_count = False
+    explicit_presence = False
+    for answer in answers:
+        question = by_question[answer.question_id]
+        by_option = {option.option_id: option for option in question.options}
+        for option_id in answer.selected_option_ids:
+            for effect in by_option[option_id].effects:
+                explicit_count = explicit_count or (
+                    isinstance(effect, SetControlDecisionEffectV1)
+                    and effect.control == "character_count"
+                )
+                explicit_presence = explicit_presence or (
+                    isinstance(effect, SetElementPresenceDecisionEffectV1)
+                    and effect.element_kind == "character"
+                )
+    return explicit_count, explicit_presence

@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import insert, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,6 +22,10 @@ from app.schemas.agent_canvas_requirements import (
     RequirementLedgerRevisionV1,
     RequirementLedgerV1,
     RequirementRevisionSourceKindV1,
+)
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthorityError,
+    validate_character_occurrence_authority,
 )
 
 
@@ -182,6 +187,15 @@ class AgentCanvasRequirementRepository:
 def canonical_requirement_ledger(ledger: RequirementLedgerV1) -> tuple[str, str]:
     """Serialize and hash one Ledger using the canonical persistence encoding."""
 
+    try:
+        validate_character_occurrence_authority(ledger)
+    except CharacterOccurrenceAuthorityError as error:
+        raise V2PersistenceError(
+            error.code,
+            str(error),
+            stage="agent_canvas_requirement_repository",
+            details=error.details,
+        ) from error
     payload = json.dumps(
         ledger.model_dump(mode="json"),
         sort_keys=True,
@@ -219,14 +233,30 @@ def _current_row(connection: Connection, workflow_id: str) -> RowMapping | None:
 
 
 def _revision_from_row(row: RowMapping) -> RequirementLedgerRevisionV1:
-    ledger = RequirementLedgerV1.model_validate_json(row["ledger_json"])
-    _, digest = canonical_requirement_ledger(ledger)
+    ledger_json = str(row["ledger_json"])
+    digest = hashlib.sha256(ledger_json.encode("utf-8")).hexdigest()
     if digest != row["content_digest"]:
         raise V2PersistenceError(
             "requirement_persistence_failed",
             "The Requirement Ledger digest does not match its stored snapshot.",
             stage="agent_canvas_requirement_repository",
         )
+    try:
+        ledger = RequirementLedgerV1.model_validate_json(ledger_json)
+    except ValidationError as error:
+        messages = " ".join(str(item.get("msg", "")) for item in error.errors())
+        if "Character" in messages or "reserved labels" in messages:
+            raise V2PersistenceError(
+                "character_occurrence_cardinality_mismatch",
+                "Persisted Character count, presence, and occurrence authority do not match.",
+                stage="agent_canvas_requirement_repository",
+                details={"reason": "invalid_persisted_authority", "retryable": False},
+            ) from error
+        raise V2PersistenceError(
+            "requirement_persistence_failed",
+            "The persisted Requirement Ledger is invalid.",
+            stage="agent_canvas_requirement_repository",
+        ) from error
     return RequirementLedgerRevisionV1(
         workflow_id=row["workflow_id"],
         revision_id=row["revision_id"],

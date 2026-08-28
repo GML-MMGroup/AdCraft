@@ -194,6 +194,7 @@ def initial_production_journey(
                     "role": occurrence.role,
                     "identity_summary": occurrence.identity_summary,
                     "presence": occurrence.presence,
+                    "specification_state": occurrence.specification_state,
                 },
             )
             for occurrence in character_occurrences
@@ -244,6 +245,7 @@ def reconcile_character_occurrences(
                     "role": occurrence.role,
                     "identity_summary": occurrence.identity_summary,
                     "presence": occurrence.presence,
+                    "specification_state": occurrence.specification_state,
                 },
             )
         )
@@ -299,6 +301,12 @@ class GuidedProductionJourneyPolicyService:
         if journey.stage == "completed":
             return _result(journey, "complete")
         if journey.active_action is not None or journey.suspended_action is not None:
+            return _result(journey, "wait_for_user")
+        if (
+            journey.stage == "character"
+            and isinstance(context, JourneyPolicyContextV2)
+            and context.included_character_occurrence_ids is None
+        ):
             return _result(journey, "wait_for_user")
         if (
             journey.stage == "character"
