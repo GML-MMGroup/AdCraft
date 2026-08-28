@@ -73,6 +73,7 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyContextV2,
 )
 from app.schemas.agent_canvas_requirements import (
+    CharacterCountControlV1,
     DurationSecondsControlV1,
     RequirementDirectiveV1,
     RequirementElementPresenceV1,
@@ -92,6 +93,17 @@ from app.services.agent_canvas_guided_duration import (
     DURATION_QUESTION_ID,
     GuidedDurationAuthorityPolicy,
 )
+from app.services.agent_canvas_guided_character import (
+    CHARACTER_COUNT_QUESTION_ID,
+    GuidedCharacterAuthorityPolicy,
+)
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthoritySource,
+)
+from app.services.agent_canvas_requirements import (
+    reconcile_character_occurrence_authority_in_transaction,
+)
+from app.services.agent_canvas_production_journey import reconcile_character_occurrences
 
 
 class AgentCanvasGuidedInteractionRepository:
@@ -483,9 +495,14 @@ class AgentCanvasGuidedInteractionRepository:
             if _is_duration_questionnaire(interaction.content)
             else None
         )
+        character_answer = (
+            GuidedCharacterAuthorityPolicy().resolve_answer(interaction.content, request)
+            if _is_character_questionnaire(interaction.content)
+            else None
+        )
         directives = (
             ()
-            if duration_answer is not None
+            if duration_answer is not None or character_answer is not None
             else _questionnaire_directives(
                 interaction,
                 request,
@@ -587,6 +604,66 @@ class AgentCanvasGuidedInteractionRepository:
                         "unresolved_conflicts": (),
                     }
                 )
+                reconciliation = None
+                if character_answer is not None:
+                    source_turn_id = _character_source_turn_id(interaction)
+                    source = CharacterOccurrenceAuthoritySource(
+                        source_kind="decision_bundle_answer",
+                        source_text=character_answer.source_text,
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                    )
+                    count_control = CharacterCountControlV1(
+                        value=character_answer.count,
+                        source_kind="decision_bundle_answer",
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                        source_text=character_answer.source_text,
+                        created_revision_no=revision_no,
+                    )
+                    presence = RequirementElementPresenceV1(
+                        element_kind="character",
+                        presence="include" if character_answer.count > 0 else "exclude",
+                        source_kind="decision_bundle_answer",
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                        source_text=character_answer.source_text,
+                        created_revision_no=revision_no,
+                    )
+                    next_ledger = next_ledger.model_copy(
+                        update={
+                            "hard_controls": tuple(
+                                item
+                                for item in next_ledger.hard_controls
+                                if item.control != "character_count"
+                            )
+                            + (count_control,),
+                            "element_presence": tuple(
+                                item
+                                for item in next_ledger.element_presence
+                                if item.element_kind != "character"
+                            )
+                            + (presence,),
+                        }
+                    )
+                    reconciliation = reconcile_character_occurrence_authority_in_transaction(
+                        connection,
+                        workflow_id=interaction.workflow_id,
+                        current=requirement_head.ledger,
+                        candidate=next_ledger,
+                        occurrence_patches=None,
+                        revision_no=revision_no,
+                        source=source,
+                        explicit_character_count=True,
+                        explicit_character_presence=True,
+                    )
+                    next_ledger = reconciliation.ledger
                 requirement_revision = requirements.append_in_transaction(
                     connection,
                     workflow_id=interaction.workflow_id,
@@ -604,15 +681,37 @@ class AgentCanvasGuidedInteractionRepository:
                     advance_session_revision=False,
                 )
                 journey = _journey(session)
-                next_journey = policy.apply_evidence(
-                    JourneyPolicyContextV2(journey=journey),
-                    JourneyEvidenceV2(
-                        evidence_id=f"questionnaire-submitted:{submission_id}",
-                        evidence_kind="clarification_completed",
-                        source_id=submission_id,
-                        source_revision=requirement_revision.revision_no,
-                    ),
-                )
+                if character_answer is not None and character_answer.count > 0:
+                    assert reconciliation is not None
+                    next_journey = reconcile_character_occurrences(
+                        journey,
+                        reconciliation.projection.occurrences,
+                    ).model_copy(
+                        update={
+                            "stage_status": "ready",
+                            "stage_revision": journey.stage_revision + 1,
+                            "active_action": None,
+                        }
+                    )
+                else:
+                    next_journey = policy.apply_evidence(
+                        JourneyPolicyContextV2(
+                            journey=journey,
+                            included_character_occurrence_ids=(
+                                () if character_answer is not None else None
+                            ),
+                        ),
+                        JourneyEvidenceV2(
+                            evidence_id=f"questionnaire-submitted:{submission_id}",
+                            evidence_kind=(
+                                "character_excluded"
+                                if character_answer is not None
+                                else "clarification_completed"
+                            ),
+                            source_id=submission_id,
+                            source_revision=requirement_revision.revision_no,
+                        ),
+                    )
                 next_session_revision = request.expected_session_revision + 1
                 connection.execute(
                     update(AgentCanvasGuidedInteractionRow)
@@ -650,13 +749,17 @@ class AgentCanvasGuidedInteractionRepository:
                         "Guidance session changed before questionnaire Submit.",
                     )
                 continuation_id = None
-                if duration_answer is not None:
+                if duration_answer is not None or character_answer is not None:
                     if continuation_writer is None:
                         raise _error(
                             "guidance_continuation_unavailable",
-                            "Duration acceptance cannot publish its continuation.",
+                            "Questionnaire acceptance cannot publish its continuation.",
                         )
-                    source_turn_id = _duration_source_turn_id(interaction)
+                    source_turn_id = (
+                        _duration_source_turn_id(interaction)
+                        if duration_answer is not None
+                        else _character_source_turn_id(interaction)
+                    )
                     source_turn = (
                         connection.execute(
                             select(AgentCanvasChatTurnRow).where(
@@ -672,8 +775,9 @@ class AgentCanvasGuidedInteractionRepository:
                             "guidance_resume_evidence_missing",
                             "Duration acceptance source Turn is unavailable.",
                         )
+                    continuation_kind = "duration" if duration_answer is not None else "character"
                     identity = sha256(
-                        f"duration-next-action:{submission_id}".encode("utf-8")
+                        f"{continuation_kind}-next-action:{submission_id}".encode("utf-8")
                     ).hexdigest()
                     continuation_id = f"continuation_{identity[:24]}"
                     continuation_writer(
@@ -685,7 +789,7 @@ class AgentCanvasGuidedInteractionRepository:
                             continuation_turn_id=f"turn_{identity[24:56]}",
                             source_turn_id=source_turn_id,
                             source_action_id=interaction.interaction_id,
-                            idempotency_key=f"duration-next-action:{submission_id}",
+                            idempotency_key=f"{continuation_kind}-next-action:{submission_id}",
                         ),
                         now=now,
                     )
@@ -720,7 +824,9 @@ class AgentCanvasGuidedInteractionRepository:
                             "source_kind": "decision_bundle_answer",
                             "added_directive_ids": list(canonical.added_directive_ids),
                             "changed_control_names": (
-                                ["duration_seconds"] if duration_answer is not None else []
+                                ["duration_seconds"]
+                                if duration_answer is not None
+                                else (["character_count"] if character_answer is not None else [])
                             ),
                             "refresh": ["requirements"],
                         },
@@ -2295,6 +2401,13 @@ def _is_duration_questionnaire(content: GuidedQuestionnaireV1) -> bool:
     return len(content.questions) == 1 and content.questions[0].question_id == DURATION_QUESTION_ID
 
 
+def _is_character_questionnaire(content: GuidedQuestionnaireV1) -> bool:
+    return (
+        len(content.questions) == 1
+        and content.questions[0].question_id == CHARACTER_COUNT_QUESTION_ID
+    )
+
+
 def _duration_source_turn_id(interaction: GuidedInteractionV1) -> str:
     prefix = "duration:"
     if not interaction.checkpoint_id.startswith(prefix):
@@ -2307,6 +2420,23 @@ def _duration_source_turn_id(interaction: GuidedInteractionV1) -> str:
         raise _error(
             "guidance_resume_evidence_missing",
             "Duration interaction does not identify its source Turn.",
+        )
+    return source_turn_id
+
+
+def _character_source_turn_id(interaction: GuidedInteractionV1) -> str:
+    prefix = "character-count:"
+    parts = interaction.checkpoint_id.split(":")
+    if not interaction.checkpoint_id.startswith(prefix) or not parts:
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Character interaction does not identify its source Turn.",
+        )
+    source_turn_id = parts[-1]
+    if not source_turn_id:
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Character interaction does not identify its source Turn.",
         )
     return source_turn_id
 

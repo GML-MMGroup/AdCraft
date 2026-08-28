@@ -380,10 +380,10 @@ class AgentCanvasConversationRepository:
                 "journey_evidence_invalid",
                 "Clarification transition identity is invalid.",
             )
-        if journey.stage != "intake" or journey.stage_status != "waiting_user":
+        if journey.stage not in {"intake", "character"} or journey.stage_status != "waiting_user":
             raise _error(
                 "journey_transition_invalid",
-                "Clarification completion requires a waiting intake journey.",
+                "Clarification completion requires a waiting intake or Character journey.",
             )
         now = _now()
         journey_payload = journey.model_dump(mode="json")
@@ -4681,7 +4681,7 @@ def _validate_clarification_target(
     target: GuidedProductionJourneyV2,
     turn_id: str,
 ) -> None:
-    if current.stage == "intake" and current.stage_status == "waiting_user":
+    if current.stage in {"intake", "character"} and current.stage_status == "waiting_user":
         expected = current.model_copy(update={"stage_status": "waiting_user"})
         if target != expected:
             raise _error(
@@ -4689,22 +4689,25 @@ def _validate_clarification_target(
                 "Repeated clarification may only retain the current waiting journey.",
             )
         return
-    if current.stage == "intake":
+    if current.stage in {"intake", "character"}:
         evidence = target.transition_evidence[-1] if target.transition_evidence else None
+        expected_evidence_kind = (
+            "creative_goal_validated" if current.stage == "intake" else "clarification_completed"
+        )
         if (
             target.stage_revision != current.stage_revision + 1
             or evidence is None
-            or evidence.evidence_kind != "creative_goal_validated"
+            or evidence.evidence_kind != expected_evidence_kind
             or evidence.source_id != turn_id
         ):
             raise _error(
                 "journey_transition_invalid",
-                "Intake clarification target does not match its source Turn.",
+                "Clarification target does not match its source Turn.",
             )
         return
     raise _error(
         "journey_transition_invalid",
-        "Only a waiting intake journey may publish Intake clarification authority.",
+        "Only an intake or Character journey may publish clarification authority.",
     )
 
 

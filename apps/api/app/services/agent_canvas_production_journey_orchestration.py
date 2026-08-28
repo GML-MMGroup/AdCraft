@@ -17,9 +17,11 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyResultV2,
 )
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV2
+from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.agent_canvas_guided_character import GuidedCharacterAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
     reconcile_character_occurrences,
@@ -43,6 +45,70 @@ class GuidedProductionJourneyService:
         self._awaiting = awaiting
         self._requirements = AgentCanvasRequirementRepository(conversations.database)
         self._duration_authority = GuidedDurationAuthorityPolicy()
+        self._character_authority = GuidedCharacterAuthorityPolicy()
+
+    def ensure_character_decision_authority(
+        self,
+        workflow_id: str,
+        *,
+        source_turn_id: str,
+        expected_session_revision: int,
+        idempotency_key: str,
+    ) -> ChatTurnV2 | None:
+        """Publish the typed Character wait before a mutating caller waits."""
+
+        del idempotency_key
+        session = self._conversations.get_guidance_session(workflow_id)
+        if session.journey.stage != "character":
+            return None
+        requirements = self._requirements.get_current(workflow_id)
+        questionnaire = self._character_authority.questionnaire(
+            requirements,
+            response_locale=session.response_locale,
+        )
+        if questionnaire is None:
+            return None
+        if session.journey.stage_status == "waiting_user" and session.awaiting is not None:
+            target = session.journey
+        else:
+            evidence = JourneyEvidenceV2(
+                evidence_id=f"character-count-required:{source_turn_id}",
+                evidence_kind="clarification_completed",
+                source_id=source_turn_id,
+                source_revision=requirements.revision_no,
+            )
+            target = session.journey.model_copy(
+                update={
+                    "stage_status": "waiting_user",
+                    "stage_revision": session.journey.stage_revision + 1,
+                    "transition_evidence": (
+                        *session.journey.transition_evidence,
+                        evidence.as_transition(
+                            stage=session.journey.stage,
+                            stage_revision=session.journey.stage_revision,
+                        ),
+                    ),
+                }
+            )
+        return self._conversations.complete_turn_with_clarification(
+            source_turn_id,
+            expected_session_revision=expected_session_revision,
+            journey=target,
+            assistant_message="How many characters should appear in the advertisement?",
+            transition_key=(
+                f"character-count:{workflow_id}:{session.session_id}:"
+                f"{session.journey.stage_revision}:{source_turn_id}"
+            ),
+            questionnaire=questionnaire,
+            checkpoint_id=(
+                f"character-count:{workflow_id}:{session.session_id}:"
+                f"{session.journey.stage_revision}:{source_turn_id}"
+            ),
+            interaction_title="Choose the character count",
+            interaction_context=(
+                "Confirm the number of characters before Character authoring begins."
+            ),
+        )
 
     def next_action(
         self,

@@ -1788,6 +1788,15 @@ class AgentConversationService:
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:
+                        if session.journey.stage == "character":
+                            admitted = self._journey.ensure_character_decision_authority(
+                                turn.workflow_id,
+                                source_turn_id=turn_id,
+                                expected_session_revision=session.revision,
+                                idempotency_key=f"character-count:{turn_id}",
+                            )
+                            if admitted is not None:
+                                return admitted
                         raise V2PersistenceError(
                             "guidance_orphaned_stall",
                             "Guidance cannot wait without current typed awaiting authority.",
