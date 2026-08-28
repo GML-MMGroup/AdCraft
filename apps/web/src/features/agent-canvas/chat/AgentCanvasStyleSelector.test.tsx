@@ -100,6 +100,26 @@ describe("AgentCanvasStyleSelector", () => {
     expect(within(dialog).getByText("Choose visual language")).toBeTruthy();
   });
 
+  it("renders the Skill picker in a viewport-level modal like Agent Documents", async () => {
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+
+    render(
+      <AgentCanvasStyleSelector
+        workflowId="workflow-1"
+        activeStyle={activeStyle}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
+    const overlay = document.body.querySelector(".agent-chat__style-overlay");
+
+    expect(overlay?.contains(dialog)).toBe(true);
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.parentElement).toBe(overlay);
+  });
+
   it("projects each Style as a visual card without internal catalog metadata", async () => {
     vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
 
