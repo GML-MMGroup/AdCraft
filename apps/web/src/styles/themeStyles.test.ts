@@ -162,6 +162,22 @@ describe("theme styles", () => {
     expect(brandBlock).toContain("drop-shadow(0 0 28px rgba(202, 177, 255, 0.38))");
   });
 
+  test("uses the homepage glass topbar treatment on the Workflow shell", () => {
+    const themeStyles = source("styles/theme.css");
+
+    expect(themeStyles).toMatch(
+      /:root \.app-shell--cosmic \.topbar,\s*:root \.app-shell--workflow \.topbar\s*\{([\s\S]*?)\n\}/,
+    );
+
+    const workflowTopbar = themeStyles.match(
+      /:root \.app-shell--cosmic \.topbar,\s*:root \.app-shell--workflow \.topbar\s*\{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+
+    expect(workflowTopbar).toContain("border-bottom-color: rgba(255, 255, 255, 0.12)");
+    expect(workflowTopbar).toContain("background: rgba(8, 9, 13, 0.72)");
+    expect(workflowTopbar).toContain("backdrop-filter: blur(22px) saturate(1.08)");
+  });
+
   test("loads fixed theme rules with the initial style entry", () => {
     expect(source("main.tsx")).toContain('import "./styles/theme.css"');
     expect(source("components/Layout.tsx")).not.toContain('import "../styles/theme.css"');
