@@ -17,6 +17,7 @@ import {
   ActionReceiptCard,
   AgentCanvasChatPanel,
   AgentWorkingRow,
+  PresentationStreamRow,
   CapabilityActivityRow,
   CommandPlanCard,
   GuidanceSessionProgress,
@@ -80,6 +81,31 @@ describe("AgentWorkingRow", () => {
     expect(screen.getByText("Waiting for model")).toBeTruthy();
     expect(document.querySelector('.agent-chat__working-loader[data-variant="halo"]')).toBeTruthy();
     expect(document.querySelector(".agent-chat__working-spinner")).toBeNull();
+  });
+});
+
+describe("PresentationStreamRow", () => {
+  afterEach(() => cleanup());
+
+  it("renders only the safe incremental assistant text while the stream is open", () => {
+    render(<PresentationStreamRow stream={{
+      stream_id: "stream-1",
+      status: "open",
+      text: "The next production step is ready.",
+      last_sequence_no: 2,
+      stream_kind: "assistant",
+      turn_id: "turn-1",
+      node_id: null,
+      authoritative_id: null,
+      error_code: null,
+      protocol_error: null,
+      last_event_type: "delta",
+      last_event: null,
+    }} />);
+
+    expect(screen.getByRole("status", { name: "AdCraft Video Agent is generating a response" })).toBeTruthy();
+    expect(screen.getByText("The next production step is ready.")).toBeTruthy();
+    expect(screen.getByText("Generating response")).toBeTruthy();
   });
 });
 

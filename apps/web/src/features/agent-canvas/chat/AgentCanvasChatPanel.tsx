@@ -85,6 +85,7 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { projectProductionFocus } from "./productionFocusProjection.ts";
+import type { PresentationStreamView as PresentationStreamRuntimeView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import "./agent-canvas-chat.css";
 
 type ChatPanelResizeSession = {
@@ -169,6 +170,15 @@ export function AgentCanvasChatPanel({
       || continuation.delivery_status === "retry_wait"
     )) ?? null,
     [chat.state.continuations],
+  );
+  const activePresentationStreams = useMemo(
+    () => Object.values(chat.state.presentationStreams ?? {})
+      .filter((stream) => (
+        stream.stream_kind === "assistant"
+        && ["connecting", "open", "reconnecting"].includes(stream.status)
+        && stream.text.trim().length > 0
+      )),
+    [chat.state.presentationStreams],
   );
   const standaloneGuidedInteraction = chat.state.guidedInteraction
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
@@ -311,12 +321,16 @@ export function AgentCanvasChatPanel({
       .map((action) => `${action.action_id}:${action.state}`)
       .join(",");
     const interactionVersion = guidedInteractionContentVersion(chat.state.guidedInteraction);
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${chat.state.agentWorking}`;
+    const presentationVersion = Object.values(chat.state.presentationStreams ?? {})
+      .map((stream) => `${stream.stream_id}:${stream.last_sequence_no}:${stream.status}`)
+      .join(",");
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${presentationVersion}:${chat.state.agentWorking}`;
   }, [
     chat.state.agentWorking,
     chat.state.currentSessionActions,
     chat.state.guidedInteraction,
     chat.state.items,
+    chat.state.presentationStreams,
   ]);
   const timelineScroll = useChatTimelineScroll({
     contentVersion: timelineContentVersion,
@@ -730,6 +744,9 @@ export function AgentCanvasChatPanel({
                 onApply={chat.actions.applyGuidedAction}
               />
             ) : null}
+            {activePresentationStreams.map((stream) => (
+              <PresentationStreamRow key={stream.stream_id} stream={stream} />
+            ))}
             {chat.state.agentWorking ? <AgentWorkingRow waitingForModel={chat.state.agentWaitingForModel} /> : null}
             {chat.state.timelineRecovery ? (
               <ConversationRecoverySurface
@@ -983,6 +1000,23 @@ export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?:
         className="agent-chat__working-loader"
       />
       <span>{label}</span>
+    </div>
+  );
+}
+
+export function PresentationStreamRow({
+  stream,
+}: {
+  stream: PresentationStreamRuntimeView;
+}) {
+  return (
+    <div
+      className="agent-chat__presentation-stream"
+      role="status"
+      aria-label="AdCraft Video Agent is generating a response"
+    >
+      <p>{stream.text}</p>
+      <span>Generating response</span>
     </div>
   );
 }

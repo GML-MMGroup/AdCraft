@@ -21,6 +21,19 @@ function openApi() {
 }
 
 describe("Agent Canvas backend contract parity", () => {
+  it("tracks prompt preparation and accepted-turn schemas", () => {
+    expect(manifest.schemas.NodePromptPreparationV1).toEqual(expect.objectContaining({
+      properties: expect.arrayContaining(["presentation_stream_id"]),
+      enums: expect.objectContaining({
+        status: expect.arrayContaining(["not_applicable"]),
+      }),
+    }));
+    expect(manifest.schemas.ChatTurnAcceptedV2).toEqual(expect.objectContaining({
+      properties: expect.arrayContaining(["presentation_stream_id"]),
+    }));
+    expect(manifest.schemas.ChatTurnV2.enums.status).toEqual(expect.arrayContaining(["superseded"]));
+  });
+
   it("accepts the tracked canonical response fields and enum values", () => {
     expect(agentCanvasContractMismatches(openApi(), manifest)).toEqual([]);
   });
@@ -34,6 +47,32 @@ describe("Agent Canvas backend contract parity", () => {
       "ChatTurnV2 properties differ: backend-only [new_backend_field]; frontend-only []",
       "ChatTurnV2.turn_kind enum differs: backend-only [new_turn_kind]; frontend-only []",
     ]);
+  });
+
+  it("resolves referenced backend enums before comparing strict values", () => {
+    const backend = openApi();
+    backend.components.schemas.ChatTurnV2.properties.status = {
+      anyOf: [
+        { $ref: "#/components/schemas/ChatTurnStatusV2" },
+        { type: "null" },
+      ],
+    };
+    backend.components.schemas.ChatTurnStatusV2 = {
+      type: "string",
+      enum: ["queued", "running", "completed", "failed", "superseded"],
+    };
+
+    expect(agentCanvasContractMismatches(backend, manifest)).toEqual([]);
+  });
+
+  it("treats a backend const as a single-value enum", () => {
+    const backend = openApi();
+    backend.components.schemas.ChatTurnAcceptedV2.properties.status = {
+      type: "string",
+      const: "queued",
+    };
+
+    expect(agentCanvasContractMismatches(backend, manifest)).toEqual([]);
   });
 
   it("tracks every backend parameter provenance origin", () => {

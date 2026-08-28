@@ -110,6 +110,10 @@ import type {
   ProjectAssetUploadResponseV2,
   ProviderModelCapabilityListV2,
   ProviderModelCapabilityV2,
+  PresentationStreamEventV1,
+  PresentationStreamEventTypeV1,
+  PresentationStreamKindV1,
+  PresentationStreamResetV1,
   ResolvedInputSnapshotV2,
   ResolvedMediaInputSnapshotV2,
   ResolvedTextInputSnapshotV2,
@@ -167,6 +171,16 @@ const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status
   "failed",
   "superseded",
   "not_applicable",
+]);
+const PRESENTATION_STREAM_KINDS = new Set<PresentationStreamKindV1>(["assistant", "node_prompt"]);
+const PRESENTATION_STREAM_EVENT_TYPES = new Set<PresentationStreamEventTypeV1>([
+  "started",
+  "delta",
+  "committed",
+  "failed",
+  "superseded",
+  "reset",
+  "heartbeat",
 ]);
 const CANVAS_MODEL_SELECTION_MODES = new Set<CanvasModelSelectionModeV2>(["default", "explicit"]);
 const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>([
@@ -1008,6 +1022,152 @@ function normalizeNodePromptPreparationV1(
     attempt_stage: nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`),
     error,
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizePresentationStreamResetV1(
+  value: unknown,
+  path: string,
+): PresentationStreamResetV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["reason", "authoritative_id", "resource_kind"], path);
+  return {
+    reason: expectLiteral(
+      record.reason,
+      new Set<PresentationStreamResetV1["reason"]>(["cursor_expired", "store_recovered"]),
+      `${path}.reason`,
+    ),
+    authoritative_id: nullableStringWithDefault(record.authoritative_id, `${path}.authoritative_id`),
+    resource_kind: expectLiteral(
+      record.resource_kind,
+      new Set<PresentationStreamResetV1["resource_kind"]>(["message", "prompt", "workflow"]),
+      `${path}.resource_kind`,
+    ),
+  };
+}
+
+function normalizePresentationDelta(value: unknown, path: string): string {
+  const delta = expectNonEmptyString(value, path);
+  if (new TextEncoder().encode(delta).length > 4_096) {
+    fail(path, "presentation delta exceeds the UTF-8 byte limit");
+  }
+  const normalized = delta.trim();
+  if (normalized.startsWith("{") || normalized.startsWith("[") || normalized.startsWith("```")) {
+    fail(path, "structured or code-fenced output is not presentation text");
+  }
+  try {
+    const parsed = JSON.parse(normalized);
+    if (typeof parsed === "object" && parsed !== null) {
+      fail(path, "structured output is not presentation text");
+    }
+  } catch {
+    // Ordinary prose is expected to be non-JSON.
+  }
+  const lowered = normalized.toLowerCase();
+  if ([
+    "<system>",
+    "tool_call",
+    "reasoning",
+    "authorization: bearer",
+    "api_key",
+    "provider_error",
+    "traceback",
+  ].some((marker) => lowered.includes(marker))) {
+    fail(path, "hidden or transport content is not presentation text");
+  }
+  return delta;
+}
+
+export function normalizePresentationStreamEventV1(
+  value: unknown,
+  path = "presentationStreamEvent",
+): PresentationStreamEventV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "schema_version",
+      "stream_id",
+      "workflow_id",
+      "stream_kind",
+      "event_type",
+      "sequence_no",
+      "turn_id",
+      "node_id",
+      "generation_id",
+      "response_locale",
+      "node_revision",
+      "delta",
+      "authoritative_id",
+      "content_digest",
+      "error_code",
+      "reset",
+    ],
+    path,
+  );
+  const streamKind = expectLiteral(record.stream_kind, PRESENTATION_STREAM_KINDS, `${path}.stream_kind`);
+  const eventType = expectLiteral(
+    record.event_type,
+    PRESENTATION_STREAM_EVENT_TYPES,
+    `${path}.event_type`,
+  );
+  const turnId = nullableStringWithDefault(record.turn_id, `${path}.turn_id`);
+  const nodeId = nullableStringWithDefault(record.node_id, `${path}.node_id`);
+  const nodeRevision = record.node_revision === undefined || record.node_revision === null
+    ? null
+    : expectPositiveInteger(record.node_revision, `${path}.node_revision`);
+  if (streamKind === "assistant" && !turnId) fail(`${path}.turn_id`, "assistant stream requires turn_id");
+  if (streamKind === "node_prompt" && (!nodeId || nodeRevision === null)) {
+    fail(`${path}.node_id`, "prompt stream requires node identity");
+  }
+  const delta = record.delta === undefined || record.delta === null
+    ? null
+    : normalizePresentationDelta(record.delta, `${path}.delta`);
+  const authoritativeId = nullableStringWithDefault(record.authoritative_id, `${path}.authoritative_id`);
+  const contentDigest = nullableStringWithDefault(record.content_digest, `${path}.content_digest`);
+  if (contentDigest !== null && !/^[a-f0-9]{64}$/.test(contentDigest)) {
+    fail(`${path}.content_digest`, "expected a 64 character lowercase hexadecimal digest");
+  }
+  const errorCode = nullableStringWithDefault(record.error_code, `${path}.error_code`);
+  const reset = record.reset === undefined || record.reset === null
+    ? null
+    : normalizePresentationStreamResetV1(record.reset, `${path}.reset`);
+  const schemaVersion = expectInteger(record.schema_version, `${path}.schema_version`);
+  if (schemaVersion !== 1) fail(`${path}.schema_version`, "expected schema version 1");
+  if (eventType === "delta") {
+    if (!delta) fail(`${path}.delta`, "delta event requires presentation text");
+    if (authoritativeId || contentDigest || errorCode) {
+      fail(path, "delta events cannot expose terminal metadata");
+    }
+  } else if (delta !== null) {
+    fail(`${path}.delta`, "only delta events may contain presentation text");
+  }
+  if (eventType === "committed" && !authoritativeId) {
+    fail(`${path}.authoritative_id`, "committed events require authoritative identity");
+  }
+  if (eventType === "committed" && !contentDigest) {
+    fail(`${path}.content_digest`, "committed events require content digest");
+  }
+  if (eventType === "failed" && !errorCode) fail(`${path}.error_code`, "failed event requires an error code");
+  if (eventType === "reset" && !reset) fail(`${path}.reset`, "reset event requires reset details");
+  if (eventType !== "reset" && reset) fail(`${path}.reset`, "only reset events may contain reset details");
+  return {
+    schema_version: 1,
+    stream_id: expectNonEmptyString(record.stream_id, `${path}.stream_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    stream_kind: streamKind,
+    event_type: eventType,
+    sequence_no: expectPositiveInteger(record.sequence_no, `${path}.sequence_no`),
+    turn_id: turnId,
+    node_id: nodeId,
+    generation_id: expectNonEmptyString(record.generation_id, `${path}.generation_id`),
+    response_locale: nullableStringWithDefault(record.response_locale, `${path}.response_locale`),
+    node_revision: nodeRevision,
+    delta,
+    authoritative_id: authoritativeId,
+    content_digest: contentDigest,
+    error_code: errorCode,
+    reset,
   };
 }
 

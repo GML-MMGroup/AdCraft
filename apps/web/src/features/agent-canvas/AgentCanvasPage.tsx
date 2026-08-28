@@ -467,12 +467,13 @@ export function AgentCanvasPage() {
         onSaveImageToLibrary={saveImageToLibrary}
         onDelete={deleteNode}
         onOpenEditing={() => openEditing(node.node_id)}
+        onWorkflowRefresh={refreshWorkflow}
         onOpenAssets={() => setAssetsOpen(true)}
         onUploadReferences={() => referenceUploadInputRef.current?.click()}
         onClose={() => setSelectedNodeId(null)}
       />
     );
-  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
+  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, refreshWorkflow, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
 
   const openNodeVideoPreview = useCallback((nodeId: string, asset: ProjectAssetSummaryV2) => {
     const node = workflowNodesRef.current.find((candidate) => candidate.node_id === nodeId);
