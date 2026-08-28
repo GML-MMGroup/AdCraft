@@ -1316,6 +1316,15 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(userMessageContainerRule).toContain("justify-self: end");
   });
 
+  it("keeps historical capability names smaller than the stage thread identity", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const compactHeadingRule = css.match(/\.agent-chat__compact-capability-heading\s+strong\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(css).toMatch(/\.agent-chat__activity:not\(\.is-compact\)\s*>\s*header\s+strong\s*\{/);
+    expect(compactHeadingRule).toContain("font-size: 11px");
+  });
+
   it("styles Stage Threads as quiet monochrome timeline sections", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
