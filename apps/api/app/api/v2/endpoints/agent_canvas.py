@@ -3361,9 +3361,7 @@ def _process_agent_turn_and_resume(
                 content=message,
             )
         elif stream is not None and turn.status == "failed":
-            presentation_publisher.fail(
-                stream, turn.error_code or "presentation_stream_failed"
-            )
+            presentation_publisher.fail(stream, turn.error_code or "presentation_stream_failed")
     except V2PersistenceError:
         pass
     runtime.auto_run_dispatcher.run_once()
