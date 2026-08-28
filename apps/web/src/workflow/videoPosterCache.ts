@@ -47,6 +47,14 @@ type EnsureVideoPosterOptions = {
   videoUrl: string;
 };
 
+export type EnsureVideoPosterFromElementOptions = {
+  projectId?: string | null;
+  workflowId?: string | null;
+  asset?: Partial<UploadedAsset> | null;
+  sourceUrl: string;
+  video: HTMLVideoElement;
+};
+
 const VIDEO_POSTER_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
 const VIDEO_POSTER_MAX_CONCURRENCY = 2;
 const failedPosterAttempts = new Map<string, number>();
@@ -193,6 +201,53 @@ export async function ensureVideoPoster(options: EnsureVideoPosterOptions) {
   return task;
 }
 
+export async function ensureVideoPosterFromElement(options: EnsureVideoPosterFromElementOptions) {
+  const { asset, sourceUrl, video } = options;
+  if (
+    !asset
+    || !sourceUrl
+    || !videoNeedsLocalPoster(asset)
+    || video.readyState < 2
+    || video.videoWidth <= 0
+    || video.videoHeight <= 0
+  ) return null;
+
+  const workflowId = options.workflowId || "local-workflow";
+  const projectId = options.projectId || workflowId;
+  const recordId = videoPosterRecordId(projectId, workflowId, videoPosterAssetKey(workflowId, asset));
+  const cached = loadVideoPosterRecord(recordId);
+  if (cached) return cached;
+  if (recentlyFailed(recordId)) return null;
+  const pendingTask = pendingPosterTasks.get(recordId);
+  if (pendingTask) return pendingTask;
+
+  const task = enqueuePosterTask(async () => {
+    try {
+      const poster = await encodeVideoPoster(video);
+      if (!poster) return null;
+      return saveVideoPosterRecord(
+        buildVideoPosterRecord({
+          projectId,
+          workflowId,
+          asset,
+          sourceUrl,
+          posterBlob: poster.blob,
+          posterMime: poster.mime,
+          width: poster.width,
+          height: poster.height,
+        }),
+      );
+    } catch {
+      failedPosterAttempts.set(recordId, Date.now());
+      return null;
+    } finally {
+      pendingPosterTasks.delete(recordId);
+    }
+  });
+  pendingPosterTasks.set(recordId, task);
+  return task;
+}
+
 function videoPosterRecordId(projectId: string, workflowId: string, assetKey: string) {
   return [projectId || "local-project", workflowId || "local-workflow", assetKey].map((part) => encodeURIComponent(part)).join("|");
 }
@@ -226,23 +281,27 @@ async function generateVideoPoster(videoUrl: string) {
 
   try {
     await loadVideoFrame(video, videoUrl);
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 360;
-    const scale = Math.min(1, 640 / width);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width * scale));
-    canvas.height = Math.max(1, Math.round(height * scale));
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const webp = await canvasToBlob(canvas, "image/webp", 0.78);
-    if (webp) return { blob: webp, mime: "image/webp" as const, width: canvas.width, height: canvas.height };
-    const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.82);
-    return jpeg ? { blob: jpeg, mime: "image/jpeg" as const, width: canvas.width, height: canvas.height } : null;
+    return encodeVideoPoster(video);
   } finally {
     video.removeAttribute("src");
     video.load();
   }
+}
+
+async function encodeVideoPoster(video: HTMLVideoElement) {
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 360;
+  const scale = Math.min(1, 640 / width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const webp = await canvasToBlob(canvas, "image/webp", 0.78);
+  if (webp) return { blob: webp, mime: "image/webp" as const, width: canvas.width, height: canvas.height };
+  const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.82);
+  return jpeg ? { blob: jpeg, mime: "image/jpeg" as const, width: canvas.width, height: canvas.height } : null;
 }
 
 function loadVideoFrame(video: HTMLVideoElement, videoUrl: string) {
