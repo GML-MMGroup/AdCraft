@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { StageThreadUnit } from "./stageThreadProjection.ts";
-import { AgentCapabilityIcon } from "./AgentCapabilityIcon.tsx";
+import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
 
 function statusLabel(status: StageThreadUnit["status"]): string {
   switch (status) {
@@ -34,16 +34,11 @@ export function StageThread({
   return (
     <section className={`agent-chat__stage-thread is-${unit.status}`}>
       <header>
-        <div>
-          <div className="agent-chat__capability-heading">
-            <AgentCapabilityIcon capabilityId={unit.capability_id} />
-            <strong>{unit.capability_display_name}</strong>
-          </div>
-          <span>
-            {statusLabel(unit.status)}
-            {elapsed ? ` · ${elapsed}` : ""}
-          </span>
-        </div>
+        <AgentCapabilityIdentity
+          capabilityId={unit.capability_id}
+          displayName={unit.capability_display_name}
+          detail={`${statusLabel(unit.status)}${elapsed ? ` · ${elapsed}` : ""}`}
+        />
         {result}
       </header>
       {children ? (

@@ -874,6 +874,38 @@ describe("command and receipt cards", () => {
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
+  it("separates the Agent identity header from its response content", () => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-content-separation",
+      turn_id: "turn-content-separation",
+      capability_id: "product_design",
+      capability_display_name: "Product Designer",
+      status: "completed",
+      sequence: 5,
+      started_at: "2026-08-27T00:00:00Z",
+      finished_at: "2026-08-27T00:01:00Z",
+      presentation_text: "The product language is ready for the next stage.",
+      message: null,
+      error_code: null,
+      elapsed_ms: 60_000,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    }} />);
+
+    const identity = document.querySelector(".agent-chat__capability-identity");
+    const content = document.querySelector(".agent-chat__activity-content");
+    expect(identity).toBeTruthy();
+    expect(content).toBeTruthy();
+    expect(identity?.textContent ?? "").toContain("Product Designer");
+    expect(content?.textContent ?? "").toContain("The product language is ready for the next stage.");
+    expect(identity && content?.contains(identity)).toBe(false);
+  });
+
   it("puts the matching role icon before an interactive capability proposal", () => {
     render(
       <ProposalCard
