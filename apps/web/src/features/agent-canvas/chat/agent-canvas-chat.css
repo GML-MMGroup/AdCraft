@@ -486,6 +486,7 @@
   width: fit-content;
   max-width: min(86%, 520px);
   align-self: flex-end;
+  justify-self: end;
 }
 
 .agent-chat__message--user .agent-chat__message-body {
