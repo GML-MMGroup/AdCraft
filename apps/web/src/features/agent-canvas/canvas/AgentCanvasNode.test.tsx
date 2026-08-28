@@ -758,7 +758,7 @@ describe("AgentCanvasNodeCard", () => {
         asset_type: "video",
         version: "video-version-2",
       }),
-      sourceUrl: "/media/video-output",
+      sourceUrl: "/api/v2/assets/video-asset/content?v=video-version-2",
       video,
     });
     expect(video.getAttribute("poster")).toBe("blob:agent-video-poster");
@@ -948,7 +948,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.preview_url);
+    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
     expect(screen.getByLabelText("General Image node type")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });

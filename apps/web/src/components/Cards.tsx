@@ -1,6 +1,7 @@
 import { mediaUrl } from "../api/client";
 import { ChevronDownIcon, EditIcon, ImageIcon, StarIcon, TrashIcon, VideoIcon } from "../icons";
 import type { V2ProjectCover } from "../projects/v2ProjectCover";
+import { StableMediaPreview } from "../workflow/StableMediaPreview.tsx";
 import { memo, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 
 export const ProjectCard = memo(function ProjectCard({
@@ -219,8 +220,7 @@ function ProjectPreviewImage({
   }
   return (
     <span className="preview project-preview-image">
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Image load failure switches to the noninteractive no-cover state. */}
-      <img
+      <StableMediaPreview
         src={previewUrl}
         alt=""
         loading={coverPriority >= 3 ? "eager" : "lazy"}

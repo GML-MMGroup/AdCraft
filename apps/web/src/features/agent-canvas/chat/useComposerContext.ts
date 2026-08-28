@@ -19,6 +19,7 @@ import {
   writeProductMainHandoff,
   type ProductMainHandoff,
 } from "./productSourceHandoff.ts";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 function toggleId(current: string[], id: string): string[] {
   return current.includes(id)
@@ -136,7 +137,7 @@ export function useComposerContext({
             versionId: receipt.asset.version_id,
             pendingHandoffId: receipt.pending_handoff_id,
             displayName: receipt.asset.display_name,
-            previewUrl: receipt.asset.preview_url ?? receipt.asset.media_url,
+            previewUrl: mediaAssetContentPath(receipt.asset) || null,
           };
           setProductMainHandoff(handoff);
           writeProductMainHandoff(handoff);
@@ -208,7 +209,7 @@ export function useComposerContext({
           versionId: identity.versionId,
           pendingHandoffId: identity.pendingHandoffId,
           displayName: asset.display_name,
-          previewUrl: asset.preview_url ?? asset.media_url,
+          previewUrl: mediaAssetContentPath(asset) || null,
         };
         setProductMainHandoff(handoff);
         writeProductMainHandoff(handoff);

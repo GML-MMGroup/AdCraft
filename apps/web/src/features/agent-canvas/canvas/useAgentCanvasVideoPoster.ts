@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject } from "react";
 
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
+import { mediaAssetContentPath, mediaAssetPosterPath } from "../../../workflow/mediaPreview.ts";
 
 type GeneratedPosterState = {
   key: string;
@@ -14,7 +15,7 @@ function fallbackPosterKey(asset?: ProjectAssetSummaryV2 | null) {
     || asset.preview_url
     || !asset.media_url
   ) return "";
-  return [asset.asset_id, asset.version_id ?? asset.checksum, asset.media_url].join(":");
+  return [asset.asset_id, asset.version_id ?? asset.checksum, mediaAssetContentPath(asset)].join(":");
 }
 
 export function useAgentCanvasVideoPoster(
@@ -26,12 +27,12 @@ export function useAgentCanvasVideoPoster(
   const checksum = asset?.checksum ?? "";
   const createdAt = asset?.created_at ?? null;
   const displayName = asset?.display_name ?? "Video output";
-  const mediaUrl = asset?.media_url ?? "";
+  const mediaUrl = asset ? mediaAssetContentPath(asset) : "";
   const mimeType = asset?.mime_type ?? "video/mp4";
   const projectId = asset?.project_id || asset?.workflow_id || "local-project";
   const versionId = asset?.version_id ?? null;
   const workflowId = asset?.workflow_id || "local-workflow";
-  const previewUrl = asset?.preview_url ?? null;
+  const previewUrl = asset ? mediaAssetPosterPath(asset) || null : null;
   const [generatedPoster, setGeneratedPoster] = useState<GeneratedPosterState>({
     key: "",
     url: "",

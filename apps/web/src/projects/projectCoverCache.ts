@@ -1,4 +1,5 @@
 import type { V2ProjectCover } from "./v2ProjectCover.ts";
+import { mediaAssetContentPath, versionedMediaPath } from "../workflow/mediaPreview.ts";
 
 const PROJECT_COVER_CACHE_KEY = "adcraft-project-cover-cache-v1";
 const PROJECT_COVER_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -23,7 +24,7 @@ export function loadProjectCoverCache(
     if (!isProjectCoverCache(parsed)) return undefined;
     const entry = parsed[identity];
     if (!entry || Date.now() - entry.savedAt > PROJECT_COVER_CACHE_MAX_AGE_MS) return undefined;
-    return entry.cover;
+    return normalizeProjectCover(entry.cover);
   } catch {
     return undefined;
   }
@@ -39,7 +40,7 @@ export function saveProjectCoverCache(
     const raw = storage.getItem(PROJECT_COVER_CACHE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : {};
     const cache: ProjectCoverCache = isProjectCoverCache(parsed) ? parsed : {};
-    cache[identity] = { cover, savedAt: Date.now() };
+    cache[identity] = { cover: normalizeProjectCover(cover), savedAt: Date.now() };
     const entries = Object.entries(cache);
     if (entries.length > PROJECT_COVER_CACHE_MAX_ENTRIES) {
       entries
@@ -71,6 +72,21 @@ function isProjectCover(value: unknown): value is V2ProjectCover {
     && (candidate.mediaType === "image" || candidate.mediaType === "video")
     && typeof candidate.mediaPath === "string"
     && (candidate.posterPath === null || typeof candidate.posterPath === "string");
+}
+
+function normalizeProjectCover(cover: V2ProjectCover): V2ProjectCover {
+  const identity = {
+    asset_id: cover.assetId,
+    version_id: cover.versionId,
+    media_url: cover.mediaPath,
+  };
+  return {
+    ...cover,
+    mediaPath: mediaAssetContentPath(identity) || cover.mediaPath,
+    posterPath: cover.posterPath
+      ? versionedMediaPath(cover.posterPath, identity)
+      : null,
+  };
 }
 
 function getStorage(): Storage | undefined {

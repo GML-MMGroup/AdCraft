@@ -3,12 +3,14 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
+import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
+import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 
 function referencePreview(asset: AgentCanvasWorkflowV2["assets"][number] | undefined | null): string | null {
   if (!asset) return null;
   return asset.media_type === "image"
-    ? asset.media_url ?? asset.preview_url
-    : asset.preview_url ?? asset.media_url;
+    ? mediaAssetContentPath(asset) || null
+    : mediaAssetPreviewPath(asset) || null;
 }
 
 function sourcePresentation(
@@ -66,7 +68,7 @@ export function NodeReferenceStrip({
               aria-label={source.previewUrl ? undefined : `${label} text reference`}
             >
               {source.previewUrl ? (
-                <img src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
+                <StableMediaPreview src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
               ) : (
                 <span className="agent-node-workbench__reference-icon">
                   <DocumentIcon />

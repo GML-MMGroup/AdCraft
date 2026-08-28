@@ -5,6 +5,7 @@ import {
   assetReferenceKey,
   defaultAssetReferenceRole,
 } from "./assetMentions.ts";
+import { mediaAssetPreviewPath } from "./mediaPreview.ts";
 
 export type ComposerAttachmentSource = "upload" | "asset_library" | "canvas_asset";
 
@@ -80,13 +81,13 @@ export function composerAttachmentFromV2InputAsset(asset: V2InputAssetUploadItem
     id: composerAttachmentIdentity({
       assetId: asset.asset_id,
       semanticType,
-      previewUrl: asset.public_url,
+      previewUrl: mediaAssetPreviewPath(asset) || asset.public_url,
       reference,
     }),
     source: "upload",
     assetId: asset.asset_id,
     semanticType,
-    previewUrl: asset.public_url,
+    previewUrl: mediaAssetPreviewPath(asset) || asset.public_url,
     filename: displayName,
     mimeType: null,
     inputAssetLocator: asset.locator,
@@ -206,7 +207,7 @@ function libraryAssetReferenceId(value?: string | null) {
 }
 
 function uploadedAssetPreviewUrl(asset: UploadedAsset) {
-  return firstString(
+  const rawPreview = firstString(
     asset.thumbnail_url,
     asset.preview_url,
     asset.public_url,
@@ -217,6 +218,7 @@ function uploadedAssetPreviewUrl(asset: UploadedAsset) {
     asset.local_path,
     asset.uri,
   );
+  return mediaAssetPreviewPath(asset) || rawPreview;
 }
 
 function isPreviewableImageAsset(asset: UploadedAsset) {

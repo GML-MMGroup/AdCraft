@@ -908,7 +908,7 @@ describe("command and receipt cards", () => {
     expect(screen.getByText("Scene Designer")).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
     expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
-      .toBe("/imgs/agent-role-icons/scene-designer.png");
+      .toBe("/imgs/agent-role-icons/scene-designer.png?v=2026-08-28");
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
@@ -988,7 +988,7 @@ describe("command and receipt cards", () => {
     );
 
     expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
-      .toBe("/imgs/agent-role-icons/character-designer.png");
+      .toBe("/imgs/agent-role-icons/character-designer.png?v=2026-08-28");
   });
 
   it("renders nested proposal history without repeating the capability identity icon", () => {
