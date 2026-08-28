@@ -30,6 +30,7 @@ import {
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
+import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -105,13 +106,14 @@ function MediaSurface({
 }) {
   const mediaUrl = asset?.preview_url ?? asset?.media_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
+  const videoPosterUrl = useAgentCanvasVideoPoster(asset);
   if (node.node_type === "video" && videoUrl && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
         <video
           className="agent-canvas-node__media agent-canvas-node__media--cover"
           src={videoUrl}
-          poster={asset.preview_url ?? undefined}
+          poster={videoPosterUrl ?? undefined}
           aria-label={asset.display_name || "Video output"}
           muted
           playsInline

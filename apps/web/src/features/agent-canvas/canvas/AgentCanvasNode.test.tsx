@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import type { HTMLAttributes, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 
 const updateNodeInternals = vi.hoisted(() => vi.fn());
+const ensureVideoPoster = vi.hoisted(() => vi.fn());
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -33,6 +34,10 @@ vi.mock("@xyflow/react", async () => {
     useUpdateNodeInternals: () => updateNodeInternals,
   };
 });
+
+vi.mock("../../../workflow/videoPosterCache.ts", () => ({
+  ensureVideoPoster,
+}));
 
 function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draft"): CanvasNodeV2 {
   return {
@@ -113,6 +118,8 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
 afterEach(() => {
   cleanup();
   updateNodeInternals.mockClear();
+  ensureVideoPoster.mockReset();
+  vi.useRealTimers();
 });
 
 describe("AgentCanvasNodeCard", () => {
@@ -701,6 +708,48 @@ describe("AgentCanvasNodeCard", () => {
     expect(video.getAttribute("preload")).toBe("none");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+  });
+
+  it("generates a cached first-frame poster when the backend has no video preview", async () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn(() => "blob:agent-video-poster");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    });
+    ensureVideoPoster.mockResolvedValue({
+      poster_blob: new Blob(["poster"], { type: "image/webp" }),
+    });
+    const asset = {
+      ...makeAsset("video"),
+      preview_url: null,
+      version_id: "video-version-2",
+    };
+
+    const view = render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={asset} />);
+    const video = screen.getByLabelText("video output");
+    expect(video.getAttribute("poster")).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    expect(ensureVideoPoster).toHaveBeenCalledWith({
+      projectId: "project-1",
+      workflowId: "workflow-1",
+      asset: expect.objectContaining({
+        asset_id: "video-asset",
+        asset_type: "video",
+        version: "video-version-2",
+      }),
+      videoUrl: "/media/video-output",
+    });
+    expect(video.getAttribute("poster")).toBe("blob:agent-video-poster");
+
+    view.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:agent-video-poster");
   });
 
   it("sizes an image node shell from the generated asset dimensions", () => {
