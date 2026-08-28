@@ -250,57 +250,17 @@ class GuidedProductionJourneyService:
             return None
         if session.interaction is not None or session.awaiting is not None:
             return None
-        action_id = f"product-source:{session.workflow_id}:{session.journey.stage_revision}"
-        waiting_action = JourneyActionProjectionV2(
-            action_id=action_id,
-            action_kind="wait_for_user:product_source",
-            stage="product",
-            stage_revision=session.journey.stage_revision,
-            status="waiting_user",
-            turn_id=turn_id,
-        )
-        waiting_journey = session.journey.model_copy(
-            update={
-                "stage_status": "waiting_user",
-                "active_action": waiting_action,
-            }
-        )
-        self._conversations.replace_guidance_journey(
-            session.session_id,
-            journey=waiting_journey,
-            expected_session_revision=expected_session_revision,
-            idempotency_key=f"{idempotency_key}:product-source-stage-entry",
-            event_type="journey_stage_waiting_user",
-            event_payload={
-                "action_id": action_id,
-                "action_kind": "wait_for_user:product_source",
-                "stage": "product",
-                "stage_revision": session.journey.stage_revision,
-                "source_kind": "product_source",
-            },
-        )
         interactions = AgentCanvasGuidedInteractionRepository(
             self._conversations.database,
             self._conversations.events,
         )
-        try:
-            interactions.open_product_source(
-                session.workflow_id,
-                input_kind="main",
-            )
-        except BaseException:
-            # The two existing repositories do not share a transaction API;
-            # compensate the staged Journey projection so a failed entry never
-            # leaves a waiting_user state without its typed owner.
-            self._conversations.replace_guidance_journey(
-                session.session_id,
-                journey=session.journey,
-                expected_session_revision=expected_session_revision + 1,
-                idempotency_key=f"{idempotency_key}:product-source-stage-entry-rollback",
-                event_type="journey_stage_rolled_back",
-                event_payload={"stage": "product", "source_kind": "product_source"},
-            )
-            raise
+        interactions.open_product_source_with_journey(
+            session.workflow_id,
+            source_turn_id=turn_id,
+            expected_session_revision=expected_session_revision,
+            idempotency_key=f"{idempotency_key}:product-source-stage-entry",
+            input_kind="main",
+        )
         return self._conversations.get_guidance_session(session.workflow_id)
 
     def _require_stage_duration(self, workflow_id: str, stage) -> None:

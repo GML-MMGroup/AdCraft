@@ -70,6 +70,7 @@ from app.schemas.agent_canvas_guided_media_resume import (
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV2,
     JourneyEvidenceV2,
+    JourneyActionProjectionV2,
     JourneyPolicyContextV2,
 )
 from app.schemas.agent_canvas_requirements import (
@@ -280,6 +281,201 @@ class AgentCanvasGuidedInteractionRepository:
             )
         return guided_interaction_from_row(row)
 
+    def open_product_source_with_journey(
+        self,
+        workflow_id: str,
+        *,
+        source_turn_id: str,
+        expected_session_revision: int,
+        idempotency_key: str,
+        input_kind: Literal["main", "multiview"] = "main",
+        prompt: str | None = None,
+    ) -> GuidedInteractionV1:
+        """Atomically open the Product source wait and its Journey owner."""
+
+        if not idempotency_key:
+            raise _error("guided_interaction_invalid", "Product source idempotency is required.")
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    session = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceSessionRow).where(
+                                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if session is None:
+                        raise _error(
+                            "guided_interaction_not_found", "Guidance session was not found."
+                        )
+                    if int(session["revision"]) != expected_session_revision:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed before Product entry.",
+                        )
+                    journey = _journey(session)
+                    if journey.stage != "product":
+                        raise _error(
+                            "guided_product_stage_invalid",
+                            "Product source interaction is only available during the Product stage.",
+                        )
+                    existing_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.session_id == session["session_id"],
+                                AgentCanvasGuidedInteractionRow.kind == "product_source",
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing_row is not None:
+                        existing = guided_interaction_from_row(existing_row)
+                        persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
+                        if (
+                            persisted_awaiting is None
+                            or persisted_awaiting.interaction_id != existing.interaction_id
+                        ):
+                            raise _error(
+                                "guidance_authority_conflict",
+                                "Product source interaction is missing matching awaiting authority.",
+                            )
+                        if (
+                            not isinstance(existing.content, GuidedProductSourceQuestionV1)
+                            or existing.content.input_kind != input_kind
+                        ):
+                            raise _error(
+                                "guided_interaction_conflict",
+                                "Another Product source branch is already open.",
+                            )
+                        connection.commit()
+                        return existing
+
+                    revision = int(session["revision"])
+                    identity = sha256(
+                        f"product-source:{workflow_id}:{session['session_id']}:{journey.stage_revision}:{input_kind}:v1".encode(
+                            "utf-8"
+                        )
+                    ).hexdigest()[:32]
+                    interaction_id = f"interaction_product_source_{identity}"
+                    checkpoint_id = f"product_source:{journey.stage_revision}:{input_kind}"
+                    now = datetime.now(timezone.utc)
+                    question = GuidedProductSourceQuestionV1(
+                        input_kind=input_kind,
+                        question_id=f"product_{input_kind}_source",
+                        prompt=prompt
+                        or (
+                            "Provide one Product Main image."
+                            if input_kind == "main"
+                            else "Provide two to eight ordered Product Multiview images."
+                        ),
+                        expected_guidance_revision=revision + 1,
+                        min_asset_count=1 if input_kind == "main" else 2,
+                        max_asset_count=1 if input_kind == "main" else 8,
+                    )
+                    interaction = GuidedInteractionV1(
+                        interaction_id=interaction_id,
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=checkpoint_id,
+                        kind="product_source",
+                        status="open",
+                        response_locale=str(session["response_locale"]),
+                        expected_session_revision=revision + 1,
+                        revision=1,
+                        title="Product image source",
+                        context="Choose whether to upload or generate the Product source.",
+                        content=question,
+                        allowed_actions=("select_source",),
+                        submit_path=(
+                            f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
+                        ),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    awaiting = GuidanceAwaitingV2(
+                        awaiting_id=f"awaiting_product_source_{identity}",
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=checkpoint_id,
+                        kind="product_source",
+                        requires_user_action=True,
+                        resume_policy="submit_interaction",
+                        interaction_id=interaction_id,
+                        stage="product",
+                        stage_revision=journey.stage_revision,
+                        created_at=now,
+                    )
+                    waiting_action = JourneyActionProjectionV2(
+                        action_id=f"product-source:{workflow_id}:{journey.stage_revision}",
+                        action_kind="wait_for_user:product_source",
+                        stage="product",
+                        stage_revision=journey.stage_revision,
+                        status="waiting_user",
+                        turn_id=source_turn_id,
+                    )
+                    next_journey = journey.model_copy(
+                        update={"stage_status": "waiting_user", "active_action": waiting_action}
+                    )
+                    _insert_interaction_and_awaiting_in_transaction(
+                        connection, interaction, awaiting
+                    )
+                    self._fault("after_product_source_authority")
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=next_journey.model_dump_json(),
+                            revision=expected_session_revision + 1,
+                            updated_at=now.isoformat(),
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed before Product entry.",
+                        )
+                    self._fault("after_product_source_journey")
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="journey_stage_waiting_user",
+                            transition_key=f"journey:{session['session_id']}:{idempotency_key}",
+                            action_id=waiting_action.action_id,
+                            created_at=now.isoformat(),
+                            payload={
+                                "session_id": str(session["session_id"]),
+                                "stage": "product",
+                                "stage_revision": journey.stage_revision,
+                                "action_kind": waiting_action.action_kind,
+                                "interaction_id": interaction_id,
+                                "awaiting_id": awaiting.awaiting_id,
+                            },
+                        ),
+                    )
+                    self._fault("before_product_source_commit")
+                    connection.commit()
+                    return interaction
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "guided_interaction_persistence_unavailable", "Guided interaction storage failed."
+            ) from error
+
     def get_current(self, workflow_id: str) -> GuidedInteractionV1 | None:
         with self._database.engine.connect() as connection:
             row = (
@@ -324,69 +520,16 @@ class AgentCanvasGuidedInteractionRepository:
             )
         if session is None:
             raise _error("guided_interaction_not_found", "Guidance session was not found.")
-        journey = _journey(session)
-        if journey.stage != "product":
-            raise _error(
-                "guided_product_stage_invalid",
-                "Product source interaction is only available during the Product stage.",
-            )
-        revision = int(session["revision"])
-        identity = sha256(
-            f"product-source:{workflow_id}:{revision}:{input_kind}".encode("utf-8")
-        ).hexdigest()[:32]
-        interaction_id = f"interaction_product_source_{identity}"
-        checkpoint_id = f"product_source:{journey.stage_revision}:{input_kind}"
-        now = datetime.now(timezone.utc)
-        question = GuidedProductSourceQuestionV1(
+        return self.open_product_source_with_journey(
+            workflow_id,
+            source_turn_id="explicit-product-source",
+            expected_session_revision=int(session["revision"]),
+            idempotency_key=(
+                f"open-product-source:{workflow_id}:{input_kind}:{session['revision']}"
+            ),
             input_kind=input_kind,
-            question_id=f"product_{input_kind}_source",
-            prompt=prompt
-            or (
-                "Provide one Product Main image."
-                if input_kind == "main"
-                else "Provide two to eight ordered Product Multiview images."
-            ),
-            expected_guidance_revision=revision,
-            min_asset_count=1 if input_kind == "main" else 2,
-            max_asset_count=1 if input_kind == "main" else 8,
+            prompt=prompt,
         )
-        interaction = GuidedInteractionV1(
-            interaction_id=interaction_id,
-            workflow_id=workflow_id,
-            session_id=str(session["session_id"]),
-            checkpoint_id=checkpoint_id,
-            kind="product_source",
-            status="open",
-            response_locale=str(session["response_locale"]),
-            expected_session_revision=revision,
-            revision=1,
-            title="Product image source",
-            context="Choose whether to upload or generate the Product source.",
-            content=question,
-            allowed_actions=("select_source",),
-            submit_path=(
-                f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
-            ),
-            created_at=now,
-            updated_at=now,
-        )
-        self.open_with_awaiting(
-            interaction,
-            GuidanceAwaitingV2(
-                awaiting_id=f"awaiting_product_source_{identity}",
-                workflow_id=workflow_id,
-                session_id=str(session["session_id"]),
-                checkpoint_id=checkpoint_id,
-                kind="product_source",
-                requires_user_action=True,
-                resume_policy="submit_interaction",
-                interaction_id=interaction_id,
-                stage="product",
-                stage_revision=journey.stage_revision,
-                created_at=now,
-            ),
-        )
-        return interaction
 
     def get_submission(self, submission_id: str) -> GuidedInteractionSubmissionRecordV1:
         with self._database.engine.connect() as connection:
