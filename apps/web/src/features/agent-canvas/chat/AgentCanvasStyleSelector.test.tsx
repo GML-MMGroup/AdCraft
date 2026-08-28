@@ -5,7 +5,9 @@ import { resolve } from "node:path";
 
 import { agentCanvasApi, V2ApiError } from "../../../api/agentCanvasApi.ts";
 import type { ActiveStyleSkillSummaryV2, VideoSkillCatalogResponseV2 } from "../../../types-v2.ts";
+import { __resetStableMediaCacheForTests } from "../../../workflow/stableMediaCache.ts";
 import { AgentCanvasStyleSelector } from "./AgentCanvasStyleSelector.tsx";
+import { SkillPreview } from "./SkillPreview.tsx";
 
 const activeStyle: ActiveStyleSkillSummaryV2 = {
   skill_run_id: "style-run-1",
@@ -52,10 +54,31 @@ const catalog: VideoSkillCatalogResponseV2 = {
 
 afterEach(() => {
   cleanup();
+  __resetStableMediaCacheForTests();
   vi.restoreAllMocks();
 });
 
 describe("AgentCanvasStyleSelector", () => {
+  it("renders the backend-provided Skill preview URL without a frontend Skill map", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("image", { status: 200 }));
+    render(
+      <SkillPreview
+        preview={{
+          kind: "image",
+          summary: "Public preview.",
+          media_url: "/api/v2/video-skills/cinematic/preview?v=1.0.0",
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/video-skills/cinematic/preview?v=1.0.0",
+      expect.objectContaining({ cache: "force-cache", credentials: "same-origin" }),
+    ));
+    expect(document.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+  });
+
   it("uses the Skill asset for the compact trigger and exposes a Skill tooltip", () => {
     render(
       <AgentCanvasStyleSelector

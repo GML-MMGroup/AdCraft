@@ -10,6 +10,7 @@ import type {
   VideoSkillCategoryV2,
   VideoSkillPublicDetailV2,
 } from "../../../types-v2.ts";
+import { SkillPreview } from "./SkillPreview.tsx";
 
 type StyleSelectorProps = {
   workflowId: string;
@@ -36,23 +37,6 @@ function matchesPublicMetadata(skill: VideoSkillPublicDetailV2, query: string) {
     ...skill.tags,
     ...skill.supported_use_cases,
   ].some((value) => value.toLocaleLowerCase().includes(query));
-}
-
-function StylePreview({ skill }: { skill: VideoSkillPublicDetailV2 }) {
-  if (skill.preview?.kind === "image" && skill.preview.media_url) {
-    return <img src={skill.preview.media_url} alt="" loading="lazy" />;
-  }
-  if (skill.preview?.kind === "video" && skill.preview.media_url) {
-    return <video src={skill.preview.media_url} muted playsInline preload="metadata" />;
-  }
-  return (
-    <span className="agent-chat__style-preview-placeholder" data-preview="placeholder" aria-label="No preview available">
-      <span className="agent-chat__style-preview-sprockets" aria-hidden="true">
-        {Array.from({ length: 7 }, (_, index) => <i key={index} />)}
-      </span>
-      <span aria-hidden="true">No preview</span>
-    </span>
-  );
 }
 
 function StyleLoadingState() {
@@ -93,7 +77,7 @@ function StyleCard({ skill, selected, activating, disabled, onSelect }: StyleCar
       onClick={onSelect}
     >
       <span className="agent-chat__style-preview">
-        <StylePreview skill={skill} />
+        <SkillPreview preview={skill.preview} />
         {selected ? (
           <span className="agent-chat__style-selected-mark" aria-label="Selected">
             <ConfirmIcon />
