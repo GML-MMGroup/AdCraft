@@ -298,25 +298,6 @@
   height: 12px;
 }
 
-.agent-chat__conversation-location {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-  border-radius: 8px;
-  outline: 1px solid transparent;
-  outline-offset: 4px;
-  transition: outline-color 160ms ease, background-color 160ms ease;
-}
-
-.agent-chat__conversation-location:focus {
-  outline-color: rgba(163, 163, 163, 0.72);
-}
-
-.agent-chat__conversation-location.is-highlighted {
-  outline-color: rgba(245, 245, 245, 0.9);
-  background: rgb(255 255 255 / 2%);
-}
-
 .agent-chat__jump-to-latest {
   position: absolute;
   z-index: 2;
@@ -3624,12 +3605,6 @@ button.agent-chat__node-links--related:hover {
 
 .agent-chat :is(button, [role="button"]):active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(.98);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-chat__conversation-location {
-    transition: none;
-  }
 }
 
 .agent-chat :is(

@@ -77,9 +77,7 @@ import {
 } from "./chatPanelResize.ts";
 import {
   buildConversationCanvasLinkIndex,
-  type ConversationCanvasLinkIndex,
   type ConversationCanvasLocation,
-  type ConversationRevealRequest,
 } from "./conversationCanvasLinks.ts";
 import { ConversationRecoverySurface } from "./ConversationRecoverySurface.tsx";
 import { NaturalMessage } from "./NaturalMessage.tsx";
@@ -132,8 +130,6 @@ export function AgentCanvasChatPanel({
   runtime = null,
   collapsed: controlledCollapsed,
   onCollapsedChange,
-  revealRequest = null,
-  onConversationLinkIndexChange,
   onViewNodes,
 }: {
   workflow: AgentCanvasWorkflowV2;
@@ -148,8 +144,6 @@ export function AgentCanvasChatPanel({
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
-  revealRequest?: ConversationRevealRequest | null;
-  onConversationLinkIndexChange?: (index: ConversationCanvasLinkIndex) => void;
   onViewNodes?: (nodeIds: string[]) => void;
 }) {
   const chat = useAgentCanvasChat({
@@ -172,17 +166,12 @@ export function AgentCanvasChatPanel({
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [optimisticallyDismissedInteractionId, setOptimisticallyDismissedInteractionId] = useState<string | null>(null);
-  const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLElement>(null);
   const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
   const resizeMinimumWidthRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [pendingContextFiles, setPendingContextFiles] = useState<File[]>([]);
-  const conversationElementsRef = useRef(new Map<string, HTMLElement>());
-  const revealFrameRef = useRef<number | null>(null);
-  const revealHighlightTimerRef = useRef<number | null>(null);
-  const handledRevealRequestRef = useRef<number | null>(null);
   const optimisticInteractionSubmitSeqRef = useRef<number | null>(null);
   const composerContext = useComposerContext({
     workflow,
@@ -393,10 +382,6 @@ export function AgentCanvasChatPanel({
     resetKey: workflow.workflow_id,
   });
   useEffect(() => {
-    onConversationLinkIndexChange?.(conversationLinkIndex);
-  }, [conversationLinkIndex, onConversationLinkIndexChange]);
-
-  useEffect(() => {
     setSelectedConceptOptionId(null);
   }, [conceptInteraction?.interaction_id]);
 
@@ -449,40 +434,6 @@ export function AgentCanvasChatPanel({
     if (conceptInteraction?.interaction_id) setMentionOpen(false);
   }, [conceptInteraction?.interaction_id]);
 
-  useEffect(() => {
-    if (!revealRequest || handledRevealRequestRef.current === revealRequest.requestId) return;
-    if (collapsed) {
-      setInternalCollapsed(false);
-      onCollapsedChange?.(false);
-      return;
-    }
-    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
-    if (revealHighlightTimerRef.current !== null) {
-      window.clearTimeout(revealHighlightTimerRef.current);
-      revealHighlightTimerRef.current = null;
-    }
-    setHighlightedConversationKey(null);
-    revealFrameRef.current = window.requestAnimationFrame(() => {
-      revealFrameRef.current = window.requestAnimationFrame(() => {
-        revealFrameRef.current = null;
-        const element = conversationElementsRef.current.get(revealRequest.locationKey);
-        if (!element) return;
-        handledRevealRequestRef.current = revealRequest.requestId;
-        element.scrollIntoView?.({ block: "center", behavior: "smooth" });
-        element.focus({ preventScroll: true });
-        setHighlightedConversationKey(revealRequest.locationKey);
-        revealHighlightTimerRef.current = window.setTimeout(() => {
-          revealHighlightTimerRef.current = null;
-          setHighlightedConversationKey(null);
-        }, 1500);
-      });
-    });
-  }, [collapsed, conversationLinkIndex, onCollapsedChange, revealRequest]);
-
-  useEffect(() => () => {
-    if (revealFrameRef.current !== null) window.cancelAnimationFrame(revealFrameRef.current);
-    if (revealHighlightTimerRef.current !== null) window.clearTimeout(revealHighlightTimerRef.current);
-  }, []);
   useLayoutEffect(() => {
     if (composerTextareaRef.current) {
       resizeChatComposerTextarea(composerTextareaRef.current);
@@ -795,24 +746,11 @@ export function AgentCanvasChatPanel({
               ))}
             {stageTimeline.map((unit) => {
               const location = conversationLinkIndex.locations.get(unit.key) ?? null;
-              const locationClassName = [
-                "agent-chat__conversation-location",
-                highlightedConversationKey === unit.key ? "is-highlighted" : "",
-              ].filter(Boolean).join(" ");
               if (unit.unit_type === "item") {
                 const content = renderTimelineItem(unit.item, location);
                 if (!content) return null;
                 return (
-                  <div
-                    key={unit.key}
-                    ref={(element) => {
-                      if (element) conversationElementsRef.current.set(unit.key, element);
-                      else conversationElementsRef.current.delete(unit.key);
-                    }}
-                    className={locationClassName}
-                    data-conversation-location={unit.key}
-                    tabIndex={-1}
-                  >
+                  <div key={unit.key}>
                     {content}
                   </div>
                 );
@@ -824,16 +762,7 @@ export function AgentCanvasChatPanel({
                 || action_receipt.status === "applied_with_run_error"
               ));
               return (
-                <div
-                  key={unit.key}
-                  ref={(element) => {
-                    if (element) conversationElementsRef.current.set(unit.key, element);
-                    else conversationElementsRef.current.delete(unit.key);
-                  }}
-                  className={locationClassName}
-                  data-conversation-location={unit.key}
-                  tabIndex={-1}
-                >
+                <div key={unit.key}>
                   <StageThread
                     unit={unit}
                     result={location ? (

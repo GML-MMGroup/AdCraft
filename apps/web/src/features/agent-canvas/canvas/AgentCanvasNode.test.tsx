@@ -1206,14 +1206,11 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
   });
 
-  it("offers conversation navigation only for a selected node with a structured source", () => {
-    const onShowInConversation = vi.fn();
+  it("does not render the removed conversation navigation action", () => {
     const data: AgentCanvasNodeData = {
       node: makeNode("image", "ready"),
-      conversationSourceAvailable: true,
-      onShowInConversation,
     };
-    const { rerender } = render(
+    render(
       <ReactFlowProvider>
         <AgentCanvasNodeRenderer
           id={data.node.node_id}
@@ -1232,27 +1229,6 @@ describe("AgentCanvasNodeRenderer", () => {
       </ReactFlowProvider>,
     );
     expect(screen.queryByRole("button", { name: "Show in conversation" })).toBeNull();
-
-    rerender(
-      <ReactFlowProvider>
-        <AgentCanvasNodeRenderer
-          id={data.node.node_id}
-          data={data}
-          type="agentCanvas"
-          selected
-          dragging={false}
-          draggable
-          selectable
-          deletable
-          isConnectable
-          zIndex={0}
-          positionAbsoluteX={0}
-          positionAbsoluteY={0}
-        />
-      </ReactFlowProvider>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show in conversation" }));
-    expect(onShowInConversation).toHaveBeenCalledWith("image-node");
   });
 
   it("keeps the prompt workbench fixed at 638 by 217 CSS pixels", () => {
