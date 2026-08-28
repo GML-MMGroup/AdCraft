@@ -724,7 +724,7 @@
   pointer-events: none;
 }
 
-.agent-chat__activity > header strong {
+.agent-chat__activity:not(.is-compact) > header strong {
   color: var(--agent-role-accent);
   font-size: 14px;
   font-weight: 650;
