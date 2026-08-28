@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { api, fetchMock, v2Api } = vi.hoisted(() => ({
+const { api, fetchMock, v2Api, isV2ApiError, isNetworkError } = vi.hoisted(() => ({
   api: {
     health: vi.fn(),
     listAssets: vi.fn(),
@@ -18,10 +18,12 @@ const { api, fetchMock, v2Api } = vi.hoisted(() => ({
     projectWithEtag: vi.fn(),
     agentCanvasWorkflowWithEtag: vi.fn(),
   },
+  isV2ApiError: vi.fn(() => false),
+  isNetworkError: vi.fn(() => false),
 }));
 
 vi.mock("../api/client", () => ({ api, mediaUrl: (path: string) => path }));
-vi.mock("../api/v2Client", () => ({ v2Api }));
+vi.mock("../api/v2Client", () => ({ v2Api, isV2ApiError, isNetworkError }));
 vi.mock("../pages/WorkflowPage", () => ({
   WorkflowPage: () => <WorkflowPageProbe />,
 }));
@@ -227,6 +229,7 @@ describe("route providers", () => {
 
     await screen.findByText("Workflow page workflow-created");
 
+    expect(window.location.pathname).toBe("/workflow/project-created");
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-created");
     expect(window.localStorage.getItem("ad-workflow-active-workflow")).toBeNull();
     expect(window.localStorage.getItem("ad-workflow-copilot-messages")).not.toBe("persisted-messages");
@@ -249,6 +252,7 @@ describe("route providers", () => {
     await waitFor(() => expect(window.history.state?.usr ?? null).toBeNull());
 
     cleanup();
+    window.history.replaceState({}, "", "/workflow");
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-after-planning");
     v2Api.projectWithEtag.mockResolvedValue({
       value: {
@@ -296,6 +300,81 @@ describe("route providers", () => {
     expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-restored");
     expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-restored");
     expect(v2Api.listProjects).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses the workflow URL project before the shared recent-project preference", async () => {
+    window.history.replaceState({}, "", "/workflow/project-a");
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-b");
+    v2Api.projectWithEtag.mockImplementation(async (projectId: string) => ({
+      value: {
+        project_id: projectId,
+        workflow_id: `workflow-${projectId}`,
+        name: projectId,
+      },
+      etag: `"${projectId}-v1"`,
+    }));
+    v2Api.agentCanvasWorkflowWithEtag.mockImplementation(async (workflowId: string) => ({
+      value: {
+        workflow_id: workflowId,
+        project_id: workflowId.replace("workflow-", ""),
+        workflow_schema_version: 2,
+        canvas_model: "agent_canvas_v1",
+        revision: 1,
+        nodes: [],
+        bindings: [],
+        assets: [],
+      },
+      etag: `"${workflowId}-r1"`,
+    }));
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("Workflow page workflow-project-a");
+    expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-a");
+    expect(v2Api.projectWithEtag).not.toHaveBeenCalledWith("project-b");
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-b");
+  });
+
+  test("keeps a URL-scoped restore alive when another tab changes recent project storage", async () => {
+    window.history.replaceState({}, "", "/workflow/project-a");
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-b");
+    let resolveProject: ((value: { value: { project_id: string; workflow_id: string; name: string }; etag: string }) => void) | undefined;
+    v2Api.projectWithEtag.mockReturnValueOnce(new Promise((resolve) => {
+      resolveProject = resolve;
+    }));
+    v2Api.agentCanvasWorkflowWithEtag.mockImplementation(async (workflowId: string) => ({
+      value: {
+        workflow_id: workflowId,
+        project_id: "project-a",
+        workflow_schema_version: 2,
+        canvas_model: "agent_canvas_v1",
+        revision: 1,
+        nodes: [],
+        bindings: [],
+        assets: [],
+      },
+      etag: `"${workflowId}-r1"`,
+    }));
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await waitFor(() => expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-a"));
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-c");
+    resolveProject?.({
+      value: { project_id: "project-a", workflow_id: "workflow-project-a", name: "Project A" },
+      etag: '"project-a-v1"',
+    });
+
+    await screen.findByText("Workflow page workflow-project-a");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-project-a");
   });
 
   test("hydrates projects after leaving a fresh workflow draft", async () => {

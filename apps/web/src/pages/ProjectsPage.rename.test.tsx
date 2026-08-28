@@ -110,7 +110,7 @@ describe("ProjectsPage project rename", () => {
     fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
 
     await waitFor(() => expect(fixture.openProject).toHaveBeenCalledWith("project-1", "workflow-1"));
-    expect(navigate).toHaveBeenCalledWith("workflow");
+    expect(navigate).toHaveBeenCalledWith("workflow", { projectId: "project-1" });
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {

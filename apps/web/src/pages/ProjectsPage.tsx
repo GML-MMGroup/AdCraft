@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreateCard } from "../components/Cards";
 import { PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
-import type { RouteName } from "../types";
+import type { AppNavigate } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import "./projects.css";
 
-export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
+export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
@@ -33,7 +33,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   } = useApp();
   const createProject = useCallback(() => {
     void startNewProject().then((created) => {
-      if (created) navigate("workflow");
+      if (created) navigate("workflow", { projectId: created });
     });
   }, [navigate, startNewProject]);
 
@@ -77,7 +77,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     try {
       const opened = await openProject(projectId, workflowId);
       if (opened) {
-        navigate("workflow");
+        navigate("workflow", { projectId });
         return true;
       }
     } catch {

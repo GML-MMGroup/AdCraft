@@ -1,5 +1,13 @@
 export type RouteName = "home" | "projects" | "assets" | "trash" | "workflow" | "api-space";
 
+export type AppNavigateOptions = {
+  projectId?: string | null;
+  replace?: boolean;
+  state?: unknown;
+};
+
+export type AppNavigate = (route: RouteName, options?: AppNavigateOptions) => void;
+
 export type AssetRole = "product" | "character" | "scene" | "reference" | "audio" | "document";
 export type AssetType = "image" | "video" | "audio" | "document";
 export type RunMode = "mock" | "real";
