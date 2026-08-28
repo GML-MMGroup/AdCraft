@@ -59,6 +59,19 @@ afterEach(() => {
 });
 
 describe("Agent Canvas client", () => {
+  it("opens a workflow-owned presentation stream from the supplied cursor", () => {
+    class EventSourceStub {
+      constructor(readonly url: string) {}
+    }
+    vi.stubGlobal("EventSource", EventSourceStub);
+
+    const source = v2Api.openAgentCanvasPresentationStream("workflow/1", "stream/2", 7);
+
+    expect(source.url).toBe(
+      "/api/v2/workflows/workflow%2F1/presentation/streams/stream%2F2?after_seq=7",
+    );
+  });
+
   it("creates and reads canonical Agent Canvas workflows while retaining real ETags", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

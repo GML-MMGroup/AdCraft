@@ -748,6 +748,29 @@
   color: var(--agent-chat-secondary);
 }
 
+.agent-chat__presentation-stream {
+  display: grid;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 0 5px 15px;
+  border-left: 1px solid var(--agent-chat-border);
+  color: var(--agent-chat-primary);
+  animation: agent-chat-section-in 220ms ease both;
+}
+
+.agent-chat__presentation-stream p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.agent-chat__presentation-stream span {
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+}
+
 .agent-chat__artifact {
   display: grid;
   grid-template-columns: 28px 1fr auto;

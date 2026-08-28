@@ -1196,6 +1196,16 @@ export const v2Api = {
     );
   },
 
+  openAgentCanvasPresentationStream(
+    workflowId: string,
+    streamId: string,
+    afterSeq = 0,
+  ): EventSource {
+    return new EventSource(
+      `${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/presentation/streams/${encodeURIComponent(streamId)}?after_seq=${encodeURIComponent(String(afterSeq))}`,
+    );
+  },
+
   agentCanvasProviderCapabilities(filters: {
     output_type?: string;
     input_types?: string[];

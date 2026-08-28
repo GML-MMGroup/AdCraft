@@ -30,12 +30,56 @@ import {
   normalizeGuidedSessionStateV2,
   normalizeProjectAssetUploadResponseV2,
   normalizeProjectAssetSummaryV2,
+  normalizePresentationStreamEventV1,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
   normalizeResolvedTextInputSnapshotV2,
   normalizeVideoSkillCatalogResponseV2,
   normalizeVideoSkillPublicDetailV2,
 } from "./normalizers.ts";
+
+describe("Presentation Stream normalization", () => {
+  const delta = {
+    schema_version: 1,
+    stream_id: "stream-1",
+    workflow_id: "workflow-1",
+    stream_kind: "assistant",
+    event_type: "delta",
+    sequence_no: 2,
+    turn_id: "turn-1",
+    node_id: null,
+    generation_id: "generation-1",
+    response_locale: "en-US",
+    node_revision: null,
+    delta: "The next shot is ready.",
+    authoritative_id: null,
+    content_digest: null,
+    error_code: null,
+    reset: null,
+  };
+
+  it("normalizes safe assistant deltas", () => {
+    expect(normalizePresentationStreamEventV1(delta)).toMatchObject({
+      stream_id: "stream-1",
+      event_type: "delta",
+      sequence_no: 2,
+      delta: "The next shot is ready.",
+    });
+  });
+
+  it("rejects unknown transport fields and structured presentation text", () => {
+    expect(() => normalizePresentationStreamEventV1({ ...delta, unexpected: true })).toThrow(/unexpected/i);
+    expect(() => normalizePresentationStreamEventV1({ ...delta, delta: "{\"hidden\":true}" })).toThrow(/delta/i);
+  });
+
+  it("requires terminal identity for committed events", () => {
+    expect(() => normalizePresentationStreamEventV1({
+      ...delta,
+      event_type: "committed",
+      delta: null,
+    })).toThrow(/authoritative_id|content_digest/i);
+  });
+});
 
 function validWorkflowPayload() {
   return {

@@ -26,4 +26,8 @@ describe("agentCanvasApi", () => {
     expect(agentCanvasApi.downloadAgentCanvasAsset).toBeTypeOf("function");
     expect(agentCanvasApi.importAgentCanvasEditingExport).toBeTypeOf("function");
   });
+
+  it("exposes the workflow-scoped Presentation Stream client", () => {
+    expect(agentCanvasApi.openAgentCanvasPresentationStream).toBeTypeOf("function");
+  });
 });

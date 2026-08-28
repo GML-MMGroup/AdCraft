@@ -55,6 +55,7 @@ export interface AgentCanvasInlineWorkbenchProps {
   ) => Promise<void>;
   onDelete: (nodeId: string) => Promise<void>;
   onOpenEditing: () => void;
+  onWorkflowRefresh?: () => Promise<void> | void;
   onOpenAssets: () => void;
   onUploadReferences: () => void;
   onClose: () => void;

@@ -13,6 +13,7 @@ import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
   AgentCanvasChatTurnV2,
+  ChatTurnAcceptedV2,
   AgentCanvasContinuationV2,
   AgentActionReceiptV2,
   CanvasPostReadyCheckpointV2,
@@ -55,6 +56,7 @@ import {
   conversationRecoveryFromError,
   type ConversationRecoveryView,
 } from "./conversationRecovery.ts";
+import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPresentationStreams.ts";
 
 type SubmitDraft = {
   text: string;
@@ -198,6 +200,7 @@ export function useAgentCanvasChat({
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
   const [pendingAgentTurnIds, setPendingAgentTurnIds] = useState<string[]>([]);
+  const [presentationStreamIds, setPresentationStreamIds] = useState<string[]>([]);
   const [turnsById, setTurnsById] = useState<Record<string, AgentCanvasChatTurnV2>>({});
   const [retryingSourceTurnIds, setRetryingSourceTurnIds] = useState<Record<string, string>>({});
   const [guidanceSession, setGuidanceSession] = useState<GuidedSessionStateV2 | null>(null);
@@ -319,14 +322,19 @@ export function useAgentCanvasChat({
   }, [applyTurnProjection, upsertContinuation, workflowId]);
 
   const trackAcceptedTurn = useCallback((
-    accepted: {
-      turn_id: string;
-      retry_of_turn_id?: string | null;
-    },
+    accepted: Pick<ChatTurnAcceptedV2, "turn_id">
+      & Partial<Pick<ChatTurnAcceptedV2, "retry_of_turn_id" | "presentation_stream_id">>,
   ) => {
     setPendingAgentTurnIds((current) => (
       current.includes(accepted.turn_id) ? current : [...current, accepted.turn_id]
     ));
+    if (accepted.presentation_stream_id) {
+      setPresentationStreamIds((current) => (
+        current.includes(accepted.presentation_stream_id!)
+          ? current
+          : [...current, accepted.presentation_stream_id!]
+      ));
+    }
     if (accepted.retry_of_turn_id) {
       retryingSourceTurnIdsRef.current.add(accepted.retry_of_turn_id);
       setRetryingSourceTurnIds((current) => ({
@@ -531,6 +539,27 @@ export function useAgentCanvasChat({
     }
   }, [hydrateCapabilityTurns, onActionReceipt, workflowId]);
 
+  const presentationStreams = useAgentCanvasPresentationStreams(
+    workflowId,
+    presentationStreamIds,
+  );
+  const handledPresentationEventsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    Object.values(presentationStreams).forEach((view) => {
+      const event = view.last_event;
+      if (!event || !["committed", "failed", "superseded", "reset"].includes(event.event_type)) return;
+      const eventKey = `${event.stream_id}:${event.sequence_no}`;
+      if (handledPresentationEventsRef.current.has(eventKey)) return;
+      handledPresentationEventsRef.current.add(eventKey);
+      if (event.stream_kind === "node_prompt") {
+        void onWorkflowRefresh?.();
+      } else {
+        void refresh();
+      }
+    });
+  }, [onWorkflowRefresh, presentationStreams, refresh]);
+
   const handleStructuredActionError = useCallback((actionError: unknown): boolean => {
     if (!isV2ApiError(actionError)) return false;
     if (
@@ -595,6 +624,7 @@ export function useAgentCanvasChat({
     setPersistedItems([]);
     setOptimisticItems([]);
     setPendingAgentTurnIds([]);
+    setPresentationStreamIds([]);
     setTurnsById({});
     setRetryingSourceTurnIds({});
     setGuidanceSession(null);
@@ -630,6 +660,7 @@ export function useAgentCanvasChat({
     guidedInteractionIdempotencyKeysRef.current.clear();
     guidedInteractionSubmissionIdentityRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
+    handledPresentationEventsRef.current.clear();
     setComposerRecovery(null);
     setTimelineRecovery(null);
     setWorkflowRecovery(null);
@@ -1440,6 +1471,7 @@ export function useAgentCanvasChat({
       turnsById,
       retryingSourceTurnIds,
       retryableFailedTurn,
+      presentationStreams,
       loading,
       sending,
       agentWorking: sending || advancingGuidance || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,

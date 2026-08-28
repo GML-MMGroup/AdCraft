@@ -2257,6 +2257,42 @@ export interface CanvasRuntimeEventV2 {
   payload: Record<string, unknown> | null;
 }
 
+export type PresentationStreamKindV1 = "assistant" | "node_prompt";
+export type PresentationStreamStatusV1 = "open" | "completed" | "failed" | "superseded";
+export type PresentationStreamEventTypeV1 =
+  | "started"
+  | "delta"
+  | "committed"
+  | "failed"
+  | "superseded"
+  | "reset"
+  | "heartbeat";
+
+export interface PresentationStreamResetV1 {
+  reason: "cursor_expired" | "store_recovered";
+  authoritative_id: string | null;
+  resource_kind: "message" | "prompt" | "workflow";
+}
+
+export interface PresentationStreamEventV1 {
+  schema_version: 1;
+  stream_id: string;
+  workflow_id: string;
+  stream_kind: PresentationStreamKindV1;
+  event_type: PresentationStreamEventTypeV1;
+  sequence_no: number;
+  turn_id: string | null;
+  node_id: string | null;
+  generation_id: string;
+  response_locale: string | null;
+  node_revision: number | null;
+  delta: string | null;
+  authoritative_id: string | null;
+  content_digest: string | null;
+  error_code: string | null;
+  reset: PresentationStreamResetV1 | null;
+}
+
 export interface ProviderResolvedTextInputAuditV2 {
   binding_id: string;
   source_node_id: string;
