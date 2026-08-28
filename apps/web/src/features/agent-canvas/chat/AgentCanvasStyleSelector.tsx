@@ -55,6 +55,25 @@ function StylePreview({ skill }: { skill: VideoSkillPublicDetailV2 }) {
   );
 }
 
+function StyleLoadingState() {
+  return (
+    <div className="agent-chat__style-loading" role="status" aria-label="Loading Style previews">
+      <span className="agent-chat__style-loading-label" aria-hidden="true">Loading Styles...</span>
+      {Array.from({ length: 4 }, (_, index) => (
+        <div
+          key={index}
+          className="agent-chat__style-loading-card"
+          data-testid="style-loading-card"
+          aria-hidden="true"
+        >
+          <span />
+          <span />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type StyleCardProps = {
   skill: VideoSkillPublicDetailV2;
   selected: boolean;
@@ -302,7 +321,7 @@ export function AgentCanvasStyleSelector({
             </button>
           </header>
 
-          {loading ? <p className="agent-chat__style-status" role="status">Loading Styles...</p> : null}
+          {loading ? <StyleLoadingState /> : null}
           {error ? (
             <div className="agent-chat__style-error" role="alert">
               <span>{error}</span>
