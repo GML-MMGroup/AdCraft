@@ -80,7 +80,6 @@ describe("build budget", () => {
       "V2FinalCompositionEditor-fixture.js",
       "V2ShotTimeline-fixture.js",
       "timeline-editor-fixture.js",
-      "AssetEntityViewer-fixture.js",
       "timeline-editor-fixture.css",
     ]) {
       writeAsset(assetsDirectory, asset);
@@ -108,13 +107,13 @@ describe("build budget", () => {
         file: "assets/shared-b-fixture.js",
         css: ["assets/shared-fixture.css"],
       },
-      "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx": {
+      "src/features/agent-canvas/editing/AgentCanvasEditing.tsx": {
         file: "assets/V2FinalCompositionEditor-fixture.js",
         dynamicImports: [
-          "src/features/workflow/final-composition/V2ShotTimeline.tsx",
+          "src/features/agent-canvas/editing/AgentCanvasTimeline.tsx",
         ],
       },
-      "src/features/workflow/final-composition/V2ShotTimeline.tsx": {
+      "src/features/agent-canvas/editing/AgentCanvasTimeline.tsx": {
         file: "assets/V2ShotTimeline-fixture.js",
         imports: ["_timeline-editor.js"],
       },
@@ -147,7 +146,6 @@ describe("build budget", () => {
       "home-fixture.js",
       "WorkflowPage-fixture.js",
       "vendor-react-flow-fixture.js",
-      "AssetEntityViewer-fixture.js",
       "global-fixture.css",
       "home-fixture.css",
       "WorkflowPage-fixture.css",

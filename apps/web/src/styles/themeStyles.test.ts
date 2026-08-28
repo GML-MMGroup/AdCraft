@@ -84,9 +84,6 @@ describe("theme styles", () => {
       "pages/projects.css",
       "pages/assets.css",
       "pages/api-space.css",
-      "features/workflow/workflow.css",
-      "features/workflow/final-composition/final-composition.css",
-      "features/workflow/v2/screenplay/screenplay.css",
     ]) {
       expect(source(path)).toContain(":root");
       expect(source(path)).not.toContain("data-theme");

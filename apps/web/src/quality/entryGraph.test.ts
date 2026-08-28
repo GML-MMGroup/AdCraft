@@ -31,9 +31,9 @@ describe("entry graph analyzer", () => {
         file: "assets/home-workspace.js",
         isDynamicEntry: true,
         css: ["assets/home-workspace.css"],
-        dynamicImports: ["src/features/workflow/WorkflowPage.tsx"],
+        dynamicImports: ["src/pages/WorkflowPage.tsx"],
       },
-      "src/features/workflow/WorkflowPage.tsx": {
+      "src/pages/WorkflowPage.tsx": {
         file: "assets/workflow.js",
         isDynamicEntry: true,
         css: ["assets/workflow.css"],
@@ -54,7 +54,7 @@ describe("entry graph analyzer", () => {
       modules: [
         "src/pages/HomePage.tsx",
         "src/features/home/HomeWorkspace.tsx",
-        "src/features/workflow/WorkflowPage.tsx",
+        "src/pages/WorkflowPage.tsx",
       ],
       css: [
         "assets/home.css",
