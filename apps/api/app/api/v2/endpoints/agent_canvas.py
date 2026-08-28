@@ -26,7 +26,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.v2.etag import (
     V2PreconditionError,
@@ -3003,6 +3003,26 @@ def get_video_skill(
         raise _persistence_http_error(error) from error
 
 
+@router.get("/video-skills/{skill_id}/preview", response_class=FileResponse)
+def get_video_skill_preview(
+    skill_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version: Annotated[str, Query(alias="v", min_length=1, max_length=80)],
+) -> FileResponse:
+    try:
+        preview = runtime.video_skills.get_preview_file(skill_id, version)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return FileResponse(
+        preview.path,
+        media_type=preview.media_type,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{preview.digest}"',
+        },
+    )
+
+
 @router.get(
     "/workflows/{workflow_id}/creative-session",
     response_model=GuidedSessionStateV2,
@@ -3633,6 +3653,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "capability_materialization_failed": 503,
         "capability_materialization_unavailable": 503,
         "video_skill_not_found": 404,
+        "video_skill_preview_not_found": 404,
         "skill_not_found": 404,
         "skill_catalog_cursor_invalid": 422,
         "skill_catalog_page_invalid": 422,
