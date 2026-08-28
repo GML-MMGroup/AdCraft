@@ -248,6 +248,12 @@ class GuidedProductionJourneyService:
 
         if session.journey.stage != "product":
             return None
+        # A resolved source branch leaves the Product stage working while its
+        # existing continuation reserves Product Designer.  Only the initial
+        # ready Product checkpoint may publish the source question; reopening
+        # it during a continuation would create a duplicate interaction.
+        if session.journey.stage_status != "ready":
+            return None
         if session.interaction is not None or session.awaiting is not None:
             return None
         interactions = AgentCanvasGuidedInteractionRepository(

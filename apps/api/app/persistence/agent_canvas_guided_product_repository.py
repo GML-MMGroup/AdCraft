@@ -362,33 +362,17 @@ class AgentCanvasGuidedProductRepository:
                 ).hexdigest()
                 continuation_id = f"continuation_{identity[:24]}"
                 continuation_turn_id = f"turn_{identity[24:56]}"
-                continuation_writer(
-                    connection,
-                    workflow_id=workflow_id,
-                    conversation_id=str(source_turn["conversation_id"]),
-                    continuation=ContinuationCommitV2(
-                        continuation_id=continuation_id,
-                        continuation_turn_id=continuation_turn_id,
-                        source_turn_id=str(source_turn["turn_id"]),
-                        source_action_id=interaction.interaction_id,
-                        idempotency_key=f"product-generate:{workflow_id}:{submission_id}",
-                    ),
-                    now=now,
-                )
                 next_session_revision = request.expected_session_revision + 1
                 journey = parse_production_journey(str(session["journey_state_json"]))
                 next_journey = journey.model_copy(
                     update={
                         "stage_status": "working",
-                        "active_action": JourneyActionProjectionV2(
-                            action_id=f"product-generate:{interaction.interaction_id}",
-                            action_kind="invoke_capability",
-                            stage="product",
-                            stage_revision=journey.stage_revision,
-                            status="reserved",
-                            turn_id=continuation_turn_id,
-                            occurrence_id=journey.active_occurrence_id,
-                        ),
+                        # The queued Next Action continuation owns the next
+                        # Product reservation.  Keeping a pre-reserved action
+                        # here would make the continuation re-enter the
+                        # waiting policy and either reopen the source question
+                        # or report an orphaned wait.
+                        "active_action": None,
                     }
                 )
                 connection.execute(
@@ -423,6 +407,19 @@ class AgentCanvasGuidedProductRepository:
                         "Guidance session changed before Product generation submit.",
                         stage="guided_product_repository",
                     )
+                continuation_writer(
+                    connection,
+                    workflow_id=workflow_id,
+                    conversation_id=str(source_turn["conversation_id"]),
+                    continuation=ContinuationCommitV2(
+                        continuation_id=continuation_id,
+                        continuation_turn_id=continuation_turn_id,
+                        source_turn_id=str(source_turn["turn_id"]),
+                        source_action_id=interaction.interaction_id,
+                        idempotency_key=f"product-generate:{workflow_id}:{submission_id}",
+                    ),
+                    now=now,
+                )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
