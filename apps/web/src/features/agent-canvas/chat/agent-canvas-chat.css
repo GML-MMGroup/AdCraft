@@ -1963,6 +1963,25 @@ button.agent-chat__node-links--related:hover {
   flex: 1 1 auto;
 }
 
+.agent-chat__optimistic-interaction-status {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--agent-chat-border);
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
+  font-size: 11px;
+}
+
+.agent-chat__optimistic-interaction-status span {
+  color: var(--agent-chat-secondary);
+}
+
 :root .agent-chat__composer {
   background: var(--agent-chat-raised);
 }

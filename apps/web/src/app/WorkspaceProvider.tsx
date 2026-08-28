@@ -12,6 +12,7 @@ import {
 import { AppContext, type AppContextValue } from "../AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "../api/workflowNormalizers";
 import { clearNewProjectStorage, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, type ProjectSessionState, type SavedWorkflowProject } from "../projects/newProject";
+import { loadProjectCatalogCache, saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
 import { shouldApplyWorkflowScopedResult } from "../workflow/sessionGuards";
 import { isWorkflowV2Graph } from "../workflowSchema";
 import type { AgentCanvasWorkflowV2, ProjectV2Summary } from "../types-v2";
@@ -55,8 +56,8 @@ export function WorkspaceProvider({
   const [agentCanvasWorkflow, setAgentCanvasWorkflow] = useState<AgentCanvasWorkflowV2 | null>(null);
   const [nodeCatalog, setNodeCatalog] = useState<NodeCatalogItem[]>([]);
   const [nodeRuns, setNodeRuns] = useState<NodeRunResult[]>([]);
-  const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>([]);
-  const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>([]);
+  const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.active ?? []);
+  const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.trashed ?? []);
   const [demoProjectFavorites, setDemoProjectFavorites] = useState<Record<string, boolean>>(() => loadDemoProjectFavorites(window.localStorage));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadActiveProjectId(window.localStorage));
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
@@ -69,6 +70,10 @@ export function WorkspaceProvider({
   const newProjectRequestRef = useRef<Promise<boolean> | null>(null);
   const routeProjectCreationStartedRef = useRef(false);
   const projectCatalogGenerationRef = useRef(0);
+  const savedProjectsRef = useRef(savedProjects);
+  const trashedProjectsRef = useRef(trashedProjects);
+  savedProjectsRef.current = savedProjects;
+  trashedProjectsRef.current = trashedProjects;
 
   const setWorkflowState = useCallback<Dispatch<SetStateAction<WorkflowGraph | null>>>((next) => {
     if (typeof next === "function") {
@@ -171,11 +176,26 @@ export function WorkspaceProvider({
         : loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
     ]);
     if (generation !== projectCatalogGenerationRef.current) return false;
-    if (projectCatalogScope !== "trashed" && active.status === "fulfilled" && active.value) setSavedProjects(active.value);
-    if (projectCatalogScope !== "active" && trashed.status === "fulfilled" && trashed.value) setTrashedProjects(trashed.value);
     const activeSucceeded = projectCatalogScope === "trashed" || (active.status === "fulfilled" && Boolean(active.value));
     const trashedSucceeded = projectCatalogScope === "active" || (trashed.status === "fulfilled" && Boolean(trashed.value));
+    const nextActive = activeSucceeded && projectCatalogScope !== "trashed"
+      ? active.status === "fulfilled" && active.value ? active.value : savedProjectsRef.current
+      : savedProjectsRef.current;
+    const nextTrashed = trashedSucceeded && projectCatalogScope !== "active"
+      ? trashed.status === "fulfilled" && trashed.value ? trashed.value : trashedProjectsRef.current
+      : trashedProjectsRef.current;
+    if (projectCatalogScope !== "trashed" && active.status === "fulfilled" && active.value) {
+      savedProjectsRef.current = active.value;
+      setSavedProjects(active.value);
+    }
+    if (projectCatalogScope !== "active" && trashed.status === "fulfilled" && trashed.value) {
+      trashedProjectsRef.current = trashed.value;
+      setTrashedProjects(trashed.value);
+    }
     const succeeded = activeSucceeded && trashedSucceeded;
+    if (activeSucceeded || trashedSucceeded) {
+      saveProjectCatalogCache({ active: nextActive, trashed: nextTrashed, savedAt: Date.now() });
+    }
     setProjectCatalogError(succeeded
       ? null
       : "Projects could not be refreshed. Existing projects are still shown.");
@@ -287,9 +307,16 @@ export function WorkspaceProvider({
   const renameProject = useCallback(async (projectId: string, name: string) => {
     const { v2Api } = await import("../api/v2Client");
     const { value: updatedProject } = await v2Api.updateProject(projectId, { name });
-    setSavedProjects((current) => current.map((project) => (
+    const nextProjects = savedProjectsRef.current.map((project) => (
       project.project_id === updatedProject.project_id ? updatedProject : project
-    )));
+    ));
+    savedProjectsRef.current = nextProjects;
+    setSavedProjects(nextProjects);
+    saveProjectCatalogCache({
+      active: nextProjects,
+      trashed: trashedProjectsRef.current,
+      savedAt: Date.now(),
+    });
     return true;
   }, []);
 

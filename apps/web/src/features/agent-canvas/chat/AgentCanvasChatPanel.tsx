@@ -170,6 +170,7 @@ export function AgentCanvasChatPanel({
   );
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
+  const [optimisticallyDismissedInteractionId, setOptimisticallyDismissedInteractionId] = useState<string | null>(null);
   const [highlightedConversationKey, setHighlightedConversationKey] = useState<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLElement>(null);
@@ -181,6 +182,7 @@ export function AgentCanvasChatPanel({
   const revealFrameRef = useRef<number | null>(null);
   const revealHighlightTimerRef = useRef<number | null>(null);
   const handledRevealRequestRef = useRef<number | null>(null);
+  const optimisticInteractionSubmitSeqRef = useRef<number | null>(null);
   const composerContext = useComposerContext({
     workflow,
     onWorkflowRefresh,
@@ -233,6 +235,10 @@ export function AgentCanvasChatPanel({
     conceptInteraction
     && (conceptInteraction.status === "submitted"
       || chat.state.actingInteractionId === conceptInteraction.interaction_id),
+  );
+  const currentInteractionOptimisticallyDismissed = Boolean(
+    standaloneGuidedInteraction
+    && standaloneGuidedInteraction.interaction_id === optimisticallyDismissedInteractionId,
   );
   const conceptCustomAllowed = Boolean(
     conceptContent?.allow_custom
@@ -384,6 +390,51 @@ export function AgentCanvasChatPanel({
   }, [conceptInteraction?.interaction_id]);
 
   useEffect(() => {
+    if (!optimisticallyDismissedInteractionId) return;
+    const interaction = chat.state.guidedInteraction;
+    if (!interaction || interaction.interaction_id !== optimisticallyDismissedInteractionId) {
+      optimisticInteractionSubmitSeqRef.current = null;
+      setOptimisticallyDismissedInteractionId(null);
+      return;
+    }
+    const materializationFailed = chatEvents.some((event) => (
+      event.workflow_id === workflow.workflow_id
+      && (event.event_type === "proposal_materialization_failed" || event.event_type === "guided_product_source_failed")
+      && event.seq > (optimisticInteractionSubmitSeqRef.current ?? -1)
+      && (event.action_id === optimisticallyDismissedInteractionId
+        || event.payload?.interaction_id === optimisticallyDismissedInteractionId)
+    ));
+    if (materializationFailed) {
+      optimisticInteractionSubmitSeqRef.current = null;
+      setOptimisticallyDismissedInteractionId(null);
+    }
+  }, [chat.state.guidedInteraction, chatEvents, optimisticallyDismissedInteractionId, workflow.workflow_id]);
+
+  async function submitGuidedInteraction(
+    interaction: NonNullable<typeof standaloneGuidedInteraction>,
+    request: Parameters<typeof chat.actions.submitGuidedInteraction>[1],
+  ) {
+    optimisticInteractionSubmitSeqRef.current = chatEvents.reduce(
+      (latest, event) => Math.max(latest, event.seq),
+      -1,
+    );
+    setOptimisticallyDismissedInteractionId(interaction.interaction_id);
+    let accepted = false;
+    try {
+      accepted = await chat.actions.submitGuidedInteraction(interaction, request);
+    } catch {
+      accepted = false;
+    }
+    if (!accepted) {
+      optimisticInteractionSubmitSeqRef.current = null;
+      setOptimisticallyDismissedInteractionId((current) => (
+        current === interaction.interaction_id ? null : current
+      ));
+    }
+    return accepted;
+  }
+
+  useEffect(() => {
     if (conceptInteraction?.interaction_id) setMentionOpen(false);
   }, [conceptInteraction?.interaction_id]);
 
@@ -450,7 +501,7 @@ export function AgentCanvasChatPanel({
           [optimisticProposalId]: selectedConceptOptionId,
         }));
       }
-      const accepted = await chat.actions.submitGuidedInteraction(conceptInteraction, request);
+      const accepted = await submitGuidedInteraction(conceptInteraction, request);
       if (!accepted) {
         if (optimisticProposalId) {
           setOptimisticProposalSelections((current) => {
@@ -610,6 +661,9 @@ export function AgentCanvasChatPanel({
             item.proposal.materialization
             && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
           )}
+          onRetryMaterialization={item.proposal.materialization
+            ? () => chat.actions.retryProposalMaterialization(item.proposal.materialization!)
+            : undefined}
           readOnly
           optimisticSelectedOptionId={optimisticProposalSelections[item.proposal.proposal_id] ?? null}
           issue={chat.state.proposalIssues[item.proposal.proposal_id]}
@@ -843,23 +897,30 @@ export function AgentCanvasChatPanel({
 
       {standaloneGuidedInteraction ? (
         <div className="agent-chat__current-interaction" aria-live="polite">
-          <GuidedInteractionCard
-            key={standaloneGuidedInteraction.interaction_id}
-            interaction={standaloneGuidedInteraction}
-            pending={
-              standaloneGuidedInteraction.status === "submitted"
-              || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
-            }
-            issue={chat.state.guidedInteractionIssue}
-            pendingProductMainHandoff={composerContext.productMainHandoff}
-            onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
-            selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
-            onSelectConceptOption={(optionId) => {
-              setSelectedConceptOptionId(optionId);
-              setDraft("");
-            }}
-            onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
-          />
+          {currentInteractionOptimisticallyDismissed ? (
+            <div className="agent-chat__optimistic-interaction-status" role="status" aria-label="Guided interaction submitted">
+              <strong>Submitted</strong>
+              <span>Generating nodes…</span>
+            </div>
+          ) : (
+            <GuidedInteractionCard
+              key={standaloneGuidedInteraction.interaction_id}
+              interaction={standaloneGuidedInteraction}
+              pending={
+                standaloneGuidedInteraction.status === "submitted"
+                || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
+              }
+              issue={chat.state.guidedInteractionIssue}
+              pendingProductMainHandoff={composerContext.productMainHandoff}
+              onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
+              selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+              onSelectConceptOption={(optionId) => {
+                setSelectedConceptOptionId(optionId);
+                setDraft("");
+              }}
+              onSubmit={(request) => submitGuidedInteraction(standaloneGuidedInteraction, request)}
+            />
+          )}
         </div>
       ) : null}
 
