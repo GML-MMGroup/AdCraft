@@ -556,10 +556,52 @@
 }
 
 .agent-chat__capability-identity {
+  --agent-role-accent: var(--agent-chat-primary);
+
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 9px;
+}
+
+.agent-chat__capability-identity.is-role-world-setting {
+  --agent-role-accent: #A9B9D9;
+}
+
+.agent-chat__capability-identity.is-role-product-design {
+  --agent-role-accent: #D1D6DE;
+}
+
+.agent-chat__capability-identity.is-role-prop-design {
+  --agent-role-accent: #C89D68;
+}
+
+.agent-chat__capability-identity.is-role-character-design {
+  --agent-role-accent: #C78D98;
+}
+
+.agent-chat__capability-identity.is-role-scene-design {
+  --agent-role-accent: #A5B4A1;
+}
+
+.agent-chat__capability-identity.is-role-script-authoring {
+  --agent-role-accent: #C9AA78;
+}
+
+.agent-chat__capability-identity.is-role-storyboard-design {
+  --agent-role-accent: #AAB6D2;
+}
+
+.agent-chat__capability-identity.is-role-video-direction {
+  --agent-role-accent: #8FB7C0;
+}
+
+.agent-chat__capability-identity.is-role-bgm-direction {
+  --agent-role-accent: #9FAED2;
+}
+
+.agent-chat__capability-identity.is-role-quick-media {
+  --agent-role-accent: #D9A653;
 }
 
 .agent-chat__capability-identity-copy {
@@ -571,7 +613,7 @@
 .agent-chat__capability-identity-copy strong {
   min-width: 0;
   overflow: hidden;
-  color: var(--agent-chat-primary);
+  color: var(--agent-role-accent);
   font-size: 14px;
   font-weight: 650;
   line-height: 1.2;
@@ -618,7 +660,7 @@
 }
 
 .agent-chat__activity > header strong {
-  color: var(--agent-chat-primary);
+  color: var(--agent-role-accent);
   font-size: 14px;
   font-weight: 650;
 }
@@ -885,7 +927,7 @@
 }
 
 .agent-chat__stage-thread > header strong {
-  color: var(--agent-chat-primary);
+  color: var(--agent-role-accent);
   font-size: 14px;
   font-weight: 620;
   line-height: 1.35;
@@ -1252,7 +1294,7 @@ button.agent-chat__node-links--related:hover {
 }
 
 .agent-chat__proposal.is-read-only > header strong {
-  color: var(--agent-chat-primary);
+  color: var(--agent-role-accent);
   font-size: 14px;
   font-weight: 650;
 }
