@@ -1325,6 +1325,21 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(compactHeadingRule).toContain("font-size: 11px");
   });
 
+  it("styles View on canvas as a white physical action button", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const canvasActionRule = css.match(/\.agent-chat__node-links--result\s*>\s*button\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(canvasActionRule).toContain("background: #fff");
+    expect(canvasActionRule).toContain("color: #000");
+    expect(canvasActionRule).toContain("padding: 0.6em 1.3em");
+    expect(canvasActionRule).toContain("font-weight: 900");
+    expect(canvasActionRule).toContain("border: 3px solid #000");
+    expect(canvasActionRule).toContain("box-shadow: 0.1em 0.1em #000");
+    expect(css).toMatch(/\.agent-chat__node-links--result\s*>\s*button:hover\s*\{[\s\S]*?transform: translate\(-0\.05em, -0\.05em\);[\s\S]*?box-shadow: 0\.15em 0\.15em #000;/m);
+    expect(css).toMatch(/\.agent-chat__node-links--result\s*>\s*button:active\s*\{[\s\S]*?transform: translate\(0\.05em, 0\.05em\);[\s\S]*?box-shadow: 0\.05em 0\.05em #000;/m);
+  });
+
   it("styles Stage Threads as quiet monochrome timeline sections", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
