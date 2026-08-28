@@ -1084,6 +1084,31 @@ button.agent-chat__node-links--related:hover {
   font-size: 11px;
 }
 
+.agent-chat__node-links--result > button {
+  padding: 0.6em 1.3em;
+  border: 3px solid #000;
+  border-radius: 0.4em;
+  background: #fff;
+  box-shadow: 0.1em 0.1em #000;
+  color: #000;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.agent-chat__node-links--result > button:hover {
+  background: #fff;
+  color: #000;
+  transform: translate(-0.05em, -0.05em);
+  box-shadow: 0.15em 0.15em #000;
+}
+
+.agent-chat__node-links--result > button:active {
+  background: #fff;
+  color: #000;
+  transform: translate(0.05em, 0.05em);
+  box-shadow: 0.05em 0.05em #000;
+}
+
 .agent-chat__artifact svg {
   width: 22px;
 }
