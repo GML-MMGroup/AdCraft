@@ -1,8 +1,12 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeShowcase } from "./HomeShowcase";
 
 describe("HomeShowcase", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders the Home composition without functional controls in static mode", () => {
     render(<HomeShowcase mode="static" />);
 
@@ -61,6 +65,40 @@ describe("HomeShowcase", () => {
 
     fireEvent.click(card);
     expect(openPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the product film unloaded until its hero media enters the viewport", () => {
+    let notifyIntersection: ((entries: IntersectionObserverEntry[]) => void) | undefined;
+    class MockIntersectionObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback;
+      }
+
+      observe() {}
+
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+
+    const view = render(
+      <HomeShowcase
+        mode="interactive"
+        hasIntroVideo
+        productVideoUrl="/assets/home-product-film.mp4"
+      />,
+    );
+    const media = view.container.querySelector<HTMLElement>(".home-product-film");
+
+    expect(media?.querySelector("video")).toBeNull();
+    expect(media?.querySelector("img")?.getAttribute("src")).toBe("/assets/card1.webp");
+
+    act(() => {
+      notifyIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry]);
+    });
+
+    expect(media?.querySelector("video")?.getAttribute("src")).toBe(
+      "/assets/home-product-film.mp4",
+    );
   });
 
 });

@@ -165,6 +165,41 @@ describe("ProjectList covers", () => {
     expect(controlled.maxActive()).toBe(4);
   });
 
+  it("does not restart a cover request when the project object is recreated unchanged", async () => {
+    const controlled = installControlledCoverRequests();
+    const initial = projects(1);
+    const onOpenProject = vi.fn();
+    const onTrashProject = vi.fn();
+    const onToggleFavorite = vi.fn();
+    const onRenameProject = vi.fn();
+    const view = render(
+      <ProjectList
+        projects={initial}
+        onOpenProject={onOpenProject}
+        onTrashProject={onTrashProject}
+        onToggleFavorite={onToggleFavorite}
+        onRenameProject={onRenameProject}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ProjectList
+        projects={[{ ...initial[0] }]}
+        onOpenProject={onOpenProject}
+        onTrashProject={onTrashProject}
+        onToggleFavorite={onToggleFavorite}
+        onRenameProject={onRenameProject}
+      />,
+    );
+    await act(async () => {});
+
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
+    controlled.resolve("workflow-0");
+  });
+
   it("aborts an obsolete project identity and keeps the fresh cover", async () => {
     const controlled = installControlledCoverRequests();
     const initial = projects(1);

@@ -86,7 +86,7 @@ function projectItem(asset: ProjectAssetSummaryV2): AgentAssetBrowserItem {
       source: "project",
       assetId: asset.asset_id,
       entityId: null,
-      versionId: asset.version_id,
+      versionId: asset.version_id ?? null,
     },
     projectAsset: asset,
   };

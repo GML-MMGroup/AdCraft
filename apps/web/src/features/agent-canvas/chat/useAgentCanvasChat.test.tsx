@@ -2265,6 +2265,37 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.timelineRecovery).toBeNull();
   });
 
+  it("coalesces refreshes that arrive while the timeline request is in flight", async () => {
+    const resolvers: Array<(timeline: AgentCanvasChatViewTimelineV2) => void> = [];
+    api.agentCanvasChatTimeline.mockImplementation(() => new Promise((resolve) => {
+      resolvers.push(resolve);
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    let third: Promise<void> | undefined;
+    await act(async () => {
+      first = result.current.actions.refresh();
+      second = result.current.actions.refresh();
+      third = result.current.actions.refresh();
+      expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(1);
+      resolvers[0]?.(emptyTimeline());
+      for (let attempt = 0; attempt < 5 && resolvers.length < 2; attempt += 1) {
+        await Promise.resolve();
+      }
+      expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(2);
+      resolvers[1]?.(emptyTimeline());
+      await Promise.all([first, second, third]);
+    });
+
+    expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps successful capability hydration when a sibling turn lookup fails", async () => {
     const activity = (turnId: string, sequence: number) => ({
       item_type: "expert_activity" as const,

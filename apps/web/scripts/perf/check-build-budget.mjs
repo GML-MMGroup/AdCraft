@@ -90,8 +90,9 @@ function manifestEntryName(manifest, sourcePath, chunkName) {
   if (manifest[sourcePath]) return sourcePath;
 
   return Object.entries(manifest).find(([, entry]) => (
-    entry.name === chunkName
-    || assetName(entry.file).startsWith(`${chunkName}-`)
+    assetName(entry.file).endsWith(".js")
+    && (entry.name === chunkName
+      || assetName(entry.file).startsWith(`${chunkName}-`))
   ))?.[0];
 }
 
@@ -107,12 +108,15 @@ const agentCanvasRouteJs = jsAssets.find((asset) => asset.name.startsWith("Workf
 const agentCanvasRouteCss = cssAssets.find((asset) => asset.name.startsWith("WorkflowPage-"));
 const vendorReactFlowJs = jsAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
 const vendorReactFlowCss = cssAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
-const assetEntityViewerJs = jsAssets.find((asset) => asset.name.startsWith("AssetEntityViewer-"));
+const assetViewerJs = jsAssets.find((asset) => (
+  asset.name.startsWith("AssetEntityViewer-")
+  || asset.name.startsWith("CanonicalAssetViewer-")
+));
 // The asset viewer is loaded only after a user opens an asset card.
 const featureJsAssets = [
   agentCanvasRouteJs,
   vendorReactFlowJs,
-  assetEntityViewerJs,
+  assetViewerJs,
 ].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
 const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)));
@@ -186,10 +190,10 @@ if (
 ) {
   failures.push("Agent Canvas Workflow route does not own the React Flow vendor chunk");
 }
-if (!assetEntityViewerJs) {
-  failures.push("asset entity viewer lazy chunk is missing");
-} else if (assetEntityViewerJs.size > MAX_ASSET_ENTITY_VIEWER_JS_BYTES) {
-  failures.push(`asset entity viewer JS ${assetEntityViewerJs.name} is ${bytes(assetEntityViewerJs.size)}, expected <= ${bytes(MAX_ASSET_ENTITY_VIEWER_JS_BYTES)}`);
+if (!assetViewerJs) {
+  failures.push("asset viewer lazy chunk is missing");
+} else if (assetViewerJs.size > MAX_ASSET_ENTITY_VIEWER_JS_BYTES) {
+  failures.push(`asset viewer JS ${assetViewerJs.name} is ${bytes(assetViewerJs.size)}, expected <= ${bytes(MAX_ASSET_ENTITY_VIEWER_JS_BYTES)}`);
 }
 if (coreCssBytes > MAX_CSS_BYTES) {
   failures.push(`core CSS is ${bytes(coreCssBytes)}, expected <= ${bytes(MAX_CSS_BYTES)}`);
