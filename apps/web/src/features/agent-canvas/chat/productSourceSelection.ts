@@ -9,6 +9,7 @@ export interface ProductSourceAssetVersionDraftItem {
   versionId: string;
   displayName: string;
   previewUrl: string | null;
+  pendingHandoffId: string | null;
 }
 
 export interface ProductSourceLocalFileDraftItem {
@@ -51,11 +52,13 @@ export function createAssetVersionDraftItem(input: {
   versionId: string;
   displayName: string;
   previewUrl: string | null;
+  pendingHandoffId?: string | null;
 }): ProductSourceAssetVersionDraftItem {
   return {
     kind: "asset_version",
     key: `asset-version:${input.assetId}:${input.versionId}`,
     ...input,
+    pendingHandoffId: input.pendingHandoffId ?? null,
   };
 }
 
@@ -134,6 +137,7 @@ export function resolveProductSourceAssetVersions(
   const pendingHandoffIds = new Set<string>();
   const assetVersions = current.map((item) => {
     if (item.kind === "asset_version") {
+      if (item.pendingHandoffId) pendingHandoffIds.add(item.pendingHandoffId);
       return { asset_id: item.assetId, version_id: item.versionId };
     }
     const uploaded = uploadedByDraftKey.get(item.key);

@@ -10,6 +10,7 @@ import { useComposerContext } from "./useComposerContext.ts";
 
 const fixture = vi.hoisted(() => ({
   uploadFiles: vi.fn(),
+  uploadFilesWithReceipts: vi.fn(),
   items: [] as Array<{ projectAsset: ProjectAssetSummaryV2 | null }>,
 }));
 
@@ -22,6 +23,7 @@ vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
     uploadError: null,
     retry: vi.fn(),
     uploadFiles: fixture.uploadFiles,
+    uploadFilesWithReceipts: fixture.uploadFilesWithReceipts,
   }),
 }));
 
@@ -58,7 +60,9 @@ function workflow(workflowId = "workflow-1"): AgentCanvasWorkflowV2 {
 describe("useComposerContext", () => {
   beforeEach(() => {
     fixture.uploadFiles.mockReset();
+    fixture.uploadFilesWithReceipts.mockReset();
     fixture.items = [];
+    sessionStorage.clear();
   });
 
   it("toggles and removes message-scoped IDs without duplicates", () => {
@@ -81,7 +85,11 @@ describe("useComposerContext", () => {
 
   it("adds successful image uploads to context and refreshes workflow authority", async () => {
     const uploaded = asset("uploaded");
-    fixture.uploadFiles.mockResolvedValue([uploaded]);
+    fixture.uploadFilesWithReceipts.mockResolvedValue([{
+      workflow_id: "workflow-1",
+      asset: uploaded,
+      pending_handoff_id: null,
+    }]);
     const refresh = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useComposerContext({
       workflow: workflow(),
@@ -94,14 +102,63 @@ describe("useComposerContext", () => {
       ]);
     });
 
-    expect(fixture.uploadFiles).toHaveBeenCalledOnce();
+    expect(fixture.uploadFilesWithReceipts).toHaveBeenCalledOnce();
     expect(result.current.selectedAssetIds).toEqual(["uploaded"]);
     expect(result.current.view.assets[0]?.displayName).toBe("Asset uploaded");
     expect(refresh).toHaveBeenCalledOnce();
   });
 
+  it("stores a Product Main handoff only after the user explicitly chooses that upload role", async () => {
+    const uploaded = {
+      ...asset("uploaded-product"),
+      version_id: "version-product-1",
+    };
+    fixture.uploadFilesWithReceipts.mockResolvedValue([{
+      workflow_id: "workflow-1",
+      asset: uploaded,
+      pending_handoff_id: "handoff-product-1",
+    }]);
+    const { result } = renderHook(() => useComposerContext({ workflow: workflow() }));
+
+    await act(async () => {
+      await result.current.actions.upload([
+        new File(["image"], "product.png", { type: "image/png" }),
+      ], { semanticRole: "product_main" });
+    });
+
+    expect(fixture.uploadFilesWithReceipts).toHaveBeenCalledWith(
+      expect.anything(),
+      { semanticRole: "product_main" },
+    );
+    expect(result.current.productMainHandoff).toEqual({
+      workflowId: "workflow-1",
+      assetId: "uploaded-product",
+      versionId: "version-product-1",
+      pendingHandoffId: "handoff-product-1",
+      displayName: "Asset uploaded-product",
+      previewUrl: "/preview/uploaded-product",
+    });
+  });
+
+  it("does not infer Product Main from an unclassified upload", async () => {
+    fixture.uploadFilesWithReceipts.mockResolvedValue([{
+      workflow_id: "workflow-1",
+      asset: { ...asset("unclassified"), version_id: "version-unclassified-1" },
+      pending_handoff_id: null,
+    }]);
+    const { result } = renderHook(() => useComposerContext({ workflow: workflow() }));
+
+    await act(async () => {
+      await result.current.actions.upload([
+        new File(["image"], "reference.png", { type: "image/png" }),
+      ]);
+    });
+
+    expect(result.current.productMainHandoff).toBeNull();
+  });
+
   it("projects failed uploads locally and preserves existing selections", async () => {
-    fixture.uploadFiles.mockRejectedValue(new Error("Request failed with status 503"));
+    fixture.uploadFilesWithReceipts.mockRejectedValue(new Error("Request failed with status 503"));
     const { result } = renderHook(() => useComposerContext({ workflow: workflow() }));
     act(() => result.current.actions.toggleAsset("asset-1"));
 

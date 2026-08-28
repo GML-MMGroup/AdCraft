@@ -163,6 +163,22 @@ describe("GuidedInteractionCard", () => {
     expect(screen.getByText("The generated video is ready.")).toBeTruthy();
   });
 
+  it("keeps Product source content on its dedicated dock", () => {
+    render(
+      <GuidedInteractionCard
+        interaction={productSourceInteraction}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "Choose Product source" })).toBeTruthy();
+    expect(screen.getByText("Use uploaded Product source")).toBeTruthy();
+    expect(screen.queryByText("Accept")).toBeNull();
+    expect(screen.queryByText("Retry")).toBeNull();
+  });
+
   it("does not render a closed interaction", () => {
     const { container } = render(
       <GuidedInteractionCard

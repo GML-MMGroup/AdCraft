@@ -20,12 +20,15 @@ import {
   type ProductSourceDraftItem,
 } from "./productSourceSelection.ts";
 import type { AgentAssetBrowserItem } from "../assets/assetSelection.ts";
+import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 
 export interface ProductSourceDecisionDockProps {
   interaction: GuidedInteractionV1;
   pending: boolean;
   issue: DecisionDockIssue | null;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
+  pendingProductMainHandoff?: ProductMainHandoff | null;
+  onClearProductMainHandoff?: () => void;
 }
 
 type ProductChoice = "upload" | "generate";
@@ -35,6 +38,8 @@ export function ProductSourceDecisionDock({
   pending,
   issue,
   onSubmit,
+  pendingProductMainHandoff = null,
+  onClearProductMainHandoff,
 }: ProductSourceDecisionDockProps) {
   const content = interaction.content.content_kind === "product_source"
     ? interaction.content
@@ -50,6 +55,21 @@ export function ProductSourceDecisionDock({
   const [localIssue, setLocalIssue] = useState<DecisionDockIssue | null>(null);
   const previewUrlsRef = useRef(new Set<string>());
   const transactionInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      content?.input_kind !== "main"
+      || !pendingProductMainHandoff
+      || pendingProductMainHandoff.workflowId !== interaction.workflow_id
+    ) return;
+    setSelected((current) => current.length ? current : [createAssetVersionDraftItem({
+      assetId: pendingProductMainHandoff.assetId,
+      versionId: pendingProductMainHandoff.versionId,
+      displayName: pendingProductMainHandoff.displayName,
+      previewUrl: pendingProductMainHandoff.previewUrl,
+      pendingHandoffId: pendingProductMainHandoff.pendingHandoffId,
+    })]);
+  }, [content?.input_kind, interaction.workflow_id, pendingProductMainHandoff]);
 
   useEffect(() => () => {
     if (typeof URL.revokeObjectURL !== "function") return;
@@ -94,7 +114,10 @@ export function ProductSourceDecisionDock({
             question_id: content.question_id,
           },
         });
-        if (accepted) await assets.retry();
+        if (accepted) {
+          onClearProductMainHandoff?.();
+          await assets.retry();
+        }
         return;
       }
       const localItems = selected.filter((item) => item.kind === "local_file");
@@ -135,7 +158,10 @@ export function ProductSourceDecisionDock({
           question_id: content.question_id,
         },
       });
-      if (accepted) await assets.retry();
+      if (accepted) {
+        onClearProductMainHandoff?.();
+        await assets.retry();
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to prepare the Product source.";
       setLocalIssue({
@@ -168,11 +194,18 @@ export function ProductSourceDecisionDock({
       versionId,
       displayName: item.displayName,
       previewUrl: item.previewUrl,
+      pendingHandoffId: null,
     });
+    if (
+      pendingProductMainHandoff
+      && (pendingProductMainHandoff.assetId !== draft.assetId
+        || pendingProductMainHandoff.versionId !== draft.versionId)
+    ) onClearProductMainHandoff?.();
     updateSelected(() => addProductSourceItem(selected, draft, content.input_kind, content.max_asset_count));
   };
 
   const selectFiles = (files: File[]) => {
+    onClearProductMainHandoff?.();
     updateSelected(() => files.reduce((next, file) => {
       const previewUrl = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
       if (previewUrl) previewUrlsRef.current.add(previewUrl);

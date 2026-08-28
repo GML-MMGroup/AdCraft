@@ -160,6 +160,7 @@ export function AgentCanvasChatPanel({
   const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
   const resizeMinimumWidthRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [pendingContextFiles, setPendingContextFiles] = useState<File[]>([]);
   const conversationElementsRef = useRef(new Map<string, HTMLElement>());
   const revealFrameRef = useRef<number | null>(null);
   const revealHighlightTimerRef = useRef<number | null>(null);
@@ -170,6 +171,9 @@ export function AgentCanvasChatPanel({
   useEffect(() => {
     setSelectedSkillTitle(workflow.active_style_skill?.title ?? null);
   }, [workflow.active_style_skill?.skill_run_id, workflow.workflow_id]);
+  useEffect(() => {
+    setPendingContextFiles([]);
+  }, [workflow.workflow_id]);
   const currentTopic = useMemo(() => {
     const session = chat.state.guidanceSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
@@ -818,6 +822,8 @@ export function AgentCanvasChatPanel({
               || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
             }
             issue={chat.state.guidedInteractionIssue}
+            pendingProductMainHandoff={composerContext.productMainHandoff}
+            onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
             selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
             onSelectConceptOption={(optionId) => {
               setSelectedConceptOptionId(optionId);
@@ -885,6 +891,73 @@ export function AgentCanvasChatPanel({
       ) : null}
 
       <div className="agent-chat__composer">
+        {pendingContextFiles.length ? (
+          <div className="agent-chat__product-upload-choice" role="status">
+            <span>
+              {pendingContextFiles.length === 1
+                ? "Use this image as Product Main?"
+                : "Use the first image as Product Main?"}
+            </span>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  const files = pendingContextFiles;
+                  setPendingContextFiles([]);
+                  void (async () => {
+                    await composerContext.actions.upload(files.slice(0, 1), { semanticRole: "product_main" });
+                    if (files.length > 1) {
+                      await composerContext.actions.upload(files.slice(1), {
+                        semanticRole: null,
+                        preserveProductMainHandoff: true,
+                      });
+                    }
+                  })();
+                }}
+                disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
+              >
+                Product Main
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const files = pendingContextFiles;
+                  setPendingContextFiles([]);
+                  void composerContext.actions.upload(files, { semanticRole: null });
+                }}
+                disabled={chat.state.sending || composerContext.view.uploadState === "uploading"}
+              >
+                Keep unclassified
+              </button>
+              <button
+                type="button"
+                aria-label="Cancel image upload"
+                onClick={() => setPendingContextFiles([])}
+                disabled={chat.state.sending}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {composerContext.productMainHandoff ? (
+          <div className="agent-chat__product-main-handoff" role="status">
+            {composerContext.productMainHandoff.previewUrl ? (
+              <img src={composerContext.productMainHandoff.previewUrl} alt="" />
+            ) : null}
+            <span>
+              <strong>Product Main</strong>
+              <small>{composerContext.productMainHandoff.displayName}</small>
+            </span>
+            <button
+              type="button"
+              aria-label="Clear Product Main handoff"
+              onClick={composerContext.actions.clearProductMainHandoff}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ) : null}
         {conceptInteraction ? (
           <div className="agent-chat__guided-composer-hint" role="status">
             You can also describe your own direction below.
@@ -951,12 +1024,12 @@ export function AgentCanvasChatPanel({
                   aria-hidden="true"
                   onChange={(event) => {
                     const files = event.currentTarget.files;
-                    if (files?.length) void composerContext.actions.upload(files);
+                    if (files?.length) setPendingContextFiles(Array.from(files));
                     event.currentTarget.value = "";
                   }}
                 />
               </>
-            ) : null}
+              ) : null}
             <AgentCanvasStyleSelector
               workflowId={workflow.workflow_id}
               activeStyle={workflow.active_style_skill}

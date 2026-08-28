@@ -35,6 +35,24 @@ function journey(decisions: JourneyElementDecisionV2[]): GuidedProductionJourney
   };
 }
 
+function characterEvidence(
+  occurrenceIndex: number,
+  characterPhase: "main" | "turnaround",
+): GuidedProductionJourneyV2["transition_evidence"][number] {
+  return {
+    evidence_id: `evidence:character:${occurrenceIndex}:${characterPhase}`,
+    evidence_kind: "targeted_action_finished",
+    source_id: `node-character-${occurrenceIndex}-${characterPhase}`,
+    source_revision: 1,
+    stage: "character",
+    stage_revision: 5,
+    occurrence_id: `occurrence:character:${occurrenceIndex}`,
+    character_phase: characterPhase,
+    actor: "system",
+    recorded_at: "2026-08-27T08:00:00Z",
+  };
+}
+
 describe("projectCharacterOccurrences", () => {
   it("returns no inferred Character when the journey has zero Character occurrences", () => {
     expect(projectCharacterOccurrences(journey([]))).toEqual([]);
@@ -50,6 +68,7 @@ describe("projectCharacterOccurrences", () => {
       summary: "A precise studio director",
       outcome: "include",
       active: true,
+      phases: { main: "pending", turnaround: "pending" },
     }]);
   });
 
@@ -63,8 +82,33 @@ describe("projectCharacterOccurrences", () => {
 
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(screen.getAllByTestId("character-occurrence").map((node) => node.textContent)).toEqual([
-      "LeadA studio director",
-      "SupportingA product specialist",
+      "LeadA studio directorCharacter MainCharacter Turnaround",
+      "SupportingA product specialistCharacter MainCharacter Turnaround",
     ]);
+  });
+
+  it("projects Main and Turnaround independently from authoritative occurrence evidence", () => {
+    const value = journey([decision(1, { role: "Lead" })]);
+    value.transition_evidence = [characterEvidence(1, "main")];
+    value.active_action = {
+      action_id: "action-character-1-turnaround",
+      action_kind: "prepare_character_turnaround",
+      stage: "character",
+      stage_revision: 5,
+      status: "working",
+      turn_id: "turn-character-1",
+      occurrence_id: "occurrence:character:1",
+      character_phase: "turnaround",
+    };
+
+    const projected = projectCharacterOccurrences(value);
+    expect(projected[0]?.phases).toEqual({
+      main: "completed",
+      turnaround: "working",
+    });
+
+    render(<CharacterOccurrenceProgress journey={value} />);
+    expect(screen.getAllByTestId("character-phase-main").at(-1)?.getAttribute("data-status")).toBe("completed");
+    expect(screen.getAllByTestId("character-phase-turnaround").at(-1)?.getAttribute("data-status")).toBe("working");
   });
 });

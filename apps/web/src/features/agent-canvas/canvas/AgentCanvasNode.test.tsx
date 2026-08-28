@@ -220,6 +220,67 @@ describe("AgentCanvasNodeCard", () => {
     expect(failedCard.querySelector(".agent-canvas-node__header-icon .agent-canvas-node-icon")).toBeTruthy();
   });
 
+  it("labels Character Main and Turnaround from prompt preparation fields", () => {
+    const { rerender } = render(
+      <AgentCanvasNodeCard
+        node={{
+          ...makeNode("image", "ready"),
+          creative_role: "character",
+          prompt_preparation: {
+            status: "ready",
+            operation_id: null,
+            presentation_stream_id: null,
+            attempt_no: 1,
+            context_snapshot_id: null,
+            occurrence_id: "occurrence:character:1",
+            character_phase: "main",
+            prompt_digest: null,
+            role_variant: "character_main",
+            recipe_id: null,
+            recipe_version: null,
+            recipe_digest: null,
+            requirement_revision_id: null,
+            requirement_revision_no: null,
+            document_revisions: {},
+            binding_digest: null,
+            style_projection_digest: null,
+            brief_digest: null,
+            parameter_origins: [],
+            assertion_evidence: null,
+            attempt_stage: null,
+            error: null,
+            updated_at: "2026-08-27T08:00:00Z",
+            summary: "Character main",
+            category: "character",
+            tags: [],
+            supported_use_cases: [],
+            preview: null,
+            display_order: 0,
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Character Main")).toBeTruthy();
+    expect(screen.queryByText("Hidden image title")).toBeNull();
+
+    rerender(
+      <AgentCanvasNodeCard
+        node={{
+          ...makeNode("image", "draft"),
+          creative_role: "character",
+          prompt_preparation: {
+            ...({} as CanvasNodeV2["prompt_preparation"]),
+            status: "ready",
+            character_phase: "turnaround",
+            occurrence_id: "occurrence:character:1",
+            role_variant: "character_turnaround",
+          } as CanvasNodeV2["prompt_preparation"],
+        }}
+      />,
+    );
+    expect(screen.getByText("Character Turnaround")).toBeTruthy();
+  });
+
   it("renders backend Script content rather than hiding the canonical Script node", () => {
     const node = {
       ...makeNode("script", "ready"),

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
+import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 
 const assets = vi.hoisted(() => ({
   uploadFilesWithReceipts: vi.fn(),
@@ -191,6 +192,39 @@ describe("ProductSourceDecisionDock", () => {
         question_id: "product_main_source",
       },
     }));
+    expect(assets.uploadFilesWithReceipts).not.toHaveBeenCalled();
+  });
+
+  it("reuses an explicitly marked Intake Product Main handoff without uploading again", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    const handoff: ProductMainHandoff = {
+      workflowId: "workflow-1",
+      assetId: "asset-intake-product",
+      versionId: "version-intake-product-1",
+      pendingHandoffId: "handoff-intake-product-1",
+      displayName: "Intake Product Main",
+      previewUrl: "/intake-product.png",
+    };
+    render(
+      <ProductSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={null}
+        pendingProductMainHandoff={handoff}
+        onSubmit={submit}
+        onClearProductMainHandoff={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Intake Product Main", { selector: ".agent-chat__product-source-selected-name" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use selected Product" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({
+        asset_versions: [{ asset_id: "asset-intake-product", version_id: "version-intake-product-1" }],
+        pending_handoff_id: "handoff-intake-product-1",
+      }),
+    })));
     expect(assets.uploadFilesWithReceipts).not.toHaveBeenCalled();
   });
 

@@ -3,6 +3,7 @@ import type {
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasNodeIcon } from "./AgentCanvasNodeIcon.tsx";
+import { projectCharacterNodePresentation } from "./characterNodePresentation.ts";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 
 interface AgentCanvasNodeHeaderProps {
@@ -16,7 +17,9 @@ export function AgentCanvasNodeHeader({
   status,
   dimensions,
 }: AgentCanvasNodeHeaderProps) {
-  const name = creativeRoleDisplayName(node.creative_role);
+  const roleName = creativeRoleDisplayName(node.creative_role);
+  const characterPresentation = projectCharacterNodePresentation(node);
+  const name = characterPresentation?.phaseLabel ?? roleName;
   const showDimensions = node.node_type === "image" || node.node_type === "video";
 
   return (

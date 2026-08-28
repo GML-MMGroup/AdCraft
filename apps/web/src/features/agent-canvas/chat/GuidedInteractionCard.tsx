@@ -7,6 +7,7 @@ import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
 import { QuestionnaireDecisionDock } from "./QuestionnaireDecisionDock.tsx";
+import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 
 export interface GuidedInteractionCardProps {
   interaction: GuidedInteractionV1;
@@ -15,6 +16,8 @@ export interface GuidedInteractionCardProps {
   selectedConceptOptionId?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
+  pendingProductMainHandoff?: ProductMainHandoff | null;
+  onClearProductMainHandoff?: () => void;
 }
 
 export function GuidedInteractionCard({
@@ -24,6 +27,8 @@ export function GuidedInteractionCard({
   selectedConceptOptionId = null,
   onSelectConceptOption,
   onSubmit,
+  pendingProductMainHandoff = null,
+  onClearProductMainHandoff,
 }: GuidedInteractionCardProps) {
   if (interaction.status !== "open" && interaction.status !== "submitted") return null;
 
@@ -59,6 +64,8 @@ export function GuidedInteractionCard({
         interaction={interaction}
         pending={pending}
         issue={issue}
+        pendingProductMainHandoff={pendingProductMainHandoff}
+        onClearProductMainHandoff={onClearProductMainHandoff}
         onSubmit={onSubmit}
       />
     );

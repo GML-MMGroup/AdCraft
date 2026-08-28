@@ -3,6 +3,8 @@ import type {
   JourneyElementDecisionV2,
 } from "../../../types-v2.ts";
 
+export type CharacterPhaseStatus = "pending" | "working" | "completed";
+
 export interface CharacterOccurrenceView {
   occurrenceId: string;
   occurrenceIndex: number;
@@ -10,6 +12,10 @@ export interface CharacterOccurrenceView {
   summary: string | null;
   outcome: JourneyElementDecisionV2["outcome"];
   active: boolean;
+  phases: {
+    main: CharacterPhaseStatus;
+    turnaround: CharacterPhaseStatus;
+  };
 }
 
 function optionalRequirement(
@@ -21,6 +27,26 @@ function optionalRequirement(
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
+}
+
+function phaseStatus(
+  journey: GuidedProductionJourneyV2,
+  occurrenceId: string,
+  phase: "main" | "turnaround",
+): CharacterPhaseStatus {
+  const activeAction = journey.active_action;
+  if (activeAction?.occurrence_id === occurrenceId && activeAction.character_phase === phase) {
+    return "working";
+  }
+  const evidence = journey.transition_evidence.filter((item) => (
+    item.occurrence_id === occurrenceId && item.character_phase === phase
+  ));
+  if (evidence.some((item) => (
+    item.evidence_kind === "character_materialized"
+    || item.evidence_kind === "targeted_action_finished"
+  ))) return "completed";
+  if (evidence.some((item) => item.evidence_kind === "targeted_action_started")) return "working";
+  return "pending";
 }
 
 export function projectCharacterOccurrences(
@@ -37,5 +63,9 @@ export function projectCharacterOccurrences(
       summary: optionalRequirement(decision.requirements, ["identity_summary", "summary"]),
       outcome: decision.outcome,
       active: decision.occurrence_id === journey.active_occurrence_id,
+      phases: {
+        main: phaseStatus(journey, decision.occurrence_id, "main"),
+        turnaround: phaseStatus(journey, decision.occurrence_id, "turnaround"),
+      },
     }));
 }

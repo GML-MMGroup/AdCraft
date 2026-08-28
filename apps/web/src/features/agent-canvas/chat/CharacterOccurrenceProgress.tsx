@@ -20,6 +20,18 @@ export function CharacterOccurrenceProgress({
         >
           <span>{occurrence.label}</span>
           {occurrence.summary ? <small>{occurrence.summary}</small> : null}
+          <div className="agent-chat__character-phases" aria-label={`${occurrence.label} phases`}>
+            {(["main", "turnaround"] as const).map((phase) => (
+              <span
+                key={phase}
+                data-testid={`character-phase-${phase}`}
+                data-status={occurrence.phases[phase]}
+                className={`is-${occurrence.phases[phase]}`}
+              >
+                {phase === "main" ? "Character Main" : "Character Turnaround"}
+              </span>
+            ))}
+          </div>
         </li>
       ))}
     </ul>
