@@ -8,13 +8,8 @@
 
 **从一个模糊想法到成片交付，AdCraft 全流程自动化你的广告视频生产。**
 
-[![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
-[![Stars](https://img.shields.io/github/stars/GML-MMGroup/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
-[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/GML-MMGroup/AdCraft/releases)
-[![Discord](https://img.shields.io/badge/Discord-加入-5865F2.svg)](https://discord.gg/yourlink)
 
-[English](./README.md) · **简体中文** · [在线体验](#) · [使用文档](#)
-
+[English](./README.md) · **简体中文** 
 </div>
 
 ---
@@ -33,10 +28,13 @@
 
 ## 📰 最新动态
 
+- **[2026-08-19]** 🚀 强化并稳定了 Agent 引导式创作流程，同时完成 AdCraft 前端首页的视觉升级。
 - **[2026-08-04]** ✨ Agent Canvas 完成重大升级，优化了交互体验并新增渐进式智能创作引导。
-- **[2026-XX-XX]** 🎉 AdCraft 正式开源！
-- **[2026-XX-XX]** 🚀 上线「视频克隆」功能——拆解任意参考广告，用你自己的内容重新生成。
-- **[2026-XX-XX]** ✨ 新增多平台模型支持（Seedance、可灵、Vidu 等）。
+- **[2026-07-23]** 🗂️ 新增角色资产库与场景资产库。
+- **[2026-07-15]** ⚙️ AdCraft 后端正式发布。
+- **[2026-07-08]** 🎨 AdCraft 前端正式发布。
+- **[2026-07-01]** 🎉 AdCraft 正式作为开源项目发布。
+<!-- 后续更新持续追加到这里 -->
 
 ---
 
@@ -71,6 +69,12 @@ AdCraft 是一个**面向广告创作的 AI 生产平台**。你无需提前设�
 
 它不只是生成一条视频，而是把广告制作组织成一套**可编辑的创作流程**。生成后，你还能通过画布操作或与 AI 对话，随时修改任意内容——某个角色、某个场景、某个镜头、某张图片、某段视频，乃至整条广告。
 
+<div align="center">
+  <img src="./assets/home-page.png" alt="AdCraft 首页" width="95%" />
+  <br/><br/>
+  <img src="./assets/demo.png" alt="AdCraft Agent Canvas 工作流" width="95%" />
+</div>
+
 ---
 
 ## ✨ 核心能力
@@ -99,14 +103,233 @@ AdCraft 是一个**面向广告创作的 AI 生产平台**。你无需提前设�
 | 🎵 **声音导演** | 背景音乐、音效、旁白与节奏 |
 | 🎞️ **最终合成** | 把视频、字幕、音乐与商品素材组织成完整成片 |
 
-### 5. 📚 素材库贯穿整个创作过程
-所有上传和生成的图片、视频、音频都会进入**统一素材库**，而不是一次性临时文件。每个素材都会记录**来源、版本、生成说明、使用状态，以及被哪些广告内容引用**，方便后续继续修改和复用。
+### 5. 📚 贯穿全流程的统一资产库
 
-### 6. 🗂️ 多类型素材库，支持一致性创作
-系统会沉淀不同类型的素材库：**角色、场景、商品、图片、视频、音频。**
-- **角色素材库** — 保存角色设定、正/侧/背三视图、表情与服装版本，让同一角色在多条广告中保持一致。
-- **场景素材库** — 保存室内、户外、商店、街道、游戏世界等场景，并生成多视图参考。
-- **商品素材库** — 保存包装、正反面、侧面、细节特写，保证商品在不同镜头里不变形、不漂移。
+所有上传和生成的图片、视频与音频都会进入**统一资产库**，而不是成为使用一次就丢弃的临时文件。
+
+每项资产都会保留自身的**来源、版本历史、生成说明、使用状态和项目引用关系**，让已经确认的创作素材可以在不同镜头、工作流和广告项目之间方便地复用。
+
+AdCraft 针对不同类型的生产素材维护独立资产库：
+
+- **角色资产库** — 沉淀可复用的角色体系，保持角色在不同镜头和广告活动中的身份一致性
+- **场景资产库** — 构建连贯的视觉世界，提供多镜头、多视角参考
+- **商品资产库** — 管理包装、正反面、侧面、材质和细节特写
+- **图片、视频与音频资产库** — 统一整理创作过程中上传和生成的各类媒体
+
+资产可以继续复用、扩展、重新生成，也可以保存为后续环节的参考，无需重新启动整套工作流。
+
+### 6. 🗂️ 可直接投入生产的角色与场景资产
+
+AdCraft 持续提供可复用的角色和场景资产，适用于广告制作、品牌叙事、短视频创作和 AI 辅助生产。
+
+这些资产不是彼此孤立的参考图片，而是按照**完整生产体系**设计，能够在不同镜头、机位、动作、环境和商业场景中维持视觉一致性。
+
+#### 👤 角色资产库
+
+<div align="center">
+  <img
+    src="./assets/character_assets_01.png"
+    alt="AdCraft 角色资产库概览第一部分"
+    width="100%"
+  />
+  <br/><br/>
+  <img
+    src="./assets/character_assets_02.png"
+    alt="AdCraft 角色资产库概览第二部分"
+    width="100%"
+  />
+  <br/>
+  <sub>
+    在 AdCraft 中直接浏览、管理和复用可投入生产的角色资产。
+  </sub>
+</div>
+
+<br/>
+
+我们免费开源发布的每项角色资产都按照一份**完整角色规格**设计，而不是只有一张肖像或概念图。
+
+一套典型的角色资产包括：
+
+- **角色三视图** — 正面、侧面和背面视图，用于稳定角色身份和身体比例
+- **头部与面部参考** — 面部结构、发型、侧脸、背面和表情细节
+- **服装结构细节** — 服装结构、剪裁、材质、褶皱和关键设计元素
+- **配饰与随身物品** — 鞋履、首饰、手表、包袋、道具和其他可见细节
+- **统一色彩与材质方案** — 保持颜色、织物、金属和表面质感一致
+- **扩展商业应用场景** — 商品互动、广告姿势、商务环境和适用于广告活动的动作参考
+
+这些参考共同帮助同一角色在特写、全身镜头、不同姿势、机位变化、商品互动和新生成的广告场景中保持一致。
+
+<table>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo1.png"
+        alt="AdCraft 角色资产示例 1"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 01</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo2.png"
+        alt="AdCraft 角色资产示例 2"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 02</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo3.png"
+        alt="AdCraft 角色资产示例 3"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 03</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo4.png"
+        alt="AdCraft 角色资产示例 4"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 04</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo5.png"
+        alt="AdCraft 角色资产示例 5"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 05</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo6.png"
+        alt="AdCraft 角色资产示例 6"
+        width="100%"
+      />
+      <br/>
+      <sub><b>角色资产示例 06</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center">
+      <sub>
+        完整角色规格覆盖三视图、面部参考、服装细节、材质、配饰、道具和扩展商业场景。
+      </sub>
+    </td>
+  </tr>
+</table>
+
+#### 🌍 场景资产库
+
+<div align="center">
+  <img
+    src="./assets/scene_assets_01.png"
+    alt="AdCraft 场景资产库概览第一部分"
+    width="100%"
+  />
+  <br/><br/>
+  <img
+    src="./assets/scene_assets_02.png"
+    alt="AdCraft 场景资产库概览第二部分"
+    width="100%"
+  />
+  <br/>
+  <sub>
+    浏览可复用的场景世界，并将其直接保存到 AdCraft 工作区。
+  </sub>
+</div>
+
+<br/>
+
+AdCraft 的场景资产按照**完整的世界构建分镜体系**设计，而不是单独的背景图片。
+
+每项场景资产通常包含一组能够直接用于分镜的连贯画面，其中包括：
+
+- **建立镜头** — 明确整体地点和视觉特征
+- **全景、中景与近景** — 满足不同叙事需要
+- **同一环境中的多机位与多视角画面**
+- **室内、室外和环境细节镜头**
+- **适合角色进入的表演区域** — 支持动作、对话和商品互动
+- **转场与衔接镜头** — 用于构建连续场景
+- **一致的建筑、光线、氛围、地理关系和视觉语言**
+
+这让创作者和 AI Agent 能够在同一个视觉世界中构建完整镜头序列，同时维持不同镜头之间的环境连续性。
+
+<table>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo1.png"
+        alt="AdCraft 场景资产示例 1"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 01</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo2.png"
+        alt="AdCraft 场景资产示例 2"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 02</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo3.png"
+        alt="AdCraft 场景资产示例 3"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 03</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo4.png"
+        alt="AdCraft 场景资产示例 4"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 04</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo5.png"
+        alt="AdCraft 场景资产示例 5"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 05</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo6.png"
+        alt="AdCraft 场景资产示例 6"
+        width="100%"
+      />
+      <br/>
+      <sub><b>场景资产示例 06</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center">
+      <sub>
+        完整的世界构建分镜覆盖统一地点、景别、机位视角、环境细节、光线和氛围。
+      </sub>
+    </td>
+  </tr>
+</table>
 
 ### 7. 🎛️ 可以精细修改到具体内容
 你既可以修改整个创作环节，也可以只改某个角色、场景、镜头、图片或视频。**局部修改只影响相关内容**，不会覆盖其他已满意的结果。
@@ -148,6 +371,9 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 全程由 AI Agent 编排，在无限画布上自由编辑。
 
 ---
+## 🤝 贡献
+
+欢迎提交 Pull Request，为 AdCraft 贡献代码、功能改进、Bug 修复或其他优化，并成为项目贡献者。
 
 ## 💬 联系我们
 

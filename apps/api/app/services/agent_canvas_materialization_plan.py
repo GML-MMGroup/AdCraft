@@ -172,12 +172,15 @@ def _receipt(
 def _commitments(
     envelope: ProposalApplicationEnvelopeV1,
 ) -> tuple[AcceptedProposalCommitmentV1, ...]:
+    decisions = tuple(getattr(envelope.selected_option, "key_decisions", ()))
+    if not decisions:
+        decisions = (envelope.selected_option.public_summary,)
     return tuple(
         AcceptedProposalCommitmentV1(
             normalized_meaning=decision[:512],
             source_fragment=decision[:512],
         )
-        for decision in envelope.selected_option.key_decisions
+        for decision in decisions
     )
 
 

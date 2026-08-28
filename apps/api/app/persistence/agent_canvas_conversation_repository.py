@@ -68,7 +68,6 @@ from app.schemas.agent_canvas_conversation import (
     ChatTurnAcceptedV2,
     ChatTurnV2,
     ConceptOptionRecordV2,
-    ConceptProposalCreateV2,
     ConceptProposalV2,
     ContinuationCommitV2,
     ContinuationDeliveryV2,
@@ -121,10 +120,6 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
-from app.services.agent_canvas_public_concept_projection import (
-    AgentCanvasPublicConceptProjector,
-    public_option_metadata,
-)
 from app.services.agent_canvas_production_journey import (
     FIXED_JOURNEY_STAGE_DESCRIPTORS,
     initial_production_journey,
@@ -370,6 +365,10 @@ class AgentCanvasConversationRepository:
         journey: GuidedProductionJourneyV2,
         assistant_message: str,
         transition_key: str,
+        questionnaire: GuidedQuestionnaireV1 | None = None,
+        checkpoint_id: str | None = None,
+        interaction_title: str | None = None,
+        interaction_context: str | None = None,
     ) -> ChatTurnV2:
         """Atomically publish clarification authority and complete its source Turn."""
 
@@ -464,6 +463,10 @@ class AgentCanvasConversationRepository:
                         expected_session_revision=next_revision,
                         journey=journey,
                         assistant_message=assistant_message,
+                        questionnaire=questionnaire,
+                        checkpoint_id=checkpoint_id,
+                        interaction_title=interaction_title,
+                        interaction_context=interaction_context,
                         now=now,
                     )
                     evidence = next(
@@ -3399,297 +3402,6 @@ class AgentCanvasConversationRepository:
             ) from error
         return self.get_turn(str(turn_id)) if turn_id is not None else None
 
-    def create_proposal(
-        self,
-        turn_id: str,
-        proposal: ConceptProposalCreateV2,
-        *,
-        source_proposal_id: str | None = None,
-        allow_historical_source: bool = False,
-        expected_session_revision: int | None = None,
-        receipt: AgentActionReceiptV2 | None = None,
-    ) -> ConceptProposalV2:
-        now = _now()
-        proposal_id = f"proposal_{uuid4().hex}"
-        try:
-            with self._database.engine.begin() as connection:
-                turn = _require_turn(connection, turn_id)
-                session_row = (
-                    connection.execute(
-                        select(AgentCanvasGuidanceSessionRow).where(
-                            AgentCanvasGuidanceSessionRow.workflow_id == turn["workflow_id"]
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if session_row is None:
-                    raise _error(
-                        "guidance_session_not_found",
-                        "Guidance session was not found.",
-                    )
-                if (
-                    expected_session_revision is not None
-                    and int(session_row["revision"]) != expected_session_revision
-                ):
-                    raise _error(
-                        "guidance_revision_conflict",
-                        "Guidance session revision is stale.",
-                    )
-                if source_proposal_id is not None:
-                    source_row = (
-                        connection.execute(
-                            select(AgentCanvasConceptProposalRow).where(
-                                AgentCanvasConceptProposalRow.proposal_id == source_proposal_id
-                            )
-                        )
-                        .mappings()
-                        .one_or_none()
-                    )
-                    source_is_historical = bool(
-                        source_row is not None and str(source_row["availability"]) == "superseded"
-                    )
-                    if (
-                        source_row is None
-                        or str(source_row["workflow_id"]) != str(turn["workflow_id"])
-                        or (
-                            not source_is_historical
-                            and (
-                                str(source_row["availability"]) != "open"
-                                or str(session_row["active_proposal_id"]) != source_proposal_id
-                            )
-                        )
-                        or (source_is_historical and not allow_historical_source)
-                    ):
-                        raise _error(
-                            "proposal_action_stale",
-                            "Proposal action is no longer available.",
-                        )
-                    proposal_to_supersede = (
-                        str(session_row["active_proposal_id"])
-                        if source_is_historical
-                        else source_proposal_id
-                    )
-                    if proposal_to_supersede:
-                        connection.execute(
-                            update(AgentCanvasConceptProposalRow)
-                            .where(
-                                AgentCanvasConceptProposalRow.proposal_id == proposal_to_supersede,
-                                AgentCanvasConceptProposalRow.availability == "open",
-                            )
-                            .values(availability="superseded", updated_at=now)
-                        )
-                session_revision = int(session_row["revision"]) + 1
-                skill_run_id = _turn_skill_run_id(turn)
-                creative_direction_snapshot_id = None
-                if skill_run_id is not None:
-                    creative_direction_snapshot_id = connection.execute(
-                        select(AgentCanvasSkillRunRow.active_creative_direction_snapshot_id).where(
-                            AgentCanvasSkillRunRow.skill_run_id == skill_run_id
-                        )
-                    ).scalar_one_or_none()
-                requirement_head = self._requirements.get_current_in_transaction(
-                    connection,
-                    str(turn["workflow_id"]),
-                )
-                connection.execute(
-                    insert(AgentCanvasConceptProposalRow).values(
-                        proposal_id=proposal_id,
-                        turn_id=turn_id,
-                        workflow_id=str(turn["workflow_id"]),
-                        proposal_kind=proposal.proposal_kind,
-                        capability_id=proposal.capability_id,
-                        video_skill_run_id=skill_run_id,
-                        topic_id=proposal.topic_id or _proposal_topic_id(proposal.proposal_kind),
-                        target_node_id=proposal.target_node_id,
-                        target_node_revision=proposal.target_node_revision,
-                        proposal_purpose=proposal.proposal_purpose,
-                        creative_direction_snapshot_id=creative_direction_snapshot_id,
-                        requirement_revision_id=requirement_head.revision_id,
-                        requirement_revision_no=requirement_head.revision_no,
-                        requirement_digest=requirement_head.digest,
-                        proposal_revision=1,
-                        proposed_references_json=_dump(
-                            [
-                                reference.model_dump(mode="json")
-                                for reference in proposal.proposed_references
-                            ]
-                        ),
-                        source_proposal_id=source_proposal_id,
-                        availability="open",
-                        guidance_session_id=str(session_row["session_id"]),
-                        guidance_session_revision=session_revision,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                connection.execute(
-                    update(AgentCanvasGuidanceSessionRow)
-                    .where(AgentCanvasGuidanceSessionRow.session_id == session_row["session_id"])
-                    .values(
-                        active_proposal_id=proposal_id,
-                        revision=session_revision,
-                        updated_at=now,
-                    )
-                )
-                connection.execute(
-                    update(AgentCanvasChatTurnRow)
-                    .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-                    .values(
-                        guidance_session_revision=session_revision,
-                        updated_at=now,
-                    )
-                )
-                reserved_option_ids: set[str] = set()
-                persisted_option_ids: list[str] = []
-                for order, option in enumerate(proposal.options):
-                    option_id = _available_option_id(
-                        connection,
-                        requested_id=option.option_id,
-                        proposal_id=proposal_id,
-                        reserved_ids=reserved_option_ids,
-                    )
-                    reserved_option_ids.add(option_id)
-                    persisted_option_ids.append(option_id)
-                    connection.execute(
-                        insert(AgentCanvasConceptOptionRow).values(
-                            option_id=option_id,
-                            proposal_id=proposal_id,
-                            display_order=order,
-                            title=option.title,
-                            description=option.public_summary,
-                            key_decisions_json=_dump(list(option.key_decisions)),
-                            draft_seed_schema=None,
-                            draft_seed_json=None,
-                            draft_seed_digest=None,
-                        )
-                    )
-                public_projection = AgentCanvasPublicConceptProjector().project(
-                    options=proposal.options,
-                    option_ids=persisted_option_ids,
-                    response_locale=str(session_row["response_locale"]),
-                    recommended_option_id=persisted_option_ids[0],
-                )
-                _append_timeline_entry(
-                    connection,
-                    conversation_id=str(turn["conversation_id"]),
-                    workflow_id=str(turn["workflow_id"]),
-                    entry_type="concept_proposal",
-                    content=f"Review {len(proposal.options)} {proposal.proposal_kind} option(s).",
-                    metadata=build_presentation_metadata(
-                        message_key="concept_proposal.review",
-                        message_args={"option_count": len(proposal.options)},
-                        response_locale=public_projection.response_locale,
-                        presentation_key=f"proposal:{proposal_id}",
-                        base={
-                            "proposal_id": proposal_id,
-                            "proposal_kind": proposal.proposal_kind,
-                            "capability_id": proposal.capability_id,
-                            "capability_display_name": proposal.capability_display_name,
-                            "video_skill_run_id": _turn_skill_run_id(turn),
-                            "topic_id": proposal.topic_id
-                            or _proposal_topic_id(proposal.proposal_kind),
-                            "target_node_id": proposal.target_node_id,
-                            "target_node_revision": proposal.target_node_revision,
-                            "proposal_purpose": proposal.proposal_purpose,
-                            "creative_direction_snapshot_id": creative_direction_snapshot_id,
-                            "proposal_revision": 1,
-                            "options": [
-                                public_option_metadata(option)
-                                for option in public_projection.options
-                            ],
-                            "proposed_references": [
-                                reference.model_dump(mode="json")
-                                for reference in proposal.proposed_references
-                            ],
-                        },
-                    ),
-                    created_at=now,
-                )
-                self._events.append_in_transaction(
-                    connection,
-                    V2EventInsert(
-                        workflow_id=str(turn["workflow_id"]),
-                        event_type="concept_proposal_created",
-                        created_at=now,
-                        payload={
-                            "turn_id": turn_id,
-                            "proposal_id": proposal_id,
-                            "capability_id": proposal.capability_id,
-                            "capability_display_name": proposal.capability_display_name,
-                            "option_count": len(proposal.options),
-                        },
-                    ),
-                )
-                self._events.append_in_transaction(
-                    connection,
-                    V2EventInsert(
-                        workflow_id=str(turn["workflow_id"]),
-                        event_type="proposal_ready",
-                        created_at=now,
-                        payload={
-                            "turn_id": turn_id,
-                            "proposal_id": proposal_id,
-                            "capability_id": proposal.capability_id,
-                            "option_count": len(proposal.options),
-                        },
-                    ),
-                )
-                if receipt is not None:
-                    if (
-                        receipt.workflow_id != str(turn["workflow_id"])
-                        or receipt.action_id != turn_id
-                    ):
-                        raise _error(
-                            "proposal_action_receipt_invalid",
-                            "Proposal action receipt does not match the revision turn.",
-                        )
-                    connection.execute(
-                        insert(AgentCanvasActionReceiptRow).values(
-                            receipt_id=receipt.receipt_id,
-                            workflow_id=receipt.workflow_id,
-                            plan_id=None,
-                            action_id=receipt.action_id,
-                            proposal_id=receipt.proposal_id,
-                            proposal_option_id=receipt.proposal_option_id,
-                            proposal_action=receipt.proposal_action,
-                            receipt_json=receipt.model_dump_json(),
-                            created_at=now,
-                        )
-                    )
-                    _append_timeline_entry(
-                        connection,
-                        conversation_id=str(turn["conversation_id"]),
-                        workflow_id=receipt.workflow_id,
-                        entry_type="action_receipt",
-                        content=receipt.summary,
-                        metadata={"action_receipt": receipt.model_dump(mode="json")},
-                        created_at=now,
-                    )
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=receipt.workflow_id,
-                            conversation_id=str(turn["conversation_id"]),
-                            turn_id=turn_id,
-                            action_id=turn_id,
-                            event_type="action_receipt_created",
-                            created_at=now,
-                            payload={
-                                "receipt_id": receipt.receipt_id,
-                                "revision": receipt.workflow_revision,
-                                "refresh": ["conversation", "workflow"],
-                            },
-                        ),
-                    )
-        except V2PersistenceError:
-            raise
-        except (IntegrityError, SQLAlchemyError) as error:
-            raise _error(
-                "agent_conversation_unavailable", "Conversation storage failed."
-            ) from error
-        return self.get_proposal(proposal_id)
-
     def get_proposal(self, proposal_id: str) -> ConceptProposalV2:
         try:
             with self._database.engine.connect() as connection:
@@ -3742,6 +3454,11 @@ class AgentCanvasConversationRepository:
             applications,
             current_session_revision=int(current_session_revision),
         )
+
+    def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
+        """Read the complete private Proposal authority for materialization paths."""
+
+        return self.get_proposal(proposal_id)
 
     def list_open_proposals(self, workflow_id: str) -> tuple[ConceptProposalV2, ...]:
         try:
@@ -4979,15 +4696,19 @@ def _upsert_clarification_authority(
     expected_session_revision: int,
     journey: GuidedProductionJourneyV2,
     assistant_message: str,
+    questionnaire: GuidedQuestionnaireV1 | None,
+    checkpoint_id: str | None,
+    interaction_title: str | None,
+    interaction_context: str | None,
     now: str,
 ) -> None:
-    checkpoint_id = f"clarification:{journey.stage_revision}"
+    checkpoint_id = checkpoint_id or f"clarification:{journey.stage_revision}"
     identity = hashlib.sha256(
         f"{workflow_id}:{session_id}:{checkpoint_id}".encode("utf-8")
     ).hexdigest()[:32]
     interaction_id = f"interaction_{identity}"
     awaiting_id = f"awaiting_{identity}"
-    content = GuidedQuestionnaireV1(
+    content = questionnaire or GuidedQuestionnaireV1(
         questions=(
             GuidedQuestionV1(
                 question_id=f"question_{identity}",
@@ -5067,10 +4788,15 @@ def _upsert_clarification_authority(
         response_locale=response_locale,
         expected_session_revision=expected_session_revision,
         revision=1,
-        title="Clarify campaign requirements",
-        context="Answer the current clarification before guided production continues.",
+        title=interaction_title or "Clarify campaign requirements",
+        context=(
+            interaction_context
+            or "Answer the current clarification before guided production continues."
+        ),
         content=content,
-        allowed_actions=("answer", "custom", "skip"),
+        allowed_actions=(
+            ("answer", "custom") if questionnaire is not None else ("answer", "custom", "skip")
+        ),
         submit_path=(f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"),
         created_at=now,
         updated_at=now,
@@ -5566,19 +5292,6 @@ def _memory_revision(connection: Connection, workflow_id: str) -> int:
     return int(value) if value is not None else 0
 
 
-def _proposal_topic_id(proposal_kind: str) -> str:
-    return {
-        "script": "narrative_direction",
-        "product": "product",
-        "prop": "props",
-        "character": "characters",
-        "scene": "scenes",
-        "storyboard": "storyboard",
-        "video": "videos",
-        "bgm": "bgm",
-    }[proposal_kind]
-
-
 def _insert_retry_turn_in_transaction(
     connection: Connection,
     *,
@@ -5753,6 +5466,12 @@ def _proposal(
                 queued_execution_ids=receipt.queued_execution_ids,
                 created_at=receipt.created_at,
             )
+    proposal_card_schema_version = int(row["proposal_card_schema_version"] or 1)
+    if proposal_card_schema_version not in {1, 2, 3}:
+        raise _error(
+            "proposal_card_version_unsupported",
+            "The persisted Proposal Card schema version is unsupported.",
+        )
     availability = cast(str, row["availability"])
     materialization = (
         ProposalMaterializationProjectionV2(
@@ -5783,7 +5502,7 @@ def _proposal(
             expected_session_revision=int(row["guidance_session_revision"]),
             proposal_kind=str(row["proposal_kind"]),
         )
-        if availability == "open"
+        if availability == "open" and len(options) == 3
         else (
             _historical_proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),
@@ -5792,7 +5511,7 @@ def _proposal(
                     current_session_revision or int(row["guidance_session_revision"])
                 ),
             )
-            if availability == "superseded"
+            if availability == "superseded" and proposal_card_schema_version == 3
             else ()
         )
     )
@@ -5832,6 +5551,7 @@ def _proposal(
         ),
         proposal_kind=cast(str, row["proposal_kind"]),
         capability_id=cast(str, row["capability_id"]),
+        proposal_card_schema_version=proposal_card_schema_version,
         availability=availability,
         application_count=len(applications),
         latest_application=latest_application,
@@ -5848,7 +5568,11 @@ def _proposal(
                 option_id=str(option["option_id"]),
                 title=str(option["title"]),
                 public_summary=str(option["description"]),
-                key_decisions=tuple(json.loads(str(option["key_decisions_json"]))),
+                key_decisions=(
+                    tuple(json.loads(str(option["key_decisions_json"])))
+                    if proposal_card_schema_version == 1
+                    else ()
+                ),
             )
             for option in options
         ),
@@ -6232,24 +5956,6 @@ def _store_style_activation_idempotency(
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _available_option_id(
-    connection: Connection,
-    *,
-    requested_id: str,
-    proposal_id: str,
-    reserved_ids: set[str],
-) -> str:
-    existing = connection.execute(
-        select(AgentCanvasConceptOptionRow.option_id).where(
-            AgentCanvasConceptOptionRow.option_id == requested_id
-        )
-    ).scalar_one_or_none()
-    if existing is None and requested_id not in reserved_ids:
-        return requested_id
-    suffix = hashlib.sha256(f"{proposal_id}:{requested_id}".encode()).hexdigest()[:12]
-    return f"{requested_id[:147]}_{suffix}"
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

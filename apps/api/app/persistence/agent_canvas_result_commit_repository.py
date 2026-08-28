@@ -29,6 +29,9 @@ from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitReceiptV2,
     CanvasPostReadyEffectV2,
 )
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasExecutionResultLineageV2,
+)
 from app.schemas.v2_asset_library import AssetRecordCreate, AssetVersionCreate
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -81,6 +84,11 @@ class AgentCanvasResultCommitRepository:
                                 "execution_result_payload_conflict",
                                 "Execution result identity is immutable.",
                             )
+                        self._assert_effect_replay_matches(
+                            connection,
+                            command,
+                            commit_id=receipt.commit_id,
+                        )
                         connection.commit()
                         return receipt
                     self._assert_current_lease(connection, command)
@@ -279,6 +287,82 @@ class AgentCanvasResultCommitRepository:
                 .all()
             )
         return tuple(_effect(row) for row in rows)
+
+    def find_latest_post_ready_effect(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+    ) -> CanvasPostReadyEffectV2 | None:
+        """Read the newest result effect for one current Canvas Node."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasPostReadyEffectRow)
+                        .join(
+                            AgentCanvasExecutionResultCommitRow,
+                            AgentCanvasExecutionResultCommitRow.commit_id
+                            == AgentCanvasPostReadyEffectRow.source_commit_id,
+                        )
+                        .where(
+                            AgentCanvasExecutionResultCommitRow.workflow_id == workflow_id,
+                            AgentCanvasExecutionResultCommitRow.node_id == node_id,
+                            AgentCanvasPostReadyEffectRow.effect_type
+                            == "advance_storyboard_progression",
+                        )
+                        .order_by(
+                            AgentCanvasExecutionResultCommitRow.committed_at.desc(),
+                            AgentCanvasPostReadyEffectRow.effect_id.desc(),
+                        )
+                        .limit(1)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_lineage_unavailable",
+                "Execution result lineage is temporarily unavailable.",
+            ) from error
+        return _effect(row) if row is not None else None
+
+    def get_lineage(self, source_commit_id: str) -> CanvasExecutionResultLineageV2:
+        """Read one immutable result commit by its primary authority identity."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasExecutionResultCommitRow).where(
+                            AgentCanvasExecutionResultCommitRow.commit_id == source_commit_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_lineage_unavailable",
+                "Execution result lineage is temporarily unavailable.",
+            ) from error
+        if row is None:
+            raise _error(
+                "execution_result_lineage_not_found",
+                "Execution result lineage was not found.",
+            )
+        return CanvasExecutionResultLineageV2(
+            commit_id=str(row["commit_id"]),
+            workflow_id=str(row["workflow_id"]),
+            execution_id=str(row["execution_id"]),
+            member_id=str(row["member_id"]),
+            node_id=str(row["node_id"]),
+            outcome=cast(str, row["outcome"]),
+            asset_id=cast(str | None, row["asset_id"]),
+            asset_version_id=cast(str | None, row["version_id"]),
+            committed_at=str(row["committed_at"]),
+        )
 
     def find_latest_execution_id(self, *, workflow_id: str, node_id: str) -> str | None:
         """Return the newest successful result execution for one immutable Ready Node."""
@@ -479,6 +563,48 @@ class AgentCanvasResultCommitRepository:
                     created_at=command.committed_at.isoformat(),
                     updated_at=command.committed_at.isoformat(),
                 )
+            )
+
+    @staticmethod
+    def _assert_effect_replay_matches(connection, command, *, commit_id: str) -> None:
+        prepared = command.prepared_result
+        expected_effects = (
+            prepared.post_ready_effects
+            if command.outcome == "succeeded" and prepared is not None
+            else ()
+        )
+        persisted = (
+            connection.execute(
+                select(AgentCanvasPostReadyEffectRow)
+                .where(AgentCanvasPostReadyEffectRow.source_commit_id == commit_id)
+                .order_by(AgentCanvasPostReadyEffectRow.effect_id.asc())
+            )
+            .mappings()
+            .all()
+        )
+        expected = sorted(
+            (
+                "effect_"
+                + hashlib.sha256(
+                    f"{commit_id}:{effect.effect_type}:{ordinal}".encode("utf-8")
+                ).hexdigest()[:32],
+                effect.effect_type,
+                _digest(effect.payload),
+            )
+            for ordinal, effect in enumerate(expected_effects)
+        )
+        actual = [
+            (
+                str(row["effect_id"]),
+                str(row["effect_type"]),
+                str(row["payload_digest"]),
+            )
+            for row in persisted
+        ]
+        if actual != expected:
+            raise _error(
+                "execution_result_payload_conflict",
+                "Execution result post-ready effects are immutable.",
             )
 
 

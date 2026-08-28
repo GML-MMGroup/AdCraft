@@ -51,6 +51,7 @@ class AgentCanvasSeedanceInputCompiler:
         requested = (
             effective_parameters.requested if effective_parameters is not None else node.parameters
         )
+        _validate_native_audio_snapshot(requested, effective)
         requested_duration, effective_duration, normalizations = self._duration_values(
             requested.get("duration_seconds"),
             effective.get("duration_seconds"),
@@ -155,6 +156,16 @@ class AgentCanvasSeedanceInputCompiler:
         return tuple(result)
 
 
+def validate_seedance_audio_parity(
+    manifest: SeedanceInputManifestV1,
+    audit: SeedanceInputManifestAuditV1,
+) -> None:
+    """Reject drift between provider-visible and persisted audio decisions."""
+
+    if manifest.generate_audio != audit.generate_audio:
+        raise ValueError("video_native_audio_unsupported")
+
+
 def _integer_duration(value: object) -> int:
     if isinstance(value, bool):
         raise ValueError("duration_seconds must be an integer")
@@ -165,6 +176,20 @@ def _integer_duration(value: object) -> int:
     if result != value and str(result) != str(value):
         raise ValueError("duration_seconds must be an integer")
     return result
+
+
+def _validate_native_audio_snapshot(
+    requested: dict[str, object],
+    effective: dict[str, object],
+) -> None:
+    requested_audio = requested.get("generate_audio")
+    effective_audio = effective.get("generate_audio")
+    if requested_audio is None or effective_audio is None:
+        return
+    if not isinstance(requested_audio, bool) or not isinstance(effective_audio, bool):
+        raise ValueError("video_native_audio_unsupported")
+    if requested_audio != effective_audio:
+        raise ValueError("video_native_audio_unsupported")
 
 
 def _compile_prompt(

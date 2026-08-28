@@ -666,6 +666,7 @@ class AgentCanvasCommandRepository:
                                     node_type=operation.node_type,
                                     creative_role=operation.creative_role,
                                     role_contract_version="ad-media-role-v1",
+                                    execution_mode="generative",
                                     title=operation.title,
                                     status=("ready" if operation.node_type == "text" else "draft"),
                                     summary_prompt=operation.summary_prompt,
@@ -810,6 +811,7 @@ class AgentCanvasCommandRepository:
                                     node_type=source["node_type"],
                                     creative_role=source["creative_role"],
                                     role_contract_version=source["role_contract_version"],
+                                    execution_mode="generative",
                                     title=operation.title,
                                     status="draft",
                                     summary_prompt=source["summary_prompt"],
@@ -1436,6 +1438,11 @@ class AgentCanvasCommandRepository:
                         str(source["creative_role"]) == "character"
                         and source_content.get("character_asset_kind") == "identity_master"
                     )
+                    storyboard_video_sequence_id = (
+                        source_metadata.get("source_sequence_id")
+                        if str(source["creative_role"]) == "storyboard_video"
+                        else None
+                    )
                     variation = (
                         connection.execute(
                             select(AgentCanvasVariationDraftRow).where(
@@ -1474,7 +1481,12 @@ class AgentCanvasCommandRepository:
                         metadata=(
                             {**source_metadata, "character_pair_id": character_pair_id}
                             if character_pair_id is not None
-                            else {}
+                            else (
+                                {"source_sequence_id": storyboard_video_sequence_id}
+                                if isinstance(storyboard_video_sequence_id, str)
+                                and storyboard_video_sequence_id
+                                else {}
+                            )
                         ),
                         prompt_context_snapshot_id=None,
                         output_asset_id=None,
@@ -1497,6 +1509,7 @@ class AgentCanvasCommandRepository:
                             node_type=sibling.node_type,
                             creative_role=sibling.creative_role,
                             role_contract_version=sibling.role_contract_version,
+                            execution_mode="generative",
                             title=sibling.title,
                             status=sibling.status,
                             summary_prompt=sibling.summary_prompt,
@@ -1617,6 +1630,7 @@ class AgentCanvasCommandRepository:
                                 node_type=turnaround.node_type,
                                 creative_role=turnaround.creative_role,
                                 role_contract_version=turnaround.role_contract_version,
+                                execution_mode="generative",
                                 title=turnaround.title,
                                 status=turnaround.status,
                                 summary_prompt=turnaround.summary_prompt,

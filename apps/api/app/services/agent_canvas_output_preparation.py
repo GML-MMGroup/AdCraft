@@ -28,8 +28,13 @@ class AgentCanvasOutputPreparationService:
         *,
         fingerprint: str,
     ) -> PreparedNodeResultV2:
-        effects = _effects(context, outcome)
+        effects = _effects(context)
         if outcome.media is not None:
+            effective_parameters = (
+                context.effective_parameters.effective
+                if context.effective_parameters is not None
+                else context.node.parameters
+            )
             prepared = self._assets.prepare_generated_bytes(
                 context.node.workflow_id,
                 node_id=context.node.node_id,
@@ -43,6 +48,10 @@ class AgentCanvasOutputPreparationService:
                     **generated_asset_publication_metadata(context),
                     **outcome.media.metadata,
                 },
+                require_native_audio=(
+                    context.node.node_type == "video"
+                    and effective_parameters.get("generate_audio") is True
+                ),
             )
             return prepared.model_copy(
                 update={
@@ -63,10 +72,7 @@ class AgentCanvasOutputPreparationService:
 
 def _effects(
     context: NodeExecutionContext,
-    outcome: NodeExecutionOutcome,
 ) -> tuple[PreparedPostReadyEffectV2, ...]:
-    if outcome.provider_task_id is not None:
-        return ()
     if context.node.node_type == "script":
         return (
             PreparedPostReadyEffectV2(

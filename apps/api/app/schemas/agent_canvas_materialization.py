@@ -16,10 +16,8 @@ from app.schemas.agent_canvas_ad_media import (
     VideoSegmentContentV2,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_creative_session import (
-    ProposedDraftReferenceV2,
-    ScriptDraftContentV2,
-)
+from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
+from app.schemas.agent_canvas_requirements import DurationSecondsValueV1
 from app.schemas.agent_canvas_world_setting import WorldSettingCoreV2
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.language import BCP47Tag
@@ -36,6 +34,15 @@ class SelectedConceptOptionV1(_MaterializationModel):
     key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
         min_length=1, max_length=6
     )
+    custom_text: str | None = Field(default=None, max_length=2_048)
+
+
+class SelectedProposalCardV2(_MaterializationModel):
+    """Selected public card carried into private post-selection authoring."""
+
+    option_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=64)
+    public_summary: str = Field(min_length=1, max_length=240)
     custom_text: str | None = Field(default=None, max_length=2_048)
 
 
@@ -99,7 +106,7 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
     stage_revision: int = Field(default=1, ge=1)
@@ -147,7 +154,7 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
     stage_revision: int = Field(default=1, ge=1)
@@ -223,7 +230,7 @@ class CapabilityMaterializationContextV1(_MaterializationModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     capability_id: CapabilityIdV1
-    selected_option: SelectedConceptOptionV1
+    selected_option: SelectedConceptOptionV1 | SelectedProposalCardV2
     creative_goal: str = Field(min_length=1, max_length=4_096)
     explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)
     shared_summary: str = Field(default="", max_length=8_192)
@@ -261,8 +268,13 @@ class WorldSettingMaterializationResultV1(_MaterializationResultBaseV1):
     structured_content: WorldSettingMaterializationContentV1
 
 
+class ScriptMaterializationContentV1(_MaterializationModel):
+    content: str = Field(min_length=1, max_length=32_768)
+    total_duration_seconds: DurationSecondsValueV1
+
+
 class ScriptMaterializationResultV1(_MaterializationResultBaseV1):
-    structured_content: ScriptDraftContentV2
+    structured_content: ScriptMaterializationContentV1
 
 
 class ProductMaterializationResultV1(_MaterializationResultBaseV1):

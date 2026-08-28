@@ -12,6 +12,9 @@ from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.event_repository import EventRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
@@ -42,6 +45,7 @@ from app.services.agent_working_documents import AgentWorkingDocumentService
 from app.services.agent_canvas_guided_production_closure import (
     GuidedProductionClosureService,
 )
+from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 
 
 class GuidedEditingPreparationService:
@@ -57,6 +61,7 @@ class GuidedEditingPreparationService:
         asset_resolver=None,
         closure: GuidedProductionClosureService | None = None,
         receipts: AgentCanvasProductionClosureRepository | None = None,
+        requirements: AgentCanvasRequirementRepository | None = None,
         clock=lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
@@ -67,6 +72,8 @@ class GuidedEditingPreparationService:
         self._closure = closure
         self._receipts = receipts
         self._clock = clock
+        self._requirements = requirements or AgentCanvasRequirementRepository(workflows.database)
+        self._duration_authority = GuidedDurationAuthorityPolicy()
 
     def prepare(
         self,
@@ -76,27 +83,18 @@ class GuidedEditingPreparationService:
         expected_plan_revision: int,
     ) -> EditingPreparationResultV2:
         agent_run_id = "guided_editing_preparation"
-        if self._closure is not None and self._receipts is not None:
-            existing_preparation = self._receipts.find_preparation(
+        existing_preparation = (
+            self._receipts.find_preparation(
                 workflow_id,
                 plan_document_id,
                 expected_plan_revision,
             )
-            if existing_preparation is not None:
-                return self._preparation_result(existing_preparation, replayed=True)
-        closure_plan = (
-            self._closure.freeze(
-                workflow_id,
-                plan_document_id,
-                expected_plan_revision=expected_plan_revision,
-            )
-            if self._closure is not None
+            if self._closure is not None and self._receipts is not None
             else None
         )
         plan_document = self._documents.get_document(workflow_id, plan_document_id)
-        if (
-            plan_document.kind != "storyboard_production_plan"
-            or plan_document.revision != expected_plan_revision
+        if plan_document.kind != "storyboard_production_plan" or (
+            existing_preparation is None and plan_document.revision != expected_plan_revision
         ):
             raise V2PersistenceError(
                 "editing_preparation_plan_conflict",
@@ -113,6 +111,21 @@ class GuidedEditingPreparationService:
                 "Editing preparation requires a Storyboard production plan.",
                 stage="guided_editing_preparation",
             )
+        self._duration_authority.validate_plan(
+            self._requirements.get_current(workflow_id),
+            plan,
+        )
+        if existing_preparation is not None:
+            return self._preparation_result(existing_preparation, replayed=True)
+        closure_plan = (
+            self._closure.freeze(
+                workflow_id,
+                plan_document_id,
+                expected_plan_revision=expected_plan_revision,
+            )
+            if self._closure is not None
+            else None
+        )
         plan_records = _plan_node_records(plan)
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}

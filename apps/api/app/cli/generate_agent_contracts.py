@@ -20,6 +20,7 @@ from app.schemas import agent_canvas_guided_interactions
 from app.schemas import agent_canvas_production_journey
 from app.schemas import agent_canvas_production_closure
 from app.schemas import agent_canvas_prompt_preparation
+from app.schemas import agent_canvas_prompt_assertion
 from app.schemas import agent_canvas_role_prompt_preparation
 from app.schemas import agent_canvas_capabilities
 from app.schemas import agent_canvas_materialization
@@ -68,6 +69,9 @@ CONTRACT_MODELS = (
     agent_canvas_guided_interactions.GuidanceAwaitingV2,
     agent_canvas_guided_interactions.GuidedInteractionSubmissionRecordV1,
     agent_canvas_prompt_preparation.NodePromptPreparationV1,
+    agent_canvas_prompt_assertion.PromptAssertionSourceSnapshotV1,
+    agent_canvas_prompt_assertion.PromptAssertionEvidenceV1,
+    agent_canvas_prompt_assertion.ProviderPromptAssertionEvidenceV1,
     agent_canvas_role_prompt_preparation.RoleBindingSnapshotV2,
     agent_canvas_role_prompt_preparation.RoleBoundTextControlV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationContextV2,
@@ -280,6 +284,7 @@ CONTRACT_MODELS = (
     agent_canvas_materialization.CapabilityMaterializationExecutionResultV1,
     agent_canvas_materialization.WorldSettingMaterializationContentV1,
     agent_canvas_materialization.QuickMediaMaterializationContentV1,
+    agent_canvas_materialization.ScriptMaterializationContentV1,
     agent_canvas_materialization.WorldSettingMaterializationResultV1,
     agent_canvas_materialization.ScriptMaterializationResultV1,
     agent_canvas_materialization.ProductMaterializationResultV1,

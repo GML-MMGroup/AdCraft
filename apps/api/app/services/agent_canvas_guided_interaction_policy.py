@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.schemas.agent_canvas_requirements import CapabilityRequirementProjectionV1
+from app.schemas.agent_canvas_requirements import (
+    CapabilityRequirementProjectionV1,
+)
 
 
 @dataclass(frozen=True)
@@ -23,14 +25,16 @@ class GuidedInteractionPolicyService:
         *,
         default_candidate_count: int,
     ) -> GuidedInteractionPolicyDecision:
-        if any(directive.strength == "hard" for directive in projection.relevant_directives):
+        if default_candidate_count not in {1, 3}:
+            raise ValueError("Capability policy candidate count must be one or three.")
+        if default_candidate_count == 1:
             return GuidedInteractionPolicyDecision(
                 candidate_count=1,
                 requires_concept_interaction=False,
-                reason="explicit_ledger_direction",
+                reason="single_candidate_capability",
             )
         return GuidedInteractionPolicyDecision(
-            candidate_count=max(2, default_candidate_count),
+            candidate_count=3,
             requires_concept_interaction=True,
-            reason="creative_direction_ambiguous",
+            reason="normal_guided_proposal",
         )

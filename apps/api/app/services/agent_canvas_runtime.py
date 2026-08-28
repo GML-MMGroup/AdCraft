@@ -34,6 +34,9 @@ from app.schemas.agent_canvas_runtime import (
     NodeRuntimeV2,
     ResolvedModelExecutionV1,
 )
+from app.schemas.agent_canvas_prompt_assertion import (
+    safe_provider_prompt_assertion_metadata,
+)
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.schemas.agent_canvas_world_setting import (
@@ -67,6 +70,7 @@ from app.services.agent_canvas_output_preparation import (
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
+from app.services.agent_canvas_prompt_assertion_policy import prompt_assertion_admission_error
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
@@ -183,6 +187,17 @@ class AgentCanvasRunService:
                 raise _run_error(reason, _skip_message(reason))
             else:
                 skipped.append(CanvasRunSkippedNodeV2(node_id=node.node_id, reason=reason))
+        if not accepted:
+            return CanvasRunAcceptedV2(
+                workflow_id=workflow_id,
+                execution_id=f"skipped:{_fingerprint(request)}",
+                status="completed",
+                accepted_node_ids=(),
+                joined_node_ids=(),
+                skipped=tuple(skipped),
+                waiting_node_ids=(),
+                events_cursor=self._events.max_seq(workflow_id),
+            )
         now = self._clock()
         snapshot_service = self._run_snapshots or AgentCanvasRunIntentSnapshotService(
             self._workflows,
@@ -363,6 +378,13 @@ class DynamicCanvasScheduler:
                     if context.model_resolution is not None:
                         event_payload["model_resolution"] = context.model_resolution.model_dump(
                             mode="json"
+                        )
+                    if (
+                        context.compiled_prompt is not None
+                        and context.compiled_prompt.assertion_evidence is not None
+                    ):
+                        event_payload["prompt_assertion_evidence"] = (
+                            context.compiled_prompt.assertion_evidence.model_dump(mode="json")
                         )
                     self._workflows.set_node_runtime_state(
                         current.workflow_id,
@@ -647,6 +669,12 @@ class DynamicCanvasScheduler:
                             "reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
                         }
                     )
+                    if compiled_prompt.assertion_evidence is not None:
+                        prompt_metadata.update(
+                            safe_provider_prompt_assertion_metadata(
+                                compiled_prompt.assertion_evidence
+                            )
+                        )
                     if node.creative_role == "character":
                         prompt_metadata.update(
                             {
@@ -1338,6 +1366,8 @@ class CanvasRuntimeSnapshotService:
 
 
 def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
+    if getattr(node, "execution_mode", "generative") == "source_only":
+        return "source_only_node_not_runnable"
     if node.node_type == "editing":
         return "node_not_runnable"
     if node.status == "ready":
@@ -1346,18 +1376,26 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "node_already_working"
     if node.status == "failed" and not request.retry_failed:
         return "failed_node_retry_required"
-    if node.prompt_preparation.status != "ready" or not _prompt_recipe_is_current(node):
+    if node.prompt_preparation.status != "ready":
         return "node_prompt_preparation_incomplete"
+    assertion_error = prompt_assertion_admission_error(node)
+    if assertion_error is not None:
+        return assertion_error
+    if not _prompt_recipe_is_current(node):
+        return "node_prompt_assertion_contract_invalid"
     return None
 
 
 def _skip_message(reason: str) -> str:
     return {
+        "source_only_node_not_runnable": "Source-only nodes cannot be run.",
         "node_not_runnable": "Node type cannot be run.",
         "node_already_ready": "Ready nodes are not rerun in place.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
         "node_prompt_preparation_incomplete": "Node prompt preparation is not ready.",
+        "node_prompt_assertion_evidence_missing": "Current prompt assertion evidence is required.",
+        "node_prompt_assertion_contract_invalid": "Prompt assertion evidence does not match current authority.",
     }[reason]
 
 

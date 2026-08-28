@@ -15,6 +15,17 @@ class BindingValidationState:
     binding_kind: str
 
 
+def require_node_runnable(node: object) -> None:
+    """Reject imported source-only nodes at every generation boundary."""
+
+    if getattr(node, "execution_mode", "generative") == "source_only":
+        raise V2PersistenceError(
+            "source_only_node_not_runnable",
+            "Source-only nodes are previewable inputs and cannot be generated.",
+            stage="agent_canvas_authoring_validation",
+        )
+
+
 def validate_node_patch(
     *,
     status: str,

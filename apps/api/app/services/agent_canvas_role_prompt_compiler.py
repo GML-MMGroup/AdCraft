@@ -7,6 +7,7 @@ import json
 import re
 
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
     CharacterDesignAssetContentV2,
@@ -36,6 +37,11 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     StoryboardGridRoleBriefV2,
     VideoSegmentRoleBriefV2,
     WorldViewRoleBriefV2,
+)
+from app.services.agent_canvas_prompt_assertion_policy import (
+    PRODUCT_MULTIVIEW_VIEWS,
+    PromptAssertionPolicyRegistry,
+    source_snapshots_from_context,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_role_reference_policy import (
@@ -100,6 +106,7 @@ class AgentCanvasRolePromptCompiler:
     def __init__(self, registry: RolePromptRecipeRegistry | None = None) -> None:
         self._registry = registry or RolePromptRecipeRegistry()
         self._reference_policy = AgentCanvasRoleReferencePolicyService()
+        self._assertion_policies = PromptAssertionPolicyRegistry()
 
     def compile(
         self,
@@ -112,7 +119,17 @@ class AgentCanvasRolePromptCompiler:
         if concrete_brief.role_variant != context.role_variant:
             raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
         recipe = self._registry.resolve(context.role_variant)
+        policy = self._assertion_policies.resolve_for_video_audio(
+            recipe.recipe_id,
+            recipe.recipe_version,
+            native_audio_required=(
+                context.role_variant == "video_segment"
+                and any(item.name == "generate_audio" and item.value is True for item in parameters)
+            ),
+        )
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
+        if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
+            concrete_brief = concrete_brief.model_copy(update={"views": PRODUCT_MULTIVIEW_VIEWS})
         prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
         if context.style_projection:
@@ -125,6 +142,23 @@ class AgentCanvasRolePromptCompiler:
         )
         if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
+        prompt = f"{prompt}\n\n{policy.assertion_block}"
+        if context.role_variant == "script":
+            duration = context.explicit_controls.get("duration_seconds")
+            if (
+                isinstance(duration, bool)
+                or not isinstance(duration, (int, float))
+                or not 1 <= float(duration) <= 3_600
+            ):
+                raise _error(
+                    "production_duration_required",
+                    "Canonical production duration is required before Script preparation.",
+                )
+            duration_text = f"{float(duration):g}"
+            prompt = f"{prompt}\nCanonical production duration: exactly {duration_text} seconds."
+        policy_negative = " ".join(policy.negative_clauses)
+        if policy_negative and policy_negative not in negative:
+            negative = f"{negative} {policy_negative}".strip()
         structured = _structured_content(concrete_brief, context)
         context_payload = context.model_dump(mode="json")
         brief_payload = concrete_brief.model_dump(mode="json")
@@ -134,6 +168,54 @@ class AgentCanvasRolePromptCompiler:
         style_digest = _digest(context.style_projection or "")
         brief_digest = _digest(brief_payload)
         prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
+        prepared_prompt_digest = sha256(prompt.encode("utf-8")).hexdigest()
+        sequence_value = context.storyboard_parameters.get("sequence_id")
+        sequence_id = sequence_value if isinstance(sequence_value, str) else None
+        available_purposes = {item.reference_purpose for item in context.bindings}
+        if not set(policy.required_reference_purposes) <= available_purposes:
+            raise _error(
+                "node_prompt_assertion_contract_invalid",
+                "Required prompt assertion reference authority is missing.",
+            )
+        if not set(policy.required_document_kinds) <= set(context.document_revisions):
+            raise _error(
+                "node_prompt_assertion_contract_invalid",
+                "Required prompt assertion document authority is missing.",
+            )
+        if policy.required_document_kinds and not context.storyboard_parameters.get(
+            "storyboard_production_plan_id"
+        ):
+            raise _error(
+                "node_prompt_assertion_contract_invalid",
+                "Required prompt assertion document identity is missing.",
+            )
+        if policy.sequence_scoped and not sequence_id:
+            raise _error(
+                "node_prompt_assertion_contract_invalid",
+                "Sequence-scoped prompt assertion authority is missing.",
+            )
+        if policy.sequence_scoped and any(
+            item.reference_purpose == "storyboard_grid" and item.source_sequence_id != sequence_id
+            for item in context.bindings
+        ):
+            raise _error(
+                "node_prompt_assertion_contract_invalid",
+                "Storyboard Grid sequence does not match the target Video sequence.",
+            )
+        assertion_evidence = PromptAssertionEvidenceV1.build(
+            policy_ref=policy.policy_ref,
+            policy_version=policy.policy_version,
+            policy_digest=policy.policy_digest,
+            recipe_id=recipe.recipe_id,
+            recipe_version=recipe.recipe_version,
+            assertion_ids=policy.assertion_ids,
+            assertion_block_digest=policy.assertion_block_digest,
+            prepared_prompt_digest=prepared_prompt_digest,
+            source_snapshots=source_snapshots_from_context(context),
+            document_revisions=context.document_revisions,
+            sequence_id=sequence_id,
+            engine_owned_fields_digest=policy.engine_owned_fields_digest,
+        )
         return CompiledNodePromptV2(
             role_variant=context.role_variant,
             recipe_id=recipe.recipe_id,
@@ -152,6 +234,7 @@ class AgentCanvasRolePromptCompiler:
             role_reference_policy_version=(
                 role_policy.policy_version if role_policy is not None else None
             ),
+            assertion_evidence=assertion_evidence,
         )
 
     @staticmethod

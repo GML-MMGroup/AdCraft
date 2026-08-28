@@ -23,7 +23,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "world_setting",
         "world_setting",
-        "WorldSettingProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_world_setting",
         "world_setting",
         "World Setting Designer",
@@ -31,7 +31,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "product_design",
         "product",
-        "ProductProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_product_design",
         "product",
         "Product Designer",
@@ -39,7 +39,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "prop_design",
         "prop",
-        "PropProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_prop_design",
         "prop",
         "Prop Designer",
@@ -47,7 +47,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "character_design",
         "character",
-        "CharacterProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_character_design",
         "character",
         "Character Designer",
@@ -55,7 +55,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "scene_design",
         "scene",
-        "SceneProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_scene_design",
         "scene",
         "Scene Designer",
@@ -63,7 +63,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "script_authoring",
         "script",
-        "ScriptProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_script_authoring",
         "script",
         "Script Writer",
@@ -71,7 +71,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "storyboard_design",
         "storyboard",
-        "StoryboardProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_storyboard_design",
         "storyboard",
         "Storyboard Artist",
@@ -79,7 +79,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "video_direction",
         "video",
-        "VideoProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_video_direction",
         "video",
         "Video Director",
@@ -87,7 +87,7 @@ _CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
     (
         "bgm_direction",
         "bgm",
-        "BgmProposalResultV1",
+        "GuidedProposalAuthoringResultV4",
         "video_agent_bgm_direction",
         "bgm",
         "BGM Director",
@@ -104,6 +104,7 @@ def _definition(
     internal_skill_id: str | None = None,
     style_projection_role: str | None = None,
     display_name: str | None = None,
+    validation_profile: str | None = None,
 ) -> VideoAgentOperationDefinitionV1:
     return VideoAgentOperationDefinitionV1(
         operation=operation,
@@ -113,6 +114,7 @@ def _definition(
         context_contract_name=context_contract_name,
         result_contract_name=result_contract_name,
         display_name=display_name,
+        validation_profile=validation_profile,
     )
 
 
@@ -129,6 +131,7 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
                     internal_skill_id=skill,
                     style_projection_role=style_role,
                     display_name=display,
+                    validation_profile="proposal_candidate_count_v1",
                 )
             )
     return tuple(definitions)

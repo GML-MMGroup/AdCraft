@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 
 import OpenAI from "openai";
 
+import {
+  chatCompletionChunkFailure,
+  normalizeChatCompletionChunk,
+} from "./chat-completion-chunk-normalizer.js";
 import type {
   AgentRunRequest,
   AgentStructuredValidationAttemptAuditV1,
@@ -16,13 +20,17 @@ import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
 import type { PreparedStructuredModelInput } from "./structured-model-input.js";
 
 
-export interface StructuredCompletionRequest {
+interface StructuredCompletionRequestBase {
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
-  readonly stream: false;
   readonly max_tokens: number;
   readonly enable_thinking: boolean;
   readonly thinking_budget?: number;
+}
+
+export interface NonStreamingStructuredCompletionRequest
+  extends StructuredCompletionRequestBase {
+  readonly stream: false;
   readonly tools?: ReadonlyArray<{
     readonly type: "function";
     readonly function: {
@@ -36,6 +44,28 @@ export interface StructuredCompletionRequest {
     readonly function: { readonly name: "submit_structured_result" };
   };
   readonly response_format?: { readonly type: "json_object" };
+}
+
+export interface StreamingJsonCompletionRequest
+  extends StructuredCompletionRequestBase {
+  readonly stream: true;
+  readonly response_format: { readonly type: "json_object" };
+  readonly tools?: never;
+  readonly tool_choice?: never;
+}
+
+export type StructuredCompletionRequest =
+  | NonStreamingStructuredCompletionRequest
+  | StreamingJsonCompletionRequest;
+
+export interface StreamingJsonTransportMetadata {
+  readonly response_activity_observed: boolean;
+  readonly first_content_at: string | null;
+  readonly last_activity_at: string | null;
+  readonly completed_at: string;
+  readonly response_bytes: number;
+  readonly finish_reason: string | null;
+  readonly provider_trace_id: string | null;
 }
 
 export interface StructuredCompletionResponse {
@@ -57,6 +87,7 @@ export interface StructuredCompletionResponse {
     readonly total_tokens?: number;
     readonly completion_tokens_details?: { readonly reasoning_tokens?: number };
   } | null;
+  readonly transport_metadata?: StreamingJsonTransportMetadata;
 }
 
 export type StructuredCompletionExecutor = (
@@ -66,6 +97,7 @@ export type StructuredCompletionExecutor = (
     readonly baseUrl: string;
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
+    readonly maxOutputBytes?: number;
   },
 ) => Promise<StructuredCompletionResponse>;
 
@@ -117,7 +149,8 @@ export class PiStructuredTransportRouter {
     const policy = input.credential.execution_policy;
     if (
       policy.structured_transport !== "non_streaming_tool_call" &&
-      policy.structured_transport !== "non_streaming_json_object"
+      policy.structured_transport !== "non_streaming_json_object" &&
+      policy.structured_transport !== "streaming_json_object"
     ) {
       throw new AgentOperationFailure(
         "agent_model_capability_mismatch",
@@ -142,7 +175,7 @@ export class PiStructuredTransportRouter {
           validationAttempts,
         });
       }
-    } else if (policy.structured_transport === "non_streaming_json_object") {
+    } else if (isJsonObjectTransport(policy.structured_transport)) {
       validation = malformedJsonValidation();
     } else {
       validation = missingStructuredResultValidation();
@@ -304,9 +337,12 @@ export class PiStructuredTransportRouter {
         baseUrl: input.credential.base_url,
         signal: input.signal,
         timeoutMs,
+        maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
       });
-      const firstResponseAt = this.#now().toISOString();
-      const finishedAt = this.#now().toISOString();
+      const firstResponseAt =
+        response.transport_metadata?.first_content_at ?? this.#now().toISOString();
+      const finishedAt =
+        response.transport_metadata?.completed_at ?? this.#now().toISOString();
       const toolCallId = matchingToolCall(response)?.id;
       return {
         response,
@@ -353,6 +389,7 @@ export async function executeOpenAICompletion(
     readonly baseUrl: string;
     readonly signal: AbortSignal;
     readonly timeoutMs: number;
+    readonly maxOutputBytes?: number;
   },
 ): Promise<StructuredCompletionResponse> {
   const client = new OpenAI({
@@ -361,10 +398,148 @@ export async function executeOpenAICompletion(
     maxRetries: 0,
     timeout: options.timeoutMs,
   });
-  return await client.chat.completions.create(
-    request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
-    { signal: options.signal },
+  if (!request.stream) {
+    return await client.chat.completions.create(
+      request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+      { signal: options.signal },
+    );
+  }
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(options.signal.reason);
+  options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  const timer = setTimeout(
+    () => controller.abort(new DOMException("Agent provider request timed out.", "TimeoutError")),
+    options.timeoutMs,
   );
+  try {
+    const stream = await client.chat.completions.create(
+      request as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+      { signal: controller.signal },
+    );
+    return await aggregateStreamingJsonCompletion(stream as AsyncIterable<unknown>, {
+      signal: controller.signal,
+      maxOutputBytes: options.maxOutputBytes ?? 262_144,
+    });
+  } finally {
+    clearTimeout(timer);
+    options.signal.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+export async function aggregateStreamingJsonCompletion(
+  stream: AsyncIterable<unknown>,
+  options: {
+    readonly signal: AbortSignal;
+    readonly maxOutputBytes: number;
+    readonly now?: () => Date;
+  },
+): Promise<StructuredCompletionResponse> {
+  const now = options.now ?? (() => new Date());
+  const iterator = stream[Symbol.asyncIterator]();
+  let content = "";
+  let responseBytes = 0;
+  let responseActivityObserved = false;
+  let firstContentAt: string | null = null;
+  let lastActivityAt: string | null = null;
+  let finishReason: string | null = null;
+  let providerTraceId: string | null = null;
+  let terminal = false;
+  try {
+    while (true) {
+      const item = await abortableNext(iterator, options.signal);
+      if (item.done) break;
+      responseActivityObserved = true;
+      const observedAt = now().toISOString();
+      lastActivityAt = observedAt;
+      if (terminal) {
+        throw chatCompletionChunkFailure(
+          "agent_provider_transport_failed",
+          "stream_chunk_after_terminal",
+        );
+      }
+      const parsed = normalizeChatCompletionChunk(item.value);
+      providerTraceId =
+        boundedProviderTrace(parsed.providerTraceId) ?? providerTraceId;
+      if (responseBytes + parsed.responseBytes > options.maxOutputBytes) {
+        throw chatCompletionChunkFailure(
+          "agent_provider_transport_failed",
+          "stream_response_bytes_exceeded",
+        );
+      }
+      responseBytes += parsed.responseBytes;
+      if (parsed.content !== null) {
+        if (firstContentAt === null && parsed.content.length > 0) {
+          firstContentAt = observedAt;
+        }
+        content += parsed.content;
+      }
+      if (parsed.finishReason !== null) {
+        finishReason = parsed.finishReason;
+        terminal = true;
+      }
+    }
+    if (!terminal) {
+      throw chatCompletionChunkFailure(
+        "agent_provider_transport_failed",
+        "stream_terminal_missing",
+      );
+    }
+    if (content.length === 0) {
+      throw chatCompletionChunkFailure(
+        "agent_structured_output_invalid",
+        "stream_content_missing",
+      );
+    }
+    const completedAt = now().toISOString();
+    return {
+      id: providerTraceId,
+      choices: [{ finish_reason: finishReason, message: { content } }],
+      transport_metadata: {
+        response_activity_observed: responseActivityObserved,
+        first_content_at: firstContentAt,
+        last_activity_at: lastActivityAt,
+        completed_at: completedAt,
+        response_bytes: responseBytes,
+        finish_reason: finishReason,
+        provider_trace_id: providerTraceId,
+      },
+    };
+  } catch (error) {
+    if (error && typeof error === "object") {
+      Object.assign(error, {
+        response_started: responseActivityObserved,
+        first_response_at: firstContentAt,
+        last_activity_at: lastActivityAt,
+        response_bytes: responseBytes,
+        provider_trace_id: providerTraceId,
+      });
+    }
+    throw error;
+  } finally {
+    try {
+      await iterator.return?.();
+    } catch {
+      // Stream cleanup cannot replace the authoritative transport outcome.
+    }
+  }
+}
+
+async function abortableNext(
+  iterator: AsyncIterator<unknown>,
+  signal: AbortSignal,
+): Promise<IteratorResult<unknown>> {
+  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  return await new Promise<IteratorResult<unknown>>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    void iterator.next().then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
+}
+
+function boundedProviderTrace(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value.slice(0, 160) : null;
 }
 
 export function buildPrimaryStructuredCompletionRequest(
@@ -374,8 +549,7 @@ export function buildPrimaryStructuredCompletionRequest(
   >,
 ): StructuredCompletionRequest {
   if (
-    input.credential.execution_policy.structured_transport ===
-    "non_streaming_json_object"
+    isJsonObjectTransport(input.credential.execution_policy.structured_transport)
   ) {
     return {
       model: input.credential.model_id,
@@ -390,7 +564,9 @@ export function buildPrimaryStructuredCompletionRequest(
         },
         { role: "user", content: input.userPrompt },
       ],
-      stream: false,
+      stream:
+        input.credential.execution_policy.structured_transport ===
+        "streaming_json_object",
       max_tokens: input.credential.execution_policy.max_output_tokens,
       ...reasoningPayload(input.credential.execution_policy),
       response_format: { type: "json_object" },
@@ -445,8 +621,9 @@ function primaryValue(
   input: StructuredTransportRunInput,
   response: StructuredCompletionResponse,
 ): Readonly<Record<string, unknown>> | undefined {
-  return input.credential.execution_policy.structured_transport ===
-    "non_streaming_json_object"
+  return isJsonObjectTransport(
+    input.credential.execution_policy.structured_transport,
+  )
     ? repairContent(response)
     : primaryToolArguments(response);
 }
@@ -511,7 +688,9 @@ function repairPayload(
         ].join("\n\n"),
       },
     ],
-    stream: false,
+    stream:
+      input.credential.execution_policy.structured_transport ===
+      "streaming_json_object",
     max_tokens: input.credential.execution_policy.max_output_tokens,
     enable_thinking: false,
     response_format: { type: "json_object" },
@@ -528,6 +707,11 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
       ? { thinking_budget: policy.thinking_budget_tokens }
       : {}),
   };
+}
+
+function isJsonObjectTransport(transport: string): boolean {
+  return transport === "non_streaming_json_object" ||
+    transport === "streaming_json_object";
 }
 
 function matchingToolCall(response: StructuredCompletionResponse) {
@@ -626,15 +810,20 @@ function auditForAttempt(
     effective_timeout_ms: attempt.effectiveTimeoutMs ?? 0,
     request_bytes: requestByteCount(input),
     schema_bytes: schemaByteCount(input),
-    response_activity_observed: true,
+    response_bytes: attempt.response.transport_metadata?.response_bytes ?? null,
+    response_activity_observed:
+      attempt.response.transport_metadata?.response_activity_observed ?? true,
     attempt_stage: attempt.attemptStage ?? "initial",
     started_at: startedAt,
     first_response_at: attempt.firstResponseAt,
-    last_activity_at: attempt.finishedAt,
+    last_activity_at:
+      attempt.response.transport_metadata?.last_activity_at ?? attempt.finishedAt,
     finished_at: attempt.finishedAt,
     duration_ms: elapsedMilliseconds(startedAt, attempt.finishedAt),
-    finish_reason: choice?.finish_reason ?? null,
-    provider_trace_id: attempt.response.id ?? null,
+    finish_reason:
+      attempt.response.transport_metadata?.finish_reason ?? choice?.finish_reason ?? null,
+    provider_trace_id:
+      attempt.response.transport_metadata?.provider_trace_id ?? attempt.response.id ?? null,
     input_tokens: usage?.prompt_tokens ?? null,
     output_tokens: usage?.completion_tokens ?? null,
     reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens ?? null,
@@ -769,6 +958,32 @@ function normalizeTransportFailure(
       manualRetryable,
     );
   }
+  if (
+    error &&
+    typeof error === "object" &&
+    (error as { readonly code?: unknown }).code === "agent_model_capability_mismatch"
+  ) {
+    return new AgentOperationFailure(
+      "agent_model_capability_mismatch",
+      "agent_model_capability_mismatch",
+      false,
+      stage,
+      attemptMetadata,
+    );
+  }
+  if (
+    error &&
+    typeof error === "object" &&
+    (error as { readonly code?: unknown }).code === "agent_structured_output_invalid"
+  ) {
+    return new AgentOperationFailure(
+      "agent_structured_output_invalid",
+      "agent_structured_output_invalid",
+      manualRetryable,
+      stage,
+      attemptMetadata,
+    );
+  }
   if (error instanceof AgentOperationFailure) return error;
   return new AgentOperationFailure(
     "agent_provider_transport_failed",
@@ -827,6 +1042,7 @@ function failureMetadata(
     effective_timeout_ms: Math.max(0, Math.round(effectiveTimeoutMs)),
     request_bytes: requestByteCount(input),
     schema_bytes: schemaByteCount(input),
+    response_bytes: safeResponseBytes(error),
     response_activity_observed: responseActivityObserved(error),
     attempt_stage: stage,
     started_at: startedAt,
@@ -840,6 +1056,34 @@ function failureMetadata(
     ...(shape.safeErrorCode ? { safe_error_code: shape.safeErrorCode } : {}),
     ...(shape.httpStatus ? { http_status: shape.httpStatus } : {}),
     ...(shape.providerTraceId ? { provider_trace_id: shape.providerTraceId } : {}),
+    ...safeActivityTimes(error),
+  };
+}
+
+function safeResponseBytes(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as { readonly response_bytes?: unknown }).response_bytes;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? Math.min(value, 4_194_304)
+    : null;
+}
+
+function safeActivityTimes(error: unknown): {
+  readonly first_response_at?: string;
+  readonly last_activity_at?: string;
+} {
+  if (!error || typeof error !== "object") return {};
+  const value = error as {
+    readonly first_response_at?: unknown;
+    readonly last_activity_at?: unknown;
+  };
+  return {
+    ...(typeof value.first_response_at === "string"
+      ? { first_response_at: value.first_response_at }
+      : {}),
+    ...(typeof value.last_activity_at === "string"
+      ? { last_activity_at: value.last_activity_at }
+      : {}),
   };
 }
 

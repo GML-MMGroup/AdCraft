@@ -1638,7 +1638,8 @@
             "json_object",
             "non_streaming_json_object",
             "non_streaming_tool_call",
-            "streamed_tool_call"
+            "streamed_tool_call",
+            "streaming_json_object"
           ],
           "title": "Structured Transport",
           "type": "string"
@@ -2335,15 +2336,65 @@
       "title": "AgentPlacementHintV2",
       "type": "object"
     },
-    "AgentProviderConformanceInputV1": {
+    "AgentProviderConformanceBudgetPlanV1": {
       "additionalProperties": false,
       "properties": {
-        "diagnostic_case_budget": {
-          "default": 6,
-          "maximum": 6,
-          "minimum": 1,
-          "title": "Diagnostic Case Budget",
+        "budget_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Budget Version",
+          "type": "string"
+        },
+        "child_timeout_ms": {
+          "minimum": 1000,
+          "title": "Child Timeout Ms",
           "type": "integer"
+        },
+        "exact_case_timeout_ms": {
+          "maximum": 900000,
+          "minimum": 1000,
+          "title": "Exact Case Timeout Ms",
+          "type": "integer"
+        },
+        "isolation_case_timeout_ms": {
+          "maximum": 60000,
+          "minimum": 1000,
+          "title": "Isolation Case Timeout Ms",
+          "type": "integer"
+        },
+        "lease_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Lease Duration Seconds",
+          "type": "integer"
+        },
+        "matrix_timeout_ms": {
+          "minimum": 1000,
+          "title": "Matrix Timeout Ms",
+          "type": "integer"
+        },
+        "maximum_submissions": {
+          "const": 6,
+          "default": 6,
+          "title": "Maximum Submissions",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "child_timeout_ms",
+        "exact_case_timeout_ms",
+        "isolation_case_timeout_ms",
+        "lease_duration_seconds",
+        "matrix_timeout_ms"
+      ],
+      "title": "AgentProviderConformanceBudgetPlanV1",
+      "type": "object"
+    },
+    "AgentProviderConformanceInputV2": {
+      "additionalProperties": false,
+      "properties": {
+        "budget_plan": {
+          "$ref": "#/$defs/AgentProviderConformanceBudgetPlanV1"
         },
         "evidence_destination_id": {
           "maxLength": 160,
@@ -2360,18 +2411,19 @@
           "type": "string"
         },
         "schema_version": {
-          "const": "1",
-          "default": "1",
+          "const": "2",
+          "default": "2",
           "title": "Schema Version",
           "type": "string"
         }
       },
       "required": [
+        "budget_plan",
         "evidence_destination_id",
         "frozen_agent_request",
         "frozen_agent_request_digest"
       ],
-      "title": "AgentProviderConformanceInputV1",
+      "title": "AgentProviderConformanceInputV2",
       "type": "object"
     },
     "AgentReferenceSummary": {
@@ -4032,6 +4084,20 @@
           "title": "Response Activity Observed",
           "type": "boolean"
         },
+        "response_bytes": {
+          "anyOf": [
+            {
+              "maximum": 4194304,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Bytes"
+        },
         "safe_error_code": {
           "anyOf": [
             {
@@ -4080,7 +4146,8 @@
             "json_object",
             "non_streaming_json_object",
             "non_streaming_tool_call",
-            "streamed_tool_call"
+            "streamed_tool_call",
+            "streaming_json_object"
           ],
           "title": "Structured Transport",
           "type": "string"
@@ -5332,7 +5399,7 @@
             "$ref": "#/$defs/BgmProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -5684,6 +5751,15 @@
             }
           ],
           "default": null
+        },
+        "execution_mode": {
+          "default": "generative",
+          "enum": [
+            "generative",
+            "source_only"
+          ],
+          "title": "Execution Mode",
+          "type": "string"
         },
         "generation_prompt": {
           "anyOf": [
@@ -6313,6 +6389,19 @@
           "default": null,
           "title": "Source Action"
         },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
         "source_turn_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -6487,8 +6576,10 @@
           "title": "Creative Role"
         },
         "default_candidate_count": {
-          "maximum": 3,
-          "minimum": 1,
+          "enum": [
+            1,
+            3
+          ],
           "title": "Default Candidate Count",
           "type": "integer"
         },
@@ -6678,6 +6769,12 @@
           "title": "Approved Reference Ids",
           "type": "array"
         },
+        "candidate_count": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
         "capability_context": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -6767,6 +6864,7 @@
         }
       },
       "required": [
+        "candidate_count",
         "capability_id",
         "context_kind",
         "context_snapshot_digest",
@@ -6863,7 +6961,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "shared_summary": {
           "default": "",
@@ -7067,7 +7173,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "selection_actor": {
           "enum": [
@@ -8139,7 +8253,7 @@
             "$ref": "#/$defs/CharacterProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -8918,6 +9032,9 @@
     "CompiledNodePromptV2": {
       "additionalProperties": false,
       "properties": {
+        "assertion_evidence": {
+          "$ref": "#/$defs/PromptAssertionEvidenceV1"
+        },
         "brief_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Brief Digest",
@@ -9033,6 +9150,7 @@
         }
       },
       "required": [
+        "assertion_evidence",
         "brief_digest",
         "context_digest",
         "prompt",
@@ -13510,6 +13628,110 @@
       "title": "GuidedProductionJourneyV2",
       "type": "object"
     },
+    "GuidedProposalAuthoringOptionV4": {
+      "additionalProperties": false,
+      "description": "Safety-bounded creative text projected into a public Proposal Card.",
+      "properties": {
+        "public_summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "GuidedProposalAuthoringOptionV4",
+      "type": "object"
+    },
+    "GuidedProposalAuthoringResultV4": {
+      "additionalProperties": false,
+      "description": "Exact-three authoring result for normal guided Proposal operations.",
+      "properties": {
+        "options": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalAuthoringOptionV4"
+            }
+          ],
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "GuidedProposalAuthoringResultV4",
+      "type": "object"
+    },
+    "GuidedProposalCardOptionV3": {
+      "additionalProperties": false,
+      "description": "Compact public option for a normal guided creative choice.",
+      "properties": {
+        "public_summary": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "GuidedProposalCardOptionV3",
+      "type": "object"
+    },
+    "GuidedProposalCardResultV3": {
+      "additionalProperties": false,
+      "description": "Exact-three public proposal output for normal guided authoring.",
+      "properties": {
+        "options": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/GuidedProposalCardOptionV3"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalCardOptionV3"
+            },
+            {
+              "$ref": "#/$defs/GuidedProposalCardOptionV3"
+            }
+          ],
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "GuidedProposalCardResultV3",
+      "type": "object"
+    },
     "GuidedQuestionAnswerV1": {
       "additionalProperties": false,
       "properties": {
@@ -15563,6 +15785,17 @@
     "NodePromptPreparationV1": {
       "additionalProperties": false,
       "properties": {
+        "assertion_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PromptAssertionEvidenceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "attempt_no": {
           "minimum": 0,
           "title": "Attempt No",
@@ -16944,7 +17177,7 @@
             "$ref": "#/$defs/ProductProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -17054,6 +17287,282 @@
         "workflow_id"
       ],
       "title": "ProjectCreativeMemoryV2",
+      "type": "object"
+    },
+    "PromptAssertionEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_block_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Assertion Block Digest",
+          "type": "string"
+        },
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "maxProperties": 16,
+          "title": "Document Revisions",
+          "type": "object"
+        },
+        "engine_owned_fields_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Engine Owned Fields Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "policy_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Policy Ref",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prepared_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Prepared Prompt Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "source_snapshots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PromptAssertionSourceSnapshotV1"
+          },
+          "maxItems": 64,
+          "title": "Source Snapshots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "assertion_block_digest",
+        "assertion_ids",
+        "engine_owned_fields_digest",
+        "evidence_digest",
+        "policy_digest",
+        "policy_ref",
+        "policy_version",
+        "prepared_prompt_digest",
+        "recipe_id",
+        "recipe_version"
+      ],
+      "title": "PromptAssertionEvidenceV1",
+      "type": "object"
+    },
+    "PromptAssertionSourceSnapshotV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Version Id"
+        },
+        "binding_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "binding_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Revision"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "document_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Revision"
+        },
+        "reference_purpose": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Purpose"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "source_kind": {
+          "enum": [
+            "binding",
+            "document",
+            "sequence"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Revision"
+        }
+      },
+      "required": [
+        "source_kind"
+      ],
+      "title": "PromptAssertionSourceSnapshotV1",
       "type": "object"
     },
     "PropCountControlPatchV1": {
@@ -17290,7 +17799,7 @@
             "$ref": "#/$defs/PropProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -17342,6 +17851,50 @@
         "palette"
       ],
       "title": "PropRoleBriefV2",
+      "type": "object"
+    },
+    "ProposalCardOptionV2": {
+      "additionalProperties": false,
+      "description": "The only model-authored fields allowed in a public Proposal Card.",
+      "properties": {
+        "public_summary": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_summary",
+        "title"
+      ],
+      "title": "ProposalCardOptionV2",
+      "type": "object"
+    },
+    "ProposalCardResultV2": {
+      "additionalProperties": false,
+      "description": "Compact proposal output; Python owns count and option identities.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/ProposalCardOptionV2"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "ProposalCardResultV2",
       "type": "object"
     },
     "ProposalPublicationEnvelopeV1": {
@@ -17482,7 +18035,15 @@
           "type": "string"
         },
         "selected_option": {
-          "$ref": "#/$defs/SelectedConceptOptionV1"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedConceptOptionV1"
+            },
+            {
+              "$ref": "#/$defs/SelectedProposalCardV2"
+            }
+          ],
+          "title": "Selected Option"
         },
         "selection_actor": {
           "enum": [
@@ -17881,6 +18442,89 @@
         "source_kind"
       ],
       "title": "ProposedDraftReferenceV2",
+      "type": "object"
+    },
+    "ProviderPromptAssertionEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_block_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Assertion Block Digest",
+          "type": "string"
+        },
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "policy_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Policy Ref",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "preparation_evidence_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Preparation Evidence Digest",
+          "type": "string"
+        },
+        "prepared_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Prepared Prompt Digest",
+          "type": "string"
+        },
+        "provider_prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Provider Prompt Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assertion_block_digest",
+        "assertion_ids",
+        "policy_digest",
+        "policy_ref",
+        "policy_version",
+        "preparation_evidence_digest",
+        "prepared_prompt_digest",
+        "provider_prompt_digest",
+        "recipe_id",
+        "recipe_version"
+      ],
+      "title": "ProviderPromptAssertionEvidenceV1",
       "type": "object"
     },
     "QuickMediaAgentContext": {
@@ -19591,6 +20235,20 @@
           ],
           "default": null,
           "title": "Source Role"
+        },
+        "source_sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Sequence Id"
         }
       },
       "required": [
@@ -20468,7 +21126,7 @@
             "$ref": "#/$defs/SceneProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -20495,11 +21153,34 @@
       "title": "ScriptDraftContentV2",
       "type": "object"
     },
+    "ScriptMaterializationContentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "total_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Total Duration Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "content",
+        "total_duration_seconds"
+      ],
+      "title": "ScriptMaterializationContentV1",
+      "type": "object"
+    },
     "ScriptMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
         "structured_content": {
-          "$ref": "#/$defs/ScriptDraftContentV2"
+          "$ref": "#/$defs/ScriptMaterializationContentV1"
         },
         "summary_prompt": {
           "maxLength": 8192,
@@ -20563,7 +21244,7 @@
             "$ref": "#/$defs/ScriptProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -20745,6 +21426,50 @@
         "title"
       ],
       "title": "SelectedConceptOptionV1",
+      "type": "object"
+    },
+    "SelectedProposalCardV2": {
+      "additionalProperties": false,
+      "description": "Selected public card carried into private post-selection authoring.",
+      "properties": {
+        "custom_text": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Text"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "public_summary": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Public Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "public_summary",
+        "title"
+      ],
+      "title": "SelectedProposalCardV2",
       "type": "object"
     },
     "SetAspectRatioDecisionEffectV1": {
@@ -22201,7 +22926,7 @@
           "type": "integer"
         },
         "narrative_outline": {
-          "maxLength": 16384,
+          "maxLength": 65536,
           "minLength": 1,
           "title": "Narrative Outline",
           "type": "string"
@@ -22277,7 +23002,7 @@
           "$ref": "#/$defs/StoryboardPlanGlobalParametersV2"
         },
         "narrative_outline": {
-          "maxLength": 16384,
+          "maxLength": 65536,
           "minLength": 1,
           "title": "Narrative Outline",
           "type": "string"
@@ -22315,6 +23040,15 @@
           "default": "3",
           "title": "Schema Version",
           "type": "string"
+        },
+        "segment_materializations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryboardSegmentMaterializationV3"
+          },
+          "maxItems": 128,
+          "title": "Segment Materializations",
+          "type": "array"
         },
         "segments": {
           "items": {
@@ -22388,7 +23122,7 @@
             "$ref": "#/$defs/StoryboardProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -22535,6 +23269,51 @@
         "sequence_id"
       ],
       "title": "StoryboardSegmentMaterializationV2",
+      "type": "object"
+    },
+    "StoryboardSegmentMaterializationV3": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "materialization_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Materialization Id",
+          "type": "string"
+        },
+        "sequence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Sequence Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "materialized",
+            "pending"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "materialization_id",
+        "sequence_id"
+      ],
+      "title": "StoryboardSegmentMaterializationV3",
       "type": "object"
     },
     "StoryboardSequenceCountControlPatchV1": {
@@ -24813,6 +25592,20 @@
           ],
           "default": null,
           "title": "Style Projection Role"
+        },
+        "validation_profile": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Profile"
         }
       },
       "required": [
@@ -25146,7 +25939,7 @@
             "$ref": "#/$defs/VideoProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -25893,7 +26686,7 @@
             "$ref": "#/$defs/WorldSettingProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 3,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }
@@ -26083,6 +26876,9 @@
     "DecisionBundleDraftV1",
     "RoleCreativeBriefV2",
     "WorldSettingProposalResultV1",
+    "ProposalCardResultV2",
+    "GuidedProposalAuthoringResultV4",
+    "GuidedProposalCardResultV3",
     "ProductProposalResultV1",
     "PropProposalResultV1",
     "CharacterProposalResultV1",
@@ -26142,7 +26938,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "decide_turn_intent",
       "result_contract_name": "CompactTurnIntentDecisionV3",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26153,7 +26950,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "decide_next_action",
       "result_contract_name": "NextActionCommandV1",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26164,7 +26962,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "command_replan",
       "result_contract_name": "AgentCommandPlanDraftV2",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26175,7 +26974,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "workflow_conversation",
       "result_contract_name": "WorkflowConversationReply",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26186,7 +26986,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "conversation_summary",
       "result_contract_name": "ConversationSummaryResult",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26197,7 +26998,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "author_decision_bundle",
       "result_contract_name": "DecisionBundleDraftV1",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26208,7 +27010,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "author_role_brief",
       "result_contract_name": "RoleCreativeBriefV2",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": "storyboard_design",
@@ -26219,7 +27022,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "plan_storyboard_sequence_outline",
       "result_contract_name": "StoryboardSequenceOutlineDraftV2",
-      "style_projection_role": "storyboard"
+      "style_projection_role": "storyboard",
+      "validation_profile": null
     },
     {
       "capability_id": "storyboard_design",
@@ -26230,7 +27034,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "materialize_storyboard_segment",
       "result_contract_name": "StoryboardSegmentMaterializationDraftV2",
-      "style_projection_role": "storyboard"
+      "style_projection_role": "storyboard",
+      "validation_profile": null
     },
     {
       "capability_id": "script_authoring",
@@ -26241,7 +27046,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "author_guided_script_checkpoint",
       "result_contract_name": "ScriptMaterializationResultV1",
-      "style_projection_role": "script"
+      "style_projection_role": "script",
+      "validation_profile": null
     },
     {
       "capability_id": "world_setting",
@@ -26251,8 +27057,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_world_setting_options",
-      "result_contract_name": "WorldSettingProposalResultV1",
-      "style_projection_role": "world_setting"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "world_setting",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "world_setting",
@@ -26262,8 +27069,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_world_setting_options",
-      "result_contract_name": "WorldSettingProposalResultV1",
-      "style_projection_role": "world_setting"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "world_setting",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "product_design",
@@ -26273,8 +27081,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_product_options",
-      "result_contract_name": "ProductProposalResultV1",
-      "style_projection_role": "product"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "product",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "product_design",
@@ -26284,8 +27093,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_product_options",
-      "result_contract_name": "ProductProposalResultV1",
-      "style_projection_role": "product"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "product",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "prop_design",
@@ -26295,8 +27105,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_prop_options",
-      "result_contract_name": "PropProposalResultV1",
-      "style_projection_role": "prop"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "prop",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "prop_design",
@@ -26306,8 +27117,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_prop_options",
-      "result_contract_name": "PropProposalResultV1",
-      "style_projection_role": "prop"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "prop",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "character_design",
@@ -26317,8 +27129,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_character_options",
-      "result_contract_name": "CharacterProposalResultV1",
-      "style_projection_role": "character"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "character",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "character_design",
@@ -26328,8 +27141,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_character_options",
-      "result_contract_name": "CharacterProposalResultV1",
-      "style_projection_role": "character"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "character",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "scene_design",
@@ -26339,8 +27153,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_scene_options",
-      "result_contract_name": "SceneProposalResultV1",
-      "style_projection_role": "scene"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "scene",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "scene_design",
@@ -26350,8 +27165,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_scene_options",
-      "result_contract_name": "SceneProposalResultV1",
-      "style_projection_role": "scene"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "scene",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "script_authoring",
@@ -26361,8 +27177,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_script_options",
-      "result_contract_name": "ScriptProposalResultV1",
-      "style_projection_role": "script"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "script",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "script_authoring",
@@ -26372,8 +27189,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_script_options",
-      "result_contract_name": "ScriptProposalResultV1",
-      "style_projection_role": "script"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "script",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "storyboard_design",
@@ -26383,8 +27201,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_storyboard_options",
-      "result_contract_name": "StoryboardProposalResultV1",
-      "style_projection_role": "storyboard"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "storyboard",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "storyboard_design",
@@ -26394,8 +27213,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_storyboard_options",
-      "result_contract_name": "StoryboardProposalResultV1",
-      "style_projection_role": "storyboard"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "storyboard",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "video_direction",
@@ -26405,8 +27225,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_video_options",
-      "result_contract_name": "VideoProposalResultV1",
-      "style_projection_role": "video"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "video",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "video_direction",
@@ -26416,8 +27237,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_video_options",
-      "result_contract_name": "VideoProposalResultV1",
-      "style_projection_role": "video"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "video",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "bgm_direction",
@@ -26427,8 +27249,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "propose_bgm_options",
-      "result_contract_name": "BgmProposalResultV1",
-      "style_projection_role": "bgm"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "bgm",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "bgm_direction",
@@ -26438,8 +27261,9 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "revise_bgm_options",
-      "result_contract_name": "BgmProposalResultV1",
-      "style_projection_role": "bgm"
+      "result_contract_name": "GuidedProposalAuthoringResultV4",
+      "style_projection_role": "bgm",
+      "validation_profile": "proposal_candidate_count_v1"
     },
     {
       "capability_id": "quick_media",
@@ -26450,7 +27274,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "free_image",
       "result_contract_name": "V2QuickMediaPromptPlan",
-      "style_projection_role": "quick_media"
+      "style_projection_role": "quick_media",
+      "validation_profile": null
     },
     {
       "capability_id": "quick_media",
@@ -26461,7 +27286,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "free_video",
       "result_contract_name": "V2QuickMediaPromptPlan",
-      "style_projection_role": "quick_media"
+      "style_projection_role": "quick_media",
+      "validation_profile": null
     },
     {
       "capability_id": "quick_media",
@@ -26472,7 +27298,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "free_audio",
       "result_contract_name": "V2QuickMediaPromptPlan",
-      "style_projection_role": "quick_media"
+      "style_projection_role": "quick_media",
+      "validation_profile": null
     },
     {
       "capability_id": "quick_media",
@@ -26483,7 +27310,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "materialize_quick_media",
       "result_contract_name": "QuickMediaMaterializationResultV1",
-      "style_projection_role": "quick_media"
+      "style_projection_role": "quick_media",
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26494,7 +27322,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "execute_canvas_text",
       "result_contract_name": "AgentCanvasTextOutput",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": "script_authoring",
@@ -26505,7 +27334,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "execute_canvas_script",
       "result_contract_name": "AgentCanvasScriptOutput",
-      "style_projection_role": "script"
+      "style_projection_role": "script",
+      "validation_profile": null
     },
     {
       "capability_id": "video_direction",
@@ -26516,7 +27346,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "compile_video_parameters",
       "result_contract_name": "VideoParameterIntentV3",
-      "style_projection_role": "video"
+      "style_projection_role": "video",
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26527,7 +27358,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "workflow_creation",
       "result_contract_name": "FrontDeskIntentOutput",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": null,
@@ -26538,7 +27370,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "intent_contract_planner",
       "result_contract_name": "V2IntentPlan",
-      "style_projection_role": null
+      "style_projection_role": null,
+      "validation_profile": null
     },
     {
       "capability_id": "script_authoring",
@@ -26549,7 +27382,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "script_writer",
       "result_contract_name": "V2ScriptPlanV2",
-      "style_projection_role": "script"
+      "style_projection_role": "script",
+      "validation_profile": null
     },
     {
       "capability_id": "script_authoring",
@@ -26560,7 +27394,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "script_edit_normalization",
       "result_contract_name": "V2EditableScriptDocument",
-      "style_projection_role": "script"
+      "style_projection_role": "script",
+      "validation_profile": null
     },
     {
       "capability_id": "product_design",
@@ -26571,7 +27406,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "product_expert_brief",
       "result_contract_name": "V2ProductExpertPlan",
-      "style_projection_role": "product"
+      "style_projection_role": "product",
+      "validation_profile": null
     },
     {
       "capability_id": "character_design",
@@ -26582,7 +27418,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "character_expert_brief",
       "result_contract_name": "V2CharacterExpertPlan",
-      "style_projection_role": "character"
+      "style_projection_role": "character",
+      "validation_profile": null
     },
     {
       "capability_id": "scene_design",
@@ -26593,7 +27430,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "scene_expert_brief",
       "result_contract_name": "V2SceneExpertPlan",
-      "style_projection_role": "scene"
+      "style_projection_role": "scene",
+      "validation_profile": null
     },
     {
       "capability_id": "bgm_direction",
@@ -26604,7 +27442,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "bgm_expert_brief",
       "result_contract_name": "V2BgmExpertPlan",
-      "style_projection_role": "bgm"
+      "style_projection_role": "bgm",
+      "validation_profile": null
     },
     {
       "capability_id": "product_design",
@@ -26615,7 +27454,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "product_prompt",
       "result_contract_name": "V2ProductPromptPlan",
-      "style_projection_role": "product"
+      "style_projection_role": "product",
+      "validation_profile": null
     },
     {
       "capability_id": "character_design",
@@ -26626,7 +27466,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "character_prompt",
       "result_contract_name": "V2CharacterPromptPlan",
-      "style_projection_role": "character"
+      "style_projection_role": "character",
+      "validation_profile": null
     },
     {
       "capability_id": "scene_design",
@@ -26637,7 +27478,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "scene_prompt",
       "result_contract_name": "V2ScenePromptPlan",
-      "style_projection_role": "scene"
+      "style_projection_role": "scene",
+      "validation_profile": null
     },
     {
       "capability_id": "storyboard_design",
@@ -26648,7 +27490,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "storyboard_prompt",
       "result_contract_name": "V2ShotCellPromptPlan",
-      "style_projection_role": "storyboard"
+      "style_projection_role": "storyboard",
+      "validation_profile": null
     },
     {
       "capability_id": "storyboard_design",
@@ -26659,7 +27502,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "storyboard_detail",
       "result_contract_name": "V2StoryboardDetailPlan",
-      "style_projection_role": "storyboard"
+      "style_projection_role": "storyboard",
+      "validation_profile": null
     },
     {
       "capability_id": "video_direction",
@@ -26670,7 +27514,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "shot_video_prompt",
       "result_contract_name": "V2ShotVideoPromptPlan",
-      "style_projection_role": "video"
+      "style_projection_role": "video",
+      "validation_profile": null
     },
     {
       "capability_id": "bgm_direction",
@@ -26681,7 +27526,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "bgm_prompt",
       "result_contract_name": "V2BgmPromptPlan",
-      "style_projection_role": "bgm"
+      "style_projection_role": "bgm",
+      "validation_profile": null
     },
     {
       "capability_id": "world_setting",
@@ -26692,7 +27538,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "visual_style_scope_repair",
       "result_contract_name": "V2VisualStyleScopeRepairOutput",
-      "style_projection_role": "world_setting"
+      "style_projection_role": "world_setting",
+      "validation_profile": null
     },
     {
       "capability_id": "character_design",
@@ -26703,7 +27550,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "revise_character_asset",
       "result_contract_name": "SpecialistResult",
-      "style_projection_role": "character"
+      "style_projection_role": "character",
+      "validation_profile": null
     },
     {
       "capability_id": "scene_design",
@@ -26714,7 +27562,8 @@
       "max_skill_context_bytes": 8192,
       "operation": "revise_scene_asset",
       "result_contract_name": "SpecialistResult",
-      "style_projection_role": "scene"
+      "style_projection_role": "scene",
+      "validation_profile": null
     }
   ]
 }

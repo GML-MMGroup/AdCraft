@@ -19,6 +19,12 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedMediaReviewV1,
     GuidanceAwaitingV2,
 )
+from app.schemas.agent_canvas_media_review_authority import (
+    CanvasPostReadyEffectDispositionV1,
+    CanvasExecutionResultLineageV2,
+    GuidedMediaReviewPublicationCommandV1,
+)
+from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
 from app.schemas.agent_canvas import (
     CanvasVariationDraftUpsertV2,
     CanvasVariationMaterializeRequestV2,
@@ -59,29 +65,215 @@ class GuidedMediaReviewCoordinator:
         plans,
         assets,
         confirmations: GuidedMediaConfirmationService,
+        result_commits=None,
         receipts=None,
         events=None,
         resume_media_confirmation: Callable[[str], None] | None = None,
         node_resolver: Callable[[str, str], object] | None = None,
+        execution_settings: Callable[[str], object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
         self._plans = plans
         self._assets = assets
         self._confirmations = confirmations
+        self._result_commits = result_commits
         self._receipts = receipts
         self._events = events
         self._resume_media_confirmation = resume_media_confirmation
         self._node_resolver = node_resolver
+        self._execution_settings = execution_settings
 
     def on_node_ready(self, node) -> tuple[str, ...]:
-        return self._on_node_ready(node, reconcile_current=True)
+        return self._on_node_ready(
+            node,
+            reconcile_current=True,
+            require_terminal_wait=True,
+        )
+
+    def publish_from_effect(
+        self,
+        effect: CanvasPostReadyEffectV2,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        """Publish review authority from one immutable terminal result effect."""
+
+        if self._result_commits is None:
+            raise _error(
+                "guided_media_result_lineage_invalid",
+                "Result lineage repository is not configured.",
+            )
+        lineage = self._result_commits.get_lineage(effect.source_commit_id)
+        if (
+            lineage.workflow_id != effect.workflow_id
+            or lineage.node_id != effect.node_id
+            or lineage.outcome != "succeeded"
+            or lineage.asset_id is None
+            or lineage.asset_version_id is None
+        ):
+            raise _error(
+                "guided_media_result_lineage_invalid",
+                "Post-Ready result lineage does not match the effect.",
+            )
+        node = (
+            self._node_resolver(effect.workflow_id, effect.node_id) if self._node_resolver else None
+        )
+        session = self._conversations.get_guidance_session_or_none(effect.workflow_id)
+        plan, record = _find_plan_record(self._plans, effect.workflow_id, effect.node_id)
+        if node is None or session is None or plan is None or record is None:
+            return CanvasPostReadyEffectDispositionV1(
+                outcome="superseded",
+                reason_code="not_current_guided_media",
+            )
+        awaiting = getattr(session, "awaiting", None)
+        if (
+            awaiting is None
+            or awaiting.kind != "manual_node_run"
+            or awaiting.resume_policy != "node_terminal"
+            or effect.node_id not in awaiting.node_ids
+        ):
+            if (
+                awaiting is not None
+                and awaiting.kind == "media_review"
+                and awaiting.interaction_id
+                == _review_identity(
+                    effect.source_commit_id,
+                    plan.document_id,
+                    plan.revision,
+                    node.node_id,
+                    lineage.asset_version_id,
+                )[0]
+            ):
+                return CanvasPostReadyEffectDispositionV1(
+                    outcome="already_applied",
+                    reason_code="media_review_already_published",
+                    interaction_id=awaiting.interaction_id,
+                )
+            if awaiting is None and self._is_automatic_mode(effect.workflow_id):
+                if node.output_asset_id != lineage.asset_id or node.status != "ready":
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="superseded",
+                        reason_code="current_output_replaced",
+                    )
+                return self._delegate_result_confirmation(
+                    effect=effect,
+                    lineage=lineage,
+                    node=node,
+                    session=session,
+                    plan=plan,
+                    record=record,
+                )
+            return CanvasPostReadyEffectDispositionV1(
+                outcome="superseded",
+                reason_code="current_wait_replaced",
+            )
+        if node.output_asset_id != lineage.asset_id or node.status != "ready":
+            return CanvasPostReadyEffectDispositionV1(
+                outcome="superseded",
+                reason_code="current_output_replaced",
+            )
+        review_id, checkpoint_id, awaiting_id = _review_identity(
+            effect.source_commit_id,
+            plan.document_id,
+            plan.revision,
+            node.node_id,
+            lineage.asset_version_id,
+        )
+        actions = (
+            ("accept", "retry", "replace")
+            if record.node_role == "storyboard_grid"
+            else ("accept", "retry", "replace", "exclude")
+        )
+        command = GuidedMediaReviewPublicationCommandV1(
+            lineage=lineage,
+            session_id=session.session_id,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            planned_node_role=record.node_role,
+            planned_sequence_id=record.sequence_id,
+            planned_node_revision=record.node_revision,
+            current_node_revision=node.revision,
+            asset_id=lineage.asset_id,
+            asset_version_id=lineage.asset_version_id,
+            expected_awaiting_id=awaiting.awaiting_id,
+            expected_awaiting_node_ids=awaiting.node_ids,
+            expected_session_revision=session.revision,
+            expected_stage=session.journey.stage,
+            expected_stage_revision=session.journey.stage_revision,
+            interaction_id=review_id,
+            checkpoint_id=checkpoint_id,
+            review_awaiting_id=awaiting_id,
+            response_locale=session.response_locale,
+            title=node.title,
+            summary=node.title,
+            allowed_actions=actions,
+        )
+        try:
+            return self._interactions.publish_media_review_from_result(command)
+        except V2PersistenceError as error:
+            if error.code == "guidance_revision_conflict":
+                return CanvasPostReadyEffectDispositionV1(
+                    outcome="deferred",
+                    reason_code="guided_interaction_conflict",
+                )
+            if error.code in {
+                "execution_result_lineage_not_found",
+                "execution_result_lineage_unavailable",
+            }:
+                raise _error(
+                    "guided_media_result_lineage_invalid",
+                    "Current Guided media result lineage could not be resolved.",
+                ) from error
+            raise
+
+    def _is_automatic_mode(self, workflow_id: str) -> bool:
+        if self._execution_settings is None:
+            return False
+        setting = self._execution_settings(workflow_id)
+        return getattr(setting, "media_execution_mode", None) == "automatic"
+
+    def _delegate_result_confirmation(
+        self,
+        *,
+        effect: CanvasPostReadyEffectV2,
+        lineage: CanvasExecutionResultLineageV2,
+        node,
+        session,
+        plan,
+        record,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        review_id, _checkpoint_id, _awaiting_id = _review_identity(
+            effect.source_commit_id,
+            plan.document_id,
+            plan.revision,
+            node.node_id,
+            lineage.asset_version_id,
+        )
+        result = self._confirmations.confirm_result(
+            workflow_id=effect.workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+            node_id=node.node_id,
+            expected_node_revision=node.revision,
+            asset_id=lineage.asset_id,
+            asset_version_id=lineage.asset_version_id,
+            accepted_by="agent",
+            action_id=f"delegated-media-review:{review_id}",
+            decision_id="accept",
+        )
+        if self._resume_media_confirmation is not None:
+            self._resume_media_confirmation(result.confirmation.confirmation_id)
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="automatic_media_result_confirmed",
+        )
 
     def _on_node_ready(
         self,
         node,
         *,
         reconcile_current: bool,
+        require_terminal_wait: bool,
+        allow_result_revision_advance: bool = False,
     ) -> tuple[str, ...]:
         session = self._conversations.get_guidance_session_or_none(node.workflow_id)
         if session is None or node.output_asset_id is None:
@@ -93,6 +285,37 @@ class GuidedMediaReviewCoordinator:
             "bgm",
         }:
             return ()
+        review_revision = getattr(node, "metadata", {}).get("guided_review_node_revision")
+        if allow_result_revision_advance:
+            review_revision = node.revision
+        elif review_revision is None:
+            if record.node_revision != node.revision:
+                return ()
+        elif review_revision != node.revision:
+            return ()
+        current_awaiting = getattr(session, "awaiting", None)
+        if require_terminal_wait:
+            if (
+                current_awaiting is None
+                or current_awaiting.kind != "manual_node_run"
+                or current_awaiting.resume_policy != "node_terminal"
+                or node.node_id not in current_awaiting.node_ids
+                or not self._manual_wait_is_ready(
+                    node.workflow_id,
+                    current_awaiting.node_ids,
+                )
+            ):
+                return ()
+            self._interactions.resume_awaiting(
+                node.workflow_id,
+                GuidanceAwaitingResumeProofV2(
+                    awaiting_id=current_awaiting.awaiting_id,
+                    expected_session_revision=session.revision,
+                    evidence_kind="node_terminal",
+                    node_ids=current_awaiting.node_ids,
+                ),
+            )
+            session = self._conversations.get_guidance_session(node.workflow_id)
         asset = self._assets(node.output_asset_id)
         logical_identity = ":".join(
             (
@@ -133,25 +356,6 @@ class GuidedMediaReviewCoordinator:
                     )
                 )
             return created_node_ids
-
-        current_awaiting = getattr(session, "awaiting", None)
-        if (
-            current_awaiting is not None
-            and current_awaiting.kind == "manual_node_run"
-            and node.node_id in current_awaiting.node_ids
-        ):
-            if not self._manual_wait_is_ready(node.workflow_id, current_awaiting.node_ids):
-                return ()
-            self._interactions.resume_awaiting(
-                node.workflow_id,
-                GuidanceAwaitingResumeProofV2(
-                    awaiting_id=current_awaiting.awaiting_id,
-                    expected_session_revision=session.revision,
-                    evidence_kind="node_terminal",
-                    node_ids=current_awaiting.node_ids,
-                ),
-            )
-            session = self._conversations.get_guidance_session(node.workflow_id)
 
         interaction_id = f"interaction_media_{review_id}"
         now = datetime.now(timezone.utc)
@@ -253,7 +457,45 @@ class GuidedMediaReviewCoordinator:
                     asset=asset,
                 ):
                     continue
-                created_node_ids.extend(self._on_node_ready(node, reconcile_current=False))
+                if self._result_commits is not None:
+                    effect = self._result_commits.find_latest_post_ready_effect(
+                        workflow_id=workflow_id,
+                        node_id=record.node_id,
+                    )
+                    if (
+                        effect is not None
+                        and self._is_automatic_mode(workflow_id)
+                        and record.node_role in {"video_segment", "bgm"}
+                    ):
+                        self._confirmations.confirm_result(
+                            workflow_id=workflow_id,
+                            plan_document_id=plan.document_id,
+                            expected_plan_revision=plan.revision,
+                            node_id=node.node_id,
+                            expected_node_revision=node.revision,
+                            asset_id=asset.asset_id,
+                            asset_version_id=asset.version_id or "",
+                            accepted_by="agent",
+                            action_id=(
+                                "automatic-media-reconciliation:"
+                                f"{plan.document_id}:{plan.revision}:"
+                                f"{node.node_id}:{asset.version_id}"
+                            ),
+                            decision_id="accept",
+                        )
+                        confirmations = self._receipts.list_confirmations(workflow_id)
+                        continue
+                    if effect is not None and session.awaiting is not None:
+                        self.publish_from_effect(effect)
+                    elif effect is not None:
+                        created_node_ids.extend(
+                            self._on_node_ready(
+                                node,
+                                reconcile_current=False,
+                                require_terminal_wait=False,
+                                allow_result_revision_advance=True,
+                            )
+                        )
                 if not (
                     session.creative_authority is not None
                     and session.creative_authority.authority == "director"
@@ -600,6 +842,24 @@ class GuidedMediaPlanActionService:
 def action_receipt_id(action: str, interaction_id: str, idempotency_key: str) -> str:
     value = f"{action}:{interaction_id}:{idempotency_key}"
     return f"media_action_{sha256(value.encode()).hexdigest()[:32]}"
+
+
+def _review_identity(
+    source_commit_id: str,
+    plan_document_id: str,
+    plan_revision: int,
+    node_id: str,
+    version_id: str,
+) -> tuple[str, str, str]:
+    logical_identity = ":".join(
+        (plan_document_id, str(plan_revision), node_id, version_id, source_commit_id)
+    )
+    digest = sha256(logical_identity.encode()).hexdigest()[:32]
+    return (
+        f"interaction_media_{digest}",
+        f"checkpoint_media_{digest}",
+        f"awaiting_media_{digest}",
+    )
 
 
 def _v3_plan(content) -> StoryboardProductionPlanContentV3:

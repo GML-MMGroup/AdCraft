@@ -8,7 +8,21 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionEvidenceV1,
+    PromptAssertionSourceSnapshotV1,
+    ProviderPromptAssertionEvidenceV1,
+    prompt_assertion_evidence_digest,
+)
 from app.schemas.agent_canvas_role_prompt_preparation import ResolvedNodeParameterV2
+
+__all__ = (
+    "NodePromptPreparationV1",
+    "PromptAssertionEvidenceV1",
+    "PromptAssertionSourceSnapshotV1",
+    "ProviderPromptAssertionEvidenceV1",
+    "prompt_assertion_evidence_digest",
+)
 
 
 class NodePromptPreparationV1(BaseModel):
@@ -33,6 +47,7 @@ class NodePromptPreparationV1(BaseModel):
     )
     brief_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     parameter_origins: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
+    assertion_evidence: PromptAssertionEvidenceV1 | None = None
     attempt_stage: str | None = Field(default=None, max_length=80)
     error: CanvasNodeErrorV2 | None = None
     updated_at: datetime

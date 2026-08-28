@@ -80,7 +80,7 @@ def stage_authoring_context_from_materialization(
             option_id=selected.option_id,
             title=selected.title,
             public_summary=selected.public_summary,
-            key_decisions=selected.key_decisions,
+            key_decisions=tuple(getattr(selected, "key_decisions", ())),
         ),
         style_snapshot_id=style_snapshot_id,
         internal_skill_ref=_SKILL_REFS[context.capability_id],

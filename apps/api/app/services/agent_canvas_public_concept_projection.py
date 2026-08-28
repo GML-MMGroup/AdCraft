@@ -13,7 +13,6 @@ from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 _TITLE_LIMIT = 64
 _SUMMARY_LIMIT = 240
-_SENTENCE_TERMINATORS = frozenset(".!?。！？")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +65,9 @@ class AgentCanvasPublicConceptProjector:
     ) -> ConceptProposalV2:
         """Return a public Proposal copy without changing persisted private facts."""
 
+        if len(proposal.options) == 1:
+            return self.project_direct_proposal(proposal, response_locale=response_locale)
+
         option_ids = tuple(option.option_id for option in proposal.options)
         projection = self.project(
             options=proposal.options,
@@ -83,6 +85,32 @@ class AgentCanvasPublicConceptProjector:
                     )
                     for option in projection.options
                 )
+            }
+        )
+
+    def project_direct_proposal(
+        self,
+        proposal: ConceptProposalV2,
+        *,
+        response_locale: str,
+    ) -> ConceptProposalV2:
+        """Project one private direct-materialization handle without actions."""
+
+        if len(proposal.options) != 1:
+            raise _error("A direct concept handle requires exactly one option.")
+        option = proposal.options[0]
+        compact_option = ConceptOptionRecordV2(
+            option_id=option.option_id,
+            title=_compact_text(option.title, limit=_TITLE_LIMIT),
+            public_summary=_compact_summary(option.public_summary),
+            key_decisions=(),
+        )
+        self._locale_resolver.resolve(response_locale)
+        return proposal.model_copy(
+            update={
+                "options": (compact_option,),
+                "actions": (),
+                "proposed_references": (),
             }
         )
 
@@ -109,16 +137,7 @@ def _compact_summary(value: object) -> str:
     text = " ".join(str(value).split())
     if not text:
         raise _error("Public concept summary cannot be empty.")
-    sentence_count = 0
-    boundary = len(text)
-    for index, character in enumerate(text):
-        if character not in _SENTENCE_TERMINATORS:
-            continue
-        sentence_count += 1
-        if sentence_count == 2:
-            boundary = index + 1
-            break
-    return _compact_text(text[:boundary], limit=_SUMMARY_LIMIT)
+    return _compact_text(text, limit=_SUMMARY_LIMIT)
 
 
 def _error(message: str) -> V2PersistenceError:

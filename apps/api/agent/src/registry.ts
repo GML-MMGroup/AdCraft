@@ -34,6 +34,7 @@ export interface OperationDescriptor {
   readonly capability_id: CapabilityId | null;
   readonly context_contract_name: string;
   readonly result_contract_name: string;
+  readonly validation_profile: string | null;
   readonly required_skill: string | null;
   readonly style_projection_role: string | null;
   readonly display_name: string | null;
@@ -49,18 +50,19 @@ interface OperationMetadata {
   readonly required_skill?: string;
   readonly style_projection_role?: string;
   readonly display_name?: string;
+  readonly validation_profile?: string;
 }
 
 const capabilityDefinitions = [
-  ["world_setting", "world_setting", "WorldSettingProposalResultV1", "video_agent_world_setting", "World Setting Designer"],
-  ["product_design", "product", "ProductProposalResultV1", "video_agent_product_design", "Product Designer"],
-  ["prop_design", "prop", "PropProposalResultV1", "video_agent_prop_design", "Prop Designer"],
-  ["character_design", "character", "CharacterProposalResultV1", "video_agent_character_design", "Character Designer"],
-  ["scene_design", "scene", "SceneProposalResultV1", "video_agent_scene_design", "Scene Designer"],
-  ["script_authoring", "script", "ScriptProposalResultV1", "video_agent_script_authoring", "Script Writer"],
-  ["storyboard_design", "storyboard", "StoryboardProposalResultV1", "video_agent_storyboard_design", "Storyboard Artist"],
-  ["video_direction", "video", "VideoProposalResultV1", "video_agent_video_direction", "Video Director"],
-  ["bgm_direction", "bgm", "BgmProposalResultV1", "video_agent_bgm_direction", "BGM Director"],
+  ["world_setting", "world_setting", "GuidedProposalAuthoringResultV4", "video_agent_world_setting", "World Setting Designer"],
+  ["product_design", "product", "GuidedProposalAuthoringResultV4", "video_agent_product_design", "Product Designer"],
+  ["prop_design", "prop", "GuidedProposalAuthoringResultV4", "video_agent_prop_design", "Prop Designer"],
+  ["character_design", "character", "GuidedProposalAuthoringResultV4", "video_agent_character_design", "Character Designer"],
+  ["scene_design", "scene", "GuidedProposalAuthoringResultV4", "video_agent_scene_design", "Scene Designer"],
+  ["script_authoring", "script", "GuidedProposalAuthoringResultV4", "video_agent_script_authoring", "Script Writer"],
+  ["storyboard_design", "storyboard", "GuidedProposalAuthoringResultV4", "video_agent_storyboard_design", "Storyboard Artist"],
+  ["video_direction", "video", "GuidedProposalAuthoringResultV4", "video_agent_video_direction", "Video Director"],
+  ["bgm_direction", "bgm", "GuidedProposalAuthoringResultV4", "video_agent_bgm_direction", "BGM Director"],
 ] as const satisfies ReadonlyArray<
   readonly [CapabilityId, string, string, string, string]
 >;
@@ -89,6 +91,7 @@ for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefin
       required_skill: skill,
       style_projection_role: stem,
       display_name: displayName,
+      validation_profile: "proposal_candidate_count_v1",
     });
   }
 }
@@ -197,6 +200,7 @@ const descriptors: ReadonlyArray<OperationDescriptor> = Object.freeze(
       capability_id: item.capability_id ?? null,
       context_contract_name: item.context_contract_name,
       result_contract_name: item.result_contract_name,
+      validation_profile: item.validation_profile ?? null,
       required_skill: item.required_skill ?? null,
       style_projection_role: item.style_projection_role ?? null,
       display_name: item.display_name ?? null,

@@ -189,13 +189,14 @@ class AgentCanvasContinuationWorker:
                     if _is_stale_lease(stale_error):
                         return "lease_lost"
                     raise
-            error_code, retryable = _structured_failure(error)
+            error_code, retryable, turn_retryable = _structured_failure(error)
             try:
                 return self._record_failure(
                     delivery,
                     error_code=error_code,
                     error_message=str(error) or "Continuation dispatch failed.",
                     retryable=retryable,
+                    turn_retryable=turn_retryable,
                 )
             except Exception as stale_error:  # noqa: BLE001 - fenced stale outcome.
                 if _is_stale_lease(stale_error):
@@ -224,6 +225,7 @@ class AgentCanvasContinuationWorker:
         error_code: str,
         error_message: str,
         retryable: bool = True,
+        turn_retryable: bool = False,
     ) -> str:
         next_attempt = delivery.attempt_count + 1
         if not retryable or next_attempt >= delivery.max_attempts:
@@ -235,6 +237,7 @@ class AgentCanvasContinuationWorker:
                     else "continuation_retry_exhausted"
                 ),
                 error_message=error_message,
+                turn_retryable=turn_retryable,
             )
         delay = min(
             self._base_backoff * (2**delivery.attempt_count),
@@ -257,6 +260,7 @@ class AgentCanvasContinuationWorker:
         *,
         error_code: str,
         error_message: str,
+        turn_retryable: bool = False,
     ) -> str:
         self._outbox.fail(
             delivery.continuation_id,
@@ -272,7 +276,7 @@ class AgentCanvasContinuationWorker:
                     delivery.continuation_turn_id,
                     error_code,
                     error_message[:1_024],
-                    explicit_turn_retryable(error_code),
+                    explicit_turn_retryable(error_code) or turn_retryable,
                 )
             except Exception as error:  # noqa: BLE001 - continuation error is authoritative.
                 logger.error(
@@ -287,15 +291,19 @@ class AgentCanvasContinuationWorker:
         return "failed"
 
 
-def _structured_failure(error: Exception) -> tuple[str, bool]:
+def _structured_failure(error: Exception) -> tuple[str, bool, bool]:
     if isinstance(error, AgentStructuredContractRegistryError):
-        return error.code, False
+        return error.code, False, False
     if isinstance(error, PiAgentRuntimeError):
-        return error.code, error.retryable and error.code != "agent_deadline_exceeded"
+        return error.code, error.retryable and error.code != "agent_deadline_exceeded", False
     if isinstance(error, V2PersistenceError):
         retryable = error.details.get("retryable", False)
-        return error.code, bool(retryable) and error.code != "agent_deadline_exceeded"
-    return "continuation_dispatch_failed", True
+        return (
+            error.code,
+            bool(retryable) and error.code != "agent_deadline_exceeded",
+            bool(error.details.get("proposal_retryable", False)),
+        )
+    return "continuation_dispatch_failed", True, False
 
 
 def _is_stale_lease(error: Exception) -> bool:

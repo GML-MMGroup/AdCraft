@@ -456,7 +456,11 @@ class AgentCanvasBindingService:
                         }
                     )
                     continue
-                asset = self._resolve_asset(source.output_asset_id)
+                source_version_id = source.metadata.get("source_version_id")
+                asset = self.resolve_asset_version(
+                    source.output_asset_id,
+                    str(source_version_id) if isinstance(source_version_id, str) else None,
+                )
                 source_kind = "node_output"
                 source_node_id = source.node_id
                 source_revision = source.revision
@@ -626,7 +630,11 @@ class AgentCanvasBindingService:
                         }
                     )
                     continue
-                asset = self._resolve_asset(source.output_asset_id)
+                source_version_id = source.metadata.get("source_version_id")
+                asset = self.resolve_asset_version(
+                    source.output_asset_id,
+                    str(source_version_id) if isinstance(source_version_id, str) else None,
+                )
                 source_node_id = source.node_id
                 source_semantic_role = source.semantic_role
             else:

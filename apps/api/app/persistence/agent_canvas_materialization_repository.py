@@ -200,7 +200,7 @@ class AgentCanvasMaterializationRepository:
         materialization_id = materialization_plan.materialization_id
         workflow_id = materialization_plan.workflow_id
         fault_injector = self._fault_injector
-        proposal = self._conversations.get_proposal(proposal_id)
+        proposal = self._conversations.get_private_proposal(proposal_id)
         skill_run_id = proposal.video_skill_run_id
         topic_id = proposal.topic_id
 
@@ -480,7 +480,9 @@ class AgentCanvasMaterializationRepository:
                     for document_write in materialization_plan.document_writes:
                         mutation = document_write.mutation_plan
                         if mutation is None:
-                            document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                            document = self._working_documents.validate_document_payload(
+                                document_write.payload
+                            )
                             document_kinds[document.document_id] = document.kind
                             _validate_authority_document_sources(
                                 connection,
@@ -516,7 +518,7 @@ class AgentCanvasMaterializationRepository:
                                 "agent_document_not_found",
                                 "Agent working document was not found.",
                             )
-                        current_document = _materialization_document(current)
+                        current_document = self._working_documents.validate_document_row(current)
                         document_kinds[current_document.document_id] = current_document.kind
                         next_document = current_document.model_copy(
                             update={
@@ -571,7 +573,9 @@ class AgentCanvasMaterializationRepository:
                     ):
                         if document_result.before_revision is not None:
                             continue
-                        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                        document = self._working_documents.validate_document_payload(
+                            document_write.payload
+                        )
                         _append_authority_document_events(
                             connection,
                             events=self._events,
@@ -1788,7 +1792,7 @@ class AgentCanvasMaterializationRepository:
                             "parent_materialization_revision_stale",
                             "The parent Node no longer matches the derived operation.",
                         )
-                    self._envelopes.create_in_transaction(connection, envelope)
+                    persisted_envelope = self._envelopes.create_in_transaction(connection, envelope)
                     existing = (
                         connection.execute(
                             select(AgentCanvasContinuationOutboxRow).where(
@@ -1872,7 +1876,12 @@ class AgentCanvasMaterializationRepository:
                 "capability_materialization_failed",
                 "Derived materialization submission could not be persisted.",
             ) from error
-        return envelope
+        if not isinstance(persisted_envelope, ProposalPublicationEnvelopeV1):
+            raise _error(
+                "capability_materialization_invalid",
+                "Persisted derivative envelope has an invalid operation type.",
+            )
+        return persisted_envelope
 
     def mark_working(
         self,
@@ -2082,7 +2091,7 @@ class AgentCanvasMaterializationRepository:
 
 
 def _materialization_document(row: Mapping[str, object]) -> AgentWorkingDocumentV2:
-    return AgentWorkingDocumentV2.model_validate(
+    return AgentWorkingDocumentRepository.validate_document_payload(
         {
             "document_id": row["document_id"],
             "workflow_id": row["workflow_id"],
@@ -2372,6 +2381,7 @@ def _insert_materialized_node(
             role_contract_version=node.role_contract_version,
             title=node.title,
             status=node.status,
+            execution_mode=node.execution_mode,
             summary_prompt=node.summary_prompt,
             generation_prompt=node.generation_prompt,
             structured_content_json=_dump(node.structured_content),
@@ -2459,13 +2469,7 @@ def _insert_materialization_document(
             "materialization_document_invalid",
             "Materialization document create payload is missing.",
         )
-    try:
-        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
-    except ValueError as error:
-        raise _error(
-            "materialization_document_invalid",
-            "Materialization document payload is invalid.",
-        ) from error
+    document = AgentWorkingDocumentRepository.validate_document_payload(document_write.payload)
     if (
         document.document_id != document_write.document_id
         or document.workflow_id != plan.workflow_id

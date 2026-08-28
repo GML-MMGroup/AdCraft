@@ -227,7 +227,7 @@ class GuidedMediaConfirmationService:
         if (
             self._progression is not None
             and record.node_role == "storyboard_grid"
-            and record.sequence_id == plan.content.segments[0].sequence_id
+            and record.sequence_id == _first_sequence_id(plan.content.segments)
         ):
             created_node_ids = self._progression.on_node_ready(
                 node,
@@ -237,6 +237,17 @@ class GuidedMediaConfirmationService:
             confirmation=confirmation,
             created_node_ids=created_node_ids,
         )
+
+
+def _first_sequence_id(segments: tuple[object, ...]) -> str:
+    sequence = next((item for item in segments if getattr(item, "order", None) == 1), None)
+    if sequence is None:
+        raise V2PersistenceError(
+            "guided_media_confirmation_stale",
+            "The Storyboard Plan has no explicitly ordered first sequence.",
+            stage="guided_media_confirmation",
+        )
+    return str(sequence.sequence_id)
 
 
 def _media_role(node_role: str) -> Literal["image", "video", "audio"]:

@@ -33,7 +33,7 @@ class ParentDerivedMaterializationCoordinator:
         self._conversations = conversations
         self._materializations = materializations
 
-    def queue_after_parent(
+    def reconcile_after_parent(
         self,
         parent: ProposalPublicationEnvelopeV1,
         *,
@@ -44,6 +44,29 @@ class ParentDerivedMaterializationCoordinator:
         if parent.operation_kind != "parent" or parent.derivative_intent is None:
             return None
         intent = parent.derivative_intent
+        derivative_materialization_id = (
+            "materialization_" + sha256(intent.intent_id.encode("utf-8")).hexdigest()[:32]
+        )
+        derivative_envelope_id = (
+            "envelope_" + sha256(derivative_materialization_id.encode("utf-8")).hexdigest()[:32]
+        )
+        try:
+            existing = self._materializations.get_envelope(derivative_envelope_id)
+        except V2PersistenceError as error:
+            if error.code != "operation_envelope_not_found":
+                raise
+        else:
+            if not isinstance(existing, ProposalPublicationEnvelopeV1):
+                raise V2PersistenceError(
+                    "derivative_materialization_invalid",
+                    "Persisted parent-derived operation has an invalid envelope type.",
+                    stage="parent_derived_materialization",
+                )
+            lease_guard()
+            return self._materializations.queue_derivative(
+                existing,
+                source_turn_id=parent.action_turn_id,
+            )
         lease_guard()
         workflow = self._workflows.get_workflow(parent.workflow_id)
         session = self._conversations.get_guidance_session(parent.workflow_id)
@@ -66,6 +89,16 @@ class ParentDerivedMaterializationCoordinator:
             envelope,
             source_turn_id=parent.action_turn_id,
         )
+
+    def queue_after_parent(
+        self,
+        parent: ProposalPublicationEnvelopeV1,
+        *,
+        lease_guard,
+    ) -> ProposalPublicationEnvelopeV1 | None:
+        """Backward-compatible alias for parent-derived reconciliation."""
+
+        return self.reconcile_after_parent(parent, lease_guard=lease_guard)
 
     @staticmethod
     def build_derivative_envelope(
