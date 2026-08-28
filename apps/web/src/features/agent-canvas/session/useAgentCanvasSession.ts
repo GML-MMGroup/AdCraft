@@ -20,10 +20,7 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { incrementalPlacementForNodes } from "../canvas/canvasGraphModel.ts";
-import {
-  planProgressiveNodePlacement,
-  type ProgressiveNodePlacementPlan,
-} from "../canvas/agentCanvasProgressivePlacement.ts";
+import { buildAgentCanvasPreRevealLayout } from "../canvas/agentCanvasPreRevealLayout.ts";
 import { assertGenerativeNode } from "../model/nodeExecutionMode.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
 import { assertValidCanvasBindingWrite } from "./bindingWriteValidation.ts";
@@ -397,8 +394,7 @@ export function useAgentCanvasSession() {
 
   const placeActionReceiptNodes = useCallback(async (
     receipt: AgentActionReceiptV2,
-    viewportAnchor: CanvasPositionV2,
-  ): Promise<ProgressiveNodePlacementPlan | null> => {
+  ) => {
     const current = workflowRef.current;
     if (!current || current.workflow_id !== receipt.workflow_id) return null;
     const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(receipt.workflow_id);
@@ -408,32 +404,19 @@ export function useAgentCanvasSession() {
       return null;
     }
 
-    const plan = planProgressiveNodePlacement({
+    const preRevealLayout = buildAgentCanvasPreRevealLayout({
       nodes: latest.value.nodes,
       bindings: latest.value.bindings,
       affectedNodeIds: receipt.created_node_ids,
-      placementHints: receipt.placement_hints,
-      viewportCenter: viewportAnchor,
       assets: latest.value.assets,
     });
-    const positionsById = new Map(plan.positions.map((position) => [position.node_id, position]));
-    const pendingByNode = pendingLayoutPositionsRef.current.get(receipt.workflow_id)
-      ?? new Map<string, CanvasLayoutPositionV2>();
-    plan.positions.forEach((position) => pendingByNode.set(position.node_id, position));
-    pendingLayoutPositionsRef.current.set(receipt.workflow_id, pendingByNode);
-    setAgentCanvasWorkflow((active) => {
-      if (!active || active.workflow_id !== receipt.workflow_id) return active;
-      const merged = mergeAgentCanvasWorkflow(active, latest.value);
-      const next = overlayAgentCanvasPositions(merged, [...positionsById.values()]);
-      workflowRef.current = next;
-      return next;
-    });
+    applyWorkflow(latest.value);
     if (workflowRef.current?.workflow_id !== receipt.workflow_id) return null;
-    if (plan.positions.length) {
-      void updateNodePositions(plan.positions).catch(() => {});
-    }
-    return plan;
-  }, [applyWorkflow, setAgentCanvasWorkflow, updateNodePositions]);
+    if (!preRevealLayout.positions.length || !preRevealLayout.revealPlan.orderedNodeIds.length) return null;
+    await updateNodePositions(preRevealLayout.positions);
+    if (workflowRef.current?.workflow_id !== receipt.workflow_id) return null;
+    return preRevealLayout.revealPlan;
+  }, [applyWorkflow, updateNodePositions]);
 
   const deleteNode = useCallback(async (nodeId: string) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
