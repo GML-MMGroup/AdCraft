@@ -41,6 +41,24 @@
   transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
 }
 
+.agent-canvas-board .react-flow__node.is-progressive-reveal .agent-canvas-node {
+  outline: 1px solid rgb(245 245 245 / 82%);
+  outline-offset: 5px;
+  box-shadow: 0 0 0 1px rgb(112 112 112 / 42%), 0 10px 28px rgb(0 0 0 / 34%);
+  animation: agent-canvas-progressive-reveal 420ms ease-out both;
+}
+
+@keyframes agent-canvas-progressive-reveal {
+  from {
+    opacity: .48;
+    transform: scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .agent-canvas-board .react-flow__pane {
   cursor: grab;
 }
@@ -1114,6 +1132,10 @@
 
   .agent-canvas-board.is-layout-previewing .react-flow__node {
     transition: none;
+  }
+
+  .agent-canvas-board .react-flow__node.is-progressive-reveal .agent-canvas-node {
+    animation: none;
   }
 
   .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,

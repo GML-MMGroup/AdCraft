@@ -10,7 +10,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
@@ -90,6 +90,7 @@ import {
   AGENT_CANVAS_FOCUS_MAX_ZOOM,
   useAgentCanvasNodeFocus,
 } from "./canvas/useAgentCanvasNodeFocus.ts";
+import { useAgentCanvasNodeRevealQueue } from "./canvas/useAgentCanvasNodeRevealQueue.ts";
 import { useAgentCanvasLayoutPreview } from "./canvas/useAgentCanvasLayoutPreview.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import {
@@ -113,6 +114,13 @@ import "@xyflow/react/dist/style.css";
 import "./agent-canvas-page.css";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
+
+function reducedMotionPreference(): boolean {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 const EMPTY_CONVERSATION_LINK_INDEX: ConversationCanvasLinkIndex = {
   locations: new Map(),
   sourceByNodeId: new Map(),
@@ -275,6 +283,30 @@ export function AgentCanvasPage() {
     flowRef,
     scopeKey: workflow?.workflow_id ?? "no-workflow",
   });
+  const focusNode = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    void flowRef.current?.fitView({
+      nodes: [{ id: nodeId }],
+      padding: 0.55,
+      duration: reducedMotionPreference() ? 0 : 420,
+      maxZoom: 1.15,
+    });
+  }, [setSelectedNodeId]);
+  const revealQueue = useAgentCanvasNodeRevealQueue({
+    workflowId: workflow?.workflow_id ?? null,
+    flowRef,
+    onFocusNode: focusNode,
+    reducedMotion: reducedMotionPreference(),
+  });
+  const {
+    activeNodeId: progressiveActiveNodeId,
+    enqueue: enqueueReveal,
+    interrupt: interruptReveal,
+    releaseNodeIds: releaseRevealNodeIds,
+    reserveNodeIds: reserveRevealNodeIds,
+    syncCanonicalNodeIds: syncRevealCanonicalNodeIds,
+    visibleNodeIds: visibleRevealNodeIds,
+  } = revealQueue;
   const revealAvailableCanvasNodes = useCallback((nodeIds: string[]) => {
     const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
     revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
@@ -508,21 +540,29 @@ export function AgentCanvasPage() {
     canonicalNodesRef.current = nextNodes;
     return nextNodes;
   }, [conversationSourceNodeIds, live.state.runtime, nodeCallbacks, session.state.selectedNodeId, workflow]);
+  useLayoutEffect(() => {
+    syncRevealCanonicalNodeIds(canonicalNodes.map((node) => node.id));
+  }, [canonicalNodes, syncRevealCanonicalNodeIds]);
+  const visibleCanonicalNodes = useMemo(
+    () => canonicalNodes.filter((node) => visibleRevealNodeIds.has(node.id)),
+    [canonicalNodes, visibleRevealNodeIds],
+  );
   const presentedNodes = useMemo<AgentCanvasFlowNode[]>(() => {
     const highlighted = new Set(highlightedNodeIds);
-    return (overlayLayoutPreview(canonicalNodes) as AgentCanvasFlowNode[]).map((node) => {
+    return (overlayLayoutPreview(visibleCanonicalNodes) as AgentCanvasFlowNode[]).map((node) => {
       const classNames = (node.className ?? "")
         .split(/\s+/)
         .filter((className) => className && className !== "is-conversation-highlighted");
       if (highlighted.has(node.id)) classNames.push("is-conversation-highlighted");
+      if (progressiveActiveNodeId === node.id) classNames.push("is-progressive-reveal");
       return classNames.join(" ") === (node.className ?? "")
         ? node
         : { ...node, className: classNames.join(" ") };
     });
-  }, [canonicalNodes, highlightedNodeIds, overlayLayoutPreview]);
+  }, [highlightedNodeIds, overlayLayoutPreview, progressiveActiveNodeId, visibleCanonicalNodes]);
   const canonicalEdges = useMemo(
-    () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
-    [workflow],
+    () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, visibleCanonicalNodes.map((node) => node.data.node)) : [],
+    [visibleCanonicalNodes, workflow],
   );
   const presentedEdges = useMemo(
     () => highlightNodeRelatedCanvasEdges(canonicalEdges, session.state.selectedNodeId),
@@ -530,17 +570,17 @@ export function AgentCanvasPage() {
   );
 
   useEffect(() => {
-    if (!workflow || !needsInitialCanvasLayout(workflow.nodes)) return;
+    if (!workflow || !needsInitialCanvasLayout(visibleCanonicalNodes.map((node) => node.data.node))) return;
     const workflowId = workflow.workflow_id;
     const repairAttempts = initialLayoutRepairWorkflowIdsRef.current;
     if (repairAttempts.has(workflowId)) return;
     repairAttempts.add(workflowId);
 
-    const visibleNodeIds = new Set(canonicalNodes.map((node) => node.id));
+    const visibleNodeIds = new Set(visibleCanonicalNodes.map((node) => node.id));
     let layoutResult: ReturnType<typeof computeAgentCanvasAutoLayout>;
     try {
       layoutResult = computeAgentCanvasAutoLayout(
-        canonicalNodes.map(agentCanvasLayoutNodeFromFlowNode),
+        visibleCanonicalNodes.map(agentCanvasLayoutNodeFromFlowNode),
         enabledNodeLayoutEdges(workflow.bindings, visibleNodeIds),
         {
           isolatedRowWidth: Math.max(
@@ -581,7 +621,7 @@ export function AgentCanvasPage() {
           setSurfaceError(error instanceof Error ? error.message : "Canvas layout could not be saved.");
         }
       });
-  }, [canonicalNodes, pointerSpotlight.hostRef, updateNodePositions, workflow]);
+  }, [pointerSpotlight.hostRef, updateNodePositions, visibleCanonicalNodes, workflow]);
 
   useEffect(() => {
     latestPresentedNodesRef.current = presentedNodes;
@@ -851,25 +891,30 @@ export function AgentCanvasPage() {
     }
   }, [connectedNodeMenu, createConnectedNode, workflow]);
 
-  const focusNode = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId);
-    void flowRef.current?.fitView({
-      nodes: [{ id: nodeId }],
-      padding: 0.55,
-      duration: 420,
-      maxZoom: 1.15,
-    });
-  }, [setSelectedNodeId]);
-
   const placeReceiptNodes = useCallback((receipt: Parameters<typeof placeActionReceiptNodes>[0]) => {
+    const boardRect = pointerSpotlight.hostRef.current?.getBoundingClientRect();
     const viewportAnchor = flowRef.current?.screenToFlowPosition({
-      x: window.innerWidth * 0.46,
-      y: window.innerHeight * 0.42,
+      x: boardRect ? boardRect.left + boardRect.width * 0.46 : window.innerWidth * 0.46,
+      y: boardRect ? boardRect.top + boardRect.height * 0.42 : window.innerHeight * 0.42,
     }) ?? { x: 160, y: 120 };
-    void placeActionReceiptNodes(receipt, viewportAnchor).catch((error) => {
-      setSurfaceError(error instanceof Error ? error.message : "New canvas nodes could not be positioned.");
-    });
-  }, [placeActionReceiptNodes]);
+    reserveRevealNodeIds(receipt.created_node_ids);
+    void placeActionReceiptNodes(receipt, viewportAnchor)
+      .then((plan) => {
+        if (!plan) {
+          releaseRevealNodeIds(receipt.created_node_ids);
+          return;
+        }
+        const planned = new Set(plan.orderedNodeIds);
+        releaseRevealNodeIds(
+          receipt.created_node_ids.filter((nodeId) => !planned.has(nodeId)),
+        );
+        enqueueReveal(plan);
+      })
+      .catch((error) => {
+        releaseRevealNodeIds(receipt.created_node_ids);
+        setSurfaceError(error instanceof Error ? error.message : "New canvas nodes could not be positioned.");
+      });
+  }, [enqueueReveal, placeActionReceiptNodes, pointerSpotlight.hostRef, releaseRevealNodeIds, reserveRevealNodeIds]);
 
   const organizeCanvas = useCallback(() => {
     const instance = flowRef.current;
@@ -1045,6 +1090,7 @@ export function AgentCanvasPage() {
             focusCanvasNode(node.id);
           }}
           onNodeDragStart={(_event, node, draggedNodes) => {
+            interruptReveal();
             beginCanvasInteraction("node-drag");
             dragCancellationPendingRef.current = false;
             beginNodeDrag(
@@ -1089,7 +1135,10 @@ export function AgentCanvasPage() {
             setConnectedNodeMenu(null);
             setContextMenu(null);
           }}
-          onMoveStart={() => beginCanvasInteraction("viewport")}
+          onMoveStart={() => {
+            interruptReveal();
+            beginCanvasInteraction("viewport");
+          }}
           onMoveEnd={(_event, viewport) => {
             endCanvasInteraction("viewport");
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {

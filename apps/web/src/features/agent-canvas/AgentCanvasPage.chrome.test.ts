@@ -152,12 +152,31 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain("needsInitialCanvasLayout(workflow.nodes)");
+    expect(source).toContain("needsInitialCanvasLayout(visibleCanonicalNodes.map((node) => node.data.node))");
     expect(source).toContain("initialLayoutRepairWorkflowIdsRef");
     expect(source).toContain("readAgentCanvasViewport(workflowId)");
     expect(source).toMatch(
       /computeAgentCanvasAutoLayout\([\s\S]*?enabledNodeLayoutEdges\(workflow\.bindings,[\s\S]*?updateNodePositions\(layoutResult\.positions\)[\s\S]*?fitView\(/,
     );
+  });
+
+  it("stages receipt nodes before rendering and reveals them through the progressive queue", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+    const sessionSource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/session/useAgentCanvasSession.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("useAgentCanvasNodeRevealQueue");
+    expect(source).toContain("reserveRevealNodeIds(receipt.created_node_ids)");
+    expect(source).toContain("syncRevealCanonicalNodeIds(canonicalNodes.map((node) => node.id))");
+    expect(source).toContain("visibleCanonicalNodes");
+    expect(source).toContain("interruptReveal()");
+    expect(sessionSource).toContain("planProgressiveNodePlacement({");
+    expect(sessionSource).toContain("overlayAgentCanvasPositions(merged, [...positionsById.values()])");
   });
 
   it("animates node transforms only during layout preview and respects reduced motion", () => {
