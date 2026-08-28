@@ -251,8 +251,9 @@ const ProjectListCard = memo(function ProjectListCard({
 });
 
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
-  const requestKey = projectCoverRequestKey(project);
-  const directCover = project.coverAssetId ? directProjectCover(project.coverAssetId) : null;
+  const { workflowId, coverAssetId, updatedAt } = project;
+  const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
+  const directCover = coverAssetId ? directProjectCover(coverAssetId) : null;
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
@@ -264,11 +265,11 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
     setEntry(null);
     let active = true;
     let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
-    const subscription = projectCoverResource.subscribe(projectCoverIdentity(project), (signal) => (
+    const subscription = projectCoverResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (signal) => (
       projectCoverQueue.schedule(
-        () => agentCanvasApi.listAgentCanvasProjectAssets(project.workflowId, { signal })
+        () => agentCanvasApi.listAgentCanvasProjectAssets(workflowId, { signal })
           .then((response) => {
-            const preliminary = resolveV2ProjectCover(project.coverAssetId, response.assets);
+            const preliminary = resolveV2ProjectCover(coverAssetId, response.assets);
             return {
               cover: preliminary,
               assets: response.assets,
@@ -283,10 +284,10 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       setEntry({ cover: lookup.cover });
       if (!lookup.needsAuthority) return;
 
-      authoritySubscription = projectCoverAuthorityResource.subscribe(projectCoverIdentity(project), (authoritySignal) => (
+      authoritySubscription = projectCoverAuthorityResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (authoritySignal) => (
         projectCoverQueue.schedule(
-          () => agentCanvasApi.agentCanvasWorkflowWithEtag(project.workflowId, { signal: authoritySignal })
-            .then((workflow) => resolveV2ProjectCover(project.coverAssetId, lookup.assets, workflow.value.nodes)),
+          () => agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId, { signal: authoritySignal })
+            .then((workflow) => resolveV2ProjectCover(coverAssetId, lookup.assets, workflow.value.nodes)),
           { signal: authoritySignal, priority: coverPriority },
         )
       ));
@@ -304,16 +305,16 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverPriority, directCover, project, requestKey]);
+  }, [coverAssetId, coverPriority, directCover, requestKey, updatedAt, workflowId]);
 
   return directCover ?? entry?.cover;
 }
 
-function projectCoverRequestKey(project: ProjectListItem) {
+function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
   return stableQueryKey(projectCoverIdentity(project));
 }
 
-function projectCoverIdentity(project: ProjectListItem) {
+function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
   return {
     workflowId: project.workflowId,
     coverAssetId: project.coverAssetId ?? "fallback",

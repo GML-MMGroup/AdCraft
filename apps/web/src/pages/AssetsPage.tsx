@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "../components/Layout.tsx";
 import { AssetContactSheet } from "../features/assets/AssetContactSheet.tsx";
-import { CanonicalAssetViewer } from "../features/assets/CanonicalAssetViewer.tsx";
 import { RecommendedSceneHologram } from "../features/assets/RecommendedSceneHologram.tsx";
 import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCanvasAssets.ts";
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
@@ -10,6 +9,10 @@ import type { V2AssetLibraryCategory } from "../types-v2.ts";
 import "./assets.css";
 
 type AssetPageScope = "my" | "recommended";
+
+const CanonicalAssetViewer = lazy(() => import("../features/assets/CanonicalAssetViewer.tsx").then((module) => ({
+  default: module.CanonicalAssetViewer,
+})));
 
 const ASSET_CATEGORIES: Array<{ id: V2AssetLibraryCategory; label: string }> = [
   { id: "characters", label: "Characters" },
@@ -128,13 +131,15 @@ export function AssetsPage() {
         </div>
       </div>
       {selectedAsset ? (
-        <CanonicalAssetViewer
-          item={selectedAsset}
-          hasAssetNavigation={displayedAssets.length > 1}
-          onPreviousAsset={() => navigateSelectedAsset(-1)}
-          onNextAsset={() => navigateSelectedAsset(1)}
-          onClose={closePreview}
-        />
+        <Suspense fallback={null}>
+          <CanonicalAssetViewer
+            item={selectedAsset}
+            hasAssetNavigation={displayedAssets.length > 1}
+            onPreviousAsset={() => navigateSelectedAsset(-1)}
+            onNextAsset={() => navigateSelectedAsset(1)}
+            onClose={closePreview}
+          />
+        </Suspense>
       ) : null}
     </section>
   );

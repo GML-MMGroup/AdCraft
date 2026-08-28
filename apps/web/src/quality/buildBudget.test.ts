@@ -24,6 +24,65 @@ afterEach(() => {
 });
 
 describe("build budget", () => {
+  test("selects the JavaScript Workflow route entry when CSS has the same chunk name", () => {
+    const distDirectory = mkdtempSync(join(tmpdir(), "adcraft-build-budget-"));
+    temporaryDirectories.push(distDirectory);
+    const assetsDirectory = join(distDirectory, "assets");
+    const manifestDirectory = join(distDirectory, ".vite");
+    mkdirSync(assetsDirectory);
+    mkdirSync(manifestDirectory);
+
+    for (const asset of [
+      "index-fixture.js",
+      "WorkflowPage-fixture.js",
+      "WorkflowPage-fixture.css",
+      "vendor-react-flow-fixture.js",
+      "vendor-react-flow-fixture.css",
+      "AssetEntityViewer-fixture.js",
+      "global-fixture.css",
+      "home-fixture.js",
+      "home-fixture.css",
+    ]) {
+      writeAsset(assetsDirectory, asset);
+    }
+
+    writeFileSync(join(manifestDirectory, "manifest.json"), JSON.stringify({
+      "index.html": {
+        file: "assets/index-fixture.js",
+        css: ["assets/global-fixture.css"],
+      },
+      "src/pages/HomePage.tsx": {
+        file: "assets/home-fixture.js",
+        css: ["assets/home-fixture.css"],
+      },
+      "_WorkflowPage-fixture.css": {
+        file: "assets/WorkflowPage-fixture.css",
+        src: "_WorkflowPage-fixture.css",
+      },
+      "src/pages/WorkflowPage.tsx": {
+        name: "WorkflowPage",
+        file: "assets/WorkflowPage-fixture.js",
+        imports: ["_vendor-react-flow.js"],
+        css: ["assets/WorkflowPage-fixture.css"],
+      },
+      "_vendor-react-flow.js": {
+        name: "vendor-react-flow",
+        file: "assets/vendor-react-flow-fixture.js",
+        css: ["assets/vendor-react-flow-fixture.css"],
+      },
+    }));
+
+    const result = spawnSync(process.execPath, [
+      budgetScriptPath,
+      "--dist",
+      distDirectory,
+    ], { encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("Agent Canvas Workflow route chunk is missing");
+    expect(result.stderr).not.toContain("Agent Canvas Workflow route does not own the React Flow vendor chunk");
+  });
+
   test("keeps Agent Canvas and React Flow out of the initial application chunk", () => {
     const appSource = readFileSync(
       join(process.cwd(), "src/App.tsx"),

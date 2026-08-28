@@ -243,6 +243,9 @@ export function useAgentCanvasChat({
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshQueuedRef = useRef(false);
+  const refreshAbortControllerRef = useRef<AbortController | null>(null);
   const refreshGenerationRef = useRef(0);
   const workflowGenerationRef = useRef(0);
   const pendingActionTurnIdsRef = useRef(new Set<string>());
@@ -483,12 +486,17 @@ export function useAgentCanvasChat({
     });
   }, [hydrateTimelineItem]);
 
-  const refresh = useCallback(async () => {
+  const runRefresh = useCallback(async () => {
     if (!workflowId) return;
     const generation = refreshGenerationRef.current + 1;
     refreshGenerationRef.current = generation;
     setLoading(true);
-    const creativeSessionPromise = agentCanvasApi.agentCanvasCreativeSession(workflowId)
+    const abortController = new AbortController();
+    refreshAbortControllerRef.current?.abort();
+    refreshAbortControllerRef.current = abortController;
+    const creativeSessionPromise = agentCanvasApi.agentCanvasCreativeSession(workflowId, {
+      signal: abortController.signal,
+    })
       .catch(() => null);
     try {
       const rawItems: ChatTimelineItemV2[] = [];
@@ -500,7 +508,9 @@ export function useAgentCanvasChat({
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
       let cursor = 0;
       for (;;) {
-        const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
+        const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200, {
+          signal: abortController.signal,
+        });
         nextGuidanceSession = mergeGuidedSessionState(nextGuidanceSession, timeline.guidanceSession);
         nextGuidanceAdvancePrecondition = timeline.guidanceAdvancePrecondition;
         nextCurrentSessionActions = timeline.current_session_actions ?? [];
@@ -580,8 +590,35 @@ export function useAgentCanvasChat({
       setTimelineRecovery(conversationRecoveryFromError("timeline", refreshError));
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
+      if (refreshAbortControllerRef.current === abortController) {
+        refreshAbortControllerRef.current = null;
+      }
     }
   }, [hydrateCapabilityTurns, hydrateTimelineItems, onActionReceipt, workflowId]);
+
+  const refresh = useCallback(async function refreshConversation() {
+    const inFlight = refreshInFlightRef.current;
+    if (inFlight) {
+      refreshQueuedRef.current = true;
+      await inFlight;
+      return;
+    }
+
+    const request = runRefresh();
+    refreshInFlightRef.current = request;
+    try {
+      await request;
+    } finally {
+      if (refreshInFlightRef.current === request) {
+        refreshInFlightRef.current = null;
+      }
+    }
+
+    if (refreshQueuedRef.current) {
+      refreshQueuedRef.current = false;
+      await refreshConversation();
+    }
+  }, [runRefresh]);
 
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,
@@ -661,6 +698,15 @@ export function useAgentCanvasChat({
       [proposalId]: chatRequestErrorMessage(actionError, fallbackMessage),
     }));
   }, [onWorkflowRefresh, refresh]);
+
+  useEffect(() => {
+    return () => {
+      refreshQueuedRef.current = false;
+      refreshAbortControllerRef.current?.abort();
+      refreshAbortControllerRef.current = null;
+      refreshInFlightRef.current = null;
+    };
+  }, [workflowId]);
 
   useEffect(() => {
     refreshGenerationRef.current += 1;

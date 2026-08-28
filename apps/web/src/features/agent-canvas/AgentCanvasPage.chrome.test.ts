@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 describe("AgentCanvasPage chrome", () => {
   it("hides the React Flow attribution panel", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -49,7 +49,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("suppresses the browser menu across the canvas while preserving the pane menu", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -91,7 +91,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("keeps backend edges selectable and animates only the selected monochrome dash", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const canvasCss = readFileSync(
@@ -117,7 +117,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("restores canonical bindings immediately when a delete mutation fails", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -128,7 +128,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("integrates one-click layout as a reversible node preview", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -148,7 +148,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("repairs overlapping persisted node positions during initial hydration", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -162,7 +162,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("stages receipt nodes before rendering and reveals them through the progressive queue", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const sessionSource = readFileSync(
@@ -206,7 +206,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("defers runtime node replacement until drag stop rebuilds the complete snapshot", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -224,7 +224,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("cleans interrupted drag sessions and recovers failed layout persistence", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
 
@@ -246,7 +246,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("keeps workflow nodes mounted so media previews survive viewport changes", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const legacySurfaceSource = readFileSync(
@@ -268,7 +268,7 @@ describe("AgentCanvasPage chrome", () => {
 
   it("uses a lightweight visual mode only while the canvas is moving", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
       "utf8",
     );
     const canvasCss = readFileSync(

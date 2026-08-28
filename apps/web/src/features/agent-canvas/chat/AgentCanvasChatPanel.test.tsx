@@ -1480,7 +1480,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
   });
 
   it("does not include the retired React Flow Mini Map chrome", () => {
-    const pagePath = resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx");
+    const pagePath = resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx");
     const pageSource = readFileSync(pagePath, "utf8");
     const canvasCssPath = resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css");
     const canvasCss = readFileSync(canvasCssPath, "utf8");
