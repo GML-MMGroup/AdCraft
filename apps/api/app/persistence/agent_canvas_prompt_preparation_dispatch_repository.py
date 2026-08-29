@@ -26,6 +26,7 @@ from app.persistence.models import (
     AgentCanvasNodeRow,
     AgentCanvasPromptPreparationOutboxRow,
     AssetVersionRow,
+    ProviderModelRow,
 )
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
@@ -1977,6 +1978,52 @@ def _assert_current_node_identity(
         raise _stale_dispatch()
     if context_digest is not None and context_digest != dispatch_row["context_digest"]:
         raise _stale_dispatch()
+
+    # The operation id is derived from the immutable preparation inputs, but a
+    # corrupted/legacy writer can still mutate the persisted preparation JSON
+    # in place without deriving a successor id.  Compare every identity field
+    # that the dispatch row actually froze.  Fields that are intentionally
+    # populated by the preparation service (for example recipe/prompt digests
+    # on a queued row) are only checked when the dispatch had a non-null value;
+    # this keeps the queued -> working -> ready lifecycle valid while fencing
+    # an in-place change to an already-bound identity.
+    preparation_fields = (
+        ("role_variant", "role_variant"),
+        ("occurrence_id", "occurrence_id"),
+        ("character_phase", "character_phase"),
+        ("binding_digest", "binding_digest"),
+        ("recipe_digest", "recipe_digest"),
+        ("style_projection_digest", "style_projection_digest"),
+        ("brief_digest", "brief_digest"),
+        ("requirement_revision_id", "requirement_revision_id"),
+        ("requirement_revision_no", "requirement_revision_no"),
+    )
+    for dispatch_field, preparation_field in preparation_fields:
+        expected = dispatch_row.get(dispatch_field)
+        if expected is not None and persisted_preparation.get(preparation_field) != expected:
+            raise _stale_dispatch()
+
+    expected_documents = _parse_json_object(dispatch_row.get("document_revisions_json"))
+    if expected_documents:
+        current_documents = _parse_json_object(persisted_preparation.get("document_revisions"))
+        if current_documents != expected_documents:
+            raise _stale_dispatch()
+
+    # Context digest is duplicated in the safe Node metadata after preparation.
+    # Do not require it to exist while the row is still queued/working, but do
+    # reject a present value that no longer matches the frozen dispatch.
+    expected_context_digest = dispatch_row.get("context_digest")
+    if expected_context_digest:
+        metadata = _parse_json_object(row["metadata_json"])
+        current_context_digest = metadata.get("prompt_context_digest")
+        if current_context_digest is not None and current_context_digest != expected_context_digest:
+            raise _stale_dispatch()
+
+    expected_policy_revision = dispatch_row.get("model_policy_revision")
+    if expected_policy_revision is not None:
+        current_policy_revision = _current_model_policy_revision(connection, row)
+        if current_policy_revision is not None and current_policy_revision != int(expected_policy_revision):
+            raise _stale_dispatch()
     if source_snapshot is not None:
         current_node = CanvasNodeV2.model_validate(
             {
@@ -2018,6 +2065,27 @@ def _dependency_snapshot(value: Mapping[str, object]) -> dict[str, object]:
     snapshot.pop("node_revision", None)
     snapshot.pop("output_asset_id", None)
     return snapshot
+
+
+def _current_model_policy_revision(
+    connection: Connection,
+    node_row: Mapping[str, Any],
+) -> int | None:
+    """Resolve the current model-policy revision without exposing catalog data."""
+
+    metadata = _parse_json_object(node_row.get("metadata_json"))
+    explicit = metadata.get("model_policy_revision")
+    if isinstance(explicit, int) and explicit >= 1:
+        return explicit
+    model_ref = node_row.get("model_ref")
+    if not isinstance(model_ref, str) or not model_ref:
+        return 1
+    revision = connection.execute(
+        select(ProviderModelRow.catalog_revision).where(ProviderModelRow.model_ref == model_ref)
+    ).scalar_one_or_none()
+    if revision is None:
+        return 1
+    return int(revision)
 
 
 def _json(value: object) -> str:
