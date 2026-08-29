@@ -256,18 +256,8 @@ def _fallback_or_rejected(
     ):
         return _rejected(submission, violations, repair_allowed=repair_allowed)
 
-    raw_message = candidate_value.get("assistant_message")
-    used_model_message = False
     message = _SAFE_FALLBACK_MESSAGE
-    if isinstance(raw_message, str) and len(raw_message) <= 2_000:
-        cleaned_message = "".join(
-            char
-            for char in raw_message
-            if char in "\n\t" or unicodedata.category(char) not in {"Cc", "Cf"}
-        ).strip()
-        if cleaned_message.strip() and len(cleaned_message) <= 2_000:
-            message = cleaned_message
-            used_model_message = True
+    used_model_message = False
 
     fallback_value = {
         "mode": "ordinary_conversation",

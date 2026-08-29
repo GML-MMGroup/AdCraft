@@ -189,6 +189,7 @@ def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNorm
 
 _CONTROL_ALIASES = MappingProxyType({
     "target_duration_sec": "duration_seconds",
+    "target_duration_seconds": "duration_seconds",
     "duration_sec": "duration_seconds",
     "resolution": "output_resolution",
     "fps": "frame_rate",

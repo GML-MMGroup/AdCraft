@@ -173,6 +173,28 @@ def test_accepts_normalized_duration_and_checks_quote_on_retained_value(persiste
     assert result.normalized_value["requirement_patch"]["controls_to_set"]["duration_seconds"]["source_quote"] == "60秒"
 
 
+def test_accepts_provider_duration_seconds_alias_and_checks_source_quote(persisted_run):
+    repository, run = persisted_run
+    value = {
+        "mode": "guided_production",
+        "objective": "制作60秒竖版广告",
+        "requirement_patch": {
+            "controls_to_set": {
+                "target_duration_seconds": {"value": "60", "source_quote": "60秒"}
+            }
+        },
+    }
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is True
+    control = result.normalized_value["requirement_patch"]["controls_to_set"]["duration_seconds"]
+    assert control["value"] == 60.0
+    assert control["source_quote"] == "60秒"
+
+
 def test_alias_quote_is_checked_after_normalized_contract_validation(persisted_run):
     repository, run = persisted_run
     result = V2AgentStructuredValidationService(repository).validate(
@@ -269,7 +291,7 @@ def test_second_submission_invalid_source_quote_returns_safe_fallback(persisted_
     assert result.normalized_value == {
         "mode": "ordinary_conversation",
         "objective": "Preserve a safe conversational response after structured validation failed.",
-        "assistant_message": "我已理解你的广告需求。",
+        "assistant_message": "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。",
     }
     assert result.fallback_audit is not None
     assert result.fallback_audit.error_code == "agent_structured_fallback_applied"
@@ -278,7 +300,7 @@ def test_second_submission_invalid_source_quote_returns_safe_fallback(persisted_
         "requirement_patch.controls_to_set.duration_seconds.source_quote",
     )
     assert result.fallback_audit.submission_attempt == 2
-    assert result.fallback_audit.used_model_message is True
+    assert result.fallback_audit.used_model_message is False
     assert result.fallback_audit.reason == "validation_exhausted"
     assert result.normalization_audit is not None
     assert result.normalization_audit.rule_ids
@@ -414,9 +436,11 @@ def test_fallback_model_message_is_trimmed_after_control_cleanup(persisted_run):
     )
 
     assert result.accepted is True
-    assert result.normalized_value["assistant_message"] == "hi"
+    assert result.normalized_value["assistant_message"] == (
+        "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+    )
     assert result.fallback_audit is not None
-    assert result.fallback_audit.used_model_message is True
+    assert result.fallback_audit.used_model_message is False
 
 
 def test_fallback_model_message_preserves_inner_newline_and_tab(persisted_run):
@@ -434,7 +458,31 @@ def test_fallback_model_message_preserves_inner_newline_and_tab(persisted_run):
     )
 
     assert result.accepted is True
-    assert result.normalized_value["assistant_message"] == "hi\n\tthere"
+    assert result.normalized_value["assistant_message"] == (
+        "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+    )
+
+
+def test_fallback_replaces_misleading_model_message(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {
+                **duration_candidate(source_quote="不存在的引文"),
+                "assistant_message": "我已开启创作计划",
+            },
+            attempt=2,
+        ),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["assistant_message"] == (
+        "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+    )
+    assert result.fallback_audit is not None
+    assert result.fallback_audit.used_model_message is False
 
 
 def test_repair_json_invalid_fallback_audit_allows_empty_failure_codes():

@@ -26,6 +26,21 @@ def test_all_key_aliases_and_nfkc():
     assert controls["duration_seconds"]["value"] == 1.0
 
 
+def test_provider_duration_seconds_alias_maps_at_controls_path():
+    result = norm(
+        {
+            "requirement_patch": {
+                "controls_to_set": {
+                    "target_duration_seconds": {"value": "60"}
+                }
+            }
+        }
+    )
+
+    controls = result.value["requirement_patch"]["controls_to_set"]
+    assert controls == {"duration_seconds": {"value": 60.0}}
+
+
 def test_conflict_rejects():
     result = norm({"requirement_patch": {"controls_to_set": {"duration_seconds": {"value": 1}, "duration_sec": {"value": 2}}}})
     assert result.violations and result.violations[0].code == "agent_structured_normalization_alias_conflict"
