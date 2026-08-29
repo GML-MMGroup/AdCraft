@@ -443,22 +443,27 @@ class AgentCanvasPromptPreparationDispatchRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    rows = list(
+                    due = or_(
+                        and_(
+                            AgentCanvasPromptPreparationOutboxRow.status == "queued",
+                            AgentCanvasPromptPreparationOutboxRow.available_at <= now_value,
+                        ),
+                        and_(
+                            AgentCanvasPromptPreparationOutboxRow.status == "leased",
+                            AgentCanvasPromptPreparationOutboxRow.lease_expires_at <= now_value,
+                        ),
+                    )
+                    # Select runnable and exhausted rows independently.  An
+                    # exhausted row is still terminalized in this transaction,
+                    # but it must not consume the bounded claim capacity for a
+                    # later runnable row.
+                    runnable_rows = list(
                         connection.execute(
                             select(AgentCanvasPromptPreparationOutboxRow)
                             .where(
-                                or_(
-                                    and_(
-                                        AgentCanvasPromptPreparationOutboxRow.status == "queued",
-                                        AgentCanvasPromptPreparationOutboxRow.available_at
-                                        <= now_value,
-                                    ),
-                                    and_(
-                                        AgentCanvasPromptPreparationOutboxRow.status == "leased",
-                                        AgentCanvasPromptPreparationOutboxRow.lease_expires_at
-                                        <= now_value,
-                                    ),
-                                )
+                                due,
+                                AgentCanvasPromptPreparationOutboxRow.attempt_count
+                                < AgentCanvasPromptPreparationOutboxRow.max_attempts,
                             )
                             .order_by(
                                 AgentCanvasPromptPreparationOutboxRow.available_at.asc(),
@@ -468,6 +473,23 @@ class AgentCanvasPromptPreparationDispatchRepository:
                             .limit(batch_limit)
                         ).mappings()
                     )
+                    exhausted_rows = list(
+                        connection.execute(
+                            select(AgentCanvasPromptPreparationOutboxRow)
+                            .where(
+                                due,
+                                AgentCanvasPromptPreparationOutboxRow.attempt_count
+                                >= AgentCanvasPromptPreparationOutboxRow.max_attempts,
+                            )
+                            .order_by(
+                                AgentCanvasPromptPreparationOutboxRow.available_at.asc(),
+                                AgentCanvasPromptPreparationOutboxRow.created_at.asc(),
+                                AgentCanvasPromptPreparationOutboxRow.dispatch_id.asc(),
+                            )
+                            .limit(batch_limit)
+                        ).mappings()
+                    )
+                    rows = [*exhausted_rows, *runnable_rows]
                     claimed: list[PromptPreparationDispatchV1] = []
                     for row in rows:
                         current_attempt = int(row["attempt_count"])
