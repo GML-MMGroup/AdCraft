@@ -723,7 +723,7 @@
 
 .recommended-character-card__media-frame {
   display: grid;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 2 / 1;
   min-width: 0;
   place-items: center;
   overflow: hidden;
@@ -814,7 +814,7 @@
 
 .recommended-character-skeleton {
   display: grid;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 2 / 1;
   min-width: 0;
   align-content: end;
   gap: 8px;

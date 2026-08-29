@@ -116,11 +116,11 @@ describe("RecommendedCharacterGrid", () => {
     expect(screen.getByText("No recommended characters found.")).toBeTruthy();
   });
 
-  it("defines the comparison-first portrait grid and responsive breakpoints", () => {
+  it("defines the comparison-first three-view grid and responsive breakpoints", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
 
     expect(styles).toMatch(/\.recommended-character-grid__cards[^}]*grid-template-columns:\s*repeat\(4/);
-    expect(styles).toMatch(/\.recommended-character-card__media-frame[^}]*aspect-ratio:\s*3\s*\/\s*4/);
+    expect(styles).toMatch(/\.recommended-character-card__media-frame[^}]*aspect-ratio:\s*2\s*\/\s*1/);
     expect(styles).toMatch(/\.recommended-character-card__media[^}]*object-fit:\s*contain/);
     expect(styles).toMatch(/@media \(max-width: 959px\)/);
     expect(styles).toMatch(/@media \(max-width: 719px\)/);
