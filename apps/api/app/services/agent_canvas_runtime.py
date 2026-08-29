@@ -37,6 +37,7 @@ from app.schemas.agent_canvas_runtime import (
 from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
+from app.schemas.agent_canvas_video_parameters import CompiledVideoParametersV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.schemas.agent_canvas_world_setting import (
@@ -568,6 +569,8 @@ class DynamicCanvasScheduler:
         member = next(
             item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
         )
+        observed_node = self._workflows.get_node(workflow_id, node_id)
+        observed_revision = observed_node.revision
         frozen_node = member.prompt_metadata.get("frozen_node")
         node = (
             CanvasNodeV2.model_validate(frozen_node)
@@ -645,6 +648,17 @@ class DynamicCanvasScheduler:
                 )
             )
         )
+        # Capturing a run input snapshot records its ID on the live Node
+        # without advancing the authoring revision.  Carry only that
+        # execution-owned projection into the immutable run snapshot; any
+        # real authoring revision change remains fenced below.
+        current_after_inputs = self._workflows.get_node(workflow_id, node_id)
+        if current_after_inputs.revision == observed_revision:
+            node = node.model_copy(
+                update={
+                    "prompt_context_snapshot_id": current_after_inputs.prompt_context_snapshot_id
+                }
+            )
         self._assert_current_dependency_fence(
             workflow_id,
             execution_id,
@@ -654,6 +668,7 @@ class DynamicCanvasScheduler:
                 node=node,
                 inputs=(),
                 input_manifest=manifest,
+                authoring_revision_observed=observed_revision,
             ),
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
@@ -751,12 +766,30 @@ class DynamicCanvasScheduler:
                             compiled.parameter_compilation_snapshot_id or ""
                         )
                     )
-                    node = node.model_copy(
+                    current_node = self._workflows.get_node(workflow_id, node_id)
+                    if not _parameter_compilation_revision_is_current(
+                        node,
+                        current_node,
+                        compiled,
+                    ):
+                        raise V2PersistenceError(
+                            "execution_dependency_barrier_pending",
+                            "Execution admission is waiting for the current dependency wave.",
+                            stage="agent_canvas_scheduler",
+                            details={
+                                "retryable": True,
+                                "reason": "target_node_revision_changed",
+                                "reasons": ["target_node_revision_changed"],
+                                "source_node_ids": [],
+                            },
+                        )
+                    node = current_node.model_copy(
                         update={
                             "parameters": compiled.requested_parameters,
                             "parameter_provenance": compiled.parameter_provenance,
                         }
                     )
+                    observed_revision = current_node.revision
                 effective_parameters = EffectiveMediaParameterSnapshotV2(
                     requested=parameter_compilation_snapshot.requested_parameters,
                     effective=parameter_compilation_snapshot.effective_parameters,
@@ -819,6 +852,7 @@ class DynamicCanvasScheduler:
             execution_id=execution_id,
             node=node,
             inputs=inputs,
+            authoring_revision_observed=observed_revision,
             model_id=model_id,
             provider_id=provider_id,
             model_resolution=resolution,
@@ -1141,16 +1175,20 @@ class DynamicCanvasScheduler:
         reasons: list[str] = []
         source_node_ids: set[str] = set()
         current_node = nodes.get(node_id)
+        observed_revision = context.authoring_revision_observed or context.node.revision
+        frozen_target_revision = context.authoring_revision_observed is not None and (
+            context.authoring_revision_observed != context.node.revision
+        )
         if current_node is None:
             reasons.append("target_node_missing")
-        elif current_node.revision != context.node.revision:
+        elif current_node.revision != observed_revision:
             reasons.append("target_node_revision_changed")
-        elif (
+        elif not frozen_target_revision and (
             current_node.prompt_preparation.operation_id
             != context.node.prompt_preparation.operation_id
         ):
             reasons.append("target_prompt_operation_changed")
-        elif (
+        elif not frozen_target_revision and (
             current_node.prompt_preparation.prompt_digest
             != context.node.prompt_preparation.prompt_digest
             or current_node.prompt_preparation.binding_digest
@@ -1165,7 +1203,7 @@ class DynamicCanvasScheduler:
             != context.node.prompt_preparation.context_snapshot_id
         ):
             reasons.append("target_prompt_evidence_changed")
-        elif (
+        elif not frozen_target_revision and (
             current_node.prompt_preparation.occurrence_id
             != context.node.prompt_preparation.occurrence_id
             or current_node.prompt_preparation.character_phase
@@ -1976,6 +2014,50 @@ def _prompt_preparation_waiting_sources(
             for binding in snapshot.binding_snapshots
             if binding.source_kind == "node_output" and binding.source_id
         )
+    )
+
+
+def _parameter_compilation_revision_is_current(
+    original: CanvasNodeV2,
+    current: CanvasNodeV2,
+    compiled: CompiledVideoParametersV2,
+) -> bool:
+    """Allow only the compiler's own derived-parameter revision bump."""
+
+    if current.revision not in {original.revision, original.revision + 1}:
+        return False
+    for field in (
+        "node_id",
+        "workflow_id",
+        "node_type",
+        "creative_role",
+        "role_contract_version",
+        "title",
+        "status",
+        "execution_mode",
+        "summary_prompt",
+        "generation_prompt",
+        "structured_content",
+        "model_selection_mode",
+        "model_ref",
+        "metadata",
+        "prompt_context_snapshot_id",
+        "output_asset_id",
+        "position",
+        "error",
+        "prompt_preparation",
+        "variation_draft",
+    ):
+        if getattr(current, field) != getattr(original, field):
+            return False
+    if current.revision == original.revision:
+        return (
+            current.parameters == original.parameters
+            and current.parameter_provenance == original.parameter_provenance
+        )
+    return (
+        current.parameters == compiled.authoring_parameters
+        and current.parameter_provenance == compiled.parameter_provenance
     )
 
 
