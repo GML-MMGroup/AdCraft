@@ -54,6 +54,10 @@ class GuidedInteractionService:
         *,
         media_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
         product_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
+        reference_snapshot: Callable[
+            [str, ProposedDraftReferenceV2], tuple[int | None, str | None]
+        ]
+        | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -63,6 +67,7 @@ class GuidedInteractionService:
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
+            reference_snapshot=reference_snapshot,
         )
 
     def open_interaction(
@@ -159,7 +164,20 @@ class GuidedInteractionService:
                 self._interactions.ensure_media_resume_delivery(replay.submission_id)
             return replay.result.model_copy(update={"replayed": True})
         interaction = self.get_interaction(workflow_id, interaction_id)
-        self._validate_current(interaction, request)
+        try:
+            self._validate_current(interaction, request)
+        except V2PersistenceError as error:
+            if error.code != "guided_interaction_stale":
+                raise
+            replay = self._replay_closed_storyboard_selection(
+                workflow_id,
+                interaction,
+                request,
+                idempotency_key=idempotency_key,
+            )
+            if replay is not None:
+                return replay
+            raise
         if isinstance(request, GuidedMediaReviewSubmitV1) and isinstance(
             interaction.content,
             GuidedMediaReviewV1,
@@ -264,6 +282,139 @@ class GuidedInteractionService:
             events_cursor=accepted.events_cursor,
             replayed=accepted.replayed,
         )
+
+    def _replay_closed_storyboard_selection(
+        self,
+        workflow_id: str,
+        interaction: GuidedInteractionV1,
+        request: GuidedInteractionSubmitRequestV1,
+        *,
+        idempotency_key: str,
+    ) -> GuidedInteractionAcceptedV1 | None:
+        """Replay an already claimed Storyboard selection after its wait closes.
+
+        A changed client key is an alias of the server-owned selection identity,
+        not a new guided action.  Only an existing canonical Storyboard claim is
+        eligible for this stale-interaction bypass; a new or different option
+        still receives the normal stale interaction error.
+        """
+
+        if not isinstance(request, GuidedConceptSubmitV2) or not isinstance(
+            interaction.content, GuidedConceptChoiceV2
+        ):
+            return None
+        proposal_id = interaction.content.proposal_id
+        if proposal_id is None:
+            return None
+        try:
+            proposal = self._conversations.get_private_proposal(proposal_id)
+            if proposal.workflow_id != workflow_id or proposal.capability_id != "storyboard_design":
+                return None
+            action = self._proposal_action_for_replay(interaction, request, proposal)
+            if action is None:
+                return None
+            identity = self._proposal_submissions._storyboard_identity(  # noqa: SLF001
+                proposal,
+                action,
+            )
+            if not (
+                self._materializations.storyboard_identity_exists(identity.digest)
+                or self._materializations.storyboard_alias_exists(idempotency_key, identity.digest)
+            ):
+                return None
+            accepted = self._proposal_submissions.submit_action(
+                workflow_id,
+                proposal_id,
+                action,
+                idempotency_key=idempotency_key,
+            )
+            refreshed = self._conversations.get_private_proposal(proposal_id)
+            materialization = refreshed.materialization
+            if materialization is None:
+                return None
+            session = self._conversations.get_guidance_session(workflow_id)
+            return GuidedInteractionAcceptedV1(
+                workflow_id=workflow_id,
+                interaction_id=interaction.interaction_id,
+                submission_id="submission_" + _digest(f"{interaction.interaction_id}:{idempotency_key}")[:32],
+                receipt_id=f"receipt_{accepted.turn_id}",
+                continuation_id="continuation_" + _digest(materialization.materialization_id)[:32],
+                resulting_session_revision=max(
+                    request.expected_session_revision + 1,
+                    session.revision,
+                ),
+                events_cursor=accepted.events_cursor,
+                replayed=True,
+            )
+        except V2PersistenceError as error:
+            if error.code in {
+                "proposal_action_stale",
+                "guided_interaction_action_not_allowed",
+                "guided_interaction_option_invalid",
+                "proposal_option_not_found",
+            }:
+                return None
+            raise
+
+    @staticmethod
+    def _proposal_action_for_replay(interaction, request, proposal):
+        """Build a typed action without trusting a closed interaction's status."""
+
+        if request.action == "select":
+            if request.option_id is None or not any(
+                option.option_id == request.option_id for option in proposal.options
+            ):
+                raise _error(
+                    "guided_interaction_option_invalid",
+                    "Selected guided option is not current.",
+                )
+            descriptor = next(
+                (candidate for candidate in proposal.actions if candidate.action == "select_option"),
+                None,
+            )
+            if descriptor is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Selected guided option is not available.",
+                )
+            return SelectOptionActionV2(
+                action_id=descriptor.action_id,
+                action="select_option",
+                option_id=request.option_id,
+                expected_session_revision=request.expected_session_revision,
+                accepted_references=tuple(
+                    ProposedDraftReferenceV2.model_validate(reference.model_dump())
+                    for reference in request.accepted_references
+                ),
+            )
+        if request.action == "custom" and request.custom_text is not None:
+            descriptor = next(
+                (candidate for candidate in proposal.actions if candidate.action == "custom_direction"),
+                None,
+            )
+            if descriptor is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Custom direction is not available for the current Proposal.",
+                )
+            return CustomDirectionActionV2(
+                action_id=descriptor.action_id,
+                action="custom_direction",
+                custom_text=request.custom_text,
+                expected_session_revision=request.expected_session_revision,
+            )
+        if request.action == "delegate":
+            descriptor = next(
+                (candidate for candidate in proposal.actions if candidate.action == "delegate_choice"),
+                None,
+            )
+            if descriptor is not None:
+                return DelegateChoiceActionV2(
+                    action_id=descriptor.action_id,
+                    action="delegate_choice",
+                    expected_session_revision=request.expected_session_revision,
+                )
+        return None
 
     def _validate_current(
         self,
