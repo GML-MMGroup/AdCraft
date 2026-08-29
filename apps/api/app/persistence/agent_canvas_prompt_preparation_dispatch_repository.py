@@ -405,7 +405,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
     ) -> PromptPreparationDispatchV1 | None:
         try:
             with self._database.engine.connect() as connection:
-                row = (
+                rows = (
                     connection.execute(
                         select(AgentCanvasPromptPreparationOutboxRow)
                         .where(
@@ -420,13 +420,18 @@ class AgentCanvasPromptPreparationDispatchRepository:
                             AgentCanvasPromptPreparationOutboxRow.created_at.desc(),
                             AgentCanvasPromptPreparationOutboxRow.dispatch_id.desc(),
                         )
-                        .limit(1)
                     )
                     .mappings()
-                    .first()
+                    .all()
                 )
         except SQLAlchemyError as error:
             raise _persistence_error() from error
+        if len(rows) > 1:
+            raise _error(
+                "prompt_preparation_dispatch_ambiguous",
+                "Multiple current prompt-preparation dispatches exist for the Node.",
+            )
+        row = rows[0] if rows else None
         return _dispatch_from_row(row) if row is not None else None
 
     def list_for_workflow(self, workflow_id: str) -> tuple[PromptPreparationDispatchV1, ...]:
