@@ -5,11 +5,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
-from typing import Literal, Mapping
+from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+
+
+MAX_CONTEXT_BYTES = 64 * 1024
 
 PromptPreparationDispatchStatusV1 = Literal[
     "queued",
@@ -93,12 +97,7 @@ class PromptPreparationDispatchV1(BaseModel):
         if self.attempt_no > self.max_attempts:
             raise ValueError("Dispatch attempt count cannot exceed its retry budget.")
         if self.context_digest is not None:
-            encoded_context = json.dumps(
-                self.context_json,
-                ensure_ascii=True,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
+            encoded_context = canonical_context_bytes(self.context_json)
             if sha256(encoded_context).hexdigest() != self.context_digest:
                 raise ValueError("Context digest does not match the frozen context bytes.")
         if self.dispatch_id != prompt_preparation_dispatch_id(self.logical_key):
@@ -164,6 +163,37 @@ def prompt_preparation_dispatch_id(logical_key: str) -> str:
     return "ppd_" + sha256(logical_key.encode("utf-8")).hexdigest()[:40]
 
 
+def canonical_context_bytes(value: Mapping[str, Any] | StageAuthoringContextV1) -> bytes:
+    """Serialize one detached context snapshot with one bounded encoding."""
+
+    payload = (
+        value.model_dump(mode="json")
+        if isinstance(value, StageAuthoringContextV1)
+        else dict(value)
+    )
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    if len(encoded) > MAX_CONTEXT_BYTES:
+        raise ValueError("Prompt-preparation context exceeds the bounded snapshot size.")
+    return encoded
+
+
+def detached_context_payload(
+    value: Mapping[str, Any] | StageAuthoringContextV1,
+) -> tuple[dict[str, Any], str]:
+    """Return a deep-detached JSON object and its canonical digest."""
+
+    encoded = canonical_context_bytes(value)
+    payload = json.loads(encoded)
+    if not isinstance(payload, dict):
+        raise ValueError("Prompt-preparation context must be a JSON object.")
+    return payload, sha256(encoded).hexdigest()
+
+
 __all__ = (
     "AgentCanvasPromptPreparationDispatchStatusV1",
     "AgentCanvasPromptPreparationDispatchV1",
@@ -171,4 +201,7 @@ __all__ = (
     "PromptPreparationDispatchV1",
     "prompt_preparation_dispatch_id",
     "prompt_preparation_dispatch_logical_key",
+    "MAX_CONTEXT_BYTES",
+    "canonical_context_bytes",
+    "detached_context_payload",
 )
