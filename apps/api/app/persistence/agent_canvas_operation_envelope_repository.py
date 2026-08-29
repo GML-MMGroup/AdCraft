@@ -50,17 +50,18 @@ class AgentCanvasOperationEnvelopeRepository:
         _validate_storyboard_envelope(envelope)
         canonical = _canonical_json(envelope)
         existing = connection.execute(
-            select(AgentCanvasOperationEnvelopeRow.envelope_json).where(
+            select(AgentCanvasOperationEnvelopeRow).where(
                 AgentCanvasOperationEnvelopeRow.envelope_id == envelope.envelope_id
             )
-        ).scalar_one_or_none()
+        ).mappings().one_or_none()
         if existing is not None:
-            if existing != canonical:
+            persisted = _persisted_envelope(existing)
+            if str(existing["envelope_json"]) != canonical:
                 raise _error(
                     "idempotency_conflict",
                     "Operation envelope identity was reused with different content.",
                 )
-            return _ENVELOPE_ADAPTER.validate_json(existing)
+            return persisted
         try:
             connection.execute(
                 insert(AgentCanvasOperationEnvelopeRow).values(
@@ -90,10 +91,10 @@ class AgentCanvasOperationEnvelopeRepository:
         try:
             with self._database.engine.connect() as connection:
                 payload = connection.execute(
-                    select(AgentCanvasOperationEnvelopeRow.envelope_json).where(
+                    select(AgentCanvasOperationEnvelopeRow).where(
                         AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
                     )
-                ).scalar_one_or_none()
+                ).mappings().one_or_none()
         except SQLAlchemyError as error:
             raise _error(
                 "operation_envelope_persistence_failed",
@@ -104,12 +105,7 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        envelope = _ENVELOPE_ADAPTER.validate_json(
-            payload,
-            context={"allow_retired_historical_envelope": True},
-        )
-        _validate_storyboard_envelope(envelope)
-        return envelope
+        return _persisted_envelope(payload)
 
     def get_in_transaction(
         self,
@@ -117,21 +113,16 @@ class AgentCanvasOperationEnvelopeRepository:
         envelope_id: str,
     ) -> OperationEnvelopeV1:
         payload = connection.execute(
-            select(AgentCanvasOperationEnvelopeRow.envelope_json).where(
+            select(AgentCanvasOperationEnvelopeRow).where(
                 AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
             )
-        ).scalar_one_or_none()
+        ).mappings().one_or_none()
         if payload is None:
             raise _error(
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        envelope = _ENVELOPE_ADAPTER.validate_json(
-            payload,
-            context={"allow_retired_historical_envelope": True},
-        )
-        _validate_storyboard_envelope(envelope)
-        return envelope
+        return _persisted_envelope(payload)
 
     def validate_identity_in_transaction(
         self,
@@ -166,6 +157,35 @@ def _canonical_json(envelope: OperationEnvelopeV1) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _persisted_envelope(row) -> OperationEnvelopeV1:
+    """Decode an envelope row and verify its relational identity columns."""
+
+    try:
+        envelope = _ENVELOPE_ADAPTER.validate_json(
+            row["envelope_json"],
+            context={"allow_retired_historical_envelope": True},
+        )
+        _validate_storyboard_envelope(envelope)
+        _expected_operation, expected_turn_id = _operation_identity(envelope)
+    except V2PersistenceError:
+        raise
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "operation_envelope_identity_invalid",
+            "Persisted operation envelope is malformed.",
+        ) from error
+    if (
+        str(row["envelope_id"]) != envelope.envelope_id
+        or str(row["workflow_id"]) != envelope.workflow_id
+        or str(row["turn_id"]) != expected_turn_id
+    ):
+        raise _error(
+            "operation_envelope_identity_invalid",
+            "Persisted operation envelope linkage does not match its payload.",
+        )
+    return envelope
 
 
 def _operation_identity(
