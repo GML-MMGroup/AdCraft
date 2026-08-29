@@ -3071,6 +3071,44 @@ describe("Agent Canvas normalizers", () => {
     expect(timeline.presentation_items).toBeNull();
   });
 
+  it("preserves structured guided answer metadata in the chat message projection", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [{
+        entry_id: "guided-answer-submission-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 18,
+        entry_type: "message",
+        speaker: "user",
+        content: "ignored display fallback",
+        metadata: {
+          presentation_kind: "guided_answer",
+          schema_version: 1,
+          submission_id: "submission-1",
+          interaction_id: "interaction-1",
+          answers: [{
+            question_id: "production_duration_seconds",
+            label: "How long should the ad be?",
+            value: "30 seconds",
+          }],
+        },
+        created_at: "2026-08-29T00:00:18Z",
+      }],
+      next_cursor: 18,
+    });
+
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "message",
+      speaker: "user",
+      metadata: {
+        presentation_kind: "guided_answer",
+        submission_id: "submission-1",
+      },
+    });
+  });
+
   it("accepts the additive user presentation projection without changing raw timeline pagination", () => {
     const payload = {
       workflow_id: "workflow-1",

@@ -59,6 +59,7 @@ import {
 import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import {
   buildGuidedAnswerBubbles,
+  projectGuidedAnswerBubbles,
   type GuidedAnswerBubbleV1,
 } from "./guidedAnswerPresentation.ts";
 
@@ -549,6 +550,18 @@ export function useAgentCanvasChat({
         presentationItemsByKeyRef.current.clear();
       }
       setPersistedItems(items);
+      const persistedGuidedAnswerBubbles = projectGuidedAnswerBubbles(items);
+      setGuidedAnswerBubbles((current) => {
+        const persistedInteractionIds = new Set(
+          persistedGuidedAnswerBubbles.map((bubble) => bubble.interaction_id),
+        );
+        const merged = [
+          ...current.filter((bubble) => !persistedInteractionIds.has(bubble.interaction_id)),
+          ...persistedGuidedAnswerBubbles,
+        ];
+        const bubblesById = new Map(merged.map((bubble) => [bubble.bubble_id, bubble]));
+        return [...bubblesById.values()].sort((left, right) => left.sequence - right.sequence);
+      });
       hydrateTimelineItems(items, generation, usingPresentationProjection);
       hydrateCapabilityTurns(items, generation);
       items.forEach((item) => {

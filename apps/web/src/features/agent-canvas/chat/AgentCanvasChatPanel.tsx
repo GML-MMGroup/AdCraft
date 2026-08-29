@@ -87,7 +87,10 @@ import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.
 import { useComposerContext } from "./useComposerContext.ts";
 import { projectProductionFocus } from "./productionFocusProjection.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
-import type { GuidedAnswerBubbleV1 } from "./guidedAnswerPresentation.ts";
+import {
+  isPersistedGuidedAnswerMessage,
+  type GuidedAnswerBubbleV1,
+} from "./guidedAnswerPresentation.ts";
 import type { PresentationStreamView as PresentationStreamRuntimeView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import "./agent-canvas-chat.css";
 
@@ -337,9 +340,12 @@ export function AgentCanvasChatPanel({
     });
   }, [chat.state.items]);
   const stageTimeline = useMemo(
-    () => buildStageThreadTimeline(chat.state.items, {
-      showUnassociatedPlanning: chat.state.agentWorking,
-    }),
+    () => buildStageThreadTimeline(
+      chat.state.items.filter((item) => !isPersistedGuidedAnswerMessage(item)),
+      {
+        showUnassociatedPlanning: chat.state.agentWorking,
+      },
+    ),
     [chat.state.agentWorking, chat.state.items],
   );
   const timelineEntries = useMemo<TimelineEntry[]>(() => [
