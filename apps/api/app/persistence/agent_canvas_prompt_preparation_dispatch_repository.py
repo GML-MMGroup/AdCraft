@@ -1692,6 +1692,16 @@ def _source_snapshot_for_node(
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
                     }
+                elif bool(row["required"]):
+                    raise _error(
+                        "node_prompt_required_reference_missing",
+                        "Required Binding references a missing source Node.",
+                    )
+            elif row["source_kind"] == "node_output" and bool(row["required"]):
+                raise _error(
+                    "node_prompt_required_reference_missing",
+                    "Required Node-output Binding has no source Node identity.",
+                )
             elif row["source_kind"] == "image_asset":
                 source = _direct_asset_snapshot_for_binding(connection, row)
             binding_values.append(
