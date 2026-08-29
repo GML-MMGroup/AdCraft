@@ -3660,11 +3660,15 @@ def _validate_storyboard_action_request(
                 "Storyboard accepted references are invalid.",
             )
         supplied.append((source_kind, source_id))
-    expected = [
+    expected = {
         (reference.source_kind, reference.source_id)
         for reference in envelope.reference_plan.references
-    ]
-    if tuple(dict.fromkeys(supplied)) != tuple(dict.fromkeys(expected)):
+    }
+    # Accepted references are normalized in Proposal order before the envelope
+    # is built.  A replay may arrive through either public route (and therefore
+    # in a different client order), but it must still describe the same set of
+    # source identities.  Unknown or omitted identities remain a conflict.
+    if set(supplied) != expected:
         raise _error(
             "materialization_payload_conflict",
             "Storyboard accepted references do not match their envelope.",
