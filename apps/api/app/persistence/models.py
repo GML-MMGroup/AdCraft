@@ -1750,6 +1750,93 @@ class AgentCanvasContinuationOutboxRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasPromptPreparationOutboxRow(Base):
+    """Durable owner for one Node prompt-preparation input snapshot."""
+
+    __tablename__ = "agent_canvas_prompt_preparation_outbox"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','leased','completed','failed','superseded')",
+            name="ck_agent_canvas_prompt_preparation_dispatch_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts > 0",
+            name="ck_agent_canvas_prompt_preparation_dispatch_attempts",
+        ),
+        CheckConstraint(
+            "lease_generation >= 0",
+            name="ck_agent_canvas_prompt_preparation_dispatch_lease_generation",
+        ),
+        UniqueConstraint(
+            "logical_key",
+            name="uq_agent_canvas_prompt_preparation_dispatch_logical_key",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "node_id",
+            "operation_id",
+            name="uq_agent_canvas_prompt_preparation_dispatch_operation",
+        ),
+        Index(
+            "ix_agent_canvas_prompt_preparation_dispatch_due",
+            "status",
+            "available_at",
+            "created_at",
+        ),
+        Index(
+            "ix_agent_canvas_prompt_preparation_dispatch_node",
+            "workflow_id",
+            "node_id",
+            "node_revision",
+        ),
+    )
+
+    dispatch_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
+    )
+    node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    logical_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    role_variant: Mapped[str | None] = mapped_column(Text)
+    occurrence_id: Mapped[str | None] = mapped_column(Text)
+    character_phase: Mapped[str | None] = mapped_column(Text)
+    context_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    context_digest: Mapped[str | None] = mapped_column(Text)
+    context_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    binding_digest: Mapped[str | None] = mapped_column(Text)
+    recipe_digest: Mapped[str | None] = mapped_column(Text)
+    style_projection_digest: Mapped[str | None] = mapped_column(Text)
+    brief_digest: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_id: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_no: Mapped[int | None] = mapped_column(Integer)
+    document_revisions_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    source_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    model_policy_revision: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    available_at: Mapped[str] = mapped_column(Text, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    last_error_code: Mapped[str | None] = mapped_column(Text)
+    last_error_message: Mapped[str | None] = mapped_column(Text)
+    supersession_reason: Mapped[str | None] = mapped_column(Text)
+    superseded_by_dispatch_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    terminal_at: Mapped[str | None] = mapped_column(Text)
+
+
+# Internal callers may use either the dispatch or outbox terminology; both
+# names intentionally point to the same table and authority.
+AgentCanvasPromptPreparationDispatchRow = AgentCanvasPromptPreparationOutboxRow
+
+
 class AgentCanvasConceptProposalRow(Base):
     __tablename__ = "agent_canvas_concept_proposals"
 
