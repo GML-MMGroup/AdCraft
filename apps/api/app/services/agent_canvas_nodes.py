@@ -139,7 +139,9 @@ class AgentCanvasNodeService:
                 current.prompt_preparation,
                 now,
             )
-        elif "generation_prompt" in changes and request.generation_prompt and not source_only_product:
+        elif (
+            "generation_prompt" in changes and request.generation_prompt and not source_only_product
+        ):
             changes["prompt_preparation"] = _ready_prompt_preparation(
                 request.generation_prompt,
                 now,

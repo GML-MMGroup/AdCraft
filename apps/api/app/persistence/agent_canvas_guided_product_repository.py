@@ -1032,7 +1032,9 @@ class AgentCanvasGuidedProductRepository:
         )
 
     @staticmethod
-    def _reconcile_uploaded_product_lineage(connection, *, node: CanvasNodeV2, now: datetime) -> None:
+    def _reconcile_uploaded_product_lineage(
+        connection, *, node: CanvasNodeV2, now: datetime
+    ) -> None:
         """Persist the single explicit Main-output -> Multiview upload edge."""
 
         if node.metadata.get("source_input_kind") not in {"main", "multiview"}:
@@ -1066,13 +1068,17 @@ class AgentCanvasGuidedProductRepository:
         provenance = main_metadata.get("provenance")
         source_version_id = provenance.get("version_id") if isinstance(provenance, dict) else None
         source_asset_id = provenance.get("asset_id") if isinstance(provenance, dict) else None
-        binding_id = "binding_product_upload_lineage_" + sha256(
-            f"{node.workflow_id}:{main_row['node_id']}:{multiview_row['node_id']}".encode("utf-8")
-        ).hexdigest()[:24]
+        binding_id = (
+            "binding_product_upload_lineage_"
+            + sha256(
+                f"{node.workflow_id}:{main_row['node_id']}:{multiview_row['node_id']}".encode(
+                    "utf-8"
+                )
+            ).hexdigest()[:24]
+        )
         existing = (
             connection.execute(
-                select(AgentCanvasBindingRow)
-                .where(
+                select(AgentCanvasBindingRow).where(
                     AgentCanvasBindingRow.workflow_id == node.workflow_id,
                     AgentCanvasBindingRow.target_node_id == str(multiview_row["node_id"]),
                     AgentCanvasBindingRow.input_role == "image_reference",
