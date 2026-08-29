@@ -1476,6 +1476,14 @@ def create_agent_canvas_runtime(
         node = workflow_repository.get_node(workflow_id, node_ids[0]) if node_ids else None
         if node is None or node.creative_role != "storyboard_sequence":
             return None
+        terminal_wait = any(
+            command.node_id in node_ids
+            and command.state == "failed"
+            and command.last_error_code == "node_prompt_preparation_incomplete"
+            for command in automatic_run_repository.list_for_workflow(workflow_id)
+        )
+        if not terminal_wait:
+            return None
         return fanout_activation.activate_prompt_ready_nodes(
             workflow_id,
             node_ids,
