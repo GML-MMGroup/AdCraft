@@ -7,6 +7,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasBindingV2,
@@ -122,7 +123,11 @@ class AgentCanvasNodeService:
                 "structured_content",
             } & changes.keys()
             if immutable_changes:
-                raise ValueError("ready_node_immutable")
+                raise V2PersistenceError(
+                    "ready_node_immutable",
+                    "Source-only Product Nodes only allow generation prompt text edits.",
+                    stage="agent_canvas_nodes",
+                )
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
         if (
