@@ -840,19 +840,24 @@ class CapabilityMaterializationPublicationService:
             return None
         if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
             self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
-        pending_preparations = tuple(
-            (node_id, operation_id)
-            for node_id, operation_id in zip(
-                outcome.node_ids,
-                outcome.prompt_preparation_ids,
-                strict=True,
-            )
-            if self._workflows.get_node(
-                envelope.workflow_id,
-                node_id,
-            ).prompt_preparation.status
-            != "ready"
-        )
+        pending_preparations: list[tuple[str, str]] = []
+        for node_id, operation_id in zip(
+            outcome.node_ids,
+            outcome.prompt_preparation_ids,
+            strict=True,
+        ):
+            node = self._workflows.get_node(envelope.workflow_id, node_id)
+            if node.prompt_preparation.status == "ready":
+                continue
+            if node.prompt_preparation.operation_id != operation_id:
+                raise V2PersistenceError(
+                    "prompt_preparation_dispatch_stale",
+                    "Committed prompt-preparation operation is no longer current.",
+                    stage="capability_materialization_publication",
+                    details={"node_id": node_id, "operation_id": operation_id},
+                )
+            pending_preparations.append((node_id, operation_id))
+        pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
         if pending_preparations:
             # A committed materialization is recovered from the exact
