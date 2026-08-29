@@ -19,6 +19,7 @@ DECISION_BUNDLE_CAPABILITY_ALIAS_RULE_ID = (
 COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = "compact_turn_intent_v3.omittable_nulls.v1"
 COMPACT_TURN_INTENT_FIELD_ALIASES_RULE_ID = "compact_turn_intent_v3.field_aliases.v1"
 COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID = "compact_turn_intent_v3.presence_aliases.v1"
+COMPACT_TURN_INTENT_PRESENCE_SAFE_DEFAULT_RULE_ID = "compact_turn_intent_v3.presence_safe_default.v1"
 COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID = "compact_turn_intent_v3.lossless_scalars.v1"
 
 _INTAKE_ELEMENT_NAMES = (
@@ -175,6 +176,10 @@ def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNorm
     count += changed
     if changed:
         rule_ids.append(COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID)
+    changed = _normalize_presence_safe_defaults(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_PRESENCE_SAFE_DEFAULT_RULE_ID)
     changed = _normalize_lossless_scalars(candidate)
     count += changed
     if changed:
@@ -255,6 +260,28 @@ def _normalize_presence_aliases(candidate: dict[str, Any]) -> int:
         if mapped is not None and item["presence"] != mapped:
             item["presence"] = mapped
             changed += 1
+    return changed
+
+
+def _normalize_presence_safe_defaults(candidate: dict[str, Any]) -> int:
+    elements = candidate.get("explicit_elements")
+    if not isinstance(elements, dict):
+        return 0
+    changed = 0
+    for name in _INTAKE_ELEMENT_NAMES:
+        item = elements.get(name)
+        if not isinstance(item, dict) or "presence" not in item:
+            continue
+        presence = item["presence"]
+        if isinstance(presence, str):
+            if not presence.strip():
+                continue
+        elif not isinstance(presence, (bool, int, float)):
+            continue
+        if presence in {"include", "exclude", "unspecified"}:
+            continue
+        item["presence"] = "unspecified"
+        changed += 1
     return changed
 
 

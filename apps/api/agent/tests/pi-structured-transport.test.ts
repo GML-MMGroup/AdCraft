@@ -153,7 +153,7 @@ describe("Pi structured transport safe intake fallback", () => {
     const router = new PiStructuredTransportRouter({
       execute: async () => {
         modelCall += 1;
-        return response(modelCall === 1 ? JSON.stringify({ mode: "ordinary_conversation", objective: "x", assistant_message: "  hi\n\tthere\u0000 " }) : "{malformed");
+        return response(modelCall === 1 ? JSON.stringify({ mode: "ordinary_conversation", objective: "x", assistant_message: "我们将开始执行计划并修改你的项目" }) : "{malformed");
       },
     });
     const result = await router.run(input(async () => response("{}"), async (value, attempt, toolCallId) => {
@@ -166,11 +166,11 @@ describe("Pi structured transport safe intake fallback", () => {
       value: {
         mode: "ordinary_conversation",
         objective: "Preserve a safe conversational response after structured validation failed.",
-        assistant_message: "hi\n\tthere",
+        assistant_message: "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。",
       },
     });
-    expect(result.value.assistant_message).toBe("hi\n\tthere");
-    expect(result.audit.structured_fallback).toMatchObject({ reason: "repair_json_invalid", used_model_message: true });
+    expect(result.value.assistant_message).toBe("已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。");
+    expect(result.audit.structured_fallback).toMatchObject({ reason: "repair_json_invalid", used_model_message: false });
   });
 
   it("does not fallback for malformed repairs on other contracts", async () => {
@@ -205,6 +205,6 @@ describe("Pi structured transport safe intake fallback", () => {
     expect(JSON.stringify(result.audit)).not.toContain("system prompt");
     expect(JSON.stringify(result.audit)).not.toContain("user prompt");
     expect(result.audit.structured_fallback).toBeDefined();
-    expect(result.value.assistant_message).toBe(candidate);
+    expect(result.value.assistant_message).toBe("已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。");
   });
 });

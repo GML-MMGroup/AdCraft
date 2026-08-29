@@ -150,7 +150,52 @@ def test_conflict_is_type_sensitive():
 
 def test_unknown_values_and_extra_stay():
     value = {"explicit_elements": {"product": {"presence": "mystery", "source_quote": "x", "extra": 1}}, "extra_top": 2}
-    assert norm(value).value == value
+    result = norm(value)
+    assert result.value["explicit_elements"]["product"]["presence"] == "unspecified"
+    assert result.value["explicit_elements"]["product"]["source_quote"] == "x"
+    assert result.value["explicit_elements"]["product"]["extra"] == 1
+    assert result.value["extra_top"] == 2
+    assert result.rule_ids == ("compact_turn_intent_v3.presence_safe_default.v1",)
+    assert result.normalized_path_count == 1
+
+
+def test_unrecognized_presence_scalars_safe_default_to_unspecified():
+    result = norm(
+        {
+            "explicit_elements": {
+                "product": {"presence": "model-specific"},
+                "video": {"presence": True},
+                "audio": {"presence": False},
+            }
+        }
+    )
+    elements = result.value["explicit_elements"]
+    assert elements["product"]["presence"] == "unspecified"
+    assert elements["video"]["presence"] == "unspecified"
+    assert elements["audio"]["presence"] == "unspecified"
+    assert result.rule_ids == ("compact_turn_intent_v3.presence_safe_default.v1",)
+    assert result.normalized_path_count == 3
+
+
+def test_nested_and_unregistered_presence_values_stay_untouched():
+    value = {
+        "explicit_elements": {
+            "product": {"presence": {"enum": "mystery"}, "nested": {"presence": "mystery"}},
+            "unregistered": {"presence": "mystery"},
+        }
+    }
+    result = norm(value)
+    assert result.value == value
+    assert result.rule_ids == ()
+    assert result.normalized_path_count == 0
+
+
+def test_empty_presence_string_stays_untouched():
+    value = {"explicit_elements": {"product": {"presence": ""}}}
+    result = norm(value)
+    assert result.value == value
+    assert result.rule_ids == ()
+    assert result.normalized_path_count == 0
 
 
 def test_numeric_lossless_only():

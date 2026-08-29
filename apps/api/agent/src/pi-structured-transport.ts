@@ -237,7 +237,7 @@ export class PiStructuredTransportRouter {
         validationAttemptAudit(malformedRepair, 2, "structured_repair"),
       );
       if (supportsSafeConversationFallback(input)) {
-        const fallbackMessage = safeConversationFallbackMessage(primaryCandidate);
+        const fallbackMessage = safeConversationFallbackMessage();
         const fallbackValue = {
           mode: "ordinary_conversation" as const,
           objective:
@@ -801,24 +801,10 @@ export function supportsSafeConversationFallback(
     input.request.contract_name === "CompactTurnIntentDecisionV3";
 }
 
-function safeConversationFallbackMessage(
-  candidate: Readonly<Record<string, unknown>> | undefined,
-): { readonly message: string; readonly usedModelMessage: boolean } {
-  const rawMessage = candidate?.assistant_message;
-  if (typeof rawMessage === "string" && Array.from(rawMessage).length <= 2_000) {
-    const cleanedMessage = Array.from(rawMessage)
-      .filter(
-        (character) =>
-          character === "\n" ||
-          character === "\t" ||
-          !/[\p{Cc}\p{Cf}]/u.test(character),
-      )
-      .join("")
-      .trim();
-    if (cleanedMessage && Array.from(cleanedMessage).length <= 2_000) {
-      return { message: cleanedMessage, usedModelMessage: true };
-    }
-  }
+function safeConversationFallbackMessage(): {
+  readonly message: string;
+  readonly usedModelMessage: boolean;
+} {
   return {
     message: SAFE_CONVERSATION_FALLBACK_MESSAGE,
     usedModelMessage: false,
