@@ -1487,7 +1487,8 @@ def create_agent_canvas_runtime(
         terminal_wait = any(
             command.node_id in node_ids
             and command.state == "failed"
-            and command.last_error_code == "node_prompt_preparation_incomplete"
+            and getattr(command.last_error, "code", None)
+            == "node_prompt_preparation_incomplete"
             for command in automatic_run_repository.list_for_workflow(workflow_id)
         )
         if not terminal_wait:
