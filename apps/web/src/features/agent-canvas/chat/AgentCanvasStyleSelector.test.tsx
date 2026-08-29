@@ -229,8 +229,17 @@ describe("AgentCanvasStyleSelector", () => {
       .toBe("placeholder");
   });
 
-  it("keeps search hidden for a short catalog and gives the large two-column rail its own scroll viewport", async () => {
-    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+  it("never renders a Skill search box, even for a large catalog", async () => {
+    const largeCatalog: VideoSkillCatalogResponseV2 = {
+      ...catalog,
+      items: Array.from({ length: 9 }, (_, index) => ({
+        ...catalog.items[0],
+        skill_id: `cinematic-${index}`,
+        title: `Cinematic ${index}`,
+        display_order: index,
+      })),
+    };
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(largeCatalog);
 
     render(
       <AgentCanvasStyleSelector
@@ -243,6 +252,8 @@ describe("AgentCanvasStyleSelector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(within(dialog).queryByRole("searchbox")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
+    expect(within(dialog).getAllByText(/^Cinematic \d+$/)).toHaveLength(9);
 
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");

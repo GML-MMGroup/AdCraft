@@ -20,23 +20,12 @@ type StyleSelectorProps = {
 };
 
 const STYLE_CATALOG_PAGE_SIZE = 100;
-const STYLE_SEARCH_THRESHOLD = 8;
 
 function compareDisplayOrder(
   left: { display_order: number; title: string },
   right: { display_order: number; title: string },
 ) {
   return left.display_order - right.display_order;
-}
-
-function matchesPublicMetadata(skill: VideoSkillPublicDetailV2, query: string) {
-  if (!query) return true;
-  return [
-    skill.title,
-    skill.summary,
-    ...skill.tags,
-    ...skill.supported_use_cases,
-  ].some((value) => value.toLocaleLowerCase().includes(query));
 }
 
 function StyleLoadingState() {
@@ -119,7 +108,6 @@ export function AgentCanvasStyleSelector({
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<VideoSkillCatalogResponseV2 | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [activatingSkillId, setActivatingSkillId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +159,6 @@ export function AgentCanvasStyleSelector({
   useEffect(() => {
     setOpen(false);
     setCatalog(null);
-    setSearchQuery("");
     setError(null);
   }, [workflowId]);
 
@@ -203,10 +190,9 @@ export function AgentCanvasStyleSelector({
   }, [activatingSkillId, open]);
 
   const categories = catalog?.categories ?? [];
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const visibleSkills = useMemo(() => (catalog?.items ?? []).filter((skill) => (
-    skill.category === activeCategoryId && matchesPublicMetadata(skill, normalizedQuery)
-  )), [activeCategoryId, catalog?.items, normalizedQuery]);
+    skill.category === activeCategoryId
+  )), [activeCategoryId, catalog?.items]);
 
   async function togglePicker() {
     const nextOpen = !open;
@@ -330,16 +316,6 @@ export function AgentCanvasStyleSelector({
                   </button>
                 ))}
               </div>
-              {catalog.items.length > STYLE_SEARCH_THRESHOLD ? (
-                <input
-                  className="agent-chat__style-search"
-                  type="search"
-                  value={searchQuery}
-                  aria-label="Search video Styles"
-                  placeholder="Search Styles"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-              ) : null}
               <div className="agent-chat__style-list">
                 {visibleSkills.map((skill) => {
                   const selected = skill.skill_id === activeStyle?.skill_id
@@ -357,7 +333,7 @@ export function AgentCanvasStyleSelector({
                   );
                 })}
                 {!visibleSkills.length ? (
-                  <p className="agent-chat__style-empty">No Styles match this category and search.</p>
+                  <p className="agent-chat__style-empty">No Styles are available in this category.</p>
                 ) : null}
               </div>
             </>

@@ -2310,23 +2310,6 @@ button.agent-chat__node-links--related:hover {
   color: var(--style-text);
 }
 
-.agent-chat__style-search {
-  min-height: 30px;
-  margin: 0 12px 8px;
-  padding: 0 9px;
-  border: 1px solid var(--style-divider);
-  border-radius: 6px;
-  outline: none;
-  background: var(--style-surface);
-  color: var(--style-text);
-  font: inherit;
-  font-size: 10px;
-}
-
-.agent-chat__style-search:focus-visible {
-  border-color: var(--style-muted);
-}
-
 .agent-chat__style-list {
   display: grid;
   flex: 1 1 auto;
