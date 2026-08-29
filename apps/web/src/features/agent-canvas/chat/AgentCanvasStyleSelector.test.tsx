@@ -167,11 +167,11 @@ describe("AgentCanvasStyleSelector", () => {
     );
     expect(panelRule).toBeTruthy();
     const styleListRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
-    expect(styleListRule).toContain("height: min(620px, 68dvh)");
+    expect(styleListRule).toContain("height: min(602px, calc(56.25vw + 89px))");
     expect(styleListRule).toContain("max-height: calc(100dvh - 170px)");
     expect(styleListRule).toContain("grid-auto-rows: max-content");
     expect(styleListRule).toContain("overflow-y: auto");
-    expect(css).toContain("height: min(620px, 68dvh)");
+    expect(css).toContain("height: min(620px, calc(100dvh - 170px))");
     expect(css).toContain("min-height: 32px");
     expect(css).toContain("padding: 7px 11px");
     expect(categoryButtonRule).toContain("font-size: 11px");

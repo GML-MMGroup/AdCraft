@@ -2313,7 +2313,7 @@ button.agent-chat__node-links--related:hover {
   grid-auto-rows: max-content;
   align-content: start;
   gap: 8px;
-  height: min(620px, 68dvh);
+  height: min(602px, calc(56.25vw + 89px));
   max-height: calc(100dvh - 170px);
   min-height: 0;
   padding: 4px 12px 14px;
@@ -2534,6 +2534,7 @@ button.agent-chat__node-links--related:hover {
   }
 
   .agent-chat__style-list {
+    height: min(620px, calc(100dvh - 170px));
     grid-template-columns: minmax(0, 1fr);
   }
 
