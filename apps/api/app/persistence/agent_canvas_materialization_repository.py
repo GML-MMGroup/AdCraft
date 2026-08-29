@@ -475,6 +475,7 @@ class AgentCanvasMaterializationRepository:
                             "Proposal is not the current Guidance checkpoint.",
                         )
                     snapshot_ids: dict[str, str] = {}
+                    persisted_prompt_preparation_ids: dict[str, str] = {}
                     for bundle_node in nodes:
                         node_bindings = tuple(
                             binding
@@ -490,6 +491,22 @@ class AgentCanvasMaterializationRepository:
                             now=now,
                             prompt_dispatch=self._prompt_dispatch,
                             prompt_context=preparation_contexts.get(bundle_node.node_id),
+                        )
+                        persisted_preparation_json = connection.execute(
+                            select(AgentCanvasNodeRow.prompt_preparation_json).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == bundle_node.node_id,
+                            )
+                        ).scalar_one()
+                        persisted_preparation = json.loads(str(persisted_preparation_json))
+                        persisted_operation_id = persisted_preparation.get("operation_id")
+                        if not isinstance(persisted_operation_id, str) or not persisted_operation_id:
+                            raise _error(
+                                "prompt_preparation_dispatch_missing",
+                                "Materialized Node has no persisted prompt-preparation owner.",
+                            )
+                        persisted_prompt_preparation_ids[bundle_node.node_id] = (
+                            persisted_operation_id
                         )
                     if fault_injector is not None:
                         fault_injector("node")
@@ -1524,7 +1541,8 @@ class AgentCanvasMaterializationRepository:
                             before=False,
                         ),
                         prompt_preparation_ids=tuple(
-                            item.operation_id for item in materialization_plan.prompt_preparations
+                            persisted_prompt_preparation_ids[item.node_id]
+                            for item in materialization_plan.prompt_preparations
                         ),
                         receipt_id=(receipt.receipt_id if receipt is not None else None),
                         workflow_revision=expected_workflow_revision + 1,
