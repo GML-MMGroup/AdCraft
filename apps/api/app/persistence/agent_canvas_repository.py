@@ -890,6 +890,26 @@ class AgentCanvasWorkflowRepository:
                         )
                         if updated.rowcount != 1:
                             raise _prompt_preparation_conflict()
+                        if node.prompt_preparation.status == "queued":
+                            # Legacy callers may transition a queued Draft
+                            # without having persisted its owner yet.  Keep
+                            # the Node projection and dispatch intent in this
+                            # same CAS transaction.
+                            self._prompt_dispatch.ensure_for_node_in_transaction(
+                                connection,
+                                node,
+                                now=node.updated_at,
+                            )
+                        elif node.prompt_preparation.status in {
+                            "ready",
+                            "failed",
+                            "superseded",
+                        }:
+                            self._prompt_dispatch.reconcile_node_terminal_in_transaction(
+                                connection,
+                                node=node,
+                                now=node.updated_at,
+                            )
                         if node.prompt_preparation.status in {"ready", "failed", "superseded"}:
                             _invalidate_prompt_preparations_for_source(
                                 connection,
