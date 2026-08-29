@@ -231,6 +231,21 @@ class CapabilityMaterializationPublicationService:
             preview_bundle.nodes,
         )
         workflow = self._workflows.get_workflow(envelope.workflow_id)
+        frozen_prompt_context = stage_authoring_context_from_materialization(
+            materialization_context,
+            session_id=session.session_id,
+            session_revision=session.revision,
+            stage=session.journey.stage,
+            occurrence_id=(
+                envelope.occurrence_id
+                or (
+                    session.journey.active_action.occurrence_id
+                    if session.journey.active_action is not None
+                    else None
+                )
+            ),
+            references=envelope.reference_plan.references,
+        )
         plan = self._plan_compiler.compile(
             envelope,
             normalization,
@@ -242,6 +257,7 @@ class CapabilityMaterializationPublicationService:
                 current_journey=session.journey,
             ),
             storyboard_documents=authority_documents,
+            prompt_context=frozen_prompt_context,
         )
         lease_guard()
         try:

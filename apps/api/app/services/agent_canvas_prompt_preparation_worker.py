@@ -48,7 +48,7 @@ class AgentCanvasPromptPreparationWorker:
         dispatches: AgentCanvasPromptPreparationDispatchRepository,
         *,
         prepare: PreparationCallback,
-        context_loader: PreparationContextLoader,
+        context_loader: PreparationContextLoader | None = None,
         worker_id: str,
         clock: Callable[[], datetime] | None = None,
         batch_limit: int = 8,
@@ -122,26 +122,41 @@ class AgentCanvasPromptPreparationWorker:
                     dispatch,
                     now=self._clock(),
                 )
-                context = self._context_loader(dispatch)
+                if dispatch.context_json:
+                    try:
+                        context = StageAuthoringContextV1.model_validate(dispatch.context_json)
+                    except Exception as error:  # Pydantic details stay private.
+                        raise V2PersistenceError(
+                            "prompt_preparation_context_invalid",
+                            "Persisted prompt-preparation context is invalid.",
+                            stage="prompt_preparation_worker",
+                        ) from error
+                elif self._context_loader is not None:
+                    # Legacy direct-node fixtures may supply an explicit test
+                    # loader. Production workers have no loader and therefore
+                    # fail closed when immutable context proof is absent.
+                    context = self._context_loader(dispatch)
+                else:
+                    raise V2PersistenceError(
+                        "prompt_preparation_context_missing",
+                        "Prompt-preparation dispatch has no immutable context snapshot.",
+                        stage="prompt_preparation_worker",
+                    )
                 if not isinstance(context, StageAuthoringContextV1):
                     raise V2PersistenceError(
                         "prompt_preparation_context_invalid",
                         "Prompt-preparation context loader returned an invalid snapshot.",
                         stage="prompt_preparation_worker",
                     )
-                # Direct legacy Node creation may not have carried a complete
-                # context envelope yet (its dispatch stores the canonical
-                # empty object).  Materialized/recovered rows always persist
-                # the immutable context bytes; fence those rows strictly.
-                if dispatch.context_json and dispatch.context_digest:
-                    if context_digest(context) != dispatch.context_digest:
-                        raise V2PersistenceError(
-                            "prompt_preparation_dispatch_stale",
-                            "Prompt-preparation context does not match its frozen dispatch snapshot.",
-                            stage="prompt_preparation_worker",
-                        )
+                if dispatch.context_json and (
+                    not dispatch.context_digest or context_digest(context) != dispatch.context_digest
+                ):
+                    raise V2PersistenceError(
+                        "prompt_preparation_dispatch_stale",
+                        "Prompt-preparation context does not match its frozen dispatch snapshot.",
+                        stage="prompt_preparation_worker",
+                    )
                 result = self._prepare(dispatch, context)
-                lease_guard()
                 current = self._dispatches.get(dispatch.dispatch_id)
                 if current.status in {"completed", "failed", "superseded"}:
                     if current.status == "superseded":
@@ -149,6 +164,7 @@ class AgentCanvasPromptPreparationWorker:
                     if self._barrier_callback is not None and current.status == "completed":
                         self._barrier_callback(current, result)
                     return "completed" if current.status == "completed" else "failed"
+                lease_guard()
                 completed = self._dispatches.complete(
                     dispatch.dispatch_id,
                     worker_id=self._worker_id,

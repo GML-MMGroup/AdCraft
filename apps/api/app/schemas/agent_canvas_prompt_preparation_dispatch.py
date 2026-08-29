@@ -37,13 +37,14 @@ class PromptPreparationDispatchV1(BaseModel):
     character_phase: CharacterAuthoringPhaseV1 | None = None
     context_snapshot_id: str | None = Field(default=None, max_length=160)
     context_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    context_json: dict[str, object] = Field(default_factory=dict, max_length=128)
     binding_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     recipe_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     style_projection_digest: str | None = Field(
         default=None,
         pattern=r"^sha256:[a-f0-9]{64}$",
     )
-    brief_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    brief_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     requirement_revision_id: str | None = Field(default=None, max_length=160)
     requirement_revision_no: int | None = Field(default=None, ge=1)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
@@ -89,8 +90,19 @@ class PromptPreparationDispatchV1(BaseModel):
             self.supersession_reason or self.last_error_code
         ):
             raise ValueError("Superseded dispatch requires a reason.")
-        if self.status in {"queued", "leased", "completed"} and self.last_error_code is not None:
-            raise ValueError("Non-failed dispatch cannot expose an error code.")
+        if self.attempt_no > self.max_attempts:
+            raise ValueError("Dispatch attempt count cannot exceed its retry budget.")
+        if self.context_digest is not None:
+            encoded_context = json.dumps(
+                self.context_json,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+            if sha256(encoded_context).hexdigest() != self.context_digest:
+                raise ValueError("Context digest does not match the frozen context bytes.")
+        if self.dispatch_id != prompt_preparation_dispatch_id(self.logical_key):
+            raise ValueError("Dispatch ID must be derived from its logical key.")
         return self
 
 

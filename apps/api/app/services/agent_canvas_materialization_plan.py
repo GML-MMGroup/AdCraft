@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
@@ -46,11 +47,17 @@ class CapabilityMaterializationPlanCompiler:
         *,
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
+        prompt_context: StageAuthoringContextV1 | None = None,
     ) -> MaterializationPlanV1:
         bundle = self.compile_draft_bundle(envelope, normalization)
         nodes = bundle.nodes
         bindings = bundle.bindings
-        preparations = bundle.prompt_preparations
+        preparations = tuple(
+            item.model_copy(update={"context": prompt_context})
+            if prompt_context is not None
+            else item
+            for item in bundle.prompt_preparations
+        )
         storyboard_draft_preparation_queued = _has_storyboard_draft_preparation_evidence(
             envelope,
             nodes=nodes,

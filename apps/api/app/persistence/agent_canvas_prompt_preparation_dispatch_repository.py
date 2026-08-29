@@ -1782,7 +1782,7 @@ def _dependency_snapshot(value: Mapping[str, object]) -> dict[str, object]:
 
 def _json(value: object) -> str:
     try:
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     except (TypeError, ValueError) as error:
         raise _error(
             "prompt_preparation_dispatch_invalid",

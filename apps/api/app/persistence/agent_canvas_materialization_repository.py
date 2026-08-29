@@ -19,6 +19,10 @@ from app.persistence.agent_canvas_auto_run_repository import (
     AgentCanvasAutomaticRunRepository,
     is_automatic_run_eligible_node_type,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+    normalize_queued_node,
+)
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
@@ -151,6 +155,7 @@ class AgentCanvasMaterializationRepository:
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
         self._requirements = AgentCanvasRequirementRepository(database)
         self._working_documents = AgentWorkingDocumentRepository(database, events)
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
         self._fault_injector = fault_injector
 
     def get_completed_outcome(
@@ -212,6 +217,9 @@ class AgentCanvasMaterializationRepository:
         topic_id = proposal.topic_id
 
         primary_node = nodes[0] if nodes else None
+        preparation_contexts = {
+            item.node_id: item.context for item in materialization_plan.prompt_preparations
+        }
         node_ids = tuple(item.node_id for item in nodes)
         if len(set(node_ids)) != len(node_ids) or any(
             item.workflow_id != workflow_id for item in nodes
@@ -478,6 +486,8 @@ class AgentCanvasMaterializationRepository:
                             creative_direction_snapshot_id=creative_direction_snapshot_id,
                             skill_refs=skill_refs,
                             now=now,
+                            prompt_dispatch=self._prompt_dispatch,
+                            prompt_context=preparation_contexts.get(bundle_node.node_id),
                         )
                     if fault_injector is not None:
                         fault_injector("node")
@@ -2590,7 +2600,10 @@ def _insert_materialized_node(
     creative_direction_snapshot_id: str | None,
     skill_refs: tuple[dict[str, str], ...],
     now: str,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+    prompt_context: object | None = None,
 ) -> str:
+    node = normalize_queued_node(node, bindings=bindings)
     snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
     connection.execute(
         insert(AgentCanvasNodeRow).values(
@@ -2674,6 +2687,28 @@ def _insert_materialized_node(
             created_at=now,
         )
     )
+    if prompt_dispatch is not None:
+        # The materialization plan carries an immutable context identity.  The
+        # full StageAuthoringContext is supplied by the post-commit worker
+        # loader; this durable envelope prevents an orphaned queued projection
+        # while keeping the authoring transaction free of Agent calls.
+        prompt_dispatch.ensure_for_node_in_transaction(
+            connection,
+            node,
+            bindings=bindings,
+            context=(
+                prompt_context.model_dump(mode="json")
+                if prompt_context is not None and hasattr(prompt_context, "model_dump")
+                else {
+                    "workflow_id": node.workflow_id,
+                    "node_id": node.node_id,
+                    "context_snapshot_id": node.prompt_preparation.context_snapshot_id
+                    or snapshot_id,
+                    "materialization_snapshot_id": snapshot_id,
+                }
+            ),
+            now=datetime.fromisoformat(now),
+        )
     return snapshot_id
 
 
