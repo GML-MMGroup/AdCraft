@@ -280,6 +280,9 @@ from app.services.agent_canvas_post_ready_checkpoint import (
 from app.schemas.agent_canvas_media_review_authority import (
     CanvasPostReadyEffectDispositionV1,
 )
+from app.schemas.agent_canvas_prompt_preparation_dispatch import (
+    PromptPreparationDispatchV1,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -448,6 +451,22 @@ class AgentCanvasRuntime:
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
     prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
+
+
+def _resume_prompt_preparation_barrier(
+    dispatch: PromptPreparationDispatchV1,
+    _result: object,
+    *,
+    runtime_repository: AgentCanvasRuntimeRepository,
+    scheduler: DynamicCanvasScheduler,
+) -> None:
+    """Wake the existing scheduler after a committed prompt terminal result."""
+
+    if dispatch.status not in {"completed", "failed"}:
+        return
+    active = runtime_repository.get_active_execution(dispatch.workflow_id)
+    if active is not None:
+        scheduler.resume(active.execution_id)
 
 
 def get_agent_canvas_runtime(
@@ -1411,6 +1430,12 @@ def create_agent_canvas_runtime(
         # intentionally unset here so incomplete legacy rows fail closed.
         context_loader=None,
         worker_id=f"agent-canvas-prompt-preparation:{uuid4().hex}",
+        barrier_callback=lambda dispatch, result: _resume_prompt_preparation_barrier(
+            dispatch,
+            result,
+            runtime_repository=runtime_repository,
+            scheduler=scheduler,
+        ),
     )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
         guided_media_resume_deliveries,
