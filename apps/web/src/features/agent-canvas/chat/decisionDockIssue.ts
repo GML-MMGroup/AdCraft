@@ -32,7 +32,7 @@ export function isDecisionDockStaleError(error: unknown): boolean {
   if (/(stale|supersed|revision|precondition|conflict|no longer current)/.test(text)) return true;
   // Some gateways omit the detail message but retain the optimistic-lock
   // fields in the structured payload.
-  return Object.keys(error.details).some((key) =>
+  return Object.keys(error.details ?? {}).some((key) =>
     /(revision|expected|current|precondition)/i.test(key)
   );
 }

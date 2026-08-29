@@ -16,8 +16,6 @@ function toAcceptedReference(reference: ProposedDraftReferenceV2): GuidedAccepte
     required: reference.required,
     display_order: reference.display_order,
     semantic_reference_role: reference.semantic_reference_role,
-    occurrence_id: reference.occurrence_id,
-    character_phase: reference.character_phase,
   };
 }
 

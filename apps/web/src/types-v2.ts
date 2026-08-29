@@ -3505,8 +3505,6 @@ export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
   required: boolean;
   display_order: number;
   semantic_reference_role: string | null;
-  occurrence_id: string | null;
-  character_phase: "main" | "turnaround" | null;
 }
 
 export interface GuidedProductAssetVersionRefV1 {
