@@ -2926,6 +2926,25 @@ def act_on_chat_proposal(
                 events_cursor=replayed_interaction.events_cursor,
                 replayed=True,
             )
+        closed_replay = runtime.guided_interactions.replay_closed_storyboard_action(
+            workflow_id,
+            proposal_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+        if closed_replay is not None:
+            if not closed_replay.replayed:
+                background_tasks.add_task(
+                    runtime.accepted_background.run,
+                    AcceptedBackgroundWork(
+                        operation=AcceptedBackgroundOperation.GUIDED_INTERACTION_SUBMIT,
+                        workflow_id=workflow_id,
+                        resource_type=AcceptedBackgroundResourceType.TURN,
+                        resource_id=closed_replay.turn_id,
+                        callback=runtime.continuation_worker.run_once,
+                    ),
+                )
+            return closed_replay
         interaction = runtime.guided_interactions.get_current(workflow_id)
         if (
             interaction is not None
