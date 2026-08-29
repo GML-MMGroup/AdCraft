@@ -482,7 +482,18 @@ class DynamicCanvasScheduler:
                 blocked = tuple(
                     source_node_id
                     for source_node_id in required_waiting
-                    if (source := nodes.get(source_node_id)) is None or source.status == "failed"
+                    if (source := nodes.get(source_node_id)) is None
+                    or source.status == "failed"
+                    or _prompt_preparation_failure(source) is not None
+                )
+                blocked_error = next(
+                    (
+                        failure
+                        for source_node_id in blocked
+                        if (source := nodes.get(source_node_id)) is not None
+                        and (failure := _prompt_preparation_failure(source)) is not None
+                    ),
+                    None,
                 )
                 self._runtime.update_member(
                     execution_id,
@@ -491,6 +502,7 @@ class DynamicCanvasScheduler:
                     phase="blocked_by_upstream" if blocked else "waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
+                    error=blocked_error,
                     event_type=(
                         "execution_member_skipped_dependency"
                         if blocked
@@ -504,6 +516,11 @@ class DynamicCanvasScheduler:
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
                         "preferred_upstream_node_ids": list(preferred_waiting),
+                        **(
+                            {"error_code": blocked_error.code}
+                            if blocked_error is not None
+                            else {}
+                        ),
                         **({"reason_code": "skipped_dependency"} if blocked else {}),
                     },
                 )
@@ -583,14 +600,8 @@ class DynamicCanvasScheduler:
             or node.metadata.get("prompt_recipe_id")
         )
         if managed_prompt and node.prompt_preparation.status == "failed":
-            preparation_error = node.prompt_preparation.error
-            if preparation_error is None:
-                raise V2PersistenceError(
-                    "prompt_preparation_failed",
-                    "Node prompt preparation failed without a typed error.",
-                    stage="agent_canvas_scheduler",
-                    details={"retryable": False, "reason": "prompt_preparation_failed"},
-                )
+            preparation_error = _prompt_preparation_failure(node)
+            assert preparation_error is not None
             raise V2PersistenceError(
                 preparation_error.code,
                 preparation_error.message,
@@ -1998,6 +2009,18 @@ def _prompt_preparation_pending(node: CanvasNodeV2 | None) -> bool:
         or node.metadata.get("prompt_recipe_id")
     )
     return managed and preparation.status in {"queued", "working"}
+
+
+def _prompt_preparation_failure(node: CanvasNodeV2 | None) -> CanvasNodeErrorV2 | None:
+    """Return a terminal preparation error without inventing a user wait."""
+
+    if node is None or node.prompt_preparation.status != "failed":
+        return None
+    return node.prompt_preparation.error or CanvasNodeErrorV2(
+        code="prompt_preparation_failed",
+        message="Node prompt preparation failed without a typed error.",
+        retryable=False,
+    )
 
 
 def _prompt_preparation_waiting_sources(
