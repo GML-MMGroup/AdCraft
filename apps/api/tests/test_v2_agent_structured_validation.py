@@ -209,13 +209,13 @@ def test_alias_quote_is_checked_after_normalized_contract_validation(persisted_r
     )
 
 
-def test_unknown_presence_is_rejected_by_contract_without_source_quote_check(persisted_run):
+def test_unknown_presence_defaults_to_unspecified_without_unintended_action(persisted_run):
     repository, run = persisted_run
     value = {
         "mode": "guided_production",
         "objective": "制作广告",
         "explicit_elements": {
-            "product": {"presence": "mystery", "source_quote": "不存在的引文"}
+            "product": {"presence": "mystery", "source_quote": "广告"}
         },
     }
     result = V2AgentStructuredValidationService(repository).validate(
@@ -223,9 +223,10 @@ def test_unknown_presence_is_rejected_by_contract_without_source_quote_check(per
         submission=submission(run, value),
     )
 
-    assert result.accepted is False
-    assert result.violations
-    assert all(item.code != "requirement_source_quote_invalid" for item in result.violations)
+    assert result.accepted is True
+    assert result.violations == ()
+    assert result.normalized_value["explicit_elements"]["product"]["presence"] == "unspecified"
+    assert "requirement_patch" not in result.normalized_value
 
 
 def test_unknown_top_level_field_remains_forbidden(persisted_run):
