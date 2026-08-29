@@ -976,6 +976,72 @@ class AgentCanvasWorkflowRepository:
         restored = self.get_node(node.workflow_id, node.node_id)
         return restored if replayed else restored
 
+    def invalidate_prompt_preparation_for_dependency_change(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+    ) -> CanvasNodeV2:
+        """Supersede one preparation and enqueue its current successor atomically."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _node_not_found_error()
+                    current = _node_from_row(row)
+                    if current.prompt_preparation.operation_id != operation_id:
+                        raise _prompt_preparation_conflict()
+                    if current.prompt_preparation.status != "ready":
+                        connection.commit()
+                        return current
+                    current_workflow_revision = int(
+                        connection.execute(
+                            select(AgentCanvasWorkflowRow.revision).where(
+                                AgentCanvasWorkflowRow.workflow_id == workflow_id
+                            )
+                        ).scalar_one()
+                    )
+                    invalidated = _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
+                        workflow_id=workflow_id,
+                        target_node_id=node_id,
+                        expected_operation_id=operation_id,
+                        updated_at=_utc_now(),
+                    )
+                    if invalidated is None:
+                        connection.commit()
+                        return current
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=workflow_id,
+                        current_revision=current_workflow_revision,
+                        updated_at=invalidated.updated_at.isoformat(),
+                    )
+                    connection.commit()
+                    return invalidated
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
     def replace_derived_video_parameters(
         self,
         workflow_id: str,
@@ -2433,7 +2499,8 @@ def _invalidate_target_prompt_preparation(
     workflow_id: str,
     target_node_id: str,
     updated_at: str,
-) -> None:
+    expected_operation_id: str | None = None,
+) -> CanvasNodeV2 | None:
     row = (
         connection.execute(
             select(AgentCanvasNodeRow).where(
@@ -2447,15 +2514,20 @@ def _invalidate_target_prompt_preparation(
     if row is None:
         raise _node_not_found_error()
     node = _node_from_row(row)
+    if (
+        expected_operation_id is not None
+        and node.prompt_preparation.operation_id != expected_operation_id
+    ):
+        raise _prompt_preparation_conflict()
     if node.status not in {"draft", "failed", "ready"}:
-        return
+        return None
     if node.status == "ready" and node.prompt_preparation.operation_id is None:
         # Legacy/manual Ready content has no immutable preparation owner to
         # supersede.  Do not turn a harmless first Binding into a queued
         # re-preparation or clear its existing context projection.
-        return
+        return None
     if node.prompt_preparation.status == "not_applicable":
-        return
+        return None
     bindings = _load_target_bindings(connection, workflow_id, target_node_id)
     # Invalidation creates a new immutable operation identity.  Keep the
     # occurrence and role metadata, but discard all evidence/digests derived
@@ -2551,6 +2623,7 @@ def _invalidate_target_prompt_preparation(
             reason="dependency_or_binding_revision_changed",
             now=_parse_datetime(updated_at),
         )
+    return queued_node
 
 
 def _invalidate_prompt_preparations_for_source(

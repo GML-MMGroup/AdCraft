@@ -336,7 +336,7 @@ class NodePromptPreparationService:
         *,
         operation_id: str,
     ) -> CanvasNodeV2:
-        """Invalidate one prepared Draft without changing its operation identity."""
+        """Invalidate one prepared Draft and create its successor identity."""
 
         current = self._workflows.get_node(workflow_id, node_id)
         if current.prompt_preparation.operation_id != operation_id:
@@ -357,16 +357,10 @@ class NodePromptPreparationService:
             )
             if stream is not None:
                 self._presentation_publisher.supersede(stream)
-        return self._transition(
-            current,
-            current.prompt_preparation.model_copy(
-                update={
-                    "status": "queued",
-                    "error": None,
-                    "attempt_stage": "queued",
-                    "updated_at": _now(),
-                }
-            ),
+        return self._workflows.invalidate_prompt_preparation_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
         )
 
     def refresh_dependency_evidence(
