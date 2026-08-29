@@ -476,10 +476,11 @@ def _resume_prompt_preparation_barrier(
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
+    activation_result: object | None = None
     if dispatch.status == "completed" and prompt_ready_activation is not None:
         operation_id = getattr(dispatch, "operation_id", None)
         if isinstance(operation_id, str) and operation_id:
-            prompt_ready_activation(
+            activation_result = prompt_ready_activation(
                 dispatch.workflow_id,
                 (dispatch.node_id,),
                 source_id=operation_id,
@@ -487,7 +488,14 @@ def _resume_prompt_preparation_barrier(
 
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
     if active is None:
-        if notified_dispatch_ids is not None and dispatch_id:
+        activation_succeeded = bool(
+            activation_result is not None
+            and (
+                getattr(activation_result, "automatic_run_command_ids", ())
+                or getattr(activation_result, "manual_awaiting_id", None)
+            )
+        )
+        if activation_succeeded and notified_dispatch_ids is not None and dispatch_id:
             notified_dispatch_ids.add(dispatch_id)
         return
 
