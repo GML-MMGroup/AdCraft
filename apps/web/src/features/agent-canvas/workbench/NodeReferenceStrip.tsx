@@ -3,14 +3,12 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
-import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
+import { mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 
 function referencePreview(asset: AgentCanvasWorkflowV2["assets"][number] | undefined | null): string | null {
   if (!asset) return null;
-  return asset.media_type === "image"
-    ? mediaAssetContentPath(asset) || null
-    : mediaAssetPreviewPath(asset) || null;
+  return mediaAssetPreviewPath(asset) || null;
 }
 
 function sourcePresentation(
@@ -20,9 +18,12 @@ function sourcePresentation(
   const source = binding.source;
   if (source.kind === "image_asset") {
     const asset = workflow.assets.find((item) => item.asset_id === source.source_asset_id);
+    const boundVersionAsset = asset && source.source_asset_version_id
+      ? { ...asset, version_id: source.source_asset_version_id }
+      : asset;
     return {
       name: asset?.display_name ?? source.source_asset_id,
-      previewUrl: referencePreview(asset),
+      previewUrl: referencePreview(boundVersionAsset),
     };
   }
   const sourceNode = workflow.nodes.find((item) => item.node_id === source.source_node_id);

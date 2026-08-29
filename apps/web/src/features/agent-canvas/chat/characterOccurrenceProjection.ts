@@ -41,7 +41,8 @@ function phaseStatus(
     return "working";
   }
   const evidence = journey.transition_evidence.filter((item) => (
-    item.occurrence_id === occurrenceId && item.character_phase === phase
+    item.occurrence_id === occurrenceId
+    && (item.character_phase === phase || (item.character_phase === null && item.evidence_kind === "stage_failed"))
   ));
   const latest = evidence.at(-1);
   if (latest?.evidence_kind === "stage_failed") return "blocked";

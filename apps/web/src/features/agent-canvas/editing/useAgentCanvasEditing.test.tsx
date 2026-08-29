@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
+import { isV2ApiError } from "../../../api/v2Client.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodePatchRequestV2,
@@ -10,7 +11,7 @@ import type {
 } from "../../../types-v2.ts";
 
 vi.mock("../../../api/v2Client.ts", () => ({
-  isV2ApiError: () => false,
+  isV2ApiError: vi.fn(() => false),
   v2Api: {
     exportAgentCanvasEditingNode: vi.fn(),
     cancelAgentCanvasEditingExport: vi.fn(),
@@ -516,5 +517,30 @@ describe("useAgentCanvasEditing", () => {
     expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(4);
     expect(result.current.content?.dirty).toBe(false);
     expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  it("refreshes authority and discards the local draft after an editing revision conflict", async () => {
+    const failedCommit = deferred<void>();
+    const patchNode = vi.fn(() => failedCommit.promise);
+    vi.mocked(isV2ApiError).mockReturnValue(true);
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => (
+      useAgentCanvasEditing(workflow, editingNode([videoEntry()]), patchNode, refresh)
+    ));
+
+    act(() => {
+      result.current.stageVideoUpdate("binding-video", { trim_start_seconds: 2 });
+      void result.current.commitStagedManifest();
+    });
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      failedCommit.reject({ status: 409, code: "editing_manifest_revision_conflict" });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    expect(result.current.inputs.videos[0]?.entry.trim_start_seconds).toBe(0);
+    vi.mocked(isV2ApiError).mockReset().mockReturnValue(false);
   });
 });

@@ -146,5 +146,16 @@ describe("projectCharacterOccurrences", () => {
       main: "ready",
       turnaround: "queued",
     });
+
+    value.transition_evidence = [{
+      ...characterEvidence(1, "main"),
+      evidence_id: "evidence-stage-failed",
+      evidence_kind: "stage_failed",
+      character_phase: null,
+    }];
+    expect(projectCharacterOccurrences(value)[0]?.phases).toEqual({
+      main: "blocked",
+      turnaround: "blocked",
+    });
   });
 });
