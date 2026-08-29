@@ -459,14 +459,50 @@ def _resume_prompt_preparation_barrier(
     *,
     runtime_repository: AgentCanvasRuntimeRepository,
     scheduler: DynamicCanvasScheduler,
+    notified_dispatch_ids: set[str] | None = None,
 ) -> None:
-    """Wake the existing scheduler after a committed prompt terminal result."""
+    """Wake the existing scheduler after a committed prompt terminal result.
+
+    A preparation completion is only useful to an execution that is currently
+    waiting on that source.  Keeping this check at the callback seam avoids
+    waking unrelated waves and makes duplicate worker callbacks harmless.  The
+    optional set is process-local notification bookkeeping; durable execution
+    state remains the authority and is re-evaluated by ``resume``.
+    """
 
     if dispatch.status not in {"completed", "failed"}:
         return
+    dispatch_id = getattr(dispatch, "dispatch_id", None)
+    if (
+        notified_dispatch_ids is not None
+        and dispatch_id
+        and dispatch_id in notified_dispatch_ids
+    ):
+        return
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
-    if active is not None:
-        scheduler.resume(active.execution_id)
+    if active is None:
+        return
+
+    # Older lightweight test repositories do not expose members.  Preserve
+    # their compatibility while production repositories use the durable wait
+    # projection to fence unrelated wake-ups.
+    list_members = getattr(runtime_repository, "list_members", None)
+    if callable(list_members):
+        members = list_members(active.execution_id)
+        relevant = any(
+            member.state in {"queued", "waiting"}
+            and (
+                member.node_id == dispatch.node_id
+                or dispatch.node_id in member.waiting_for_node_ids
+            )
+            for member in members
+        )
+        if not relevant:
+            return
+
+    scheduler.resume(active.execution_id)
+    if notified_dispatch_ids is not None and dispatch_id:
+        notified_dispatch_ids.add(dispatch_id)
 
 
 def get_agent_canvas_runtime(
@@ -1417,6 +1453,7 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+    notified_prompt_dispatch_ids: set[str] = set()
     prompt_preparation_worker = AgentCanvasPromptPreparationWorker(
         prompt_dispatches,
         prepare=lambda dispatch, context: prompt_preparation_service.prepare(
@@ -1435,6 +1472,7 @@ def create_agent_canvas_runtime(
             result,
             runtime_repository=runtime_repository,
             scheduler=scheduler,
+            notified_dispatch_ids=notified_prompt_dispatch_ids,
         ),
     )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
