@@ -1421,6 +1421,7 @@ def _source_snapshot_for_node(
                             AgentCanvasNodeRow.revision,
                             AgentCanvasNodeRow.output_asset_id,
                             AgentCanvasNodeRow.prompt_preparation_json,
+                            AgentCanvasNodeRow.metadata_json,
                         ).where(
                             AgentCanvasNodeRow.workflow_id == node.workflow_id,
                             AgentCanvasNodeRow.node_id == source_node_id,
@@ -1433,26 +1434,36 @@ def _source_snapshot_for_node(
                     source_preparation = _parse_json_object(
                         source_row["prompt_preparation_json"]
                     )
-                    latest_version = (
-                        connection.execute(
-                            select(
-                                AssetVersionRow.version_id,
-                                AssetVersionRow.version_no,
-                                AssetVersionRow.sha256,
-                                AssetVersionRow.status,
-                            )
-                            .where(
-                                AssetVersionRow.asset_id == source_row["output_asset_id"],
-                                AssetVersionRow.status == "ready",
-                            )
-                            .order_by(
-                                AssetVersionRow.version_no.desc(),
-                                AssetVersionRow.version_id.desc(),
-                            )
-                            .limit(1)
+                    source_metadata = _parse_json_object(source_row["metadata_json"])
+                    pinned_version = source_metadata.get("source_version_id")
+                    if not isinstance(pinned_version, str) or not pinned_version:
+                        pinned_version = source_metadata.get("source_asset_version_id")
+                    pinned_version = (
+                        pinned_version
+                        if isinstance(pinned_version, str) and pinned_version
+                        else None
+                    )
+                    version_query = select(
+                        AssetVersionRow.version_id,
+                        AssetVersionRow.version_no,
+                        AssetVersionRow.sha256,
+                        AssetVersionRow.status,
+                    ).where(AssetVersionRow.asset_id == source_row["output_asset_id"])
+                    if pinned_version is not None:
+                        # A source Node may intentionally point at an older
+                        # immutable output.  Resolve that exact version rather
+                        # than silently replacing it with the newest ready row.
+                        version_query = version_query.where(
+                            AssetVersionRow.version_id == pinned_version
                         )
-                        .mappings()
-                        .one_or_none()
+                    else:
+                        version_query = version_query.where(AssetVersionRow.status == "ready")
+                        version_query = version_query.order_by(
+                            AssetVersionRow.version_no.desc(),
+                            AssetVersionRow.version_id.desc(),
+                        )
+                    pinned_row = (
+                        connection.execute(version_query.limit(1)).mappings().one_or_none()
                         if source_row["output_asset_id"] is not None
                         else None
                     )
@@ -1461,18 +1472,20 @@ def _source_snapshot_for_node(
                         "revision": int(source_row["revision"]),
                         "output_asset_id": source_row["output_asset_id"],
                         "asset_version_id": (
-                            latest_version["version_id"] if latest_version is not None else None
+                            pinned_row["version_id"]
+                            if pinned_row is not None
+                            else pinned_version
                         ),
                         "asset_version_no": (
-                            int(latest_version["version_no"])
-                            if latest_version is not None
+                            int(pinned_row["version_no"])
+                            if pinned_row is not None
                             else None
                         ),
                         "asset_version_sha256": (
-                            latest_version["sha256"] if latest_version is not None else None
+                            pinned_row["sha256"] if pinned_row is not None else None
                         ),
                         "asset_version_status": (
-                            latest_version["status"] if latest_version is not None else None
+                            pinned_row["status"] if pinned_row is not None else None
                         ),
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
