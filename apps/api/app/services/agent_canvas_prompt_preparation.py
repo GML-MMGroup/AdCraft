@@ -17,7 +17,6 @@ from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContext
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
 from app.schemas.agent_canvas_prompt_assertion import (
-    PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
     safe_prompt_assertion_metadata,
 )
