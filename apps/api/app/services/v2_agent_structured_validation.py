@@ -43,6 +43,9 @@ class V2AgentStructuredValidationService:
         identity_violations = _identity_violations(run, submission)
         if identity_violations:
             return _rejected(submission, identity_violations)
+        context_violations = self._validation_context_violations(run)
+        if context_violations:
+            return _rejected(submission, context_violations, repair_allowed=False)
         normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
             run.contract_name or "",
             submission.value,
@@ -161,8 +164,26 @@ class V2AgentStructuredValidationService:
     ) -> tuple[StructuredViolation, ...]:
         if run.validation_profile != "agent_intake_source_quotes_v1":
             return ()
+        context_violations = self._validation_context_violations(run)
+        if context_violations:
+            return context_violations
         source_turn_id = run.validation_context.get("source_turn_id")
-        if not isinstance(source_turn_id, str) or not source_turn_id:
+        source_message = self._repository.load_validation_source_message(
+            workflow_id=run.workflow_id,
+            conversation_id=run.conversation_id,
+            turn_id=source_turn_id,
+        )
+        assert source_message is not None
+        return _intake_source_quote_violations(source_message, value)
+
+    def _validation_context_violations(
+        self,
+        run: AgentRunRecord,
+    ) -> tuple[StructuredViolation, ...]:
+        if run.validation_profile != "agent_intake_source_quotes_v1":
+            return ()
+        source_turn_id = run.validation_context.get("source_turn_id")
+        if not isinstance(source_turn_id, str) or not source_turn_id.strip():
             return (_invalid_intake_validation_context(),)
         source_message = self._repository.load_validation_source_message(
             workflow_id=run.workflow_id,
@@ -171,7 +192,7 @@ class V2AgentStructuredValidationService:
         )
         if source_message is None:
             return (_invalid_intake_validation_context(),)
-        return _intake_source_quote_violations(source_message, value)
+        return ()
 
 
 def _identity_violations(
@@ -243,7 +264,7 @@ def _fallback_or_rejected(
             char
             for char in raw_message
             if char in "\n\t" or unicodedata.category(char) not in {"Cc", "Cf"}
-        )
+        ).strip()
         if cleaned_message.strip() and len(cleaned_message) <= 2_000:
             message = cleaned_message
             used_model_message = True

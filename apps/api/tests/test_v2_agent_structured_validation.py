@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 import json
 
 import pytest
@@ -18,6 +19,7 @@ from app.persistence.schema import upgrade_v2_schema
 from app.schemas.agent_runtime import (
     AgentRunContext,
     AgentRunRequest,
+    AgentStructuredFallbackAuditV1,
     AgentStructuredSubmission,
 )
 from app.services.v2_agent_structured_validation import (
@@ -278,6 +280,9 @@ def test_second_submission_invalid_source_quote_returns_safe_fallback(persisted_
     assert result.fallback_audit.submission_attempt == 2
     assert result.fallback_audit.used_model_message is True
     assert result.fallback_audit.reason == "validation_exhausted"
+    assert result.normalization_audit is not None
+    assert result.normalization_audit.rule_ids
+    assert result.normalization_audit.normalized_path_count >= 1
     assert "requested_capability" not in result.normalized_value
     assert "explicit_elements" not in result.normalized_value
     assert "requirement_patch" not in result.normalized_value
@@ -344,6 +349,19 @@ def test_second_submission_different_contract_remains_rejected(persisted_run):
     assert [item.code for item in result.violations] == ["agent_contract_mismatch"]
 
 
+def test_second_submission_persisted_noncompact_contract_remains_rejected(persisted_run):
+    repository, run = persisted_run
+    run = replace(run, contract_name="TurnIntentDecisionV2")
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, {"unexpected": True}, attempt=2),
+    )
+
+    assert result.accepted is False
+    assert result.fallback_audit is None
+    assert result.violations
+
+
 def test_second_submission_invalid_validation_context_remains_rejected(persisted_run):
     repository, run = persisted_run
     run.validation_context["source_turn_id"] = "missing-turn"
@@ -358,3 +376,76 @@ def test_second_submission_invalid_validation_context_remains_rejected(persisted
 
     assert result.accepted is False
     assert [item.code for item in result.violations] == ["agent_validation_context_invalid"]
+
+
+def test_second_submission_invalid_context_blocks_fallback_before_schema_errors(persisted_run):
+    repository, run = persisted_run
+    run.validation_context.pop("source_turn_id")
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {
+                **duration_candidate(source_quote="不存在的引文"),
+                "assistant_message": "请重试。",
+                "unexpected": True,
+            },
+            attempt=2,
+        ),
+    )
+
+    assert result.accepted is False
+    assert result.fallback_audit is None
+    assert [item.code for item in result.violations] == ["agent_validation_context_invalid"]
+
+
+def test_fallback_model_message_is_trimmed_after_control_cleanup(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {
+                **duration_candidate(source_quote="不存在的引文"),
+                "assistant_message": "  hi  ",
+            },
+            attempt=2,
+        ),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["assistant_message"] == "hi"
+    assert result.fallback_audit is not None
+    assert result.fallback_audit.used_model_message is True
+
+
+def test_fallback_model_message_preserves_inner_newline_and_tab(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {
+                **duration_candidate(source_quote="不存在的引文"),
+                "assistant_message": "  hi\n\tthere\u0000  ",
+            },
+            attempt=2,
+        ),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["assistant_message"] == "hi\n\tthere"
+
+
+def test_repair_json_invalid_fallback_audit_allows_empty_failure_codes():
+    audit = AgentStructuredFallbackAuditV1(
+        contract_name="CompactTurnIntentDecisionV3",
+        error_code="agent_structured_fallback_applied",
+        failure_codes=(),
+        validation_paths=(),
+        submission_attempt=2,
+        used_model_message=False,
+        reason="repair_json_invalid",
+    )
+
+    assert audit.failure_codes == ()

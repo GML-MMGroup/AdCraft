@@ -3355,13 +3355,13 @@
           "type": "string"
         },
         "failure_codes": {
+          "default": [],
           "items": {
             "maxLength": 160,
             "minLength": 1,
             "type": "string"
           },
           "maxItems": 32,
-          "minItems": 1,
           "title": "Failure Codes",
           "type": "array"
         },
@@ -3396,7 +3396,6 @@
       "required": [
         "contract_name",
         "error_code",
-        "failure_codes",
         "reason",
         "submission_attempt",
         "used_model_message",

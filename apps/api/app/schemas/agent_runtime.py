@@ -335,7 +335,7 @@ class AgentStructuredFallbackAuditV1(_StrictModel):
     contract_name: Literal["CompactTurnIntentDecisionV3"]
     error_code: Literal["agent_structured_fallback_applied"]
     failure_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
-        min_length=1, max_length=32
+        default=(), max_length=32
     )
     validation_paths: tuple[Annotated[str, Field(min_length=1, max_length=512)], ...] = Field(
         max_length=32
@@ -343,6 +343,12 @@ class AgentStructuredFallbackAuditV1(_StrictModel):
     submission_attempt: Literal[2]
     used_model_message: bool
     reason: Literal["validation_exhausted", "repair_json_invalid"]
+
+    @model_validator(mode="after")
+    def validate_failure_codes(self) -> "AgentStructuredFallbackAuditV1":
+        if self.reason != "repair_json_invalid" and not self.failure_codes:
+            raise ValueError("Validation-exhausted fallback audit requires failure codes.")
+        return self
 
 
 class AgentTransportAttemptMetadataV1(_StrictModel):

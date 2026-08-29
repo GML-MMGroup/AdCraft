@@ -766,7 +766,7 @@ export type StructuredViolation = { readonly "code": string; readonly "message":
 
 export type AgentStructuredNormalizationAuditV1 = { readonly "contract_name": string; readonly "rule_ids": ReadonlyArray<string>; readonly "normalized_path_count": number; readonly "submission_attempt": number };
 
-export type AgentStructuredFallbackAuditV1 = { readonly "contract_name": "CompactTurnIntentDecisionV3"; readonly "error_code": "agent_structured_fallback_applied"; readonly "failure_codes": ReadonlyArray<string>; readonly "validation_paths": ReadonlyArray<string>; readonly "submission_attempt": 2; readonly "used_model_message": boolean; readonly "reason": "repair_json_invalid" | "validation_exhausted" };
+export type AgentStructuredFallbackAuditV1 = { readonly "contract_name": "CompactTurnIntentDecisionV3"; readonly "error_code": "agent_structured_fallback_applied"; readonly "failure_codes"?: ReadonlyArray<string>; readonly "validation_paths": ReadonlyArray<string>; readonly "submission_attempt": 2; readonly "used_model_message": boolean; readonly "reason": "repair_json_invalid" | "validation_exhausted" };
 
 export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean; readonly "normalization_audit"?: AgentStructuredNormalizationAuditV1 | null; readonly "fallback_audit"?: AgentStructuredFallbackAuditV1 | null };
 
