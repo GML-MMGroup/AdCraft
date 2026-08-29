@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_v
 
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 
 RolePromptVariantV2 = Literal[
@@ -51,6 +52,10 @@ class RoleBindingSnapshotV2(_RolePromptModel):
     asset_id: str | None = Field(default=None, min_length=1, max_length=160)
     asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
     reference_purpose: str = Field(min_length=1, max_length=80)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    requirement_revision_no: int | None = Field(default=None, ge=1)
     source_sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
     display_order: int = Field(ge=0)
 
@@ -58,6 +63,16 @@ class RoleBindingSnapshotV2(_RolePromptModel):
     def validate_asset_identity(self) -> "RoleBindingSnapshotV2":
         if (self.asset_id is None) != (self.asset_version_id is None):
             raise ValueError("Binding Asset and version identities must be supplied together.")
+        character_values = (
+            self.occurrence_id,
+            self.character_phase,
+            self.requirement_revision_id,
+            self.requirement_revision_no,
+        )
+        if any(value is not None for value in character_values) and not all(
+            value is not None for value in character_values
+        ):
+            raise ValueError("Character Binding provenance must be supplied together.")
         return self
 
 
@@ -76,6 +91,8 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     role_variant: RolePromptVariantV2
     requirement_revision_id: str = Field(min_length=1, max_length=160)
     requirement_revision_no: int = Field(ge=1)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     requirement_facts: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)
@@ -106,6 +123,30 @@ class RolePromptPreparationContextV2(_RolePromptModel):
         control_names = tuple(item.name for item in self.bound_text_controls)
         if len(control_names) != len(set(control_names)):
             raise ValueError("Bound Text controls must have unique canonical names.")
+        expected_phase = {
+            "character_main": "main",
+            "character_turnaround": "turnaround",
+        }.get(self.role_variant)
+        if expected_phase is not None and (
+            self.occurrence_id is None or self.character_phase != expected_phase
+        ):
+            raise ValueError("Character prompt context requires one occurrence and exact phase.")
+        if expected_phase is None and (
+            self.occurrence_id is not None or self.character_phase is not None
+        ):
+            raise ValueError("Non-Character prompt context cannot carry Character identity.")
+        if self.role_variant == "video_segment":
+            character_bindings = tuple(
+                item for item in self.bindings if item.source_role == "character"
+            )
+            occurrence_ids = tuple(item.occurrence_id for item in character_bindings)
+            if any(
+                item.occurrence_id is None or item.character_phase != "turnaround"
+                for item in character_bindings
+            ) or len(occurrence_ids) != len(set(occurrence_ids)):
+                raise ValueError(
+                    "Video Character references require distinct Turnaround occurrences."
+                )
         return self
 
 
@@ -120,6 +161,7 @@ class RolePromptPreparationRequestV2(_RolePromptModel):
 class NodePromptPreparationV2(_RolePromptModel):
     status: Literal["queued", "working", "ready", "failed", "superseded"]
     operation_id: str = Field(min_length=1, max_length=160)
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
     attempt_no: int = Field(ge=0)
     role_variant: RolePromptVariantV2
     recipe_id: str = Field(min_length=1, max_length=160)
@@ -128,6 +170,8 @@ class NodePromptPreparationV2(_RolePromptModel):
     node_revision: int = Field(ge=1)
     requirement_revision_id: str = Field(min_length=1, max_length=160)
     requirement_revision_no: int = Field(ge=1)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     binding_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     style_projection_digest: str | None = Field(

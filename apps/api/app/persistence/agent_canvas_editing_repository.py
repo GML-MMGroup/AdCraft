@@ -282,7 +282,9 @@ class AgentCanvasEditingExportRepository:
         manifest = EditingNodeContentV2.model_validate_json(
             str(node["structured_content_json"])
         ).manifest
-        if manifest.manifest_revision != command.manifest_revision or manifest != command.manifest:
+        if (
+            manifest.manifest_revision != command.manifest_revision or manifest != command.manifest
+        ) and not _legacy_manifest_matches(manifest, command.manifest):
             raise _error(
                 "editing_manifest_revision_conflict",
                 "Editing manifest changed before export admission.",
@@ -928,6 +930,26 @@ def _stale_lease_error() -> V2PersistenceError:
         "stale_editing_export_lease",
         "Editing export lease ownership was lost.",
     )
+
+
+def _legacy_manifest_matches(
+    stored: EditingManifestV2,
+    canonical: EditingManifestV2,
+) -> bool:
+    """Allow a read-only canonical projection to pass raw legacy admission checks."""
+
+    if stored.timeline_duration_seconds is not None or any(
+        entry.timeline_start_seconds is not None for entry in stored.video_entries
+    ):
+        return False
+    stored_payload = stored.model_dump(mode="json")
+    canonical_payload = canonical.model_dump(mode="json")
+    stored_payload.pop("timeline_duration_seconds", None)
+    canonical_payload.pop("timeline_duration_seconds", None)
+    for payload in (stored_payload, canonical_payload):
+        for entry in payload["video_entries"]:
+            entry.pop("timeline_start_seconds", None)
+    return stored_payload == canonical_payload
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

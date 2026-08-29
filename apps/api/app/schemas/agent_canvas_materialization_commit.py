@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyEvidenceKindV2,
     JourneyStageV2,
 )
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.agent_canvas_materialization import (
     MaterializationOperationKindV1,
     ParentDerivedMaterializationIntentV1,
@@ -46,6 +47,10 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     evidence_kind: JourneyEvidenceKindV2
     source_id: str = Field(min_length=1, max_length=160)
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    ledger_revision_id: str | None = Field(default=None, max_length=160)
+    materialization_id: str | None = Field(default=None, max_length=160)
+    receipt_id: str | None = Field(default=None, max_length=160)
     storyboard_draft_preparation_queued: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -64,6 +69,8 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
             raise ValueError(
                 "Storyboard Draft preparation evidence requires storyboard plan or grid preparation."
             )
+        if self.character_phase is not None and self.evidence_kind != "character_materialized":
+            raise ValueError("Character phase is only valid for Character materialization.")
         return self
 
 
@@ -85,6 +92,9 @@ class NodePromptPreparationIntentV1(_MaterializationCommitModel):
     operation_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    ledger_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class MaterializationDocumentWriteV1(_MaterializationCommitModel):

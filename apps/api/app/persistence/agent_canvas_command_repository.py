@@ -847,6 +847,7 @@ class AgentCanvasCommandRepository:
                                         source_kind=binding["source_kind"],
                                         source_node_id=binding["source_node_id"],
                                         source_asset_id=binding["source_asset_id"],
+                                        source_asset_version_id=binding["source_asset_version_id"],
                                         target_node_id=node_id,
                                         input_role=binding["input_role"],
                                         required=binding["required"],
@@ -867,7 +868,12 @@ class AgentCanvasCommandRepository:
                                 status="applied",
                             )
                         elif operation_type == "create_binding":
-                            source_kind, source_node_id, source_asset_id = _resolve_binding_source(
+                            (
+                                source_kind,
+                                source_node_id,
+                                source_asset_id,
+                                source_asset_version_id,
+                            ) = _resolve_binding_source(
                                 connection,
                                 plan.workflow_id,
                                 operation.source,
@@ -935,6 +941,7 @@ class AgentCanvasCommandRepository:
                                     source_kind=source_kind,
                                     source_node_id=source_node_id,
                                     source_asset_id=source_asset_id,
+                                    source_asset_version_id=source_asset_version_id,
                                     target_node_id=target_node_id,
                                     input_role=_input_role_for_binding_kind(operation.binding_kind),
                                     required=operation.required,
@@ -1556,6 +1563,7 @@ class AgentCanvasCommandRepository:
                                 source_kind=binding["source_kind"],
                                 source_node_id=binding["source_node_id"],
                                 source_asset_id=binding["source_asset_id"],
+                                source_asset_version_id=binding["source_asset_version_id"],
                                 target_node_id=sibling_node_id,
                                 input_role=binding["input_role"],
                                 required=binding["required"],
@@ -1659,6 +1667,7 @@ class AgentCanvasCommandRepository:
                                 source_kind="node_output",
                                 source_node_id=sibling.node_id,
                                 source_asset_id=None,
+                                source_asset_version_id=None,
                                 target_node_id=turnaround.node_id,
                                 input_role="image_reference",
                                 required=True,
@@ -1955,12 +1964,18 @@ def _resolve_binding_source(
     workflow_id: str,
     reference: Any,
     operation_results: dict[str, str],
-) -> tuple[str, str | None, str | None]:
+) -> tuple[str, str | None, str | None, str | None]:
     if reference.kind == "image_asset":
-        return "image_asset", None, str(reference.asset_id)
+        if not reference.version_id:
+            raise _error(
+                "canvas_asset_reference_version_required",
+                "Direct asset bindings require an immutable asset version.",
+            )
+        return "image_asset", None, str(reference.asset_id), reference.version_id
     return (
         "node_output",
         _resolve_node_ref(connection, workflow_id, reference, operation_results),
+        None,
         None,
     )
 

@@ -237,7 +237,7 @@ class AgentCanvasResolvedInputCompiler:
                     asset_checksum=item.checksum,
                     access_descriptor=StorageAccessDescriptorV2(
                         asset_id=item.asset_id,
-                        media_url=asset.media_url or asset.preview_url or "",
+                        media_url=asset.media_url or "",
                         checksum=item.checksum,
                     ),
                     binding_id=item.binding_id,

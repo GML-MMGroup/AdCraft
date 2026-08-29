@@ -12,6 +12,7 @@ from pydantic import (
     JsonValue,
     RootModel,
     TypeAdapter,
+    ValidationInfo,
     model_validator,
 )
 
@@ -21,6 +22,8 @@ from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
+    CharacterAuthoringPhaseV1,
+    CharacterOccurrencePatchV1,
     EditableRequirementDirectiveV1,
     RequirementControlV1,
     RequirementControlPatchV1,
@@ -262,12 +265,23 @@ class CompactRequirementDirectivePatchV3(RootModel[_CompactRequirementDirectiveV
     """One schema-discriminated compact creative directive."""
 
 
+class CompactCharacterOccurrencePatchV3(_CapabilityModel):
+    occurrence_index: int = Field(ge=1, le=32)
+    role: str = Field(min_length=1, max_length=256)
+    identity_summary: str = Field(min_length=1, max_length=2_048)
+    presence: Literal["include", "exclude", "unspecified"]
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+
 class CompactRequirementPatchV3(_CapabilityModel):
     controls_to_set: CompactRequirementControlsV2 = Field(
         default_factory=CompactRequirementControlsV2
     )
     directives_to_add: tuple[CompactRequirementDirectivePatchV3, ...] = Field(
         default=(), max_length=16
+    )
+    character_occurrences_to_set: tuple[CompactCharacterOccurrencePatchV3, ...] | None = Field(
+        default=None, max_length=32
     )
 
 
@@ -309,6 +323,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
         has_requirement_patch = self.requirement_patch is not None and bool(
             self.requirement_patch.controls_to_set.model_dump(exclude_none=True)
             or self.requirement_patch.directives_to_add
+            or self.requirement_patch.character_occurrences_to_set
         )
         if self.requested_capability or has_explicit_elements or has_requirement_patch:
             raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
@@ -366,6 +381,12 @@ def expand_compact_turn_intent(
             ),
             directive_ids_to_supersede=(),
             conflicts=(),
+            character_occurrences_to_set=tuple(
+                CharacterOccurrencePatchV1.model_validate(item.model_dump())
+                for item in compact_patch.character_occurrences_to_set
+            )
+            if compact_patch.character_occurrences_to_set is not None
+            else None,
         )
     explicit_elements = tuple(
         ExplicitElementIntentV2(
@@ -534,6 +555,14 @@ class PlannedCapabilityReferenceV1(_CapabilityModel):
     priority: int = Field(ge=0, le=10_000)
     display_name: str = Field(min_length=1, max_length=256)
     media_type: Literal["text", "image", "video", "audio"]
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "PlannedCapabilityReferenceV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character reference identity requires occurrence and phase.")
+        return self
 
 
 class CapabilityReferencePlanV1(_CapabilityModel):
@@ -628,7 +657,10 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
     @model_validator(mode="after")
-    def validate_publication_boundary(self) -> "CapabilityCommandEnvelopeV2":
+    def validate_publication_boundary(
+        self,
+        info: ValidationInfo,
+    ) -> "CapabilityCommandEnvelopeV2":
         internal_stages = {"narrative_direction", "style_lock", "storyboard_plan"}
         if self.publication_kind == "proposal":
             if self.journey_stage is not None:
@@ -637,10 +669,15 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
         if (
             self.capability_id != "script_authoring"
             or self.journey_stage not in internal_stages
-            or self.result_contract_name != "ScriptMaterializationResultV1"
+            or self.result_contract_name
+            not in {"GuidedScriptCheckpointDraftV1", "ScriptMaterializationResultV1"}
             or self.candidate_count != 1
         ):
             raise ValueError("Internal document commands require one fixed Script checkpoint.")
+        if self.result_contract_name == "ScriptMaterializationResultV1" and not (
+            info.context and info.context.get("allow_retired_historical_envelope")
+        ):
+            raise ValueError("The retired direct Script checkpoint contract is not accepted.")
         return self
 
 
@@ -656,7 +693,16 @@ class NextActionEnvelopeV1(_CapabilityModel):
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "NextActionEnvelopeV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character next-action identity requires occurrence and phase.")
+        return self
 
 
 class CapabilityDispatchReceiptV1(_CapabilityModel):

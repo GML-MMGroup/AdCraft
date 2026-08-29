@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from pydantic import ValidationError
+
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_ad_media import (
@@ -126,7 +128,15 @@ class VideoSegmentPromptService(_RecipeService):
         references: AdReferenceBundleV2,
         capability: ProviderModelCapabilityV2,
     ) -> CompiledProviderPromptV2:
-        content = VideoSegmentContentV2.model_validate(node.structured_content)
+        try:
+            content = VideoSegmentContentV2.model_validate(node.structured_content)
+        except ValidationError as error:
+            if "style" in node.structured_content:
+                raise _error(
+                    "provider_prompt_style_contract_invalid",
+                    "Video style contract is invalid before provider dispatch.",
+                ) from error
+            raise
         self.validate(content, capability)
         return self._compile(node, references)
 

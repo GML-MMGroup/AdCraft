@@ -144,6 +144,66 @@ class WorkflowRevisionRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class PresentationStreamRow(Base):
+    """Bounded delivery metadata, separate from authoring and lifecycle state."""
+
+    __tablename__ = "presentation_streams"
+    __table_args__ = (
+        CheckConstraint(
+            "stream_kind IN ('assistant', 'node_prompt')",
+            name="ck_presentation_streams_kind",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'completed', 'failed', 'superseded')",
+            name="ck_presentation_streams_status",
+        ),
+        CheckConstraint("last_sequence_no >= 0", name="ck_presentation_streams_sequence"),
+        UniqueConstraint("idempotency_key", name="uq_presentation_streams_idempotency"),
+        Index("ix_presentation_streams_workflow", "workflow_id", "updated_at"),
+    )
+
+    stream_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    stream_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    generation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    turn_id: Mapped[str | None] = mapped_column(Text)
+    node_id: Mapped[str | None] = mapped_column(Text)
+    node_revision: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    last_sequence_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    authoritative_id: Mapped[str | None] = mapped_column(Text)
+    content_digest: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    timing_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    terminal_at: Mapped[str | None] = mapped_column(Text)
+
+
+class PresentationStreamChunkRow(Base):
+    """One coalesced, replayable presentation envelope."""
+
+    __tablename__ = "presentation_stream_chunks"
+    __table_args__ = (
+        UniqueConstraint("stream_id", "sequence_no", name="uq_presentation_chunks_sequence"),
+        UniqueConstraint("stream_id", "event_key", name="uq_presentation_chunks_event_key"),
+        Index("ix_presentation_chunks_stream_sequence", "stream_id", "sequence_no"),
+    )
+
+    chunk_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stream_id: Mapped[str] = mapped_column(
+        ForeignKey("presentation_streams.stream_id", ondelete="CASCADE"), nullable=False
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_key: Mapped[str] = mapped_column(Text, nullable=False)
+    event_json: Mapped[str] = mapped_column(Text, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AssetCatalogRow(Base):
     """One durable recommended-catalog installation record."""
 
@@ -970,6 +1030,11 @@ class AgentCanvasBindingRow(Base):
             "order_index",
             "binding_id",
         ),
+        Index(
+            "ix_agent_canvas_bindings_asset_version",
+            "source_asset_id",
+            "source_asset_version_id",
+        ),
     )
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -979,6 +1044,7 @@ class AgentCanvasBindingRow(Base):
     source_kind: Mapped[str] = mapped_column(Text, nullable=False)
     source_node_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"))
     source_asset_id: Mapped[str | None] = mapped_column(Text)
+    source_asset_version_id: Mapped[str | None] = mapped_column(Text)
     target_node_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_nodes.node_id"), nullable=False
     )
@@ -1304,7 +1370,7 @@ class AgentCanvasGuidedInteractionRow(Base):
     __tablename__ = "agent_canvas_guided_interactions"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification_questionnaire','concept_choice','media_review')",
+            "kind IN ('clarification_questionnaire','concept_choice','product_source','media_review')",
             name="ck_agent_canvas_guided_interactions_kind",
         ),
         CheckConstraint(
@@ -1385,6 +1451,43 @@ class AgentCanvasGuidedInteractionSubmissionRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasGuidedProductHandoffRow(Base):
+    """Durable typed Product AssetVersion handoff before source materialization."""
+
+    __tablename__ = "agent_canvas_guided_product_handoffs"
+    __table_args__ = (
+        CheckConstraint(
+            "input_kind IN ('main','multiview')",
+            name="ck_agent_canvas_guided_product_handoff_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending','consumed')",
+            name="ck_agent_canvas_guided_product_handoff_status",
+        ),
+        Index(
+            "ix_agent_canvas_guided_product_handoffs_workflow_created",
+            "workflow_id",
+            "created_at",
+            "handoff_id",
+        ),
+    )
+
+    handoff_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), nullable=False
+    )
+    input_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_versions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    consumed_at: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentCanvasGuidedMediaResumeDeliveryRow(Base):
     """Private fenced delivery for accepted media-confirmation resume work."""
 
@@ -1453,7 +1556,7 @@ class AgentCanvasGuidanceAwaitingRow(Base):
     __tablename__ = "agent_canvas_guidance_awaiting"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification','concept_selection','media_review',"
+            "kind IN ('clarification','concept_selection','product_source','media_review',"
             "'manual_node_run','milestone_idle')",
             name="ck_agent_canvas_guidance_awaiting_kind",
         ),

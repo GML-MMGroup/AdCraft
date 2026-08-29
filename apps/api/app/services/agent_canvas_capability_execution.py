@@ -17,8 +17,11 @@ from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
     CapabilityExecutionResultV1,
 )
-from app.schemas.agent_canvas_materialization import (
-    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+from app.schemas.agent_canvas_materialization import GuidedScriptCheckpointDraftV1
+from app.services.agent_canvas_script_checkpoint_contract import (
+    CapabilityContractBindingRegistry,
+    CapabilityContractBindingRegistryError,
+    GuidedScriptCheckpointCanonicalizationError,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_proposal_cardinality import (
@@ -130,6 +133,7 @@ class CapabilityExecutionService:
         self._internal_document_publisher = internal_document_publisher
         self._policy = CapabilityPolicyService()
         self._supersession = CapabilitySupersessionClassifier(database)
+        self._contract_bindings = CapabilityContractBindingRegistry()
 
     def execute(
         self,
@@ -149,15 +153,41 @@ class CapabilityExecutionService:
             if envelope.publication_kind == "internal_document"
             else self._policy.definition(envelope.capability_id)
         )
+        if (
+            envelope.publication_kind == "internal_document"
+            and envelope.capability_id == "script_authoring"
+            and envelope.result_contract_name == "ScriptMaterializationResultV1"
+        ):
+            raise V2PersistenceError(
+                "agent_script_checkpoint_contract_retired",
+                "The retired direct Script checkpoint contract cannot be dispatched.",
+                stage="capability_execution",
+                details={
+                    "retryable": False,
+                    "replacement_contract_name": "GuidedScriptCheckpointDraftV1",
+                },
+            )
         if definition.result_contract_name != envelope.result_contract_name:
             raise V2PersistenceError(
                 "capability_contract_invalid",
                 "Capability result contract conflicts with its immutable policy.",
                 stage="capability_execution",
             )
+        try:
+            binding = (
+                self._contract_bindings.resolve(definition.operation, envelope.publication_kind)
+                if envelope.publication_kind == "internal_document"
+                else None
+            )
+        except CapabilityContractBindingRegistryError as error:
+            raise V2PersistenceError(
+                error.code,
+                str(error),
+                stage="capability_execution",
+            ) from error
         contract = (
-            CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[envelope.capability_id]
-            if envelope.publication_kind == "internal_document"
+            GuidedScriptCheckpointDraftV1
+            if binding is not None
             else CAPABILITY_RESULT_CONTRACTS[envelope.capability_id]
         )
         canonical_script_duration = self._canonical_script_duration(envelope)
@@ -200,7 +230,9 @@ class CapabilityExecutionService:
                 envelope,
                 contract,
                 raw,
-                canonical_script_duration=canonical_script_duration,
+                canonical_script_duration=(
+                    None if binding is not None else canonical_script_duration
+                ),
             )
         except _CapabilityResultValidationError as initial_error:
             repaired = True
@@ -217,7 +249,9 @@ class CapabilityExecutionService:
                     envelope,
                     contract,
                     repaired_raw,
-                    canonical_script_duration=canonical_script_duration,
+                    canonical_script_duration=(
+                        None if binding is not None else canonical_script_duration
+                    ),
                 )
             except _CapabilityResultValidationError as error:
                 details = {**error.details, "repair_attempted": True}
@@ -228,6 +262,18 @@ class CapabilityExecutionService:
                     error.message,
                     stage="capability_execution",
                     details=details,
+                ) from error
+        if binding is not None:
+            try:
+                result = binding.normalizer(
+                    result,
+                    duration_seconds=canonical_script_duration,
+                )
+            except GuidedScriptCheckpointCanonicalizationError as error:
+                raise V2PersistenceError(
+                    error.code,
+                    str(error),
+                    stage="capability_execution",
                 ) from error
         lease_guard()
         proposal_id: str | None = None

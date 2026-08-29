@@ -140,6 +140,13 @@ class AgentCanvasRolePromptCompiler:
             context.role_variant,
             context.bindings,
         )
+        if context.role_variant == "character_turnaround":
+            parent = context.bindings[0]
+            if parent.occurrence_id != context.occurrence_id or parent.character_phase != "main":
+                raise _error(
+                    "character_parent_provenance_invalid",
+                    "Character Turnaround requires the exact same-occurrence Main provenance.",
+                )
         if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
@@ -165,7 +172,11 @@ class AgentCanvasRolePromptCompiler:
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
         reference_digest = _digest([item.model_dump(mode="json") for item in context.bindings])
-        style_digest = _digest(context.style_projection or "")
+        style_digest = _digest(
+            structured.get("style", context.style_projection or "")
+            if context.role_variant == "video_segment"
+            else (context.style_projection or "")
+        )
         brief_digest = _digest(brief_payload)
         prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
         prepared_prompt_digest = sha256(prompt.encode("utf-8")).hexdigest()
@@ -288,22 +299,24 @@ def _render(brief: RoleCreativeBriefMemberV2) -> tuple[str, str]:
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         return (
             "Use the exact bound Character Main as identity authority. Create the same detailed "
-            "semi-realistic commercial illustration in front, side, and back full-body views. "
+            "non-photorealistic semi-realistic commercial illustration in front, side, and back "
+            "full-body views on a clean neutral background. Preserve all distinguishing details. "
             f"Identity: {brief.identity}. Face and hair: {brief.face_and_hair}. Proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
             f"{brief.accessories}.",
-            "No photorealistic human, identity drift, labels, captions, text, product, scene, "
-            "second person, or alternate wardrobe.",
+            "No photorealistic human, identity drift, labels, captions, annotation text, product, "
+            "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
     if isinstance(brief, CharacterMainRoleBriefV2):
         return (
-            "Create one full-body detailed semi-realistic commercial illustration on a clean "
-            f"neutral background. Identity: {brief.identity}. Face and hair: "
+            "Create exactly one full-body detailed semi-realistic commercial "
+            f"illustration on a clean neutral background. Preserve all distinguishing details. "
+            f"Identity: {brief.identity}. Face and hair: "
             f"{brief.face_and_hair}. Silhouette and proportions: "
             f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
             f"{brief.accessories}.",
-            "No photograph, photorealistic human, product, active scene, second person, text, "
-            "labels, captions, or board layout.",
+            "No photograph, photorealistic human, product, prop, active scene, second person, "
+            "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
         return (
@@ -485,6 +498,7 @@ def _structured_content(
             segment_summary=brief.segment_summary,
             duration_seconds=brief.duration_seconds,
             storyboard_content=brief.action,
+            style=style,
             dialogue=brief.dialogue,
             voice_style=brief.voiceover,
             environment_sound=brief.ambience,

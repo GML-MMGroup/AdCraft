@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Literal, cast
 from uuid import uuid4
+from time import monotonic
 
 from fastapi import (
     APIRouter,
@@ -25,7 +26,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.v2.etag import (
     V2PreconditionError,
@@ -99,6 +100,7 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_presentation_repository import PresentationStreamRepository
 from app.persistence.project_repository import ProjectRepository
 from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_canvas import (
@@ -167,6 +169,11 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
 )
+from app.schemas.agent_canvas_guided_product import (
+    GuidedProductAssetVersionRefV1,
+    GuidedProductInputCommitRequestV1,
+    GuidedProductInputCommitResponseV1,
+)
 from app.schemas.agent_canvas_execution_settings import (
     AgentExecutionSettingsPatchV2,
     AgentExecutionSettingsV2,
@@ -195,6 +202,7 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRuntimeSnapshotV2,
 )
 from app.schemas.agent_canvas_post_ready_checkpoint import CanvasPostReadyCheckpointV2
+from app.schemas.agent_canvas_presentation import SafePresentationDeltaV1
 from app.schemas.agent_canvas_editing import (
     EditingExportAcceptedV2,
     EditingExportCancelResponseV2,
@@ -211,6 +219,13 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
+from app.persistence.agent_canvas_guided_product_repository import (
+    AgentCanvasGuidedProductRepository,
+)
+from app.services.product_upload_multiview_compiler import ProductUploadMultiviewCompiler
+from app.tools.ffmpeg import FfmpegTool
+from app.services.v2_final_composition_renderer import V2MediaProbe
 from app.services.agent_canvas_accepted_background import (
     AcceptedBackgroundOperation,
     AcceptedBackgroundResourceType,
@@ -324,6 +339,7 @@ from app.services.agent_canvas_guided_production_closure import (
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -388,6 +404,7 @@ class AgentCanvasRuntime:
     connected_authoring: AgentCanvasConnectedAuthoringService
     connection_policy: AgentCanvasConnectionPolicyService
     assets: AgentCanvasAssetService
+    guided_product_inputs: GuidedProductInputCommitService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
@@ -422,6 +439,8 @@ class AgentCanvasRuntime:
     auto_run_dispatcher: AgentCanvasAutoRunDispatcher
     working_documents: AgentWorkingDocumentService
     accepted_background: AgentCanvasAcceptedBackgroundRunner
+    presentation_streams: PresentationStreamRepository
+    presentation_publisher: PresentationStreamPublisher
 
 
 def get_agent_canvas_runtime(
@@ -457,6 +476,8 @@ def create_agent_canvas_runtime(
     )
     project_repository = ProjectRepository(database)
     event_repository = EventRepository(database)
+    presentation_streams = PresentationStreamRepository(database)
+    presentation_publisher = PresentationStreamPublisher(presentation_streams)
     workflow_repository = AgentCanvasWorkflowRepository(
         database,
         project_repository,
@@ -485,9 +506,27 @@ def create_agent_canvas_runtime(
             else None
         ),
     )
+    guided_product_inputs = GuidedProductInputCommitService(
+        assets=asset_service,
+        asset_repository=asset_repository,
+        workflows=workflow_repository,
+        commits=AgentCanvasGuidedProductRepository(workflow_repository, event_repository),
+        compiler=ProductUploadMultiviewCompiler(
+            ffmpeg=FfmpegTool(ffmpeg_path=settings.ffmpeg_path),
+            probe=V2MediaProbe(),
+            staging_root=settings.media_data_dir / "v2" / "staging",
+            max_total_bytes=64 * 1024 * 1024,
+            max_total_pixels=80_000_000,
+            timeout_seconds=30,
+        ),
+        events=event_repository,
+    )
     conversation_repository = AgentCanvasConversationRepository(
         database,
         event_repository,
+    )
+    guided_product_inputs.set_continuation_writer(
+        conversation_repository.insert_continuation_in_transaction
     )
     guided_interaction_repository = AgentCanvasGuidedInteractionRepository(
         database,
@@ -545,6 +584,21 @@ def create_agent_canvas_runtime(
             timeout_seconds=settings.agent_runtime_run_timeout_seconds,
             model_resolution=model_resolution,
             on_provider_waiting=conversation_repository.mark_turn_provider_waiting,
+            on_presentation=lambda event: presentation_publisher.publish_delta(
+                SafePresentationDeltaV1(
+                    stream_id=_presentation_stream_id(
+                        event.workflow_id, event.turn_id or event.generation_id
+                    ),
+                    workflow_id=event.workflow_id,
+                    stream_kind=event.channel,
+                    generation_id=event.generation_id,
+                    turn_id=event.turn_id,
+                    node_id=event.node_id,
+                    node_revision=event.node_revision,
+                    response_locale=event.response_locale,
+                    text=event.text,
+                )
+            ),
         )
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
@@ -599,6 +653,7 @@ def create_agent_canvas_runtime(
         documents=working_documents,
         conversations=conversation_repository,
         events=event_repository,
+        asset_resolver=asset_service.resolve_asset,
         closure=guided_closure,
         receipts=production_closure_receipts,
     )
@@ -797,6 +852,12 @@ def create_agent_canvas_runtime(
         total_limit=settings.v2_max_parallel_generation_jobs,
         output_preparer=output_preparer,
         result_committer=result_committer,
+        terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
+        prompt_preparation=NodePromptPreparationService(
+            workflow_repository,
+            asset_resolver=asset_service.resolve_asset,
+            presentation_publisher=presentation_publisher,
+        ),
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
@@ -985,6 +1046,7 @@ def create_agent_canvas_runtime(
                 )
             ),
             asset_resolver=asset_service.resolve_asset,
+            presentation_publisher=presentation_publisher,
         ),
         progression=production_journey,
         execution_settings=execution_settings.get_or_create,
@@ -1242,6 +1304,7 @@ def create_agent_canvas_runtime(
             exclude=guided_media_plan_actions.exclude,
         ).submit,
     )
+    guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1380,6 +1443,7 @@ def create_agent_canvas_runtime(
         ),
         connection_policy=connection_policy,
         assets=asset_service,
+        guided_product_inputs=guided_product_inputs,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
         turn_retries=turn_retries,
@@ -1418,6 +1482,8 @@ def create_agent_canvas_runtime(
         auto_run_dispatcher=auto_run_dispatcher,
         working_documents=working_documents,
         accepted_background=AgentCanvasAcceptedBackgroundRunner(),
+        presentation_streams=presentation_streams,
+        presentation_publisher=presentation_publisher,
     )
 
 
@@ -2138,11 +2204,58 @@ async def upload_asset(
             media_type=parsed.media_type,
             idempotency_key=idempotency_key,
         )
+        pending_handoff_id = None
+        if parsed.semantic_role == "product_main":
+            session = runtime.conversation_repository.get_guidance_session_or_none(workflow_id)
+            if session is not None and asset.version_id is not None:
+                pending_handoff_id = runtime.guided_product_inputs.create_pending_handoff(
+                    workflow_id=workflow_id,
+                    session_id=session.session_id,
+                    input_kind="main",
+                    asset_versions=(
+                        GuidedProductAssetVersionRefV1(
+                            asset_id=asset.asset_id,
+                            version_id=asset.version_id,
+                        ),
+                    ),
+                    idempotency_key=f"{idempotency_key}:product-main-handoff",
+                )
     except (ValueError, json.JSONDecodeError) as error:
         raise _http_error("asset_upload_invalid", 422, "Asset metadata is invalid.") from error
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    return ProjectAssetUploadResponseV2(workflow_id=workflow_id, asset=asset)
+    return ProjectAssetUploadResponseV2(
+        workflow_id=workflow_id,
+        asset=asset,
+        pending_handoff_id=pending_handoff_id,
+    )
+
+
+@router.post(
+    "/workflows/{workflow_id}/guided/product-inputs",
+    response_model=GuidedProductInputCommitResponseV1,
+)
+def commit_guided_product_input(
+    workflow_id: str,
+    request: GuidedProductInputCommitRequestV1,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> GuidedProductInputCommitResponseV1:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        committed = runtime.guided_product_inputs.commit(
+            workflow_id,
+            request,
+            expected_workflow_revision=_expected_revision(if_match, workflow_id),
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, committed.workflow_revision)
+    return committed
 
 
 @router.get(
@@ -2331,6 +2444,17 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
+    stream_id = _presentation_stream_id(workflow_id, accepted.turn_id)
+    stream = runtime.presentation_publisher.create_assistant_stream(
+        workflow_id=workflow_id,
+        turn_id=accepted.turn_id,
+        stream_id=stream_id,
+        generation_id=accepted.turn_id,
+        idempotency_key=f"assistant:{workflow_id}:{accepted.turn_id}",
+    )
+    if stream is not None:
+        runtime.presentation_publisher.started(stream)
+        accepted = accepted.model_copy(update={"presentation_stream_id": stream.stream_id})
     if (
         not accepted.replayed
         and runtime.conversations.get_turn(accepted.turn_id).status == "queued"
@@ -2879,6 +3003,26 @@ def get_video_skill(
         raise _persistence_http_error(error) from error
 
 
+@router.get("/video-skills/{skill_id}/preview", response_class=FileResponse)
+def get_video_skill_preview(
+    skill_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version: Annotated[str, Query(alias="v", min_length=1, max_length=80)],
+) -> FileResponse:
+    try:
+        preview = runtime.video_skills.get_preview_file(skill_id, version)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return FileResponse(
+        preview.path,
+        media_type=preview.media_type,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{preview.digest}"',
+        },
+    )
+
+
 @router.get(
     "/workflows/{workflow_id}/creative-session",
     response_model=GuidedSessionStateV2,
@@ -3074,6 +3218,92 @@ def stream_canvas_runtime_events(
     return StreamingResponse(body(), media_type="text/event-stream")
 
 
+@router.get(
+    "/workflows/{workflow_id}/presentation/streams/{stream_id}",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {
+                "text/event-stream": {"schema": {"type": "string"}},
+            }
+        }
+    },
+)
+def stream_agent_presentation(
+    workflow_id: str,
+    stream_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    after_seq: Annotated[int | None, Query(ge=0)] = None,
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+) -> StreamingResponse:
+    """Replay one bounded workflow-owned presentation stream over SSE."""
+
+    initial_cursor = _presentation_cursor(last_event_id, after_seq)
+    try:
+        events = runtime.presentation_streams.list_after(
+            workflow_id,
+            stream_id,
+            after_seq=initial_cursor,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+    async def body():
+        cursor = initial_cursor
+        last_heartbeat = monotonic()
+        pending = events
+        while True:
+            for event in pending:
+                cursor = event.sequence_no
+                yield (
+                    f"id: {event.sequence_no}\n"
+                    f"event: {event.event_type}\n"
+                    f"data: {event.model_dump_json()}\n\n"
+                )
+            current = runtime.presentation_streams.get(workflow_id, stream_id)
+            if current.status != "open":
+                return
+            await asyncio.sleep(1)
+            pending = runtime.presentation_streams.list_after(
+                workflow_id,
+                stream_id,
+                after_seq=cursor,
+            )
+            if not pending and monotonic() - last_heartbeat >= 15:
+                last_heartbeat = monotonic()
+                yield ": keepalive\n\n"
+
+    return StreamingResponse(
+        body(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _presentation_cursor(last_event_id: str | None, after_seq: int | None) -> int:
+    value = last_event_id if last_event_id is not None else after_seq
+    if value is None:
+        return 0
+    try:
+        cursor = int(value)
+    except (TypeError, ValueError) as error:
+        raise _http_error(
+            "presentation_stream_cursor_invalid",
+            422,
+            "Presentation stream cursor must be a non-negative integer.",
+        ) from error
+    if cursor < 0:
+        raise _http_error(
+            "presentation_stream_cursor_invalid",
+            422,
+            "Presentation stream cursor must be a non-negative integer.",
+        )
+    return cursor
+
+
 def _validate_event_cursor(
     events: EventRepository,
     workflow_id: str,
@@ -3132,11 +3362,39 @@ def _process_agent_turn_and_resume(
     workflow_id: str,
     turn_id: str,
 ) -> None:
-    runtime.conversations.process_turn(turn_id)
+    turn = runtime.conversations.process_turn(turn_id)
+    stream_id = _presentation_stream_id(workflow_id, turn_id)
+    try:
+        presentation_streams = getattr(runtime, "presentation_streams", None)
+        presentation_publisher = getattr(runtime, "presentation_publisher", None)
+        stream = (
+            presentation_streams.get(workflow_id, stream_id)
+            if presentation_streams is not None and presentation_publisher is not None
+            else None
+        )
+        if stream is not None and turn.status == "completed":
+            message = turn.assistant_message or ""
+            presentation_publisher.publish_validated_text(stream, message)
+            presentation_publisher.commit(
+                stream,
+                authoritative_id=turn.message_id or turn.turn_id,
+                content=message,
+            )
+        elif stream is not None and turn.status == "failed":
+            presentation_publisher.fail(stream, turn.error_code or "presentation_stream_failed")
+    except V2PersistenceError:
+        pass
     runtime.auto_run_dispatcher.run_once()
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
+    """Derive a stable opaque identity without exposing request content."""
+
+    digest = sha256(f"assistant:{workflow_id}:{generation_id}".encode("utf-8")).hexdigest()[:32]
+    return f"prs_{digest}"
 
 
 def _persist_text_document(
@@ -3224,6 +3482,14 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "project_update_invalid": 422,
         "workflow_not_found": 404,
         "workflow_not_agent_canvas": 409,
+        "presentation_stream_not_found": 404,
+        "presentation_stream_cursor_expired": 409,
+        "presentation_stream_cursor_invalid": 422,
+        "presentation_stream_superseded": 409,
+        "presentation_stream_backpressure_exceeded": 409,
+        "presentation_stream_identity_conflict": 409,
+        "presentation_stream_unavailable": 503,
+        "presentation_timing_invalid": 422,
         "agent_settings_revision_conflict": 412,
         "agent_document_not_found": 404,
         "agent_document_workflow_mismatch": 409,
@@ -3238,7 +3504,23 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_not_found": 404,
         "binding_not_found": 404,
         "asset_not_found": 404,
+        "guided_product_asset_not_found": 404,
+        "guided_product_asset_foreign_workflow": 409,
+        "guided_product_asset_not_image": 422,
+        "guided_product_asset_unreadable": 422,
+        "guided_product_input_invalid": 422,
+        "guided_product_stage_invalid": 409,
+        "guided_product_main_required": 422,
+        "guided_product_multiview_count_invalid": 422,
+        "guided_product_ffmpeg_unavailable": 503,
+        "guided_product_multiview_compilation_failed": 422,
+        "guided_product_input_already_committed": 409,
+        "guided_product_persistence_unavailable": 503,
+        "guided_product_source_only_not_runnable": 409,
         "asset_not_ready": 409,
+        "canvas_asset_reference_version_required": 422,
+        "canvas_asset_reference_media_type_invalid": 422,
+        "asset_reference_version_required": 422,
         "editing_export_workflow_mismatch": 409,
         "editing_export_not_ready": 409,
         "editing_export_asset_unreadable": 409,
@@ -3252,6 +3534,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,
+        "character_occurrence_reconciliation_conflict": 409,
+        "character_occurrence_cardinality_mismatch": 409,
         "requirement_scope_invalid": 422,
         "requirement_directive_not_found": 422,
         "requirement_projection_budget_exceeded": 422,
@@ -3313,6 +3597,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_duplicate_bgm": 409,
         "editing_audio_role_invalid": 422,
         "editing_manifest_revision_conflict": 409,
+        "editing_timeline_duration_invalid": 422,
+        "editing_timeline_out_of_bounds": 422,
+        "editing_timeline_overlap": 422,
         "editing_no_ready_video": 409,
         "editing_export_already_active": 409,
         "editing_export_not_found": 404,
@@ -3366,6 +3653,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "capability_materialization_failed": 503,
         "capability_materialization_unavailable": 503,
         "video_skill_not_found": 404,
+        "video_skill_preview_not_found": 404,
         "skill_not_found": 404,
         "skill_catalog_cursor_invalid": 422,
         "skill_catalog_page_invalid": 422,

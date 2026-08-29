@@ -24,6 +24,7 @@ from app.schemas.agent_canvas_editing import (
     EditingSkippedInputV2,
     EditingVideoEntryV2,
 )
+from app.services.agent_canvas_editing_timeline import normalize_manifest
 
 
 AssetResolver = Callable[[str], ProjectAssetSummaryV2]
@@ -49,6 +50,7 @@ class ResolvedEditingInputs:
     videos: tuple[ResolvedEditingMedia, ...]
     bgm: ResolvedEditingMedia | None
     skipped: tuple[EditingSkippedInputV2, ...]
+    timeline_duration_seconds: float | None = None
 
 
 class EditingNodeService:
@@ -65,8 +67,17 @@ class EditingNodeService:
     def content(self, workflow_id: str, node_id: str) -> EditingNodeContentV2:
         node = self._require_editing_node(workflow_id, node_id)
         content = EditingNodeContentV2.model_validate(node.structured_content)
+        manifest = self._canonical_manifest(
+            workflow_id,
+            node_id,
+            content.manifest,
+            current_manifest=content.manifest,
+        )
         return content.model_copy(
-            update={"preview": self.build_preview(workflow_id, node_id, content.manifest)}
+            update={
+                "manifest": manifest,
+                "preview": self.build_preview(workflow_id, node_id, manifest),
+            }
         )
 
     def update_manifest(
@@ -80,8 +91,15 @@ class EditingNodeService:
         node = self._require_editing_node(workflow_id, node_id)
         self._validate_manifest_bindings(workflow_id, node_id, manifest)
         current = EditingNodeContentV2.model_validate(node.structured_content)
-        updated_manifest = manifest.model_copy(
-            update={"manifest_revision": current.manifest.manifest_revision + 1}
+        updated_manifest = self._canonical_manifest(
+            workflow_id,
+            node_id,
+            manifest,
+            current_manifest=current.manifest,
+        ).model_copy(
+            update={
+                "manifest_revision": current.manifest.manifest_revision + 1,
+            }
         )
         updated_content = current.model_copy(
             update={
@@ -108,13 +126,29 @@ class EditingNodeService:
         manifest: EditingManifestV2 | None = None,
     ) -> EditingPreviewV2:
         node = self._require_editing_node(workflow_id, node_id)
-        selected = manifest or EditingNodeContentV2.model_validate(node.structured_content).manifest
+        current_manifest = EditingNodeContentV2.model_validate(node.structured_content).manifest
+        selected = self._canonical_manifest(
+            workflow_id,
+            node_id,
+            manifest or current_manifest,
+            current_manifest=current_manifest,
+        )
         workflow = self._workflows.get_workflow(workflow_id)
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {item.node_id: item for item in workflow.nodes}
         clips: list[EditingPreviewClipV2] = []
         warnings: list[str] = []
-        for order, entry in enumerate(selected.video_entries):
+        ordered_entries = sorted(
+            enumerate(selected.video_entries),
+            key=lambda item: (
+                item[1].timeline_start_seconds
+                if item[1].timeline_start_seconds is not None
+                else 0.0,
+                item[1].source_key,
+                item[0],
+            ),
+        )
+        for order, (_, entry) in enumerate(ordered_entries):
             binding = bindings.get(entry.binding_id) if entry.binding_id else None
             source = _source_node(binding, nodes)
             asset = _entry_asset(
@@ -164,11 +198,48 @@ class EditingNodeService:
             bgm_binding_id=selected.bgm.binding_id if selected.bgm else None,
             bgm_node_id=bgm_source.node_id if bgm_source else None,
             bgm_asset_id=bgm_asset.asset_id if bgm_asset else None,
-            estimated_duration_seconds=sum(
-                clip.duration_seconds or 0 for clip in clips if clip.warning is None
+            estimated_duration_seconds=(
+                selected.timeline_duration_seconds
+                if selected.timeline_duration_seconds is not None
+                else sum(clip.duration_seconds or 0 for clip in clips if clip.warning is None)
             ),
             warnings=tuple(warnings),
         )
+
+    def _canonical_manifest(
+        self,
+        workflow_id: str,
+        node_id: str,
+        manifest: EditingManifestV2,
+        *,
+        current_manifest: EditingManifestV2 | None = None,
+    ) -> EditingManifestV2:
+        return normalize_manifest(
+            manifest,
+            current_manifest=current_manifest,
+            source_durations=self._source_durations(workflow_id, node_id, manifest),
+        )
+
+    def _source_durations(
+        self,
+        workflow_id: str,
+        node_id: str,
+        manifest: EditingManifestV2,
+    ) -> dict[tuple[str, str], float]:
+        workflow = self._workflows.get_workflow(workflow_id)
+        bindings = {binding.binding_id: binding for binding in workflow.bindings}
+        nodes = {node.node_id: node for node in workflow.nodes}
+        durations: dict[tuple[str, str], float] = {}
+        for entry in manifest.video_entries:
+            source = (
+                _source_node(bindings.get(entry.binding_id), nodes)
+                if entry.binding_id is not None
+                else None
+            )
+            asset = _entry_asset(entry, source=source, resolver=self._asset_resolver)
+            if asset is not None and asset.duration_seconds is not None:
+                durations[entry.source_key] = asset.duration_seconds
+        return durations
 
     def _validate_manifest_bindings(
         self,
@@ -244,6 +315,15 @@ class EditingInputResolver:
         workflow = self._workflows.get_workflow(workflow_id)
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {node.node_id: node for node in workflow.nodes}
+        manifest = normalize_manifest(
+            manifest,
+            source_durations=_manifest_source_durations(
+                manifest,
+                bindings=bindings,
+                nodes=nodes,
+                resolver=self._asset_resolver,
+            ),
+        )
         videos: list[ResolvedEditingMedia] = []
         skipped: list[EditingSkippedInputV2] = []
         for entry in manifest.video_entries:
@@ -344,6 +424,7 @@ class EditingInputResolver:
             videos=tuple(videos),
             bgm=bgm,
             skipped=tuple(skipped),
+            timeline_duration_seconds=manifest.timeline_duration_seconds,
         )
 
 
@@ -366,6 +447,26 @@ def _entry_asset(
         resolver,
         source.output_asset_id if source is not None else entry.asset_id,
     )
+
+
+def _manifest_source_durations(
+    manifest: EditingManifestV2,
+    *,
+    bindings: dict[str, CanvasBindingV2],
+    nodes: dict[str, CanvasNodeV2],
+    resolver: AssetResolver,
+) -> dict[tuple[str, str], float]:
+    durations: dict[tuple[str, str], float] = {}
+    for entry in manifest.video_entries:
+        source = (
+            _source_node(bindings.get(entry.binding_id), nodes)
+            if entry.binding_id is not None
+            else None
+        )
+        asset = _entry_asset(entry, source=source, resolver=resolver)
+        if asset is not None and asset.duration_seconds is not None:
+            durations[entry.source_key] = asset.duration_seconds
+    return durations
 
 
 def _entry_warning(

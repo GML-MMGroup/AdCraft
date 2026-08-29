@@ -31,7 +31,6 @@ describe("project cover cache", () => {
 
     expect(loadProjectCoverCache("workflow-1|updated-1")).toBeUndefined();
   });
-
   it("migrates cached preview paths to the immutable content path", () => {
     const previewCover: V2ProjectCover = {
       ...cover,

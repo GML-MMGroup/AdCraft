@@ -93,11 +93,28 @@ class GuidedProductionJourneyReducer:
                     "journey_stage_action_mismatch",
                     "Materialization evidence does not match the current stage action.",
                 )
+            if current.stage == "character" and (
+                event.occurrence_id is not None
+                or event.character_phase is not None
+                or action.occurrence_id is not None
+                or action.character_phase is not None
+            ):
+                if event.occurrence_id != action.occurrence_id:
+                    raise _error(
+                        "character_occurrence_invalid",
+                        "Character materialization targets another occurrence.",
+                    )
+                if event.character_phase != action.character_phase:
+                    raise _error(
+                        "character_authoring_phase_invalid",
+                        "Character materialization targets another authoring phase.",
+                    )
             return JourneyEvidenceV2(
                 evidence_id=event.evidence_id,
                 evidence_kind=event.evidence_kind,
                 source_id=event.source_id,
                 occurrence_id=event.occurrence_id,
+                character_phase=event.character_phase,
                 stage=current.stage,
                 stage_revision=current.stage_revision,
             )
