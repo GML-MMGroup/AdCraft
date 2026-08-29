@@ -200,25 +200,37 @@ def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, Structur
     controls = candidate.get("requirement_patch", {}).get("controls_to_set") if isinstance(candidate.get("requirement_patch"), dict) else None
     if not isinstance(controls, dict):
         return 0, None
-    normalized: dict[str, Any] = {}
-    changed = 0
+    groups: dict[str, list[tuple[str, Any]]] = {}
+    known = set(_CONTROL_ALIASES) | set(_CONTROL_ALIASES.values())
     for key, val in list(controls.items()):
         nk = unicodedata.normalize("NFKC", key)
-        target = _CONTROL_ALIASES.get(nk, nk)
-        if target in normalized:
-            if normalized[target] != val:
+        target = _CONTROL_ALIASES.get(nk, nk) if nk in known else key
+        groups.setdefault(target, []).append((key, val))
+    changed = 0
+    for target, entries in groups.items():
+        if len(entries) > 1:
+            first_value = entries[0][1]
+            if any(not _typed_equal(first_value, val) for _, val in entries[1:]):
                 return 0, StructuredViolation(code="agent_structured_normalization_alias_conflict", message="Canonical and alias control values conflict.", field_path=f"requirement_patch.controls_to_set.{target}")
-            del controls[key]
-            changed += 1
-            continue
-        if key != target:
-            controls[target] = val
-            del controls[key]
-            normalized[target] = val
-            changed += 1
-        else:
-            normalized[target] = val
+        canonical = next(((key, val) for key, val in entries if key == target), entries[0])
+        if canonical[0] != target or len(entries) > 1:
+            controls[target] = canonical[1]
+            changed += (canonical[0] != target)
+        for key, _ in entries:
+            if key != target and key in controls:
+                del controls[key]
+                changed += 1
     return changed, None
+
+
+def _typed_equal(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_typed_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_typed_equal(a, b) for a, b in zip(left, right))
+    return left == right
 
 
 def _normalize_presence_aliases(candidate: dict[str, Any]) -> int:
