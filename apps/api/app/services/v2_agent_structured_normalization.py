@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import math
+import unicodedata
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
@@ -14,6 +16,9 @@ DECISION_BUNDLE_CAPABILITY_ALIAS_RULE_ID = (
     "decision_bundle.creative_directive.capability_ids_alias.v1"
 )
 COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = "compact_turn_intent_v3.omittable_nulls.v1"
+COMPACT_TURN_INTENT_FIELD_ALIASES_RULE_ID = "compact_turn_intent_v3.field_aliases.v1"
+COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID = "compact_turn_intent_v3.presence_aliases.v1"
+COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID = "compact_turn_intent_v3.lossless_scalars.v1"
 
 _INTAKE_ELEMENT_NAMES = (
     "product",
@@ -151,6 +156,115 @@ def _normalize_compact_turn_intent_omittable_nulls(
     )
 
 
+def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNormalizationResult:
+    candidate = deepcopy(value)
+    rule_ids: list[str] = []
+    count = 0
+    violations: list[StructuredViolation] = []
+
+    changed, conflict = _normalize_control_aliases(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_FIELD_ALIASES_RULE_ID)
+    if conflict:
+        violations.append(conflict)
+        return AgentStructuredNormalizationResult(value=deepcopy(value), violations=tuple(violations))
+
+    changed = _normalize_presence_aliases(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID)
+    changed = _normalize_lossless_scalars(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID)
+
+    null_result = _normalize_compact_turn_intent_omittable_nulls(candidate)
+    candidate = null_result.value
+    count += null_result.normalized_path_count
+    rule_ids.extend(null_result.rule_ids)
+    return AgentStructuredNormalizationResult(value=candidate, rule_ids=tuple(rule_ids), normalized_path_count=count)
+
+
+_CONTROL_ALIASES = {"target_duration_sec": "duration_seconds", "duration_sec": "duration_seconds", "resolution": "output_resolution", "fps": "frame_rate"}
+_PRESENCE_ALIASES = {
+    "include": "include", "included": "include", "present": "include", "required": "include", "包含": "include", "需要": "include", "已提及": "include",
+    "exclude": "exclude", "excluded": "exclude", "absent": "exclude", "omit": "exclude", "排除": "exclude", "不要": "exclude", "不需要": "exclude",
+    "unspecified": "unspecified", "unknown": "unspecified", "not_mentioned": "unspecified", "not specified": "unspecified", "未说明": "unspecified", "未提及": "unspecified", "不确定": "unspecified",
+}
+_FLOAT_CONTROLS = {"duration_seconds", "frame_rate"}
+_INT_CONTROLS = {"product_count", "prop_count", "character_count", "scene_count", "storyboard_sequence_count", "video_segment_count"}
+
+
+def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, StructuredViolation | None]:
+    controls = candidate.get("requirement_patch", {}).get("controls_to_set") if isinstance(candidate.get("requirement_patch"), dict) else None
+    if not isinstance(controls, dict):
+        return 0, None
+    normalized: dict[str, Any] = {}
+    changed = 0
+    for key, val in list(controls.items()):
+        nk = unicodedata.normalize("NFKC", key)
+        target = _CONTROL_ALIASES.get(nk, nk)
+        if target in normalized:
+            if normalized[target] != val:
+                return 0, StructuredViolation(code="agent_structured_normalization_alias_conflict", message="Canonical and alias control values conflict.", field_path=f"requirement_patch.controls_to_set.{target}")
+            del controls[key]
+            changed += 1
+            continue
+        if key != target:
+            controls[target] = val
+            del controls[key]
+            normalized[target] = val
+            changed += 1
+        else:
+            normalized[target] = val
+    return changed, None
+
+
+def _normalize_presence_aliases(candidate: dict[str, Any]) -> int:
+    elements = candidate.get("explicit_elements")
+    if not isinstance(elements, dict):
+        return 0
+    changed = 0
+    for name in _INTAKE_ELEMENT_NAMES:
+        item = elements.get(name)
+        if not isinstance(item, dict) or "presence" not in item or not isinstance(item["presence"], str):
+            continue
+        key = unicodedata.normalize("NFKC", item["presence"]).strip().casefold()
+        mapped = _PRESENCE_ALIASES.get(key)
+        if mapped is not None and item["presence"] != mapped:
+            item["presence"] = mapped
+            changed += 1
+    return changed
+
+
+def _normalize_lossless_scalars(candidate: dict[str, Any]) -> int:
+    patch = candidate.get("requirement_patch")
+    controls = patch.get("controls_to_set") if isinstance(patch, dict) else None
+    if not isinstance(controls, dict):
+        return 0
+    changed = 0
+    for name in _FLOAT_CONTROLS | _INT_CONTROLS:
+        item = controls.get(name)
+        if not isinstance(item, dict) or not isinstance(item.get("value"), str):
+            continue
+        raw = item["value"].strip()
+        try:
+            if name in _FLOAT_CONTROLS:
+                parsed = float(raw)
+                if not math.isfinite(parsed):
+                    continue
+            else:
+                if not raw.isdigit() and not (raw.startswith("-") and raw[1:].isdigit()):
+                    continue
+                parsed = int(raw)
+        except (ValueError, OverflowError):
+            continue
+        item["value"] = parsed
+        changed += 1
+    return changed
+
+
 def _remove_null_property(container: dict[str, Any], property_name: str) -> int:
     if property_name not in container or container[property_name] is not None:
         return 0
@@ -196,7 +310,7 @@ def _creative_directive_effects(
 
 _NORMALIZATION_RULES = MappingProxyType(
     {
-        "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent_omittable_nulls,
+        "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent,
         "DecisionBundleDraftV1": _normalize_decision_bundle_capability_alias,
     }
 )
