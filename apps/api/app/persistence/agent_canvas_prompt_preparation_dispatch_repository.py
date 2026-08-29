@@ -994,6 +994,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 "prompt_preparation_dispatch_missing",
                 "Terminal prompt preparation has no matching dispatch owner.",
             )
+        _assert_terminal_projection_identity(connection, row, node)
         if row["status"] in {"completed", "failed", "superseded"}:
             return _dispatch_from_row(row)
         status = {
@@ -2162,6 +2163,43 @@ def _assert_current_node_identity(
             _dependency_snapshot(source_snapshot)
         ):
             raise _stale_dispatch()
+
+
+def _assert_terminal_projection_identity(
+    connection: Connection,
+    dispatch_row: Mapping[str, Any],
+    node: CanvasNodeV2,
+) -> None:
+    """Fence a terminal Node projection against its immutable dispatch row."""
+
+    preparation = node.prompt_preparation
+    expected_context_digest = dispatch_row.get("context_digest")
+    if expected_context_digest:
+        # Once a dispatch has a frozen context, terminal publication must carry
+        # that exact digest in both the preparation projection and the safe
+        # metadata written by the preparation service.  An opaque legacy
+        # snapshot ID is not sufficient proof for a current terminal result.
+        if preparation.context_snapshot_id != expected_context_digest:
+            raise _stale_dispatch()
+        metadata = _parse_json_object(
+            connection.execute(
+                select(AgentCanvasNodeRow.metadata_json).where(
+                    AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                    AgentCanvasNodeRow.node_id == node.node_id,
+                )
+            ).scalar_one_or_none()
+        )
+        metadata_context_digest = metadata.get("prompt_context_digest")
+        if metadata_context_digest is not None and metadata_context_digest != expected_context_digest:
+            raise _stale_dispatch()
+    _assert_current_node_identity(
+        connection,
+        dispatch_row,
+        operation_id=preparation.operation_id,
+        context_digest=(str(expected_context_digest) if expected_context_digest else None),
+        source_snapshot=_source_snapshot_for_node(connection, node, ()),
+        node_revision=None,
+    )
 
 
 def _dependency_snapshot(value: Mapping[str, object]) -> dict[str, object]:
