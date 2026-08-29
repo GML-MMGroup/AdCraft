@@ -487,6 +487,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         now: datetime,
         batch_limit: int = 8,
         lease_duration: timedelta = timedelta(seconds=60),
+        _terminalized_out: list[PromptPreparationDispatchV1] | None = None,
     ) -> tuple[PromptPreparationDispatchV1, ...]:
         timestamp = _utc(now)
         if not worker_id or batch_limit < 1 or lease_duration <= timedelta(0):
@@ -496,6 +497,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             )
         now_value = _iso(timestamp)
         expiry_value = _iso(timestamp + lease_duration)
+        terminalized: list[PromptPreparationDispatchV1] = []
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -592,6 +594,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                     ),
                                     created_at=timestamp,
                                 )
+                                terminalized.append(_dispatch_from_row(failed_row))
                             continue
                         generation = int(row["lease_generation"]) + 1
                         changed = connection.execute(
@@ -635,6 +638,8 @@ class AgentCanvasPromptPreparationDispatchRepository:
                         )
                         claimed.append(dispatch)
                     connection.commit()
+                    if _terminalized_out is not None:
+                        _terminalized_out.extend(terminalized)
                     return tuple(claimed)
                 except BaseException:
                     connection.rollback()
@@ -643,6 +648,35 @@ class AgentCanvasPromptPreparationDispatchRepository:
             raise
         except SQLAlchemyError as error:
             raise _persistence_error() from error
+
+    def claim_due_with_terminalized(
+        self,
+        *,
+        worker_id: str,
+        now: datetime,
+        batch_limit: int = 8,
+        lease_duration: timedelta = timedelta(seconds=60),
+    ) -> tuple[
+        tuple[PromptPreparationDispatchV1, ...],
+        tuple[PromptPreparationDispatchV1, ...],
+    ]:
+        """Claim runnable rows and return rows terminalized by retry exhaustion.
+
+        Exhausted rows are deliberately excluded from the claimed capacity, but
+        their committed terminal transition still needs to reach the existing
+        barrier callback.  Returning both sets keeps that notification outside
+        the SQLite transaction while preserving the original ``claim_due`` API.
+        """
+
+        terminalized: list[PromptPreparationDispatchV1] = []
+        claimed = self.claim_due(
+            worker_id=worker_id,
+            now=now,
+            batch_limit=batch_limit,
+            lease_duration=lease_duration,
+            _terminalized_out=terminalized,
+        )
+        return claimed, tuple(terminalized)
 
     def renew_lease(
         self,
@@ -816,6 +850,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
         error_code: str,
         error_message: str,
         now: datetime,
+        node_revision: int | None = None,
+        operation_id: str | None = None,
+        context_digest: str | None = None,
+        source_snapshot: Mapping[str, object] | None = None,
     ) -> PromptPreparationDispatchV1:
         """Reopen a retryable terminal row without changing its identity."""
 
@@ -831,6 +869,20 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 row = _select_one(connection, dispatch_id)
                 if row is None:
                     raise _not_found()
+                if (
+                    node_revision is not None
+                    or operation_id is not None
+                    or context_digest is not None
+                    or source_snapshot is not None
+                ):
+                    _assert_current_node_identity(
+                        connection,
+                        row,
+                        node_revision=node_revision,
+                        operation_id=operation_id,
+                        context_digest=context_digest,
+                        source_snapshot=source_snapshot,
+                    )
                 if row["status"] == "queued":
                     return _dispatch_from_row(row)
                 if row["status"] != "failed":
@@ -1004,6 +1056,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
         error_code: str,
         error_message: str,
         now: datetime,
+        node_revision: int | None = None,
+        operation_id: str | None = None,
+        context_digest: str | None = None,
+        source_snapshot: Mapping[str, object] | None = None,
     ) -> PromptPreparationDispatchV1:
         timestamp = _utc(now)
         available = _utc(next_attempt_at)
@@ -1022,6 +1078,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
             error_code=error_code,
             error_message=error_message,
             keep_error=True,
+            node_revision=node_revision,
+            operation_id=operation_id,
+            context_digest=context_digest,
+            source_snapshot=source_snapshot,
         )
 
     def fail(
@@ -1033,6 +1093,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
         error_code: str,
         error_message: str,
         now: datetime,
+        node_revision: int | None = None,
+        operation_id: str | None = None,
+        context_digest: str | None = None,
+        source_snapshot: Mapping[str, object] | None = None,
     ) -> PromptPreparationDispatchV1:
         return self._finish_owned(
             dispatch_id,
@@ -1043,6 +1107,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
             error_code=error_code,
             error_message=error_message,
             keep_error=True,
+            node_revision=node_revision,
+            operation_id=operation_id,
+            context_digest=context_digest,
+            source_snapshot=source_snapshot,
         )
 
     def supersede(

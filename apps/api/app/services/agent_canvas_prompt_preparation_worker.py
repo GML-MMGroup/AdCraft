@@ -75,13 +75,29 @@ class AgentCanvasPromptPreparationWorker:
         self._heartbeat_wait = heartbeat_wait
 
     def run_once(self) -> PromptPreparationWorkerCycle:
-        claimed = self._dispatches.claim_due(
+        claimed, terminalized = self._dispatches.claim_due_with_terminalized(
             worker_id=self._worker_id,
             now=self._clock(),
             batch_limit=self._batch_limit,
             lease_duration=self._lease_duration,
         )
-        completed = retried = failed = superseded = lease_lost = 0
+        completed = retried = superseded = lease_lost = 0
+        failed = 0
+        for dispatch in terminalized:
+            exhausted = V2PersistenceError(
+                "prompt_preparation_retry_exhausted",
+                "Prompt preparation retry budget was exhausted.",
+                stage="prompt_preparation_worker",
+            )
+            try:
+                self._notify_terminal(dispatch, exhausted)
+            except Exception:  # noqa: BLE001 - barrier wake must not halt recovery.
+                logger.exception(
+                    "Prompt-preparation terminal barrier notification failed "
+                    "dispatch_id=%s",
+                    dispatch.dispatch_id,
+                )
+            failed += 1
         for dispatch in claimed:
             try:
                 outcome = self._process_one(dispatch)
@@ -230,6 +246,10 @@ class AgentCanvasPromptPreparationWorker:
                         error_code=error_code,
                         error_message=str(error)[:1_024] or "Prompt preparation failed.",
                         now=self._clock(),
+                        node_revision=dispatch.node_revision,
+                        operation_id=dispatch.operation_id,
+                        context_digest=dispatch.context_digest,
+                        source_snapshot=dispatch.source_snapshot or None,
                     )
                 else:
                     self._dispatches.schedule_retry(
@@ -240,11 +260,20 @@ class AgentCanvasPromptPreparationWorker:
                         error_code=error_code,
                         error_message=str(error)[:1_024] or "Prompt preparation failed.",
                         now=self._clock(),
+                        node_revision=dispatch.node_revision,
+                        operation_id=dispatch.operation_id,
+                        context_digest=dispatch.context_digest,
+                        source_snapshot=dispatch.source_snapshot or None,
                     )
                 return "retried"
             except V2PersistenceError as lease_error:
                 if lease_error.code == "prompt_preparation_dispatch_lease_stale":
                     return "lease_lost"
+                if lease_error.code in {
+                    "prompt_preparation_dispatch_stale",
+                    "prompt_preparation_dispatch_state_conflict",
+                }:
+                    return "superseded"
                 raise
         try:
             if current.status == "failed":
@@ -257,6 +286,10 @@ class AgentCanvasPromptPreparationWorker:
                 error_code=error_code,
                 error_message=str(error)[:1_024] or "Prompt preparation failed.",
                 now=self._clock(),
+                node_revision=dispatch.node_revision,
+                operation_id=dispatch.operation_id,
+                context_digest=dispatch.context_digest,
+                source_snapshot=dispatch.source_snapshot or None,
             )
             self._notify_terminal(failed, error)
             return "failed"
