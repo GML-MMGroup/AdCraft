@@ -263,6 +263,10 @@ export function useAgentCanvasChat({
   const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
   const guidedInteractionSubmitSeqRef = useRef<number | null>(null);
   const guidedInteractionIdempotencyKeysRef = useRef(new Map<string, string>());
+  // A failed submission invalidates the exact interaction revision that was
+  // rendered locally. A refreshed interaction with a newer revision remains
+  // usable, while an old card cannot be submitted again from a retained draft.
+  const staleGuidedInteractionRevisionsRef = useRef(new Set<string>());
   const guidedInteractionSubmissionIdentityRef = useRef<string | null>(null);
   const previousInteractionIdRef = useRef<string | null>(null);
   const guidanceAdvanceRebaseRef = useRef<{
@@ -749,6 +753,7 @@ export function useAgentCanvasChat({
     postReadyBarrierRef.current = null;
     guidedInteractionSubmitSeqRef.current = null;
     guidedInteractionIdempotencyKeysRef.current.clear();
+    staleGuidedInteractionRevisionsRef.current.clear();
     guidedInteractionSubmissionIdentityRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
     handledPresentationEventsRef.current.clear();
@@ -1431,6 +1436,8 @@ export function useAgentCanvasChat({
     request: GuidedInteractionSubmitRequestV1,
   ) => {
     if (!workflowId || actingInteractionId || interaction.status !== "open") return false;
+    const interactionRevisionKey = `${interaction.interaction_id}:${interaction.revision}`;
+    if (staleGuidedInteractionRevisionsRef.current.has(interactionRevisionKey)) return false;
     const workflowGeneration = workflowGenerationRef.current;
     setActingInteractionId(interaction.interaction_id);
     guidedInteractionSubmitSeqRef.current = chatEvents.reduce(
@@ -1470,6 +1477,7 @@ export function useAgentCanvasChat({
           : decisionDockIssueFromError(interactionError),
       );
       if (isDecisionDockStaleError(interactionError)) {
+        staleGuidedInteractionRevisionsRef.current.add(interactionRevisionKey);
         await refresh();
         await onWorkflowRefresh?.();
       }

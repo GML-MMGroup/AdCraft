@@ -1396,6 +1396,19 @@ describe("useAgentCanvasChat", () => {
     });
     expect(result.current.state.actingInteractionId).toBeNull();
     expect(result.current.state.workflowRecovery).toBeNull();
+
+    // The retained local draft may stay visible, but the stale interaction
+    // revision itself must not be submitted again after the authoritative
+    // refresh completes.
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: 3,
+        expected_session_revision: 8,
+        answers: [{ answer_kind: "custom", question_id: "production_duration_seconds", value: "45" }],
+      });
+    });
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledTimes(1);
   });
 
   it("reuses one idempotency key when the same guided submission is retried", async () => {
