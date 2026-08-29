@@ -743,7 +743,7 @@ class AgentCanvasWorkflowRepository:
                         node.execution_mode == "generative"
                         and _prompt_input_changed(current_node, node)
                         and node.prompt_preparation.status
-                        in {"ready", "failed", "superseded"}
+                        in {"queued", "working", "ready", "failed", "superseded"}
                     ):
                         # A changed prompt/input snapshot cannot reuse a
                         # completed operation identity.  Re-enter the normal
