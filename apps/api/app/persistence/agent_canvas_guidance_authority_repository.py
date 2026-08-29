@@ -710,6 +710,23 @@ def _reject_ambiguous_storyboard_siblings(
     if getattr(selected_envelope, "capability_id", None) != "storyboard_design":
         return
     proposal_id = getattr(selected_envelope, "proposal_id", None)
+    proposal_row = (
+        connection.execute(
+            select(
+                AgentCanvasConceptProposalRow.availability,
+                AgentCanvasConceptProposalRow.materialization_id,
+                AgentCanvasConceptProposalRow.materialization_turn_id,
+            ).where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    explicit_reuse = (
+        proposal_row is not None
+        and str(proposal_row["availability"]) == "superseded"
+        and getattr(selected_envelope, "action", None) == "reuse_direction"
+    )
+    selected_identity = identity_digest_from_envelope(selected_envelope)
     candidates = [
         row
         for row in continuation_rows
@@ -717,6 +734,7 @@ def _reject_ambiguous_storyboard_siblings(
         and str(row["operation"]) == "capability_materialization"
     ]
     storyboard_candidates: list[object] = []
+    superseded_history_count = 0
     for row in candidates:
         try:
             payload = json.loads(str(row["payload_json"]))
@@ -733,13 +751,34 @@ def _reject_ambiguous_storyboard_siblings(
             continue
         if getattr(candidate, "proposal_id", None) != proposal_id:
             continue
+        candidate_identity = identity_digest_from_envelope(candidate)
+        is_selected = (
+            candidate_identity is not None
+            and selected_identity is not None
+            and candidate_identity == selected_identity
+        ) or (
+            getattr(candidate, "action_turn_id", None)
+            == getattr(selected_envelope, "action_turn_id", None)
+        )
+        if explicit_reuse and not is_selected:
+            child_status = connection.execute(
+                select(AgentCanvasChatTurnRow.status).where(
+                    AgentCanvasChatTurnRow.turn_id == str(row["continuation_turn_id"]),
+                    AgentCanvasChatTurnRow.workflow_id == workflow_id,
+                )
+            ).scalar_one_or_none()
+            if str(row["status"]) in {"failed", "completed", "superseded"} and str(
+                child_status
+            ) in {"failed", "completed", "superseded"}:
+                superseded_history_count += 1
+                continue
         if identity_digest_from_envelope(candidate) is None:
             # Legacy rows are still candidates for this Proposal.  They must not
             # be silently selected alongside a canonical branch.
             storyboard_candidates.append(candidate)
             continue
         storyboard_candidates.append(candidate)
-    if len(storyboard_candidates) > 1:
+    if superseded_history_count > 1 or len(storyboard_candidates) > 1:
         raise _lineage_error("Storyboard materialization lineage has multiple candidates.")
 
 
