@@ -1755,6 +1755,27 @@ class AgentCanvasMaterializationRepository:
                 )
             return False
 
+        # Once an explicitly superseded Proposal has a replacement
+        # materialization, an envelope for the historical branch is stale.  Do
+        # not enter the retry/requeue path: doing so could reopen the old
+        # continuation while the replacement owns the workflow's unique
+        # active-delivery slot (and may otherwise surface as a generic SQLite
+        # constraint error).  The canonical supersession authority remains
+        # immutable; this is only an admission fence for late callbacks.
+        if (
+            str(proposal["availability"]) == "superseded"
+            and proposal["materialization_id"] is not None
+            and (
+                str(proposal["materialization_id"]) != envelope.materialization_id
+                or str(proposal["materialization_turn_id"]) != envelope.action_turn_id
+            )
+            and (envelope.action != "reuse_direction" or claim is not None)
+        ):
+            raise _error(
+                "proposal_action_stale",
+                "Storyboard materialization belongs to a superseded branch.",
+            )
+
         # Any other claimed identity for this Proposal is an unresolvable
         # historical fork.  Never select one by insertion or timestamp order.
         # Malformed records belonging to another Workflow are ignored here so a
@@ -3783,11 +3804,22 @@ def _requeue_storyboard_lineage(
 ) -> None:
     """Reset only operational delivery state for a retryable canonical branch."""
 
+    current_availability = connection.execute(
+        select(AgentCanvasConceptProposalRow.availability).where(
+            AgentCanvasConceptProposalRow.proposal_id == proposal_id
+        )
+    ).scalar_one_or_none()
+    # An explicit historical reuse remains superseded while its operational
+    # delivery is retried.  Reopening it would erase the authority fact that
+    # permitted the new identity and would make later sibling checks unsafe.
+    next_availability = (
+        "superseded" if str(current_availability) == "superseded" else "open"
+    )
     proposal_update = connection.execute(
         update(AgentCanvasConceptProposalRow)
         .where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
         .values(
-            availability="open",
+            availability=next_availability,
             materialization_status="queued",
             materialization_retryable=True,
             materialization_error_code=None,
