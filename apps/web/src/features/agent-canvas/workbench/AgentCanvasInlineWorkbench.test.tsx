@@ -551,6 +551,24 @@ describe("AgentCanvasInlineWorkbench", () => {
     })));
     const request = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
     expect(request).not.toHaveProperty("model_id");
+    expect(request).not.toHaveProperty("generation_prompt");
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("keeps a manually edited media prompt visible until the saved node revision arrives", async () => {
+    const node = makeNode("image");
+    const props = renderWorkbench(node);
+
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "A user-authored product photograph." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run image node" }));
+
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(node));
+    expect(screen.getByLabelText("Generation prompt")).toHaveProperty(
+      "value",
+      "A user-authored product photograph.",
+    );
   });
 
   it("opens the shared assets browser from the media workbench", () => {

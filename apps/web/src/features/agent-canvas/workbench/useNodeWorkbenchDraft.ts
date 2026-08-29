@@ -102,6 +102,7 @@ export function useNodeWorkbenchDraft({
   const [errorAction, setErrorAction] = useState<WorkbenchErrorAction>(null);
   const [dirty, setDirty] = useState(false);
   const draftNodeIdRef = useRef(node.node_id);
+  const awaitingSaveRevisionRef = useRef<number | null>(null);
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
@@ -113,6 +114,8 @@ export function useNodeWorkbenchDraft({
   const editsGenerationPrompt = isRunnableScript
     || ["image", "video", "audio"].includes(node.node_type);
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const canonicalGenerationPrompt = node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "";
+  const generationPromptChanged = prompt !== canonicalGenerationPrompt;
   const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
     ? { ...node, status: effectiveStatus }
     : node;
@@ -139,7 +142,12 @@ export function useNodeWorkbenchDraft({
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
     if (!changedNode && dirty) return;
+    const awaitingSaveRevision = awaitingSaveRevisionRef.current;
+    if (!changedNode && awaitingSaveRevision !== null && node.revision < awaitingSaveRevision) {
+      return;
+    }
     draftNodeIdRef.current = node.node_id;
+    awaitingSaveRevisionRef.current = null;
     restoreFromNode();
     if (changedNode) setDirty(false);
   }, [dirty, node, restoreFromNode]);
@@ -212,7 +220,10 @@ export function useNodeWorkbenchDraft({
           content: textContent,
         },
       }));
-      if (saved) setDirty(false);
+      if (saved) {
+        awaitingSaveRevisionRef.current = node.revision + 1;
+        setDirty(false);
+      }
       return saved;
     }
 
@@ -223,7 +234,7 @@ export function useNodeWorkbenchDraft({
 
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
-      ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
+      ...(editsGenerationPrompt && generationPromptChanged ? { generation_prompt: prompt } : {}),
       ...(usesProvider ? {
         model_selection_mode: modelSelectionMode,
         model_ref: modelSelectionMode === "explicit" ? modelRef : null,
@@ -237,6 +248,7 @@ export function useNodeWorkbenchDraft({
       } : {}),
     }));
     if (saved) {
+      awaitingSaveRevisionRef.current = node.revision + 1;
       setDirty(false);
       setParameterMigrationRequired(false);
     }

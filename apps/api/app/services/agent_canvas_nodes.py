@@ -110,7 +110,22 @@ class AgentCanvasNodeService:
         now = datetime.now(timezone.utc)
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
+        prompt_changed = (
+            "generation_prompt" in changes
+            and request.generation_prompt is not None
+            and request.generation_prompt != current.generation_prompt
+        )
         if (
+            "generation_prompt" in changes
+            and _is_role_managed(current)
+            and (prompt_changed or _is_orphaned_prompt_preparation(current))
+        ):
+            changes["prompt_preparation"] = _ready_prompt_preparation(
+                request.generation_prompt or "",
+                now,
+            )
+            changes["metadata"] = _manual_prompt_metadata(current.metadata)
+        elif (
             current.status == "draft"
             and current.prompt_preparation.recipe_id is not None
             and _changes_prompt_authority(changes)
@@ -225,12 +240,50 @@ def _changes_prompt_authority(changes: dict[str, object]) -> bool:
         {
             "generation_prompt",
             "structured_content",
-            "parameters",
-            "model_selection_mode",
-            "model_ref",
         }
         & changes.keys()
     )
+
+
+def _is_role_managed(node: CanvasNodeV2) -> bool:
+    return bool(
+        node.prompt_preparation.role_variant
+        or node.prompt_preparation.recipe_id
+        or node.metadata.get("prompt_recipe_id")
+    )
+
+
+def _is_orphaned_prompt_preparation(node: CanvasNodeV2) -> bool:
+    preparation = node.prompt_preparation
+    return preparation.status == "queued" and preparation.operation_id is None
+
+
+_ROLE_PROMPT_METADATA_KEYS = frozenset(
+    {
+        "prompt_context_digest",
+        "prompt_digest",
+        "prompt_recipe_id",
+        "prompt_recipe_version",
+        "prompt_recipe_digest",
+        "prompt_reference_bundle_digest",
+        "role_reference_policy_version",
+        "prompt_style_projection_digest",
+        "prompt_assertion_policy_ref",
+        "prompt_assertion_policy_digest",
+        "prompt_assertion_evidence_digest",
+        "prompt_assertion_assertion_ids",
+        "prompt_assertion_block_digest",
+        "prepared_reference_snapshots",
+    }
+)
+
+
+def _manual_prompt_metadata(metadata: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key not in _ROLE_PROMPT_METADATA_KEYS
+    } | {"prompt_authoring_mode": "manual"}
 
 
 def _manual_parameter_provenance(
