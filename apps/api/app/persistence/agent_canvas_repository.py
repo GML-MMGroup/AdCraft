@@ -2537,6 +2537,15 @@ def _invalidate_target_prompt_preparation(
         # supersede.  Do not turn a harmless first Binding into a queued
         # re-preparation or clear its existing context projection.
         return None
+    if (
+        node.prompt_preparation.status == "ready"
+        and node.prompt_preparation.operation_id is None
+    ):
+        # A manually supplied generation prompt is already authoritative.  Its
+        # provider references are compiled from the execution binding snapshot,
+        # so a Binding/source publication must not turn this legacy-compatible
+        # Draft into an ownerless queued preparation.
+        return None
     if node.prompt_preparation.status == "not_applicable":
         return None
     bindings = _load_target_bindings(connection, workflow_id, target_node_id)
