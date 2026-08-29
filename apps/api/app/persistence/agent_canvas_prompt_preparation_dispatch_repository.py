@@ -1397,11 +1397,41 @@ def normalize_queued_node(
         "node_revision": node.revision,
         "node_type": node.node_type,
         "creative_role": node.creative_role,
+        "role_contract_version": node.role_contract_version,
+        "execution_mode": node.execution_mode,
         "summary_prompt": node.summary_prompt,
         "generation_prompt": node.generation_prompt,
         "structured_content": node.structured_content,
+        "model_selection_mode": node.model_selection_mode,
+        "model_ref": node.model_ref,
         "parameters": node.parameters,
+        "parameter_provenance": {
+            field: provenance.model_dump(mode="json")
+            for field, provenance in node.parameter_provenance.items()
+        },
+        "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
+        "output_asset_id": node.output_asset_id,
         "metadata": node.metadata,
+        "prompt_preparation": {
+            "context_snapshot_id": preparation.context_snapshot_id,
+            "occurrence_id": preparation.occurrence_id,
+            "character_phase": preparation.character_phase,
+            "role_variant": preparation.role_variant,
+            "recipe_id": preparation.recipe_id,
+            "recipe_version": preparation.recipe_version,
+            "recipe_digest": preparation.recipe_digest,
+            "requirement_revision_id": preparation.requirement_revision_id,
+            "requirement_revision_no": preparation.requirement_revision_no,
+            "document_revisions": preparation.document_revisions,
+            "binding_digest": preparation.binding_digest,
+            "style_projection_digest": preparation.style_projection_digest,
+            "brief_digest": preparation.brief_digest,
+            "prompt_digest": preparation.prompt_digest,
+            "parameter_origins": [
+                origin.model_dump(mode="json") for origin in preparation.parameter_origins
+            ],
+            "assertion_evidence": _safe_model_dump(preparation.assertion_evidence),
+        },
         "bindings": [_safe_model_dump(item) for item in bindings],
     }
     encoded = json.dumps(seed, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
