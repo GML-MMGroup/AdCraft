@@ -343,7 +343,17 @@ def current_source_snapshots_for_evidence(
             )
         asset_id = source.output_asset_id or snapshot.asset_id
         asset_version_id = snapshot.asset_version_id
-        if asset_resolver is not None and asset_id is not None:
+        pinned_version_id = None
+        metadata = getattr(source, "metadata", {})
+        if isinstance(metadata, Mapping):
+            candidate = metadata.get("source_version_id")
+            if not isinstance(candidate, str) or not candidate:
+                candidate = metadata.get("source_asset_version_id")
+            if isinstance(candidate, str) and candidate:
+                pinned_version_id = candidate
+        if pinned_version_id is not None:
+            asset_version_id = pinned_version_id
+        elif asset_resolver is not None and asset_id is not None:
             asset = asset_resolver(asset_id)
             asset_version_id = getattr(asset, "version_id", None) or asset_version_id
         current.append(
