@@ -2668,7 +2668,7 @@ def _invalidate_target_prompt_preparation(
             error_json=None,
             output_asset_id=None,
         )
-    connection.execute(
+    updated = connection.execute(
         update(AgentCanvasNodeRow)
         .where(
             AgentCanvasNodeRow.workflow_id == workflow_id,
@@ -2677,6 +2677,8 @@ def _invalidate_target_prompt_preparation(
         )
         .values(**values)
     )
+    if updated.rowcount != 1:
+        raise _prompt_preparation_conflict()
     safe_payload = {
         "node_revision": queued_node.revision,
         "creative_role": node.creative_role,
