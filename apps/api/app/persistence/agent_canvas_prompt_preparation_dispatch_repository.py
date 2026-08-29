@@ -1400,6 +1400,11 @@ def normalize_queued_node(
     preparation = node.prompt_preparation
     if preparation.status != "queued" or preparation.operation_id:
         return node
+    binding_seed = []
+    for item in bindings:
+        dumped = _safe_model_dump(item)
+        if dumped and dumped.get("enabled", True):
+            binding_seed.append(dumped)
     seed = {
         "workflow_id": node.workflow_id,
         "node_id": node.node_id,
@@ -1443,7 +1448,7 @@ def normalize_queued_node(
             ],
             "assertion_evidence": _safe_model_dump(preparation.assertion_evidence),
         },
-        "bindings": [_safe_model_dump(item) for item in bindings],
+        "bindings": binding_seed,
     }
     encoded = json.dumps(seed, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     operation_id = "prep_" + sha256(encoded.encode("utf-8")).hexdigest()[:40]
