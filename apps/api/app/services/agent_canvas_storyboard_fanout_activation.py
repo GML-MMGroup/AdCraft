@@ -65,6 +65,17 @@ class StoryboardFanoutActivationService:
             fanout.prompt_preparation_keys,
             strict=True,
         ):
+            current_node = self._workflows.get_node(fanout.workflow_id, plan.node_id)
+            current_operation_id = getattr(
+                getattr(current_node, "prompt_preparation", None),
+                "operation_id",
+                None,
+            )
+            if isinstance(current_operation_id, str) and current_operation_id:
+                # A dependency wave may have superseded the plan's original
+                # preparation identity.  Reuse the durable current owner;
+                # never restart a stale operation during media confirmation.
+                operation_id = current_operation_id
             self._prompt_preparation.prepare(
                 fanout.workflow_id,
                 plan.node_id,
