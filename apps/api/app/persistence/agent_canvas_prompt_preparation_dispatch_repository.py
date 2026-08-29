@@ -987,13 +987,12 @@ class AgentCanvasPromptPreparationDispatchRepository:
             .one_or_none()
         )
         if row is None:
-            # A legacy row may not exist; only create a terminal projection when
-            # the current Node proves its complete identity and source snapshot.
-            return self.ensure_for_node_in_transaction(
-                connection,
-                node,
-                now=now,
-                emit_event=False,
+            # A terminal Node without its exact durable owner has no immutable
+            # proof from which a safe dispatch can be reconstructed.  Never
+            # synthesize an empty-context terminal row from mutable Node data.
+            raise _error(
+                "prompt_preparation_dispatch_missing",
+                "Terminal prompt preparation has no matching dispatch owner.",
             )
         if row["status"] in {"completed", "failed", "superseded"}:
             return _dispatch_from_row(row)
