@@ -1293,10 +1293,34 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         if not operation_ids:
             return
-        if context_by_node:
-            # Recovery already supplied exact StageAuthoringContext snapshots.
-            # Avoid projecting a second context from mutable session state.
-            stage_context = next(iter(context_by_node.values()))
+        if context_by_node is not None:
+            # A dependency wave must carry one immutable context for every
+            # operation.  Never let a missing entry fall back to a sibling (or
+            # to mutable session state), because that would prepare a prompt
+            # under the wrong identity and digest.
+            missing_context_nodes = tuple(
+                node_id for node_id in node_ids if node_id not in context_by_node
+            )
+            if missing_context_nodes:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_missing",
+                    "Prompt-preparation context is missing for a required Node.",
+                    stage="capability_materialization_publication",
+                    details={"node_ids": list(missing_context_nodes)},
+                )
+            invalid_context_nodes = tuple(
+                node_id
+                for node_id in node_ids
+                if not isinstance(context_by_node[node_id], StageAuthoringContextV1)
+            )
+            if invalid_context_nodes:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_invalid",
+                    "Prompt-preparation context is invalid for a required Node.",
+                    stage="capability_materialization_publication",
+                    details={"node_ids": list(invalid_context_nodes)},
+                )
+            stage_context = context_by_node[node_ids[0]] if node_ids else context
         elif isinstance(context, StageAuthoringContextV1):
             stage_context = context
         else:
@@ -1332,7 +1356,11 @@ class CapabilityMaterializationPublicationService:
                     envelope.workflow_id,
                     node_id,
                     operation_id=operation_id,
-                    context=(context_by_node or {}).get(node_id, stage_context),
+                    context=(
+                        context_by_node[node_id]
+                        if context_by_node is not None
+                        else stage_context
+                    ),
                 )
             except Exception as error:  # noqa: BLE001 - preserve sibling preparation.
                 errors.append(error)
