@@ -1404,6 +1404,7 @@ def normalize_queued_node(
         "structured_content": node.structured_content,
         "model_selection_mode": node.model_selection_mode,
         "model_ref": node.model_ref,
+        "model_policy_revision": _model_policy_revision(node),
         "parameters": node.parameters,
         "parameter_provenance": {
             field: provenance.model_dump(mode="json")
