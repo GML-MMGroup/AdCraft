@@ -639,8 +639,10 @@ class CapabilityMaterializationPublicationService:
                         and current_parent.prompt_preparation.operation_id
                         == envelope.parent_snapshot.prompt_preparation_operation_id
                     )
-                if not parent_source_matches or not parent_revision_matches or (
-                    envelope.parent_snapshot.semantic_role != expected_parent_role
+                if (
+                    not parent_source_matches
+                    or not parent_revision_matches
+                    or (envelope.parent_snapshot.semantic_role != expected_parent_role)
                 ):
                     raise V2PersistenceError(
                         "parent_materialization_revision_stale",
