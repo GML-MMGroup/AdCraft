@@ -347,6 +347,53 @@ class AgentCanvasPromptPreparationDispatchRepository:
             raise _persistence_error() from error
         return _dispatch_from_row(row) if row is not None else None
 
+    def get_by_node_operation(
+        self,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+    ) -> PromptPreparationDispatchV1 | None:
+        """Load the dispatch that owns one exact Node preparation operation.
+
+        Recovery must not select a merely "current" row by revision or creation
+        order: a committed materialization carries the operation identity as
+        its durable join key.  If legacy data contains more than one row for
+        that key, fail closed instead of guessing which immutable context to
+        restore.
+        """
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasPromptPreparationOutboxRow).where(
+                            AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                            AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                            AgentCanvasPromptPreparationOutboxRow.operation_id == operation_id,
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        if len(rows) > 1:
+            raise _error(
+                "prompt_preparation_dispatch_ambiguous",
+                "Multiple prompt-preparation dispatches own the same operation.",
+            )
+        return _dispatch_from_row(rows[0]) if rows else None
+
+    # Keep the exact-operation lookup discoverable under the recovery-facing
+    # name while retaining one implementation and one authority.
+    def get_for_node_operation(
+        self,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+    ) -> PromptPreparationDispatchV1 | None:
+        return self.get_by_node_operation(workflow_id, node_id, operation_id)
+
     def get_current_for_node(
         self,
         workflow_id: str,
