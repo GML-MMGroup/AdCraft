@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import json
+
+import pytest
+from sqlalchemy import insert
+
+from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.database import create_v2_database
+from app.persistence.models import (
+    AgentCanvasChatTurnRow,
+    AgentCanvasConversationRow,
+    AgentCanvasWorkflowRow,
+    ProjectRow,
+)
+from app.persistence.schema import upgrade_v2_schema
+from app.schemas.agent_runtime import (
+    AgentRunContext,
+    AgentRunRequest,
+    AgentStructuredSubmission,
+)
+from app.services.v2_agent_structured_validation import (
+    V2AgentStructuredValidationService,
+)
+
+
+@pytest.fixture
+def persisted_run(tmp_path):
+    data_dir = tmp_path / "data"
+    (data_dir / "v2").mkdir(parents=True)
+    database = create_v2_database(data_dir)
+    upgrade_v2_schema(database)
+    workflow_id = "workflow-1"
+    conversation_id = "conversation-1"
+    turn_id = "turn-1"
+    timestamp = datetime.now(timezone.utc)
+    timestamp_text = timestamp.isoformat()
+    with database.engine.begin() as connection:
+        connection.execute(
+            insert(ProjectRow).values(
+                project_id="project-1",
+                name="Test",
+                description="",
+                status="active",
+                is_favorite=False,
+                cover_asset_id=None,
+                project_version=1,
+                created_at=timestamp_text,
+                updated_at=timestamp_text,
+                deleted_at=None,
+            )
+        )
+        connection.execute(
+            insert(AgentCanvasWorkflowRow).values(
+                workflow_id=workflow_id,
+                project_id="project-1",
+                workflow_schema_version=2,
+                canvas_model="agent_canvas_v1",
+                revision=1,
+                layout_revision=1,
+                created_at=timestamp_text,
+                updated_at=timestamp_text,
+            )
+        )
+        connection.execute(
+            insert(AgentCanvasConversationRow).values(
+                conversation_id=conversation_id,
+                workflow_id=workflow_id,
+                created_at=timestamp_text,
+                updated_at=timestamp_text,
+            )
+        )
+        connection.execute(
+            insert(AgentCanvasChatTurnRow).values(
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                workflow_id=workflow_id,
+                turn_kind="user_message",
+                status="completed",
+                request_json=json.dumps({"text": "请制作60秒竖版广告"}, ensure_ascii=False),
+                creation_mode_json=None,
+                guidance_session_revision=None,
+                idempotency_key="turn-key-1",
+                retry_of_turn_id=None,
+                retry_attempt_no=1,
+                retryable=False,
+                operation_stage=None,
+                operation_failure_json=None,
+                retry_snapshot_json="{}",
+                error_code=None,
+                error_message=None,
+                created_at=timestamp_text,
+                updated_at=timestamp_text,
+            )
+        )
+    request = AgentRunRequest(
+        run_id="run-1",
+        request_id="request-1",
+        contract_digest="0" * 64,
+        context_snapshot_id="snapshot-1",
+        agent_name="video_agent",
+        operation="decide_turn_intent",
+        deadline_at=timestamp + timedelta(minutes=5),
+        model_policy_id="test-policy",
+        context=AgentRunContext(
+            operation="decide_turn_intent",
+            user_input="请制作60秒竖版广告",
+            conversation_id=conversation_id,
+            workflow_id=workflow_id,
+        ),
+        contract_name="CompactTurnIntentDecisionV3",
+        validation_profile="agent_intake_source_quotes_v1",
+        validation_context={"source_turn_id": turn_id},
+    )
+    repository = AgentRunRepository(database)
+    run, created = repository.create_or_load(
+        request,
+        lease_owner_id="test-owner",
+        lease_duration_seconds=120,
+        now=timestamp,
+    )
+    assert created
+    try:
+        yield repository, run
+    finally:
+        database.dispose()
+
+
+def submission(run, value, *, run_id=None, attempt=1):
+    return AgentStructuredSubmission(
+        run_id=run.run_id if run_id is None else run_id,
+        submission_id="submission-1",
+        contract_name=run.contract_name,
+        value=value,
+        attempt=attempt,
+    )
+
+
+def duration_candidate(*, source_quote="60秒", value="60"):
+    return {
+        "mode": "guided_production",
+        "objective": "制作60秒竖版广告",
+        "requirement_patch": {
+            "controls_to_set": {
+                "target_duration_sec": {"value": value, "source_quote": source_quote}
+            }
+        },
+    }
+
+
+def test_accepts_normalized_duration_and_checks_quote_on_retained_value(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, duration_candidate()),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["requirement_patch"]["controls_to_set"]["duration_seconds"]["value"] == 60.0
+    assert result.normalized_value["requirement_patch"]["controls_to_set"]["duration_seconds"]["source_quote"] == "60秒"
+
+
+def test_alias_quote_is_checked_after_normalized_contract_validation(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, duration_candidate(source_quote="120秒")),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == ["requirement_source_quote_invalid"]
+    assert result.violations[0].field_path == (
+        "requirement_patch.controls_to_set.duration_seconds.source_quote"
+    )
+
+
+def test_unknown_presence_is_rejected_by_contract_without_source_quote_check(persisted_run):
+    repository, run = persisted_run
+    value = {
+        "mode": "guided_production",
+        "objective": "制作广告",
+        "explicit_elements": {
+            "product": {"presence": "mystery", "source_quote": "不存在的引文"}
+        },
+    }
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is False
+    assert result.violations
+    assert all(item.code != "requirement_source_quote_invalid" for item in result.violations)
+
+
+def test_unknown_top_level_field_remains_forbidden(persisted_run):
+    repository, run = persisted_run
+    value = {**duration_candidate(), "unexpected": True}
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is False
+    assert any(item.code == "extra_forbidden" for item in result.violations)
+    assert all(item.code != "requirement_source_quote_invalid" for item in result.violations)
+
+
+def test_identity_mismatch_is_first_gate(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, duration_candidate(), run_id="other-run"),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == ["agent_run_mismatch"]
+
+
+def test_alias_conflict_rejects_only_normalization_violation(persisted_run):
+    repository, run = persisted_run
+    value = {
+        **duration_candidate(source_quote="不存在的引文"),
+        "requirement_patch": {
+            "controls_to_set": {
+                "target_duration_sec": {"value": "60", "source_quote": "不存在的引文"},
+                "duration_seconds": {"value": 61.0, "source_quote": "另一个不存在的引文"},
+            }
+        },
+    }
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == [
+        "agent_structured_normalization_alias_conflict"
+    ]

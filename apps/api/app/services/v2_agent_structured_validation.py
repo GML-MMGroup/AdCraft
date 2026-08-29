@@ -42,19 +42,12 @@ class V2AgentStructuredValidationService:
         identity_violations = _identity_violations(run, submission)
         if identity_violations:
             return _rejected(submission, identity_violations)
-        raw_semantic_violations = self._raw_semantic_violations(
-            run,
-            submission.value,
-        )
         normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
             run.contract_name or "",
             submission.value,
         )
         if normalization.violations:
-            return _rejected(
-                submission,
-                normalization.violations + raw_semantic_violations,
-            )
+            return _rejected(submission, normalization.violations)
 
         try:
             normalized = validate_agent_contract(
@@ -64,7 +57,7 @@ class V2AgentStructuredValidationService:
         except ValidationError as error:
             return _rejected(
                 submission,
-                _project_validation_errors(error) + raw_semantic_violations,
+                _project_validation_errors(error),
             )
         except AgentStructuredContractRegistryError:
             return _rejected(
@@ -109,6 +102,10 @@ class V2AgentStructuredValidationService:
                     normalization,
                 ),
             )
+        raw_semantic_violations = self._raw_semantic_violations(
+            run,
+            normalized_value,
+        )
         semantic_violations = raw_semantic_violations + _semantic_violations(
             run.validation_profile,
             run.validation_context,
