@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import cast
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
     AgentCanvasPromptPreparationDispatchRepository,
+    _parse_json_object,
     normalize_queued_node,
 )
 from app.persistence.agent_canvas_requirement_repository import (
@@ -29,6 +31,7 @@ from app.persistence.models import (
     AgentCanvasDocumentRow,
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
+    AgentCanvasPromptPreparationOutboxRow,
     AgentCanvasPromptContextSnapshotRow,
     AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
@@ -1283,6 +1286,14 @@ class AgentCanvasWorkflowRepository:
                     )
                     .values(**values)
                 )
+                invalidate_prompt_preparations_for_source_in_transaction(
+                    connection,
+                    events=self._events,
+                    prompt_dispatch=self._prompt_dispatch,
+                    workflow_id=workflow_id,
+                    source_node_id=node_id,
+                    updated_at=timestamp,
+                )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
@@ -2519,7 +2530,7 @@ def _invalidate_target_prompt_preparation(
         and node.prompt_preparation.operation_id != expected_operation_id
     ):
         raise _prompt_preparation_conflict()
-    if node.status not in {"draft", "failed", "ready"}:
+    if node.status not in {"draft", "failed", "ready", "working"}:
         return None
     if node.status == "ready" and node.prompt_preparation.operation_id is None:
         # Legacy/manual Ready content has no immutable preparation owner to
@@ -2529,9 +2540,32 @@ def _invalidate_target_prompt_preparation(
     if node.prompt_preparation.status == "not_applicable":
         return None
     bindings = _load_target_bindings(connection, workflow_id, target_node_id)
+    frozen_context: dict[str, object] = {}
+    if prompt_dispatch is not None and node.prompt_preparation.operation_id:
+        dispatch_row = (
+            connection.execute(
+                select(AgentCanvasPromptPreparationOutboxRow.context_json).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == target_node_id,
+                    AgentCanvasPromptPreparationOutboxRow.operation_id
+                    == node.prompt_preparation.operation_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if dispatch_row is not None:
+            frozen_context = _parse_json_object(dispatch_row["context_json"])
     # Invalidation creates a new immutable operation identity.  Keep the
     # occurrence and role metadata, but discard all evidence/digests derived
     # from the previous input snapshot.
+    prepared_projection = (
+        isinstance(node.generation_prompt, str)
+        and isinstance(node.metadata.get("prompt_digest"), str)
+        and node.metadata.get("prompt_digest") == sha256(
+            node.generation_prompt.encode("utf-8")
+        ).hexdigest()
+    )
     queued = NodePromptPreparationV1(
         status="queued",
         operation_id=None,
@@ -2547,11 +2581,13 @@ def _invalidate_target_prompt_preparation(
     queued_node = node.model_copy(
         update={
             "revision": node.revision + 1,
-            "status": "draft" if node.status in {"failed", "ready"} else node.status,
-            "error": None if node.status in {"failed", "ready"} else node.error,
+            "status": "draft",
+            "error": None,
             "output_asset_id": (
                 None if node.status in {"failed", "ready"} else node.output_asset_id
             ),
+            "generation_prompt": None if prepared_projection else node.generation_prompt,
+            "structured_content": {} if prepared_projection else node.structured_content,
             "prompt_context_snapshot_id": None,
             "metadata": {
                 key: value
@@ -2566,6 +2602,8 @@ def _invalidate_target_prompt_preparation(
     values: dict[str, object | None] = {
         "prompt_preparation_json": queued_node.prompt_preparation.model_dump_json(),
         "prompt_context_snapshot_id": None,
+        "generation_prompt": queued_node.generation_prompt,
+        "structured_content_json": _json_dump(queued_node.structured_content),
         "metadata_json": _json_dump(queued_node.metadata),
         "revision": queued_node.revision,
         "updated_at": updated_at,
@@ -2620,6 +2658,7 @@ def _invalidate_target_prompt_preparation(
             connection,
             node=queued_node,
             bindings=bindings,
+            context=frozen_context,
             reason="dependency_or_binding_revision_changed",
             now=_parse_datetime(updated_at),
         )
@@ -2656,6 +2695,27 @@ def _invalidate_prompt_preparations_for_source(
             target_node_id=target_node_id,
             updated_at=updated_at,
         )
+
+
+def invalidate_prompt_preparations_for_source_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+    workflow_id: str,
+    source_node_id: str,
+    updated_at: str,
+) -> None:
+    """Invalidate all enabled Node-output dependents in a caller transaction."""
+
+    _invalidate_prompt_preparations_for_source(
+        connection,
+        events=events,
+        prompt_dispatch=prompt_dispatch,
+        workflow_id=workflow_id,
+        source_node_id=source_node_id,
+        updated_at=updated_at,
+    )
 
 
 def _load_target_bindings(

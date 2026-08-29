@@ -12,6 +12,12 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
+from app.persistence.agent_canvas_repository import (
+    invalidate_prompt_preparations_for_source_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -56,6 +62,10 @@ class AgentCanvasResultCommitRepository:
         self._database = database
         self._assets = assets
         self._events = events
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(
+            database,
+            events,
+        )
         self._fault = fault_injector or (lambda _boundary: None)
 
     def commit(
@@ -149,6 +159,14 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Canvas Node already has a terminal Ready result.",
                         )
+                    invalidate_prompt_preparations_for_source_in_transaction(
+                        connection,
+                        events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
+                        workflow_id=command.workflow_id,
+                        source_node_id=command.node_id,
+                        updated_at=timestamp,
+                    )
                     self._fault("after_node")
                     connection.execute(
                         update(AgentCanvasExecutionMemberRow)

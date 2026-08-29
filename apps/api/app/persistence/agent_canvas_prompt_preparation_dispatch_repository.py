@@ -25,6 +25,7 @@ from app.persistence.models import (
     AgentCanvasBindingRow,
     AgentCanvasNodeRow,
     AgentCanvasPromptPreparationOutboxRow,
+    AssetVersionRow,
 )
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
@@ -464,7 +465,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 AgentCanvasPromptPreparationOutboxRow.created_at.asc(),
                                 AgentCanvasPromptPreparationOutboxRow.dispatch_id.asc(),
                             )
-                            .limit(max(batch_limit * 2, batch_limit))
+                            .limit(batch_limit)
                         ).mappings()
                     )
                     claimed: list[PromptPreparationDispatchV1] = []
@@ -1374,6 +1375,7 @@ def _source_snapshot_for_node(
             .where(
                 AgentCanvasBindingRow.workflow_id == node.workflow_id,
                 AgentCanvasBindingRow.target_node_id == node.node_id,
+                AgentCanvasBindingRow.enabled.is_(True),
             )
             .order_by(
                 AgentCanvasBindingRow.order_index.asc(),
@@ -1409,10 +1411,47 @@ def _source_snapshot_for_node(
                     source_preparation = _parse_json_object(
                         source_row["prompt_preparation_json"]
                     )
+                    latest_version = (
+                        connection.execute(
+                            select(
+                                AssetVersionRow.version_id,
+                                AssetVersionRow.version_no,
+                                AssetVersionRow.sha256,
+                                AssetVersionRow.status,
+                            )
+                            .where(
+                                AssetVersionRow.asset_id == source_row["output_asset_id"],
+                                AssetVersionRow.status == "ready",
+                            )
+                            .order_by(
+                                AssetVersionRow.version_no.desc(),
+                                AssetVersionRow.version_id.desc(),
+                            )
+                            .limit(1)
+                        )
+                        .mappings()
+                        .one_or_none()
+                        if source_row["output_asset_id"] is not None
+                        else None
+                    )
                     source = {
                         "node_id": str(source_row["node_id"]),
                         "revision": int(source_row["revision"]),
                         "output_asset_id": source_row["output_asset_id"],
+                        "asset_version_id": (
+                            latest_version["version_id"] if latest_version is not None else None
+                        ),
+                        "asset_version_no": (
+                            int(latest_version["version_no"])
+                            if latest_version is not None
+                            else None
+                        ),
+                        "asset_version_sha256": (
+                            latest_version["sha256"] if latest_version is not None else None
+                        ),
+                        "asset_version_status": (
+                            latest_version["status"] if latest_version is not None else None
+                        ),
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
                     }
@@ -1434,7 +1473,11 @@ def _source_snapshot_for_node(
                 }
             )
     else:
-        binding_values = [_safe_model_dump(item) for item in bindings if _safe_model_dump(item)]
+        binding_values = [
+            dumped
+            for item in bindings
+            if (dumped := _safe_model_dump(item)) and dumped.get("enabled", True)
+        ]
     return {
         "node_revision": node.revision,
         "output_asset_id": node.output_asset_id,
