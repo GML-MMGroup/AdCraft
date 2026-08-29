@@ -2593,9 +2593,12 @@ def _invalidate_target_prompt_preparation(
     frozen_context_digest: str | None = None
     has_frozen_context = False
     if prompt_dispatch is not None and node.prompt_preparation.operation_id:
-        dispatch_row = (
+        dispatch_rows = (
             connection.execute(
-                select(AgentCanvasPromptPreparationOutboxRow.context_json).where(
+                select(
+                    AgentCanvasPromptPreparationOutboxRow.context_json,
+                    AgentCanvasPromptPreparationOutboxRow.context_digest,
+                ).where(
                     AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
                     AgentCanvasPromptPreparationOutboxRow.node_id == target_node_id,
                     AgentCanvasPromptPreparationOutboxRow.operation_id
@@ -2603,18 +2606,36 @@ def _invalidate_target_prompt_preparation(
                 )
             )
             .mappings()
-            .one_or_none()
+            .all()
         )
-        if dispatch_row is not None:
-            frozen_context = _parse_json_object(dispatch_row["context_json"])
+        if len(dispatch_rows) != 1:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_missing"
+                if not dispatch_rows
+                else "prompt_preparation_dispatch_ambiguous",
+                "Current prompt-preparation invalidation has no unique dispatch owner.",
+                stage="agent_canvas_workflow_repository",
+            )
+        dispatch_row = dispatch_rows[0]
+        persisted_digest = dispatch_row["context_digest"]
+        persisted_context = _parse_json_object(dispatch_row["context_json"])
+        if persisted_digest:
             try:
-                _, frozen_context_digest = detached_context_payload(frozen_context)
+                _, computed_digest = detached_context_payload(persisted_context)
             except (TypeError, ValueError) as error:
                 raise V2PersistenceError(
                     "prompt_preparation_context_invalid",
                     "Persisted prompt-preparation context is invalid.",
                     stage="agent_canvas_workflow_repository",
                 ) from error
+            if computed_digest != persisted_digest:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_invalid",
+                    "Persisted prompt-preparation context digest does not match its payload.",
+                    stage="agent_canvas_workflow_repository",
+                )
+            frozen_context = persisted_context
+            frozen_context_digest = str(persisted_digest)
             has_frozen_context = True
     # Invalidation creates a new immutable operation identity.  Keep the
     # occurrence and role metadata, but discard all evidence/digests derived
