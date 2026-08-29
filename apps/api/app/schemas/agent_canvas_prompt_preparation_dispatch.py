@@ -100,6 +100,28 @@ class PromptPreparationDispatchV1(BaseModel):
             encoded_context = canonical_context_bytes(self.context_json)
             if sha256(encoded_context).hexdigest() != self.context_digest:
                 raise ValueError("Context digest does not match the frozen context bytes.")
+        expected_logical_key = prompt_preparation_dispatch_logical_key(
+            workflow_id=self.workflow_id,
+            node_id=self.node_id,
+            node_revision=self.node_revision,
+            operation_id=self.operation_id,
+            role_variant=self.role_variant,
+            occurrence_id=self.occurrence_id,
+            character_phase=self.character_phase,
+            context_snapshot_id=self.context_snapshot_id,
+            context_digest=self.context_digest,
+            binding_digest=self.binding_digest,
+            recipe_digest=self.recipe_digest,
+            style_projection_digest=self.style_projection_digest,
+            brief_digest=self.brief_digest,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+            document_revisions=self.document_revisions,
+            source_snapshot=self.source_snapshot,
+            model_policy_revision=self.model_policy_revision,
+        )
+        if self.logical_key != expected_logical_key:
+            raise ValueError("Logical key must be derived from the complete dispatch identity.")
         if self.dispatch_id != prompt_preparation_dispatch_id(self.logical_key):
             raise ValueError("Dispatch ID must be derived from its logical key.")
         return self
