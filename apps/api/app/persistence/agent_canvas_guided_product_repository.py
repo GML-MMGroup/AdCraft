@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.agent_canvas_repository import (
     AgentCanvasWorkflowRepository,
     _advance_workflow_revision,
+    _binding_values,
     _idempotency_conflict_error,
     _load_idempotency,
     _node_values,
@@ -23,6 +24,7 @@ from app.persistence.agent_canvas_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
+    AgentCanvasBindingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidedInteractionRow,
@@ -32,7 +34,12 @@ from app.persistence.models import (
     AgentCanvasNodeRow,
     WorkflowEventRow,
 )
-from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
+from app.schemas.agent_canvas import (
+    CanvasBindingSourceNodeV2,
+    CanvasBindingV2,
+    CanvasNodeV2,
+    ProjectAssetSummaryV2,
+)
 from app.schemas.agent_canvas_conversation import ContinuationCommitV2
 from app.schemas.agent_canvas_guided_product import (
     GuidedProductInputCommitReceiptV1,
@@ -584,6 +591,11 @@ class AgentCanvasGuidedProductRepository:
                         request=request,
                     )
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                    self._reconcile_uploaded_product_lineage(
+                        connection,
+                        node=node,
+                        now=node.updated_at,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -1018,6 +1030,96 @@ class AgentCanvasGuidedProductRepository:
                 ),
             }
         )
+
+    @staticmethod
+    def _reconcile_uploaded_product_lineage(connection, *, node: CanvasNodeV2, now: datetime) -> None:
+        """Persist the single explicit Main-output -> Multiview upload edge."""
+
+        if node.metadata.get("source_input_kind") not in {"main", "multiview"}:
+            return
+        rows = (
+            connection.execute(
+                select(AgentCanvasNodeRow)
+                .where(
+                    AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                    AgentCanvasNodeRow.creative_role == "product",
+                )
+                .order_by(AgentCanvasNodeRow.created_at.asc(), AgentCanvasNodeRow.node_id.asc())
+            )
+            .mappings()
+            .all()
+        )
+        nodes_by_kind: dict[str, dict[str, object]] = {}
+        for row in rows:
+            try:
+                metadata = json.loads(str(row["metadata_json"]))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            kind = metadata.get("source_input_kind")
+            if kind in {"main", "multiview"} and kind not in nodes_by_kind:
+                nodes_by_kind[str(kind)] = dict(row)
+        main_row = nodes_by_kind.get("main")
+        multiview_row = nodes_by_kind.get("multiview")
+        if main_row is None or multiview_row is None:
+            return
+        main_metadata = json.loads(str(main_row["metadata_json"]))
+        provenance = main_metadata.get("provenance")
+        source_version_id = provenance.get("version_id") if isinstance(provenance, dict) else None
+        source_asset_id = provenance.get("asset_id") if isinstance(provenance, dict) else None
+        binding_id = "binding_product_upload_lineage_" + sha256(
+            f"{node.workflow_id}:{main_row['node_id']}:{multiview_row['node_id']}".encode("utf-8")
+        ).hexdigest()[:24]
+        existing = (
+            connection.execute(
+                select(AgentCanvasBindingRow)
+                .where(
+                    AgentCanvasBindingRow.workflow_id == node.workflow_id,
+                    AgentCanvasBindingRow.target_node_id == str(multiview_row["node_id"]),
+                    AgentCanvasBindingRow.input_role == "image_reference",
+                    AgentCanvasBindingRow.enabled.is_(True),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        matching = next(
+            (
+                row
+                for row in existing
+                if str(row["source_kind"]) == "node_output"
+                and str(row["source_node_id"]) == str(main_row["node_id"])
+            ),
+            None,
+        )
+        if matching is not None:
+            return
+        if existing:
+            raise V2PersistenceError(
+                "canvas_binding_conflict",
+                "Uploaded Product Multiview already has a different image reference.",
+                stage="guided_product_repository",
+            )
+        binding = CanvasBindingV2(
+            binding_id=binding_id,
+            workflow_id=node.workflow_id,
+            source=CanvasBindingSourceNodeV2(source_node_id=str(main_row["node_id"])),
+            target_node_id=str(multiview_row["node_id"]),
+            input_role="image_reference",
+            required=True,
+            enabled=True,
+            order=0,
+            label=None,
+            metadata={
+                "semantic_reference_role": "product_reference",
+                "product_lineage": "uploaded_main_to_multiview",
+                "source_node_revision": int(main_row["revision"]),
+                "source_asset_id": str(source_asset_id) if source_asset_id else None,
+                "source_asset_version_id": str(source_version_id) if source_version_id else None,
+            },
+            created_at=now,
+            updated_at=now,
+        )
+        connection.execute(insert(AgentCanvasBindingRow).values(**_binding_values(binding)))
 
     def lookup_replay(
         self,
