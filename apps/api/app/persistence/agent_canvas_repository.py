@@ -2563,6 +2563,16 @@ def _invalidate_target_prompt_preparation(
         and node.prompt_preparation.operation_id != expected_operation_id
     ):
         raise _prompt_preparation_conflict()
+    if node.execution_mode == "source_only":
+        if node.prompt_preparation.status == "not_applicable":
+            return None
+        if node.prompt_preparation.status == "ready" and not _has_managed_prompt_preparation(node):
+            return None
+        raise V2PersistenceError(
+            "prompt_preparation_dispatch_invalid",
+            "Source-only Nodes cannot carry a managed prompt-preparation state.",
+            stage="agent_canvas_workflow_repository",
+        )
     if node.status not in {"draft", "failed", "ready", "working"}:
         return None
     if node.status == "ready" and not _has_managed_prompt_preparation(node):
