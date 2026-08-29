@@ -53,6 +53,46 @@ GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
 
 _TRUSTED_MANIFESTS = (
     TrustedModelManifest(
+        provider_id="cliproxyapi",
+        provider_model_id="gemini-3.7-flash-high",
+        display_name="Gemini 3.7 Flash High (CPA)",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text", "image"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": False,
+            "thinking_format": "none",
+            "reasoning_control": "none",
+            "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="cliproxyapi",
+        provider_model_id="grok-4.6",
+        display_name="Grok 4.6 (CPA)",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text", "image"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": False,
+            "thinking_format": "none",
+            "reasoning_control": "none",
+            "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
         provider_id="siliconflow",
         provider_model_id="zai-org/GLM-5.2",
         display_name="GLM-5.2",
@@ -288,7 +328,7 @@ class ProviderModelCatalogService:
         self._repository = repository
         configured_adapters = adapters or tuple(
             StaticProviderCatalogAdapter(provider_id)
-            for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake")
+            for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "cliproxyapi", "fake")
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
         self._capability_available = capability_available or self._repository_capability_available

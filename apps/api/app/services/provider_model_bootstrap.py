@@ -53,13 +53,33 @@ class ProviderModelBootstrapService:
         connection_service.synchronize_metadata(updated_at=now)
         catalog = ProviderModelCatalogService(self._repository)
         seeded_providers: list[str] = []
-        for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
+        for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "cliproxyapi", "fake"):
             had_models = bool(self._repository.list_models(provider_id=provider_id))
             catalog.reconcile_trusted_models(provider_id, now=now)
             if not had_models:
                 seeded_providers.append(provider_id)
 
         existing = catalog.get_default_records()
+        if (
+            self._settings.agent_runtime_mode != "fake"
+            and self._settings.llm_api_key
+            and self._settings.llm_base_url
+            and "cpa" in self._settings.llm_base_url
+            and existing
+            and all(key in existing for key in ("agent", "text"))
+            and all(
+                existing[key].model_ref == "volcengine_ark:doubao-seed-2-0-mini-260428"
+                for key in ("agent", "text")
+            )
+        ):
+            catalog.set_defaults(
+                {
+                    "agent": "cliproxyapi:gemini-3.7-flash-high",
+                    "text": "cliproxyapi:grok-4.6",
+                },
+                now=now,
+            )
+            existing = catalog.get_default_records()
         candidates = {
             key: model_ref
             for key, model_ref in self._recognized_defaults().items()
@@ -85,6 +105,10 @@ class ProviderModelBootstrapService:
         text_ref = "fake:deterministic-text"
         if self._settings.agent_runtime_mode != "fake":
             text_ref = (
+                "cliproxyapi:gemini-3.7-flash-high"
+                if self._settings.llm_api_key and self._settings.llm_base_url
+                and "cpa" in self._settings.llm_base_url
+                else
                 "siliconflow:zai-org/GLM-5.2"
                 if self._settings.siliconflow_api_key
                 else "volcengine_ark:doubao-seed-2-0-mini-260428"
