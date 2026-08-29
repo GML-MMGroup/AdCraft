@@ -22,6 +22,9 @@ from app.schemas.agent_canvas_materialization import (
     ProposalPublicationEnvelopeV1,
 )
 from app.schemas.agent_canvas_continuation import ContinuationOperationV2
+from app.services.agent_canvas_storyboard_selection_identity import (
+    validate_storyboard_envelope_identity,
+)
 
 
 OperationEnvelopeV1: TypeAlias = (
@@ -44,6 +47,7 @@ class AgentCanvasOperationEnvelopeRepository:
         connection: Connection,
         envelope: OperationEnvelopeV1,
     ) -> OperationEnvelopeV1:
+        _validate_storyboard_envelope(envelope)
         canonical = _canonical_json(envelope)
         existing = connection.execute(
             select(AgentCanvasOperationEnvelopeRow.envelope_json).where(
@@ -100,10 +104,12 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        return _ENVELOPE_ADAPTER.validate_json(
+        envelope = _ENVELOPE_ADAPTER.validate_json(
             payload,
             context={"allow_retired_historical_envelope": True},
         )
+        _validate_storyboard_envelope(envelope)
+        return envelope
 
     def get_in_transaction(
         self,
@@ -120,10 +126,12 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_not_found",
                 "Operation envelope was not found.",
             )
-        return _ENVELOPE_ADAPTER.validate_json(
+        envelope = _ENVELOPE_ADAPTER.validate_json(
             payload,
             context={"allow_retired_historical_envelope": True},
         )
+        _validate_storyboard_envelope(envelope)
+        return envelope
 
     def validate_identity_in_transaction(
         self,
@@ -147,6 +155,7 @@ class AgentCanvasOperationEnvelopeRepository:
                 "operation_envelope_identity_invalid",
                 "Operation envelope does not match its continuation identity.",
             )
+        _validate_storyboard_envelope(envelope)
         return envelope
 
 
@@ -167,6 +176,34 @@ def _operation_identity(
     if isinstance(envelope, CapabilityCommandEnvelopeV2):
         return "capability_command", envelope.capability_turn_id
     return "capability_materialization", envelope.action_turn_id
+
+
+def _validate_storyboard_envelope(envelope: OperationEnvelopeV1) -> None:
+    """Fence server-derived Storyboard identities before any worker use.
+
+    Legacy Storyboard envelopes without the private marker remain readable for
+    historical diagnostics.  Once a marker is present, however, it is an
+    immutable authority claim and must agree with every digest-derived ID.
+    """
+
+    capability_id = getattr(envelope, "capability_id", None)
+    marker = getattr(envelope, "agent_request_identity", None)
+    if marker is None:
+        marker = getattr(envelope, "idempotency_identity", None)
+    if capability_id != "storyboard_design" or marker is None:
+        return
+    if not isinstance(marker, str) or not marker.startswith("storyboard-selection:"):
+        raise _error(
+            "operation_envelope_identity_invalid",
+            "Storyboard operation envelope identity marker is invalid.",
+        )
+    try:
+        validate_storyboard_envelope_identity(envelope)
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "operation_envelope_identity_invalid",
+            "Storyboard operation envelope identity does not match its payload.",
+        ) from error
 
 
 def _error(code: str, message: str) -> V2PersistenceError:
