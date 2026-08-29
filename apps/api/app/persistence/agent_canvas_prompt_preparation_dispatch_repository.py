@@ -1303,7 +1303,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         for row in active_rows:
             if row["logical_key"] == successor.logical_key:
                 continue
-            connection.execute(
+            changed = connection.execute(
                 update(AgentCanvasPromptPreparationOutboxRow)
                 .where(
                     AgentCanvasPromptPreparationOutboxRow.dispatch_id == row["dispatch_id"],
@@ -1323,6 +1323,11 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     terminal_at=_iso(_utc(now)),
                 )
             )
+            if changed.rowcount != 1:
+                raise _error(
+                    "prompt_preparation_dispatch_state_conflict",
+                    "Dispatch changed before supersession.",
+                )
             self._append_event(
                 connection,
                 _dispatch_from_row(
