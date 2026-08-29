@@ -1,24 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
+import { mediaAssetContentPath, mediaAssetPosterPath } from "../../../workflow/mediaPreview.ts";
 
 type GeneratedPosterState = {
   key: string;
   url: string;
 };
-
-function scheduleIdleTask(task: () => void) {
-  const idleWindow = window as Window & {
-    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
-    cancelIdleCallback?: (handle: number) => void;
-  };
-  if (idleWindow.requestIdleCallback) {
-    const handle = idleWindow.requestIdleCallback(task, { timeout: 1200 });
-    return () => idleWindow.cancelIdleCallback?.(handle);
-  }
-  const handle = window.setTimeout(task, 220);
-  return () => window.clearTimeout(handle);
-}
 
 function fallbackPosterKey(asset?: ProjectAssetSummaryV2 | null) {
   if (
@@ -27,34 +15,44 @@ function fallbackPosterKey(asset?: ProjectAssetSummaryV2 | null) {
     || asset.preview_url
     || !asset.media_url
   ) return "";
-  return [asset.asset_id, asset.version_id ?? asset.checksum, asset.media_url].join(":");
+  return [asset.asset_id, asset.version_id ?? asset.checksum, mediaAssetContentPath(asset)].join(":");
 }
 
-export function useAgentCanvasVideoPoster(asset?: ProjectAssetSummaryV2 | null) {
+export function useAgentCanvasVideoPoster(
+  asset?: ProjectAssetSummaryV2 | null,
+  videoRef?: RefObject<HTMLVideoElement | null>,
+) {
   const fallbackKey = fallbackPosterKey(asset);
   const assetId = asset?.asset_id ?? "";
   const checksum = asset?.checksum ?? "";
   const createdAt = asset?.created_at ?? null;
   const displayName = asset?.display_name ?? "Video output";
-  const mediaUrl = asset?.media_url ?? "";
+  const mediaUrl = asset ? mediaAssetContentPath(asset) : "";
   const mimeType = asset?.mime_type ?? "video/mp4";
   const projectId = asset?.project_id || asset?.workflow_id || "local-project";
   const versionId = asset?.version_id ?? null;
   const workflowId = asset?.workflow_id || "local-workflow";
-  const previewUrl = asset?.preview_url ?? null;
+  const previewUrl = asset ? mediaAssetPosterPath(asset) || null : null;
   const [generatedPoster, setGeneratedPoster] = useState<GeneratedPosterState>({
     key: "",
     url: "",
   });
 
   useEffect(() => {
-    if (!fallbackKey || !assetId || !mediaUrl) return;
+    if (!fallbackKey || !assetId || !mediaUrl || !videoRef) return;
 
     let cancelled = false;
     let objectUrl = "";
-    const cancelIdleTask = scheduleIdleTask(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    let captureRequested = false;
+    const capture = () => {
+      if (cancelled || captureRequested) return;
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      if (duration > 0 && video.currentTime <= 0) return;
+      captureRequested = true;
       void import("../../../workflow/videoPosterCache.ts")
-        .then(({ ensureVideoPoster }) => ensureVideoPoster({
+        .then(({ ensureVideoPosterFromElement }) => ensureVideoPosterFromElement({
           projectId,
           workflowId,
           asset: {
@@ -67,7 +65,8 @@ export function useAgentCanvasVideoPoster(asset?: ProjectAssetSummaryV2 | null) 
             version: versionId ?? checksum,
             updated_at: createdAt ?? undefined,
           },
-          videoUrl: mediaUrl,
+          sourceUrl: mediaUrl,
+          video,
         }))
         .then((record) => {
           if (cancelled || !record?.poster_blob) return;
@@ -75,13 +74,17 @@ export function useAgentCanvasVideoPoster(asset?: ProjectAssetSummaryV2 | null) 
           setGeneratedPoster({ key: fallbackKey, url: objectUrl });
         })
         .catch(() => {
-          // The video remains playable even when a local first-frame poster cannot be generated.
+          // The native video remains the visible first-frame fallback.
         });
-    });
+    };
+    video.addEventListener("loadeddata", capture);
+    video.addEventListener("seeked", capture);
+    if (video.readyState >= 2) capture();
 
     return () => {
       cancelled = true;
-      cancelIdleTask();
+      video.removeEventListener("loadeddata", capture);
+      video.removeEventListener("seeked", capture);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [
@@ -94,6 +97,7 @@ export function useAgentCanvasVideoPoster(asset?: ProjectAssetSummaryV2 | null) 
     mimeType,
     projectId,
     versionId,
+    videoRef,
     workflowId,
   ]);
 

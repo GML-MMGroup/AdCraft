@@ -3134,7 +3134,7 @@ function normalizeProposalApplicationSummaryV2(
 
 function normalizeChatMessageV2(value: unknown, path: string): ChatMessageV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["item_type", "message_id", "conversation_id", "speaker", "text", "linked_node_ids", "script_node_id", "proposal_id", "sequence", "created_at"], path);
+  forbidUnknownFields(record, ["item_type", "message_id", "conversation_id", "speaker", "text", "linked_node_ids", "script_node_id", "proposal_id", "metadata", "sequence", "created_at"], path);
   return {
     item_type: expectLiteral(record.item_type, new Set<ChatMessageV2["item_type"]>(["message"]), `${path}.item_type`),
     message_kind: "conversation",
@@ -3146,6 +3146,9 @@ function normalizeChatMessageV2(value: unknown, path: string): ChatMessageV2 {
     script_node_id: record.script_node_id === undefined ? null : nullableString(record.script_node_id, `${path}.script_node_id`),
     proposal_id: record.proposal_id === undefined ? null : nullableString(record.proposal_id, `${path}.proposal_id`),
     capability_id: null,
+    ...(record.metadata === undefined
+      ? {}
+      : { metadata: optionalUnknownRecord(record.metadata, `${path}.metadata`, {}) }),
     sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
   };
@@ -3837,6 +3840,7 @@ export function normalizeAgentCanvasChatTimelineV2(
               AGENT_CAPABILITY_IDS,
               `${path}.items.metadata.capability_id`,
             ),
+          ...(Object.keys(entry.metadata).length > 0 ? { metadata: entry.metadata } : {}),
           sequence: entry.sequence_no,
           created_at: entry.created_at,
         }];

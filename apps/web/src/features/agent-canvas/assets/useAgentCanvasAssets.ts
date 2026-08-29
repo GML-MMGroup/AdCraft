@@ -12,6 +12,7 @@ import type {
   AgentAssetMediaFilter,
   AgentAssetScope,
 } from "./assetSelection.ts";
+import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 
 type LibraryRecord = Record<string, unknown>;
 
@@ -78,8 +79,8 @@ function projectItem(asset: ProjectAssetSummaryV2): AgentAssetBrowserItem {
     source: "project",
     mediaType: asset.media_type,
     displayName: asset.display_name,
-    previewUrl: asset.preview_url,
-    mediaUrl: asset.media_url,
+    previewUrl: mediaAssetPreviewPath(asset) || null,
+    mediaUrl: mediaAssetContentPath(asset) || null,
     status: asset.status,
     tags: [asset.source_type, asset.mime_type],
     identity: {

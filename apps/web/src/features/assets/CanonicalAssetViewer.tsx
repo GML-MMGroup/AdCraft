@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "../../icons.tsx";
 import type { AgentAssetBrowserItem } from "../agent-canvas/assets/assetSelection.ts";
+import { mediaAssetContentPath } from "../../workflow/mediaPreview.ts";
+import { StableMediaPreview } from "../../workflow/StableMediaPreview.tsx";
 
 interface CanonicalAssetViewerProps {
   item: AgentAssetBrowserItem;
@@ -21,7 +23,9 @@ export function CanonicalAssetViewer({
 }: CanonicalAssetViewerProps) {
   const viewerRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const source = item.mediaUrl ?? item.previewUrl;
+  const source = item.projectAsset
+    ? mediaAssetContentPath(item.projectAsset) || item.mediaUrl || item.previewUrl
+    : item.mediaUrl ?? item.previewUrl;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -62,7 +66,7 @@ export function CanonicalAssetViewer({
         <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
         <div className="v2-asset-viewer-stage">
           {source
-            ? <img className="v2-asset-media" src={source} alt={item.displayName} loading="eager" decoding="async" />
+            ? <StableMediaPreview className="v2-asset-media" src={source} alt={item.displayName} loading="eager" decoding="async" />
             : <span className="v2-asset-viewer-empty">No image is available for this asset.</span>}
           {hasAssetNavigation ? (
             <>

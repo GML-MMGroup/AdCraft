@@ -42,9 +42,6 @@
 }
 
 .agent-canvas-board .react-flow__node.is-progressive-reveal .agent-canvas-node {
-  outline: 1px solid rgb(245 245 245 / 82%);
-  outline-offset: 5px;
-  box-shadow: 0 0 0 1px rgb(112 112 112 / 42%), 0 10px 28px rgb(0 0 0 / 34%);
   animation: agent-canvas-progressive-reveal 420ms ease-out both;
 }
 

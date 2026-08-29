@@ -23,6 +23,7 @@ import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 
 const updateNodeInternals = vi.hoisted(() => vi.fn());
 const ensureVideoPoster = vi.hoisted(() => vi.fn());
+const ensureVideoPosterFromElement = vi.hoisted(() => vi.fn());
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -37,6 +38,7 @@ vi.mock("@xyflow/react", async () => {
 
 vi.mock("../../../workflow/videoPosterCache.ts", () => ({
   ensureVideoPoster,
+  ensureVideoPosterFromElement,
 }));
 
 function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draft"): CanvasNodeV2 {
@@ -119,6 +121,7 @@ afterEach(() => {
   cleanup();
   updateNodeInternals.mockClear();
   ensureVideoPoster.mockReset();
+  ensureVideoPosterFromElement.mockReset();
   vi.useRealTimers();
 });
 
@@ -705,20 +708,30 @@ describe("AgentCanvasNodeCard", () => {
     const video = screen.getByLabelText("video output");
     expect(video.tagName).toBe("VIDEO");
     expect(video.getAttribute("src")).toBe("/media/video-output");
-    expect(video.getAttribute("preload")).toBe("none");
+    expect(video.getAttribute("preload")).toBe("metadata");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
   });
 
-  it("generates a cached first-frame poster when the backend has no video preview", async () => {
-    vi.useFakeTimers();
+  it("seeks the native video element to an early frame after metadata loads", () => {
+    render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
+    const video = screen.getByLabelText("video output") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { configurable: true, value: 12 });
+
+    fireEvent.loadedMetadata(video);
+
+    expect(video.currentTime).toBeCloseTo(0.5);
+    fireEvent.seeked(video);
+  });
+
+  it("uses the mounted video to cache a first-frame poster when the backend has no preview", async () => {
     const createObjectURL = vi.fn(() => "blob:agent-video-poster");
     const revokeObjectURL = vi.fn();
     Object.defineProperties(URL, {
       createObjectURL: { configurable: true, value: createObjectURL },
       revokeObjectURL: { configurable: true, value: revokeObjectURL },
     });
-    ensureVideoPoster.mockResolvedValue({
+    ensureVideoPosterFromElement.mockResolvedValue({
       poster_blob: new Blob(["poster"], { type: "image/webp" }),
     });
     const asset = {
@@ -732,11 +745,12 @@ describe("AgentCanvasNodeCard", () => {
     expect(video.getAttribute("poster")).toBeNull();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
+      fireEvent.loadedData(video);
       await Promise.resolve();
     });
 
-    expect(ensureVideoPoster).toHaveBeenCalledWith({
+    expect(ensureVideoPoster).not.toHaveBeenCalled();
+    expect(ensureVideoPosterFromElement).toHaveBeenCalledWith({
       projectId: "project-1",
       workflowId: "workflow-1",
       asset: expect.objectContaining({
@@ -744,7 +758,8 @@ describe("AgentCanvasNodeCard", () => {
         asset_type: "video",
         version: "video-version-2",
       }),
-      videoUrl: "/media/video-output",
+      sourceUrl: "/api/v2/assets/video-asset/content?v=video-version-2",
+      video,
     });
     expect(video.getAttribute("poster")).toBe("blob:agent-video-poster");
 
@@ -933,7 +948,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.preview_url);
+    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
     expect(screen.getByLabelText("General Image node type")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
@@ -1191,14 +1206,11 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
   });
 
-  it("offers conversation navigation only for a selected node with a structured source", () => {
-    const onShowInConversation = vi.fn();
+  it("does not render the removed conversation navigation action", () => {
     const data: AgentCanvasNodeData = {
       node: makeNode("image", "ready"),
-      conversationSourceAvailable: true,
-      onShowInConversation,
     };
-    const { rerender } = render(
+    render(
       <ReactFlowProvider>
         <AgentCanvasNodeRenderer
           id={data.node.node_id}
@@ -1217,27 +1229,6 @@ describe("AgentCanvasNodeRenderer", () => {
       </ReactFlowProvider>,
     );
     expect(screen.queryByRole("button", { name: "Show in conversation" })).toBeNull();
-
-    rerender(
-      <ReactFlowProvider>
-        <AgentCanvasNodeRenderer
-          id={data.node.node_id}
-          data={data}
-          type="agentCanvas"
-          selected
-          dragging={false}
-          draggable
-          selectable
-          deletable
-          isConnectable
-          zIndex={0}
-          positionAbsoluteX={0}
-          positionAbsoluteY={0}
-        />
-      </ReactFlowProvider>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show in conversation" }));
-    expect(onShowInConversation).toHaveBeenCalledWith("image-node");
   });
 
   it("keeps the prompt workbench fixed at 638 by 217 CSS pixels", () => {

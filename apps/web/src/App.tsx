@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import type { RouteName } from "./types";
+import type { AppNavigateOptions, RouteName } from "./types";
 
 const LightweightShell = lazy(() => import("./components/Layout").then((module) => ({ default: module.LayoutRoute })));
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
@@ -12,8 +12,11 @@ const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => 
 const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
 const WorkspaceRoute = lazy(() => import("./app/WorkspaceRoute").then((module) => ({ default: module.WorkspaceRoute })));
 
-function routePath(route: RouteName) {
+function routePath(route: RouteName, projectId?: string | null) {
   if (route === "home") return "/";
+  if (route === "workflow" && projectId?.trim()) {
+    return `/workflow/${encodeURIComponent(projectId.trim())}`;
+  }
   return `/${route}`;
 }
 
@@ -29,7 +32,10 @@ function RouteFallback() {
 
 function AppRoutes() {
   const navigate = useNavigate();
-  const navigateRoute = (route: RouteName, options?: { state?: unknown }) => navigate(routePath(route), options);
+  const navigateRoute = (route: RouteName, options?: AppNavigateOptions) => {
+    const { projectId, ...navigateOptions } = options ?? {};
+    navigate(routePath(route, projectId), navigateOptions);
+  };
 
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -43,6 +49,7 @@ function AppRoutes() {
         </Route>
         <Route element={<WorkspaceRoute />}>
           <Route path="/projects" element={<ProjectsPage navigate={navigateRoute} />} />
+          <Route path="/workflow/:projectId" element={<WorkflowPage />} />
           <Route path="/workflow" element={<WorkflowPage />} />
           <Route path="/trash" element={<TrashPage navigate={navigateRoute} />} />
         </Route>

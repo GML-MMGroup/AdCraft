@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage } from "node:http";
-import { API_METADATA_CACHE_CONTROL, isVersionedAssetContentRequest, mediaCacheControl } from "./mediaCachePolicy";
+import { API_METADATA_CACHE_CONTROL, isVersionedAgentIconRequest, isVersionedAssetContentRequest, mediaCacheControl, VERSIONED_AGENT_ICON_CACHE_CONTROL } from "./mediaCachePolicy";
 import { resolveBackendOrigin } from "./src/config/devServer.ts";
 
 const FRONTEND_PORT = 5189;
@@ -29,8 +29,30 @@ function configureMediaProxy(proxy: ProxyWithResponseEvents) {
   });
 }
 
+function configureAgentIconCache() {
+  return {
+    name: "adcraft-agent-icon-cache",
+    configureServer(server: { middlewares: { use: (handler: (request: IncomingMessage & { url?: string }, response: { setHeader: (name: string, value: string) => void }, next: () => void) => void) => void } }) {
+      server.middlewares.use((request, response, next) => {
+        if (isVersionedAgentIconRequest(request.url ?? "")) {
+          response.setHeader("Cache-Control", VERSIONED_AGENT_ICON_CACHE_CONTROL);
+        }
+        next();
+      });
+    },
+    configurePreviewServer(server: { middlewares: { use: (handler: (request: IncomingMessage & { url?: string }, response: { setHeader: (name: string, value: string) => void }, next: () => void) => void) => void } }) {
+      server.middlewares.use((request, response, next) => {
+        if (isVersionedAgentIconRequest(request.url ?? "")) {
+          response.setHeader("Cache-Control", VERSIONED_AGENT_ICON_CACHE_CONTROL);
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), configureAgentIconCache()],
   build: {
     rollupOptions: {
       output: {

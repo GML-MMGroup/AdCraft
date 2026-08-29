@@ -134,7 +134,7 @@ describe("GuidedInteractionCard", () => {
       />,
     );
 
-    expect(screen.getByRole("article", { name: conceptInteraction.title })).toBeTruthy();
+    expect(screen.getByRole("article", { name: conceptInteraction.context })).toBeTruthy();
     expect(screen.getAllByRole("radio")).toHaveLength(3);
     expect(screen.queryByText(conceptInteraction.response_locale)).toBeNull();
   });
@@ -201,7 +201,7 @@ describe("GuidedInteractionCard", () => {
       />,
     );
 
-    expect(screen.getByRole("article", { name: conceptInteraction.title })).toBeTruthy();
+    expect(screen.getByRole("article", { name: conceptInteraction.context })).toBeTruthy();
     expect(screen.getAllByRole("radio").every((control) => control.hasAttribute("disabled"))).toBe(true);
   });
 
@@ -221,7 +221,7 @@ describe("GuidedInteractionCard", () => {
     );
     expect(screen.queryByRole("button", { name: "References" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-    expect(screen.getByText("Choose an option above, or describe your own direction below.")).toBeTruthy();
+    expect(screen.queryByText("Choose an option above, or describe your own direction below.")).toBeNull();
 
     rerender(
       <GuidedInteractionCard
