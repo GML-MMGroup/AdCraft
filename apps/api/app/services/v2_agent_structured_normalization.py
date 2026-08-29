@@ -215,11 +215,10 @@ def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, Structur
         canonical = next(((key, val) for key, val in entries if key == target), entries[0])
         if canonical[0] != target or len(entries) > 1:
             controls[target] = canonical[1]
-            changed += (canonical[0] != target)
+        changed += sum(key != target for key, _ in entries)
         for key, _ in entries:
             if key != target and key in controls:
                 del controls[key]
-                changed += 1
     return changed, None
 
 

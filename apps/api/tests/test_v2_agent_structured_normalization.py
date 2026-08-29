@@ -65,6 +65,13 @@ def test_non_lossless_float_string_stays():
     assert norm(value).value == value
 
 
+def test_normalized_path_count_counts_each_alias_path_once():
+    fps = norm({"requirement_patch": {"controls_to_set": {"fps": {"value": "24"}}}})
+    assert fps.normalized_path_count == 2
+    resolution = norm({"requirement_patch": {"controls_to_set": {"resolution": {"value": "1080p"}}}})
+    assert resolution.normalized_path_count == 1
+
+
 def test_conflict_is_type_sensitive():
     result = norm({"requirement_patch": {"controls_to_set": {"duration_sec": {"value": True}, "duration_seconds": {"value": 1}}}})
     assert result.violations and result.violations[0].code == "agent_structured_normalization_alias_conflict"
