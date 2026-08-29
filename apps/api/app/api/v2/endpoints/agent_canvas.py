@@ -1470,25 +1470,28 @@ def create_agent_canvas_runtime(
         fail_turn=fail_continuation_turn,
     )
 
-    def activate_automatic_prompt_ready_nodes(
+    def activate_prompt_ready_nodes(
         workflow_id: str,
         node_ids: tuple[str, ...],
         *,
         source_id: str,
     ) -> object | None:
-        """Re-admit only current prompt-ready media in automatic mode."""
+        """Re-admit only current prompt-ready Storyboard media authority."""
 
         setting = execution_settings.get_or_create(workflow_id)
-        if setting.media_execution_mode != "automatic":
-            return None
         node = workflow_repository.get_node(workflow_id, node_ids[0]) if node_ids else None
         if node is None or node.creative_role != "storyboard_sequence":
             return None
+        if setting.media_execution_mode == "manual":
+            return fanout_activation.activate_prompt_ready_nodes(
+                workflow_id,
+                node_ids,
+                source_id=source_id,
+            )
         terminal_wait = any(
             command.node_id in node_ids
             and command.state == "failed"
-            and getattr(command.last_error, "code", None)
-            == "node_prompt_preparation_incomplete"
+            and getattr(command.last_error, "code", None) == "node_prompt_preparation_incomplete"
             for command in automatic_run_repository.list_for_workflow(workflow_id)
         )
         if not terminal_wait:
@@ -1529,7 +1532,7 @@ def create_agent_canvas_runtime(
             result,
             runtime_repository=runtime_repository,
             scheduler=scheduler,
-            prompt_ready_activation=activate_automatic_prompt_ready_nodes,
+            prompt_ready_activation=activate_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
         ),
     )
