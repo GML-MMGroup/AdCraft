@@ -413,37 +413,17 @@ class NodePromptPreparationService:
             and preparation.binding_digest == binding_digest
         ):
             return current
-        refreshed_evidence = PromptAssertionEvidenceV1.build(
-            **evidence.model_dump(
-                mode="python",
-                exclude={"schema_version", "source_snapshots", "evidence_digest"},
-            ),
-            source_snapshots=current_sources,
+        # Dependency evidence is an immutable part of the preparation
+        # operation.  Once a source snapshot changes, never rewrite that
+        # evidence in place: supersede the old identity and enqueue exactly
+        # one successor for the next preparation wave.  The existing
+        # repository method performs the Node/dispatch mutation atomically.
+        del current_sources, binding_digest
+        return self.invalidate_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
         )
-        refreshed = current.model_copy(
-            update={
-                "revision": current.revision + 1,
-                "updated_at": _now(),
-                "metadata": {
-                    **current.metadata,
-                    "prompt_reference_bundle_digest": binding_digest,
-                    "prompt_assertion_evidence_digest": refreshed_evidence.evidence_digest,
-                    "prepared_reference_snapshots": [
-                        item.model_dump(mode="json") for item in bindings
-                    ],
-                },
-                "prompt_preparation": preparation.model_copy(
-                    update={
-                        "attempt_no": preparation.attempt_no + 1,
-                        "binding_digest": binding_digest,
-                        "assertion_evidence": refreshed_evidence,
-                        "attempt_stage": "completed",
-                        "updated_at": _now(),
-                    }
-                ),
-            }
-        )
-        return self._persist(current, refreshed)
 
     def _append_trace(
         self,
