@@ -1377,7 +1377,10 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 if row is None:
                     raise _not_found()
                 _require_owned(row, worker_id, lease_generation, timestamp)
-                if node_revision is not None or operation_id is not None:
+                if any(
+                    value is not None
+                    for value in (node_revision, operation_id, context_digest, source_snapshot)
+                ):
                     _assert_current_node_identity(
                         connection,
                         row,
