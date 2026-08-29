@@ -1403,7 +1403,13 @@ def normalize_queued_node(
     """Give a queued Node a stable operation identity without creative inference."""
 
     preparation = node.prompt_preparation
-    if preparation.status != "queued" or preparation.operation_id:
+    if preparation.status != "queued":
+        return node
+    # A caller that supplies a frozen context is asking the authority to
+    # reconcile the operation against that snapshot.  Do not blindly retain an
+    # operation generated before the context changed; retries with the same
+    # context still derive the same value below and therefore remain idempotent.
+    if preparation.operation_id and context_digest is None:
         return node
     binding_seed = []
     for item in bindings:
@@ -1458,6 +1464,8 @@ def normalize_queued_node(
     }
     encoded = json.dumps(seed, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     operation_id = "prep_" + sha256(encoded.encode("utf-8")).hexdigest()[:40]
+    if preparation.operation_id == operation_id:
+        return node
     return node.model_copy(update={"prompt_preparation": preparation.model_copy(update={"operation_id": operation_id})})
 
 
