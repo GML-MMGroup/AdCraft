@@ -235,7 +235,12 @@ class AgentCanvasPromptPreparationDispatchRepository:
         if not _is_trackable_node(node):
             return None
         timestamp = _utc(now or datetime.now(timezone.utc))
-        normalized = normalize_queued_node(node, bindings=bindings)
+        context_json, context_digest = _detached_context(context)
+        normalized = normalize_queued_node(
+            node,
+            bindings=bindings,
+            context_digest=context_digest if context is not None else None,
+        )
         preparation = normalized.prompt_preparation
         if preparation.status == "working":
             # A legacy working projection has no durable owner that can be
@@ -255,7 +260,6 @@ class AgentCanvasPromptPreparationDispatchRepository:
             )
         _assert_node_projection(connection, normalized)
         source_snapshot = _source_snapshot_for_node(connection, normalized, bindings)
-        context_json, context_digest = _detached_context(context)
         logical_key = prompt_preparation_dispatch_logical_key(
             workflow_id=normalized.workflow_id,
             node_id=normalized.node_id,
@@ -1126,9 +1130,13 @@ class AgentCanvasPromptPreparationDispatchRepository:
 
         if not _is_applicable_node(node):
             return None
-        normalized = normalize_queued_node(node, bindings=bindings)
-        source_snapshot = _source_snapshot_for_node(connection, normalized, bindings)
         context_json, context_digest = _detached_context(context)
+        normalized = normalize_queued_node(
+            node,
+            bindings=bindings,
+            context_digest=context_digest if context is not None else None,
+        )
+        source_snapshot = _source_snapshot_for_node(connection, normalized, bindings)
         preparation = normalized.prompt_preparation
         if not preparation.operation_id:
             raise _error(
@@ -1385,6 +1393,7 @@ def normalize_queued_node(
     node: CanvasNodeV2,
     *,
     bindings: Sequence[object] = (),
+    context_digest: str | None = None,
 ) -> CanvasNodeV2:
     """Give a queued Node a stable operation identity without creative inference."""
 
@@ -1412,6 +1421,7 @@ def normalize_queued_node(
         },
         "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
         "output_asset_id": node.output_asset_id,
+        "context_digest": context_digest,
         "metadata": node.metadata,
         "prompt_preparation": {
             "context_snapshot_id": preparation.context_snapshot_id,
