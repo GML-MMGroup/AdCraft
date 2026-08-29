@@ -2121,15 +2121,22 @@ def patch_node(
                 expected_revision=expected_revision,
             )
         else:
-            runtime.ad_media_validation.validate(
-                node_type=current.node_type,
-                semantic_role=current.semantic_role,
-                structured_content=(
-                    request.structured_content
-                    if request.structured_content is not None
-                    else current.structured_content
-                ),
+            source_only_product = (
+                current.node_type == "image"
+                and current.creative_role == "product"
+                and current.execution_mode == "source_only"
+                and current.metadata.get("source_input_kind") in {"main", "multiview"}
             )
+            if not source_only_product:
+                runtime.ad_media_validation.validate(
+                    node_type=current.node_type,
+                    semantic_role=current.semantic_role,
+                    structured_content=(
+                        request.structured_content
+                        if request.structured_content is not None
+                        else current.structured_content
+                    ),
+                )
             node = runtime.nodes.patch(
                 workflow_id,
                 node_id,
