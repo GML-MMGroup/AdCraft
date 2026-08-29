@@ -216,7 +216,10 @@ class MaterializationPlanV1(_MaterializationCommitModel):
         if any(preparation.node_id not in node_ids for preparation in self.prompt_preparations):
             raise ValueError("Every prompt preparation Node must be planned.")
         for preparation in self.prompt_preparations:
-            if preparation.context is not None and preparation.context.workflow_id != self.workflow_id:
+            if (
+                preparation.context is not None
+                and preparation.context.workflow_id != self.workflow_id
+            ):
                 raise ValueError("Prompt preparation context must belong to the planned Workflow.")
 
         if materialization_plan_digest(self) != self.payload_digest:

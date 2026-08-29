@@ -387,7 +387,9 @@ class AgentCanvasWorkflowRepository:
                         connection, node.workflow_id, expected_revision
                     )
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
-                    self._prompt_dispatch.ensure_for_node_in_transaction(connection, node, now=node.updated_at)
+                    self._prompt_dispatch.ensure_for_node_in_transaction(
+                        connection, node, now=node.updated_at
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -2643,9 +2645,8 @@ def _invalidate_target_prompt_preparation(
     prepared_projection = (
         isinstance(node.generation_prompt, str)
         and isinstance(node.metadata.get("prompt_digest"), str)
-        and node.metadata.get("prompt_digest") == sha256(
-            node.generation_prompt.encode("utf-8")
-        ).hexdigest()
+        and node.metadata.get("prompt_digest")
+        == sha256(node.generation_prompt.encode("utf-8")).hexdigest()
     )
     queued = NodePromptPreparationV1(
         status="queued",

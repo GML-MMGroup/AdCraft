@@ -1357,9 +1357,7 @@ class CapabilityMaterializationPublicationService:
                     node_id,
                     operation_id=operation_id,
                     context=(
-                        context_by_node[node_id]
-                        if context_by_node is not None
-                        else stage_context
+                        context_by_node[node_id] if context_by_node is not None else stage_context
                     ),
                 )
             except Exception as error:  # noqa: BLE001 - preserve sibling preparation.

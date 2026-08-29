@@ -516,11 +516,7 @@ class DynamicCanvasScheduler:
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
                         "preferred_upstream_node_ids": list(preferred_waiting),
-                        **(
-                            {"error_code": blocked_error.code}
-                            if blocked_error is not None
-                            else {}
-                        ),
+                        **({"error_code": blocked_error.code} if blocked_error is not None else {}),
                         **({"reason_code": "skipped_dependency"} if blocked else {}),
                     },
                 )
@@ -2004,9 +2000,7 @@ def _prompt_preparation_pending(node: CanvasNodeV2 | None) -> bool:
         return False
     preparation = node.prompt_preparation
     managed = bool(
-        preparation.role_variant
-        or preparation.recipe_id
-        or node.metadata.get("prompt_recipe_id")
+        preparation.role_variant or preparation.recipe_id or node.metadata.get("prompt_recipe_id")
     )
     return managed and preparation.status in {"queued", "working"}
 

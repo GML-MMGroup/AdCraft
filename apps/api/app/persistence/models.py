@@ -1795,9 +1795,7 @@ class AgentCanvasPromptPreparationOutboxRow(Base):
     workflow_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
     )
-    node_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
-    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
     node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     operation_id: Mapped[str] = mapped_column(Text, nullable=False)
     logical_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)

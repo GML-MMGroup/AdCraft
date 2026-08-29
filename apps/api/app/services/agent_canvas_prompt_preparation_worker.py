@@ -23,9 +23,7 @@ from app.services.agent_canvas_prompt_preparation import context_digest
 
 logger = logging.getLogger(__name__)
 
-PreparationCallback = Callable[
-    [PromptPreparationDispatchV1, StageAuthoringContextV1], object
-]
+PreparationCallback = Callable[[PromptPreparationDispatchV1, StageAuthoringContextV1], object]
 PreparationContextLoader = Callable[[PromptPreparationDispatchV1], StageAuthoringContextV1]
 BarrierCallback = Callable[[PromptPreparationDispatchV1, object], object]
 
@@ -93,8 +91,7 @@ class AgentCanvasPromptPreparationWorker:
                 self._notify_terminal(dispatch, exhausted)
             except Exception:  # noqa: BLE001 - barrier wake must not halt recovery.
                 logger.exception(
-                    "Prompt-preparation terminal barrier notification failed "
-                    "dispatch_id=%s",
+                    "Prompt-preparation terminal barrier notification failed dispatch_id=%s",
                     dispatch.dispatch_id,
                 )
             failed += 1
@@ -165,7 +162,8 @@ class AgentCanvasPromptPreparationWorker:
                         stage="prompt_preparation_worker",
                     )
                 if dispatch.context_json and (
-                    not dispatch.context_digest or context_digest(context) != dispatch.context_digest
+                    not dispatch.context_digest
+                    or context_digest(context) != dispatch.context_digest
                 ):
                     raise V2PersistenceError(
                         "prompt_preparation_dispatch_stale",

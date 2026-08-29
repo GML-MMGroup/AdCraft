@@ -290,7 +290,9 @@ class AgentCanvasPromptPreparationDispatchRepository:
             "failed": "failed",
             "superseded": "superseded",
         }[preparation.status]
-        terminal_at = timestamp if dispatch_status in {"completed", "failed", "superseded"} else None
+        terminal_at = (
+            timestamp if dispatch_status in {"completed", "failed", "superseded"} else None
+        )
         dispatch = PromptPreparationDispatchV1(
             dispatch_id=prompt_preparation_dispatch_id(logical_key),
             workflow_id=normalized.workflow_id,
@@ -317,9 +319,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             attempt_no=preparation.attempt_no,
             max_attempts=5,
             available_at=timestamp,
-            last_error_code=(
-                preparation.error.code if preparation.error is not None else None
-            ),
+            last_error_code=(preparation.error.code if preparation.error is not None else None),
             last_error_message=(
                 "Node prompt preparation failed." if preparation.error is not None else None
             ),
@@ -583,8 +583,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                 .where(
                                     AgentCanvasPromptPreparationOutboxRow.dispatch_id
                                     == row["dispatch_id"],
-                                    AgentCanvasPromptPreparationOutboxRow.status
-                                    == row["status"],
+                                    AgentCanvasPromptPreparationOutboxRow.status == row["status"],
                                     AgentCanvasPromptPreparationOutboxRow.lease_generation
                                     == row["lease_generation"],
                                 )
@@ -747,7 +746,9 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 )
                 if changed.rowcount != 1:
                     raise _stale_lease()
-                return _dispatch_from_row({**row, "lease_expires_at": expires, "updated_at": _iso(timestamp)})
+                return _dispatch_from_row(
+                    {**row, "lease_expires_at": expires, "updated_at": _iso(timestamp)}
+                )
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -853,8 +854,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                         AgentCanvasPromptPreparationOutboxRow.dispatch_id == dispatch_id,
                         AgentCanvasPromptPreparationOutboxRow.status == "leased",
                         AgentCanvasPromptPreparationOutboxRow.lease_owner == worker_id,
-                        AgentCanvasPromptPreparationOutboxRow.lease_generation
-                        == lease_generation,
+                        AgentCanvasPromptPreparationOutboxRow.lease_generation == lease_generation,
                     )
                     .values(**values)
                 )
@@ -866,9 +866,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     connection,
                     result,
                     event_type="node_prompt_preparation_superseded",
-                    transition_key=(
-                        f"prompt-dispatch:{dispatch_id}:superseded:{lease_generation}"
-                    ),
+                    transition_key=(f"prompt-dispatch:{dispatch_id}:superseded:{lease_generation}"),
                     created_at=timestamp,
                 )
                 return result
@@ -990,8 +988,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             return None
         row = (
             connection.execute(
-                select(AgentCanvasPromptPreparationOutboxRow)
-                .where(
+                select(AgentCanvasPromptPreparationOutboxRow).where(
                     AgentCanvasPromptPreparationOutboxRow.workflow_id == node.workflow_id,
                     AgentCanvasPromptPreparationOutboxRow.node_id == node.node_id,
                     AgentCanvasPromptPreparationOutboxRow.operation_id == operation_id,
@@ -1018,9 +1015,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         }[preparation.status]
         timestamp = _utc(now)
         error_code = preparation.error.code if preparation.error is not None else None
-        error_message = (
-            "Node prompt preparation failed." if error_code is not None else None
-        )
+        error_message = "Node prompt preparation failed." if error_code is not None else None
         reason = "node_prompt_preparation_superseded" if status == "superseded" else None
         values = {
             "status": status,
@@ -1358,7 +1353,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                         "terminal_at": _iso(_utc(now)),
                     }
                 ),
-                        event_type="node_prompt_preparation_superseded",
+                event_type="node_prompt_preparation_superseded",
                 transition_key=f"prompt-dispatch:{row['dispatch_id']}:superseded:{row['lease_generation']}",
                 created_at=_utc(now),
             )
@@ -1628,8 +1623,7 @@ def _is_trackable_node(node: CanvasNodeV2) -> bool:
     return (
         node.node_type in APPLICABLE_NODE_TYPES
         and node.execution_mode == "generative"
-        and node.prompt_preparation.status
-        in {"queued", "ready", "failed", "superseded", "working"}
+        and node.prompt_preparation.status in {"queued", "ready", "failed", "superseded", "working"}
     )
 
 
@@ -1705,7 +1699,9 @@ def normalize_queued_node(
     operation_id = "prep_" + sha256(encoded.encode("utf-8")).hexdigest()[:40]
     if preparation.operation_id == operation_id:
         return node
-    return node.model_copy(update={"prompt_preparation": preparation.model_copy(update={"operation_id": operation_id})})
+    return node.model_copy(
+        update={"prompt_preparation": preparation.model_copy(update={"operation_id": operation_id})}
+    )
 
 
 def _source_snapshot(node: CanvasNodeV2, bindings: Sequence[object]) -> dict[str, object]:
@@ -1777,9 +1773,7 @@ def _source_snapshot_for_node(
                     .one_or_none()
                 )
                 if source_row is not None:
-                    source_preparation = _parse_json_object(
-                        source_row["prompt_preparation_json"]
-                    )
+                    source_preparation = _parse_json_object(source_row["prompt_preparation_json"])
                     source_metadata = _parse_json_object(source_row["metadata_json"])
                     pinned_version = source_metadata.get("source_version_id")
                     if not isinstance(pinned_version, str) or not pinned_version:
@@ -1827,14 +1821,10 @@ def _source_snapshot_for_node(
                         "revision": int(source_row["revision"]),
                         "output_asset_id": source_row["output_asset_id"],
                         "asset_version_id": (
-                            pinned_row["version_id"]
-                            if pinned_row is not None
-                            else pinned_version
+                            pinned_row["version_id"] if pinned_row is not None else pinned_version
                         ),
                         "asset_version_no": (
-                            int(pinned_row["version_no"])
-                            if pinned_row is not None
-                            else None
+                            int(pinned_row["version_no"]) if pinned_row is not None else None
                         ),
                         "asset_version_sha256": (
                             pinned_row["sha256"] if pinned_row is not None else None
@@ -2216,8 +2206,7 @@ def _assert_current_node_identity(
 
     row = (
         connection.execute(
-            select(AgentCanvasNodeRow)
-            .where(
+            select(AgentCanvasNodeRow).where(
                 AgentCanvasNodeRow.workflow_id == dispatch_row["workflow_id"],
                 AgentCanvasNodeRow.node_id == dispatch_row["node_id"],
             )
@@ -2279,7 +2268,9 @@ def _assert_current_node_identity(
     expected_policy_revision = dispatch_row.get("model_policy_revision")
     if expected_policy_revision is not None:
         current_policy_revision = _current_model_policy_revision(connection, row)
-        if current_policy_revision is not None and current_policy_revision != int(expected_policy_revision):
+        if current_policy_revision is not None and current_policy_revision != int(
+            expected_policy_revision
+        ):
             raise _stale_dispatch()
     if source_snapshot is not None:
         current_node = CanvasNodeV2.model_validate(
@@ -2340,7 +2331,10 @@ def _assert_terminal_projection_identity(
             ).scalar_one_or_none()
         )
         metadata_context_digest = metadata.get("prompt_context_digest")
-        if metadata_context_digest is not None and metadata_context_digest != expected_context_digest:
+        if (
+            metadata_context_digest is not None
+            and metadata_context_digest != expected_context_digest
+        ):
             raise _stale_dispatch()
     _assert_current_node_identity(
         connection,

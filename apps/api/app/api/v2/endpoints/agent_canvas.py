@@ -473,11 +473,7 @@ def _resume_prompt_preparation_barrier(
     if dispatch.status not in {"completed", "failed"}:
         return
     dispatch_id = getattr(dispatch, "dispatch_id", None)
-    if (
-        notified_dispatch_ids is not None
-        and dispatch_id
-        and dispatch_id in notified_dispatch_ids
-    ):
+    if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
     if active is None:

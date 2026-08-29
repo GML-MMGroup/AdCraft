@@ -353,11 +353,7 @@ def current_source_snapshots_for_evidence(
                 pinned_version_id = candidate
         if pinned_version_id is not None:
             asset_version_id = pinned_version_id
-        elif (
-            asset_version_id is None
-            and asset_resolver is not None
-            and asset_id is not None
-        ):
+        elif asset_version_id is None and asset_resolver is not None and asset_id is not None:
             asset = asset_resolver(asset_id)
             asset_version_id = getattr(asset, "version_id", None) or asset_version_id
         current.append(

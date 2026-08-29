@@ -90,9 +90,7 @@ class PromptPreparationDispatchV1(BaseModel):
                 raise ValueError("Terminal dispatch requires a terminal timestamp.")
         if self.status == "failed" and not self.last_error_code:
             raise ValueError("Failed dispatch requires a safe error code.")
-        if self.status == "superseded" and not (
-            self.supersession_reason or self.last_error_code
-        ):
+        if self.status == "superseded" and not (self.supersession_reason or self.last_error_code):
             raise ValueError("Superseded dispatch requires a reason.")
         if self.attempt_no > self.max_attempts:
             raise ValueError("Dispatch attempt count cannot exceed its retry budget.")
@@ -189,9 +187,7 @@ def canonical_context_bytes(value: Mapping[str, Any] | StageAuthoringContextV1) 
     """Serialize one detached context snapshot with one bounded encoding."""
 
     payload = (
-        value.model_dump(mode="json")
-        if isinstance(value, StageAuthoringContextV1)
-        else dict(value)
+        value.model_dump(mode="json") if isinstance(value, StageAuthoringContextV1) else dict(value)
     )
     encoded = json.dumps(
         payload,
