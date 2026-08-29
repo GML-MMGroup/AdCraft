@@ -459,6 +459,7 @@ def _resume_prompt_preparation_barrier(
     *,
     runtime_repository: AgentCanvasRuntimeRepository,
     scheduler: DynamicCanvasScheduler,
+    prompt_ready_activation: Callable[..., object] | None = None,
     notified_dispatch_ids: set[str] | None = None,
 ) -> None:
     """Wake the existing scheduler after a committed prompt terminal result.
@@ -475,8 +476,19 @@ def _resume_prompt_preparation_barrier(
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
+    if dispatch.status == "completed" and prompt_ready_activation is not None:
+        operation_id = getattr(dispatch, "operation_id", None)
+        if isinstance(operation_id, str) and operation_id:
+            prompt_ready_activation(
+                dispatch.workflow_id,
+                (dispatch.node_id,),
+                source_id=operation_id,
+            )
+
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
     if active is None:
+        if notified_dispatch_ids is not None and dispatch_id:
+            notified_dispatch_ids.add(dispatch_id)
         return
 
     # Older lightweight test repositories do not expose members.  Preserve
@@ -1449,6 +1461,24 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+
+    def activate_automatic_prompt_ready_nodes(
+        workflow_id: str,
+        node_ids: tuple[str, ...],
+        *,
+        source_id: str,
+    ) -> object | None:
+        """Re-admit only current prompt-ready media in automatic mode."""
+
+        setting = execution_settings.get_or_create(workflow_id)
+        if setting.media_execution_mode != "automatic":
+            return None
+        return fanout_activation.activate_prompt_ready_nodes(
+            workflow_id,
+            node_ids,
+            source_id=source_id,
+        )
+
     notified_prompt_dispatch_ids: set[str] = set()
     prompt_preparation_worker = AgentCanvasPromptPreparationWorker(
         prompt_dispatches,
@@ -1479,6 +1509,7 @@ def create_agent_canvas_runtime(
             result,
             runtime_repository=runtime_repository,
             scheduler=scheduler,
+            prompt_ready_activation=activate_automatic_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
         ),
     )
