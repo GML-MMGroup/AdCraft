@@ -149,6 +149,7 @@ describe("AgentCanvasStyleSelector", () => {
     const panelRule = css.match(/\.agent-chat__style-menu\s*\{([\s\S]*?)\n\}/m)?.[1];
     const headerRule = css.match(/\.agent-chat__style-menu-header\s*\{([\s\S]*?)\n\}/m)?.[1];
     const closeRule = css.match(/\.agent-chat__style-menu-header button\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const categoryButtonRule = css.match(/\.agent-chat__style-categories button\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(css).toContain("--style-panel: #181818;");
     expect(css).toContain("--style-header: #1c1c1c;");
@@ -172,7 +173,7 @@ describe("AgentCanvasStyleSelector", () => {
     expect(css).toContain("height: min(620px, 68dvh)");
     expect(css).toContain("min-height: 32px");
     expect(css).toContain("padding: 7px 11px");
-    expect(css).toContain("font-size: 10px");
+    expect(categoryButtonRule).toContain("font-size: 11px");
   });
 
   it("fills the modal with a card-shaped loading state while the catalog is pending", async () => {

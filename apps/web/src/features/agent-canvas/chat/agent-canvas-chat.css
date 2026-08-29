@@ -2295,7 +2295,7 @@ button.agent-chat__node-links--related:hover {
   background: var(--style-surface);
   color: var(--style-secondary);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 550;
   white-space: nowrap;
 }
