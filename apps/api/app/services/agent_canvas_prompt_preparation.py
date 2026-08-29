@@ -246,7 +246,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, ready)
+            persisted = self._persist(working, ready, context=context)
             self._append_trace(
                 persisted,
                 prompt=prompt,
@@ -316,7 +316,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, failed)
+            persisted = self._persist(working, failed, context=context)
             self._append_trace(
                 persisted,
                 prompt=current.summary_prompt or current.generation_prompt or "",
@@ -683,6 +683,8 @@ class NodePromptPreparationService:
         self,
         current: CanvasNodeV2,
         preparation: NodePromptPreparationV1,
+        *,
+        context: StageAuthoringContextV1 | None = None,
     ) -> CanvasNodeV2:
         next_node = current.model_copy(
             update={
@@ -691,14 +693,21 @@ class NodePromptPreparationService:
                 "prompt_preparation": preparation,
             }
         )
-        return self._persist(current, next_node)
+        return self._persist(current, next_node, context=context)
 
-    def _persist(self, current: CanvasNodeV2, next_node: CanvasNodeV2) -> CanvasNodeV2:
+    def _persist(
+        self,
+        current: CanvasNodeV2,
+        next_node: CanvasNodeV2,
+        *,
+        context: StageAuthoringContextV1 | None = None,
+    ) -> CanvasNodeV2:
         workflow = self._workflows.get_workflow(current.workflow_id)
         return self._workflows.update_node_prompt_preparation(
             next_node,
             expected_node_revision=current.revision,
             expected_workflow_revision=workflow.revision,
+            dispatch_context=(context.model_dump(mode="json") if context is not None else None),
         )
 
 

@@ -248,7 +248,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         preparation = normalized.prompt_preparation
         if preparation.status == "working":
             # A legacy working projection has no durable owner that can be
-            # safely reconstructed.  Leave it untouched for recovery code to
+            # safely reconstructed. Leave it untouched for recovery code to
             # report explicitly rather than inventing a lease owner.
             return None
         if preparation.status not in {"queued", "ready", "failed", "superseded"}:

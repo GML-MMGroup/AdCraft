@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
+from collections.abc import Mapping
 from typing import cast
 from uuid import uuid4
 
@@ -859,6 +860,7 @@ class AgentCanvasWorkflowRepository:
         *,
         expected_node_revision: int,
         expected_workflow_revision: int,
+        dispatch_context: Mapping[str, object] | None = None,
     ) -> CanvasNodeV2:
         """Compare-and-swap one prompt operation while tolerating exact replay."""
 
@@ -924,11 +926,34 @@ class AgentCanvasWorkflowRepository:
                             "failed",
                             "superseded",
                         }:
-                            self._prompt_dispatch.reconcile_node_terminal_in_transaction(
-                                connection,
-                                node=node,
-                                now=node.updated_at,
-                            )
+                            try:
+                                self._prompt_dispatch.reconcile_node_terminal_in_transaction(
+                                    connection,
+                                    node=node,
+                                    now=node.updated_at,
+                                )
+                            except V2PersistenceError as error:
+                                if (
+                                    error.code != "prompt_preparation_dispatch_missing"
+                                    or dispatch_context is None
+                                ):
+                                    raise
+                                # Synchronous callers may replace a legacy
+                                # queued identity while preparing a Draft.
+                                # Persist the supplied immutable context and
+                                # terminal owner in this same CAS transaction;
+                                # callers without that proof still fail closed.
+                                self._prompt_dispatch.ensure_for_node_in_transaction(
+                                    connection,
+                                    node,
+                                    context=dispatch_context,
+                                    now=node.updated_at,
+                                )
+                                self._prompt_dispatch.reconcile_node_terminal_in_transaction(
+                                    connection,
+                                    node=node,
+                                    now=node.updated_at,
+                                )
                         if node.prompt_preparation.status in {"ready", "failed", "superseded"}:
                             _invalidate_prompt_preparations_for_source(
                                 connection,
