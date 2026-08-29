@@ -1209,6 +1209,118 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.actingInteractionId).toBeNull();
   });
 
+  it("adds structured questionnaire answers as local bubbles before later timeline content", async () => {
+    const interaction = guidedQuestionnaireInteraction();
+    const openSession = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: openSession,
+      items: [{
+        item_type: "message",
+        message_id: "message-follow-up",
+        conversation_id: "conversation-1",
+        speaker: "adcraft_video_agent",
+        text: "The next production step is ready.",
+        linked_node_ids: [],
+        script_node_id: null,
+        proposal_id: null,
+        capability_id: null,
+        sequence: 4,
+        created_at: "2026-08-29T00:00:04Z",
+      }],
+    }));
+    api.agentCanvasCreativeSession.mockResolvedValue(openSession);
+    api.submitAgentCanvasGuidedInteraction.mockResolvedValue({
+      workflow_id: "workflow-1",
+      interaction_id: interaction.interaction_id,
+      submission_id: "submission-duration-1",
+      receipt_id: "receipt-duration-1",
+      created_node_ids: [],
+      created_binding_ids: [],
+      document_revisions: {},
+      continuation_id: null,
+      automatic_run_command_ids: [],
+      resulting_session_revision: 9,
+      events_cursor: 5,
+      replayed: false,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        answers: [{
+          answer_kind: "option",
+          question_id: "production_duration_seconds",
+          option_id: "duration_seconds_30",
+        }],
+      });
+    });
+
+    expect(result.current.state.guidedAnswerBubbles).toEqual([{
+      bubble_id: "guided-answer:interaction-duration-1:production_duration_seconds",
+      interaction_id: "interaction-duration-1",
+      question_id: "production_duration_seconds",
+      label: "How long should the ad be?",
+      value: "30 seconds",
+      sequence: 4.01,
+    }]);
+    expect(result.current.state.items[0]?.sequence).toBe(4);
+  });
+
+  it("removes a local guided answer bubble when the structured submission fails", async () => {
+    const interaction = guidedQuestionnaireInteraction();
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "message",
+        message_id: "message-before-failure",
+        conversation_id: "conversation-1",
+        speaker: "adcraft_video_agent",
+        text: "Choose a duration.",
+        linked_node_ids: [],
+        script_node_id: null,
+        proposal_id: null,
+        capability_id: null,
+        sequence: 2,
+        created_at: "2026-08-29T00:00:02Z",
+      }],
+    }));
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 409,
+      code: "guided_interaction_stale",
+      message: "The interaction is no longer current.",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "questionnaire",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        answers: [{
+          answer_kind: "custom",
+          question_id: "production_duration_seconds",
+          value: "45",
+        }],
+      });
+    });
+
+    expect(result.current.state.guidedAnswerBubbles).toEqual([]);
+  });
+
   it("releases the guided choice lock when its materialization fails", async () => {
     const interaction = guidedConceptInteraction();
     const openSession = { ...guidedSession(), interaction, awaiting: null };

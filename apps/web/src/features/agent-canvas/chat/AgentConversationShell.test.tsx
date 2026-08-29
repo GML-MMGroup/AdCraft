@@ -83,6 +83,7 @@ function createChatFixture() {
   return {
     state: {
       items: [message("message-1", "First answer."), message("message-2", "Second answer.")],
+      guidedAnswerBubbles: [],
       guidanceSession: null,
       guidedInteraction: null,
       guidanceAwaiting: null,
@@ -217,6 +218,29 @@ describe("Agent Conversation Shell v2", () => {
     expect(follows(dock, recovery)).toBe(true);
     expect(contextTray).toBeNull();
     expect(follows(recovery, composer)).toBe(true);
+  });
+
+  it("places a submitted guided answer before later timeline content", () => {
+    fixture.chat.state.items = [
+      message("message-1", "Before the answer."),
+      message("message-3", "The next step is ready."),
+    ];
+    fixture.chat.state.guidedAnswerBubbles = [{
+      bubble_id: "guided-answer:interaction-1:production_duration_seconds",
+      interaction_id: "interaction-1",
+      question_id: "production_duration_seconds",
+      label: "How long should the ad be?",
+      value: "30 seconds",
+      sequence: 2,
+    }];
+    renderPanel();
+
+    const answer = screen.getByRole("article", { name: "Your guided answer" });
+    const followUp = screen.getByText("The next step is ready.");
+
+    expect(Boolean(answer.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(screen.getByText("How long should the ad be?")).toBeTruthy();
+    expect(screen.getByText("30 seconds")).toBeTruthy();
   });
 
   it("optimistically hides the submitted interaction and restores it when submission fails", async () => {
