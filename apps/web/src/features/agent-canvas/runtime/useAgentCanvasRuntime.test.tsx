@@ -254,6 +254,40 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
   });
 
+  it("compensates the authoritative chat and workflow snapshots after opening SSE", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 80,
+    });
+    api.agentCanvasRuntime.mockReset().mockResolvedValue({
+      ...runtime,
+      events_cursor: 80,
+    });
+    api.agentCanvasWorkflowWithEtag.mockReset().mockResolvedValue({
+      value: { ...workflow, revision: 2 },
+      etag: "\"workflow-r2\"",
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    eventSource.onopen?.();
+    eventSource.onopen?.();
+    await waitFor(() => expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-1"));
+    await waitFor(() => expect(result.current.state.chatRevision).toBe(1));
+    expect(api.agentCanvasEvents).toHaveBeenCalledTimes(2);
+    expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 80, 200);
+    expect(callbacks.applyWorkflow).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }));
+  });
+
   it("retains a sanitized provider input audit without creating client-side graph state", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

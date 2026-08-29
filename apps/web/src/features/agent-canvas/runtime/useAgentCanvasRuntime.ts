@@ -313,6 +313,7 @@ export function useAgentCanvasRuntime(
     let eventSource: EventSource | null = null;
     let reconnectTimer = 0;
     let reconnectAttempt = 0;
+    let currentConnectionId = 0;
 
     const handleMessage = (message: MessageEvent<string>) => {
       try {
@@ -322,11 +323,30 @@ export function useAgentCanvasRuntime(
       }
     };
 
+    const replayEvents = async (
+      afterSeq: number,
+      isActive: () => boolean = () => !cancelled,
+    ) => {
+      let replayCursor = afterSeq;
+      for (;;) {
+        const replay = await agentCanvasApi.agentCanvasEvents(workflowId, replayCursor, 200);
+        if (!isActive() || activeWorkflowIdRef.current !== workflowId) return;
+        replay.events.forEach(processEvent);
+        const nextCursor = Math.max(cursorRef.current, replay.next_cursor, replayCursor);
+        cursorRef.current = nextCursor;
+        if (replay.events.length < 200 || nextCursor <= replayCursor) return;
+        replayCursor = nextCursor;
+      }
+    };
+
     const connect = async () => {
       if (cancelled) return;
       setConnectionState(reconnectAttempt ? "reconnecting" : "connecting");
+      const connectionId = ++currentConnectionId;
+      const isCurrentConnection = () => !cancelled && connectionId === currentConnectionId;
+      const initialConnection = cursorRef.current === 0;
       try {
-        if (cursorRef.current === 0) {
+        if (initialConnection) {
           const baselineRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
           setRuntime((current) => (
@@ -335,25 +355,39 @@ export function useAgentCanvasRuntime(
           cursorRef.current = baselineRuntime.events_cursor;
           setRuntimeError(null);
         }
-        for (;;) {
-          const before = cursorRef.current;
-          const replay = await agentCanvasApi.agentCanvasEvents(workflowId, before, 200);
-          if (cancelled) return;
-          replay.events.forEach(processEvent);
-          cursorRef.current = Math.max(cursorRef.current, replay.next_cursor);
-          if (replay.events.length < 200 || cursorRef.current <= before) break;
-        }
-        if (cancelled) return;
-        eventSource = agentCanvasApi.openAgentCanvasEventStream(workflowId, cursorRef.current);
+        const streamCursor = cursorRef.current;
+        eventSource = agentCanvasApi.openAgentCanvasEventStream(workflowId, streamCursor);
         eventSource.onmessage = handleMessage;
         AGENT_CANVAS_SSE_EVENT_TYPES.forEach((type) =>
           eventSource?.addEventListener(type, handleMessage as EventListener),
         );
+        let postConnectSyncStarted = false;
         eventSource.onopen = () => {
           reconnectAttempt = 0;
           setConnectionState("live");
+          if (postConnectSyncStarted) return;
+          postConnectSyncStarted = true;
+          void (async () => {
+            // A runtime baseline can be newer than the Timeline snapshot that was
+            // being assembled at the same time. Once the stream is truly open,
+            // replay its boundary again and refresh the authoritative projections.
+            try {
+              await replayEvents(streamCursor, isCurrentConnection);
+              if (!isCurrentConnection() || !initialConnection) return;
+              void refreshWorkflow();
+              setChatRevision((current) => current + 1);
+            } catch (error) {
+              if (!isCurrentConnection()) return;
+              setRuntimeError(
+                error instanceof Error
+                  ? error.message
+                  : "The live event stream could not be synchronized.",
+              );
+            }
+          })();
         };
         eventSource.onerror = () => {
+          if (connectionId === currentConnectionId) currentConnectionId += 1;
           eventSource?.close();
           eventSource = null;
           if (cancelled) return;
@@ -364,8 +398,17 @@ export function useAgentCanvasRuntime(
             Math.min(1000 * (2 ** Math.min(reconnectAttempt, 4)), 12_000),
           );
         };
+
+        // Replay after installing SSE so events created after the baseline are
+        // covered even if the stream's first delivery is delayed. The final
+        // authority refresh runs from onopen, after the stream is confirmed live.
+        await replayEvents(streamCursor, isCurrentConnection);
+        if (cancelled) return;
       } catch (error) {
         if (cancelled) return;
+        if (connectionId === currentConnectionId) currentConnectionId += 1;
+        eventSource?.close();
+        eventSource = null;
         if (isV2ApiError(error) && [404, 405, 501].includes(error.status)) {
           setConnectionState("unavailable");
           setRuntimeError("Live Agent Canvas events require the matching backend update.");
