@@ -161,8 +161,7 @@ class AgentCanvasPromptPreparationWorker:
                 if current.status in {"completed", "failed", "superseded"}:
                     if current.status == "superseded":
                         return "superseded"
-                    if self._barrier_callback is not None and current.status == "completed":
-                        self._barrier_callback(current, result)
+                    self._notify_terminal(current, result)
                     return "completed" if current.status == "completed" else "failed"
                 lease_guard()
                 completed = self._dispatches.complete(
@@ -175,8 +174,7 @@ class AgentCanvasPromptPreparationWorker:
                     context_digest=dispatch.context_digest,
                     source_snapshot=dispatch.source_snapshot,
                 )
-                if self._barrier_callback is not None:
-                    self._barrier_callback(completed, result)
+                self._notify_terminal(completed, result)
                 return "completed"
         except V2PersistenceError as error:
             if error.code == "prompt_preparation_dispatch_lease_stale":
@@ -250,8 +248,9 @@ class AgentCanvasPromptPreparationWorker:
                 raise
         try:
             if current.status == "failed":
+                self._notify_terminal(current, error)
                 return "failed"
-            self._dispatches.fail(
+            failed = self._dispatches.fail(
                 dispatch.dispatch_id,
                 worker_id=self._worker_id,
                 lease_generation=dispatch.lease_generation,
@@ -259,11 +258,23 @@ class AgentCanvasPromptPreparationWorker:
                 error_message=str(error)[:1_024] or "Prompt preparation failed.",
                 now=self._clock(),
             )
+            self._notify_terminal(failed, error)
             return "failed"
         except V2PersistenceError as lease_error:
             if lease_error.code == "prompt_preparation_dispatch_lease_stale":
                 return "lease_lost"
             raise
+
+    def _notify_terminal(
+        self,
+        dispatch: PromptPreparationDispatchV1,
+        result: object,
+    ) -> None:
+        """Notify the existing barrier only after a committed terminal result."""
+
+        if self._barrier_callback is None or dispatch.status not in {"completed", "failed"}:
+            return
+        self._barrier_callback(dispatch, result)
 
 
 def _failure(error: Exception) -> tuple[str, bool]:
