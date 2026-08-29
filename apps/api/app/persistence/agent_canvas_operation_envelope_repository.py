@@ -192,11 +192,12 @@ def _validate_storyboard_envelope(envelope: OperationEnvelopeV1) -> None:
         marker = getattr(envelope, "idempotency_identity", None)
     if capability_id != "storyboard_design" or marker is None:
         return
+    # Envelopes written before this focused authority used the existing
+    # capability/publication identity namespaces.  They remain readable as
+    # historical records.  Only the new server-owned namespace opts into the
+    # stricter digest/ID fence; malformed values in that namespace fail closed.
     if not isinstance(marker, str) or not marker.startswith("storyboard-selection:"):
-        raise _error(
-            "operation_envelope_identity_invalid",
-            "Storyboard operation envelope identity marker is invalid.",
-        )
+        return
     try:
         validate_storyboard_envelope_identity(envelope)
     except (TypeError, ValueError) as error:
