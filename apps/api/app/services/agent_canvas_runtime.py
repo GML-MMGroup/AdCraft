@@ -1125,6 +1125,50 @@ class DynamicCanvasScheduler:
         current_node = nodes.get(node_id)
         if current_node is None:
             reasons.append("target_node_missing")
+        elif current_node.revision != context.node.revision:
+            reasons.append("target_node_revision_changed")
+        elif (
+            current_node.prompt_preparation.operation_id
+            != context.node.prompt_preparation.operation_id
+        ):
+            reasons.append("target_prompt_operation_changed")
+        elif (
+            current_node.prompt_preparation.prompt_digest
+            != context.node.prompt_preparation.prompt_digest
+            or current_node.prompt_preparation.binding_digest
+            != context.node.prompt_preparation.binding_digest
+            or current_node.prompt_preparation.recipe_digest
+            != context.node.prompt_preparation.recipe_digest
+            or current_node.prompt_preparation.style_projection_digest
+            != context.node.prompt_preparation.style_projection_digest
+            or current_node.prompt_preparation.brief_digest
+            != context.node.prompt_preparation.brief_digest
+            or current_node.prompt_preparation.context_snapshot_id
+            != context.node.prompt_preparation.context_snapshot_id
+        ):
+            reasons.append("target_prompt_evidence_changed")
+        elif (
+            current_node.prompt_preparation.occurrence_id
+            != context.node.prompt_preparation.occurrence_id
+            or current_node.prompt_preparation.character_phase
+            != context.node.prompt_preparation.character_phase
+            or current_node.metadata.get("occurrence_id")
+            != context.node.metadata.get("occurrence_id")
+            or current_node.metadata.get("character_phase")
+            != context.node.metadata.get("character_phase")
+        ):
+            reasons.append("target_occurrence_mapping_changed")
+        else:
+            current_evidence = current_node.prompt_preparation.assertion_evidence
+            frozen_evidence = context.node.prompt_preparation.assertion_evidence
+            current_evidence_digest = (
+                current_evidence.evidence_digest if current_evidence is not None else None
+            )
+            frozen_evidence_digest = (
+                frozen_evidence.evidence_digest if frozen_evidence is not None else None
+            )
+            if current_evidence_digest != frozen_evidence_digest:
+                reasons.append("target_prompt_evidence_changed")
 
         manifest = context.input_manifest
         if manifest is not None:
