@@ -1405,6 +1405,7 @@ def normalize_queued_node(
         dumped = _safe_model_dump(item)
         if dumped and dumped.get("enabled", True):
             binding_seed.append(dumped)
+    binding_seed.sort(key=_binding_seed_key)
     seed = {
         "workflow_id": node.workflow_id,
         "node_id": node.node_id,
@@ -1676,6 +1677,12 @@ def _safe_model_dump(value: object) -> dict[str, object]:
     if isinstance(value, Mapping):
         return dict(value)
     return {}
+
+
+def _binding_seed_key(value: Mapping[str, object]) -> tuple[int, str]:
+    raw_order = value.get("order", value.get("order_index", 0))
+    order = raw_order if isinstance(raw_order, int) and not isinstance(raw_order, bool) else 0
+    return order, str(value.get("binding_id", ""))
 
 
 def _coerce_dispatch(
