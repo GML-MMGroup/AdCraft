@@ -1409,7 +1409,7 @@ def normalize_queued_node(
     # reconcile the operation against that snapshot.  Do not blindly retain an
     # operation generated before the context changed; retries with the same
     # context still derive the same value below and therefore remain idempotent.
-    if preparation.operation_id and context_digest is None:
+    if preparation.operation_id and context_digest is None and not bindings:
         return node
     binding_seed = []
     for item in bindings:
