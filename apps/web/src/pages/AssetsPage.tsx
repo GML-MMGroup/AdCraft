@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { PageHeader } from "../components/Layout.tsx";
 import { AssetContactSheet } from "../features/assets/AssetContactSheet.tsx";
+import { RecommendedCharacterGrid } from "../features/assets/RecommendedCharacterGrid.tsx";
 import { RecommendedSceneHologram } from "../features/assets/RecommendedSceneHologram.tsx";
 import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCanvasAssets.ts";
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
@@ -33,6 +34,7 @@ export function AssetsPage() {
     () => library.loading ? [] : library.items,
     [library.items, library.loading],
   );
+  const showRecommendedCharacterGrid = scope === "recommended" && category === "characters";
   const showRecommendedSceneHologram = scope === "recommended" && category === "scenes";
   const selectedAsset = useMemo(
     () => displayedAssets.find((asset) => asset.id === selectedAssetId) ?? null,
@@ -104,29 +106,45 @@ export function AssetsPage() {
       </div>
       <div className="v2-asset-library-layout">
         <div>
-          {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
-          {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
-          {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
-          {showRecommendedSceneHologram ? (
-            <RecommendedSceneHologram
-              assets={displayedAssets}
-              buttonRef={(assetId, button) => {
-                if (button) assetCardRefsRef.current.set(assetId, button);
-                else assetCardRefsRef.current.delete(assetId);
-              }}
-              onOpen={selectAsset}
-              viewerOpen={Boolean(selectedAsset)}
-            />
-          ) : (
-            <AssetContactSheet
+          {showRecommendedCharacterGrid ? (
+            <RecommendedCharacterGrid
               assets={displayedAssets}
               selectedAssetId={selectedAssetId}
+              loading={library.loading}
+              error={library.error}
               buttonRef={(assetId, button) => {
                 if (button) assetCardRefsRef.current.set(assetId, button);
                 else assetCardRefsRef.current.delete(assetId);
               }}
               onSelect={selectAsset}
             />
+          ) : (
+            <>
+              {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
+              {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
+              {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
+              {showRecommendedSceneHologram ? (
+                <RecommendedSceneHologram
+                  assets={displayedAssets}
+                  buttonRef={(assetId, button) => {
+                    if (button) assetCardRefsRef.current.set(assetId, button);
+                    else assetCardRefsRef.current.delete(assetId);
+                  }}
+                  onOpen={selectAsset}
+                  viewerOpen={Boolean(selectedAsset)}
+                />
+              ) : (
+                <AssetContactSheet
+                  assets={displayedAssets}
+                  selectedAssetId={selectedAssetId}
+                  buttonRef={(assetId, button) => {
+                    if (button) assetCardRefsRef.current.set(assetId, button);
+                    else assetCardRefsRef.current.delete(assetId);
+                  }}
+                  onSelect={selectAsset}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
