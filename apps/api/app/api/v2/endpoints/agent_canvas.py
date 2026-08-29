@@ -84,6 +84,9 @@ from app.persistence.agent_canvas_production_closure_repository import (
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
@@ -339,6 +342,9 @@ from app.services.agent_canvas_guided_production_closure import (
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_preparation_worker import (
+    AgentCanvasPromptPreparationWorker,
+)
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
@@ -441,6 +447,7 @@ class AgentCanvasRuntime:
     accepted_background: AgentCanvasAcceptedBackgroundRunner
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
+    prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
 
 
 def get_agent_canvas_runtime(
@@ -600,6 +607,21 @@ def create_agent_canvas_runtime(
                 )
             ),
         )
+    )
+    prompt_dispatches = AgentCanvasPromptPreparationDispatchRepository(
+        database,
+        event_repository,
+    )
+    prompt_preparation_service = NodePromptPreparationService(
+        workflow_repository,
+        role_brief_author=lambda role_context, request_identity: (
+            video_agent_gateway.author_role_brief(
+                role_context,
+                request_identity=request_identity,
+            )
+        ),
+        asset_resolver=asset_service.resolve_asset,
+        presentation_publisher=presentation_publisher,
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
@@ -853,11 +875,7 @@ def create_agent_canvas_runtime(
         output_preparer=output_preparer,
         result_committer=result_committer,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
-        prompt_preparation=NodePromptPreparationService(
-            workflow_repository,
-            asset_resolver=asset_service.resolve_asset,
-            presentation_publisher=presentation_publisher,
-        ),
+        prompt_preparation=prompt_preparation_service,
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
@@ -1037,17 +1055,7 @@ def create_agent_canvas_runtime(
         requirements=requirement_service,
         documents=working_documents,
         receipts=production_closure_receipts,
-        prompt_preparation=NodePromptPreparationService(
-            workflow_repository,
-            role_brief_author=lambda role_context, request_identity: (
-                video_agent_gateway.author_role_brief(
-                    role_context,
-                    request_identity=request_identity,
-                )
-            ),
-            asset_resolver=asset_service.resolve_asset,
-            presentation_publisher=presentation_publisher,
-        ),
+        prompt_preparation=prompt_preparation_service,
         progression=production_journey,
         execution_settings=execution_settings.get_or_create,
         awaiting=guidance_awaiting,
@@ -1390,6 +1398,20 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+    prompt_preparation_worker = AgentCanvasPromptPreparationWorker(
+        prompt_dispatches,
+        prepare=lambda dispatch, context: prompt_preparation_service.prepare(
+            dispatch.workflow_id,
+            dispatch.node_id,
+            operation_id=dispatch.operation_id,
+            context=context,
+        ),
+        # Production recovery must reconstruct only the immutable snapshot
+        # persisted with the dispatch row.  The test-only loader hook remains
+        # intentionally unset here so incomplete legacy rows fail closed.
+        context_loader=None,
+        worker_id=f"agent-canvas-prompt-preparation:{uuid4().hex}",
+    )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
         guided_media_resume_deliveries,
         resume_confirmation=resume_media_confirmation,
@@ -1484,6 +1506,7 @@ def create_agent_canvas_runtime(
         accepted_background=AgentCanvasAcceptedBackgroundRunner(),
         presentation_streams=presentation_streams,
         presentation_publisher=presentation_publisher,
+        prompt_preparation_worker=prompt_preparation_worker,
     )
 
 
