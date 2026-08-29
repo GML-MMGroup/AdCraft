@@ -291,6 +291,47 @@ def test_role_creative_brief_expands_a_product_multiview_summary_alias():
     assert result.violations == ()
 
 
+def test_role_creative_brief_expands_a_prop_summary_alias():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {"description": "A precision watchmaker tool set for transparent maintenance."},
+        validation_context={"role_variant": "prop"},
+    )
+
+    assert result.value["role_variant"] == "prop"
+    assert result.value["identity"] == "A precision watchmaker tool set for transparent maintenance."
+    assert set(result.value) == {"role_variant", "identity", "form", "materials", "palette"}
+    assert result.rule_ids == (
+        "role_creative_brief_v2.role_variant_from_context.v1",
+        "role_creative_brief_v2.prop_summary_expansion.v1",
+    )
+    assert result.normalized_path_count == 6
+
+
+def test_role_creative_brief_expands_a_character_summary_alias():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {"brief_content": "A focused senior watch restoration master."},
+        validation_context={"role_variant": "character_main"},
+    )
+
+    assert result.value["role_variant"] == "character_main"
+    assert result.value["identity"] == "A focused senior watch restoration master."
+    assert set(result.value) == {
+        "role_variant",
+        "identity",
+        "face_and_hair",
+        "silhouette_and_proportions",
+        "wardrobe",
+        "accessories",
+    }
+    assert result.rule_ids == (
+        "role_creative_brief_v2.role_variant_from_context.v1",
+        "role_creative_brief_v2.character_main_summary_expansion.v1",
+    )
+    assert result.normalized_path_count == 7
+
+
 def test_role_creative_brief_matching_variant_is_unchanged():
     value = {
         "role_variant": "product_main",

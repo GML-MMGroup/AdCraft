@@ -208,6 +208,12 @@ ROLE_CREATIVE_BRIEF_PRODUCT_MAIN_SUMMARY_EXPANSION_RULE_ID = (
 ROLE_CREATIVE_BRIEF_PRODUCT_MULTIVIEW_SUMMARY_EXPANSION_RULE_ID = (
     "role_creative_brief_v2.product_multiview_summary_expansion.v1"
 )
+ROLE_CREATIVE_BRIEF_PROP_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.prop_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.character_main_summary_expansion.v1"
+)
 _PRODUCT_MAIN_SUMMARY_ALIASES = (
     "description",
     "brief_content",
@@ -293,6 +299,41 @@ def _normalize_role_creative_brief(
             )
             normalized_path_count += expansion_path_count
 
+    if expected_variant == "prop":
+        expansion = _expand_role_summary(
+            candidate,
+            {
+                "identity": "{summary}",
+                "form": "Use only the prop form explicitly described in the accepted direction: {summary}",
+                "materials": "Use only the prop materials explicitly described in the accepted direction: {summary}",
+                "palette": "Use only the prop palette explicitly described in the accepted direction: {summary}",
+            },
+        )
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(value=deepcopy(value), violations=expansion.violations)
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            rule_ids.append(ROLE_CREATIVE_BRIEF_PROP_SUMMARY_EXPANSION_RULE_ID)
+            normalized_path_count += expansion.normalized_path_count
+
+    if expected_variant == "character_main":
+        expansion = _expand_role_summary(
+            candidate,
+            {
+                "identity": "{summary}",
+                "face_and_hair": "Use only the face and hair details explicitly described in the accepted direction: {summary}",
+                "silhouette_and_proportions": "Use only the silhouette and proportions explicitly described in the accepted direction: {summary}",
+                "wardrobe": "Use only the wardrobe details explicitly described in the accepted direction: {summary}",
+                "accessories": "",
+            },
+        )
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(value=deepcopy(value), violations=expansion.violations)
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            rule_ids.append(ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID)
+            normalized_path_count += expansion.normalized_path_count
+
     return AgentStructuredNormalizationResult(
         value=candidate,
         rule_ids=tuple(rule_ids),
@@ -310,7 +351,23 @@ def _expand_product_main_summary(
     to details explicitly stated in that summary.
     """
 
-    if any(field in value for field in _PRODUCT_MAIN_REQUIRED_FIELDS):
+    return _expand_role_summary(
+        value,
+        {
+            "identity": "{summary}",
+            "geometry": "Use only the product geometry explicitly described in the accepted direction: {summary}",
+            "materials": "Use only the materials and finish explicitly described in the accepted direction: {summary}",
+            "marks": "Use only the marks and certifications explicitly described in the accepted direction: {summary}",
+            "palette": "Use only the palette explicitly described in the accepted direction: {summary}",
+        },
+    )
+
+
+def _expand_role_summary(
+    value: dict[str, Any],
+    field_templates: Mapping[str, str],
+) -> AgentStructuredNormalizationResult:
+    if any(field in value for field in field_templates):
         return AgentStructuredNormalizationResult(value=deepcopy(value))
 
     supplied = tuple(
@@ -336,30 +393,10 @@ def _expand_product_main_summary(
     candidate = deepcopy(value)
     for name, _ in supplied:
         del candidate[name]
-    candidate.update(
-        {
-            "identity": summary,
-            "geometry": (
-                "Use only the product geometry explicitly described in the accepted direction: "
-                f"{summary}"
-            ),
-            "materials": (
-                "Use only the materials and finish explicitly described in the accepted direction: "
-                f"{summary}"
-            ),
-            "marks": (
-                "Use only the marks and certifications explicitly described in the accepted direction: "
-                f"{summary}"
-            ),
-            "palette": (
-                "Use only the palette explicitly described in the accepted direction: "
-                f"{summary}"
-            ),
-        }
-    )
+    candidate.update({name: template.format(summary=summary) for name, template in field_templates.items()})
     return AgentStructuredNormalizationResult(
         value=candidate,
-        normalized_path_count=len(supplied) + len(_PRODUCT_MAIN_REQUIRED_FIELDS),
+        normalized_path_count=len(supplied) + len(field_templates),
     )
 
 
