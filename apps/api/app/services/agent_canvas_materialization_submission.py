@@ -110,9 +110,9 @@ class _ProposalSelectionSubmissionService:
         else:
             turn_id = (
                 "turn_"
-                + _digest(
-                    f"materialization-action:{workflow_id}:{proposal_id}:{idempotency_key}"
-                )[:32]
+                + _digest(f"materialization-action:{workflow_id}:{proposal_id}:{idempotency_key}")[
+                    :32
+                ]
             )
             replayed = self._conversations.get_turn_by_idempotency_key(idempotency_key) is not None
         accepted = ChatTurnAcceptedV2(
@@ -261,7 +261,9 @@ class _ProposalSelectionSubmissionService:
         action,
         *,
         canonical_reference_order: bool = False,
-    ) -> tuple[SelectedConceptOptionV1 | SelectedProposalCardV2, str | None, ProposalReferencePlanV1]:
+    ) -> tuple[
+        SelectedConceptOptionV1 | SelectedProposalCardV2, str | None, ProposalReferencePlanV1
+    ]:
         descriptor = next(
             (
                 candidate
@@ -373,8 +375,7 @@ class _ProposalSelectionSubmissionService:
                     # branch superseded.  Ordinary retries must stay on the
                     # failed canonical branch and never fork it.
                     if not (
-                        action.action == "reuse_direction"
-                        and proposal.availability == "superseded"
+                        action.action == "reuse_direction" and proposal.availability == "superseded"
                     ):
                         raise _error(
                             "guidance_action_lineage_invalid",
@@ -384,7 +385,9 @@ class _ProposalSelectionSubmissionService:
             materialization_id = storyboard_ids.materialization_id
         else:
             attempt_no = (
-                proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1
+                proposal.materialization.attempt_no + 1
+                if proposal.materialization is not None
+                else 1
             )
             materialization_id = (
                 "materialization_"
@@ -402,9 +405,7 @@ class _ProposalSelectionSubmissionService:
                 None if isinstance(action, CustomDirectionActionV2) else option.option_id
             )
             expected_custom_digest = (
-                _digest(action.custom_text)
-                if isinstance(action, CustomDirectionActionV2)
-                else None
+                _digest(action.custom_text) if isinstance(action, CustomDirectionActionV2) else None
             )
             if (
                 accepted.turn_id != storyboard_ids.action_turn_id
@@ -416,8 +417,7 @@ class _ProposalSelectionSubmissionService:
                 or storyboard_identity.selected_option_id != expected_option_id
                 or storyboard_identity.custom_text_digest != expected_custom_digest
                 or storyboard_identity.reference_plan_digest != reference_plan.digest
-                or storyboard_identity.expected_session_revision
-                != action.expected_session_revision
+                or storyboard_identity.expected_session_revision != action.expected_session_revision
                 or storyboard_identity.stage_revision != stage_revision
                 or storyboard_identity.target_node_id != proposal.target_node_id
                 or storyboard_identity.target_node_revision != proposal.target_node_revision

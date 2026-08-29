@@ -49,11 +49,15 @@ class AgentCanvasOperationEnvelopeRepository:
     ) -> OperationEnvelopeV1:
         _validate_storyboard_envelope(envelope)
         canonical = _canonical_json(envelope)
-        existing = connection.execute(
-            select(AgentCanvasOperationEnvelopeRow).where(
-                AgentCanvasOperationEnvelopeRow.envelope_id == envelope.envelope_id
+        existing = (
+            connection.execute(
+                select(AgentCanvasOperationEnvelopeRow).where(
+                    AgentCanvasOperationEnvelopeRow.envelope_id == envelope.envelope_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if existing is not None:
             persisted = _persisted_envelope(existing)
             if str(existing["envelope_json"]) != canonical:
@@ -90,11 +94,15 @@ class AgentCanvasOperationEnvelopeRepository:
     def get(self, envelope_id: str) -> OperationEnvelopeV1:
         try:
             with self._database.engine.connect() as connection:
-                payload = connection.execute(
-                    select(AgentCanvasOperationEnvelopeRow).where(
-                        AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
+                payload = (
+                    connection.execute(
+                        select(AgentCanvasOperationEnvelopeRow).where(
+                            AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise _error(
                 "operation_envelope_persistence_failed",
@@ -112,11 +120,15 @@ class AgentCanvasOperationEnvelopeRepository:
         connection: Connection,
         envelope_id: str,
     ) -> OperationEnvelopeV1:
-        payload = connection.execute(
-            select(AgentCanvasOperationEnvelopeRow).where(
-                AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
+        payload = (
+            connection.execute(
+                select(AgentCanvasOperationEnvelopeRow).where(
+                    AgentCanvasOperationEnvelopeRow.envelope_id == envelope_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if payload is None:
             raise _error(
                 "operation_envelope_not_found",

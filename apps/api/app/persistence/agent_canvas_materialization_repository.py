@@ -1820,7 +1820,9 @@ class AgentCanvasMaterializationRepository:
             # A pre-existing generic Storyboard projection without a canonical
             # claim is historical data whose owner cannot be proven.  It must be
             # surfaced rather than silently adopted.
-            if proposal["materialization_id"] is not None and not _storyboard_supersession_allows_new_identity(
+            if proposal[
+                "materialization_id"
+            ] is not None and not _storyboard_supersession_allows_new_identity(
                 proposal,
                 envelope,
             ):
@@ -1849,10 +1851,7 @@ class AgentCanvasMaterializationRepository:
             return False
 
         claim_record = _decode_storyboard_record(claim["response_json"])
-        if (
-            claim_record != record
-            or str(claim["request_fingerprint"]) != identity_digest
-        ):
+        if claim_record != record or str(claim["request_fingerprint"]) != identity_digest:
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Persisted Storyboard selection identity does not match the envelope.",
@@ -1871,8 +1870,7 @@ class AgentCanvasMaterializationRepository:
             str(proposal["capability_id"]) != "storyboard_design"
             or str(proposal["materialization_id"]) != ids.materialization_id
             or str(proposal["materialization_turn_id"]) != ids.action_turn_id
-            or str(proposal["materialization_option_id"])
-            != str(envelope.selected_option.option_id)
+            or str(proposal["materialization_option_id"]) != str(envelope.selected_option.option_id)
         ):
             raise _error(
                 "guidance_action_lineage_invalid",
@@ -1956,7 +1954,10 @@ class AgentCanvasMaterializationRepository:
                 "guidance_action_lineage_invalid",
                 "Canonical Storyboard selection lineage is incomplete.",
             )
-        if _decode_storyboard_record(turn_alias["response_json"])["identity_digest"] != identity_digest:
+        if (
+            _decode_storyboard_record(turn_alias["response_json"])["identity_digest"]
+            != identity_digest
+        ):
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Canonical Storyboard Turn is not owned by its selection alias.",
@@ -3673,10 +3674,7 @@ def _storyboard_supersession_allows_new_identity(
 ) -> bool:
     """Allow only the existing explicit historical-reuse action to fork identity."""
 
-    return (
-        envelope.action == "reuse_direction"
-        and str(proposal["availability"]) == "superseded"
-    )
+    return envelope.action == "reuse_direction" and str(proposal["availability"]) == "superseded"
 
 
 def _validate_storyboard_action_request(
@@ -3812,9 +3810,7 @@ def _requeue_storyboard_lineage(
     # An explicit historical reuse remains superseded while its operational
     # delivery is retried.  Reopening it would erase the authority fact that
     # permitted the new identity and would make later sibling checks unsafe.
-    next_availability = (
-        "superseded" if str(current_availability) == "superseded" else "open"
-    )
+    next_availability = "superseded" if str(current_availability) == "superseded" else "open"
     proposal_update = connection.execute(
         update(AgentCanvasConceptProposalRow)
         .where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
