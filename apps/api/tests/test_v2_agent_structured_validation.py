@@ -385,6 +385,65 @@ def test_second_submission_persisted_noncompact_contract_remains_rejected(persis
     assert result.violations
 
 
+def test_role_creative_brief_missing_variant_uses_persisted_context(persisted_run):
+    repository, original_run = persisted_run
+    run = replace(
+        original_run,
+        operation="author_role_brief",
+        contract_name="RoleCreativeBriefV2",
+        validation_profile=None,
+        validation_context={"role_variant": "product_main"},
+    )
+    value = {
+        "identity": "A bottle",
+        "geometry": "Tall",
+        "materials": "Glass",
+        "marks": "Logo",
+        "palette": "Blue",
+    }
+
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["role_variant"] == "product_main"
+    assert result.normalization_audit is not None
+    assert result.normalization_audit.rule_ids == (
+        "role_creative_brief_v2.role_variant_from_context.v1",
+    )
+
+
+def test_role_creative_brief_variant_conflict_is_hard_rejected(persisted_run):
+    repository, original_run = persisted_run
+    run = replace(
+        original_run,
+        operation="author_role_brief",
+        contract_name="RoleCreativeBriefV2",
+        validation_profile=None,
+        validation_context={"role_variant": "product_main"},
+    )
+    value = {
+        "role_variant": "prop",
+        "identity": "A bottle",
+        "form": "Tall",
+        "materials": "Glass",
+        "palette": "Blue",
+    }
+
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == [
+        "agent_structured_normalization_role_variant_conflict"
+    ]
+    assert result.fallback_audit is None
+
+
 def test_second_submission_invalid_validation_context_remains_rejected(persisted_run):
     repository, run = persisted_run
     run.validation_context["source_turn_id"] = "missing-turn"

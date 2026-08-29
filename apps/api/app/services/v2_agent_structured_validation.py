@@ -49,6 +49,7 @@ class V2AgentStructuredValidationService:
         normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
             run.contract_name or "",
             submission.value,
+            validation_context=run.validation_context,
         )
         if normalization.violations:
             return _fallback_or_rejected(

@@ -214,3 +214,68 @@ def test_null_input_untouched_and_idempotent():
     assert "product" not in first.value["explicit_elements"]
     assert "fps" not in first.value["requirement_patch"]["controls_to_set"]
     assert first.value == second.value
+
+
+def test_role_creative_brief_injects_missing_variant_from_trusted_context():
+    value = {
+        "identity": "A bottle",
+        "geometry": "Tall",
+        "materials": "Glass",
+        "marks": "Logo",
+        "palette": "Blue",
+    }
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        value,
+        validation_context={"role_variant": "product_main"},
+    )
+
+    assert result.value["role_variant"] == "product_main"
+    assert result.rule_ids == ("role_creative_brief_v2.role_variant_from_context.v1",)
+    assert result.normalized_path_count == 1
+    assert result.violations == ()
+
+
+def test_role_creative_brief_matching_variant_is_unchanged():
+    value = {
+        "role_variant": "product_main",
+        "identity": "A bottle",
+        "geometry": "Tall",
+        "materials": "Glass",
+        "marks": "Logo",
+        "palette": "Blue",
+    }
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        value,
+        validation_context={"role_variant": "product_main"},
+    )
+
+    assert result.value == value
+    assert result.rule_ids == ()
+    assert result.normalized_path_count == 0
+    assert result.violations == ()
+
+
+def test_role_creative_brief_conflicting_variant_is_rejected():
+    value = {
+        "role_variant": "product_multiview",
+        "identity": "A bottle",
+        "geometry": "Tall",
+        "materials": "Glass",
+        "marks": "Logo",
+        "palette": "Blue",
+        "views": ["front", "side", "back", "three-quarter", "detail"],
+    }
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        value,
+        validation_context={"role_variant": "product_main"},
+    )
+
+    assert result.value == value
+    assert result.rule_ids == ()
+    assert result.normalized_path_count == 0
+    assert [item.code for item in result.violations] == [
+        "agent_structured_normalization_role_variant_conflict"
+    ]

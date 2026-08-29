@@ -59,7 +59,7 @@ class AgentStructuredNormalizationResult:
     violations: tuple[StructuredViolation, ...] = ()
 
 
-NormalizationRule = Callable[[dict[str, Any]], AgentStructuredNormalizationResult]
+NormalizationRule = Callable[[dict[str, Any], Mapping[str, Any]], AgentStructuredNormalizationResult]
 _NORMALIZATION_RULES: Mapping[str, NormalizationRule]
 
 
@@ -70,15 +70,18 @@ class AgentStructuredNormalizationRegistry:
         self,
         contract_name: str,
         value: dict[str, Any],
+        *,
+        validation_context: Mapping[str, Any] | None = None,
     ) -> AgentStructuredNormalizationResult:
         rule = _NORMALIZATION_RULES.get(contract_name)
         if rule is None:
             return AgentStructuredNormalizationResult(value=deepcopy(value))
-        return rule(value)
+        return rule(value, validation_context or {})
 
 
 def _normalize_decision_bundle_capability_alias(
     value: dict[str, Any],
+    _validation_context: Mapping[str, Any],
 ) -> AgentStructuredNormalizationResult:
     candidate = deepcopy(value)
     effects = tuple(_creative_directive_effects(candidate))
@@ -114,6 +117,7 @@ def _normalize_decision_bundle_capability_alias(
 
 def _normalize_compact_turn_intent_omittable_nulls(
     value: dict[str, Any],
+    _validation_context: Mapping[str, Any],
 ) -> AgentStructuredNormalizationResult:
     candidate = deepcopy(value)
     normalized_path_count = 0
@@ -158,7 +162,10 @@ def _normalize_compact_turn_intent_omittable_nulls(
     )
 
 
-def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNormalizationResult:
+def _normalize_compact_turn_intent(
+    value: dict[str, Any],
+    validation_context: Mapping[str, Any],
+) -> AgentStructuredNormalizationResult:
     candidate = deepcopy(value)
     rule_ids: list[str] = []
     count = 0
@@ -185,11 +192,68 @@ def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNorm
     if changed:
         rule_ids.append(COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID)
 
-    null_result = _normalize_compact_turn_intent_omittable_nulls(candidate)
+    null_result = _normalize_compact_turn_intent_omittable_nulls(candidate, validation_context)
     candidate = null_result.value
     count += null_result.normalized_path_count
     rule_ids.extend(null_result.rule_ids)
     return AgentStructuredNormalizationResult(value=candidate, rule_ids=tuple(rule_ids), normalized_path_count=count)
+
+
+ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID = (
+    "role_creative_brief_v2.role_variant_from_context.v1"
+)
+_ROLE_VARIANT_VALUES = frozenset(
+    {
+        "world_view",
+        "product_main",
+        "product_multiview",
+        "prop",
+        "character_main",
+        "character_turnaround",
+        "scene_board",
+        "script",
+        "storyboard_grid",
+        "video_segment",
+        "bgm",
+        "free_text",
+        "free_image",
+        "free_video",
+        "free_audio",
+    }
+)
+
+
+def _normalize_role_creative_brief(
+    value: dict[str, Any],
+    validation_context: Mapping[str, Any],
+) -> AgentStructuredNormalizationResult:
+    """Attach only the trusted role discriminator when the provider omitted it."""
+
+    expected_variant = validation_context.get("role_variant")
+    if expected_variant not in _ROLE_VARIANT_VALUES:
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    supplied = value.get("role_variant")
+    if "role_variant" not in value:
+        candidate = deepcopy(value)
+        candidate["role_variant"] = expected_variant
+        return AgentStructuredNormalizationResult(
+            value=candidate,
+            rule_ids=(ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID,),
+            normalized_path_count=1,
+        )
+    if supplied != expected_variant:
+        return AgentStructuredNormalizationResult(
+            value=deepcopy(value),
+            violations=(
+                StructuredViolation(
+                    code="agent_structured_normalization_role_variant_conflict",
+                    message="The structured role brief role_variant conflicts with trusted context.",
+                    field_path="role_variant",
+                ),
+            ),
+        )
+    return AgentStructuredNormalizationResult(value=deepcopy(value))
 
 
 _CONTROL_ALIASES = MappingProxyType({
@@ -361,6 +425,7 @@ _NORMALIZATION_RULES = MappingProxyType(
     {
         "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent,
         "DecisionBundleDraftV1": _normalize_decision_bundle_capability_alias,
+        "RoleCreativeBriefV2": _normalize_role_creative_brief,
     }
 )
 
