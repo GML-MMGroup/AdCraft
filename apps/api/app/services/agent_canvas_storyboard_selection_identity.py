@@ -178,5 +178,27 @@ def identity_from_envelope(envelope: object) -> StoryboardSelectionIdentityV1 | 
     )
 
 
+def validate_storyboard_envelope_identity(
+    envelope: object,
+) -> StoryboardSelectionIdentityV1 | None:
+    """Validate a canonical marker and every digest-derived envelope identity."""
+
+    marker_digest = identity_digest_from_envelope(envelope)
+    if marker_digest is None:
+        return None
+    identity = identity_from_envelope(envelope)
+    if identity is None:
+        raise ValueError("Storyboard selection envelope identity is incomplete.")
+    ids = derive_storyboard_selection_ids(identity)
+    if (
+        marker_digest != identity.digest
+        or getattr(envelope, "materialization_id", None) != ids.materialization_id
+        or getattr(envelope, "envelope_id", None) != ids.envelope_id
+        or getattr(envelope, "action_turn_id", None) != ids.action_turn_id
+    ):
+        raise ValueError("Storyboard selection envelope identity does not match its payload.")
+    return identity
+
+
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
