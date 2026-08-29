@@ -579,6 +579,24 @@ class DynamicCanvasScheduler:
             or node.prompt_preparation.recipe_id
             or node.metadata.get("prompt_recipe_id")
         )
+        if managed_prompt and node.prompt_preparation.status == "failed":
+            preparation_error = node.prompt_preparation.error
+            if preparation_error is None:
+                raise V2PersistenceError(
+                    "prompt_preparation_failed",
+                    "Node prompt preparation failed without a typed error.",
+                    stage="agent_canvas_scheduler",
+                    details={"retryable": False, "reason": "prompt_preparation_failed"},
+                )
+            raise V2PersistenceError(
+                preparation_error.code,
+                preparation_error.message,
+                stage="agent_canvas_scheduler",
+                details={
+                    "retryable": preparation_error.retryable,
+                    "reason": "prompt_preparation_failed",
+                },
+            )
         if managed_prompt and node.prompt_preparation.status != "ready":
             member_snapshot = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
