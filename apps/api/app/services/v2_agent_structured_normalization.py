@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import math
+import re
 import unicodedata
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -186,14 +187,21 @@ def _normalize_compact_turn_intent(value: dict[str, Any]) -> AgentStructuredNorm
     return AgentStructuredNormalizationResult(value=candidate, rule_ids=tuple(rule_ids), normalized_path_count=count)
 
 
-_CONTROL_ALIASES = {"target_duration_sec": "duration_seconds", "duration_sec": "duration_seconds", "resolution": "output_resolution", "fps": "frame_rate"}
-_PRESENCE_ALIASES = {
+_CONTROL_ALIASES = MappingProxyType({
+    "target_duration_sec": "duration_seconds",
+    "duration_sec": "duration_seconds",
+    "resolution": "output_resolution",
+    "fps": "frame_rate",
+})
+_PRESENCE_ALIASES = MappingProxyType({
     "include": "include", "included": "include", "present": "include", "required": "include", "包含": "include", "需要": "include", "已提及": "include",
     "exclude": "exclude", "excluded": "exclude", "absent": "exclude", "omit": "exclude", "排除": "exclude", "不要": "exclude", "不需要": "exclude",
     "unspecified": "unspecified", "unknown": "unspecified", "not_mentioned": "unspecified", "not specified": "unspecified", "未说明": "unspecified", "未提及": "unspecified", "不确定": "unspecified",
-}
-_FLOAT_CONTROLS = {"duration_seconds", "frame_rate"}
-_INT_CONTROLS = {"product_count", "prop_count", "character_count", "scene_count", "storyboard_sequence_count", "video_segment_count"}
+})
+_FLOAT_CONTROLS = frozenset(("duration_seconds", "frame_rate"))
+_INT_CONTROLS = frozenset(("product_count", "prop_count", "character_count", "scene_count", "storyboard_sequence_count", "video_segment_count"))
+_DECIMAL_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
+_INTEGER_RE = re.compile(r"[0-9]+")
 
 
 def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, StructuredViolation | None]:
@@ -201,7 +209,7 @@ def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, Structur
     if not isinstance(controls, dict):
         return 0, None
     groups: dict[str, list[tuple[str, Any]]] = {}
-    known = set(_CONTROL_ALIASES) | set(_CONTROL_ALIASES.values())
+    known = frozenset(_CONTROL_ALIASES) | frozenset(_CONTROL_ALIASES.values())
     for key, val in list(controls.items()):
         nk = unicodedata.normalize("NFKC", key)
         target = _CONTROL_ALIASES.get(nk, nk) if nk in known else key
@@ -259,14 +267,16 @@ def _normalize_lossless_scalars(candidate: dict[str, Any]) -> int:
         item = controls.get(name)
         if not isinstance(item, dict) or not isinstance(item.get("value"), str):
             continue
-        raw = item["value"].strip()
+        raw = item["value"]
         try:
             if name in _FLOAT_CONTROLS:
+                if _DECIMAL_RE.fullmatch(raw) is None:
+                    continue
                 parsed = float(raw)
                 if not math.isfinite(parsed):
                     continue
             else:
-                if not raw.isdigit() and not (raw.startswith("-") and raw[1:].isdigit()):
+                if _INTEGER_RE.fullmatch(raw) is None:
                     continue
                 parsed = int(raw)
         except (ValueError, OverflowError):

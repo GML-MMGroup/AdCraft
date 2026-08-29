@@ -65,6 +65,62 @@ def test_non_lossless_float_string_stays():
     assert norm(value).value == value
 
 
+def test_float_underscore_string_stays():
+    value = {
+        "requirement_patch": {
+            "controls_to_set": {
+                "duration_seconds": {"value": "1_0"},
+                "frame_rate": {"value": "1_0"},
+            }
+        }
+    }
+    assert norm(value).value == value
+
+
+def test_presence_aliases_have_exact_canonical_values():
+    expected = {
+        "include": "include",
+        "included": "include",
+        "present": "include",
+        "required": "include",
+        "\u5305\u542b": "include",
+        "\u9700\u8981": "include",
+        "\u5df2\u63d0\u53ca": "include",
+        "exclude": "exclude",
+        "excluded": "exclude",
+        "absent": "exclude",
+        "omit": "exclude",
+        "\u6392\u9664": "exclude",
+        "\u4e0d\u8981": "exclude",
+        "\u4e0d\u9700\u8981": "exclude",
+        "unspecified": "unspecified",
+        "unknown": "unspecified",
+        "not_mentioned": "unspecified",
+        "not specified": "unspecified",
+        "\u672a\u8bf4\u660e": "unspecified",
+        "\u672a\u63d0\u53ca": "unspecified",
+        "\u4e0d\u786e\u5b9a": "unspecified",
+    }
+    for alias, canonical in expected.items():
+        result = norm({"explicit_elements": {"product": {"presence": alias, "source_quote": "x"}}})
+        assert result.value["explicit_elements"]["product"]["presence"] == canonical
+
+
+def test_canonical_input_is_idempotent_without_audit():
+    value = {
+        "explicit_elements": {
+            "product": {"presence": "include", "source_quote": "x"}
+        },
+        "requirement_patch": {
+            "controls_to_set": {"duration_seconds": {"value": 1.0}}
+        },
+    }
+    result = norm(value)
+    assert result.value == value
+    assert result.normalized_path_count == 0
+    assert result.rule_ids == ()
+
+
 def test_normalized_path_count_counts_each_alias_path_once():
     fps = norm({"requirement_patch": {"controls_to_set": {"fps": {"value": "24"}}}})
     assert fps.normalized_path_count == 2
