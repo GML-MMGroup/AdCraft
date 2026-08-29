@@ -1480,7 +1480,10 @@ def create_agent_canvas_runtime(
 
         setting = execution_settings.get_or_create(workflow_id)
         node = workflow_repository.get_node(workflow_id, node_ids[0]) if node_ids else None
-        if node is None or node.creative_role != "storyboard_sequence":
+        if node is None or node.creative_role not in {
+            "storyboard_sequence",
+            "storyboard_video",
+        }:
             return None
         if setting.media_execution_mode == "manual":
             return fanout_activation.activate_prompt_ready_nodes(
