@@ -39,6 +39,11 @@ from app.schemas.agent_canvas_materialization import (
     SelectedConceptOptionV1,
 )
 from app.services.agent_canvas_requirements import character_occurrences_for_authoring
+from app.services.agent_canvas_storyboard_selection_identity import (
+    StoryboardSelectionIdentityV1,
+    StoryboardSelectionIdsV1,
+    derive_storyboard_selection_ids,
+)
 
 
 class _ProposalSelectionSubmissionService:
@@ -90,11 +95,26 @@ class _ProposalSelectionSubmissionService:
         if proposal.workflow_id != workflow_id:
             raise _error("proposal_not_found", "Concept proposal was not found.")
         source_turn = self._conversations.get_turn(proposal.turn_id)
-        replayed = self._conversations.get_turn_by_idempotency_key(idempotency_key) is not None
-        turn_id = (
-            "turn_"
-            + _digest(f"materialization-action:{workflow_id}:{proposal_id}:{idempotency_key}")[:32]
-        )
+        storyboard_identity: StoryboardSelectionIdentityV1 | None = None
+        storyboard_ids: StoryboardSelectionIdsV1 | None = None
+        if proposal.capability_id == "storyboard_design":
+            storyboard_identity = self._storyboard_identity(proposal, action)
+            storyboard_ids = derive_storyboard_selection_ids(storyboard_identity)
+            turn_id = storyboard_ids.action_turn_id
+            replayed = self._materializations.storyboard_identity_exists(
+                storyboard_identity.digest
+            ) or self._materializations.storyboard_alias_exists(
+                idempotency_key,
+                storyboard_identity.digest,
+            )
+        else:
+            turn_id = (
+                "turn_"
+                + _digest(
+                    f"materialization-action:{workflow_id}:{proposal_id}:{idempotency_key}"
+                )[:32]
+            )
+            replayed = self._conversations.get_turn_by_idempotency_key(idempotency_key) is not None
         accepted = ChatTurnAcceptedV2(
             workflow_id=workflow_id,
             conversation_id=source_turn.conversation_id,
@@ -102,7 +122,13 @@ class _ProposalSelectionSubmissionService:
             turn_id=turn_id,
             events_cursor=0,
         )
-        envelope = self._build_envelope(proposal, action, accepted)
+        envelope = self._build_envelope(
+            proposal,
+            action,
+            accepted,
+            storyboard_identity=storyboard_identity,
+            storyboard_ids=storyboard_ids,
+        )
         action_request: dict[str, object] = {
             "proposal_id": proposal_id,
             "action": action.model_dump(mode="json", exclude_none=True),
@@ -121,7 +147,13 @@ class _ProposalSelectionSubmissionService:
             }
         )
 
-    def _reference_plan(self, proposal, action) -> ProposalReferencePlanV1:
+    def _reference_plan(
+        self,
+        proposal,
+        action,
+        *,
+        canonical_order: bool = False,
+    ) -> ProposalReferencePlanV1:
         allowed = {
             (reference.source_kind, reference.source_id): reference
             for reference in proposal.proposed_references
@@ -144,6 +176,12 @@ class _ProposalSelectionSubmissionService:
             if identity not in seen:
                 accepted.append(persisted)
                 seen.add(identity)
+        if canonical_order:
+            accepted = [
+                reference
+                for reference in proposal.proposed_references
+                if (reference.source_kind, reference.source_id) in seen
+            ]
         missing_required = [
             reference
             for identity, reference in allowed.items()
@@ -187,26 +225,43 @@ class _ProposalSelectionSubmissionService:
             digest=digest,
         )
 
-    def _build_envelope(
+    def _storyboard_identity(self, proposal, action) -> StoryboardSelectionIdentityV1:
+        """Resolve the immutable Storyboard selection tuple before allocating a Turn."""
+
+        option, _selection_reason, reference_plan = self._selection_components(
+            proposal,
+            action,
+            canonical_reference_order=True,
+        )
+        session = self._conversations.get_guidance_session(proposal.workflow_id)
+        custom_text_digest = (
+            _digest(action.custom_text) if isinstance(action, CustomDirectionActionV2) else None
+        )
+        selected_option_id = (
+            None if isinstance(action, CustomDirectionActionV2) else option.option_id
+        )
+        return StoryboardSelectionIdentityV1(
+            workflow_id=proposal.workflow_id,
+            proposal_id=proposal.proposal_id,
+            proposal_revision=proposal.proposal_revision,
+            action=action.action,
+            selection_actor=("agent" if action.action == "delegate_choice" else "user"),
+            selected_option_id=selected_option_id,
+            custom_text_digest=custom_text_digest,
+            reference_plan_digest=reference_plan.digest,
+            expected_session_revision=action.expected_session_revision,
+            stage_revision=session.journey.stage_revision,
+            target_node_id=proposal.target_node_id,
+            target_node_revision=proposal.target_node_revision,
+        )
+
+    def _selection_components(
         self,
         proposal,
-        action: (
-            SelectOptionActionV2
-            | CustomDirectionActionV2
-            | DelegateChoiceActionV2
-            | ReuseDirectionActionV2
-        ),
-        accepted: ChatTurnAcceptedV2,
-    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
-        self._validate_capability(proposal)
-        if proposal.materialization is not None:
-            if proposal.materialization.turn_id == accepted.turn_id:
-                return self._load_envelope(proposal.materialization.materialization_id)
-            if proposal.materialization.status in {"queued", "working"}:
-                raise _error(
-                    "proposal_materialization_conflict",
-                    "Another Materialization attempt is active for this Proposal.",
-                )
+        action,
+        *,
+        canonical_reference_order: bool = False,
+    ) -> tuple[SelectedConceptOptionV1 | SelectedProposalCardV2, str | None, ProposalReferencePlanV1]:
         descriptor = next(
             (
                 candidate
@@ -250,19 +305,122 @@ class _ProposalSelectionSubmissionService:
                 else SelectedProposalCardV2
             )
             option = option_model.model_validate(proposal_option.model_dump(mode="json"))
-        reference_plan = self._reference_plan(proposal, action)
-        attempt_no = (
-            proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1
+        reference_plan = self._reference_plan(
+            proposal,
+            action,
+            canonical_order=canonical_reference_order,
         )
-        materialization_id = (
-            "materialization_"
-            + _digest(f"{proposal.proposal_id}:{accepted.turn_id}:{attempt_no}")[:32]
+        return option, selection_reason, reference_plan
+
+    def _build_envelope(
+        self,
+        proposal,
+        action: (
+            SelectOptionActionV2
+            | CustomDirectionActionV2
+            | DelegateChoiceActionV2
+            | ReuseDirectionActionV2
+        ),
+        accepted: ChatTurnAcceptedV2,
+        *,
+        storyboard_identity: StoryboardSelectionIdentityV1 | None = None,
+        storyboard_ids: StoryboardSelectionIdsV1 | None = None,
+    ) -> CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1:
+        self._validate_capability(proposal)
+        canonical_storyboard = (
+            proposal.capability_id == "storyboard_design"
+            and storyboard_identity is not None
+            and storyboard_ids is not None
         )
+        if proposal.materialization is not None and not canonical_storyboard:
+            if proposal.materialization.turn_id == accepted.turn_id:
+                return self._load_envelope(proposal.materialization.materialization_id)
+            if proposal.materialization.status in {"queued", "working"}:
+                raise _error(
+                    "proposal_materialization_conflict",
+                    "Another Materialization attempt is active for this Proposal.",
+                )
+        option, selection_reason, reference_plan = self._selection_components(
+            proposal,
+            action,
+            canonical_reference_order=canonical_storyboard,
+        )
+        if canonical_storyboard:
+            assert storyboard_identity is not None
+            assert storyboard_ids is not None
+            if proposal.materialization is not None:
+                if proposal.materialization.materialization_id == storyboard_ids.materialization_id:
+                    return self._load_envelope(proposal.materialization.materialization_id)
+                if proposal.materialization.status in {"queued", "working"}:
+                    raise _error(
+                        "proposal_materialization_conflict",
+                        "Another Materialization attempt is active for this Proposal.",
+                    )
+                if proposal.materialization.status == "failed":
+                    if not proposal.materialization.retryable:
+                        raise _error(
+                            "guidance_action_lineage_invalid",
+                            "Storyboard Proposal has a non-retryable historical Materialization.",
+                        )
+                    existing = self._load_envelope(proposal.materialization.materialization_id)
+                    if not isinstance(existing, ProposalPublicationEnvelopeV1):
+                        raise _error(
+                            "guidance_action_lineage_invalid",
+                            "Storyboard Proposal has an invalid historical Materialization.",
+                        )
+                    existing_identity = getattr(existing, "idempotency_identity", "")
+                    if existing_identity != storyboard_ids.request_identity:
+                        raise _error(
+                            "guidance_action_lineage_invalid",
+                            "Storyboard Proposal retry does not match its canonical identity.",
+                        )
+                    return existing
+            attempt_no = 1
+            materialization_id = storyboard_ids.materialization_id
+        else:
+            attempt_no = (
+                proposal.materialization.attempt_no + 1 if proposal.materialization is not None else 1
+            )
+            materialization_id = (
+                "materialization_"
+                + _digest(f"{proposal.proposal_id}:{accepted.turn_id}:{attempt_no}")[:32]
+            )
         result_contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[
             proposal.capability_id
         ].__name__
         session = self._conversations.get_guidance_session(proposal.workflow_id)
         stage_revision = session.journey.stage_revision
+        if canonical_storyboard:
+            assert storyboard_identity is not None
+            assert storyboard_ids is not None
+            expected_option_id = (
+                None if isinstance(action, CustomDirectionActionV2) else option.option_id
+            )
+            expected_custom_digest = (
+                _digest(action.custom_text)
+                if isinstance(action, CustomDirectionActionV2)
+                else None
+            )
+            if (
+                accepted.turn_id != storyboard_ids.action_turn_id
+                or storyboard_ids.identity_digest != storyboard_identity.digest
+                or storyboard_identity.workflow_id != proposal.workflow_id
+                or storyboard_identity.proposal_id != proposal.proposal_id
+                or storyboard_identity.proposal_revision != proposal.proposal_revision
+                or storyboard_identity.action != action.action
+                or storyboard_identity.selected_option_id != expected_option_id
+                or storyboard_identity.custom_text_digest != expected_custom_digest
+                or storyboard_identity.reference_plan_digest != reference_plan.digest
+                or storyboard_identity.expected_session_revision
+                != action.expected_session_revision
+                or storyboard_identity.stage_revision != stage_revision
+                or storyboard_identity.target_node_id != proposal.target_node_id
+                or storyboard_identity.target_node_revision != proposal.target_node_revision
+            ):
+                raise _error(
+                    "materialization_payload_conflict",
+                    "Storyboard selection authority changed before Materialization.",
+                )
         operation_kind = (
             "parent"
             if proposal.capability_id in {"product_design", "character_design"}
@@ -350,6 +508,8 @@ class _ProposalSelectionSubmissionService:
             "reference_plan_digest": reference_plan.digest,
             "capability_id": proposal.capability_id,
         }
+        if canonical_storyboard:
+            context_payload["storyboard_selection_identity_digest"] = storyboard_identity.digest
         if proposal.capability_id == "character_design":
             context_payload.update(
                 {
@@ -363,10 +523,19 @@ class _ProposalSelectionSubmissionService:
                 }
             )
         context_digest = _json_digest(context_payload)
-        request_identity = f"capability-materialization:{materialization_id}:attempt:{attempt_no}"
+        request_identity = (
+            storyboard_ids.request_identity
+            if canonical_storyboard and storyboard_ids is not None
+            else f"capability-materialization:{materialization_id}:attempt:{attempt_no}"
+        )
+        envelope_id = (
+            storyboard_ids.envelope_id
+            if canonical_storyboard and storyboard_ids is not None
+            else "envelope_" + _digest(materialization_id)[:32]
+        )
         return self._create_envelope(
             payload={
-                "envelope_id": "envelope_" + _digest(materialization_id)[:32],
+                "envelope_id": envelope_id,
                 "materialization_id": materialization_id,
                 "proposal_id": proposal.proposal_id,
                 "proposal_revision": proposal.proposal_revision,
