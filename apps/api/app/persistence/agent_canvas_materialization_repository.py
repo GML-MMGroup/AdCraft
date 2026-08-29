@@ -3671,7 +3671,15 @@ def _validate_storyboard_action_request(
                 "materialization_payload_conflict",
                 "Storyboard custom direction does not match its envelope.",
             )
-    elif action.get("option_id") != envelope.selected_option.option_id:
+    elif envelope.action == "select_option":
+        if action.get("option_id") != envelope.selected_option.option_id:
+            raise _error(
+                "materialization_payload_conflict",
+                "Storyboard option does not match its envelope.",
+            )
+    elif action.get("option_id") is not None and action.get("option_id") != (
+        envelope.selected_option.option_id
+    ):
         raise _error(
             "materialization_payload_conflict",
             "Storyboard option does not match its envelope.",
