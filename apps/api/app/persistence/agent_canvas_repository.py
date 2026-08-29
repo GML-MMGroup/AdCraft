@@ -13,6 +13,10 @@ from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+    normalize_queued_node,
+)
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -79,6 +83,7 @@ class AgentCanvasWorkflowRepository:
         self._projects = projects
         self._events = events
         self._requirements = AgentCanvasRequirementRepository(database)
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
 
     @property
     def database(self) -> V2Database:
@@ -368,6 +373,7 @@ class AgentCanvasWorkflowRepository:
     ) -> AgentCanvasWorkflowV2:
         """Insert one node and advance the workflow revision exactly once."""
 
+        node = normalize_queued_node(node)
         now = node.updated_at.isoformat()
         try:
             with self._database.engine.connect() as connection:
@@ -377,6 +383,7 @@ class AgentCanvasWorkflowRepository:
                         connection, node.workflow_id, expected_revision
                     )
                     connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                    self._prompt_dispatch.ensure_for_node_in_transaction(connection, node, now=node.updated_at)
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -523,6 +530,7 @@ class AgentCanvasWorkflowRepository:
     ) -> AgentCanvasWorkflowV2:
         """Insert one node and its copied inputs as one authoring revision."""
 
+        node = normalize_queued_node(node, bindings=bindings)
         now = node.updated_at.isoformat()
         try:
             with self._database.engine.connect() as connection:
@@ -547,6 +555,12 @@ class AgentCanvasWorkflowRepository:
                         connection.execute(
                             insert(AgentCanvasBindingRow).values(**_binding_values(binding))
                         )
+                    self._prompt_dispatch.ensure_for_node_in_transaction(
+                        connection,
+                        node,
+                        bindings=bindings,
+                        now=node.updated_at,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -697,6 +711,7 @@ class AgentCanvasWorkflowRepository:
     ) -> AgentCanvasWorkflowV2:
         """Replace one node record and advance authoring once."""
 
+        bindings_for_node: tuple[CanvasBindingV2, ...] = ()
         now = node.updated_at.isoformat()
         values = _node_values(node)
         values.pop("node_id")
@@ -708,6 +723,55 @@ class AgentCanvasWorkflowRepository:
                     current_revision = _require_workflow_revision(
                         connection, node.workflow_id, expected_revision
                     )
+                    current_row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if current_row is None:
+                        raise _node_not_found_error()
+                    current_node = _node_from_row(current_row)
+                    if (
+                        node.execution_mode == "generative"
+                        and _prompt_input_changed(current_node, node)
+                        and node.prompt_preparation.status
+                        in {"ready", "failed", "superseded"}
+                    ):
+                        # A changed prompt/input snapshot cannot reuse a
+                        # completed operation identity.  Re-enter the normal
+                        # queued authority and derive one successor below.
+                        node = node.model_copy(
+                            update={
+                                "status": "draft",
+                                "output_asset_id": None,
+                                "prompt_context_snapshot_id": None,
+                                "metadata": {
+                                    key: value
+                                    for key, value in node.metadata.items()
+                                    if not key.startswith("prompt_")
+                                    and key != "prepared_reference_snapshots"
+                                },
+                                "prompt_preparation": _queued_preparation_for_revision(
+                                    node.prompt_preparation,
+                                    node.updated_at,
+                                ),
+                            }
+                        )
+                    if node.prompt_preparation.status == "queued":
+                        bindings_for_node = _load_target_bindings(
+                            connection,
+                            node.workflow_id,
+                            node.node_id,
+                        )
+                        node = normalize_queued_node(node, bindings=bindings_for_node)
+                        values = _node_values(node)
+                        values.pop("node_id")
+                        values.pop("workflow_id")
                     updated = connection.execute(
                         update(AgentCanvasNodeRow)
                         .where(
@@ -718,9 +782,25 @@ class AgentCanvasWorkflowRepository:
                     )
                     if updated.rowcount != 1:
                         raise _node_not_found_error()
+                    if node.prompt_preparation.status == "queued":
+                        self._prompt_dispatch.supersede_and_enqueue_in_transaction(
+                            connection,
+                            node=node,
+                            bindings=bindings_for_node,
+                            reason="node_prompt_input_changed",
+                            now=node.updated_at,
+                        )
+                    else:
+                        self._prompt_dispatch.ensure_for_node_in_transaction(
+                            connection,
+                            node,
+                            bindings=bindings_for_node,
+                            now=node.updated_at,
+                        )
                     _invalidate_prompt_preparations_for_source(
                         connection,
                         events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
                         workflow_id=node.workflow_id,
                         source_node_id=node.node_id,
                         updated_at=now,
@@ -810,6 +890,15 @@ class AgentCanvasWorkflowRepository:
                         )
                         if updated.rowcount != 1:
                             raise _prompt_preparation_conflict()
+                        if node.prompt_preparation.status in {"ready", "failed", "superseded"}:
+                            _invalidate_prompt_preparations_for_source(
+                                connection,
+                                events=self._events,
+                                prompt_dispatch=self._prompt_dispatch,
+                                workflow_id=node.workflow_id,
+                                source_node_id=node.node_id,
+                                updated_at=now,
+                            )
                         _advance_workflow_revision(
                             connection,
                             workflow_id=node.workflow_id,
@@ -1402,6 +1491,7 @@ class AgentCanvasWorkflowRepository:
                     _invalidate_target_prompt_preparation(
                         connection,
                         events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
                         workflow_id=binding.workflow_id,
                         target_node_id=binding.target_node_id,
                         updated_at=now,
@@ -1489,6 +1579,7 @@ class AgentCanvasWorkflowRepository:
                     _invalidate_target_prompt_preparation(
                         connection,
                         events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
                         workflow_id=workflow_id,
                         target_node_id=binding.target_node_id,
                         updated_at=now,
@@ -1533,6 +1624,8 @@ class AgentCanvasWorkflowRepository:
         """Persist a new Draft node and its real binding as one semantic operation."""
 
         operation = f"agent_canvas_connected_node:{node.workflow_id}"
+        incoming_bindings = (binding,) if binding.target_node_id == node.node_id else ()
+        node = normalize_queued_node(node, bindings=incoming_bindings)
         now = node.updated_at.isoformat()
         try:
             with self._database.engine.connect() as connection:
@@ -1554,6 +1647,12 @@ class AgentCanvasWorkflowRepository:
                     connection.execute(
                         insert(AgentCanvasBindingRow).values(**_binding_values(binding))
                     )
+                    self._prompt_dispatch.ensure_for_node_in_transaction(
+                        connection,
+                        node,
+                        bindings=incoming_bindings,
+                        now=node.updated_at,
+                    )
                     binding_order = _normalize_target_binding_order(
                         connection,
                         workflow_id=node.workflow_id,
@@ -1561,13 +1660,15 @@ class AgentCanvasWorkflowRepository:
                         prioritized_binding_id=binding.binding_id,
                         requested_order=binding.display_order,
                     )
-                    _invalidate_target_prompt_preparation(
-                        connection,
-                        events=self._events,
-                        workflow_id=binding.workflow_id,
-                        target_node_id=binding.target_node_id,
-                        updated_at=now,
-                    )
+                    if binding.target_node_id != node.node_id:
+                        _invalidate_target_prompt_preparation(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=binding.workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -1705,6 +1806,14 @@ class AgentCanvasWorkflowRepository:
                         target_node_id=binding.target_node_id,
                         prioritized_binding_id=binding.binding_id,
                         requested_order=binding.display_order,
+                    )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
                     )
                     _advance_workflow_revision(
                         connection,
@@ -2260,10 +2369,47 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
     }
 
 
+def _prompt_input_changed(current: CanvasNodeV2, requested: CanvasNodeV2) -> bool:
+    """Detect a new preparation input snapshot without comparing volatile fields."""
+
+    return any(
+        getattr(current, field) != getattr(requested, field)
+        for field in (
+            "node_type",
+            "creative_role",
+            "summary_prompt",
+            "generation_prompt",
+            "structured_content",
+            "model_selection_mode",
+            "model_ref",
+            "parameters",
+        )
+    )
+
+
+def _queued_preparation_for_revision(
+    preparation: NodePromptPreparationV1,
+    updated_at: datetime,
+) -> NodePromptPreparationV1:
+    return NodePromptPreparationV1(
+        status="queued",
+        operation_id=None,
+        attempt_no=0,
+        context_snapshot_id=None,
+        occurrence_id=preparation.occurrence_id,
+        character_phase=preparation.character_phase,
+        role_variant=preparation.role_variant,
+        prompt_digest=None,
+        error=None,
+        updated_at=updated_at,
+    )
+
+
 def _invalidate_target_prompt_preparation(
     connection: Connection,
     *,
     events: EventRepository,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     workflow_id: str,
     target_node_id: str,
     updated_at: str,
@@ -2281,27 +2427,58 @@ def _invalidate_target_prompt_preparation(
     if row is None:
         raise _node_not_found_error()
     node = _node_from_row(row)
-    if (
-        node.status not in {"draft", "failed"}
-        or node.prompt_preparation.status == "queued"
-        or node.prompt_preparation.recipe_id is None
-    ):
+    if node.status not in {"draft", "failed", "ready"}:
         return
+    if node.status == "ready" and node.prompt_preparation.operation_id is None:
+        # Legacy/manual Ready content has no immutable preparation owner to
+        # supersede.  Do not turn a harmless first Binding into a queued
+        # re-preparation or clear its existing context projection.
+        return
+    if node.prompt_preparation.status == "not_applicable":
+        return
+    bindings = _load_target_bindings(connection, workflow_id, target_node_id)
+    # Invalidation creates a new immutable operation identity.  Keep the
+    # occurrence and role metadata, but discard all evidence/digests derived
+    # from the previous input snapshot.
     queued = NodePromptPreparationV1(
         status="queued",
         operation_id=None,
-        attempt_no=node.prompt_preparation.attempt_no,
+        attempt_no=0,
         context_snapshot_id=None,
+        occurrence_id=node.prompt_preparation.occurrence_id,
+        character_phase=node.prompt_preparation.character_phase,
+        role_variant=node.prompt_preparation.role_variant,
         prompt_digest=None,
         error=None,
         updated_at=updated_at,
     )
+    queued_node = node.model_copy(
+        update={
+            "revision": node.revision + 1,
+            "status": "draft" if node.status in {"failed", "ready"} else node.status,
+            "error": None if node.status in {"failed", "ready"} else node.error,
+            "output_asset_id": (
+                None if node.status in {"failed", "ready"} else node.output_asset_id
+            ),
+            "prompt_context_snapshot_id": None,
+            "metadata": {
+                key: value
+                for key, value in node.metadata.items()
+                if not key.startswith("prompt_") and key != "prepared_reference_snapshots"
+            },
+            "prompt_preparation": queued,
+            "updated_at": _parse_datetime(updated_at),
+        }
+    )
+    queued_node = normalize_queued_node(queued_node, bindings=bindings)
     values: dict[str, object | None] = {
-        "prompt_preparation_json": queued.model_dump_json(),
-        "revision": node.revision + 1,
+        "prompt_preparation_json": queued_node.prompt_preparation.model_dump_json(),
+        "prompt_context_snapshot_id": None,
+        "metadata_json": _json_dump(queued_node.metadata),
+        "revision": queued_node.revision,
         "updated_at": updated_at,
     }
-    if node.status == "failed":
+    if node.status in {"failed", "ready"}:
         values.update(
             status="draft",
             error_json=None,
@@ -2317,7 +2494,7 @@ def _invalidate_target_prompt_preparation(
         .values(**values)
     )
     safe_payload = {
-        "node_revision": node.revision + 1,
+        "node_revision": queued_node.revision,
         "creative_role": node.creative_role,
         "previous_operation_id": node.prompt_preparation.operation_id,
         "previous_prompt_digest": node.prompt_preparation.prompt_digest,
@@ -2340,17 +2517,27 @@ def _invalidate_target_prompt_preparation(
             event_type="node_prompt_preparation_queued",
             created_at=updated_at,
             payload={
-                "node_revision": node.revision + 1,
+                "node_revision": queued_node.revision,
                 "creative_role": node.creative_role,
+                "operation_id": queued_node.prompt_preparation.operation_id,
             },
         ),
     )
+    if prompt_dispatch is not None:
+        prompt_dispatch.supersede_and_enqueue_in_transaction(
+            connection,
+            node=queued_node,
+            bindings=bindings,
+            reason="dependency_or_binding_revision_changed",
+            now=_parse_datetime(updated_at),
+        )
 
 
 def _invalidate_prompt_preparations_for_source(
     connection: Connection,
     *,
     events: EventRepository,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     workflow_id: str,
     source_node_id: str,
     updated_at: str,
@@ -2371,10 +2558,41 @@ def _invalidate_prompt_preparations_for_source(
         _invalidate_target_prompt_preparation(
             connection,
             events=events,
+            prompt_dispatch=prompt_dispatch,
             workflow_id=workflow_id,
             target_node_id=target_node_id,
             updated_at=updated_at,
         )
+
+
+def _load_target_bindings(
+    connection: Connection,
+    workflow_id: str,
+    target_node_id: str,
+) -> tuple[CanvasBindingV2, ...]:
+    rows = (
+        connection.execute(
+            select(AgentCanvasBindingRow)
+            .where(
+                AgentCanvasBindingRow.workflow_id == workflow_id,
+                AgentCanvasBindingRow.target_node_id == target_node_id,
+            )
+            .order_by(
+                AgentCanvasBindingRow.order_index.asc(),
+                AgentCanvasBindingRow.binding_id.asc(),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return tuple(_binding_from_row(row) for row in rows)
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _node_from_row(
