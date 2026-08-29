@@ -77,6 +77,7 @@ from app.schemas.agent_canvas_capability_identity import (
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
+    GuidedScriptCheckpointDraftV1,
 )
 from app.schemas.agent_canvas_requirements import RequirementPatchV1
 from app.schemas.agent_canvas_role_prompt_preparation import (
@@ -99,6 +100,7 @@ from app.schemas.agent_operation_contexts import (
 from app.schemas.agent_runtime import (
     AgentActionEnvelopeV2,
     AgentCommandPlanDraftV2,
+    AgentPresentationDeltaV1,
     AgentRunRequest,
     AgentRunCompletedPayload,
 )
@@ -151,7 +153,10 @@ from app.services.agent_canvas_user_presentation import AgentCanvasTimelinePrese
 from app.services.agent_canvas_public_concept_projection import (
     AgentCanvasPublicConceptProjector,
 )
-from app.services.agent_canvas_requirements import AgentCanvasRequirementService
+from app.services.agent_canvas_requirements import (
+    AgentCanvasRequirementService,
+    character_occurrences_for_authoring,
+)
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -395,7 +400,17 @@ class DeterministicVideoAgentGateway:
         context: Mapping[str, object],
         repair_error: str | None,
     ) -> BaseModel:
-        contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        if operation == "author_guided_script_checkpoint":
+            return GuidedScriptCheckpointDraftV1(
+                title="Narrative Direction",
+                summary_prompt="A product-first narrative direction.",
+                content="Open on the product and close on refreshment.",
+            )
+        contract = (
+            GuidedScriptCheckpointDraftV1
+            if operation == "author_guided_script_checkpoint"
+            else CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        )
         return contract.model_validate(
             _deterministic_materialization_result(capability_id, context=context)
         )
@@ -412,12 +427,14 @@ class PiVideoAgentGateway:
         model_resolution: ModelResolutionService,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
         on_provider_waiting: Callable[..., object] | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> None:
         self._durable_runner = durable_runner
         self._timeout_seconds = timeout_seconds
         self._model_resolution = model_resolution
         self._operation_policies = operation_policies or AgentOperationPolicyRegistryV2()
         self._on_provider_waiting = on_provider_waiting
+        self._on_presentation = on_presentation
         self._operation_registry = VideoAgentOperationRegistry()
         self._request_factory = AgentRunRequestFactory(
             policy_registry=self._operation_policies,
@@ -597,7 +614,11 @@ class PiVideoAgentGateway:
         context: Mapping[str, object],
         repair_error: str | None,
     ) -> BaseModel:
-        contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        contract = (
+            GuidedScriptCheckpointDraftV1
+            if operation == "author_guided_script_checkpoint"
+            else CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id]
+        )
         operation_definition = self._operation_registry.resolve(operation)
         context_model = AGENT_RUN_CONTEXT_REGISTRY.resolve(
             operation_definition.context_contract_name
@@ -718,9 +739,21 @@ class PiVideoAgentGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
+                **(
+                    {
+                        "model_result_contract_name": contract.__name__,
+                        "canonical_result_contract_name": "ScriptMaterializationResultV1",
+                        "normalization_id": "guided-script-checkpoint-v1",
+                        "canonical_duration_seconds": _context_duration_seconds(context),
+                    }
+                    if operation == "author_guided_script_checkpoint"
+                    else {}
+                ),
                 **({"style_skill_lineage": style_lineage} if style_lineage is not None else {}),
             },
         )
+        if operation in {"decide_turn_intent", "decide_next_action", "author_decision_bundle"}:
+            request = request.model_copy(update={"presentation_channel": "assistant"})
         if operation == "decide_turn_intent":
             schema_bytes = len(
                 json.dumps(
@@ -770,6 +803,7 @@ class PiVideoAgentGateway:
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
             on_dispatch_owned=on_dispatch_owned,
+            on_presentation=self._on_presentation,
         )
         return _completed_structured_run(result, model_ref=resolution.model_ref)
 
@@ -786,6 +820,21 @@ def _completed_structured_run(
         audit=completed.audit,
         model_ref=model_ref,
     )
+
+
+def _context_duration_seconds(context: BaseModel) -> float | None:
+    """Read the already projected duration only for bounded audit metadata."""
+
+    capability_context = getattr(context, "capability_context", None)
+    if not isinstance(capability_context, Mapping):
+        return None
+    constraints = capability_context.get("explicit_constraints")
+    if not isinstance(constraints, Mapping):
+        return None
+    value = constraints.get("duration_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _deterministic_capability_result(
@@ -1524,6 +1573,12 @@ class AgentConversationService:
             requirements = applied.revision
             requirement_changed = applied.changed
             existing_session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
+            if existing_session is not None and requirement_changed:
+                existing_session = self._journey.sync_character_occurrences(
+                    turn.workflow_id,
+                    expected_session_revision=existing_session.revision,
+                    idempotency_key=f"sync-character-roster:{requirements.revision_id}",
+                )
         if (
             existing_session is not None
             and intent.response_locale != existing_session.response_locale
@@ -1563,6 +1618,7 @@ class AgentConversationService:
                     },
                 ),
                 element_decisions=decisions,
+                character_occurrences=character_occurrences_for_authoring(requirements),
                 active_style_skill_run_id=(
                     str(turn.request.get("video_skill_run_id"))
                     if turn.request.get("video_skill_run_id")
@@ -1738,6 +1794,15 @@ class AgentConversationService:
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
                     if session.awaiting is None:
+                        if session.journey.stage == "character":
+                            admitted = self._journey.ensure_character_decision_authority(
+                                turn.workflow_id,
+                                source_turn_id=turn_id,
+                                expected_session_revision=session.revision,
+                                idempotency_key=f"character-count:{turn_id}",
+                            )
+                            if admitted is not None:
+                                return admitted
                         raise V2PersistenceError(
                             "guidance_orphaned_stall",
                             "Guidance cannot wait without current typed awaiting authority.",

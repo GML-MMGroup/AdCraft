@@ -56,6 +56,7 @@ ProjectAssetSourceTypeV2 = Literal[
     "upload",
     "generated",
     "recommended",
+    "derived",
     "library",
     "editing_export",
 ]
@@ -286,6 +287,7 @@ class CanvasBindingSourceNodeV2(_AgentCanvasModel):
 class CanvasBindingSourceImageAssetV2(_AgentCanvasModel):
     kind: Literal["image_asset"] = "image_asset"
     source_asset_id: str = Field(min_length=1)
+    source_asset_version_id: str | None = Field(default=None, min_length=1)
 
     @property
     def asset_id(self) -> str:
@@ -462,6 +464,7 @@ class AgentTargetRefV2(_AgentCanvasModel):
     node_type: CanvasNodeTypeV2 | None = None
     creative_role: CanvasCreativeRoleV2 | None = None
     media_type: ProjectAssetMediaTypeV2 | None = None
+    asset_version_id: str | None = Field(default=None, min_length=1)
 
 
 class AgentTargetResolutionV2(_AgentCanvasModel):
@@ -643,6 +646,7 @@ class ProjectAssetUploadMetadataV2(_AgentCanvasModel):
 class ProjectAssetUploadResponseV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     asset: ProjectAssetSummaryV2
+    pending_handoff_id: str | None = Field(default=None, min_length=1)
 
 
 class SaveImageToLibraryRequestV2(_AgentCanvasModel):

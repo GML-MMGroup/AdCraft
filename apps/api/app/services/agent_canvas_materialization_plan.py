@@ -23,6 +23,11 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    normalize_queued_node,
+)
+from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
@@ -46,11 +51,75 @@ class CapabilityMaterializationPlanCompiler:
         *,
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
+        prompt_context: StageAuthoringContextV1 | None = None,
     ) -> MaterializationPlanV1:
         bundle = self.compile_draft_bundle(envelope, normalization)
         nodes = bundle.nodes
         bindings = bundle.bindings
-        preparations = bundle.prompt_preparations
+        preparations = tuple(
+            item.model_copy(update={"context": prompt_context})
+            if prompt_context is not None
+            else item
+            for item in bundle.prompt_preparations
+        )
+        if prompt_context is not None and preparations:
+            # Materialization operation identities must be compiled from the
+            # same detached context that the transaction persists.  Keeping
+            # the bundle's pre-context identity here would make the Node row,
+            # dispatch row, and immutable plan disagree during commit.
+            _, frozen_context_digest = detached_context_payload(prompt_context)
+            normalized_nodes: list[CanvasNodeV2] = []
+            preparation_by_node = {item.node_id: item for item in preparations}
+            normalized_preparations: list[NodePromptPreparationIntentV1] = []
+            for node in nodes:
+                node_bindings = tuple(
+                    binding for binding in bindings if binding.target_node_id == node.node_id
+                )
+                normalized = normalize_queued_node(
+                    node,
+                    bindings=node_bindings,
+                    context_digest=frozen_context_digest,
+                )
+                normalized_nodes.append(normalized)
+                preparation = preparation_by_node.get(node.node_id)
+                if preparation is not None:
+                    normalized_preparations.append(
+                        preparation.model_copy(
+                            update={
+                                "operation_id": normalized.prompt_preparation.operation_id,
+                            }
+                        )
+                    )
+            nodes = tuple(normalized_nodes)
+            preparations = tuple(normalized_preparations)
+        derivative_intent = bundle.derivative_intent
+        if derivative_intent is not None and prompt_context is not None:
+            parent_node = next(
+                (node for node in nodes if node.node_id == derivative_intent.parent.node_id),
+                None,
+            )
+            if parent_node is None:
+                raise ValueError("parent_materialization_missing")
+            parent = derivative_intent.parent.model_copy(
+                update={
+                    "node_revision": parent_node.revision,
+                    "prompt_preparation_operation_id": (
+                        parent_node.prompt_preparation.operation_id
+                    ),
+                }
+            )
+            if parent.prompt_preparation_operation_id is None:
+                raise ValueError("parent_prompt_preparation_identity_missing")
+            derivative_intent = derivative_intent.model_copy(
+                update={
+                    "parent": parent,
+                    "payload_digest": _digest(
+                        f"{derivative_intent.workflow_id}:{parent.node_id}:"
+                        f"{parent.node_revision}:{parent.prompt_preparation_operation_id}:"
+                        f"{derivative_intent.derivative_role}"
+                    ),
+                }
+            )
         storyboard_draft_preparation_queued = _has_storyboard_draft_preparation_evidence(
             envelope,
             nodes=nodes,
@@ -98,7 +167,7 @@ class CapabilityMaterializationPlanCompiler:
             "prompt_preparations": preparations,
             "operation_kind": envelope.operation_kind,
             "parent_snapshot": envelope.parent_snapshot,
-            "derivative_intent": bundle.derivative_intent,
+            "derivative_intent": derivative_intent,
             "journey_event": _journey_event(
                 envelope,
                 snapshot,
@@ -123,8 +192,20 @@ def _continuation(
         envelope.target_node_id is not None
         or envelope.capability_id == "quick_media"
         or snapshot.current_journey.suspended_action is not None
+        or (
+            envelope.capability_id == "character_design"
+            and envelope.character_phase == "turnaround"
+        )
     ):
         return None
+    occurrence_id, character_phase = _next_character_target(envelope, snapshot)
+    action_owner = (
+        "targeted_authoring"
+        if snapshot.current_journey.suspended_action is not None
+        else "quick_media"
+        if envelope.capability_id == "quick_media"
+        else "guided_journey"
+    )
     digest = _digest(f"materialization-next-action:{envelope.materialization_id}")
     return ContinuationCommitV2(
         continuation_id=f"continuation_{digest[:24]}",
@@ -133,6 +214,9 @@ def _continuation(
         source_action_id=envelope.action_turn_id,
         idempotency_key=f"materialization-next-action:{envelope.materialization_id}",
         video_skill_run_id=envelope.style_skill_run_id,
+        occurrence_id=occurrence_id,
+        character_phase=character_phase,
+        action_owner=action_owner,
     )
 
 
@@ -152,6 +236,8 @@ def _receipt(
         proposal_option_id=envelope.selected_option.option_id,
         proposal_action=envelope.action,
         actor_kind=envelope.selection_actor,
+        occurrence_id=envelope.occurrence_id,
+        character_phase=envelope.character_phase,
         status="applied",
         summary=(
             "The selected direction is now an authoritative working document."
@@ -202,10 +288,7 @@ def _journey_event(
         )
     if envelope.capability_id == "quick_media" or journey.active_action is None:
         return None
-    if envelope.operation_kind == "parent" and envelope.capability_id in {
-        "product_design",
-        "character_design",
-    }:
+    if envelope.operation_kind == "parent" and envelope.capability_id == "product_design":
         # Pair completion belongs to the derivative commit, not parent presence.
         return None
     evidence_kind_by_stage = {
@@ -231,10 +314,45 @@ def _journey_event(
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
             "occurrence_id": occurrence_id,
+            "character_phase": envelope.character_phase,
+            "ledger_revision_id": envelope.requirement_revision_id,
+            "materialization_id": envelope.materialization_id,
+            "receipt_id": f"receipt_{envelope.action_turn_id}",
             "storyboard_draft_preparation_queued": storyboard_draft_preparation_queued,
             "recorded_at": envelope.created_at,
         }
     )
+
+
+def _next_character_target(
+    envelope: ProposalApplicationEnvelopeV1,
+    snapshot: MaterializationAuthoringSnapshotV1,
+) -> tuple[str | None, str | None]:
+    if envelope.capability_id != "character_design":
+        return None, None
+    if envelope.character_phase == "main":
+        return envelope.occurrence_id, "turnaround"
+    current_index = next(
+        (
+            item.occurrence_index
+            for item in snapshot.current_journey.decisions
+            if item.element_kind == "character" and item.occurrence_id == envelope.occurrence_id
+        ),
+        None,
+    )
+    if current_index is None:
+        return None, None
+    next_occurrence_id = next(
+        (
+            item.occurrence_id
+            for item in snapshot.current_journey.decisions
+            if item.element_kind == "character"
+            and item.occurrence_index > current_index
+            and item.outcome == "unresolved"
+        ),
+        None,
+    )
+    return (next_occurrence_id, "main") if next_occurrence_id is not None else (None, None)
 
 
 def _has_storyboard_draft_preparation_evidence(

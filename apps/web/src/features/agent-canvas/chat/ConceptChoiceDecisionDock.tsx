@@ -15,10 +15,6 @@ function optionMarker(index: number): string {
   return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
 }
 
-function allowed(interaction: GuidedInteractionV1, action: string): boolean {
-  return interaction.allowed_actions.includes(action as never);
-}
-
 export function ConceptChoiceDecisionDock({
   interaction,
   pending,
@@ -29,12 +25,9 @@ export function ConceptChoiceDecisionDock({
   const content = interaction.content.content_kind === "concept_choice" ? interaction.content : null;
   if (!content) return null;
 
-  const canCustom = content.allow_custom && allowed(interaction, "custom");
-
   return (
     <DecisionDockFrame
-      title={interaction.title}
-      context={interaction.context}
+      title={interaction.context}
       pending={pending}
       issue={issue}
       showSubmitBar={false}
@@ -56,11 +49,6 @@ export function ConceptChoiceDecisionDock({
           />
         ))}
       </div>
-      <p className="agent-chat__decision-dock-composer-hint">
-        {canCustom
-          ? "Choose an option above, or describe your own direction below."
-          : "Choose an option above, then submit it below."}
-      </p>
     </DecisionDockFrame>
   );
 }

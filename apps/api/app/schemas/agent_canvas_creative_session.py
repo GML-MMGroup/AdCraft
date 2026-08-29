@@ -318,6 +318,14 @@ class DraftReferenceIntentV2(_CreativeSessionModel):
     required: bool = False
     display_order: int = Field(ge=0, le=127)
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "DraftReferenceIntentV2":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character reference identity requires occurrence and phase.")
+        return self
 
 
 class ProposedDraftReferenceV2(DraftReferenceIntentV2):

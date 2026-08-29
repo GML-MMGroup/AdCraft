@@ -34,6 +34,7 @@ AgentRunStatus = Literal[
 AgentEventType = Literal[
     "run_started",
     "output_delta",
+    "presentation_delta",
     "tool_call",
     "tool_result",
     "heartbeat",
@@ -417,6 +418,7 @@ class AgentRunRequest(_StrictModel):
     validation_profile: str | None = Field(default=None, max_length=160)
     validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
+    presentation_channel: Literal["assistant", "node_prompt"] | None = None
 
 
 def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
@@ -488,6 +490,25 @@ class AgentProviderConformanceInputV2(_StrictModel):
         return self
 
 
+class AgentPresentationDeltaV1(_StrictModel):
+    """Explicit user-visible text emitted only through an approved channel."""
+
+    channel: Literal["assistant", "node_prompt"]
+    workflow_id: str = Field(min_length=1, max_length=160)
+    generation_id: str = Field(min_length=1, max_length=160)
+    turn_id: str | None = Field(default=None, max_length=160)
+    node_id: str | None = Field(default=None, max_length=160)
+    node_revision: int | None = Field(default=None, ge=1)
+    text: str = Field(min_length=1, max_length=4_096)
+    response_locale: str | None = Field(default=None, max_length=35)
+
+    @model_validator(mode="after")
+    def validate_text(self) -> "AgentPresentationDeltaV1":
+        if len(self.text.encode("utf-8")) > 4_096:
+            raise ValueError("Presentation text exceeds the UTF-8 byte limit.")
+        return self
+
+
 class AgentRuntimeEvent(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     seq: int = Field(ge=1)
@@ -500,7 +521,9 @@ class AgentRuntimeEvent(_StrictModel):
     @model_validator(mode="after")
     def validate_payload(self) -> AgentRuntimeEvent:
         _validate_safe_payload(self.payload)
-        if self.event_type == "run_completed":
+        if self.event_type == "presentation_delta":
+            AgentPresentationDeltaV1.model_validate(self.payload)
+        elif self.event_type == "run_completed":
             AgentRunCompletedPayload.model_validate(self.payload)
         elif self.event_type == "run_failed":
             AgentRunFailedPayload.model_validate(self.payload)
@@ -667,6 +690,7 @@ AgentNodeRefV2 = Annotated[
 class AgentAssetRefV2(_StrictModel):
     kind: Literal["image_asset"] = "image_asset"
     asset_id: str = Field(min_length=1, max_length=160)
+    version_id: str | None = Field(default=None, max_length=160)
 
 
 class _AgentCommandOperationV2(_StrictModel):

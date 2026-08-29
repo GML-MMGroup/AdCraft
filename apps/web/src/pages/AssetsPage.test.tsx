@@ -87,6 +87,21 @@ describe("AssetsPage", () => {
     expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the comparison grid for Recommended character assets", async () => {
+    canonicalApi.listAgentCanvasRecommendedAssets.mockResolvedValue({
+      items: imageLibraryItems("recommended", "characters", 4),
+    });
+
+    const { container } = render(<AssetsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    await screen.findByRole("button", { name: "Open asset recommended characters 1" });
+
+    expect(container.querySelector('[data-testid="recommended-character-grid"]')).toBeTruthy();
+    expect(container.querySelector(".asset-contact-sheet")).toBeNull();
+    expect(container.querySelectorAll(".recommended-character-card")).toHaveLength(4);
+  });
+
   it("keeps Recommended Assets viewable while using their canonical content URL for the original preview", async () => {
     render(<AssetsPage />);
 

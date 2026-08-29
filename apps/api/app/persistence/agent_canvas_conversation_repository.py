@@ -56,11 +56,13 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
+    AgentCanvasRequirementLedgerRow,
     AgentCanvasNodeRow,
     AgentCanvasSkillRunRow,
     AgentCanvasWorkflowRow,
     WorkflowEventRow,
 )
+from app.schemas.agent_canvas_requirements import CharacterOccurrenceV1
 from app.schemas.agent_canvas_conversation import (
     AgentActionReceiptV2,
     ChatTimelineEntryV2,
@@ -188,6 +190,7 @@ class AgentCanvasConversationRepository:
         *,
         goal: CreativeGoalV2,
         element_decisions: tuple[CreativeElementDecisionV2, ...],
+        character_occurrences: tuple[CharacterOccurrenceV1, ...] | None = None,
         active_style_skill_run_id: str | None,
         response_locale: BCP47Tag = "und",
     ) -> GuidedSessionStateV2:
@@ -231,7 +234,8 @@ class AgentCanvasConversationRepository:
                             active_style_skill_run_id=active_style_skill_run_id,
                             completion_json=completion.model_dump_json(),
                             journey_state_json=initial_production_journey(
-                                element_decisions
+                                element_decisions,
+                                character_occurrences=character_occurrences,
                             ).model_dump_json(),
                             revision=1,
                             created_at=now,
@@ -369,6 +373,7 @@ class AgentCanvasConversationRepository:
         checkpoint_id: str | None = None,
         interaction_title: str | None = None,
         interaction_context: str | None = None,
+        expected_requirement_revision: int | None = None,
     ) -> ChatTurnV2:
         """Atomically publish clarification authority and complete its source Turn."""
 
@@ -377,10 +382,10 @@ class AgentCanvasConversationRepository:
                 "journey_evidence_invalid",
                 "Clarification transition identity is invalid.",
             )
-        if journey.stage != "intake" or journey.stage_status != "waiting_user":
+        if journey.stage not in {"intake", "character"} or journey.stage_status != "waiting_user":
             raise _error(
                 "journey_transition_invalid",
-                "Clarification completion requires a waiting intake journey.",
+                "Clarification completion requires a waiting intake or Character journey.",
             )
         now = _now()
         journey_payload = journey.model_dump(mode="json")
@@ -397,6 +402,25 @@ class AgentCanvasConversationRepository:
                         workflow_id,
                     )
                     session_id = str(session_row["session_id"])
+                    if expected_requirement_revision is not None:
+                        requirement_row = (
+                            connection.execute(
+                                select(AgentCanvasRequirementLedgerRow).where(
+                                    AgentCanvasRequirementLedgerRow.workflow_id == workflow_id
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if (
+                            requirement_row is None
+                            or int(requirement_row["current_revision_no"])
+                            != expected_requirement_revision
+                        ):
+                            raise _error(
+                                "journey_revision_conflict",
+                                "Requirements changed before this clarification transition.",
+                            )
                     event_transition_key = f"journey:{session_id}:{transition_key}"
                     existing_event = (
                         connection.execute(
@@ -3012,6 +3036,16 @@ class AgentCanvasConversationRepository:
                     "capability_turn_id": turn_id,
                     "agent_request_identity": f"capability-retry:{identity}",
                     "created_at": timestamp,
+                    **(
+                        {"result_contract_name": "GuidedScriptCheckpointDraftV1"}
+                        if (
+                            source_envelope.publication_kind == "internal_document"
+                            and source_envelope.capability_id == "script_authoring"
+                            and source_envelope.result_contract_name
+                            == "ScriptMaterializationResultV1"
+                        )
+                        else {}
+                    ),
                 }
             )
         else:
@@ -3549,6 +3583,9 @@ class AgentCanvasConversationRepository:
             objective=goal.summary,
             context_snapshot_id=f"snapshot_{context_digest[:32]}",
             context_snapshot_digest=context_digest,
+            occurrence_id=continuation.occurrence_id,
+            character_phase=continuation.character_phase,
+            action_owner=continuation.action_owner,
             created_at=timestamp,
         )
         journey = parse_production_journey(str(session["journey_state_json"]))
@@ -3620,7 +3657,13 @@ class AgentCanvasConversationRepository:
             source_turn_id=continuation.source_turn_id,
             continuation_turn_id=continuation.continuation_turn_id,
             operation="next_action",
-            payload={"schema_version": "1", "envelope_id": envelope_id},
+            payload={
+                "schema_version": "1",
+                "envelope_id": envelope_id,
+                "occurrence_id": continuation.occurrence_id,
+                "character_phase": continuation.character_phase,
+                "action_owner": continuation.action_owner,
+            },
             max_attempts=continuation.max_attempts,
             now=timestamp,
         )
@@ -4659,7 +4702,7 @@ def _validate_clarification_target(
     target: GuidedProductionJourneyV2,
     turn_id: str,
 ) -> None:
-    if current.stage == "intake" and current.stage_status == "waiting_user":
+    if current.stage in {"intake", "character"} and current.stage_status == "waiting_user":
         expected = current.model_copy(update={"stage_status": "waiting_user"})
         if target != expected:
             raise _error(
@@ -4667,22 +4710,25 @@ def _validate_clarification_target(
                 "Repeated clarification may only retain the current waiting journey.",
             )
         return
-    if current.stage == "intake":
+    if current.stage in {"intake", "character"}:
         evidence = target.transition_evidence[-1] if target.transition_evidence else None
+        expected_evidence_kind = (
+            "creative_goal_validated" if current.stage == "intake" else "clarification_completed"
+        )
         if (
             target.stage_revision != current.stage_revision + 1
             or evidence is None
-            or evidence.evidence_kind != "creative_goal_validated"
+            or evidence.evidence_kind != expected_evidence_kind
             or evidence.source_id != turn_id
         ):
             raise _error(
                 "journey_transition_invalid",
-                "Intake clarification target does not match its source Turn.",
+                "Clarification target does not match its source Turn.",
             )
         return
     raise _error(
         "journey_transition_invalid",
-        "Only a waiting intake journey may publish Intake clarification authority.",
+        "Only an intake or Character journey may publish clarification authority.",
     )
 
 

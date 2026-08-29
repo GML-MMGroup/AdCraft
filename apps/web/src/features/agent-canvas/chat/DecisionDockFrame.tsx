@@ -5,7 +5,7 @@ import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 
 export interface DecisionDockFrameProps {
   title: string;
-  context: string;
+  context?: string;
   pending: boolean;
   issue: DecisionDockIssue | null;
   footerSummary?: string;
@@ -39,7 +39,7 @@ export function DecisionDockFrame({
     <article className="agent-chat__decision-dock" aria-label={title} aria-busy={pending}>
       <header className="agent-chat__decision-dock-header">
         <strong>{title}</strong>
-        <p>{context}</p>
+        {context ? <p>{context}</p> : null}
       </header>
       <div className="agent-chat__decision-dock-body">{children}</div>
       {issue && !issue.fieldId ? (

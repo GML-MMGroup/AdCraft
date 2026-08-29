@@ -21,6 +21,8 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyEvidenceKindV2,
     JourneyStageV2,
 )
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_materialization import (
     MaterializationOperationKindV1,
     ParentDerivedMaterializationIntentV1,
@@ -46,6 +48,10 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     evidence_kind: JourneyEvidenceKindV2
     source_id: str = Field(min_length=1, max_length=160)
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    ledger_revision_id: str | None = Field(default=None, max_length=160)
+    materialization_id: str | None = Field(default=None, max_length=160)
+    receipt_id: str | None = Field(default=None, max_length=160)
     storyboard_draft_preparation_queued: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -64,6 +70,8 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
             raise ValueError(
                 "Storyboard Draft preparation evidence requires storyboard plan or grid preparation."
             )
+        if self.character_phase is not None and self.evidence_kind != "character_materialized":
+            raise ValueError("Character phase is only valid for Character materialization.")
         return self
 
 
@@ -85,6 +93,13 @@ class NodePromptPreparationIntentV1(_MaterializationCommitModel):
     operation_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+    ledger_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    # A detached, immutable context snapshot used by the recovery worker.  It
+    # is optional only for historical hand-built plans; canonical publication
+    # supplies it for every applicable Draft.
+    context: StageAuthoringContextV1 | None = None
 
 
 class MaterializationDocumentWriteV1(_MaterializationCommitModel):
@@ -200,6 +215,12 @@ class MaterializationPlanV1(_MaterializationCommitModel):
             raise ValueError("Prompt preparation operation IDs must be unique.")
         if any(preparation.node_id not in node_ids for preparation in self.prompt_preparations):
             raise ValueError("Every prompt preparation Node must be planned.")
+        for preparation in self.prompt_preparations:
+            if (
+                preparation.context is not None
+                and preparation.context.workflow_id != self.workflow_id
+            ):
+                raise ValueError("Prompt preparation context must belong to the planned Workflow.")
 
         if materialization_plan_digest(self) != self.payload_digest:
             raise ValueError("Materialization plan digest does not match its payload.")

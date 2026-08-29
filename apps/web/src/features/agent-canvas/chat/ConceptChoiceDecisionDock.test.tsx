@@ -41,10 +41,14 @@ const interaction: GuidedInteractionV1 = {
 afterEach(cleanup);
 
 describe("ConceptChoiceDecisionDock", () => {
-  it("shows only the option list and composer hint", () => {
+  it("uses the task context as the single card title and omits the composer hint", () => {
+    const interactionWithProposalTitle = {
+      ...interaction,
+      title: "Warm · Precise · Playful",
+    };
     render(
       <ConceptChoiceDecisionDock
-        interaction={interaction}
+        interaction={interactionWithProposalTitle}
         pending={false}
         issue={null}
         selectedOptionId={null}
@@ -53,7 +57,10 @@ describe("ConceptChoiceDecisionDock", () => {
     );
 
     expect(screen.getAllByRole("radio")).toHaveLength(3);
-    expect(screen.getByText("Choose an option above, or describe your own direction below.")).toBeTruthy();
+    expect(screen.getByRole("article", { name: interaction.context })).toBeTruthy();
+    expect(screen.getByText(interaction.context)).toBeTruthy();
+    expect(screen.queryByText(interactionWithProposalTitle.title)).toBeNull();
+    expect(screen.queryByText("Choose an option above, or describe your own direction below.")).toBeNull();
     expect(screen.queryByRole("button", { name: "References" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Submit/i })).toBeNull();

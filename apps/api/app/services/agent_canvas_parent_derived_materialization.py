@@ -11,12 +11,19 @@ from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_materialization import (
     ParentDerivedMaterializationIntentV1,
     ProposalPublicationEnvelopeV1,
     ProposalReferencePlanV1,
 )
+from app.services.agent_canvas_production_journey_orchestration import (
+    GuidedProductionJourneyService,
+)
+from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 
 
 class ParentDerivedMaterializationCoordinator:
@@ -77,12 +84,65 @@ class ParentDerivedMaterializationCoordinator:
             video_skill_run_id=parent.style_skill_run_id,
             idempotency_key=f"parent-derived:{intent.intent_id}",
         )
+        session = self._conversations.get_guidance_session(parent.workflow_id)
+        derivative_requirement_revision_id = parent.requirement_revision_id
+        derivative_requirement_revision_no = parent.requirement_revision_no
+        if parent.capability_id == "character_design":
+            requirement = AgentCanvasRequirementRepository(
+                self._conversations.database
+            ).get_current(parent.workflow_id)
+            if not any(
+                occurrence.occurrence_id == intent.occurrence_id
+                and occurrence.presence == "include"
+                for occurrence in character_occurrences_for_authoring(requirement)
+            ):
+                raise V2PersistenceError(
+                    "character_occurrence_invalid",
+                    "Character derivative occurrence is not included in the current Ledger.",
+                    stage="parent_derived_materialization",
+                )
+            derivative_requirement_revision_id = requirement.revision_id
+            derivative_requirement_revision_no = requirement.revision_no
+            expected_action_id = f"journey-action:{derivative_turn.turn_id}"
+            active_action = session.journey.active_action
+            if active_action is None:
+                session, result = GuidedProductionJourneyService(
+                    self._conversations
+                ).reserve_next_action(
+                    parent.workflow_id,
+                    action_id=expected_action_id,
+                    turn_id=derivative_turn.turn_id,
+                    expected_session_revision=session.revision,
+                    idempotency_key=f"reserve-parent-derived:{intent.intent_id}",
+                )
+                if (
+                    result.capability_id != "character_design"
+                    or result.occurrence_id != intent.occurrence_id
+                    or result.character_phase != "turnaround"
+                ):
+                    raise V2PersistenceError(
+                        "character_authoring_phase_invalid",
+                        "Character derivative does not match the current authoring phase.",
+                        stage="parent_derived_materialization",
+                    )
+            elif (
+                active_action.action_id != expected_action_id
+                or active_action.occurrence_id != intent.occurrence_id
+                or active_action.character_phase != "turnaround"
+            ):
+                raise V2PersistenceError(
+                    "character_authoring_phase_invalid",
+                    "Another Character authoring action owns the current phase.",
+                    stage="parent_derived_materialization",
+                )
         envelope = self.build_derivative_envelope(
             parent,
             intent=intent,
             turn_id=derivative_turn.turn_id,
             conversation_id=derivative_turn.conversation_id,
             expected_session_revision=session.revision,
+            requirement_revision_id=derivative_requirement_revision_id,
+            requirement_revision_no=derivative_requirement_revision_no,
         )
         lease_guard()
         return self._materializations.queue_derivative(
@@ -108,6 +168,8 @@ class ParentDerivedMaterializationCoordinator:
         turn_id: str,
         conversation_id: str,
         expected_session_revision: int,
+        requirement_revision_id: str | None = None,
+        requirement_revision_no: int | None = None,
     ) -> ProposalPublicationEnvelopeV1:
         """Compile the deterministic derivative envelope without I/O."""
 
@@ -131,6 +193,18 @@ class ParentDerivedMaterializationCoordinator:
             selection_actor="agent",
             selection_reason="Continue the accepted identity as its derived reference.",
             capability_id=parent.capability_id,
+            occurrence_id=parent.occurrence_id,
+            character_phase=("turnaround" if parent.capability_id == "character_design" else None),
+            requirement_revision_id=(
+                requirement_revision_id
+                if requirement_revision_id is not None
+                else parent.requirement_revision_id
+            ),
+            requirement_revision_no=(
+                requirement_revision_no
+                if requirement_revision_no is not None
+                else parent.requirement_revision_no
+            ),
             selected_option=parent.selected_option,
             reference_plan=ProposalReferencePlanV1(
                 plan_id="reference_plan_" + _digest(reference_plan_identity)[:32],

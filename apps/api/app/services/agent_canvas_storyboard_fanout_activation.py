@@ -65,6 +65,26 @@ class StoryboardFanoutActivationService:
             fanout.prompt_preparation_keys,
             strict=True,
         ):
+            current_node = self._workflows.get_node(fanout.workflow_id, plan.node_id)
+            current_preparation = getattr(current_node, "prompt_preparation", None)
+            if getattr(current_preparation, "status", None) in {"queued", "working"}:
+                # A dependency wave may already own this node through the
+                # durable prompt-preparation dispatch.  Calling prepare here
+                # would race that owner and advance the node revision behind
+                # the dispatch snapshot, so leave the existing worker/barrier
+                # path in charge.
+                prepared_node_ids.append(plan.node_id)
+                continue
+            current_operation_id = getattr(
+                current_preparation,
+                "operation_id",
+                None,
+            )
+            if isinstance(current_operation_id, str) and current_operation_id:
+                # A dependency wave may have superseded the plan's original
+                # preparation identity.  Reuse the durable current owner;
+                # never restart a stale operation during media confirmation.
+                operation_id = current_operation_id
             self._prompt_preparation.prepare(
                 fanout.workflow_id,
                 plan.node_id,

@@ -27,6 +27,7 @@ class EditingVideoEntryV2(_EditingModel):
     binding_id: str | None = Field(default=None, min_length=1)
     asset_id: str | None = Field(default=None, min_length=1)
     enabled: bool = True
+    timeline_start_seconds: float | None = Field(default=None, ge=0.0)
     trim_start_seconds: float = Field(default=0.0, ge=0.0)
     trim_end_seconds: float | None = Field(default=None, gt=0.0)
     volume: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -82,6 +83,7 @@ class EditingManifestV2(_EditingModel):
     bgm: EditingBgmEntryV2 | None = None
     output: EditingOutputSettingsV2 = Field(default_factory=EditingOutputSettingsV2)
     manifest_revision: int = Field(default=1, ge=1)
+    timeline_duration_seconds: float | None = Field(default=None, gt=0.0)
 
     @model_validator(mode="after")
     def validate_unique_sources(self) -> "EditingManifestV2":

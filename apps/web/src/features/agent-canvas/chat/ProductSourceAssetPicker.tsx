@@ -9,6 +9,7 @@ import {
 } from "../../../icons.tsx";
 import type { AgentAssetBrowserItem } from "../assets/assetSelection.ts";
 import type { ProductSourceDraftItem } from "./productSourceSelection.ts";
+import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 
 export interface ProductSourceAssetPickerProps {
   items: AgentAssetBrowserItem[];
@@ -104,7 +105,7 @@ export function ProductSourceAssetPicker({
               onClick={() => onSelectAsset(item)}
             >
               <span className="agent-chat__product-source-asset-preview">
-                {item.previewUrl ? <img src={item.previewUrl} alt="" /> : <ImageIcon aria-hidden="true" />}
+                {item.previewUrl ? <StableMediaPreview src={item.previewUrl} alt="" /> : <ImageIcon aria-hidden="true" />}
               </span>
               <span title={item.displayName}>{item.displayName}</span>
             </button>
@@ -131,7 +132,7 @@ export function ProductSourceAssetPicker({
             <li key={item.key}>
               <span className="agent-chat__product-source-selected-order">{index + 1}</span>
               <span className="agent-chat__product-source-selected-preview">
-                {item.previewUrl ? <img src={item.previewUrl} alt="" /> : <ImageIcon aria-hidden="true" />}
+                {item.previewUrl ? <StableMediaPreview src={item.previewUrl} alt="" /> : <ImageIcon aria-hidden="true" />}
               </span>
               <span className="agent-chat__product-source-selected-name" title={item.displayName}>
                 {item.displayName}

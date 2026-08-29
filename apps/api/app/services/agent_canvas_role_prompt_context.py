@@ -146,6 +146,45 @@ class RolePromptContextProjector:
                 "A bound Node reference is missing its exact revision.",
             )
         role_variant = resolve_role_prompt_variant(node)
+        occurrence_id: str | None = None
+        character_phase = None
+        if role_variant in {"character_main", "character_turnaround"}:
+            occurrence_value = node.metadata.get("occurrence_id")
+            phase_value = node.metadata.get("character_phase")
+            ledger_revision_id = node.metadata.get("requirement_revision_id")
+            ledger_revision_no = node.metadata.get("requirement_revision_no")
+            if (
+                not isinstance(occurrence_value, str)
+                or stage_context.occurrence_id != occurrence_value
+            ):
+                raise _error(
+                    "character_occurrence_invalid",
+                    "Character prompt context does not match the current occurrence.",
+                )
+            expected_phase = "main" if role_variant == "character_main" else "turnaround"
+            if phase_value != expected_phase:
+                raise _error(
+                    "character_authoring_phase_invalid",
+                    "Character prompt context does not match the current phase.",
+                )
+            if (
+                ledger_revision_id != requirement_revision_id
+                or ledger_revision_no != requirement_revision_no
+            ):
+                raise _error(
+                    "node_prompt_context_stale",
+                    "Character prompt context does not match the frozen Requirement Ledger.",
+                )
+            if (
+                stage_context.internal_skill_ref
+                != "agent/skills/video_agent_character_design/SKILL.md"
+            ):
+                raise _error(
+                    "node_prompt_context_stale",
+                    "Character prompt context requires the internal Character Skill.",
+                )
+            occurrence_id = occurrence_value
+            character_phase = expected_phase
         selected = stage_context.selected_concept
         selected_direction = node.summary_prompt or (
             selected.public_summary if selected is not None else None
@@ -158,6 +197,8 @@ class RolePromptContextProjector:
             role_variant=role_variant,
             requirement_revision_id=requirement_revision_id,
             requirement_revision_no=requirement_revision_no,
+            occurrence_id=occurrence_id,
+            character_phase=character_phase,
             requirement_facts=_role_requirement_facts(
                 stage_context.requirement_facts,
                 role_variant,
@@ -167,7 +208,10 @@ class RolePromptContextProjector:
             user_prompt=_authoring_user_prompt(node),
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
             internal_skill_ref=stage_context.internal_skill_ref,
-            style_projection=_aesthetic_style_projection(stage_context.style_projection),
+            style_projection=_aesthetic_style_projection(
+                stage_context.style_projection,
+                role_variant=role_variant,
+            ),
             world_view_projection=world_view_projection,
             bindings=bindings,
             explicit_controls=explicit_controls or {},
@@ -263,20 +307,40 @@ def _role_requirement_facts(
     role_variant: RolePromptVariantV2,
 ) -> dict[str, JsonValue]:
     prefixes = _ROLE_REQUIREMENT_PREFIXES[role_variant]
-    return {
+    projected = {
         key: value
         for key, value in sorted(facts.items())
-        if key in _GLOBAL_REQUIREMENT_FIELDS or key.startswith(prefixes)
+        if (key in _GLOBAL_REQUIREMENT_FIELDS or key.startswith(prefixes))
+        and key not in {"character_occurrences", "character_roster"}
     }
+    return projected
 
 
-def _aesthetic_style_projection(value: str | None) -> str | None:
+def _aesthetic_style_projection(
+    value: str | None,
+    *,
+    role_variant: RolePromptVariantV2,
+) -> str | None:
     if value is None:
         return None
     retained = []
     for line in value.splitlines():
         lowered = line.casefold()
         if any(re.search(rf"\b{re.escape(field)}\b", lowered) for field in _STYLE_CONTROL_FIELDS):
+            continue
+        if role_variant in {"character_main", "character_turnaround"} and any(
+            term in lowered
+            for term in (
+                "photorealistic",
+                "photo-realistic",
+                "live action",
+                "live-action",
+                "group portrait",
+                "whole cast",
+                "text label",
+                "labels",
+            )
+        ):
             continue
         if line.strip():
             retained.append(line.strip())

@@ -59,6 +59,7 @@ class ChatTurnAcceptedV2(_ConversationModel):
     retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     retry_attempt_no: int = Field(default=1, ge=1)
     replayed: bool = False
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
 
 
 class ChatTurnRetryRequestV1(_ConversationModel):
@@ -74,6 +75,9 @@ class ContinuationDeliveryV2(_ConversationModel):
     continuation_turn_id: str
     operation: ContinuationOperationV2
     envelope_id: str = Field(exclude=True)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
+    action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] | None = None
     payload_digest: str
     status: Literal[
         "queued",
@@ -102,7 +106,16 @@ class ContinuationCommitV2(_ConversationModel):
     source_action_id: str
     idempotency_key: str
     video_skill_run_id: str | None = None
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
+    action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     max_attempts: int = Field(default=5, ge=1)
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "ContinuationCommitV2":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character continuation identity requires occurrence and phase.")
+        return self
 
 
 class ChatTurnV2(_ConversationModel):
@@ -423,6 +436,8 @@ class AgentActionReceiptV2(_ConversationModel):
     proposal_option_id: str | None = Field(default=None, max_length=160)
     proposal_action: ProposalActionTypeV2 | None = None
     actor_kind: Literal["agent", "user", "system"] = "system"
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
     idempotency_key: str | None = Field(default=None, max_length=256)
     status: Literal[
         "applied",

@@ -213,7 +213,7 @@ class AgentCanvasVideoParameterCompiler:
             for field in derived_provenance
         }
         if derived_parameters:
-            self._authoring.replace_derived_video_parameters(
+            node = self._authoring.replace_derived_video_parameters(
                 node.workflow_id,
                 node.node_id,
                 expected_node_revision=node.revision,

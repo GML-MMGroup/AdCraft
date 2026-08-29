@@ -13,6 +13,7 @@ class FfmpegResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
+    timed_out: bool = False
 
     @property
     def ok(self) -> bool:
@@ -193,6 +194,84 @@ class FfmpegTool:
             stderr=completed.stderr or "",
         )
 
+    def run_command_with_timeout(
+        self,
+        command: list[str],
+        timeout_seconds: float,
+    ) -> FfmpegResult:
+        """Run a bounded compiler command through the existing FFmpeg boundary."""
+
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return FfmpegResult(
+                command=command,
+                returncode=1,
+                stdout=_completed_text(exc.stdout),
+                stderr="FFmpeg command timed out.",
+                timed_out=True,
+            )
+        except OSError as exc:
+            return FfmpegResult(command=command, returncode=1, stderr=str(exc))
+        return FfmpegResult(
+            command=command,
+            returncode=completed.returncode,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
+        )
+
+    def compose_image_grid(
+        self,
+        input_paths: list[Path],
+        output_path: Path,
+        *,
+        columns: int,
+        rows: int,
+        cell_width: int,
+        cell_height: int,
+        timeout_seconds: float,
+    ) -> FfmpegResult:
+        """Compose trusted image paths using a bounded scale-and-pad graph."""
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        filters: list[str] = []
+        for index in range(len(input_paths)):
+            filters.append(
+                f"[{index}:v]scale={cell_width}:{cell_height}:"
+                "force_original_aspect_ratio=decrease,"
+                f"pad={cell_width}:{cell_height}:(ow-iw)/2:(oh-ih)/2:color=black[grid{index}]"
+            )
+        layout = "|".join(
+            f"{(index % columns) * cell_width}_{(index // columns) * cell_height}"
+            for index in range(len(input_paths))
+        )
+        inputs = "".join(f"[grid{index}]" for index in range(len(input_paths)))
+        filters.append(f"{inputs}xstack=inputs={len(input_paths)}:layout={layout}:fill=black[out]")
+        command = [
+            self._ffmpeg_path,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            *[argument for path in input_paths for argument in ("-i", path.as_posix())],
+            "-filter_complex",
+            ";".join(filters),
+            "-map",
+            "[out]",
+            "-frames:v",
+            "1",
+            "-f",
+            "image2",
+            output_path.as_posix(),
+        ]
+        return self.run_command_with_timeout(command, timeout_seconds)
+
     def _execute(self, command: list[str]) -> FfmpegResult:
         if self._dry_run:
             return FfmpegResult(command=command, returncode=0)
@@ -254,6 +333,14 @@ def _overlay_expression(watermark: Watermark) -> str:
         "center": "(main_w-overlay_w)/2:(main_h-overlay_h)/2",
     }
     return positions[watermark.position]
+
+
+def _completed_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _enable_expression(watermark: Watermark) -> str:

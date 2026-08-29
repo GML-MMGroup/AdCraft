@@ -8,6 +8,7 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
+from app.schemas.agent_canvas_guided_product import GuidedProductSourceActionV1
 from app.schemas.language import BCP47Tag
 
 
@@ -30,8 +31,16 @@ class GuidedAcceptedReferenceV1(_GuidedInteractionModel):
     required: bool = False
     display_order: int = Field(ge=0, le=127)
     semantic_reference_role: str | None = Field(default=None, max_length=80)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: Literal["main", "turnaround"] | None = None
     display_name: str = Field(min_length=1, max_length=256)
     media_type: Literal["text", "image", "video", "audio"]
+
+    @model_validator(mode="after")
+    def validate_character_identity(self) -> "GuidedAcceptedReferenceV1":
+        if (self.occurrence_id is None) != (self.character_phase is None):
+            raise ValueError("Character reference identity requires occurrence and phase.")
+        return self
 
 
 class GuidedChoiceOptionV1(_GuidedInteractionModel):
@@ -74,6 +83,23 @@ class GuidedQuestionnaireV1(_GuidedInteractionModel):
         return self
 
 
+class GuidedProductSourceQuestionV1(_GuidedInteractionModel):
+    content_kind: Literal["product_source"] = "product_source"
+    input_kind: Literal["main", "multiview"]
+    question_id: str = Field(min_length=1, max_length=160)
+    prompt: str = Field(min_length=1, max_length=512)
+    expected_guidance_revision: int = Field(ge=1)
+    min_asset_count: int = Field(ge=1, le=8)
+    max_asset_count: int = Field(ge=1, le=8)
+
+    @model_validator(mode="after")
+    def validate_asset_count_contract(self) -> "GuidedProductSourceQuestionV1":
+        expected = (1, 1) if self.input_kind == "main" else (2, 8)
+        if (self.min_asset_count, self.max_asset_count) != expected:
+            raise ValueError("Product source question has an invalid asset count contract.")
+        return self
+
+
 class GuidedConceptChoiceV2(_GuidedInteractionModel):
     content_kind: Literal["concept_choice"] = "concept_choice"
     proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -105,18 +131,23 @@ class GuidedMediaReviewV1(_GuidedInteractionModel):
 
 
 GuidedInteractionContentV1: TypeAlias = Annotated[
-    GuidedQuestionnaireV1 | GuidedConceptChoiceV2 | GuidedMediaReviewV1,
+    GuidedQuestionnaireV1
+    | GuidedProductSourceQuestionV1
+    | GuidedConceptChoiceV2
+    | GuidedMediaReviewV1,
     Field(discriminator="content_kind"),
 ]
 
 GuidedInteractionKindV1 = Literal[
     "clarification_questionnaire",
+    "product_source",
     "concept_choice",
     "media_review",
 ]
 GuidedInteractionStatusV1 = Literal["open", "submitted", "closed", "superseded"]
 GuidedInteractionActionV1 = Literal[
     "answer",
+    "select_source",
     "select",
     "custom",
     "skip",
@@ -152,6 +183,7 @@ class GuidedInteractionV1(_GuidedInteractionModel):
     def validate_kind_content(self) -> "GuidedInteractionV1":
         expected_content = {
             "clarification_questionnaire": "questionnaire",
+            "product_source": "product_source",
             "concept_choice": "concept_choice",
             "media_review": "media_review",
         }[self.kind]
@@ -227,8 +259,18 @@ class GuidedMediaReviewSubmitV1(_GuidedInteractionModel):
     instruction: str | None = Field(default=None, min_length=1, max_length=2_048)
 
 
+class GuidedProductSourceSubmitV1(_GuidedInteractionModel):
+    submission_kind: Literal["product_source"]
+    expected_interaction_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    action: GuidedProductSourceActionV1
+
+
 GuidedInteractionSubmitRequestV1: TypeAlias = Annotated[
-    GuidedQuestionnaireSubmitV1 | GuidedConceptSubmitV2 | GuidedMediaReviewSubmitV1,
+    GuidedQuestionnaireSubmitV1
+    | GuidedProductSourceSubmitV1
+    | GuidedConceptSubmitV2
+    | GuidedMediaReviewSubmitV1,
     Field(discriminator="submission_kind"),
 ]
 
@@ -256,6 +298,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
     kind: Literal[
         "clarification",
         "concept_selection",
+        "product_source",
         "media_review",
         "manual_node_run",
         "milestone_idle",
@@ -275,7 +318,12 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
 
     @model_validator(mode="after")
     def validate_resume_evidence(self) -> "GuidanceAwaitingV2":
-        interaction_kinds = {"clarification", "concept_selection", "media_review"}
+        interaction_kinds = {
+            "clarification",
+            "concept_selection",
+            "product_source",
+            "media_review",
+        }
         if self.kind in interaction_kinds:
             if (
                 self.interaction_id is None

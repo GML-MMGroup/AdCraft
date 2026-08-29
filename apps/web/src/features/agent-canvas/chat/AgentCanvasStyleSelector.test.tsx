@@ -5,7 +5,9 @@ import { resolve } from "node:path";
 
 import { agentCanvasApi, V2ApiError } from "../../../api/agentCanvasApi.ts";
 import type { ActiveStyleSkillSummaryV2, VideoSkillCatalogResponseV2 } from "../../../types-v2.ts";
+import { __resetStableMediaCacheForTests } from "../../../workflow/stableMediaCache.ts";
 import { AgentCanvasStyleSelector } from "./AgentCanvasStyleSelector.tsx";
+import { SkillPreview } from "./SkillPreview.tsx";
 
 const activeStyle: ActiveStyleSkillSummaryV2 = {
   skill_run_id: "style-run-1",
@@ -52,10 +54,31 @@ const catalog: VideoSkillCatalogResponseV2 = {
 
 afterEach(() => {
   cleanup();
+  __resetStableMediaCacheForTests();
   vi.restoreAllMocks();
 });
 
 describe("AgentCanvasStyleSelector", () => {
+  it("renders the backend-provided Skill preview URL without a frontend Skill map", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("image", { status: 200 }));
+    render(
+      <SkillPreview
+        preview={{
+          kind: "image",
+          summary: "Public preview.",
+          media_url: "/api/v2/video-skills/cinematic/preview?v=1.0.0",
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/video-skills/cinematic/preview?v=1.0.0",
+      expect.objectContaining({ cache: "force-cache", credentials: "same-origin" }),
+    ));
+    expect(document.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+  });
+
   it("uses the Skill asset for the compact trigger and exposes a Skill tooltip", () => {
     render(
       <AgentCanvasStyleSelector
@@ -98,6 +121,7 @@ describe("AgentCanvasStyleSelector", () => {
     expect(within(dialog).queryByText("general advertising")).toBeNull();
     expect(within(dialog).queryByText("commercial")).toBeNull();
     expect(within(dialog).getByText("Choose visual language")).toBeTruthy();
+    expect(within(dialog).queryByText("Using · Platform Default")).toBeNull();
   });
 
   it("renders the Skill picker in a viewport-level modal like Agent Documents", async () => {
@@ -126,11 +150,14 @@ describe("AgentCanvasStyleSelector", () => {
     const panelRule = css.match(/\.agent-chat__style-menu\s*\{([\s\S]*?)\n\}/m)?.[1];
     const headerRule = css.match(/\.agent-chat__style-menu-header\s*\{([\s\S]*?)\n\}/m)?.[1];
     const closeRule = css.match(/\.agent-chat__style-menu-header button\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const categoryButtonRule = css.match(/\.agent-chat__style-categories button\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(css).toContain("--style-panel: #181818;");
     expect(css).toContain("--style-header: #1c1c1c;");
     expect(css).toContain("--style-surface: #222222;");
     expect(panelRule).toContain("background: var(--style-panel)");
+    expect(panelRule).toContain("width: min(880px, calc(100vw - 48px))");
+    expect(panelRule).toContain("max-height: min(860px, calc(100dvh - 48px))");
     expect(panelRule).toContain("box-shadow: 0 24px 58px rgb(0 0 0 / 58%)");
     expect(headerRule).toContain("background: var(--style-header)");
     expect(closeRule).toContain("width: 30px");
@@ -138,6 +165,16 @@ describe("AgentCanvasStyleSelector", () => {
     expect(css).toMatch(
       /@media \(max-width: 560px\)[\s\S]*\.agent-chat__style-list\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/,
     );
+    expect(panelRule).toBeTruthy();
+    const styleListRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
+    expect(styleListRule).toContain("height: min(602px, calc(56.25vw + 89px))");
+    expect(styleListRule).toContain("max-height: calc(100dvh - 170px)");
+    expect(styleListRule).toContain("grid-auto-rows: max-content");
+    expect(styleListRule).toContain("overflow-y: auto");
+    expect(css).toContain("height: min(620px, calc(100dvh - 170px))");
+    expect(css).toContain("min-height: 32px");
+    expect(css).toContain("padding: 7px 11px");
+    expect(categoryButtonRule).toContain("font-size: 11px");
   });
 
   it("fills the modal with a card-shaped loading state while the catalog is pending", async () => {
@@ -206,8 +243,17 @@ describe("AgentCanvasStyleSelector", () => {
       .toBe("placeholder");
   });
 
-  it("keeps search hidden for a short catalog and gives the large two-column rail its own scroll viewport", async () => {
-    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(catalog);
+  it("never renders a Skill search box, even for a large catalog", async () => {
+    const largeCatalog: VideoSkillCatalogResponseV2 = {
+      ...catalog,
+      items: Array.from({ length: 9 }, (_, index) => ({
+        ...catalog.items[0],
+        skill_id: `cinematic-${index}`,
+        title: `Cinematic ${index}`,
+        display_order: index,
+      })),
+    };
+    vi.spyOn(agentCanvasApi, "listVideoSkills").mockResolvedValue(largeCatalog);
 
     render(
       <AgentCanvasStyleSelector
@@ -220,6 +266,8 @@ describe("AgentCanvasStyleSelector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skill" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose video Style" });
     expect(within(dialog).queryByRole("searchbox")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Cinematic Narrative" }));
+    expect(within(dialog).getAllByText(/^Cinematic \d+$/)).toHaveLength(9);
 
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");
@@ -227,7 +275,7 @@ describe("AgentCanvasStyleSelector", () => {
     const cardRule = css.match(/\.agent-chat__style-menu \.agent-chat__style-option\s*\{([\s\S]*?)\n\}/m)?.[1];
     const previewRule = css.match(/\.agent-chat__style-preview\s*\{([\s\S]*?)\n\}/m)?.[1];
     expect(listRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
-    expect(listRule).toContain("flex: 1 1 auto");
+    expect(listRule).toContain("flex: 0 1 auto");
     expect(listRule).toContain("min-height: 0");
     expect(listRule).toContain("overflow-y: auto");
     expect(cardRule).toContain("display: flex");

@@ -17,7 +17,11 @@ from app.persistence.agent_run_repository import (
     AgentRunRepositoryError,
 )
 from app.persistence.database import create_v2_database
-from app.schemas.agent_runtime import AgentRunRequest, AgentRuntimeEvent
+from app.schemas.agent_runtime import (
+    AgentPresentationDeltaV1,
+    AgentRunRequest,
+    AgentRuntimeEvent,
+)
 from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
@@ -156,6 +160,7 @@ class DurablePiRunService:
         identity_fields: Mapping[str, str | int],
         model_ref: str | None = None,
         on_dispatch_owned: Callable[[AgentRunRequest], None] | None = None,
+        on_presentation: Callable[[AgentPresentationDeltaV1], None] | None = None,
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
@@ -299,7 +304,26 @@ class DurablePiRunService:
 
             if on_dispatch_owned is not None:
                 on_dispatch_owned(request)
-            outcome = self._client.run(request, on_event=persist_event)
+
+            def deliver_presentation(presentation: AgentPresentationDeltaV1) -> None:
+                if on_presentation is None or request.presentation_channel != presentation.channel:
+                    return
+                try:
+                    on_presentation(presentation)
+                except Exception:
+                    _LOGGER.warning(
+                        "Presentation delivery callback failed; preserving Agent operation.",
+                        extra={"run_id": request.run_id},
+                    )
+
+            if on_presentation is None:
+                outcome = self._client.run(request, on_event=persist_event)
+            else:
+                outcome = self._client.run(
+                    request,
+                    on_event=persist_event,
+                    on_presentation=deliver_presentation,
+                )
             terminal = outcome.terminal_event
             status = _TERMINAL_STATUS_BY_EVENT.get(terminal.event_type)
             if status is None:

@@ -15,7 +15,11 @@ from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
-from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
+from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
+from app.schemas.agent_canvas_prompt_assertion import (
+    PromptAssertionSourceSnapshotV1,
+    safe_prompt_assertion_metadata,
+)
 from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
@@ -32,10 +36,18 @@ from app.services.agent_canvas_role_prompt_context import (
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.services.agent_trace import V2AgentTraceWriter
+from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
 
 RoleBriefAuthor = Callable[[RolePromptPreparationContextV2, str], RoleCreativeBriefV2]
 _GUIDED_REVIEW_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
+
+
+def _prompt_stream_id(workflow_id: str, node_id: str, operation_id: str) -> str:
+    """Derive a stable opaque identity for one prompt generation."""
+
+    digest = sha256(f"prompt:{workflow_id}:{node_id}:{operation_id}".encode("utf-8")).hexdigest()
+    return f"prs_{digest[:32]}"
 
 
 class NodePromptPreparationService:
@@ -47,10 +59,12 @@ class NodePromptPreparationService:
         *,
         role_brief_author: RoleBriefAuthor | None = None,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
+        presentation_publisher: PresentationStreamPublisher | None = None,
     ) -> None:
         self._workflows = workflows
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
+        self._presentation_publisher = presentation_publisher
         self._projector = RolePromptContextProjector()
         self._recipes = RolePromptRecipeRegistry()
         self._parameter_resolver = RolePromptParameterResolver()
@@ -74,16 +88,38 @@ class NodePromptPreparationService:
         ):
             return current
         snapshot_digest = context_digest(context)
+        presentation_stream = None
+        if self._presentation_publisher is not None:
+            presentation_stream = self._presentation_publisher.create_prompt_stream(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                node_revision=current.revision,
+                generation_id=operation_id,
+                stream_id=_prompt_stream_id(workflow_id, node_id, operation_id),
+                idempotency_key=f"prompt:{workflow_id}:{node_id}:{operation_id}",
+            )
+            if presentation_stream is not None:
+                self._presentation_publisher.started(presentation_stream)
         working = self._transition(
             current,
             NodePromptPreparationV1(
                 status="working",
                 operation_id=operation_id,
+                presentation_stream_id=(
+                    presentation_stream.stream_id if presentation_stream is not None else None
+                ),
                 attempt_no=current.prompt_preparation.attempt_no + 1,
                 context_snapshot_id=snapshot_digest,
+                occurrence_id=(
+                    str(current.metadata["occurrence_id"])
+                    if current.metadata.get("occurrence_id")
+                    else None
+                ),
+                character_phase=current.metadata.get("character_phase"),
                 updated_at=_now(),
             ),
         )
+        role_context: RolePromptPreparationContextV2 | None = None
         try:
             role_context = self._project_context(working, context)
             if self._role_brief_author is not None:
@@ -163,12 +199,31 @@ class NodePromptPreparationService:
                         "prepared_reference_snapshots": [
                             item.model_dump(mode="json") for item in role_context.bindings
                         ],
+                        **(
+                            {
+                                "prompt_occurrence_id": role_context.occurrence_id,
+                                "prompt_character_phase": role_context.character_phase,
+                                "prompt_requirement_revision_id": (
+                                    role_context.requirement_revision_id
+                                ),
+                                "prompt_requirement_revision_no": (
+                                    role_context.requirement_revision_no
+                                ),
+                            }
+                            if role_context.occurrence_id is not None
+                            else {}
+                        ),
                     },
                     "revision": working.revision + 1,
                     "updated_at": _now(),
                     "prompt_preparation": NodePromptPreparationV1(
                         status="ready",
                         operation_id=operation_id,
+                        presentation_stream_id=(
+                            presentation_stream.stream_id
+                            if presentation_stream is not None
+                            else None
+                        ),
                         attempt_no=working.prompt_preparation.attempt_no,
                         context_snapshot_id=snapshot_digest,
                         prompt_digest=digest,
@@ -178,6 +233,8 @@ class NodePromptPreparationService:
                         recipe_digest=recipe.recipe_digest,
                         requirement_revision_id=role_context.requirement_revision_id,
                         requirement_revision_no=role_context.requirement_revision_no,
+                        occurrence_id=role_context.occurrence_id,
+                        character_phase=role_context.character_phase,
                         document_revisions=role_context.document_revisions,
                         binding_digest=compiled_prompt.reference_bundle_digest,
                         style_projection_digest=compiled_prompt.style_projection_digest,
@@ -189,7 +246,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, ready)
+            persisted = self._persist(working, ready, context=context)
             self._append_trace(
                 persisted,
                 prompt=prompt,
@@ -198,10 +255,22 @@ class NodePromptPreparationService:
                 started_at=started_at,
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
+            if presentation_stream is not None and self._presentation_publisher is not None:
+                self._presentation_publisher.publish_validated_text(presentation_stream, prompt)
+                self._presentation_publisher.commit(
+                    presentation_stream,
+                    authoritative_id=f"{node_id}:{persisted.revision}",
+                    content=prompt,
+                )
             return persisted
         except Exception as error:
             error_code = (
                 error.code if isinstance(error, V2PersistenceError) else "prompt_preparation_failed"
+            )
+            failed_recipe = (
+                self._recipes.resolve(role_context.role_variant)
+                if role_context is not None
+                else None
             )
             failed = working.model_copy(
                 update={
@@ -210,8 +279,33 @@ class NodePromptPreparationService:
                     "prompt_preparation": NodePromptPreparationV1(
                         status="failed",
                         operation_id=operation_id,
+                        presentation_stream_id=(
+                            presentation_stream.stream_id
+                            if presentation_stream is not None
+                            else None
+                        ),
                         attempt_no=working.prompt_preparation.attempt_no,
                         context_snapshot_id=snapshot_digest,
+                        occurrence_id=working.prompt_preparation.occurrence_id,
+                        character_phase=working.prompt_preparation.character_phase,
+                        role_variant=(role_context.role_variant if role_context else None),
+                        recipe_id=(failed_recipe.recipe_id if failed_recipe else None),
+                        recipe_version=(failed_recipe.recipe_version if failed_recipe else None),
+                        recipe_digest=(failed_recipe.recipe_digest if failed_recipe else None),
+                        requirement_revision_id=(
+                            role_context.requirement_revision_id if role_context else None
+                        ),
+                        requirement_revision_no=(
+                            role_context.requirement_revision_no if role_context else None
+                        ),
+                        document_revisions=(
+                            role_context.document_revisions if role_context else {}
+                        ),
+                        binding_digest=(
+                            _role_binding_digest(role_context.bindings)
+                            if role_context is not None
+                            else None
+                        ),
                         error=CanvasNodeErrorV2(
                             code=error_code,
                             message="Node prompt preparation failed.",
@@ -222,7 +316,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, failed)
+            persisted = self._persist(working, failed, context=context)
             self._append_trace(
                 persisted,
                 prompt=current.summary_prompt or current.generation_prompt or "",
@@ -231,7 +325,104 @@ class NodePromptPreparationService:
                 started_at=started_at,
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
+            if presentation_stream is not None and self._presentation_publisher is not None:
+                self._presentation_publisher.fail(presentation_stream, error_code)
             raise error
+
+    def invalidate_for_dependency_change(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+    ) -> CanvasNodeV2:
+        """Invalidate one prepared Draft and create its successor identity."""
+
+        current = self._workflows.get_node(workflow_id, node_id)
+        if current.prompt_preparation.operation_id != operation_id:
+            raise V2PersistenceError(
+                "node_prompt_preparation_conflict",
+                "Prompt preparation operation identity changed before invalidation.",
+                stage="node_prompt_preparation",
+            )
+        if current.prompt_preparation.status != "ready":
+            return current
+        if (
+            self._presentation_publisher is not None
+            and current.prompt_preparation.presentation_stream_id is not None
+        ):
+            stream = self._presentation_publisher.get(
+                workflow_id,
+                current.prompt_preparation.presentation_stream_id,
+            )
+            if stream is not None:
+                self._presentation_publisher.supersede(stream)
+        return self._workflows.invalidate_prompt_preparation_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
+        )
+
+    def refresh_dependency_evidence(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+    ) -> CanvasNodeV2:
+        """Atomically recompile current dependency evidence without reauthoring."""
+
+        current = self._workflows.get_node(workflow_id, node_id)
+        preparation = current.prompt_preparation
+        if preparation.operation_id != operation_id:
+            raise V2PersistenceError(
+                "node_prompt_preparation_conflict",
+                "Prompt preparation operation identity changed before evidence refresh.",
+                stage="node_prompt_preparation",
+            )
+        if preparation.status != "ready" or preparation.assertion_evidence is None:
+            raise V2PersistenceError(
+                "node_prompt_preparation_not_ready",
+                "Current prompt preparation evidence is not ready for dependency refresh.",
+                stage="node_prompt_preparation",
+                details={"retryable": True},
+            )
+        bindings = self._binding_snapshots(current)
+        binding_sources = tuple(
+            PromptAssertionSourceSnapshotV1(
+                source_kind="binding",
+                binding_id=item.binding_id,
+                binding_revision=item.binding_revision,
+                source_node_id=item.source_node_id,
+                source_node_revision=item.source_node_revision,
+                asset_id=item.asset_id,
+                asset_version_id=item.asset_version_id,
+                reference_purpose=item.reference_purpose,
+                sequence_id=item.source_sequence_id,
+            )
+            for item in bindings
+        )
+        evidence = preparation.assertion_evidence
+        current_sources = binding_sources + tuple(
+            item for item in evidence.source_snapshots if item.source_kind != "binding"
+        )
+        binding_digest = _role_binding_digest(bindings)
+        if (
+            current_sources == evidence.source_snapshots
+            and preparation.binding_digest == binding_digest
+        ):
+            return current
+        # Dependency evidence is an immutable part of the preparation
+        # operation.  Once a source snapshot changes, never rewrite that
+        # evidence in place: supersede the old identity and enqueue exactly
+        # one successor for the next preparation wave.  The existing
+        # repository method performs the Node/dispatch mutation atomically.
+        del current_sources, binding_digest
+        return self.invalidate_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
+        )
 
     def _append_trace(
         self,
@@ -264,6 +455,8 @@ class NodePromptPreparationService:
                 "operation_id": preparation.operation_id,
                 "attempt_no": preparation.attempt_no,
                 "attempt_stage": preparation.attempt_stage,
+                "occurrence_id": preparation.occurrence_id,
+                "character_phase": preparation.character_phase,
                 "recipe_id": preparation.recipe_id,
                 "recipe_version": preparation.recipe_version,
                 "recipe_digest": preparation.recipe_digest,
@@ -291,7 +484,17 @@ class NodePromptPreparationService:
         node: CanvasNodeV2,
         context: StageAuthoringContextV1,
     ) -> RolePromptPreparationContextV2:
-        requirement_revision_id = f"requirements:{context.session_id}:{context.session_revision}"
+        is_character = node.creative_role == "character"
+        requirement_revision_id = (
+            str(node.metadata.get("requirement_revision_id"))
+            if is_character and node.metadata.get("requirement_revision_id")
+            else f"requirements:{context.session_id}:{context.session_revision}"
+        )
+        requirement_revision_no = (
+            int(node.metadata["requirement_revision_no"])
+            if is_character and isinstance(node.metadata.get("requirement_revision_no"), int)
+            else context.session_revision
+        )
         bindings = self._binding_snapshots(node)
         controls = {
             key: value
@@ -310,7 +513,7 @@ class NodePromptPreparationService:
             node,
             context,
             requirement_revision_id=requirement_revision_id,
-            requirement_revision_no=context.session_revision,
+            requirement_revision_no=requirement_revision_no,
             document_revisions={
                 item.document_kind: item.revision for item in context.working_document_excerpts
             },
@@ -326,7 +529,34 @@ class NodePromptPreparationService:
             }
             if node.metadata.get("source_sequence_id")
             else {},
+            world_view_projection=self._world_view_projection(node),
         )
+
+    def _world_view_projection(self, node: CanvasNodeV2) -> str | None:
+        workflow = self._workflows.get_workflow(node.workflow_id)
+        nodes = {item.node_id: item for item in workflow.nodes}
+        projections: list[str] = []
+        for binding in workflow.bindings:
+            if (
+                binding.target_node_id != node.node_id
+                or not binding.enabled
+                or binding.source.kind != "node_output"
+            ):
+                continue
+            source = nodes.get(binding.source.source_node_id)
+            if source is None or source.creative_role != "world_setting":
+                continue
+            content = source.structured_content.get("content")
+            projection = content if isinstance(content, str) else source.generation_prompt
+            if projection:
+                projections.append(projection)
+        if len(projections) > 1:
+            raise V2PersistenceError(
+                "node_prompt_context_stale",
+                "Prompt context contains ambiguous WorldView authority.",
+                stage="node_prompt_preparation",
+            )
+        return projections[0] if projections else None
 
     def _bound_text_controls(
         self,
@@ -376,6 +606,23 @@ class NodePromptPreparationService:
                 continue
             source_node_id = getattr(binding.source, "source_node_id", None)
             source_node = nodes.get(source_node_id) if source_node_id else None
+            if (
+                node.creative_role == "storyboard_video"
+                and source_node is not None
+                and source_node.creative_role == "character"
+            ):
+                if (
+                    binding.metadata.get("explicit_occurrence_mapping") is not True
+                    or binding.metadata.get("occurrence_id")
+                    != source_node.metadata.get("occurrence_id")
+                    or binding.metadata.get("character_phase") != "turnaround"
+                    or source_node.metadata.get("character_phase") != "turnaround"
+                ):
+                    raise V2PersistenceError(
+                        "character_reference_mapping_invalid",
+                        "Video Character Binding provenance is ambiguous or stale.",
+                        stage="node_prompt_preparation",
+                    )
             asset_id = (
                 source_node.output_asset_id
                 if source_node is not None
@@ -390,13 +637,37 @@ class NodePromptPreparationService:
                     binding_id=binding.binding_id,
                     binding_revision=int(binding.metadata.get("revision") or 1),
                     source_node_id=source_node_id,
-                    source_node_revision=(
-                        source_node.revision if source_node is not None else None
-                    ),
+                    source_node_revision=source_node.revision if source_node is not None else None,
                     source_role=(source_node.creative_role if source_node is not None else None),
                     asset_id=asset_id,
                     asset_version_id=version_id,
                     reference_purpose=_reference_purpose(node, source_node),
+                    occurrence_id=(
+                        str(source_node.metadata["occurrence_id"])
+                        if source_node is not None
+                        and source_node.creative_role == "character"
+                        and source_node.metadata.get("occurrence_id")
+                        else None
+                    ),
+                    character_phase=(
+                        source_node.metadata.get("character_phase")
+                        if source_node is not None and source_node.creative_role == "character"
+                        else None
+                    ),
+                    requirement_revision_id=(
+                        str(source_node.metadata["requirement_revision_id"])
+                        if source_node is not None
+                        and source_node.creative_role == "character"
+                        and source_node.metadata.get("requirement_revision_id")
+                        else None
+                    ),
+                    requirement_revision_no=(
+                        int(source_node.metadata["requirement_revision_no"])
+                        if source_node is not None
+                        and source_node.creative_role == "character"
+                        and isinstance(source_node.metadata.get("requirement_revision_no"), int)
+                        else None
+                    ),
                     source_sequence_id=(
                         str(source_node.metadata["source_sequence_id"])
                         if source_node is not None
@@ -412,6 +683,8 @@ class NodePromptPreparationService:
         self,
         current: CanvasNodeV2,
         preparation: NodePromptPreparationV1,
+        *,
+        context: StageAuthoringContextV1 | None = None,
     ) -> CanvasNodeV2:
         next_node = current.model_copy(
             update={
@@ -420,25 +693,36 @@ class NodePromptPreparationService:
                 "prompt_preparation": preparation,
             }
         )
-        return self._persist(current, next_node)
+        return self._persist(current, next_node, context=context)
 
-    def _persist(self, current: CanvasNodeV2, next_node: CanvasNodeV2) -> CanvasNodeV2:
+    def _persist(
+        self,
+        current: CanvasNodeV2,
+        next_node: CanvasNodeV2,
+        *,
+        context: StageAuthoringContextV1 | None = None,
+    ) -> CanvasNodeV2:
         workflow = self._workflows.get_workflow(current.workflow_id)
         return self._workflows.update_node_prompt_preparation(
             next_node,
             expected_node_revision=current.revision,
             expected_workflow_revision=workflow.revision,
+            dispatch_context=(context.model_dump(mode="json") if context is not None else None),
         )
 
 
 def context_digest(context: StageAuthoringContextV1) -> str:
+    return sha256(canonical_context_bytes(context)).hexdigest()
+
+
+def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
     payload = json.dumps(
-        context.model_dump(mode="json"),
+        [item.model_dump(mode="json") for item in bindings],
         ensure_ascii=True,
         separators=(",", ":"),
         sort_keys=True,
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return f"sha256:{sha256(payload.encode('utf-8')).hexdigest()}"
 
 
 def _now() -> datetime:

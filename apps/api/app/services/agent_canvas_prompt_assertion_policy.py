@@ -240,6 +240,12 @@ class PromptAssertionEvidenceValidator:
                 "Current prompt assertion evidence is required.",
                 stage="prompt_assertion_validation",
             )
+        if evidence.source_snapshots != current_sources:
+            raise V2PersistenceError(
+                "node_prompt_assertion_evidence_stale",
+                "Prompt assertion evidence references an older dependency snapshot.",
+                stage="prompt_assertion_validation",
+            )
         source_purposes = {
             item.reference_purpose
             for item in evidence.source_snapshots
@@ -313,6 +319,53 @@ def source_snapshots_from_context(context) -> tuple[PromptAssertionSourceSnapsho
             ),
         )
     return snapshots
+
+
+def current_source_snapshots_for_evidence(
+    evidence: PromptAssertionEvidenceV1,
+    workflow,
+    asset_resolver=None,
+) -> tuple[PromptAssertionSourceSnapshotV1, ...]:
+    """Rebuild binding source identities from the current workflow authority."""
+
+    nodes = {node.node_id: node for node in workflow.nodes}
+    current: list[PromptAssertionSourceSnapshotV1] = []
+    for snapshot in evidence.source_snapshots:
+        if snapshot.source_kind != "binding" or snapshot.source_node_id is None:
+            current.append(snapshot)
+            continue
+        source = nodes.get(snapshot.source_node_id)
+        if source is None:
+            raise V2PersistenceError(
+                "node_prompt_assertion_source_missing",
+                "A prompt assertion source Node is no longer present.",
+                stage="prompt_assertion_validation",
+            )
+        asset_id = source.output_asset_id or snapshot.asset_id
+        asset_version_id = snapshot.asset_version_id
+        pinned_version_id = None
+        metadata = getattr(source, "metadata", {})
+        if isinstance(metadata, Mapping):
+            candidate = metadata.get("source_version_id")
+            if not isinstance(candidate, str) or not candidate:
+                candidate = metadata.get("source_asset_version_id")
+            if isinstance(candidate, str) and candidate:
+                pinned_version_id = candidate
+        if pinned_version_id is not None:
+            asset_version_id = pinned_version_id
+        elif asset_version_id is None and asset_resolver is not None and asset_id is not None:
+            asset = asset_resolver(asset_id)
+            asset_version_id = getattr(asset, "version_id", None) or asset_version_id
+        current.append(
+            snapshot.model_copy(
+                update={
+                    "source_node_revision": source.revision,
+                    "asset_id": asset_id,
+                    "asset_version_id": asset_version_id,
+                }
+            )
+        )
+    return tuple(current)
 
 
 def prompt_assertion_admission_error(node) -> str | None:

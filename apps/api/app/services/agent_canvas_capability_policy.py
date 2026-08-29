@@ -207,7 +207,7 @@ class CapabilityPolicyService:
             capability_id="script_authoring",
             display_name="Script Writer",
             operation="author_guided_script_checkpoint",
-            result_contract_name="ScriptMaterializationResultV1",
+            result_contract_name="GuidedScriptCheckpointDraftV1",
             node_type=None,
             creative_role=None,
             default_candidate_count=1,

@@ -552,6 +552,15 @@ def _draft_nodes(
             )
         if draft.prompt_context_snapshot_id is not None:
             provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
+        if envelope.capability_id == "character_design":
+            provenance.update(
+                {
+                    "occurrence_id": envelope.occurrence_id,
+                    "character_phase": envelope.character_phase,
+                    "requirement_revision_id": envelope.requirement_revision_id,
+                    "requirement_revision_no": envelope.requirement_revision_no,
+                }
+            )
         nodes.append(
             CanvasNodeV2(
                 node_id=node_id,
@@ -612,6 +621,28 @@ def _draft_nodes(
                 target_role=node.creative_role,
                 semantic_reference_role=intent.semantic_reference_role,
             )
+            snapshot = next(
+                (
+                    item
+                    for item in envelope.reference_plan.source_snapshots
+                    if item.source_kind == intent.source_kind and item.source_id == intent.source_id
+                ),
+                None,
+            )
+            if snapshot is not None:
+                metadata = {
+                    **metadata,
+                    **(
+                        {"source_node_revision": snapshot.source_revision}
+                        if snapshot.source_revision is not None
+                        else {}
+                    ),
+                    **(
+                        {"source_asset_version_id": snapshot.asset_version_id}
+                        if snapshot.asset_version_id is not None
+                        else {}
+                    ),
+                }
             binding_index = len(bindings)
             bindings.append(
                 CanvasBindingV2(
@@ -631,6 +662,17 @@ def _draft_nodes(
                     updated_at=envelope.created_at,
                 )
             )
+            if intent.occurrence_id is not None:
+                bindings[-1] = bindings[-1].model_copy(
+                    update={
+                        "metadata": {
+                            **bindings[-1].metadata,
+                            "occurrence_id": intent.occurrence_id,
+                            "character_phase": intent.character_phase,
+                            "explicit_occurrence_mapping": True,
+                        }
+                    }
+                )
     return tuple(nodes), tuple(bindings), tuple(preparations)
 
 
@@ -658,6 +700,14 @@ def _pair_binding(
         if is_character and character_pair_id is not None
         else semantics.product_pair_metadata()
     )
+    if is_character:
+        metadata = {
+            **metadata,
+            "occurrence_id": envelope.occurrence_id,
+            "character_phase": "turnaround",
+            "explicit_occurrence_mapping": True,
+            "source_node_revision": envelope.parent_snapshot.node_revision,
+        }
     suffix = "main-to-turnaround" if is_character else "main-to-secondary"
     return (
         CanvasBindingV2(
@@ -701,11 +751,16 @@ def _derivative_intent(
         intent_id="derivative_" + _digest(f"{envelope.materialization_id}:{derivative_role}")[:32],
         workflow_id=envelope.workflow_id,
         stage_revision=envelope.stage_revision,
-        occurrence_id="character-1" if is_character else "product-1",
+        occurrence_id=(
+            envelope.occurrence_id
+            if is_character and envelope.occurrence_id is not None
+            else "product-1"
+        ),
         parent=ParentNodeSnapshotV1(
             node_id=node.node_id,
             node_revision=node.revision,
             semantic_role="character_main" if is_character else "product_main",
+            occurrence_id=envelope.occurrence_id if is_character else None,
             prompt_preparation_operation_id=prompt_operation_id,
         ),
         derivative_role=derivative_role,
@@ -771,6 +826,8 @@ def _reference_intents(
                     "required",
                     "display_order",
                     "semantic_reference_role",
+                    "occurrence_id",
+                    "character_phase",
                 }
             )
         )

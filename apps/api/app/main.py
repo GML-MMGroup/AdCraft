@@ -216,6 +216,9 @@ def _recover_agent_canvas_continuations(
 ) -> None:
     runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
     try:
+        prompt_preparation_worker = getattr(runtime, "prompt_preparation_worker", None)
+        if prompt_preparation_worker is not None:
+            prompt_preparation_worker.run_once()
         runtime.continuation_worker.run_once()
         runtime.auto_run_dispatcher.run_once()
     finally:

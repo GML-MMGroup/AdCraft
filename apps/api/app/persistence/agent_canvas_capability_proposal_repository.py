@@ -762,6 +762,8 @@ def _project_references(
             required=reference.required,
             display_order=index,
             semantic_reference_role=reference.semantic_reference_role,
+            occurrence_id=reference.occurrence_id,
+            character_phase=reference.character_phase,
             display_name=reference.display_name,
             media_type=reference.media_type,
         )

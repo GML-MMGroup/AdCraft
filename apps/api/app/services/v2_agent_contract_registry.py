@@ -39,6 +39,7 @@ from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_role_prompt_preparation import RoleCreativeBriefV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+    GuidedScriptCheckpointDraftV1,
 )
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
@@ -157,6 +158,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     V2ShotCellPromptPlan,
     V2ShotVideoPromptPlan,
     V2BgmPromptPlan,
+    GuidedScriptCheckpointDraftV1,
     *CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS.values(),
 )
 

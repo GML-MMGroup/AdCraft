@@ -9,6 +9,7 @@ import {
 } from "./editingTimelineMath.ts";
 import type { EditingBoundInput } from "./editingModel.ts";
 import { useVideoFrameStrip } from "./useVideoFrameStrip.ts";
+import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 
 interface VideoTimelineClipProps {
   active: boolean;
@@ -69,8 +70,8 @@ export function VideoTimelineClip({
   const dragCancelRef = useRef<(() => void) | null>(null);
   const samples = useVideoFrameStrip({
     assetId: input.asset?.asset_id ?? input.entry.asset_id ?? input.referenceId,
-    mediaUrl: input.asset?.media_url ?? null,
-    previewUrl: input.asset?.preview_url ?? null,
+    mediaUrl: input.asset ? mediaAssetContentPath(input.asset) || null : null,
+    previewUrl: input.asset ? mediaAssetPreviewPath(input.asset) || null : null,
     sourceStart: segment.sourceStart,
     sourceEnd: segment.sourceEnd,
     renderedWidth: Math.max(0, (segment.timelineEnd - segment.timelineStart) * pixelsPerSecond),

@@ -69,7 +69,7 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 "character_turnaround",
                 "image",
                 0,
-                1,
+                64,
                 required=False,
                 required_when_active=True,
                 canonical_order=0,
@@ -86,7 +86,7 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 "character_turnaround",
                 "image",
                 0,
-                1,
+                64,
                 required=False,
                 required_when_active=True,
                 canonical_order=1,
@@ -105,7 +105,7 @@ _POLICIES: dict[RoleReferenceTargetV1, RoleReferencePolicyV1] = {
                 "character_turnaround",
                 "image",
                 0,
-                1,
+                64,
                 required=False,
                 required_when_active=True,
                 canonical_order=3,
@@ -317,6 +317,8 @@ class AgentCanvasRoleReferencePolicyService:
                 and binding.reference_purpose == purpose
                 and binding.display_order == 0
             )
+            if valid and role_variant == "character_turnaround":
+                valid = bool(binding.occurrence_id) and binding.character_phase == "main"
         target_role = (
             "product_multiview" if role_variant == "product_multiview" else "character_turnaround"
         )

@@ -21,6 +21,9 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.agent_canvas_guided_media_resume_repository import (
     AgentCanvasGuidedMediaResumeRepository,
 )
+from app.persistence.agent_canvas_guided_answer_projection import (
+    append_guided_answer_message_in_transaction,
+)
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
     AgentCanvasChatTurnRow,
@@ -54,6 +57,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionAnswerV1,
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
+    GuidedProductSourceQuestionV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
     GuidedSkipAnswerV1,
@@ -69,9 +73,11 @@ from app.schemas.agent_canvas_guided_media_resume import (
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV2,
     JourneyEvidenceV2,
+    JourneyActionProjectionV2,
     JourneyPolicyContextV2,
 )
 from app.schemas.agent_canvas_requirements import (
+    CharacterCountControlV1,
     DurationSecondsControlV1,
     RequirementDirectiveV1,
     RequirementElementPresenceV1,
@@ -91,6 +97,17 @@ from app.services.agent_canvas_guided_duration import (
     DURATION_QUESTION_ID,
     GuidedDurationAuthorityPolicy,
 )
+from app.services.agent_canvas_guided_character import (
+    CHARACTER_COUNT_QUESTION_ID,
+    GuidedCharacterAuthorityPolicy,
+)
+from app.services.agent_canvas_character_occurrence_authority import (
+    CharacterOccurrenceAuthoritySource,
+)
+from app.services.agent_canvas_requirements import (
+    reconcile_character_occurrence_authority_in_transaction,
+)
+from app.services.agent_canvas_production_journey import reconcile_character_occurrences
 
 
 class AgentCanvasGuidedInteractionRepository:
@@ -267,6 +284,201 @@ class AgentCanvasGuidedInteractionRepository:
             )
         return guided_interaction_from_row(row)
 
+    def open_product_source_with_journey(
+        self,
+        workflow_id: str,
+        *,
+        source_turn_id: str,
+        expected_session_revision: int,
+        idempotency_key: str,
+        input_kind: Literal["main", "multiview"] = "main",
+        prompt: str | None = None,
+    ) -> GuidedInteractionV1:
+        """Atomically open the Product source wait and its Journey owner."""
+
+        if not idempotency_key:
+            raise _error("guided_interaction_invalid", "Product source idempotency is required.")
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    session = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceSessionRow).where(
+                                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if session is None:
+                        raise _error(
+                            "guided_interaction_not_found", "Guidance session was not found."
+                        )
+                    if int(session["revision"]) != expected_session_revision:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed before Product entry.",
+                        )
+                    journey = _journey(session)
+                    if journey.stage != "product":
+                        raise _error(
+                            "guided_product_stage_invalid",
+                            "Product source interaction is only available during the Product stage.",
+                        )
+                    existing_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.session_id == session["session_id"],
+                                AgentCanvasGuidedInteractionRow.kind == "product_source",
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing_row is not None:
+                        existing = guided_interaction_from_row(existing_row)
+                        persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
+                        if (
+                            persisted_awaiting is None
+                            or persisted_awaiting.interaction_id != existing.interaction_id
+                        ):
+                            raise _error(
+                                "guidance_authority_conflict",
+                                "Product source interaction is missing matching awaiting authority.",
+                            )
+                        if (
+                            not isinstance(existing.content, GuidedProductSourceQuestionV1)
+                            or existing.content.input_kind != input_kind
+                        ):
+                            raise _error(
+                                "guided_interaction_conflict",
+                                "Another Product source branch is already open.",
+                            )
+                        connection.commit()
+                        return existing
+
+                    revision = int(session["revision"])
+                    identity = sha256(
+                        f"product-source:{workflow_id}:{session['session_id']}:{journey.stage_revision}:{input_kind}:v1".encode(
+                            "utf-8"
+                        )
+                    ).hexdigest()[:32]
+                    interaction_id = f"interaction_product_source_{identity}"
+                    checkpoint_id = f"product_source:{journey.stage_revision}:{input_kind}"
+                    now = datetime.now(timezone.utc)
+                    question = GuidedProductSourceQuestionV1(
+                        input_kind=input_kind,
+                        question_id=f"product_{input_kind}_source",
+                        prompt=prompt
+                        or (
+                            "Provide one Product Main image."
+                            if input_kind == "main"
+                            else "Provide two to eight ordered Product Multiview images."
+                        ),
+                        expected_guidance_revision=revision + 1,
+                        min_asset_count=1 if input_kind == "main" else 2,
+                        max_asset_count=1 if input_kind == "main" else 8,
+                    )
+                    interaction = GuidedInteractionV1(
+                        interaction_id=interaction_id,
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=checkpoint_id,
+                        kind="product_source",
+                        status="open",
+                        response_locale=str(session["response_locale"]),
+                        expected_session_revision=revision + 1,
+                        revision=1,
+                        title="Product image source",
+                        context="Choose whether to upload or generate the Product source.",
+                        content=question,
+                        allowed_actions=("select_source",),
+                        submit_path=(
+                            f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"
+                        ),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    awaiting = GuidanceAwaitingV2(
+                        awaiting_id=f"awaiting_product_source_{identity}",
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=checkpoint_id,
+                        kind="product_source",
+                        requires_user_action=True,
+                        resume_policy="submit_interaction",
+                        interaction_id=interaction_id,
+                        stage="product",
+                        stage_revision=journey.stage_revision,
+                        created_at=now,
+                    )
+                    waiting_action = JourneyActionProjectionV2(
+                        action_id=f"product-source:{workflow_id}:{journey.stage_revision}",
+                        action_kind="wait_for_user:product_source",
+                        stage="product",
+                        stage_revision=journey.stage_revision,
+                        status="waiting_user",
+                        turn_id=source_turn_id,
+                    )
+                    next_journey = journey.model_copy(
+                        update={"stage_status": "waiting_user", "active_action": waiting_action}
+                    )
+                    _insert_interaction_and_awaiting_in_transaction(
+                        connection, interaction, awaiting
+                    )
+                    self._fault("after_product_source_authority")
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=next_journey.model_dump_json(),
+                            revision=expected_session_revision + 1,
+                            updated_at=now.isoformat(),
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed before Product entry.",
+                        )
+                    self._fault("after_product_source_journey")
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="journey_stage_waiting_user",
+                            transition_key=f"journey:{session['session_id']}:{idempotency_key}",
+                            action_id=waiting_action.action_id,
+                            created_at=now.isoformat(),
+                            payload={
+                                "session_id": str(session["session_id"]),
+                                "stage": "product",
+                                "stage_revision": journey.stage_revision,
+                                "action_kind": waiting_action.action_kind,
+                                "interaction_id": interaction_id,
+                                "awaiting_id": awaiting.awaiting_id,
+                            },
+                        ),
+                    )
+                    self._fault("before_product_source_commit")
+                    connection.commit()
+                    return interaction
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "guided_interaction_persistence_unavailable", "Guided interaction storage failed."
+            ) from error
+
     def get_current(self, workflow_id: str) -> GuidedInteractionV1 | None:
         with self._database.engine.connect() as connection:
             row = (
@@ -289,6 +501,38 @@ class AgentCanvasGuidedInteractionRepository:
     def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
         with self._database.engine.connect() as connection:
             return _awaiting_for_workflow(connection, workflow_id)
+
+    def open_product_source(
+        self,
+        workflow_id: str,
+        *,
+        input_kind: Literal["main", "multiview"],
+        prompt: str | None = None,
+    ) -> GuidedInteractionV1:
+        """Open the typed Product source question at the current Product checkpoint."""
+
+        with self._database.engine.connect() as connection:
+            session = (
+                connection.execute(
+                    select(AgentCanvasGuidanceSessionRow).where(
+                        AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if session is None:
+            raise _error("guided_interaction_not_found", "Guidance session was not found.")
+        return self.open_product_source_with_journey(
+            workflow_id,
+            source_turn_id="explicit-product-source",
+            expected_session_revision=int(session["revision"]),
+            idempotency_key=(
+                f"open-product-source:{workflow_id}:{input_kind}:{session['revision']}"
+            ),
+            input_kind=input_kind,
+            prompt=prompt,
+        )
 
     def get_submission(self, submission_id: str) -> GuidedInteractionSubmissionRecordV1:
         with self._database.engine.connect() as connection:
@@ -397,9 +641,14 @@ class AgentCanvasGuidedInteractionRepository:
             if _is_duration_questionnaire(interaction.content)
             else None
         )
+        character_answer = (
+            GuidedCharacterAuthorityPolicy().resolve_answer(interaction.content, request)
+            if _is_character_questionnaire(interaction.content)
+            else None
+        )
         directives = (
             ()
-            if duration_answer is not None
+            if duration_answer is not None or character_answer is not None
             else _questionnaire_directives(
                 interaction,
                 request,
@@ -501,6 +750,66 @@ class AgentCanvasGuidedInteractionRepository:
                         "unresolved_conflicts": (),
                     }
                 )
+                reconciliation = None
+                if character_answer is not None:
+                    source_turn_id = _character_source_turn_id(interaction)
+                    source = CharacterOccurrenceAuthoritySource(
+                        source_kind="decision_bundle_answer",
+                        source_text=character_answer.source_text,
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                    )
+                    count_control = CharacterCountControlV1(
+                        value=character_answer.count,
+                        source_kind="decision_bundle_answer",
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                        source_text=character_answer.source_text,
+                        created_revision_no=revision_no,
+                    )
+                    presence = RequirementElementPresenceV1(
+                        element_kind="character",
+                        presence="include" if character_answer.count > 0 else "exclude",
+                        source_kind="decision_bundle_answer",
+                        source_turn_id=source_turn_id,
+                        source_bundle_id=interaction.interaction_id,
+                        source_question_id=CHARACTER_COUNT_QUESTION_ID,
+                        source_option_id=character_answer.source_option_id,
+                        source_text=character_answer.source_text,
+                        created_revision_no=revision_no,
+                    )
+                    next_ledger = next_ledger.model_copy(
+                        update={
+                            "hard_controls": tuple(
+                                item
+                                for item in next_ledger.hard_controls
+                                if item.control != "character_count"
+                            )
+                            + (count_control,),
+                            "element_presence": tuple(
+                                item
+                                for item in next_ledger.element_presence
+                                if item.element_kind != "character"
+                            )
+                            + (presence,),
+                        }
+                    )
+                    reconciliation = reconcile_character_occurrence_authority_in_transaction(
+                        connection,
+                        workflow_id=interaction.workflow_id,
+                        current=requirement_head.ledger,
+                        candidate=next_ledger,
+                        occurrence_patches=None,
+                        revision_no=revision_no,
+                        source=source,
+                        explicit_character_count=True,
+                        explicit_character_presence=True,
+                    )
+                    next_ledger = reconciliation.ledger
                 requirement_revision = requirements.append_in_transaction(
                     connection,
                     workflow_id=interaction.workflow_id,
@@ -518,15 +827,37 @@ class AgentCanvasGuidedInteractionRepository:
                     advance_session_revision=False,
                 )
                 journey = _journey(session)
-                next_journey = policy.apply_evidence(
-                    JourneyPolicyContextV2(journey=journey),
-                    JourneyEvidenceV2(
-                        evidence_id=f"questionnaire-submitted:{submission_id}",
-                        evidence_kind="clarification_completed",
-                        source_id=submission_id,
-                        source_revision=requirement_revision.revision_no,
-                    ),
-                )
+                if character_answer is not None and character_answer.count > 0:
+                    assert reconciliation is not None
+                    next_journey = reconcile_character_occurrences(
+                        journey,
+                        reconciliation.projection.occurrences,
+                    ).model_copy(
+                        update={
+                            "stage_status": "ready",
+                            "stage_revision": journey.stage_revision + 1,
+                            "active_action": None,
+                        }
+                    )
+                else:
+                    next_journey = policy.apply_evidence(
+                        JourneyPolicyContextV2(
+                            journey=journey,
+                            included_character_occurrence_ids=(
+                                () if character_answer is not None else None
+                            ),
+                        ),
+                        JourneyEvidenceV2(
+                            evidence_id=f"questionnaire-submitted:{submission_id}",
+                            evidence_kind=(
+                                "character_excluded"
+                                if character_answer is not None
+                                else "clarification_completed"
+                            ),
+                            source_id=submission_id,
+                            source_revision=requirement_revision.revision_no,
+                        ),
+                    )
                 next_session_revision = request.expected_session_revision + 1
                 connection.execute(
                     update(AgentCanvasGuidedInteractionRow)
@@ -564,13 +895,17 @@ class AgentCanvasGuidedInteractionRepository:
                         "Guidance session changed before questionnaire Submit.",
                     )
                 continuation_id = None
-                if duration_answer is not None:
+                if duration_answer is not None or character_answer is not None:
                     if continuation_writer is None:
                         raise _error(
                             "guidance_continuation_unavailable",
-                            "Duration acceptance cannot publish its continuation.",
+                            "Questionnaire acceptance cannot publish its continuation.",
                         )
-                    source_turn_id = _duration_source_turn_id(interaction)
+                    source_turn_id = (
+                        _duration_source_turn_id(interaction)
+                        if duration_answer is not None
+                        else _character_source_turn_id(interaction)
+                    )
                     source_turn = (
                         connection.execute(
                             select(AgentCanvasChatTurnRow).where(
@@ -586,8 +921,9 @@ class AgentCanvasGuidedInteractionRepository:
                             "guidance_resume_evidence_missing",
                             "Duration acceptance source Turn is unavailable.",
                         )
+                    continuation_kind = "duration" if duration_answer is not None else "character"
                     identity = sha256(
-                        f"duration-next-action:{submission_id}".encode("utf-8")
+                        f"{continuation_kind}-next-action:{submission_id}".encode("utf-8")
                     ).hexdigest()
                     continuation_id = f"continuation_{identity[:24]}"
                     continuation_writer(
@@ -599,10 +935,19 @@ class AgentCanvasGuidedInteractionRepository:
                             continuation_turn_id=f"turn_{identity[24:56]}",
                             source_turn_id=source_turn_id,
                             source_action_id=interaction.interaction_id,
-                            idempotency_key=f"duration-next-action:{submission_id}",
+                            idempotency_key=f"{continuation_kind}-next-action:{submission_id}",
                         ),
                         now=now,
                     )
+                append_guided_answer_message_in_transaction(
+                    connection,
+                    workflow_id=interaction.workflow_id,
+                    interaction_id=interaction.interaction_id,
+                    submission_id=submission_id,
+                    questionnaire=interaction.content,
+                    request=request,
+                    created_at=now,
+                )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
@@ -634,7 +979,9 @@ class AgentCanvasGuidedInteractionRepository:
                             "source_kind": "decision_bundle_answer",
                             "added_directive_ids": list(canonical.added_directive_ids),
                             "changed_control_names": (
-                                ["duration_seconds"] if duration_answer is not None else []
+                                ["duration_seconds"]
+                                if duration_answer is not None
+                                else (["character_count"] if character_answer is not None else [])
                             ),
                             "refresh": ["requirements"],
                         },
@@ -1120,6 +1467,128 @@ class AgentCanvasGuidedInteractionRepository:
                 connection.rollback()
                 raise
         return awaiting
+
+    def reconcile_terminal_member(
+        self,
+        *,
+        workflow_id: str,
+        execution_id: str,
+        member_id: str,
+        node_id: str,
+        error_code: str,
+        retryable: bool,
+    ) -> bool:
+        """Close the matching manual wait when its execution member settles."""
+
+        now = datetime.now(timezone.utc).isoformat()
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                awaiting = _awaiting_for_workflow(connection, workflow_id)
+                if (
+                    awaiting is None
+                    or awaiting.kind != "manual_node_run"
+                    or node_id not in awaiting.node_ids
+                ):
+                    connection.rollback()
+                    return False
+                session = _require_session(
+                    connection,
+                    workflow_id=workflow_id,
+                    session_id=awaiting.session_id,
+                    expected_revision=(
+                        int(
+                            connection.execute(
+                                select(AgentCanvasGuidanceSessionRow.revision).where(
+                                    AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id
+                                )
+                            ).scalar_one()
+                        )
+                    ),
+                )
+                journey = _journey(session)
+                evidence_id = f"execution-member-terminal:{execution_id}:{member_id}"
+                if any(item.evidence_id == evidence_id for item in journey.transition_evidence):
+                    connection.rollback()
+                    return False
+                transition = JourneyEvidenceV2(
+                    evidence_id=evidence_id,
+                    evidence_kind="stage_failed",
+                    source_id=member_id,
+                    stage=awaiting.stage,
+                    stage_revision=awaiting.stage_revision,
+                    actor="system",
+                ).as_transition(
+                    stage=journey.stage,
+                    stage_revision=journey.stage_revision,
+                )
+                next_journey = journey.model_copy(
+                    update={
+                        "stage_status": "working" if retryable else "failed",
+                        "active_action": None,
+                        "transition_evidence": (*journey.transition_evidence, transition),
+                    }
+                )
+                deleted = connection.execute(
+                    delete(AgentCanvasGuidanceAwaitingRow).where(
+                        AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
+                    )
+                )
+                if deleted.rowcount != 1:
+                    connection.rollback()
+                    return False
+                updated = connection.execute(
+                    update(AgentCanvasGuidanceSessionRow)
+                    .where(
+                        AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                    )
+                    .values(
+                        journey_state_json=next_journey.model_dump_json(),
+                        revision=AgentCanvasGuidanceSessionRow.revision + 1,
+                        updated_at=now,
+                    )
+                )
+                if updated.rowcount != 1:
+                    raise _error(
+                        "guidance_revision_conflict",
+                        "Guidance session changed during terminal member reconciliation.",
+                    )
+                payload = {
+                    "awaiting_id": awaiting.awaiting_id,
+                    "execution_id": execution_id,
+                    "member_id": member_id,
+                    "node_id": node_id,
+                    "session_id": awaiting.session_id,
+                    "stage": awaiting.stage,
+                    "stage_revision": awaiting.stage_revision,
+                    "error_code": error_code,
+                    "retryability": "retryable" if retryable else "terminal",
+                }
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=workflow_id,
+                        event_type="execution_member_terminal_reconciled",
+                        transition_key=f"{evidence_id}:execution",
+                        created_at=now,
+                        payload=payload,
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=workflow_id,
+                        event_type="manual_node_run_awaiting_reconciled",
+                        transition_key=f"{evidence_id}:awaiting",
+                        created_at=now,
+                        payload=payload,
+                    ),
+                )
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
 
     def submit_media_review(
         self,
@@ -1654,6 +2123,7 @@ class AgentCanvasGuidedInteractionRepository:
         expected_awaiting_kind = {
             "clarification_questionnaire": "clarification",
             "concept_choice": "concept_selection",
+            "product_source": "product_source",
             "media_review": "media_review",
         }[interaction.kind]
         if awaiting.kind != expected_awaiting_kind:
@@ -2086,6 +2556,13 @@ def _is_duration_questionnaire(content: GuidedQuestionnaireV1) -> bool:
     return len(content.questions) == 1 and content.questions[0].question_id == DURATION_QUESTION_ID
 
 
+def _is_character_questionnaire(content: GuidedQuestionnaireV1) -> bool:
+    return (
+        len(content.questions) == 1
+        and content.questions[0].question_id == CHARACTER_COUNT_QUESTION_ID
+    )
+
+
 def _duration_source_turn_id(interaction: GuidedInteractionV1) -> str:
     prefix = "duration:"
     if not interaction.checkpoint_id.startswith(prefix):
@@ -2098,6 +2575,23 @@ def _duration_source_turn_id(interaction: GuidedInteractionV1) -> str:
         raise _error(
             "guidance_resume_evidence_missing",
             "Duration interaction does not identify its source Turn.",
+        )
+    return source_turn_id
+
+
+def _character_source_turn_id(interaction: GuidedInteractionV1) -> str:
+    prefix = "character-count:"
+    parts = interaction.checkpoint_id.split(":")
+    if not interaction.checkpoint_id.startswith(prefix) or not parts:
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Character interaction does not identify its source Turn.",
+        )
+    source_turn_id = parts[-1]
+    if not source_turn_id:
+        raise _error(
+            "guidance_resume_evidence_missing",
+            "Character interaction does not identify its source Turn.",
         )
     return source_turn_id
 

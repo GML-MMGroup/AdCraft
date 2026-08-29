@@ -159,8 +159,10 @@ function instructionForOperation(operation: string): string {
   if (operation === "author_guided_script_checkpoint") {
     return [
       "Author only the internal document checkpoint named by capability_context.journey_stage.",
-      "Return one complete ScriptMaterializationResultV1 without alternatives, platform identifiers, Canvas Nodes, Bindings, or user-choice copy.",
-      "Preserve the supplied duration, sequence count, accepted creative facts, and response locale.",
+      "Return exactly one closed GuidedScriptCheckpointDraftV1 object with only title, summary_prompt, and content.",
+      'Use exactly {"title":"...","summary_prompt":"...","content":"..."}.',
+      "Do not return duration, sequence count, shot maps, provider fields, Canvas Nodes, Bindings, persistence identifiers, or user-choice copy.",
+      "Preserve the supplied accepted creative facts and response locale; Python owns duration and downstream sequence controls.",
     ].join(" ");
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {

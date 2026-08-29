@@ -148,6 +148,7 @@ export function useAgentCanvasEditing(
   workflow: AgentCanvasWorkflowV2,
   node: CanvasNodeV2,
   patchNode: PatchNode,
+  onRevisionConflict?: () => Promise<unknown> | unknown,
 ) {
   const manifestIdentity = JSON.stringify([workflow.workflow_id, node.node_id]);
   const [pendingManifestCommit, setPendingManifestCommit] = useState({
@@ -308,6 +309,17 @@ export function useAgentCanvasEditing(
           || activeManifestIdentityRef.current !== manifestIdentity
         ) return;
         setError(errorMessage(saveError, "Unable to update the composition."));
+        const revisionConflict = isV2ApiError(saveError)
+          && (saveError.code === "editing_manifest_revision_conflict" || saveError.status === 409);
+        if (revisionConflict) {
+          stagedManifestRef.current = null;
+          stagedBaselineManifestRef.current = null;
+          stagedBaselineIsLocalDraftRef.current = false;
+          stagedManifestUpdaterRef.current = null;
+          confirmedManifestRef.current = null;
+          setLocalDraft(null);
+          void onRevisionConflict?.();
+        }
         if (
           draftManifestRef.current?.identity === manifestIdentity
           && draftManifestRef.current.manifest === manifest
@@ -319,7 +331,7 @@ export function useAgentCanvasEditing(
         }
       },
     });
-  }, [canonicalContent, currentManifest, manifestIdentity, node.node_id, patchNode, setLocalDraft]);
+  }, [canonicalContent, currentManifest, manifestIdentity, node.node_id, onRevisionConflict, patchNode, setLocalDraft]);
 
   const stageManifestUpdate = useCallback((
     updateManifest: ManifestUpdater,
