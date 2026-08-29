@@ -1966,6 +1966,22 @@ button.agent-chat__node-links--related:hover {
   flex: 1 1 auto;
 }
 
+.agent-chat__current-interaction--overlay {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  max-height: 100%;
+  padding: 10px 12px 0;
+  border-top: 0;
+  pointer-events: none;
+}
+
+.agent-chat__current-interaction--overlay > * {
+  pointer-events: auto;
+}
+
 .agent-chat__optimistic-interaction-status {
   display: flex;
   width: 100%;
@@ -2909,15 +2925,6 @@ button.agent-chat__node-links--related:hover {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-.agent-chat__decision-dock-composer-hint {
-  margin: 2px 0 0;
-  padding-top: 9px;
-  border-top: 1px solid var(--agent-chat-border);
-  color: var(--agent-chat-muted);
-  font-size: 10px;
-  line-height: 1.45;
 }
 
 .agent-chat__guided-composer-hint {

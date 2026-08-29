@@ -62,14 +62,14 @@ describe("StageThread", () => {
     expect(screen.getByText("Recovery detail")).toBeTruthy();
   });
 
-  it("keeps the status in the header without rendering a selected summary", () => {
+  it("does not repeat the thread status in the capability header", () => {
     const { rerender } = render(<StageThread unit={stageThread({ status: "failed" })} />);
 
-    expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.queryByText("Needs attention")).toBeNull();
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
 
     rerender(<StageThread unit={stageThread({ status: "working" })} />);
-    expect(screen.getByText("Working")).toBeTruthy();
+    expect(screen.queryByText("Working")).toBeNull();
     expect(screen.queryByText("Silk Pavilion")).toBeNull();
   });
 

@@ -537,6 +537,34 @@ export function AgentCanvasChatPanel({
     });
   }
 
+  function renderStandaloneGuidedInteractionCard() {
+    if (!standaloneGuidedInteraction) return null;
+    return currentInteractionOptimisticallyDismissed ? (
+      <div className="agent-chat__optimistic-interaction-status" role="status" aria-label="Guided interaction submitted">
+        <strong>Submitted</strong>
+        <span>Generating nodes…</span>
+      </div>
+    ) : (
+      <GuidedInteractionCard
+        key={standaloneGuidedInteraction.interaction_id}
+        interaction={standaloneGuidedInteraction}
+        pending={
+          standaloneGuidedInteraction.status === "submitted"
+          || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
+        }
+        issue={chat.state.guidedInteractionIssue}
+        pendingProductMainHandoff={composerContext.productMainHandoff}
+        onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
+        selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
+        onSelectConceptOption={(optionId) => {
+          setSelectedConceptOptionId(optionId);
+          setDraft("");
+        }}
+        onSubmit={(request) => submitGuidedInteraction(standaloneGuidedInteraction, request)}
+      />
+    );
+  }
+
   function renderTimelineItem(
     item: ChatTimelineItemV2,
     location: ConversationCanvasLocation | null = null,
@@ -872,34 +900,16 @@ export function AgentCanvasChatPanel({
             <ChevronDownIcon />
           </button>
         ) : null}
+        {conceptInteraction ? (
+          <div className="agent-chat__current-interaction agent-chat__current-interaction--overlay" aria-live="polite">
+            {renderStandaloneGuidedInteractionCard()}
+          </div>
+        ) : null}
       </div>
 
-      {standaloneGuidedInteraction ? (
+      {standaloneGuidedInteraction && !conceptInteraction ? (
         <div className="agent-chat__current-interaction" aria-live="polite">
-          {currentInteractionOptimisticallyDismissed ? (
-            <div className="agent-chat__optimistic-interaction-status" role="status" aria-label="Guided interaction submitted">
-              <strong>Submitted</strong>
-              <span>Generating nodes…</span>
-            </div>
-          ) : (
-            <GuidedInteractionCard
-              key={standaloneGuidedInteraction.interaction_id}
-              interaction={standaloneGuidedInteraction}
-              pending={
-                standaloneGuidedInteraction.status === "submitted"
-                || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
-              }
-              issue={chat.state.guidedInteractionIssue}
-              pendingProductMainHandoff={composerContext.productMainHandoff}
-              onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
-              selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
-              onSelectConceptOption={(optionId) => {
-                setSelectedConceptOptionId(optionId);
-                setDraft("");
-              }}
-              onSubmit={(request) => submitGuidedInteraction(standaloneGuidedInteraction, request)}
-            />
-          )}
+          {renderStandaloneGuidedInteractionCard()}
         </div>
       ) : null}
 

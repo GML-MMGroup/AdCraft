@@ -1273,18 +1273,15 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(screen.getByRole("button", { name: "Resize AdCraft Video Agent panel" })).toBeTruthy();
   });
 
-  it("pins the current review outside history immediately above the composer", () => {
+  it("renders proposal choice interactions as an overlay inside the Timeline shell", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");
-    const timelineItemsIndex = panelSource.indexOf("{timelineEntries.map((entry) => {");
     const timelineShellIndex = panelSource.indexOf('<div className="agent-chat__timeline-shell">');
-    const pinnedInteractionIndex = panelSource.indexOf('<div className="agent-chat__current-interaction"');
+    const overlayInteractionIndex = panelSource.indexOf('agent-chat__current-interaction--overlay');
     const composerIndex = panelSource.indexOf('<div className="agent-chat__composer">');
 
-    expect(timelineItemsIndex).toBeGreaterThan(-1);
-    expect(pinnedInteractionIndex).toBeGreaterThan(timelineShellIndex);
-    expect(pinnedInteractionIndex).toBeGreaterThan(timelineItemsIndex);
-    expect(composerIndex).toBeGreaterThan(pinnedInteractionIndex);
+    expect(overlayInteractionIndex).toBeGreaterThan(timelineShellIndex);
+    expect(composerIndex).toBeGreaterThan(overlayInteractionIndex);
   });
 
   it("uses the approved monochrome fixed chat rail with plain Agent replies", () => {
@@ -1407,6 +1404,8 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(currentInteractionRule).toContain("overflow: hidden");
     expect(currentInteractionRule).not.toContain("overflow-y: auto");
     expect(currentInteractionRule).toContain("display: flex");
+    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*\{[\s\S]*position: absolute;[\s\S]*bottom: 0;[\s\S]*z-index:/m);
+    expect(css).toMatch(/\.agent-chat__current-interaction--overlay\s*>\s*\*\s*\{[\s\S]*pointer-events: auto;/m);
     expect(currentInteractionDockRule).toContain("max-height: 100%");
     expect(currentInteractionDockRule).toContain("flex: 1 1 auto");
     expect(optionsRule).toContain("min-height: max-content");
