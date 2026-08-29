@@ -3809,6 +3809,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_option_not_found": 422,
         "proposal_revision_conflict": 409,
         "proposal_materialization_conflict": 409,
+        "materialization_payload_conflict": 409,
         "proposal_reference_plan_invalid": 422,
         "proposal_target_revision_stale": 409,
         "proposal_reference_revision_stale": 409,
