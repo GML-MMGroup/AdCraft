@@ -66,8 +66,17 @@ class StoryboardFanoutActivationService:
             strict=True,
         ):
             current_node = self._workflows.get_node(fanout.workflow_id, plan.node_id)
+            current_preparation = getattr(current_node, "prompt_preparation", None)
+            if getattr(current_preparation, "status", None) in {"queued", "working"}:
+                # A dependency wave may already own this node through the
+                # durable prompt-preparation dispatch.  Calling prepare here
+                # would race that owner and advance the node revision behind
+                # the dispatch snapshot, so leave the existing worker/barrier
+                # path in charge.
+                prepared_node_ids.append(plan.node_id)
+                continue
             current_operation_id = getattr(
-                getattr(current_node, "prompt_preparation", None),
+                current_preparation,
                 "operation_id",
                 None,
             )
