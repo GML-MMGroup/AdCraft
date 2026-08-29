@@ -2173,8 +2173,8 @@ button.agent-chat__node-links--related:hover {
   left: auto;
   box-sizing: border-box;
   display: flex;
-  width: min(760px, calc(100vw - 36px));
-  max-height: min(780px, calc(100dvh - 36px));
+  width: min(880px, calc(100vw - 48px));
+  max-height: min(860px, calc(100dvh - 48px));
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--style-border);
@@ -2278,8 +2278,8 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__style-categories {
   display: flex;
   flex: 0 0 auto;
-  gap: 4px;
-  padding: 11px 12px 7px;
+  gap: 6px;
+  padding: 13px 14px 9px;
   border-bottom: 1px solid var(--style-divider);
   background: var(--style-header);
   overflow-x: auto;
@@ -2288,13 +2288,14 @@ button.agent-chat__node-links--related:hover {
 
 .agent-chat__style-categories button {
   flex: 0 0 auto;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 7px 11px;
   border: 1px solid var(--style-divider);
   border-radius: 6px;
   background: var(--style-surface);
   color: var(--style-secondary);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 550;
   white-space: nowrap;
 }
@@ -2317,7 +2318,7 @@ button.agent-chat__node-links--related:hover {
   grid-auto-rows: max-content;
   align-content: start;
   gap: 8px;
-  height: min(540px, 56dvh);
+  height: min(620px, 68dvh);
   max-height: calc(100dvh - 170px);
   min-height: 0;
   padding: 4px 12px 14px;
@@ -2533,7 +2534,7 @@ button.agent-chat__node-links--related:hover {
   }
 
   .agent-chat__style-menu {
-    width: min(760px, calc(100vw - 28px));
+    width: min(880px, calc(100vw - 28px));
     max-height: calc(100dvh - 28px);
   }
 

@@ -154,6 +154,8 @@ describe("AgentCanvasStyleSelector", () => {
     expect(css).toContain("--style-header: #1c1c1c;");
     expect(css).toContain("--style-surface: #222222;");
     expect(panelRule).toContain("background: var(--style-panel)");
+    expect(panelRule).toContain("width: min(880px, calc(100vw - 48px))");
+    expect(panelRule).toContain("max-height: min(860px, calc(100dvh - 48px))");
     expect(panelRule).toContain("box-shadow: 0 24px 58px rgb(0 0 0 / 58%)");
     expect(headerRule).toContain("background: var(--style-header)");
     expect(closeRule).toContain("width: 30px");
@@ -163,10 +165,14 @@ describe("AgentCanvasStyleSelector", () => {
     );
     expect(panelRule).toBeTruthy();
     const styleListRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
-    expect(styleListRule).toContain("height: min(540px, 56dvh)");
+    expect(styleListRule).toContain("height: min(620px, 68dvh)");
     expect(styleListRule).toContain("max-height: calc(100dvh - 170px)");
     expect(styleListRule).toContain("grid-auto-rows: max-content");
     expect(styleListRule).toContain("overflow-y: auto");
+    expect(css).toContain("height: min(620px, 68dvh)");
+    expect(css).toContain("min-height: 32px");
+    expect(css).toContain("padding: 7px 11px");
+    expect(css).toContain("font-size: 10px");
   });
 
   it("fills the modal with a card-shaped loading state while the catalog is pending", async () => {
