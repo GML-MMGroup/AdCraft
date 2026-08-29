@@ -363,18 +363,23 @@ class _ProposalSelectionSubmissionService:
                             "Storyboard Proposal has a non-retryable historical Materialization.",
                         )
                     existing = self._load_envelope(proposal.materialization.materialization_id)
-                    if not isinstance(existing, ProposalPublicationEnvelopeV1):
-                        raise _error(
-                            "guidance_action_lineage_invalid",
-                            "Storyboard Proposal has an invalid historical Materialization.",
-                        )
-                    existing_identity = getattr(existing, "idempotency_identity", "")
-                    if existing_identity != storyboard_ids.request_identity:
+                    existing_identity = getattr(existing, "agent_request_identity", None)
+                    if existing_identity is None:
+                        existing_identity = getattr(existing, "idempotency_identity", "")
+                    if existing_identity == storyboard_ids.request_identity:
+                        return existing
+                    # A new identity is valid only for the explicit historical
+                    # reuse action after the Proposal authority marked the old
+                    # branch superseded.  Ordinary retries must stay on the
+                    # failed canonical branch and never fork it.
+                    if not (
+                        action.action == "reuse_direction"
+                        and proposal.availability == "superseded"
+                    ):
                         raise _error(
                             "guidance_action_lineage_invalid",
                             "Storyboard Proposal retry does not match its canonical identity.",
                         )
-                    return existing
             attempt_no = 1
             materialization_id = storyboard_ids.materialization_id
         else:
