@@ -27,8 +27,11 @@ from app.persistence.models import (
     AgentCanvasPromptPreparationOutboxRow,
     AssetVersionRow,
     ProviderModelRow,
+    AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas import CanvasNodeV2
+from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
     detached_context_payload,
@@ -606,10 +609,21 @@ class AgentCanvasPromptPreparationDispatchRepository:
                                     "updated_at": failed_at,
                                     "terminal_at": failed_at,
                                 }
+                                projected = self._project_terminal_failure_in_transaction(
+                                    connection,
+                                    failed_row,
+                                    error_code="prompt_preparation_retry_exhausted",
+                                    error_message="Prompt preparation retry budget was exhausted.",
+                                    now=timestamp,
+                                )
                                 self._append_event(
                                     connection,
                                     _dispatch_from_row(failed_row),
-                                    event_type="node_prompt_preparation_failed",
+                                    event_type=(
+                                        "node_prompt_preparation_dispatch_reconciled"
+                                        if projected
+                                        else "node_prompt_preparation_failed"
+                                    ),
                                     transition_key=(
                                         f"prompt-dispatch:{row['dispatch_id']}:retry-exhausted"
                                     ),
@@ -1415,10 +1429,23 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     raise _stale_lease()
                 updated = {**row, **values}
                 dispatch = _dispatch_from_row(updated)
+                projected = False
+                if status == "failed":
+                    projected = self._project_terminal_failure_in_transaction(
+                        connection,
+                        updated,
+                        error_code=error_code or "prompt_preparation_failed",
+                        error_message=error_message or "Prompt preparation failed.",
+                        now=timestamp,
+                    )
                 event_type = {
                     "queued": "node_prompt_preparation_dispatch_reconciled",
                     "completed": "node_prompt_preparation_dispatch_reconciled",
-                    "failed": "node_prompt_preparation_failed",
+                    "failed": (
+                        "node_prompt_preparation_dispatch_reconciled"
+                        if projected
+                        else "node_prompt_preparation_failed"
+                    ),
                     "superseded": "node_prompt_preparation_superseded",
                 }[status]
                 self._append_event(
@@ -1466,6 +1493,120 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 },
             ),
         )
+
+    def _project_terminal_failure_in_transaction(
+        self,
+        connection: Connection,
+        dispatch_row: Mapping[str, Any],
+        *,
+        error_code: str,
+        error_message: str,
+        now: datetime,
+    ) -> bool:
+        """Project a dispatch terminal failure onto its managed Node atomically."""
+
+        node_row = (
+            connection.execute(
+                select(AgentCanvasNodeRow).where(
+                    AgentCanvasNodeRow.workflow_id == dispatch_row["workflow_id"],
+                    AgentCanvasNodeRow.node_id == dispatch_row["node_id"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if node_row is None:
+            return False
+        if (
+            str(node_row["node_type"]) not in APPLICABLE_NODE_TYPES
+            or str(node_row["execution_mode"]) != "generative"
+        ):
+            return False
+        try:
+            preparation = NodePromptPreparationV1.model_validate_json(
+                str(node_row["prompt_preparation_json"])
+            )
+        except (TypeError, ValueError) as error:
+            raise _error(
+                "prompt_preparation_dispatch_corrupt",
+                "Managed Node prompt-preparation projection is invalid.",
+            ) from error
+        if preparation.operation_id != str(dispatch_row["operation_id"]):
+            # A newer operation owns the Node.  Never overwrite its projection.
+            return False
+        if preparation.status in {"failed", "ready", "superseded", "not_applicable"}:
+            return False
+        if preparation.status not in {"queued", "working"}:
+            return False
+        timestamp = _iso(_utc(now))
+        failed_preparation = preparation.model_copy(
+            update={
+                "status": "failed",
+                "error": CanvasNodeErrorV2(
+                    code=error_code,
+                    message=_bounded(error_message, 1_024) or "Prompt preparation failed.",
+                    retryable=False,
+                ),
+                "attempt_stage": "failed",
+                "updated_at": _utc(now),
+            }
+        )
+        changed = connection.execute(
+            update(AgentCanvasNodeRow)
+            .where(
+                AgentCanvasNodeRow.workflow_id == dispatch_row["workflow_id"],
+                AgentCanvasNodeRow.node_id == dispatch_row["node_id"],
+                AgentCanvasNodeRow.revision == node_row["revision"],
+            )
+            .values(
+                prompt_preparation_json=failed_preparation.model_dump_json(),
+                revision=int(node_row["revision"]) + 1,
+                updated_at=timestamp,
+            )
+        )
+        if changed.rowcount != 1:
+            raise _stale_dispatch()
+        workflow_revision = connection.execute(
+            select(AgentCanvasWorkflowRow.revision).where(
+                AgentCanvasWorkflowRow.workflow_id == dispatch_row["workflow_id"]
+            )
+        ).scalar_one_or_none()
+        if workflow_revision is None:
+            raise _error(
+                "prompt_preparation_dispatch_workflow_missing",
+                "Prompt-preparation dispatch workflow was not found.",
+            )
+        workflow_revision = int(workflow_revision)
+        workflow_changed = connection.execute(
+            update(AgentCanvasWorkflowRow)
+            .where(
+                AgentCanvasWorkflowRow.workflow_id == dispatch_row["workflow_id"],
+                AgentCanvasWorkflowRow.revision == workflow_revision,
+            )
+            .values(revision=workflow_revision + 1, updated_at=timestamp)
+        )
+        if workflow_changed.rowcount != 1:
+            raise _stale_dispatch()
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=str(dispatch_row["workflow_id"]),
+                node_id=str(dispatch_row["node_id"]),
+                event_type="node_prompt_preparation_failed",
+                transition_key=(
+                    f"prompt-node:{dispatch_row['node_id']}:{dispatch_row['operation_id']}:failed"
+                ),
+                created_at=timestamp,
+                payload={
+                    "node_revision": int(node_row["revision"]) + 1,
+                    "workflow_revision": workflow_revision + 1,
+                    "prompt_preparation_status": "failed",
+                    "operation_id": str(dispatch_row["operation_id"]),
+                    "error_code": error_code,
+                },
+            ),
+        )
+        return True
 
 
 # Short aliases used by callers and tests; they intentionally share one class.
@@ -2248,11 +2389,17 @@ def _json_digest(value: object) -> str:
 
 def _detached_context(
     context: Mapping[str, object] | None,
-) -> tuple[dict[str, object], str]:
+) -> tuple[dict[str, object], str | None]:
     """Normalize one immutable context snapshot through the canonical codec."""
 
+    if context is None:
+        # Direct/legacy Node writers may not have a Stage context at creation
+        # time.  Keep that absence explicit; hashing an empty object would
+        # falsely claim immutable context ownership and fence the first worker
+        # transition against a snapshot it never received.
+        return {}, None
     try:
-        return detached_context_payload(context or {})
+        return detached_context_payload(context)
     except (TypeError, ValueError) as error:
         raise _error(
             "prompt_preparation_context_invalid",
