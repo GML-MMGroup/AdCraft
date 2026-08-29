@@ -202,6 +202,24 @@ def _normalize_compact_turn_intent(
 ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID = (
     "role_creative_brief_v2.role_variant_from_context.v1"
 )
+ROLE_CREATIVE_BRIEF_PRODUCT_MAIN_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.product_main_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_PRODUCT_MULTIVIEW_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.product_multiview_summary_expansion.v1"
+)
+_PRODUCT_MAIN_SUMMARY_ALIASES = (
+    "description",
+    "brief_content",
+    "concept_summary",
+)
+_PRODUCT_MAIN_REQUIRED_FIELDS = (
+    "identity",
+    "geometry",
+    "materials",
+    "marks",
+    "palette",
+)
 _ROLE_VARIANT_VALUES = frozenset(
     {
         "world_view",
@@ -227,22 +245,21 @@ def _normalize_role_creative_brief(
     value: dict[str, Any],
     validation_context: Mapping[str, Any],
 ) -> AgentStructuredNormalizationResult:
-    """Attach only the trusted role discriminator when the provider omitted it."""
+    """Apply only contract-owned, trusted-context role brief compatibility rules."""
 
     expected_variant = validation_context.get("role_variant")
     if expected_variant not in _ROLE_VARIANT_VALUES:
         return AgentStructuredNormalizationResult(value=deepcopy(value))
 
     supplied = value.get("role_variant")
+    candidate = deepcopy(value)
+    rule_ids: list[str] = []
+    normalized_path_count = 0
     if "role_variant" not in value:
-        candidate = deepcopy(value)
         candidate["role_variant"] = expected_variant
-        return AgentStructuredNormalizationResult(
-            value=candidate,
-            rule_ids=(ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID,),
-            normalized_path_count=1,
-        )
-    if supplied != expected_variant:
+        rule_ids.append(ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID)
+        normalized_path_count += 1
+    elif supplied != expected_variant:
         return AgentStructuredNormalizationResult(
             value=deepcopy(value),
             violations=(
@@ -253,7 +270,97 @@ def _normalize_role_creative_brief(
                 ),
             ),
         )
-    return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    if expected_variant in {"product_main", "product_multiview"}:
+        expansion = _expand_product_main_summary(candidate)
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(
+                value=deepcopy(value),
+                violations=expansion.violations,
+            )
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            expansion_path_count = expansion.normalized_path_count
+            if expected_variant == "product_multiview" and "views" not in candidate:
+                candidate["views"] = ["front", "side", "back", "three-quarter", "detail"]
+                expansion_path_count += 1
+            rule_ids.append(
+                (
+                    ROLE_CREATIVE_BRIEF_PRODUCT_MULTIVIEW_SUMMARY_EXPANSION_RULE_ID
+                    if expected_variant == "product_multiview"
+                    else ROLE_CREATIVE_BRIEF_PRODUCT_MAIN_SUMMARY_EXPANSION_RULE_ID
+                )
+            )
+            normalized_path_count += expansion_path_count
+
+    return AgentStructuredNormalizationResult(
+        value=candidate,
+        rule_ids=tuple(rule_ids),
+        normalized_path_count=normalized_path_count,
+    )
+
+
+def _expand_product_main_summary(
+    value: dict[str, Any],
+) -> AgentStructuredNormalizationResult:
+    """Expand one generic product summary without inventing product attributes.
+
+    This rule applies only when no canonical Product Main field was supplied.
+    Every generated field retains the same source summary and limits the compiler
+    to details explicitly stated in that summary.
+    """
+
+    if any(field in value for field in _PRODUCT_MAIN_REQUIRED_FIELDS):
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    supplied = tuple(
+        (name, value[name]) for name in _PRODUCT_MAIN_SUMMARY_ALIASES if name in value
+    )
+    if not supplied or any(not isinstance(item, str) or not item.strip() for _, item in supplied):
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    summaries = tuple(item.strip() for _, item in supplied)
+    if len(set(summaries)) != 1:
+        return AgentStructuredNormalizationResult(
+            value=deepcopy(value),
+            violations=(
+                StructuredViolation(
+                    code="agent_structured_normalization_alias_conflict",
+                    message="The structured product brief contains conflicting summary aliases.",
+                    field_path="product_main",
+                ),
+            ),
+        )
+
+    summary = summaries[0]
+    candidate = deepcopy(value)
+    for name, _ in supplied:
+        del candidate[name]
+    candidate.update(
+        {
+            "identity": summary,
+            "geometry": (
+                "Use only the product geometry explicitly described in the accepted direction: "
+                f"{summary}"
+            ),
+            "materials": (
+                "Use only the materials and finish explicitly described in the accepted direction: "
+                f"{summary}"
+            ),
+            "marks": (
+                "Use only the marks and certifications explicitly described in the accepted direction: "
+                f"{summary}"
+            ),
+            "palette": (
+                "Use only the palette explicitly described in the accepted direction: "
+                f"{summary}"
+            ),
+        }
+    )
+    return AgentStructuredNormalizationResult(
+        value=candidate,
+        normalized_path_count=len(supplied) + len(_PRODUCT_MAIN_REQUIRED_FIELDS),
+    )
 
 
 _CONTROL_ALIASES = MappingProxyType({

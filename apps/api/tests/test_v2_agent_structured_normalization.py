@@ -236,6 +236,61 @@ def test_role_creative_brief_injects_missing_variant_from_trusted_context():
     assert result.violations == ()
 
 
+def test_role_creative_brief_expands_an_unambiguous_product_summary_alias():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {
+            "description": "透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。"
+        },
+        validation_context={"role_variant": "product_main"},
+    )
+
+    assert result.value == {
+        "role_variant": "product_main",
+        "identity": "透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。",
+        "geometry": "Use only the product geometry explicitly described in the accepted direction: 透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。",
+        "materials": "Use only the materials and finish explicitly described in the accepted direction: 透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。",
+        "marks": "Use only the marks and certifications explicitly described in the accepted direction: 透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。",
+        "palette": "Use only the palette explicitly described in the accepted direction: 透明可视化全流程名表质检维保服务，突出透明作业和专属检测报告。",
+    }
+    assert result.rule_ids == (
+        "role_creative_brief_v2.role_variant_from_context.v1",
+        "role_creative_brief_v2.product_main_summary_expansion.v1",
+    )
+    assert result.normalized_path_count == 7
+    assert result.violations == ()
+
+
+def test_role_creative_brief_rejects_conflicting_product_summary_aliases():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {"description": "A", "concept_summary": "B"},
+        validation_context={"role_variant": "product_main"},
+    )
+
+    assert [item.code for item in result.violations] == [
+        "agent_structured_normalization_alias_conflict"
+    ]
+
+
+def test_role_creative_brief_expands_a_product_multiview_summary_alias():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {"brief_content": "A transparent watch maintenance service presentation."},
+        validation_context={"role_variant": "product_multiview"},
+    )
+
+    assert result.value["role_variant"] == "product_multiview"
+    assert result.value["identity"] == "A transparent watch maintenance service presentation."
+    assert result.value["views"] == ["front", "side", "back", "three-quarter", "detail"]
+    assert result.rule_ids == (
+        "role_creative_brief_v2.role_variant_from_context.v1",
+        "role_creative_brief_v2.product_multiview_summary_expansion.v1",
+    )
+    assert result.normalized_path_count == 8
+    assert result.violations == ()
+
+
 def test_role_creative_brief_matching_variant_is_unchanged():
     value = {
         "role_variant": "product_main",
