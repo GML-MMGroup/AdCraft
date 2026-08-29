@@ -1273,6 +1273,13 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(screen.getByRole("button", { name: "Resize AdCraft Video Agent panel" })).toBeTruthy();
   });
 
+  it("hides the selected Skill marker while a proposal choice is active", () => {
+    const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
+    const panelSource = readFileSync(panelPath, "utf8");
+
+    expect(panelSource).toMatch(/\{!conceptInteraction\s*&&\s*selectedSkillTitle\s*\?/);
+  });
+
   it("renders proposal choice interactions as an overlay inside the Timeline shell", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");

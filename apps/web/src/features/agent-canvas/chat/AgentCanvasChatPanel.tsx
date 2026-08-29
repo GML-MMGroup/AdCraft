@@ -1049,7 +1049,7 @@ export function AgentCanvasChatPanel({
             You can also describe your own direction below.
           </div>
         ) : null}
-        {selectedSkillTitle ? (
+        {!conceptInteraction && selectedSkillTitle ? (
           <div className="agent-chat__selected-skill" role="status" aria-label={`Selected Skill: ${selectedSkillTitle}`}>
             <img src="/imgs/ui-icons/skill.svg" alt="" aria-hidden="true" />
             <span>{selectedSkillTitle}</span>
