@@ -161,6 +161,12 @@ describe("AgentCanvasStyleSelector", () => {
     expect(css).toMatch(
       /@media \(max-width: 560px\)[\s\S]*\.agent-chat__style-list\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/,
     );
+    expect(panelRule).toBeTruthy();
+    const styleListRule = css.match(/\.agent-chat__style-list\s*\{([\s\S]*?)\n\}/m)?.[1];
+    expect(styleListRule).toContain("height: min(540px, 56dvh)");
+    expect(styleListRule).toContain("max-height: calc(100dvh - 170px)");
+    expect(styleListRule).toContain("grid-auto-rows: max-content");
+    expect(styleListRule).toContain("overflow-y: auto");
   });
 
   it("fills the modal with a card-shaped loading state while the catalog is pending", async () => {
@@ -261,7 +267,7 @@ describe("AgentCanvasStyleSelector", () => {
     const cardRule = css.match(/\.agent-chat__style-menu \.agent-chat__style-option\s*\{([\s\S]*?)\n\}/m)?.[1];
     const previewRule = css.match(/\.agent-chat__style-preview\s*\{([\s\S]*?)\n\}/m)?.[1];
     expect(listRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
-    expect(listRule).toContain("flex: 1 1 auto");
+    expect(listRule).toContain("flex: 0 1 auto");
     expect(listRule).toContain("min-height: 0");
     expect(listRule).toContain("overflow-y: auto");
     expect(cardRule).toContain("display: flex");
