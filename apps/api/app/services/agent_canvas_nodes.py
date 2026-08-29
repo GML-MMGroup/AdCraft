@@ -95,7 +95,7 @@ class AgentCanvasNodeService:
             bindings,
             expected_revision=expected_revision,
         )
-        return node
+        return self._repository.get_node(workflow_id, node.node_id)
 
     def patch(
         self,
@@ -144,7 +144,7 @@ class AgentCanvasNodeService:
                 update={"model_summary": self._model_selection.summary_for(updated.model_ref)}
             )
         self._repository.update_node(updated, expected_revision=expected_revision)
-        return updated
+        return self._repository.get_node(workflow_id, node_id)
 
     def delete(
         self,
