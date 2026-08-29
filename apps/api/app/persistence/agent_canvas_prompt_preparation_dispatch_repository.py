@@ -88,6 +88,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         dispatch: PromptPreparationDispatchV1 | None = None,
         *,
         now: datetime | None = None,
+        emit_event: bool = True,
         **fields: object,
     ) -> PromptPreparationDispatchV1:
         """Insert/replay a dispatch in a caller-owned transaction."""
@@ -135,18 +136,19 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 "prompt_preparation_dispatch_identity_conflict",
                 "Prompt-preparation dispatch identity conflicts with an existing record.",
             ) from error
-        self._append_event(
-            connection,
-            candidate,
-            event_type={
-                "queued": "node_prompt_preparation_queued",
-                "completed": "node_prompt_preparation_reconciled",
-                "failed": "node_prompt_preparation_failed",
-                "superseded": "node_prompt_preparation_superseded",
-            }[candidate.status],
-            transition_key=f"prompt-dispatch:{candidate.dispatch_id}:{candidate.status}",
-            created_at=candidate.created_at,
-        )
+        if emit_event:
+            self._append_event(
+                connection,
+                candidate,
+                event_type={
+                    "queued": "node_prompt_preparation_queued",
+                    "completed": "node_prompt_preparation_dispatch_reconciled",
+                    "failed": "node_prompt_preparation_dispatch_reconciled",
+                    "superseded": "node_prompt_preparation_superseded",
+                }[candidate.status],
+                transition_key=f"prompt-dispatch:{candidate.dispatch_id}:{candidate.status}",
+                created_at=candidate.created_at,
+            )
         return candidate
 
     def ensure_for_node(
@@ -219,6 +221,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         bindings: Sequence[object] = (),
         context: Mapping[str, object] | None = None,
         now: datetime | None = None,
+        emit_event: bool = True,
     ) -> PromptPreparationDispatchV1 | None:
         """Ensure the current queued projection has one matching dispatch.
 
@@ -320,7 +323,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             updated_at=timestamp,
             terminal_at=terminal_at,
         )
-        return self.enqueue_in_transaction(connection, dispatch)
+        return self.enqueue_in_transaction(connection, dispatch, emit_event=emit_event)
 
     def get(self, dispatch_id: str) -> PromptPreparationDispatchV1:
         try:
@@ -833,7 +836,12 @@ class AgentCanvasPromptPreparationDispatchRepository:
         if row is None:
             # A legacy row may not exist; only create a terminal projection when
             # the current Node proves its complete identity and source snapshot.
-            return self.ensure_for_node_in_transaction(connection, node, now=now)
+            return self.ensure_for_node_in_transaction(
+                connection,
+                node,
+                now=now,
+                emit_event=False,
+            )
         if row["status"] in {"completed", "failed", "superseded"}:
             return _dispatch_from_row(row)
         status = {
@@ -875,7 +883,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             event_type=(
                 "node_prompt_preparation_superseded"
                 if status == "superseded"
-                else "node_prompt_preparation_reconciled"
+                else "node_prompt_preparation_dispatch_reconciled"
             ),
             transition_key=f"prompt-dispatch:{result.dispatch_id}:reconcile:{status}",
             created_at=timestamp,
