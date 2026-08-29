@@ -29,6 +29,7 @@ from app.persistence.models import (
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
+    detached_context_payload,
     prompt_preparation_dispatch_id,
     prompt_preparation_dispatch_logical_key,
 )
@@ -253,8 +254,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             )
         _assert_node_projection(connection, normalized)
         source_snapshot = _source_snapshot_for_node(connection, normalized, bindings)
-        context_json = dict(context or {})
-        context_digest = _json_digest(context_json)
+        context_json, context_digest = _detached_context(context)
         logical_key = prompt_preparation_dispatch_logical_key(
             workflow_id=normalized.workflow_id,
             node_id=normalized.node_id,
@@ -1058,8 +1058,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             return None
         normalized = normalize_queued_node(node, bindings=bindings)
         source_snapshot = _source_snapshot_for_node(connection, normalized, bindings)
-        context_json = dict(context or {})
-        context_digest = _json_digest(context_json)
+        context_json, context_digest = _detached_context(context)
         preparation = normalized.prompt_preparation
         if not preparation.operation_id:
             raise _error(
@@ -1792,6 +1791,20 @@ def _json(value: object) -> str:
 
 def _json_digest(value: object) -> str:
     return sha256(_json(value).encode("utf-8")).hexdigest()
+
+
+def _detached_context(
+    context: Mapping[str, object] | None,
+) -> tuple[dict[str, object], str]:
+    """Normalize one immutable context snapshot through the canonical codec."""
+
+    try:
+        return detached_context_payload(context or {})
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "prompt_preparation_context_invalid",
+            "Prompt-preparation context is invalid or exceeds its bounded size.",
+        ) from error
 
 
 def _utc(value: datetime) -> datetime:

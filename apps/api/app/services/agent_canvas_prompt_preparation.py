@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
 from app.schemas.agent_canvas_prompt_assertion import (
     PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
@@ -723,13 +724,7 @@ class NodePromptPreparationService:
 
 
 def context_digest(context: StageAuthoringContextV1) -> str:
-    payload = json.dumps(
-        context.model_dump(mode="json"),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return sha256(canonical_context_bytes(context)).hexdigest()
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
