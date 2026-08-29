@@ -163,7 +163,10 @@ from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleActionRequestV1,
     DecisionBundleV1,
 )
-from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_creative_session import (
+    GuidedSessionStateV2,
+    ProposedDraftReferenceV2,
+)
 from app.schemas.agent_canvas_guided_interactions import (
     GuidedAcceptedReferenceV1,
     GuidedConceptChoiceV2,
@@ -1369,10 +1372,31 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+
+    def guided_reference_snapshot(
+        workflow_id: str,
+        reference: ProposedDraftReferenceV2,
+    ) -> tuple[int | None, str | None]:
+        """Freeze the same source versions for guided and compatibility routes."""
+
+        return (
+            (
+                workflow_repository.get_node(workflow_id, reference.source_id).revision
+                if reference.source_kind == "node"
+                else None
+            ),
+            (
+                asset_service.resolve_asset(reference.source_id).version_id
+                if reference.source_kind == "image_asset"
+                else None
+            ),
+        )
+
     guided_interactions = GuidedInteractionService(
         guided_interaction_repository,
         conversation_repository,
         materialization_repository,
+        reference_snapshot=guided_reference_snapshot,
         media_submit=GuidedMediaReviewActionService(
             interactions=guided_interaction_repository,
             conversations=conversation_repository,
