@@ -2637,8 +2637,34 @@ def _insert_materialized_node(
     # dispatch identities.
     context_payload: dict[str, object] | None = None
     context_digest: str | None = None
-    if isinstance(prompt_context, (StageAuthoringContextV1, Mapping)):
+    requires_prompt_context = (
+        prompt_dispatch is not None
+        and node.execution_mode == "generative"
+        and node.node_type in {"text", "script", "image", "video", "audio"}
+        and node.prompt_preparation.status == "queued"
+    )
+    if prompt_context is None:
+        if requires_prompt_context:
+            raise _error(
+                "prompt_preparation_context_missing",
+                "Applicable queued Draft requires an immutable prompt context.",
+            )
+    elif isinstance(prompt_context, StageAuthoringContextV1):
         context_payload, context_digest = detached_context_payload(prompt_context)
+    elif isinstance(prompt_context, Mapping):
+        try:
+            typed_context = StageAuthoringContextV1.model_validate(prompt_context)
+            context_payload, context_digest = detached_context_payload(typed_context)
+        except (TypeError, ValueError) as error:
+            raise _error(
+                "prompt_preparation_context_invalid",
+                "Prompt-preparation context is not a valid immutable snapshot.",
+            ) from error
+    else:
+        raise _error(
+            "prompt_preparation_context_invalid",
+            "Prompt-preparation context is not a valid immutable snapshot.",
+        )
     node = normalize_queued_node(
         node,
         bindings=bindings,
@@ -2736,17 +2762,7 @@ def _insert_materialized_node(
             connection,
             node,
             bindings=bindings,
-            context=(
-                context_payload
-                if context_payload is not None
-                else {
-                    "workflow_id": node.workflow_id,
-                    "node_id": node.node_id,
-                    "context_snapshot_id": node.prompt_preparation.context_snapshot_id
-                    or snapshot_id,
-                    "materialization_snapshot_id": snapshot_id,
-                }
-            ),
+            context=context_payload,
             now=datetime.fromisoformat(now),
         )
     return snapshot_id
