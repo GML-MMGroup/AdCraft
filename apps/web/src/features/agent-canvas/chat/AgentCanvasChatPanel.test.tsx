@@ -1276,7 +1276,7 @@ describe("AgentCanvasChatPanel Style integration", () => {
   it("pins the current review outside history immediately above the composer", () => {
     const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
     const panelSource = readFileSync(panelPath, "utf8");
-    const timelineItemsIndex = panelSource.indexOf("{stageTimeline.map((unit) => {");
+    const timelineItemsIndex = panelSource.indexOf("{timelineEntries.map((entry) => {");
     const timelineShellIndex = panelSource.indexOf('<div className="agent-chat__timeline-shell">');
     const pinnedInteractionIndex = panelSource.indexOf('<div className="agent-chat__current-interaction"');
     const composerIndex = panelSource.indexOf('<div className="agent-chat__composer">');

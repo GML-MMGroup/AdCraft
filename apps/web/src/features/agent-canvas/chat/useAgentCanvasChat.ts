@@ -57,6 +57,10 @@ import {
   type ConversationRecoveryView,
 } from "./conversationRecovery.ts";
 import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPresentationStreams.ts";
+import {
+  buildGuidedAnswerBubbles,
+  type GuidedAnswerBubbleV1,
+} from "./guidedAnswerPresentation.ts";
 
 type SubmitDraft = {
   text: string;
@@ -216,6 +220,7 @@ export function useAgentCanvasChat({
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
+  const [guidedAnswerBubbles, setGuidedAnswerBubbles] = useState<GuidedAnswerBubbleV1[]>([]);
   const [messageSkillTitles, setMessageSkillTitles] = useState<Record<string, string>>({});
   const [pendingAgentTurnIds, setPendingAgentTurnIds] = useState<string[]>([]);
   const [presentationStreamIds, setPresentationStreamIds] = useState<string[]>([]);
@@ -262,6 +267,7 @@ export function useAgentCanvasChat({
   const guidanceAdvanceInFlightRef = useRef<string | null>(null);
   const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
   const guidedInteractionSubmitSeqRef = useRef<number | null>(null);
+  const latestTimelineSequenceRef = useRef(-1);
   const guidedInteractionIdempotencyKeysRef = useRef(new Map<string, string>());
   const guidedInteractionSubmissionIdentityRef = useRef<string | null>(null);
   const previousInteractionIdRef = useRef<string | null>(null);
@@ -713,6 +719,7 @@ export function useAgentCanvasChat({
     workflowGenerationRef.current += 1;
     setPersistedItems([]);
     setOptimisticItems([]);
+    setGuidedAnswerBubbles([]);
     setMessageSkillTitles({});
     setPendingAgentTurnIds([]);
     setPresentationStreamIds([]);
@@ -748,6 +755,7 @@ export function useAgentCanvasChat({
     guidanceAdvanceInFlightRef.current = null;
     postReadyBarrierRef.current = null;
     guidedInteractionSubmitSeqRef.current = null;
+    latestTimelineSequenceRef.current = -1;
     guidedInteractionIdempotencyKeysRef.current.clear();
     guidedInteractionSubmissionIdentityRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
@@ -1437,6 +1445,17 @@ export function useAgentCanvasChat({
       (latest, event) => Math.max(latest, event.seq),
       -1,
     );
+    const answerBubbles = buildGuidedAnswerBubbles(
+      interaction,
+      request,
+      latestTimelineSequenceRef.current,
+    );
+    if (answerBubbles.length) {
+      setGuidedAnswerBubbles((current) => [
+        ...current.filter((bubble) => bubble.interaction_id !== interaction.interaction_id),
+        ...answerBubbles,
+      ]);
+    }
     setGuidedInteractionIssue(null);
     try {
       const submissionIdentity = `${interaction.interaction_id}:${interaction.revision}:${JSON.stringify(request)}`;
@@ -1464,6 +1483,9 @@ export function useAgentCanvasChat({
       return true;
     } catch (interactionError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
+      setGuidedAnswerBubbles((current) => current.filter((bubble) => (
+        bubble.interaction_id !== interaction.interaction_id
+      )));
       setGuidedInteractionIssue(
         request.submission_kind === "product_source"
           ? productSourceDecisionDockIssueFromError(interactionError)
@@ -1554,6 +1576,12 @@ export function useAgentCanvasChat({
     () => mergeTimelineItems(persistedItems, projectedItems, optimisticItems),
     [optimisticItems, persistedItems, projectedItems],
   );
+  useEffect(() => {
+    latestTimelineSequenceRef.current = items.reduce(
+      (latest, item) => Math.max(latest, item.sequence),
+      -1,
+    );
+  }, [items]);
   const retryableFailedTurn = useMemo(() => {
     const activityTurnIds = new Set(items.flatMap((item) => (
       item.item_type === "expert_activity" ? [item.turn_id] : []
@@ -1575,6 +1603,7 @@ export function useAgentCanvasChat({
   return {
     state: {
       items,
+      guidedAnswerBubbles,
       messageSkillTitles,
       guidanceSession,
       guidedInteraction: guidanceSession?.interaction ?? null,

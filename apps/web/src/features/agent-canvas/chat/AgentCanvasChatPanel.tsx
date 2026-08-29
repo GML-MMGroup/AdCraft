@@ -86,6 +86,8 @@ import { NaturalMessage } from "./NaturalMessage.tsx";
 import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.ts";
 import { useComposerContext } from "./useComposerContext.ts";
 import { projectProductionFocus } from "./productionFocusProjection.ts";
+import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import type { GuidedAnswerBubbleV1 } from "./guidedAnswerPresentation.ts";
 import type { PresentationStreamView as PresentationStreamRuntimeView } from "../runtime/useAgentCanvasPresentationStreams.ts";
 import "./agent-canvas-chat.css";
 
@@ -99,6 +101,10 @@ type ChatPanelResizeSession = {
 type TimelineRenderOptions = {
   compactCapability?: boolean;
 };
+
+type TimelineEntry =
+  | { entry_type: "timeline"; key: string; sequence: number; unit: ReturnType<typeof buildStageThreadTimeline>[number] }
+  | { entry_type: "guided_answer"; key: string; sequence: number; answer: GuidedAnswerBubbleV1 };
 
 export function TimelineHydrationSkeleton({
   itemType,
@@ -336,6 +342,23 @@ export function AgentCanvasChatPanel({
     }),
     [chat.state.agentWorking, chat.state.items],
   );
+  const timelineEntries = useMemo<TimelineEntry[]>(() => [
+    ...stageTimeline.map((unit) => ({
+      entry_type: "timeline" as const,
+      key: `timeline:${unit.key}`,
+      sequence: unit.sequence,
+      unit,
+    })),
+    ...chat.state.guidedAnswerBubbles.map((answer) => ({
+      entry_type: "guided_answer" as const,
+      key: answer.bubble_id,
+      sequence: answer.sequence,
+      answer,
+    })),
+  ].sort((left, right) => left.sequence - right.sequence), [
+    chat.state.guidedAnswerBubbles,
+    stageTimeline,
+  ]);
   const currentStageCapabilityId = useMemo(() => {
     const stages = stageTimeline.filter((unit) => unit.unit_type === "stage_thread");
     const activeStage = [...stages].reverse().find((stage) => (
@@ -371,10 +394,14 @@ export function AgentCanvasChatPanel({
     const presentationVersion = Object.values(chat.state.presentationStreams ?? {})
       .map((stream) => `${stream.stream_id}:${stream.last_sequence_no}:${stream.status}`)
       .join(",");
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${presentationVersion}:${chat.state.agentWorking}`;
+    const guidedAnswerVersion = chat.state.guidedAnswerBubbles
+      .map((answer) => `${answer.bubble_id}:${answer.sequence}`)
+      .join(",");
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${interactionVersion}:${sessionActions}:${presentationVersion}:${guidedAnswerVersion}:${chat.state.agentWorking}`;
   }, [
     chat.state.agentWorking,
     chat.state.currentSessionActions,
+    chat.state.guidedAnswerBubbles,
     chat.state.guidedInteraction,
     chat.state.items,
     chat.state.presentationStreams,
@@ -746,7 +773,11 @@ export function AgentCanvasChatPanel({
               .map((continuation) => (
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
-            {stageTimeline.map((unit) => {
+            {timelineEntries.map((entry) => {
+              if (entry.entry_type === "guided_answer") {
+                return <GuidedAnswerBubble key={entry.key} answer={entry.answer} />;
+              }
+              const unit = entry.unit;
               const location = conversationLinkIndex.locations.get(unit.key) ?? null;
               if (unit.unit_type === "item") {
                 const content = renderTimelineItem(unit.item, location);

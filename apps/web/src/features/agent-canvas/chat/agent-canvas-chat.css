@@ -542,6 +542,28 @@
   color: inherit;
 }
 
+.agent-chat__guided-answer-bubble {
+  animation: agent-chat-section-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+.agent-chat__guided-answer-bubble .agent-chat__message-body {
+  display: grid;
+  gap: 3px;
+}
+
+.agent-chat__guided-answer-label {
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.agent-chat__guided-answer-value {
+  color: var(--agent-chat-primary);
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 1.4;
+}
+
 .agent-chat__message-skill {
   display: flex;
   max-width: 100%;
