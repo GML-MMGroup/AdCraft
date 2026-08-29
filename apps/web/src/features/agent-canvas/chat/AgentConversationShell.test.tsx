@@ -239,7 +239,7 @@ describe("Agent Conversation Shell v2", () => {
     const followUp = screen.getByText("The next step is ready.");
 
     expect(Boolean(answer.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(screen.getByText("How long should the ad be?")).toBeTruthy();
+    expect(screen.queryByText("How long should the ad be?")).toBeNull();
     expect(screen.getByText("30 seconds")).toBeTruthy();
   });
 

@@ -551,12 +551,6 @@
   gap: 3px;
 }
 
-.agent-chat__guided-answer-label {
-  color: var(--agent-chat-secondary);
-  font-size: 10px;
-  line-height: 1.35;
-}
-
 .agent-chat__guided-answer-value {
   color: var(--agent-chat-primary);
   font-size: 13px;
