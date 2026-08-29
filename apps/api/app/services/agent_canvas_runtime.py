@@ -599,7 +599,7 @@ class DynamicCanvasScheduler:
             or node.prompt_preparation.recipe_id
             or node.metadata.get("prompt_recipe_id")
         )
-        if managed_prompt and node.prompt_preparation.status == "failed":
+        if node.prompt_preparation.status == "failed":
             preparation_error = _prompt_preparation_failure(node)
             assert preparation_error is not None
             raise V2PersistenceError(
