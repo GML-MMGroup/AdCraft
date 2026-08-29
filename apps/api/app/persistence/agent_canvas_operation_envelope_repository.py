@@ -187,11 +187,22 @@ def _validate_storyboard_envelope(envelope: OperationEnvelopeV1) -> None:
     """
 
     capability_id = getattr(envelope, "capability_id", None)
-    marker = getattr(envelope, "agent_request_identity", None)
-    if marker is None:
-        marker = getattr(envelope, "idempotency_identity", None)
-    if capability_id != "storyboard_design" or marker is None:
+    markers = tuple(
+        marker
+        for marker in (
+            getattr(envelope, "agent_request_identity", None),
+            getattr(envelope, "idempotency_identity", None),
+        )
+        if isinstance(marker, str) and marker.startswith("storyboard-selection:")
+    )
+    if not markers:
         return
+    if capability_id != "storyboard_design" or len(set(markers)) != 1:
+        raise _error(
+            "operation_envelope_identity_invalid",
+            "Storyboard selection identity is attached to an incompatible envelope.",
+        )
+    marker = markers[0]
     # Envelopes written before this focused authority used the existing
     # capability/publication identity namespaces.  They remain readable as
     # historical records.  Only the new server-owned namespace opts into the
@@ -199,7 +210,8 @@ def _validate_storyboard_envelope(envelope: OperationEnvelopeV1) -> None:
     if not isinstance(marker, str) or not marker.startswith("storyboard-selection:"):
         return
     try:
-        validate_storyboard_envelope_identity(envelope)
+        if validate_storyboard_envelope_identity(envelope) is None:
+            raise ValueError("Storyboard operation envelope identity marker is malformed.")
     except (TypeError, ValueError) as error:
         raise _error(
             "operation_envelope_identity_invalid",
