@@ -1188,6 +1188,15 @@ class DynamicCanvasScheduler:
         )
         if current_node is None:
             reasons.append("target_node_missing")
+        elif current_node.prompt_preparation.status != "ready" and (
+            current_node.prompt_preparation.operation_id is not None
+            or current_node.generation_prompt is None
+        ):
+            # A run snapshot may legitimately carry an older target revision,
+            # but it can never bypass the live prompt-preparation barrier.
+            # Otherwise a same-wave queued/working projection falls through to
+            # provider admission with an empty or stale prompt.
+            reasons.append("target_prompt_preparation_not_ready")
         elif current_node.revision != observed_revision:
             reasons.append("target_node_revision_changed")
         elif not frozen_target_revision and (
