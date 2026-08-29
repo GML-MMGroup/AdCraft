@@ -1828,7 +1828,10 @@ class AgentCanvasMaterializationRepository:
             return False
 
         claim_record = _decode_storyboard_record(claim["response_json"])
-        if claim_record != record:
+        if (
+            claim_record != record
+            or str(claim["request_fingerprint"]) != identity_digest
+        ):
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Persisted Storyboard selection identity does not match the envelope.",
@@ -1843,7 +1846,13 @@ class AgentCanvasMaterializationRepository:
                 created_at=timestamp,
             )
 
-        if str(proposal["materialization_id"]) != ids.materialization_id:
+        if (
+            str(proposal["capability_id"]) != "storyboard_design"
+            or str(proposal["materialization_id"]) != ids.materialization_id
+            or str(proposal["materialization_turn_id"]) != ids.action_turn_id
+            or str(proposal["materialization_option_id"])
+            != str(envelope.selected_option.option_id)
+        ):
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Storyboard Proposal points to a different materialization lineage.",
@@ -1865,11 +1874,12 @@ class AgentCanvasMaterializationRepository:
         )
         envelope_row = (
             connection.execute(
-                select(AgentCanvasOperationEnvelopeRow.envelope_json).where(
+                select(AgentCanvasOperationEnvelopeRow).where(
                     AgentCanvasOperationEnvelopeRow.envelope_id == ids.envelope_id,
                 )
             )
-            .scalar_one_or_none()
+            .mappings()
+            .one_or_none()
         )
         outbox = (
             connection.execute(
@@ -1890,7 +1900,22 @@ class AgentCanvasMaterializationRepository:
             .mappings()
             .one_or_none()
         )
-        if turn is None or envelope_row is None or outbox is None or activity is None:
+        source_turn = (
+            connection.execute(
+                select(AgentCanvasChatTurnRow).where(
+                    AgentCanvasChatTurnRow.turn_id == str(proposal["turn_id"]),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if (
+            turn is None
+            or envelope_row is None
+            or outbox is None
+            or activity is None
+            or source_turn is None
+        ):
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Canonical Storyboard selection lineage is incomplete.",
@@ -1899,6 +1924,10 @@ class AgentCanvasMaterializationRepository:
             str(turn["workflow_id"]) != envelope.workflow_id
             or str(turn["conversation_id"]) != envelope.conversation_id
             or str(turn["turn_kind"]) != "proposal_action"
+            or str(source_turn["workflow_id"]) != envelope.workflow_id
+            or str(source_turn["conversation_id"]) != envelope.conversation_id
+            or str(envelope_row["turn_id"]) != ids.action_turn_id
+            or str(envelope_row["workflow_id"]) != envelope.workflow_id
             or str(outbox["workflow_id"]) != envelope.workflow_id
             or str(outbox["conversation_id"]) != envelope.conversation_id
             or str(outbox["source_turn_id"]) != str(proposal["turn_id"])
@@ -1908,6 +1937,7 @@ class AgentCanvasMaterializationRepository:
             or str(activity["turn_id"]) != ids.action_turn_id
             or str(activity["capability_id"]) != "storyboard_design"
             or str(activity["operation"]) != "capability_materialization"
+            or str(activity["status"]) not in {"working", "completed", "failed"}
         ):
             raise _error(
                 "guidance_action_lineage_invalid",
@@ -1924,6 +1954,7 @@ class AgentCanvasMaterializationRepository:
             not isinstance(outbox_payload, dict)
             or outbox_payload.get("schema_version") != "1"
             or outbox_payload.get("envelope_id") != ids.envelope_id
+            or _digest(str(outbox["payload_json"])) != str(outbox["payload_digest"])
         ):
             raise _error(
                 "guidance_action_lineage_invalid",
@@ -2011,7 +2042,7 @@ class AgentCanvasMaterializationRepository:
                         )
                         canonical_storyboard = (
                             envelope.capability_id == "storyboard_design"
-                            and identity_digest_from_envelope(envelope) is not None
+                            and _has_storyboard_identity_marker(envelope)
                         )
                         if canonical_storyboard:
                             if self._resolve_storyboard_identity_in_transaction(
@@ -3480,6 +3511,14 @@ def _is_digest(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
+def _has_storyboard_identity_marker(envelope: MaterializationEnvelopeV1) -> bool:
+    for field in ("agent_request_identity", "idempotency_identity"):
+        marker = getattr(envelope, field, None)
+        if isinstance(marker, str) and marker.startswith("storyboard-selection:"):
+            return True
+    return False
+
+
 def _storyboard_identity_facts(
     envelope: MaterializationEnvelopeV1,
 ) -> tuple[str, StoryboardSelectionIdsV1, dict[str, str]]:
@@ -3660,15 +3699,22 @@ def _validate_storyboard_action_request(
                 "Storyboard accepted references are invalid.",
             )
         supplied.append((source_kind, source_id))
-    expected = {
+    expected = [
         (reference.source_kind, reference.source_id)
         for reference in envelope.reference_plan.references
-    }
+    ]
     # Accepted references are normalized in Proposal order before the envelope
     # is built.  A replay may arrive through either public route (and therefore
-    # in a different client order), but it must still describe the same set of
-    # source identities.  Unknown or omitted identities remain a conflict.
-    if set(supplied) != expected:
+    # in a different client order), but it must still describe the same source
+    # identities. Unknown or omitted identities remain a conflict.
+    expected_order = {identity: index for index, identity in enumerate(expected)}
+    normalized_supplied = tuple(
+        sorted(
+            dict.fromkeys(supplied),
+            key=lambda identity: expected_order.get(identity, len(expected_order)),
+        )
+    )
+    if normalized_supplied != tuple(dict.fromkeys(expected)):
         raise _error(
             "materialization_payload_conflict",
             "Storyboard accepted references do not match their envelope.",
