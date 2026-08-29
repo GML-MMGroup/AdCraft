@@ -847,8 +847,6 @@ class CapabilityMaterializationPublicationService:
             strict=True,
         ):
             node = self._workflows.get_node(envelope.workflow_id, node_id)
-            if node.prompt_preparation.status == "ready":
-                continue
             if node.prompt_preparation.operation_id != operation_id:
                 raise V2PersistenceError(
                     "prompt_preparation_dispatch_stale",
@@ -856,6 +854,8 @@ class CapabilityMaterializationPublicationService:
                     stage="capability_materialization_publication",
                     details={"node_id": node_id, "operation_id": operation_id},
                 )
+            if node.prompt_preparation.status == "ready":
+                continue
             pending_preparations.append((node_id, operation_id))
         pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
