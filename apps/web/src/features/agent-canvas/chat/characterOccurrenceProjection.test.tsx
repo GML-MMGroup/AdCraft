@@ -68,7 +68,7 @@ describe("projectCharacterOccurrences", () => {
       summary: "A precise studio director",
       outcome: "include",
       active: true,
-      phases: { main: "pending", turnaround: "pending" },
+      phases: { main: "awaiting-user", turnaround: "awaiting-user" },
     }]);
   });
 
@@ -103,12 +103,59 @@ describe("projectCharacterOccurrences", () => {
 
     const projected = projectCharacterOccurrences(value);
     expect(projected[0]?.phases).toEqual({
-      main: "completed",
+      main: "ready",
       turnaround: "working",
     });
 
     render(<CharacterOccurrenceProgress journey={value} />);
-    expect(screen.getAllByTestId("character-phase-main").at(-1)?.getAttribute("data-status")).toBe("completed");
+    expect(screen.getAllByTestId("character-phase-main").at(-1)?.getAttribute("data-status")).toBe("ready");
     expect(screen.getAllByTestId("character-phase-turnaround").at(-1)?.getAttribute("data-status")).toBe("working");
+  });
+
+  it.each([
+    ["reserved", "queued"],
+    ["working", "working"],
+    ["waiting_user", "awaiting-user"],
+  ] as const)("maps an active action status %s to %s", (actionStatus, expected) => {
+    const value = journey([decision(1, { role: "Lead" })]);
+    value.active_action = {
+      action_id: `action-${actionStatus}`,
+      action_kind: "prepare_character_main",
+      stage: "character",
+      stage_revision: 5,
+      status: actionStatus,
+      turn_id: "turn-character-1",
+      occurrence_id: "occurrence:character:1",
+      character_phase: "main",
+    };
+
+    expect(projectCharacterOccurrences(value)[0]?.phases.main).toBe(expected);
+  });
+
+  it("maps stage failures to blocked and terminal evidence to ready", () => {
+    const value = journey([decision(1, { role: "Lead" })]);
+    value.stage_status = "failed";
+    expect(projectCharacterOccurrences(value)[0]?.phases).toEqual({
+      main: "blocked",
+      turnaround: "blocked",
+    });
+
+    value.stage_status = "working";
+    value.transition_evidence = [characterEvidence(1, "main")];
+    expect(projectCharacterOccurrences(value)[0]?.phases).toEqual({
+      main: "ready",
+      turnaround: "queued",
+    });
+
+    value.transition_evidence = [{
+      ...characterEvidence(1, "main"),
+      evidence_id: "evidence-stage-failed",
+      evidence_kind: "stage_failed",
+      character_phase: null,
+    }];
+    expect(projectCharacterOccurrences(value)[0]?.phases).toEqual({
+      main: "blocked",
+      turnaround: "blocked",
+    });
   });
 });

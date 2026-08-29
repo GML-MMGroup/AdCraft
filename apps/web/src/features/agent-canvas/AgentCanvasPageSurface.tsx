@@ -1250,6 +1250,7 @@ export function AgentCanvasPage() {
               omittedNodeIds={editingPreparation?.omittedNodeIds ?? []}
               patchNode={patchNode}
               onClose={() => setEditingNodeId(null)}
+              onRevisionConflict={refreshWorkflow}
               onAddExportToCanvas={addEditingExportToCanvas}
             />
           </Suspense>
