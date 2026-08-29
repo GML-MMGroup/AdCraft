@@ -259,5 +259,10 @@ def execute_agent_tool(
                 if result.normalization_audit is not None
                 else {}
             ),
+            **(
+                {"fallback_audit": result.fallback_audit.model_dump(mode="json")}
+                if result.fallback_audit is not None
+                else {}
+            ),
         },
     )

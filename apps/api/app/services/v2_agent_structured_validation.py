@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.schemas.agent_runtime import (
     AgentStructuredNormalizationAuditV1,
+    AgentStructuredFallbackAuditV1,
     AgentStructuredSubmission,
     AgentStructuredValidationResult,
     StructuredViolation,
@@ -47,7 +48,13 @@ class V2AgentStructuredValidationService:
             submission.value,
         )
         if normalization.violations:
-            return _rejected(submission, normalization.violations)
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=normalization.violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
+            )
 
         try:
             normalized = validate_agent_contract(
@@ -55,20 +62,28 @@ class V2AgentStructuredValidationService:
                 normalization.value,
             )
         except ValidationError as error:
-            return _rejected(
-                submission,
-                _project_validation_errors(error),
+            violations = _project_validation_errors(error)
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
             )
         except AgentStructuredContractRegistryError:
-            return _rejected(
-                submission,
-                (
-                    StructuredViolation(
-                        code="agent_contract_not_allowed",
-                        message="The persisted Agent contract is not registered.",
-                        field_path="contract_name",
-                    ),
+            violations = (
+                StructuredViolation(
+                    code="agent_contract_not_allowed",
+                    message="The persisted Agent contract is not registered.",
+                    field_path="contract_name",
                 ),
+            )
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
                 repair_allowed=False,
             )
 
@@ -112,9 +127,12 @@ class V2AgentStructuredValidationService:
             normalized_value,
         )
         if semantic_violations:
-            return _rejected(
-                submission,
-                semantic_violations,
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=semantic_violations,
+                candidate_value=normalized_value,
+                normalization=normalization,
                 repair_allowed=(
                     False
                     if any(
@@ -193,6 +211,80 @@ def _normalization_audit(
         rule_ids=normalization.rule_ids,
         normalized_path_count=normalization.normalized_path_count,
         submission_attempt=submission.attempt,
+    )
+
+
+_SAFE_FALLBACK_MESSAGE = (
+    "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+)
+
+
+def _fallback_or_rejected(
+    *,
+    run: AgentRunRecord,
+    submission: AgentStructuredSubmission,
+    violations: tuple[StructuredViolation, ...],
+    candidate_value: dict[str, Any],
+    normalization: AgentStructuredNormalizationResult | None = None,
+    repair_allowed: bool | None = None,
+) -> AgentStructuredValidationResult:
+    if (
+        run.contract_name != "CompactTurnIntentDecisionV3"
+        or submission.attempt != 2
+        or any(item.code == "agent_validation_context_invalid" for item in violations)
+    ):
+        return _rejected(submission, violations, repair_allowed=repair_allowed)
+
+    raw_message = candidate_value.get("assistant_message")
+    used_model_message = False
+    message = _SAFE_FALLBACK_MESSAGE
+    if isinstance(raw_message, str) and len(raw_message) <= 2_000:
+        cleaned_message = "".join(
+            char
+            for char in raw_message
+            if char in "\n\t" or unicodedata.category(char) not in {"Cc", "Cf"}
+        )
+        if cleaned_message.strip() and len(cleaned_message) <= 2_000:
+            message = cleaned_message
+            used_model_message = True
+
+    fallback_value = {
+        "mode": "ordinary_conversation",
+        "objective": "Preserve a safe conversational response after structured validation failed.",
+        "assistant_message": message,
+    }
+    try:
+        normalized_fallback = validate_agent_contract(
+            "CompactTurnIntentDecisionV3",
+            fallback_value,
+        )
+    except (ValidationError, AgentStructuredContractRegistryError):
+        return _rejected(submission, violations, repair_allowed=repair_allowed)
+
+    failure_codes = tuple(dict.fromkeys(item.code for item in violations))[:32]
+    validation_paths = tuple(
+        dict.fromkeys(item.field_path for item in violations if item.field_path)
+    )[:32]
+    fallback_audit = AgentStructuredFallbackAuditV1(
+        contract_name="CompactTurnIntentDecisionV3",
+        error_code="agent_structured_fallback_applied",
+        failure_codes=failure_codes,
+        validation_paths=validation_paths,
+        submission_attempt=2,
+        used_model_message=used_model_message,
+        reason="validation_exhausted",
+    )
+    return AgentStructuredValidationResult(
+        accepted=True,
+        normalized_result_id=submission.submission_id,
+        normalized_value=normalized_fallback.model_dump(mode="json", exclude_unset=True),
+        repair_allowed=False,
+        normalization_audit=(
+            _normalization_audit(run, submission, normalization)
+            if normalization is not None
+            else None
+        ),
+        fallback_audit=fallback_audit,
     )
 
 

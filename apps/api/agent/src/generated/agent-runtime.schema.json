@@ -3341,6 +3341,70 @@
       "title": "AgentRuntimeHealth",
       "type": "object"
     },
+    "AgentStructuredFallbackAuditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_name": {
+          "const": "CompactTurnIntentDecisionV3",
+          "title": "Contract Name",
+          "type": "string"
+        },
+        "error_code": {
+          "const": "agent_structured_fallback_applied",
+          "title": "Error Code",
+          "type": "string"
+        },
+        "failure_codes": {
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Failure Codes",
+          "type": "array"
+        },
+        "reason": {
+          "enum": [
+            "repair_json_invalid",
+            "validation_exhausted"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "submission_attempt": {
+          "const": 2,
+          "title": "Submission Attempt",
+          "type": "integer"
+        },
+        "used_model_message": {
+          "title": "Used Model Message",
+          "type": "boolean"
+        },
+        "validation_paths": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Validation Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_name",
+        "error_code",
+        "failure_codes",
+        "reason",
+        "submission_attempt",
+        "used_model_message",
+        "validation_paths"
+      ],
+      "title": "AgentStructuredFallbackAuditV1",
+      "type": "object"
+    },
     "AgentStructuredNormalizationAuditV1": {
       "additionalProperties": false,
       "properties": {
@@ -3503,6 +3567,17 @@
         "accepted": {
           "title": "Accepted",
           "type": "boolean"
+        },
+        "fallback_audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentStructuredFallbackAuditV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "normalization_audit": {
           "anyOf": [
@@ -4140,6 +4215,17 @@
           "minimum": 1,
           "title": "Structured Attempt Count",
           "type": "integer"
+        },
+        "structured_fallback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentStructuredFallbackAuditV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "structured_transport": {
           "enum": [

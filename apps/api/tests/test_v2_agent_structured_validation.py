@@ -137,6 +137,16 @@ def submission(run, value, *, run_id=None, attempt=1):
     )
 
 
+def submission_with_contract(run, value, *, contract_name, attempt=2):
+    return AgentStructuredSubmission(
+        run_id=run.run_id,
+        submission_id="submission-1",
+        contract_name=contract_name,
+        value=value,
+        attempt=attempt,
+    )
+
+
 def duration_candidate(*, source_quote="60秒", value="60"):
     return {
         "mode": "guided_production",
@@ -238,3 +248,113 @@ def test_alias_conflict_rejects_only_normalization_violation(persisted_run):
     assert [item.code for item in result.violations] == [
         "agent_structured_normalization_alias_conflict"
     ]
+
+
+def test_second_submission_invalid_source_quote_returns_safe_fallback(persisted_run):
+    repository, run = persisted_run
+    value = {
+        **duration_candidate(source_quote="不存在的引文"),
+        "assistant_message": "我已理解你的广告需求。",
+    }
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value, attempt=2),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_result_id == "submission-1"
+    assert result.repair_allowed is False
+    assert result.normalized_value == {
+        "mode": "ordinary_conversation",
+        "objective": "Preserve a safe conversational response after structured validation failed.",
+        "assistant_message": "我已理解你的广告需求。",
+    }
+    assert result.fallback_audit is not None
+    assert result.fallback_audit.error_code == "agent_structured_fallback_applied"
+    assert result.fallback_audit.failure_codes == ("requirement_source_quote_invalid",)
+    assert result.fallback_audit.validation_paths == (
+        "requirement_patch.controls_to_set.duration_seconds.source_quote",
+    )
+    assert result.fallback_audit.submission_attempt == 2
+    assert result.fallback_audit.used_model_message is True
+    assert result.fallback_audit.reason == "validation_exhausted"
+    assert "requested_capability" not in result.normalized_value
+    assert "explicit_elements" not in result.normalized_value
+    assert "requirement_patch" not in result.normalized_value
+
+
+@pytest.mark.parametrize(
+    ("assistant_message", "expected_used_model_message"),
+    [
+        ("   \n\t", False),
+        ("\u0000\u0001", False),
+        (123, False),
+        ("x" * 2_001, False),
+    ],
+)
+def test_second_submission_invalid_assistant_message_uses_deterministic_fallback(
+    persisted_run,
+    assistant_message,
+    expected_used_model_message,
+):
+    repository, run = persisted_run
+    value = {
+        **duration_candidate(source_quote="不存在的引文"),
+        "assistant_message": assistant_message,
+    }
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(run, value, attempt=2),
+    )
+
+    assert result.accepted is True
+    assert result.normalized_value["assistant_message"] == (
+        "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+    )
+    assert result.fallback_audit.used_model_message is expected_used_model_message
+
+
+def test_first_submission_with_invalid_source_quote_remains_rejected(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {**duration_candidate(source_quote="不存在的引文"), "assistant_message": "请稍后再试。"},
+            attempt=1,
+        ),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == ["requirement_source_quote_invalid"]
+
+
+def test_second_submission_different_contract_remains_rejected(persisted_run):
+    repository, run = persisted_run
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission_with_contract(
+            run,
+            {"mode": "ordinary_conversation", "objective": "hello"},
+            contract_name="TurnIntentDecisionV2",
+        ),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == ["agent_contract_mismatch"]
+
+
+def test_second_submission_invalid_validation_context_remains_rejected(persisted_run):
+    repository, run = persisted_run
+    run.validation_context["source_turn_id"] = "missing-turn"
+    result = V2AgentStructuredValidationService(repository).validate(
+        run=run,
+        submission=submission(
+            run,
+            {**duration_candidate(source_quote="不存在的引文"), "assistant_message": "请重试。"},
+            attempt=2,
+        ),
+    )
+
+    assert result.accepted is False
+    assert [item.code for item in result.violations] == ["agent_validation_context_invalid"]

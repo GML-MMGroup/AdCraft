@@ -329,6 +329,22 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
         return self
 
 
+class AgentStructuredFallbackAuditV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract_name: Literal["CompactTurnIntentDecisionV3"]
+    error_code: Literal["agent_structured_fallback_applied"]
+    failure_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
+        min_length=1, max_length=32
+    )
+    validation_paths: tuple[Annotated[str, Field(min_length=1, max_length=512)], ...] = Field(
+        max_length=32
+    )
+    submission_attempt: Literal[2]
+    used_model_message: bool
+    reason: Literal["validation_exhausted", "repair_json_invalid"]
+
+
 class AgentTransportAttemptMetadataV1(_StrictModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -379,6 +395,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     structured_validation_attempts: tuple[AgentStructuredValidationAttemptAuditV1, ...] = Field(
         default=(), max_length=2
     )
+    structured_fallback: AgentStructuredFallbackAuditV1 | None = None
 
     @model_validator(mode="after")
     def validate_structured_validation_attempt_order(self) -> "AgentTransportAttemptMetadataV1":
@@ -590,6 +607,7 @@ class AgentStructuredValidationResult(_StrictModel):
     violations: tuple[StructuredViolation, ...] = Field(default=(), max_length=128)
     repair_allowed: bool = False
     normalization_audit: AgentStructuredNormalizationAuditV1 | None = None
+    fallback_audit: AgentStructuredFallbackAuditV1 | None = None
 
 
 class AgentRuntimeHealth(_StrictModel):
