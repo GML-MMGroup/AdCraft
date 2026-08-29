@@ -1473,6 +1473,9 @@ def create_agent_canvas_runtime(
         setting = execution_settings.get_or_create(workflow_id)
         if setting.media_execution_mode != "automatic":
             return None
+        node = workflow_repository.get_node(workflow_id, node_ids[0]) if node_ids else None
+        if node is None or node.creative_role != "storyboard_sequence":
+            return None
         return fanout_activation.activate_prompt_ready_nodes(
             workflow_id,
             node_ids,
