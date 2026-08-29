@@ -1462,6 +1462,17 @@ def create_agent_canvas_runtime(
         # persisted with the dispatch row.  The test-only loader hook remains
         # intentionally unset here so incomplete legacy rows fail closed.
         context_loader=None,
+        stale_dispatch_reconciler=(
+            lambda dispatch, worker_id, lease_generation, reason, timestamp: (
+                workflow_repository.reconcile_stale_prompt_preparation_dispatch(
+                    dispatch,
+                    worker_id=worker_id,
+                    lease_generation=lease_generation,
+                    reason=reason,
+                    now=timestamp,
+                )
+            )
+        ),
         worker_id=f"agent-canvas-prompt-preparation:{uuid4().hex}",
         barrier_callback=lambda dispatch, result: _resume_prompt_preparation_barrier(
             dispatch,

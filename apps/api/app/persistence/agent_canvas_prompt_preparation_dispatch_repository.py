@@ -875,6 +875,103 @@ class AgentCanvasPromptPreparationDispatchRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def assert_owned_in_transaction(
+        self,
+        connection: Connection,
+        dispatch_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Return one owned row while the caller holds its transaction."""
+
+        row = _select_one(connection, dispatch_id)
+        if row is None:
+            raise _not_found()
+        if row["status"] == "superseded":
+            return _dispatch_from_row(row)
+        _require_owned(row, worker_id, lease_generation, _utc(now))
+        return _dispatch_from_row(row)
+
+    def supersede_owned_in_transaction(
+        self,
+        connection: Connection,
+        dispatch_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        reason: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Supersede one owned row without opening a nested transaction."""
+
+        timestamp = _utc(now)
+        row = _select_one(connection, dispatch_id)
+        if row is None:
+            raise _not_found()
+        if row["status"] == "superseded":
+            return _dispatch_from_row(row)
+        _require_owned(row, worker_id, lease_generation, timestamp)
+        values = {
+            "status": "superseded",
+            "lease_owner": None,
+            "lease_expires_at": None,
+            "last_error_code": "prompt_preparation_superseded",
+            "last_error_message": _bounded(reason, 1_024),
+            "supersession_reason": _bounded(reason, 1_024),
+            "updated_at": _iso(timestamp),
+            "terminal_at": _iso(timestamp),
+        }
+        changed = connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.dispatch_id == dispatch_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "leased",
+                AgentCanvasPromptPreparationOutboxRow.lease_owner == worker_id,
+                AgentCanvasPromptPreparationOutboxRow.lease_generation == lease_generation,
+            )
+            .values(**values)
+        )
+        if changed.rowcount != 1:
+            raise _stale_lease()
+        result = _dispatch_from_row({**row, **values})
+        self._append_event(
+            connection,
+            result,
+            event_type="node_prompt_preparation_superseded",
+            transition_key=f"prompt-dispatch:{dispatch_id}:superseded:{lease_generation}",
+            created_at=timestamp,
+        )
+        return result
+
+    def get_for_node_operation_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+    ) -> PromptPreparationDispatchV1 | None:
+        """Resolve one operation identity without leaving the caller transaction."""
+
+        rows = (
+            connection.execute(
+                select(AgentCanvasPromptPreparationOutboxRow).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                    AgentCanvasPromptPreparationOutboxRow.operation_id == operation_id,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > 1:
+            raise _error(
+                "prompt_preparation_dispatch_ambiguous",
+                "Multiple prompt-preparation dispatches own the same operation.",
+            )
+        return _dispatch_from_row(rows[0]) if rows else None
+
     def requeue_failed(
         self,
         dispatch_id: str,

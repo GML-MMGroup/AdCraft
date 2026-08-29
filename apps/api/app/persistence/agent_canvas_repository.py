@@ -59,7 +59,10 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
-from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
+from app.schemas.agent_canvas_prompt_preparation_dispatch import (
+    PromptPreparationDispatchV1,
+    detached_context_payload,
+)
 from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
@@ -1078,6 +1081,126 @@ class AgentCanvasWorkflowRepository:
                     )
                     connection.commit()
                     return invalidated
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
+    def reconcile_stale_prompt_preparation_dispatch(
+        self,
+        dispatch: PromptPreparationDispatchV1,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        reason: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1 | None:
+        """Reconcile a stale worker against the latest Node snapshot atomically."""
+
+        timestamp = now.astimezone(timezone.utc) if now.tzinfo is not None else now
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    owned = self._prompt_dispatch.assert_owned_in_transaction(
+                        connection,
+                        dispatch.dispatch_id,
+                        worker_id=worker_id,
+                        lease_generation=lease_generation,
+                        now=timestamp,
+                    )
+                    node_row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == dispatch.workflow_id,
+                                AgentCanvasNodeRow.node_id == dispatch.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if node_row is None:
+                        if owned.status == "superseded":
+                            connection.commit()
+                            return owned
+                        result = self._prompt_dispatch.supersede_owned_in_transaction(
+                            connection,
+                            dispatch.dispatch_id,
+                            worker_id=worker_id,
+                            lease_generation=lease_generation,
+                            reason=reason,
+                            now=timestamp,
+                        )
+                        connection.commit()
+                        return result
+
+                    current = _node_from_row(node_row)
+                    successor: PromptPreparationDispatchV1 | None = None
+                    if (
+                        current.prompt_preparation.operation_id == dispatch.operation_id
+                        and current.prompt_preparation.status in {"working", "queued"}
+                    ):
+                        workflow_revision = int(
+                            connection.execute(
+                                select(AgentCanvasWorkflowRow.revision).where(
+                                    AgentCanvasWorkflowRow.workflow_id == dispatch.workflow_id
+                                )
+                            ).scalar_one()
+                        )
+                        queued = _invalidate_target_prompt_preparation(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=dispatch.workflow_id,
+                            target_node_id=dispatch.node_id,
+                            updated_at=timestamp.isoformat(),
+                            expected_operation_id=dispatch.operation_id,
+                        )
+                        if queued is not None:
+                            _advance_workflow_revision(
+                                connection,
+                                workflow_id=dispatch.workflow_id,
+                                current_revision=workflow_revision,
+                                updated_at=queued.updated_at.isoformat(),
+                            )
+                            successor = self._prompt_dispatch.get_for_node_operation_in_transaction(
+                                connection,
+                                dispatch.workflow_id,
+                                dispatch.node_id,
+                                queued.prompt_preparation.operation_id or "",
+                            )
+                    elif (
+                        current.prompt_preparation.status == "queued"
+                        and current.execution_mode == "generative"
+                    ):
+                        bindings = _load_target_bindings(
+                            connection,
+                            dispatch.workflow_id,
+                            dispatch.node_id,
+                        )
+                        successor = self._prompt_dispatch.supersede_and_enqueue_in_transaction(
+                            connection,
+                            node=current,
+                            bindings=bindings,
+                            context=(dispatch.context_json if dispatch.context_digest else None),
+                            reason=reason,
+                            now=timestamp,
+                        )
+
+                    if successor is None and owned.status != "superseded":
+                        owned = self._prompt_dispatch.supersede_owned_in_transaction(
+                            connection,
+                            dispatch.dispatch_id,
+                            worker_id=worker_id,
+                            lease_generation=lease_generation,
+                            reason=reason,
+                            now=timestamp,
+                        )
+                    connection.commit()
+                    return successor or owned
                 except BaseException:
                     connection.rollback()
                     raise

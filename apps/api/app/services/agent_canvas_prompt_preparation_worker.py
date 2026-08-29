@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 PreparationCallback = Callable[[PromptPreparationDispatchV1, StageAuthoringContextV1], object]
 PreparationContextLoader = Callable[[PromptPreparationDispatchV1], StageAuthoringContextV1]
 BarrierCallback = Callable[[PromptPreparationDispatchV1, object], object]
+StaleDispatchReconciler = Callable[[PromptPreparationDispatchV1, str, int, str, datetime], object]
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class AgentCanvasPromptPreparationWorker:
         base_backoff: timedelta = timedelta(seconds=5),
         maximum_backoff: timedelta = timedelta(minutes=5),
         barrier_callback: BarrierCallback | None = None,
+        stale_dispatch_reconciler: StaleDispatchReconciler | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_prompt_preparation_heartbeat,
     ) -> None:
         if not worker_id:
@@ -70,6 +72,7 @@ class AgentCanvasPromptPreparationWorker:
         self._base_backoff = base_backoff
         self._maximum_backoff = maximum_backoff
         self._barrier_callback = barrier_callback
+        self._stale_dispatch_reconciler = stale_dispatch_reconciler
         self._heartbeat_wait = heartbeat_wait
 
     def run_once(self) -> PromptPreparationWorkerCycle:
@@ -204,6 +207,15 @@ class AgentCanvasPromptPreparationWorker:
 
     def _supersede_stale(self, dispatch: PromptPreparationDispatchV1, reason: str) -> str:
         try:
+            if self._stale_dispatch_reconciler is not None:
+                self._stale_dispatch_reconciler(
+                    dispatch,
+                    self._worker_id,
+                    dispatch.lease_generation,
+                    reason,
+                    self._clock(),
+                )
+                return "superseded"
             self._dispatches.supersede_owned_fenced(
                 dispatch.dispatch_id,
                 worker_id=self._worker_id,
@@ -322,5 +334,6 @@ __all__ = (
     "AgentCanvasPromptPreparationWorker",
     "PreparationCallback",
     "PreparationContextLoader",
+    "StaleDispatchReconciler",
     "PromptPreparationWorkerCycle",
 )
