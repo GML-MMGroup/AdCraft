@@ -278,7 +278,6 @@ export function AgentCanvasStyleSelector({
           <header className="agent-chat__style-menu-header">
             <div>
               <strong>Choose visual language</strong>
-              <small>Using · {activeStyle?.title ?? "Platform Default"}</small>
             </div>
             <button
               type="button"

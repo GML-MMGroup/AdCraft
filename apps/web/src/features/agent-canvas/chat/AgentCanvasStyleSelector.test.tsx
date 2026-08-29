@@ -121,6 +121,7 @@ describe("AgentCanvasStyleSelector", () => {
     expect(within(dialog).queryByText("general advertising")).toBeNull();
     expect(within(dialog).queryByText("commercial")).toBeNull();
     expect(within(dialog).getByText("Choose visual language")).toBeTruthy();
+    expect(within(dialog).queryByText("Using · Platform Default")).toBeNull();
   });
 
   it("renders the Skill picker in a viewport-level modal like Agent Documents", async () => {

@@ -2212,11 +2212,6 @@ button.agent-chat__node-links--related:hover {
   font-weight: 650;
 }
 
-.agent-chat__style-menu-header small {
-  color: var(--style-secondary);
-  font-size: 9px;
-}
-
 .agent-chat__style-menu-header button {
   width: 30px;
   height: 30px;
