@@ -1034,12 +1034,24 @@
   color: var(--agent-chat-primary);
 }
 
-.agent-chat__character-phases span.is-completed {
+.agent-chat__character-phases span.is-ready {
   color: var(--agent-chat-secondary);
 }
 
-.agent-chat__character-phases span.is-completed::before {
+.agent-chat__character-phases span.is-ready::before {
   background: currentColor;
+}
+
+.agent-chat__character-phases span.is-queued {
+  color: var(--agent-chat-muted);
+}
+
+.agent-chat__character-phases span.is-awaiting-user {
+  color: var(--agent-chat-secondary);
+}
+
+.agent-chat__character-phases span.is-blocked {
+  color: var(--agent-chat-primary);
 }
 
 .agent-chat__stage-thread {

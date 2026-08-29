@@ -3,7 +3,7 @@ import type {
   JourneyElementDecisionV2,
 } from "../../../types-v2.ts";
 
-export type CharacterPhaseStatus = "pending" | "working" | "completed";
+export type CharacterPhaseStatus = "queued" | "working" | "ready" | "blocked" | "awaiting-user";
 
 export interface CharacterOccurrenceView {
   occurrenceId: string;
@@ -36,17 +36,28 @@ function phaseStatus(
 ): CharacterPhaseStatus {
   const activeAction = journey.active_action;
   if (activeAction?.occurrence_id === occurrenceId && activeAction.character_phase === phase) {
+    if (activeAction.status === "reserved") return "queued";
+    if (activeAction.status === "waiting_user") return "awaiting-user";
     return "working";
   }
   const evidence = journey.transition_evidence.filter((item) => (
     item.occurrence_id === occurrenceId && item.character_phase === phase
   ));
-  if (evidence.some((item) => (
-    item.evidence_kind === "character_materialized"
-    || item.evidence_kind === "targeted_action_finished"
-  ))) return "completed";
-  if (evidence.some((item) => item.evidence_kind === "targeted_action_started")) return "working";
-  return "pending";
+  const latest = evidence.at(-1);
+  if (latest?.evidence_kind === "stage_failed") return "blocked";
+  if (latest?.evidence_kind === "targeted_action_started") return "working";
+  if (latest && (
+    latest.evidence_kind === "character_materialized"
+    || latest.evidence_kind === "character_delegated"
+    || latest.evidence_kind === "character_excluded"
+    || latest.evidence_kind === "targeted_action_finished"
+  )) return "ready";
+
+  if (journey.stage_status === "failed" || journey.stage_status === "blocked_external") return "blocked";
+  if (journey.stage_status === "waiting_user") return "awaiting-user";
+  if (journey.stage_status === "working") return "queued";
+  if (journey.stage_status === "completed") return "ready";
+  return "queued";
 }
 
 export function projectCharacterOccurrences(
