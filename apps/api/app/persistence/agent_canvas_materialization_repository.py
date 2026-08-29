@@ -95,6 +95,8 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationPlanV1,
     StageMaterializedJourneyEventV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_working_documents import (
     AgentAnchorImageAssetVersionSourceV3,
     AgentAnchorNodeSourceV3,
@@ -2603,7 +2605,20 @@ def _insert_materialized_node(
     prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     prompt_context: object | None = None,
 ) -> str:
-    node = normalize_queued_node(node, bindings=bindings)
+    # Bind the Node operation identity to the exact immutable context that is
+    # persisted in the dispatch envelope.  Without this digest, two
+    # materializations with the same Node snapshot but different Stage
+    # Authoring contexts reuse one operation identity while producing distinct
+    # dispatch identities.
+    context_payload: dict[str, object] | None = None
+    context_digest: str | None = None
+    if isinstance(prompt_context, (StageAuthoringContextV1, Mapping)):
+        context_payload, context_digest = detached_context_payload(prompt_context)
+    node = normalize_queued_node(
+        node,
+        bindings=bindings,
+        context_digest=context_digest,
+    )
     snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
     connection.execute(
         insert(AgentCanvasNodeRow).values(
@@ -2697,8 +2712,8 @@ def _insert_materialized_node(
             node,
             bindings=bindings,
             context=(
-                prompt_context.model_dump(mode="json")
-                if prompt_context is not None and hasattr(prompt_context, "model_dump")
+                context_payload
+                if context_payload is not None
                 else {
                     "workflow_id": node.workflow_id,
                     "node_id": node.node_id,
