@@ -1813,6 +1813,15 @@ def _source_snapshot_for_node(
                         if source_row["output_asset_id"] is not None
                         else None
                     )
+                    if pinned_version is not None and pinned_row is None:
+                        # An explicit source pin is immutable authority, not a
+                        # hint.  Never persist a dispatch carrying an
+                        # unresolved version id (or silently fall back to a
+                        # newer/default AssetVersion).
+                        raise _error(
+                            "asset_version_not_found",
+                            "Node-output Binding references an unknown AssetVersion.",
+                        )
                     source = {
                         "node_id": str(source_row["node_id"]),
                         "revision": int(source_row["revision"]),
