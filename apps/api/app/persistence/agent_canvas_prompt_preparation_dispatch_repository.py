@@ -404,27 +404,48 @@ class AgentCanvasPromptPreparationDispatchRepository:
         workflow_id: str,
         node_id: str,
     ) -> PromptPreparationDispatchV1 | None:
+        """Resolve the dispatch owned by the Node's persisted operation.
+
+        Dispatch history is intentionally retained for audit and retry
+        analysis, so a Node may have several terminal or superseded rows over
+        its lifetime.  The current Node projection is the join authority: a
+        persisted operation identity selects exactly one row.  Only legacy
+        rows without a persisted operation use the conservative ambiguity
+        check, which fails closed instead of guessing by insertion order.
+        """
         try:
             with self._database.engine.connect() as connection:
-                rows = (
-                    connection.execute(
-                        select(AgentCanvasPromptPreparationOutboxRow)
-                        .where(
-                            AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
-                            AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
-                            AgentCanvasPromptPreparationOutboxRow.status.in_(
-                                (*NON_TERMINAL_STATUSES, "completed", "failed")
-                            ),
-                        )
-                        .order_by(
-                            AgentCanvasPromptPreparationOutboxRow.node_revision.desc(),
-                            AgentCanvasPromptPreparationOutboxRow.created_at.desc(),
-                            AgentCanvasPromptPreparationOutboxRow.dispatch_id.desc(),
-                        )
+                node_preparation = connection.execute(
+                    select(AgentCanvasNodeRow.prompt_preparation_json).where(
+                        AgentCanvasNodeRow.workflow_id == workflow_id,
+                        AgentCanvasNodeRow.node_id == node_id,
                     )
-                    .mappings()
-                    .all()
+                ).scalar_one_or_none()
+                operation_id = _parse_json_object(node_preparation).get("operation_id")
+                query = select(AgentCanvasPromptPreparationOutboxRow).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
                 )
+                if isinstance(operation_id, str) and operation_id:
+                    # Exact operation identity is the only safe current-row
+                    # selector once a Node projection has been persisted.
+                    query = query.where(
+                        AgentCanvasPromptPreparationOutboxRow.operation_id == operation_id
+                    )
+                else:
+                    # Legacy/malformed rows have no join key.  Restrict the
+                    # fallback to live/terminal candidates and fail closed if
+                    # more than one identity remains.
+                    query = query.where(
+                        AgentCanvasPromptPreparationOutboxRow.status.in_(
+                            (*NON_TERMINAL_STATUSES, "completed", "failed")
+                        )
+                    ).order_by(
+                        AgentCanvasPromptPreparationOutboxRow.node_revision.desc(),
+                        AgentCanvasPromptPreparationOutboxRow.created_at.desc(),
+                        AgentCanvasPromptPreparationOutboxRow.dispatch_id.desc(),
+                    )
+                rows = connection.execute(query).mappings().all()
         except SQLAlchemyError as error:
             raise _persistence_error() from error
         if len(rows) > 1:

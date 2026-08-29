@@ -58,6 +58,7 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_canvas_prompt_assertion import safe_prompt_assertion_metadata
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
@@ -2579,6 +2580,8 @@ def _invalidate_target_prompt_preparation(
         return None
     bindings = _load_target_bindings(connection, workflow_id, target_node_id)
     frozen_context: dict[str, object] = {}
+    frozen_context_digest: str | None = None
+    has_frozen_context = False
     if prompt_dispatch is not None and node.prompt_preparation.operation_id:
         dispatch_row = (
             connection.execute(
@@ -2594,6 +2597,15 @@ def _invalidate_target_prompt_preparation(
         )
         if dispatch_row is not None:
             frozen_context = _parse_json_object(dispatch_row["context_json"])
+            try:
+                _, frozen_context_digest = detached_context_payload(frozen_context)
+            except (TypeError, ValueError) as error:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_invalid",
+                    "Persisted prompt-preparation context is invalid.",
+                    stage="agent_canvas_workflow_repository",
+                ) from error
+            has_frozen_context = True
     # Invalidation creates a new immutable operation identity.  Keep the
     # occurrence and role metadata, but discard all evidence/digests derived
     # from the previous input snapshot.
@@ -2636,7 +2648,11 @@ def _invalidate_target_prompt_preparation(
             "updated_at": _parse_datetime(updated_at),
         }
     )
-    queued_node = normalize_queued_node(queued_node, bindings=bindings)
+    queued_node = normalize_queued_node(
+        queued_node,
+        bindings=bindings,
+        context_digest=frozen_context_digest if has_frozen_context else None,
+    )
     values: dict[str, object | None] = {
         "prompt_preparation_json": queued_node.prompt_preparation.model_dump_json(),
         "prompt_context_snapshot_id": None,
@@ -2696,7 +2712,7 @@ def _invalidate_target_prompt_preparation(
             connection,
             node=queued_node,
             bindings=bindings,
-            context=frozen_context,
+            context=frozen_context if has_frozen_context else None,
             reason="dependency_or_binding_revision_changed",
             now=_parse_datetime(updated_at),
         )
