@@ -2808,6 +2808,15 @@ def _invalidate_target_prompt_preparation(
         error=None,
         updated_at=updated_at,
     )
+    preserved_discriminator: dict[str, object] = {}
+    if node.creative_role == "character":
+        character_asset_kind = node.structured_content.get("character_asset_kind")
+        if isinstance(character_asset_kind, str) and character_asset_kind:
+            preserved_discriminator["character_asset_kind"] = character_asset_kind
+    elif node.creative_role == "product":
+        asset_kind = node.structured_content.get("asset_kind")
+        if isinstance(asset_kind, str) and asset_kind:
+            preserved_discriminator["asset_kind"] = asset_kind
     queued_node = node.model_copy(
         update={
             "revision": node.revision + 1,
@@ -2817,7 +2826,9 @@ def _invalidate_target_prompt_preparation(
                 None if node.status in {"failed", "ready"} else node.output_asset_id
             ),
             "generation_prompt": None if prepared_projection else node.generation_prompt,
-            "structured_content": {} if prepared_projection else node.structured_content,
+            "structured_content": (
+                preserved_discriminator if prepared_projection else node.structured_content
+            ),
             "prompt_context_snapshot_id": None,
             "metadata": {
                 key: value
