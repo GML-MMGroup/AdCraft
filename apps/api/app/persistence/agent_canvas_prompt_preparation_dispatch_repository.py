@@ -1597,6 +1597,8 @@ def _source_snapshot_for_node(
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
                     }
+            elif row["source_kind"] == "image_asset":
+                source = _direct_asset_snapshot_for_binding(connection, row)
             binding_values.append(
                 {
                     "binding_id": str(row["binding_id"]),
@@ -1626,6 +1628,54 @@ def _source_snapshot_for_node(
         "bindings": binding_values,
         "occurrence_id": node.metadata.get("occurrence_id"),
         "character_phase": node.metadata.get("character_phase"),
+    }
+
+
+def _direct_asset_snapshot_for_binding(
+    connection: Connection,
+    binding_row: Mapping[str, object],
+) -> dict[str, object]:
+    """Capture an exact immutable AssetVersion for a direct image Binding."""
+
+    asset_id = binding_row.get("source_asset_id")
+    version_id = binding_row.get("source_asset_version_id")
+    if not isinstance(asset_id, str) or not asset_id:
+        raise _error(
+            "asset_version_not_found",
+            "Direct image Binding has no Asset identity.",
+        )
+    if not isinstance(version_id, str) or not version_id:
+        raise _error(
+            "asset_version_not_found",
+            "Direct image Binding has no immutable AssetVersion identity.",
+        )
+    version = (
+        connection.execute(
+            select(
+                AssetVersionRow.asset_id,
+                AssetVersionRow.version_id,
+                AssetVersionRow.version_no,
+                AssetVersionRow.sha256,
+                AssetVersionRow.status,
+            ).where(
+                AssetVersionRow.asset_id == asset_id,
+                AssetVersionRow.version_id == version_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if version is None:
+        raise _error(
+            "asset_version_not_found",
+            "Direct image Binding references an unknown AssetVersion.",
+        )
+    return {
+        "asset_id": str(version["asset_id"]),
+        "asset_version_id": str(version["version_id"]),
+        "asset_version_no": int(version["version_no"]),
+        "asset_version_sha256": str(version["sha256"]),
+        "asset_version_status": str(version["status"]),
     }
 
 
