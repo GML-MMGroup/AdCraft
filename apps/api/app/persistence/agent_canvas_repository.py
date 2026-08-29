@@ -739,11 +739,24 @@ class AgentCanvasWorkflowRepository:
                     if current_row is None:
                         raise _node_not_found_error()
                     current_node = _node_from_row(current_row)
+                    requested_manual_prompt = (
+                        node.prompt_preparation.status == "ready"
+                        and not _has_managed_prompt_preparation(node)
+                    )
+                    current_preparation_status = current_node.prompt_preparation.status
+                    current_preparation_managed = _has_managed_prompt_preparation(current_node)
                     if (
                         node.execution_mode == "generative"
                         and _prompt_input_changed(current_node, node)
-                        and node.prompt_preparation.status
-                        in {"queued", "working", "ready", "failed", "superseded"}
+                        and not requested_manual_prompt
+                        and (
+                            current_preparation_status
+                            in {"queued", "working", "failed", "superseded"}
+                            or (
+                                current_preparation_status == "ready"
+                                and current_preparation_managed
+                            )
+                        )
                     ):
                         # A changed prompt/input snapshot cannot reuse a
                         # completed operation identity.  Re-enter the normal
@@ -2484,6 +2497,25 @@ def _prompt_input_changed(current: CanvasNodeV2, requested: CanvasNodeV2) -> boo
     )
 
 
+def _has_managed_prompt_preparation(node: CanvasNodeV2) -> bool:
+    """Return whether a node's prompt is owned by the preparation authority."""
+
+    preparation = node.prompt_preparation
+    return bool(
+        preparation.operation_id
+        or preparation.context_snapshot_id
+        or preparation.recipe_id
+        or preparation.recipe_version
+        or preparation.recipe_digest
+        or preparation.requirement_revision_id
+        or preparation.binding_digest
+        or preparation.style_projection_digest
+        or preparation.brief_digest
+        or preparation.assertion_evidence
+        or node.metadata.get("prompt_recipe_id")
+    )
+
+
 def _queued_preparation_for_revision(
     preparation: NodePromptPreparationV1,
     updated_at: datetime,
@@ -2532,15 +2564,12 @@ def _invalidate_target_prompt_preparation(
         raise _prompt_preparation_conflict()
     if node.status not in {"draft", "failed", "ready", "working"}:
         return None
-    if node.status == "ready" and node.prompt_preparation.operation_id is None:
+    if node.status == "ready" and not _has_managed_prompt_preparation(node):
         # Legacy/manual Ready content has no immutable preparation owner to
         # supersede.  Do not turn a harmless first Binding into a queued
         # re-preparation or clear its existing context projection.
         return None
-    if (
-        node.prompt_preparation.status == "ready"
-        and node.prompt_preparation.operation_id is None
-    ):
+    if node.prompt_preparation.status == "ready" and not _has_managed_prompt_preparation(node):
         # A manually supplied generation prompt is already authoritative.  Its
         # provider references are compiled from the execution binding snapshot,
         # so a Binding/source publication must not turn this legacy-compatible
