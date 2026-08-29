@@ -281,8 +281,6 @@ class CapabilityMaterializationPublicationService:
                 "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
             ) from error
-        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         self._prepare_prompts(
             envelope,
             materialization_context,
@@ -312,8 +310,11 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(
+                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
+                lease_guard=lease_guard,
+            )
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_guided_document_stage(
@@ -838,8 +839,6 @@ class CapabilityMaterializationPublicationService:
         )
         if outcome is None:
             return None
-        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         pending_preparations: list[tuple[str, str]] = []
         for node_id, operation_id in zip(
             outcome.node_ids,
@@ -909,9 +908,75 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(
+                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
+                lease_guard=lease_guard,
+            )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _refreshed_parent_reconciliation_envelope(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome,
+    ) -> ProposalApplicationEnvelopeV1:
+        """Build a reconciliation input from the committed current parent Node.
+
+        The accepted publication envelope is immutable historical authority.  Prompt
+        preparation is a post-commit Node mutation that may advance its revision and
+        replace the provisional operation identity with the durable dispatch identity.
+        Parent-derived reconciliation must therefore use a detached envelope carrying
+        the exact persisted snapshot without mutating or replacing the original.
+        """
+
+        if envelope.operation_kind != "parent" or envelope.derivative_intent is None:
+            return envelope
+        parent_snapshot = envelope.derivative_intent.parent
+        try:
+            outcome_index = outcome.node_ids.index(parent_snapshot.node_id)
+        except ValueError as error:
+            raise V2PersistenceError(
+                "parent_materialization_missing",
+                "Committed parent outcome does not contain the derived source Node.",
+                stage="capability_materialization_publication",
+            ) from error
+        try:
+            expected_operation_id = outcome.prompt_preparation_ids[outcome_index]
+        except IndexError as error:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_missing",
+                "Committed parent outcome has no preparation identity for its source Node.",
+                stage="capability_materialization_publication",
+            ) from error
+        current = self._workflows.get_node(envelope.workflow_id, parent_snapshot.node_id)
+        current_operation_id = current.prompt_preparation.operation_id
+        if not current_operation_id or current_operation_id != expected_operation_id:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Current parent Node does not match its committed preparation identity.",
+                stage="capability_materialization_publication",
+                details={
+                    "node_id": current.node_id,
+                    "expected_operation_id": expected_operation_id,
+                    "current_operation_id": current_operation_id,
+                },
+            )
+        refreshed_snapshot = parent_snapshot.model_copy(
+            update={
+                "node_revision": current.revision,
+                "prompt_preparation_operation_id": current_operation_id,
+            }
+        )
+        refreshed_intent = envelope.derivative_intent.model_copy(
+            update={
+                "parent": refreshed_snapshot,
+                "payload_digest": _digest(
+                    f"{envelope.workflow_id}:{current.node_id}:{current.revision}:"
+                    f"{current_operation_id}:{envelope.derivative_intent.derivative_role}"
+                ),
+            }
+        )
+        return envelope.model_copy(update={"derivative_intent": refreshed_intent})
 
     def _load_persisted_prompt_context(
         self,
