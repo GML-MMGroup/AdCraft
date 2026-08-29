@@ -1228,7 +1228,7 @@ def _cliproxyapi_definition() -> ProviderCredentialDefinition:
         bindings=bindings,
         allowed_test_origins=("http://cpa:8317", "http://127.0.0.1:8317"),
         display_name="CLIProxyAPI",
-        capability_consumers=MappingProxyType({"text": "llm"}),
+        capability_consumers=MappingProxyType({"text": "llm", "image": "llm"}),
     )
 
 

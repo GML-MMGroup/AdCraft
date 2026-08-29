@@ -93,6 +93,23 @@ _TRUSTED_MANIFESTS = (
         },
     ),
     TrustedModelManifest(
+        provider_id="cliproxyapi",
+        provider_model_id="gpt-image-2",
+        display_name="GPT Image 2 (CPA)",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text"],
+            "max_references": 0,
+            "reference_limits": {"image": 0, "video": 0, "audio": 0},
+            "supported_parameters": ["size"],
+            "supported_aspect_ratios": [],
+            "supported_sizes_by_aspect_ratio": {},
+            "provider_protocol": "openai_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+        },
+    ),
+    TrustedModelManifest(
         provider_id="siliconflow",
         provider_model_id="zai-org/GLM-5.2",
         display_name="GLM-5.2",
