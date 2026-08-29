@@ -1311,6 +1311,17 @@ class CapabilityMaterializationPublicationService:
                     node_id,
                     operation_id=operation_id,
                 )
+                # Invalidation creates a new fenced preparation identity.  Do
+                # not carry the stale operation into the next dependency wave;
+                # the returned Node is the only current snapshot authority.
+                node = invalidated
+                operation_id = node.prompt_preparation.operation_id
+                if not operation_id:
+                    raise V2PersistenceError(
+                        "storyboard_prompt_ready_authority_invalid",
+                        "Invalidated Draft source has no successor operation.",
+                        stage="storyboard_prompt_ready_promotion",
+                    )
                 turn = self._conversations.get_turn(envelope.action_turn_id)
                 self._conversations.events.append(
                     V2EventInsert(
@@ -1440,6 +1451,16 @@ class CapabilityMaterializationPublicationService:
                 node_id,
                 operation_id=operation_id,
             )
+            # The dependency wave may publish a new Node revision and must be
+            # prepared under the successor identity returned by invalidation.
+            node = invalidated
+            operation_id = node.prompt_preparation.operation_id
+            if not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_ready_authority_invalid",
+                    "Invalidated Draft source has no successor operation.",
+                    stage="storyboard_prompt_ready_promotion",
+                )
             self._conversations.events.append(
                 V2EventInsert(
                     workflow_id=envelope.workflow_id,
