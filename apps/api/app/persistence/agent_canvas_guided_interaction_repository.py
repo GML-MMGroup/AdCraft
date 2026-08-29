@@ -21,6 +21,9 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.agent_canvas_guided_media_resume_repository import (
     AgentCanvasGuidedMediaResumeRepository,
 )
+from app.persistence.agent_canvas_guided_answer_projection import (
+    append_guided_answer_message_in_transaction,
+)
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
     AgentCanvasChatTurnRow,
@@ -936,6 +939,15 @@ class AgentCanvasGuidedInteractionRepository:
                         ),
                         now=now,
                     )
+                append_guided_answer_message_in_transaction(
+                    connection,
+                    workflow_id=interaction.workflow_id,
+                    interaction_id=interaction.interaction_id,
+                    submission_id=submission_id,
+                    questionnaire=interaction.content,
+                    request=request,
+                    created_at=now,
+                )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
