@@ -326,11 +326,16 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    const repairedFallbackAudit = boundedStructuredFallbackAudit(
+      repaired.result?.fallback_audit,
+    );
     return resultFor(accepted, input, repair, {
       startedAt,
       structuredAttempts,
       validationAttempts,
-      structuredFallback: boundedStructuredFallbackAudit(repaired.result?.fallback_audit),
+      ...(repairedFallbackAudit
+        ? { structuredFallback: repairedFallbackAudit }
+        : {}),
     });
   }
 

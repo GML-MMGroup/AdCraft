@@ -6,7 +6,6 @@ import type {
 } from "../src/generated/agent-runtime.js";
 import {
   PiStructuredTransportRouter,
-  SAFE_CONVERSATION_FALLBACK_MESSAGE,
 } from "../src/pi-structured-transport.js";
 
 const fallbackAudit: AgentStructuredFallbackAuditV1 = {
@@ -65,6 +64,7 @@ function input(
       supports_strict_structured_output: true,
       supports_streaming: false,
       supports_streamed_tool_calls: false,
+      supports_reasoning_controls: false,
       execution_policy: {
         model_ref: "model-1",
         operation: "decide_turn_intent",
@@ -205,6 +205,6 @@ describe("Pi structured transport safe intake fallback", () => {
     expect(JSON.stringify(result.audit)).not.toContain("system prompt");
     expect(JSON.stringify(result.audit)).not.toContain("user prompt");
     expect(result.audit.structured_fallback).toBeDefined();
-    expect(result.value.assistant_message).toBe(SAFE_CONVERSATION_FALLBACK_MESSAGE);
+    expect(result.value.assistant_message).toBe(candidate);
   });
 });
