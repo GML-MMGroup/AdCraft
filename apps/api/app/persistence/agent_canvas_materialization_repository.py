@@ -1909,16 +1909,36 @@ class AgentCanvasMaterializationRepository:
             .mappings()
             .one_or_none()
         )
+        turn_alias = (
+            connection.execute(
+                select(AgentCanvasIdempotencyRow).where(
+                    AgentCanvasIdempotencyRow.operation == _STORYBOARD_ALIAS_OPERATION,
+                    AgentCanvasIdempotencyRow.idempotency_key == str(turn["idempotency_key"])
+                    if turn is not None
+                    else False,
+                )
+            )
+            .mappings()
+            .one_or_none()
+            if turn is not None
+            else None
+        )
         if (
             turn is None
             or envelope_row is None
             or outbox is None
             or activity is None
             or source_turn is None
+            or turn_alias is None
         ):
             raise _error(
                 "guidance_action_lineage_invalid",
                 "Canonical Storyboard selection lineage is incomplete.",
+            )
+        if _decode_storyboard_record(turn_alias["response_json"])["identity_digest"] != identity_digest:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard Turn is not owned by its selection alias.",
             )
         if (
             str(turn["workflow_id"]) != envelope.workflow_id
