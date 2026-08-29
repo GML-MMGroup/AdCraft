@@ -1321,6 +1321,55 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.guidedAnswerBubbles).toEqual([]);
   });
 
+  it("restores accepted guided answer bubbles from the authoritative timeline", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "message",
+        message_kind: "conversation",
+        message_id: "guided-answer-submission-1",
+        conversation_id: "conversation-1",
+        speaker: "user",
+        text: "ignored display fallback",
+        linked_node_ids: [],
+        script_node_id: null,
+        proposal_id: null,
+        capability_id: null,
+        sequence: 18,
+        created_at: "2026-08-29T00:00:18Z",
+        metadata: {
+          presentation_kind: "guided_answer",
+          schema_version: 1,
+          submission_id: "submission-1",
+          interaction_id: "interaction-1",
+          answers: [{
+            question_id: "production_duration_seconds",
+            label: "How long should the ad be?",
+            value: "30 seconds",
+          }],
+        },
+      }],
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+    });
+
+    expect(result.current.state.guidedAnswerBubbles).toEqual([{
+      bubble_id: "guided-answer:submission-1:production_duration_seconds",
+      submission_id: "submission-1",
+      interaction_id: "interaction-1",
+      question_id: "production_duration_seconds",
+      label: "How long should the ad be?",
+      value: "30 seconds",
+      sequence: 18,
+    }]);
+  });
+
   it("releases the guided choice lock when its materialization fails", async () => {
     const interaction = guidedConceptInteraction();
     const openSession = { ...guidedSession(), interaction, awaiting: null };

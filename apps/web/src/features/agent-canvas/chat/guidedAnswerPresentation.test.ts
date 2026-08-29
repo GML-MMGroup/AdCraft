@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  ChatMessageV2,
   GuidedInteractionSubmitRequestV1,
   GuidedInteractionV1,
 } from "../../../types-v2.ts";
-import { buildGuidedAnswerBubbles } from "./guidedAnswerPresentation.ts";
+import {
+  buildGuidedAnswerBubbles,
+  parseGuidedAnswerBubbles,
+} from "./guidedAnswerPresentation.ts";
 
 function interaction(): GuidedInteractionV1 {
   return {
@@ -101,5 +105,71 @@ describe("buildGuidedAnswerBubbles", () => {
     };
 
     expect(buildGuidedAnswerBubbles(interaction(), request, 12)).toEqual([]);
+  });
+});
+
+describe("parseGuidedAnswerBubbles", () => {
+  it("restores only the structured persisted answer metadata", () => {
+    const item: ChatMessageV2 = {
+      item_type: "message",
+      message_kind: "conversation",
+      message_id: "guided-answer-submission-1",
+      conversation_id: "conversation-1",
+      speaker: "user",
+      text: "ignored display fallback",
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      capability_id: null,
+      sequence: 18,
+      created_at: "2026-08-29T00:00:18Z",
+      metadata: {
+        presentation_kind: "guided_answer",
+        schema_version: 1,
+        submission_id: "submission-1",
+        interaction_id: "interaction-1",
+        answers: [{
+          question_id: "production_duration_seconds",
+          label: "How long should the ad be?",
+          value: "30 seconds",
+        }],
+      },
+    };
+
+    expect(parseGuidedAnswerBubbles(item)).toEqual([{
+      bubble_id: "guided-answer:submission-1:production_duration_seconds",
+      submission_id: "submission-1",
+      interaction_id: "interaction-1",
+      question_id: "production_duration_seconds",
+      label: "How long should the ad be?",
+      value: "30 seconds",
+      sequence: 18,
+    }]);
+  });
+
+  it("ignores ordinary user messages and malformed answer metadata", () => {
+    const item: ChatMessageV2 = {
+      item_type: "message",
+      message_kind: "conversation",
+      message_id: "message-1",
+      conversation_id: "conversation-1",
+      speaker: "user",
+      text: "A regular user message",
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      capability_id: null,
+      sequence: 18,
+      created_at: "2026-08-29T00:00:18Z",
+      metadata: {
+        presentation_kind: "guided_answer",
+        schema_version: 1,
+        submission_id: "submission-1",
+        interaction_id: "interaction-1",
+        answers: [{ question_id: "missing-value" }],
+      },
+    };
+
+    expect(parseGuidedAnswerBubbles(item)).toEqual([]);
   });
 });
