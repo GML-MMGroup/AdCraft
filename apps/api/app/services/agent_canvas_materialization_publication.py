@@ -14,6 +14,9 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
@@ -92,7 +95,10 @@ from app.services.agent_canvas_capability_draft_bundle import (
     stage_draft_parameters,
     stage_draft_title,
 )
-from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_preparation import (
+    NodePromptPreparationService,
+    context_digest,
+)
 from app.services.agent_canvas_prompt_assertion_policy import (
     current_source_snapshots_for_evidence,
 )
@@ -119,6 +125,7 @@ class CapabilityMaterializationPublicationService:
         storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
         prompt_ready_activation: Callable[..., object] | None = None,
         parent_derived: ParentDerivedMaterializationCoordinator | None = None,
+        prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -129,6 +136,10 @@ class CapabilityMaterializationPublicationService:
         self._commit_service = commit_service or AgentCanvasMaterializationCommitService(
             materialization_repository,
             GuidedProductionJourneyReducer(),
+        )
+        self._prompt_dispatch = prompt_dispatch or AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            conversations.events,
         )
         self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
             workflows=workflows,
@@ -844,16 +855,23 @@ class CapabilityMaterializationPublicationService:
         )
         session = self._conversations.get_guidance_session(envelope.workflow_id)
         if pending_preparations:
-            context = materialization_context_from_state(
-                envelope,
-                conversations=self._conversations,
-                workflows=self._workflows,
-                asset_resolver=self._asset_resolver,
-                validate_references=False,
-            )
+            # A committed materialization is recovered from the exact
+            # dispatch operation that was persisted with its Draft.  Rebuilding
+            # context from the mutable requirement/session state here could
+            # silently change the prompt after a restart or a later Journey
+            # revision.  Resolve every pending operation before preparing any
+            # sibling so malformed or missing authority fails closed.
+            persisted_contexts = {
+                node_id: self._load_persisted_prompt_context(
+                    workflow_id=envelope.workflow_id,
+                    node_id=node_id,
+                    operation_id=operation_id,
+                )
+                for node_id, operation_id in pending_preparations
+            }
             self._prepare_prompts(
                 envelope,
-                context,
+                next(iter(persisted_contexts.values())),
                 session_id=session.session_id,
                 session_revision=outcome.session_revision,
                 stage=outcome.journey_stage,
@@ -863,6 +881,7 @@ class CapabilityMaterializationPublicationService:
                 node_ids=tuple(item[0] for item in pending_preparations),
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,
+                context_by_node=persisted_contexts,
             )
         context = materialization_context_from_state(
             envelope,
@@ -888,6 +907,78 @@ class CapabilityMaterializationPublicationService:
         if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
             self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _load_persisted_prompt_context(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+    ) -> StageAuthoringContextV1:
+        """Load and verify the immutable context for one recovery operation."""
+
+        dispatch = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            operation_id,
+        )
+        if dispatch is None:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_missing",
+                "Prompt-preparation recovery has no matching dispatch authority.",
+                stage="capability_materialization_publication",
+                details={"node_id": node_id, "operation_id": operation_id},
+            )
+        if any(
+            getattr(dispatch, field, None) != expected
+            for field, expected in (
+                ("workflow_id", workflow_id),
+                ("node_id", node_id),
+                ("operation_id", operation_id),
+            )
+        ):
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Prompt-preparation dispatch identity does not match recovery authority.",
+                stage="capability_materialization_publication",
+            )
+        payload = getattr(dispatch, "context_json", None)
+        if not isinstance(payload, Mapping) or not payload:
+            raise V2PersistenceError(
+                "prompt_preparation_context_missing",
+                "Prompt-preparation dispatch has no immutable context snapshot.",
+                stage="capability_materialization_publication",
+            )
+        try:
+            context = StageAuthoringContextV1.model_validate(dict(payload))
+        except (TypeError, ValueError, ValidationError) as error:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context is invalid.",
+                stage="capability_materialization_publication",
+            ) from error
+        persisted_digest = getattr(dispatch, "context_digest", None)
+        if not isinstance(persisted_digest, str) or not persisted_digest:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context has no digest proof.",
+                stage="capability_materialization_publication",
+            )
+        try:
+            current_digest = context_digest(context)
+        except (TypeError, ValueError) as error:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context cannot be serialized.",
+                stage="capability_materialization_publication",
+            ) from error
+        if current_digest != persisted_digest or context.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Persisted prompt-preparation context does not match its dispatch proof.",
+                stage="capability_materialization_publication",
+            )
+        return context
 
     def _activate_prompt_ready_media(
         self,
@@ -1184,7 +1275,7 @@ class CapabilityMaterializationPublicationService:
     def _prepare_prompts(
         self,
         envelope: ProposalApplicationEnvelopeV1,
-        context: CapabilityMaterializationContextV1,
+        context: CapabilityMaterializationContextV1 | StageAuthoringContextV1,
         *,
         session_id: str,
         session_revision: int,
@@ -1197,14 +1288,21 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         if not operation_ids:
             return
-        stage_context = stage_authoring_context_from_materialization(
-            context,
-            session_id=session_id,
-            session_revision=session_revision,
-            stage=stage,
-            occurrence_id=occurrence_id,
-            references=envelope.reference_plan.references,
-        )
+        if context_by_node:
+            # Recovery already supplied exact StageAuthoringContext snapshots.
+            # Avoid projecting a second context from mutable session state.
+            stage_context = next(iter(context_by_node.values()))
+        elif isinstance(context, StageAuthoringContextV1):
+            stage_context = context
+        else:
+            stage_context = stage_authoring_context_from_materialization(
+                context,
+                session_id=session_id,
+                session_revision=session_revision,
+                stage=stage,
+                occurrence_id=occurrence_id,
+                references=envelope.reference_plan.references,
+            )
         prompt_service = NodePromptPreparationService(self._workflows)
         if self._storyboard_gateway is not None:
             prompt_service = NodePromptPreparationService(
