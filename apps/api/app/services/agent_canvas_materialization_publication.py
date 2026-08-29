@@ -615,11 +615,32 @@ class CapabilityMaterializationPublicationService:
                 expected_parent_role = (
                     "character_main" if semantic_role == "character" else "product_main"
                 )
-                if (
-                    not isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
-                    or current_anchor.source.node_id != envelope.parent_snapshot.node_id
-                    or current_anchor.source.node_revision != envelope.parent_snapshot.node_revision
-                    or envelope.parent_snapshot.semantic_role != expected_parent_role
+                parent_source_matches = (
+                    isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
+                    and current_anchor.source.node_id == envelope.parent_snapshot.node_id
+                )
+                parent_revision_matches = (
+                    parent_source_matches
+                    and current_anchor.source.node_revision
+                    == envelope.parent_snapshot.node_revision
+                )
+                if parent_source_matches and not parent_revision_matches:
+                    try:
+                        current_parent = self._workflows.get_node(
+                            envelope.workflow_id,
+                            envelope.parent_snapshot.node_id,
+                        )
+                    except V2PersistenceError:
+                        current_parent = None
+                    parent_revision_matches = (
+                        current_parent is not None
+                        and current_parent.revision == envelope.parent_snapshot.node_revision
+                        and current_parent.prompt_preparation.status == "ready"
+                        and current_parent.prompt_preparation.operation_id
+                        == envelope.parent_snapshot.prompt_preparation_operation_id
+                    )
+                if not parent_source_matches or not parent_revision_matches or (
+                    envelope.parent_snapshot.semantic_role != expected_parent_role
                 ):
                     raise V2PersistenceError(
                         "parent_materialization_revision_stale",
