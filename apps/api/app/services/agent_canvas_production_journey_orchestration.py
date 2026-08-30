@@ -34,6 +34,13 @@ from app.services.agent_canvas_requirements import (
 )
 
 
+def _character_checkpoint_matches_source(checkpoint_id: str, source_turn_id: str) -> bool:
+    """Match the persisted Character checkpoint to its exact source Turn."""
+
+    parts = checkpoint_id.split(":")
+    return len(parts) >= 2 and parts[0] == "character-count" and parts[-1] == source_turn_id
+
+
 class GuidedProductionJourneyService:
     """Persist one evidence transition and project the next deterministic action."""
 
@@ -76,6 +83,20 @@ class GuidedProductionJourneyService:
         )
         if questionnaire is None:
             return None
+        if (
+            session.journey.stage_status == "waiting_user"
+            and session.interaction is not None
+            and session.awaiting is not None
+            and session.awaiting.kind == "clarification"
+            and session.awaiting.interaction_id == session.interaction.interaction_id
+            and _character_checkpoint_matches_source(
+                session.interaction.checkpoint_id,
+                source_turn_id,
+            )
+        ):
+            existing_turn = self._conversations.get_turn(source_turn_id)
+            if existing_turn.status == "completed":
+                return existing_turn
         if session.journey.stage_status == "waiting_user" and session.awaiting is not None:
             target = session.journey
         else:
