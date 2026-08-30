@@ -657,6 +657,17 @@ export const v2Api = {
     );
   },
 
+  retryAgentCanvasNodePromptPreparation(
+    workflowId: string,
+    nodeId: string,
+  ): Promise<CanvasMutationResponseV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/prompt-preparation/retry`,
+      { method: "POST" },
+      normalizeCanvasMutationResponseV2,
+    ).then((response) => response.value);
+  },
+
   saveAgentCanvasVariationDraft(
     workflowId: string,
     nodeId: string,

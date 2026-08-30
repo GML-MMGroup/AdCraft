@@ -332,6 +332,63 @@ def test_role_creative_brief_expands_a_character_summary_alias():
     assert result.normalized_path_count == 7
 
 
+def test_role_creative_brief_accepts_gemini_character_summary_with_presentational_fields():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {
+            "summary": "约50岁，面容严谨沉稳的资深钟表修复师，身着深灰工装马甲和米白衬衫。",
+            "brief_title": "二十年匠人修表师",
+            "character_profile": "钟表修复专家，专业、克制、可信赖。",
+            "visual_prompt": "商业人物肖像，工作室背景。",
+            "shot_composition": "半身正面肖像。",
+            "production_parameters": {"lighting": "soft"},
+            "negative_prompt": "avoid blur",
+        },
+        validation_context={"role_variant": "character_main"},
+    )
+
+    assert result.violations == ()
+    assert result.value["role_variant"] == "character_main"
+    assert result.value["identity"].startswith("约50岁")
+    assert set(result.value) == {
+        "role_variant",
+        "identity",
+        "face_and_hair",
+        "silhouette_and_proportions",
+        "wardrobe",
+        "accessories",
+    }
+
+
+def test_role_creative_brief_discards_unrecognized_fields_when_character_contract_is_complete():
+    result = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+        "RoleCreativeBriefV2",
+        {
+            "identity": "资深钟表修复师。",
+            "face_and_hair": "严谨沉稳的面容与利落短发。",
+            "silhouette_and_proportions": "端正稳重的中年男性体态。",
+            "wardrobe": "深灰工装马甲、米白衬衫和修表目镜。",
+            "title": "二十年匠人修表师",
+            "character_specifications": {"age": 50},
+            "prompt": "商业人物肖像。",
+            "composition_specifications": "半身正面。",
+            "workflow_id": "untrusted-workflow",
+            "personality_and_mannerisms": "专业克制。",
+        },
+        validation_context={"role_variant": "character_main"},
+    )
+
+    assert result.violations == ()
+    assert set(result.value) == {
+        "role_variant",
+        "identity",
+        "face_and_hair",
+        "silhouette_and_proportions",
+        "wardrobe",
+    }
+    assert "role_creative_brief_v2.discard_unrecognized_fields.v1" in result.rule_ids
+
+
 def test_role_creative_brief_matching_variant_is_unchanged():
     value = {
         "role_variant": "product_main",

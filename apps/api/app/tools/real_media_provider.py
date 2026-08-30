@@ -61,6 +61,7 @@ from app.tools.media_artifact_io import (
 from app.tools.legacy_bgm_adapter import LegacyBgmAdapter
 from app.tools.media_subtitles import generate_subtitle_asset
 from app.tools.volcengine_image_generations import (
+    serialize_openai_image_generation_request,
     serialize_volcengine_image_generation_request,
 )
 from app.tools.media_composition import (
@@ -94,6 +95,32 @@ def _v2_sanitized_reference_assets(
         }
         for reference in reference_assets
     ]
+
+
+def _is_openai_image_model(model: str) -> bool:
+    return model.strip().lower().startswith("gpt-image")
+
+
+def _normalize_openai_image_generation_size(value: Any) -> str:
+    raw = str(value or "").strip()
+    normalized = raw.replace("X", "x").replace(" ", "").lower()
+    parts = normalized.split("x")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        raise MediaConfigurationError(
+            f"IMAGE_GENERATION_SIZE must be a positive WxH value; got {raw!r}."
+        )
+    width, height = (int(part) for part in parts)
+    if width <= 0 or height <= 0:
+        raise MediaConfigurationError(
+            f"IMAGE_GENERATION_SIZE must be a positive WxH value; got {raw!r}."
+        )
+    return f"{width}x{height}"
+
+
+def _normalize_image_generation_size_for_model(value: Any, model: str) -> str:
+    if _is_openai_image_model(model):
+        return _normalize_openai_image_generation_size(value)
+    return _normalize_image_generation_size(value)
 
 
 class _ProviderDownloadError(RuntimeError):
@@ -264,18 +291,39 @@ def _image_file_identity(path: Path) -> tuple[str, str]:
 class RealMediaProvider:
     mode = "real"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        required_media_types: set[str] | None = None,
+    ) -> None:
         self._settings = settings
+        self._required_media_types = required_media_types
         self._validate_settings()
 
     def _validate_settings(self) -> None:
-        required_values = [
-            ("VIDEO_GENERATION_API_KEY", self._settings.video_generation_api_key),
-            ("VIDEO_GENERATION_ENDPOINT", self._settings.video_generation_endpoint),
-            ("IMAGE_GENERATION_API_KEY", self._settings.image_generation_api_key),
-            ("IMAGE_GENERATION_ENDPOINT", self._settings.image_generation_endpoint),
-        ]
-        if not self._settings.skip_audio_agents:
+        required_media_types = self._required_media_types
+        if required_media_types is None:
+            required_media_types = {"image", "video"}
+            if not self._settings.skip_audio_agents:
+                required_media_types.add("audio")
+
+        required_values: list[tuple[str, str | None]] = []
+        if "video" in required_media_types:
+            required_values.extend(
+                [
+                    ("VIDEO_GENERATION_API_KEY", self._settings.video_generation_api_key),
+                    ("VIDEO_GENERATION_ENDPOINT", self._settings.video_generation_endpoint),
+                ]
+            )
+        if "image" in required_media_types:
+            required_values.extend(
+                [
+                    ("IMAGE_GENERATION_API_KEY", self._settings.image_generation_api_key),
+                    ("IMAGE_GENERATION_ENDPOINT", self._settings.image_generation_endpoint),
+                ]
+            )
+        if "audio" in required_media_types and not self._settings.skip_audio_agents:
             required_values.extend(
                 [
                     ("SOUND_EFFECTS_API_KEY", self._settings.sound_effects_api_key),
@@ -290,7 +338,7 @@ class RealMediaProvider:
             if not value:
                 raise MediaConfigurationError(f"Real media mode is enabled, but {name} is missing.")
 
-        if (
+        if self._required_media_types is None and (
             self._settings.composition_provider != "ffmpeg"
             and not self._settings.composition_endpoint
         ):
@@ -298,7 +346,11 @@ class RealMediaProvider:
                 "Real media mode is enabled, but COMPOSITION_ENDPOINT is missing."
             )
 
-        _normalize_image_generation_size(self._settings.image_generation_size)
+        if "image" in required_media_types:
+            _normalize_image_generation_size_for_model(
+                self._settings.image_generation_size,
+                self._settings.image_generation_model,
+            )
 
     # V1-only compatibility adapter; V2 image generation uses generate_v2_canonical_image.
     def generate_storyboard_images(
@@ -515,16 +567,25 @@ class RealMediaProvider:
         reference_assets = [
             asset for asset in request.get("reference_assets", []) if isinstance(asset, dict)
         ]
-        body, wire_audit = serialize_volcengine_image_generation_request(
+        size = _normalize_image_generation_size_for_model(
+            request.get("size") or self._settings.image_generation_size,
+            model,
+        )
+        serializer = (
+            serialize_openai_image_generation_request
+            if _is_openai_image_model(model)
+            else serialize_volcengine_image_generation_request
+        )
+        body, wire_audit = serializer(
             model=model,
             canonical_prompt=prompt,
-            size=_normalize_image_generation_size(
-                request.get("size") or self._settings.image_generation_size
-            ),
+            size=size,
             references=reference_assets,
             required_reference_asset_ids=list(request.get("submitted_reference_asset_ids") or []),
-            response_format="url",
-            watermark=False,
+            **({} if _is_openai_image_model(model) else {
+                "response_format": "url",
+                "watermark": False,
+            }),
         )
         submitted_wire_audit = wire_audit.model_copy(
             update={

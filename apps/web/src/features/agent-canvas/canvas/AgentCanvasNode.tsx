@@ -204,6 +204,7 @@ export function AgentCanvasNodeCard({
   selected = false,
   onOpenVideoPreview,
   onOpenEditing,
+  onRetry,
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   mediaDimensions,
@@ -251,6 +252,21 @@ export function AgentCanvasNodeCard({
           </div>
         ) : null}
       </div>
+
+      {status === "failed" && onRetry && ["text", "script", "image", "video", "audio"].includes(node.node_type) ? (
+        <button
+          className="agent-canvas-node__retry nodrag nopan"
+          type="button"
+          aria-label={`Retry ${node.node_type} node`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRetry(node.node_id);
+          }}
+        >
+          Retry
+        </button>
+      ) : null}
 
       {usedDeterministicFallback ? (
         <span className="agent-canvas-node__fallback-warning" role="status">
@@ -316,6 +332,7 @@ function AgentCanvasNodeRendererComponent({
         selected={selected}
         onOpenVideoPreview={data.onOpenVideoPreview}
         onOpenEditing={data.onOpenEditing}
+        onRetry={data.onRetry}
         onMediaDimensionsResolved={validAgentCanvasMediaDimensions(data.asset)
           ? undefined
           : ({ width, height }) => setIntrinsicDimensions({

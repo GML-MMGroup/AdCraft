@@ -159,6 +159,7 @@ from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleV1,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_guided_interactions import (
     GuidedAcceptedReferenceV1,
     GuidedConceptChoiceV2,
@@ -406,6 +407,7 @@ class AgentCanvasRuntime:
     event_repository: EventRepository
     runtime_repository: AgentCanvasRuntimeRepository
     run_service: AgentCanvasRunService
+    prompt_preparation: NodePromptPreparationService
     scheduler: DynamicCanvasScheduler
     runtime_snapshots: CanvasRuntimeSnapshotService
     provider_capabilities: ProviderCapabilityService
@@ -970,22 +972,23 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+    prompt_preparation = NodePromptPreparationService(
+        workflow_repository,
+        role_brief_author=lambda role_context, request_identity: (
+            video_agent_gateway.author_role_brief(
+                role_context,
+                request_identity=request_identity,
+            )
+        ),
+        asset_resolver=asset_service.resolve_asset,
+    )
     fanout_activation = StoryboardFanoutActivationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
         requirements=requirement_service,
         documents=working_documents,
         receipts=production_closure_receipts,
-        prompt_preparation=NodePromptPreparationService(
-            workflow_repository,
-            role_brief_author=lambda role_context, request_identity: (
-                video_agent_gateway.author_role_brief(
-                    role_context,
-                    request_identity=request_identity,
-                )
-            ),
-            asset_resolver=asset_service.resolve_asset,
-        ),
+        prompt_preparation=prompt_preparation,
         progression=production_journey,
         execution_settings=execution_settings.get_or_create,
         awaiting=guidance_awaiting,
@@ -1398,6 +1401,7 @@ def create_agent_canvas_runtime(
         event_repository=event_repository,
         runtime_repository=runtime_repository,
         run_service=run_service,
+        prompt_preparation=prompt_preparation,
         scheduler=scheduler,
         runtime_snapshots=CanvasRuntimeSnapshotService(
             workflow_repository,
@@ -1911,6 +1915,33 @@ def patch_node(
             422,
             "Editing manifest is invalid.",
         ) from error
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow, node=node)
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/prompt-preparation/retry",
+    response_model=CanvasMutationResponseV2,
+)
+def retry_node_prompt_preparation(
+    workflow_id: str,
+    node_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CanvasMutationResponseV2:
+    """Retry a failed prompt preparation without starting a media run."""
+
+    try:
+        current = runtime.workflows.get_node(workflow_id, node_id)
+        node = runtime.prompt_preparation.retry(
+            workflow_id,
+            node_id,
+            operation_id=f"retry-node-prompt:{uuid4().hex}",
+            context=_prompt_preparation_retry_context(runtime, current),
+        )
+        workflow = runtime.projects.get_workflow(workflow_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -3383,8 +3414,11 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
         "node_prompt_preparation_incomplete": 409,
+        "node_prompt_preparation_not_failed": 409,
+        "node_prompt_preparation_not_retryable": 409,
         "prompt_preparation_revision_conflict": 409,
         "prompt_preparation_failed": 503,
+        "agent_structured_output_invalid": 422,
         "stage_content_mismatch": 422,
         "storyboard_sequence_invalid": 422,
         "storyboard_anchor_resolution_failed": 422,
@@ -3413,6 +3447,57 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         str(error),
         details=details if isinstance(details, dict) else None,
     )
+
+
+def _prompt_preparation_retry_context(
+    runtime: AgentCanvasRuntime,
+    node: CanvasNodeV2,
+) -> StageAuthoringContextV1:
+    """Project current bounded authoring authority for one prompt-only retry."""
+
+    session = runtime.conversation_repository.get_guidance_session(node.workflow_id)
+    requirements = runtime.requirements.get_current(node.workflow_id)
+    controls = getattr(requirements, "hard_controls", None)
+    if controls is None:
+        controls = getattr(requirements.ledger, "hard_controls", ())
+    requirement_facts = {item.control: item.value for item in controls}
+    excerpts = ()
+    document_id = node.metadata.get("source_agent_document_id")
+    sequence_id = node.metadata.get("source_sequence_id")
+    if isinstance(document_id, str) and isinstance(sequence_id, str):
+        excerpts = (
+            runtime.working_documents.build_bounded_context(
+                document_id,
+                f"sequence:{sequence_id}",
+            ),
+        )
+    style = node.structured_content.get("style")
+    return StageAuthoringContextV1(
+        workflow_id=node.workflow_id,
+        session_id=session.session_id,
+        session_revision=session.revision,
+        stage=session.journey.stage,
+        occurrence_id=sequence_id if isinstance(sequence_id, str) else None,
+        creative_goal=session.goal,
+        requirement_facts=requirement_facts,
+        internal_skill_ref=_prompt_retry_skill_ref(node.creative_role),
+        style_projection=str(style)[:8_192] if style is not None else None,
+        working_document_excerpts=excerpts,
+    )
+
+
+def _prompt_retry_skill_ref(creative_role: str) -> str:
+    return {
+        "world_setting": "agent/skills/video_agent_world_setting/SKILL.md",
+        "product": "agent/skills/video_agent_product_design/SKILL.md",
+        "prop": "agent/skills/video_agent_prop_design/SKILL.md",
+        "character": "agent/skills/video_agent_character_design/SKILL.md",
+        "scene": "agent/skills/video_agent_scene_design/SKILL.md",
+        "script": "agent/skills/video_agent_script_authoring/SKILL.md",
+        "storyboard_sequence": "agent/skills/video_agent_storyboard_design/SKILL.md",
+        "storyboard_video": "agent/skills/video_agent_video_direction/SKILL.md",
+        "bgm": "agent/skills/video_agent_bgm_direction/SKILL.md",
+    }.get(creative_role, "agent/skills/video_agent_quick_media/SKILL.md")
 
 
 def _http_error(

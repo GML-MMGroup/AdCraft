@@ -214,10 +214,24 @@ ROLE_CREATIVE_BRIEF_PROP_SUMMARY_EXPANSION_RULE_ID = (
 ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID = (
     "role_creative_brief_v2.character_main_summary_expansion.v1"
 )
+ROLE_CREATIVE_BRIEF_DISCARD_UNRECOGNIZED_FIELDS_RULE_ID = (
+    "role_creative_brief_v2.discard_unrecognized_fields.v1"
+)
 _PRODUCT_MAIN_SUMMARY_ALIASES = (
+    "summary",
     "description",
     "brief_content",
     "concept_summary",
+)
+_CHARACTER_MAIN_PRESENTATIONAL_FIELDS = frozenset(
+    {
+        "brief_title",
+        "character_profile",
+        "negative_prompt",
+        "production_parameters",
+        "shot_composition",
+        "visual_prompt",
+    }
 )
 _PRODUCT_MAIN_REQUIRED_FIELDS = (
     "identity",
@@ -243,6 +257,25 @@ _ROLE_VARIANT_VALUES = frozenset(
         "free_image",
         "free_video",
         "free_audio",
+    }
+)
+_ROLE_CREATIVE_BRIEF_ALLOWED_FIELDS = MappingProxyType(
+    {
+        "world_view": frozenset({"role_variant", "premise", "era_and_place", "world_rules", "visual_continuity"}),
+        "product_main": frozenset({"role_variant", "identity", "geometry", "materials", "marks", "palette"}),
+        "product_multiview": frozenset({"role_variant", "identity", "geometry", "materials", "marks", "palette", "views"}),
+        "prop": frozenset({"role_variant", "identity", "form", "materials", "palette"}),
+        "character_main": frozenset({"role_variant", "identity", "face_and_hair", "silhouette_and_proportions", "wardrobe", "accessories", "rendering_mode"}),
+        "character_turnaround": frozenset({"role_variant", "identity", "face_and_hair", "silhouette_and_proportions", "wardrobe", "accessories", "rendering_mode", "views"}),
+        "scene_board": frozenset({"role_variant", "environment_identity", "spatial_logic", "lighting", "materials", "atmosphere", "views"}),
+        "script": frozenset({"role_variant", "narrative", "timing", "dialogue", "voiceover"}),
+        "storyboard_grid": frozenset({"role_variant", "sequence_summary", "beats", "visual_language"}),
+        "video_segment": frozenset({"role_variant", "segment_summary", "duration_seconds", "action", "dialogue", "voiceover", "ambience", "action_effects", "target_style"}),
+        "bgm": frozenset({"role_variant", "music_summary", "duration_seconds", "pace", "energy_curve", "instrumentation", "mood"}),
+        "free_text": frozenset({"role_variant", "prompt"}),
+        "free_image": frozenset({"role_variant", "prompt"}),
+        "free_video": frozenset({"role_variant", "prompt"}),
+        "free_audio": frozenset({"role_variant", "prompt"}),
     }
 )
 
@@ -326,6 +359,7 @@ def _normalize_role_creative_brief(
                 "wardrobe": "Use only the wardrobe details explicitly described in the accepted direction: {summary}",
                 "accessories": "",
             },
+            discard_fields=_CHARACTER_MAIN_PRESENTATIONAL_FIELDS,
         )
         if expansion.violations:
             return AgentStructuredNormalizationResult(value=deepcopy(value), violations=expansion.violations)
@@ -334,11 +368,30 @@ def _normalize_role_creative_brief(
             rule_ids.append(ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID)
             normalized_path_count += expansion.normalized_path_count
 
+    candidate, dropped_count = _project_role_creative_brief_fields(
+        candidate,
+        expected_variant,
+    )
+    if dropped_count:
+        rule_ids.append(ROLE_CREATIVE_BRIEF_DISCARD_UNRECOGNIZED_FIELDS_RULE_ID)
+        normalized_path_count += dropped_count
+
     return AgentStructuredNormalizationResult(
         value=candidate,
         rule_ids=tuple(rule_ids),
         normalized_path_count=normalized_path_count,
     )
+
+
+def _project_role_creative_brief_fields(
+    value: dict[str, Any],
+    role_variant: str,
+) -> tuple[dict[str, Any], int]:
+    """Discard untrusted decoration after projecting onto one trusted contract."""
+
+    allowed = _ROLE_CREATIVE_BRIEF_ALLOWED_FIELDS[role_variant]
+    projected = {name: item for name, item in value.items() if name in allowed}
+    return projected, len(value) - len(projected)
 
 
 def _expand_product_main_summary(
@@ -366,6 +419,8 @@ def _expand_product_main_summary(
 def _expand_role_summary(
     value: dict[str, Any],
     field_templates: Mapping[str, str],
+    *,
+    discard_fields: frozenset[str] = frozenset(),
 ) -> AgentStructuredNormalizationResult:
     if any(field in value for field in field_templates):
         return AgentStructuredNormalizationResult(value=deepcopy(value))
@@ -393,6 +448,8 @@ def _expand_role_summary(
     candidate = deepcopy(value)
     for name, _ in supplied:
         del candidate[name]
+    for name in discard_fields:
+        candidate.pop(name, None)
     candidate.update({name: template.format(summary=summary) for name, template in field_templates.items()})
     return AgentStructuredNormalizationResult(
         value=candidate,

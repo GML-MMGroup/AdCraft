@@ -99,6 +99,38 @@ def serialize_volcengine_image_generation_request(
     return body, audit
 
 
+def serialize_openai_image_generation_request(
+    *,
+    model: str,
+    canonical_prompt: str,
+    size: str,
+    references: list[dict[str, Any]],
+    required_reference_asset_ids: list[str],
+) -> tuple[dict[str, Any], V2ProviderReferenceWireAudit]:
+    required_asset_ids = _ordered_unique(required_reference_asset_ids)
+    audit = V2ProviderReferenceWireAudit(
+        requested_reference_asset_ids=required_asset_ids,
+        request_schema="openai-image-generations",
+    )
+    if references or required_asset_ids:
+        raise _reference_error(
+            "OpenAI image generation does not accept reference images on this endpoint.",
+            audit,
+        )
+    body = {
+        "model": model,
+        "prompt": canonical_prompt,
+        "size": size,
+    }
+    if not all(isinstance(body.get(key), str) and body[key].strip() for key in body):
+        raise _contract_error("OpenAI image request requires model, prompt, and size.", audit)
+    return body, audit.model_copy(
+        update={
+            "provider_request_reference_count": 0,
+        }
+    )
+
+
 def _validate_base_body(
     body: dict[str, Any],
     *,
