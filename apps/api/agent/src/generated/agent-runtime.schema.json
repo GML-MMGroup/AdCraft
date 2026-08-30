@@ -9534,6 +9534,26 @@
           "title": "Brief Digest",
           "type": "string"
         },
+        "compaction_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RolePromptCompactionDecisionV2"
+          },
+          "maxItems": 64,
+          "title": "Compaction Decisions",
+          "type": "array"
+        },
+        "compaction_policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Compaction Policy Digest",
+          "type": "string"
+        },
+        "compaction_policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Compaction Policy Version",
+          "type": "string"
+        },
         "context_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Context Digest",
@@ -9646,6 +9666,8 @@
       "required": [
         "assertion_evidence",
         "brief_digest",
+        "compaction_policy_digest",
+        "compaction_policy_version",
         "context_digest",
         "prompt",
         "prompt_digest",
@@ -17083,6 +17105,41 @@
           "default": null,
           "title": "Character Phase"
         },
+        "compaction_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RolePromptCompactionDecisionV2"
+          },
+          "maxItems": 64,
+          "title": "Compaction Decisions",
+          "type": "array"
+        },
+        "compaction_policy_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compaction Policy Digest"
+        },
+        "compaction_policy_version": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compaction Policy Version"
+        },
         "context_snapshot_id": {
           "anyOf": [
             {
@@ -17358,6 +17415,41 @@
           ],
           "default": null,
           "title": "Character Phase"
+        },
+        "compaction_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RolePromptCompactionDecisionV2"
+          },
+          "maxItems": 64,
+          "title": "Compaction Decisions",
+          "type": "array"
+        },
+        "compaction_policy_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compaction Policy Digest"
+        },
+        "compaction_policy_version": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compaction Policy Version"
         },
         "context_digest": {
           "anyOf": [
@@ -22888,6 +22980,228 @@
       ],
       "title": "RoleCreativeBriefV2"
     },
+    "RolePromptCompactionDecisionV2": {
+      "additionalProperties": false,
+      "description": "Non-content provenance for one context-block disposition.",
+      "properties": {
+        "block_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "compacted",
+            "preserved"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "exact_duplicate",
+            "identity_unproven",
+            "not_eligible",
+            "ownership_unknown",
+            "policy_disabled",
+            "preserved_authority"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "retained_block_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Block Id"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "outcome",
+        "reason",
+        "source_digest",
+        "source_id"
+      ],
+      "title": "RolePromptCompactionDecisionV2",
+      "type": "object"
+    },
+    "RolePromptCompactionPolicyV2": {
+      "additionalProperties": false,
+      "description": "Versioned, opt-in policy for lossless compiler-owned duplicate removal.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "eligible_source_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "bindings",
+              "documents",
+              "installation",
+              "requirements",
+              "selected_direction",
+              "style",
+              "user_prompt",
+              "world_view"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Eligible Source Kinds",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "policy_id",
+        "policy_version"
+      ],
+      "title": "RolePromptCompactionPolicyV2",
+      "type": "object"
+    },
+    "RolePromptContextBlockV2": {
+      "additionalProperties": false,
+      "description": "Safe identity metadata for one preserved prompt-context block.",
+      "properties": {
+        "block_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "disposition": {
+          "default": "retain_unknown",
+          "enum": [
+            "duplicate_candidate",
+            "preserve",
+            "retain_unknown"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "effective_constraints_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Effective Constraints Digest",
+          "type": "string"
+        },
+        "ownership": {
+          "enum": [
+            "compiler",
+            "unknown",
+            "user"
+          ],
+          "title": "Ownership",
+          "type": "string"
+        },
+        "precedence": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Precedence",
+          "type": "integer"
+        },
+        "retained_block_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Block Id"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "bindings",
+            "documents",
+            "installation",
+            "requirements",
+            "selected_direction",
+            "style",
+            "user_prompt",
+            "world_view"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "effective_constraints_digest",
+        "ownership",
+        "precedence",
+        "source_digest",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "RolePromptContextBlockV2",
+      "type": "object"
+    },
     "RolePromptPreparationContextV2": {
       "additionalProperties": false,
       "properties": {
@@ -22924,6 +23238,15 @@
           ],
           "default": null,
           "title": "Character Phase"
+        },
+        "context_blocks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RolePromptContextBlockV2"
+          },
+          "maxItems": 64,
+          "title": "Context Blocks",
+          "type": "array"
         },
         "created_at": {
           "format": "date-time",
@@ -23105,6 +23428,19 @@
           "minLength": 1,
           "title": "Workflow Id",
           "type": "string"
+        },
+        "world_view_block_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "World View Block Id"
         },
         "world_view_projection": {
           "anyOf": [
