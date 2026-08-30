@@ -95,7 +95,7 @@ def capability_context_from_envelope(
     )
     if explicit_constraints:
         capability_context["explicit_constraints"] = explicit_constraints
-    return {
+    projected_context: dict[str, object] = {
         "context_kind": "capability_operation",
         "workflow_id": envelope.workflow_id,
         "conversation_id": envelope.conversation_id,
@@ -109,8 +109,10 @@ def capability_context_from_envelope(
         "capability_context": capability_context or {"objective": envelope.objective},
         "style_projection": envelope.style_projection,
         "response_locale": envelope.response_locale,
-        "character_target": envelope.character_target,
     }
+    if envelope.character_target is not None:
+        projected_context["character_target"] = envelope.character_target
+    return projected_context
 
 
 class CapabilityExecutionService:
