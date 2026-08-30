@@ -2,9 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeProjectAssetListResponseV2 } from "../features/agent-canvas/model/normalizers.ts";
 import type { CanvasNodeV2, ProjectAssetSummaryV2 } from "../types-v2.ts";
-import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover } from "./v2ProjectCover.ts";
+import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, resolveV2ProjectCoverSummary } from "./v2ProjectCover.ts";
 
 describe("resolveV2ProjectCover", () => {
+  it("uses the authoritative image rendition from a project summary", () => {
+    expect(resolveV2ProjectCoverSummary({
+      asset_id: "product-main",
+      version_id: "version-7",
+      media_type: "image",
+      preview_url: "/api/v2/assets/product-main/preview?v=version-7",
+      poster_url: null,
+    })).toEqual({
+      assetId: "product-main",
+      versionId: "version-7",
+      mediaType: "image",
+      mediaPath: "/api/v2/assets/product-main/preview?v=version-7",
+      posterPath: null,
+    });
+  });
+
+  it("uses the poster rendition for a video project summary", () => {
+    expect(resolveV2ProjectCoverSummary({
+      asset_id: "final-video",
+      version_id: "version-9",
+      media_type: "video",
+      preview_url: "/api/v2/assets/final-video/preview?v=version-9",
+      poster_url: "/api/v2/assets/final-video/poster?v=version-9",
+    })?.posterPath).toBe("/api/v2/assets/final-video/poster?v=version-9");
+  });
+
   it("uses Product Main even when a newer Product Multi-view is the explicit cover", () => {
     const cover = resolveV2ProjectCover("product-multiview", [
       asset({

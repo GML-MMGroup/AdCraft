@@ -24,6 +24,7 @@ export type ProjectListItem = {
   favorite: boolean;
   workflowId: string;
   coverAssetId: string | null;
+  cover?: V2ProjectCover | null;
 };
 
 type ProjectListProps = {
@@ -262,11 +263,15 @@ const ProjectListCard = memo(function ProjectListCard({
 });
 
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
-  const { workflowId, coverAssetId, updatedAt } = project;
+  const { workflowId, coverAssetId, updatedAt, cover: summaryCover } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
+    if (summaryCover !== undefined) {
+      setEntry({ cover: summaryCover });
+      return undefined;
+    }
     const cachedCover = loadProjectCoverCache(requestKey);
     setEntry(cachedCover ? { cover: cachedCover } : null);
     let active = true;
@@ -314,7 +319,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverAssetId, coverPriority, requestKey, updatedAt, workflowId]);
+  }, [coverAssetId, coverPriority, requestKey, summaryCover, updatedAt, workflowId]);
 
   return entry?.cover;
 }

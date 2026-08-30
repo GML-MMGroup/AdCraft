@@ -7,6 +7,7 @@ import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
+import { resolveV2ProjectCoverSummary } from "../projects/v2ProjectCover.ts";
 import "./projects.css";
 
 export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
@@ -48,6 +49,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
       favorite: project.is_favorite,
       workflowId: project.workflow_id,
       coverAssetId: project.cover_asset_id,
+      cover: resolveV2ProjectCoverSummary(project.cover),
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;
       const visibleBySearch = project.name.toLowerCase().includes(search.toLowerCase());

@@ -1,4 +1,5 @@
 import type { ProjectV2ListResponse, ProjectV2Summary } from "../types-v2.ts";
+import { resolveV2ProjectCoverSummary, type V2ProjectCover } from "./v2ProjectCover.ts";
 
 export type V2ProjectListItem = {
   key: string;
@@ -8,6 +9,7 @@ export type V2ProjectListItem = {
   updatedAt: string;
   favorite: boolean;
   coverAssetId: string | null;
+  cover: V2ProjectCover | null;
 };
 
 export function projectSummaryToListItem(project: ProjectV2Summary): V2ProjectListItem {
@@ -19,6 +21,7 @@ export function projectSummaryToListItem(project: ProjectV2Summary): V2ProjectLi
     updatedAt: project.updated_at,
     favorite: project.is_favorite,
     coverAssetId: project.cover_asset_id,
+    cover: resolveV2ProjectCoverSummary(project.cover),
   };
 }
 

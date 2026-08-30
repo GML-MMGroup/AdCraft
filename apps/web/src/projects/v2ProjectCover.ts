@@ -1,4 +1,4 @@
-import type { CanvasNodeV2, ProjectAssetSummaryV2 } from "../types-v2.ts";
+import type { CanvasNodeV2, ProjectAssetSummaryV2, ProjectCoverV2 } from "../types-v2.ts";
 import { mediaAssetContentPath } from "../workflow/mediaPreview.ts";
 
 export type V2ProjectCover = {
@@ -8,6 +8,18 @@ export type V2ProjectCover = {
   mediaPath: string;
   posterPath: string | null;
 };
+
+export function resolveV2ProjectCoverSummary(summary: ProjectCoverV2 | null | undefined): V2ProjectCover | null {
+  if (!summary || !summary.asset_id || !summary.version_id || !summary.preview_url) return null;
+  if (summary.media_type === "video" && !summary.poster_url) return null;
+  return {
+    assetId: summary.asset_id,
+    versionId: summary.version_id,
+    mediaType: summary.media_type,
+    mediaPath: summary.preview_url,
+    posterPath: summary.media_type === "video" ? summary.poster_url : null,
+  };
+}
 
 type ProductCoverCandidate = {
   cover: V2ProjectCover;

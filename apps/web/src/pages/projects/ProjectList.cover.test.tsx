@@ -284,6 +284,33 @@ describe("ProjectList covers", () => {
     expect(image.getAttribute("fetchpriority")).toBe("high");
   });
 
+  it("does not request project assets when the summary already contains a versioned cover", async () => {
+    const project = {
+      ...projects(1)[0],
+      cover: {
+        assetId: "summary-cover",
+        versionId: "summary-version",
+        mediaType: "image" as const,
+        mediaPath: "/api/v2/assets/summary-cover/preview?v=summary-version",
+        posterPath: null,
+      },
+    };
+    const view = render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("/api/v2/assets/summary-cover/preview?v=summary-version");
+  });
+
   it("shows a persisted cover while the background refresh is pending", async () => {
     const controlled = installControlledCoverRequests();
     const project = projects(1)[0];

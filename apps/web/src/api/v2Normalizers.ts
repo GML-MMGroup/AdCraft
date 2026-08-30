@@ -1505,8 +1505,27 @@ function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").Pro
     status,
     is_favorite: record.is_favorite,
     cover_asset_id: stringOrNull(record.cover_asset_id) ?? null,
+    cover: normalizeProjectCoverV2(record.cover),
     project_version: requiredPositiveInteger(record, "project_version"),
     updated_at: requiredProjectString(record, "updated_at"),
+  };
+}
+
+function normalizeProjectCoverV2(value: unknown): import("../types-v2.ts").ProjectCoverV2 | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const record = recordValue(value);
+  if (!record) invalidProjectPayload();
+  const mediaType = record.media_type;
+  if (mediaType !== "image" && mediaType !== "video") invalidProjectPayload();
+  const posterUrl = record.poster_url;
+  if (posterUrl !== null && typeof posterUrl !== "string") invalidProjectPayload();
+  return {
+    asset_id: requiredProjectString(record, "asset_id"),
+    version_id: requiredProjectString(record, "version_id"),
+    media_type: mediaType,
+    preview_url: requiredProjectString(record, "preview_url"),
+    poster_url: posterUrl ?? null,
   };
 }
 
