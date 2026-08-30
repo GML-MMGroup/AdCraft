@@ -211,11 +211,7 @@ class RolePromptContextProjector:
             bindings=bindings,
         )
         world_view_block_id = next(
-            (
-                item.block_id
-                for item in resolved_context_blocks
-                if item.source_kind == "world_view"
-            ),
+            (item.block_id for item in resolved_context_blocks if item.source_kind == "world_view"),
             None,
         )
         return RolePromptPreparationContextV2(

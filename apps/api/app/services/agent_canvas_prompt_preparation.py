@@ -494,8 +494,7 @@ class NodePromptPreparationService:
                 "compaction_policy_version": preparation.compaction_policy_version,
                 "compaction_policy_digest": preparation.compaction_policy_digest,
                 "compaction_decisions": [
-                    item.model_dump(mode="json")
-                    for item in preparation.compaction_decisions
+                    item.model_dump(mode="json") for item in preparation.compaction_decisions
                 ],
                 "parameter_origins": [
                     item.model_dump(mode="json") for item in preparation.parameter_origins

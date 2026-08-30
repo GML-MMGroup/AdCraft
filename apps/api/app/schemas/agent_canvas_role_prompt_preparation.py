@@ -205,9 +205,9 @@ class RolePromptPreparationContextV2(_RolePromptModel):
         block_ids = tuple(item.block_id for item in self.context_blocks)
         if len(block_ids) != len(set(block_ids)):
             raise ValueError("Role prompt context block identities must be unique.")
-        if tuple(sorted(self.context_blocks, key=lambda item: (item.precedence, item.block_id))) != (
-            self.context_blocks
-        ):
+        if tuple(
+            sorted(self.context_blocks, key=lambda item: (item.precedence, item.block_id))
+        ) != (self.context_blocks):
             raise ValueError("Role prompt context blocks must use canonical order.")
         if self.world_view_block_id is not None and self.world_view_block_id not in block_ids:
             raise ValueError("WorldView block identity must refer to a context block.")

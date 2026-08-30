@@ -155,8 +155,7 @@ class AgentCanvasRolePromptCompiler:
                     "Character Turnaround requires the exact same-occurrence Main provenance.",
                 )
         world_view_compacted = any(
-            item.outcome == "compacted"
-            and item.block_id == context.world_view_block_id
+            item.outcome == "compacted" and item.block_id == context.world_view_block_id
             for item in compaction_decisions
         )
         if (
