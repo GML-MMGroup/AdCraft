@@ -44,6 +44,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 FaultInjector = Callable[[str], None]
 _TERMINAL_MEMBER_STATES = ("succeeded", "failed", "cancelled")
+_TERMINAL_EXECUTION_STATES = ("completed", "partial_completed", "failed", "cancelled")
 
 
 class AgentCanvasResultCommitRepository:
@@ -101,6 +102,28 @@ class AgentCanvasResultCommitRepository:
                         )
                         connection.commit()
                         return receipt
+                    execution = (
+                        connection.execute(
+                            select(AgentCanvasExecutionRow).where(
+                                AgentCanvasExecutionRow.execution_id == command.execution_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if execution is None:
+                        raise _error(
+                            "execution_not_found",
+                            "Execution was not found.",
+                        )
+                    if (
+                        str(execution["status"]) in _TERMINAL_EXECUTION_STATES
+                        or bool(execution["cancel_requested"])
+                    ):
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Execution is no longer accepting worker results.",
+                        )
                     self._assert_current_lease(connection, command)
                     member = (
                         connection.execute(
