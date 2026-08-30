@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectList, __resetProjectCoverResourceForTests, type ProjectListItem } from "./ProjectList.tsx";
-import { stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 
 const fixture = vi.hoisted(() => ({
@@ -315,11 +314,7 @@ describe("ProjectList covers", () => {
     const controlled = installControlledCoverRequests();
     const project = projects(1)[0];
     if (!project) throw new Error("Expected a project fixture.");
-    saveProjectCoverCache(stableQueryKey({
-      workflowId: project.workflowId,
-      coverAssetId: "fallback",
-      updatedAt: project.updatedAt,
-    }), {
+    saveProjectCoverCache(`project:${project.projectId}`, {
       assetId: "cached-cover",
       versionId: "cached-cover-version",
       mediaType: "image",

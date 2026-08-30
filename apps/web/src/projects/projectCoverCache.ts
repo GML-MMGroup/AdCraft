@@ -15,6 +15,7 @@ type ProjectCoverCache = Record<string, ProjectCoverCacheEntry>;
 export function loadProjectCoverCache(
   identity: string,
   storage: Storage | undefined = getStorage(),
+  options: { allowStale?: boolean } = {},
 ): V2ProjectCover | undefined {
   if (!storage) return undefined;
   try {
@@ -23,7 +24,7 @@ export function loadProjectCoverCache(
     const parsed: unknown = JSON.parse(raw);
     if (!isProjectCoverCache(parsed)) return undefined;
     const entry = parsed[identity];
-    if (!entry || Date.now() - entry.savedAt > PROJECT_COVER_CACHE_MAX_AGE_MS) return undefined;
+    if (!entry || (!options.allowStale && Date.now() - entry.savedAt > PROJECT_COVER_CACHE_MAX_AGE_MS)) return undefined;
     return normalizeProjectCover(entry.cover);
   } catch {
     return undefined;

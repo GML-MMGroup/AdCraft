@@ -5,6 +5,7 @@ import { createSettledQueryResource, stableQueryKey } from "../../collections/se
 import { ProjectCard } from "../../components/Cards";
 import { loadProjectCoverCache, saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
+import { prefetchProjectCover } from "../../projects/projectCoverPrefetch.ts";
 import type { ProjectAssetSummaryV2 } from "../../types-v2.ts";
 import {
   getProjectGridColumnCount,
@@ -241,6 +242,10 @@ const ProjectListCard = memo(function ProjectListCard({
   }, [onOpenProject, project.projectId, project.workflowId]);
   const cover = useProjectCover(project, coverPriority);
 
+  useEffect(() => {
+    prefetchProjectCover(cover, coverPriority);
+  }, [cover, coverPriority]);
+
   return (
     <ProjectCard
       projectId={project.projectId}
@@ -265,6 +270,7 @@ const ProjectListCard = memo(function ProjectListCard({
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
   const { workflowId, coverAssetId, updatedAt, cover: summaryCover } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
+  const cacheKey = projectCoverCacheKey(project.projectId);
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
@@ -272,7 +278,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       setEntry({ cover: summaryCover });
       return undefined;
     }
-    const cachedCover = loadProjectCoverCache(requestKey);
+    const cachedCover = loadProjectCoverCache(cacheKey, undefined, { allowStale: true });
     setEntry(cachedCover ? { cover: cachedCover } : null);
     let active = true;
     let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
@@ -292,7 +298,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
     ));
     void subscription.promise.then((lookup) => {
       if (!active) return;
-      if (lookup.cover) saveProjectCoverCache(requestKey, lookup.cover);
+      if (lookup.cover) saveProjectCoverCache(cacheKey, lookup.cover);
       setEntry({ cover: lookup.cover });
       if (!lookup.needsAuthority) return;
 
@@ -305,7 +311,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       ));
       void authoritySubscription.promise.then((authoritativeCover) => {
         const nextCover = authoritativeCover ?? lookup.cover;
-        if (nextCover) saveProjectCoverCache(requestKey, nextCover);
+        if (nextCover) saveProjectCoverCache(cacheKey, nextCover);
         if (active) setEntry({ cover: nextCover });
       }).catch(() => {
         // The preliminary cover remains usable when optional authority lookup fails.
@@ -319,13 +325,17 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverAssetId, coverPriority, requestKey, summaryCover, updatedAt, workflowId]);
+  }, [cacheKey, coverAssetId, coverPriority, requestKey, summaryCover, updatedAt, workflowId]);
 
   return entry?.cover;
 }
 
 function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
   return stableQueryKey(projectCoverIdentity(project));
+}
+
+function projectCoverCacheKey(projectId: string) {
+  return `project:${projectId}`;
 }
 
 function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
