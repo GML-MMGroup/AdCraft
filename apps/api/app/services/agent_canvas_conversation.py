@@ -133,6 +133,9 @@ from app.services.agent_canvas_capability_dispatch import (
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
+from app.services.agent_canvas_character_proposal_scope import (
+    resolve_character_proposal_target_for_dispatch,
+)
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
@@ -1949,6 +1952,14 @@ class AgentConversationService:
             objective=command.command.objective or intent.objective,
             reference_plan=reference_plan,
             requirement_revision=requirements,
+            character_target=resolve_character_proposal_target_for_dispatch(
+                action=session.journey.active_action,
+                capability_id=command.command.capability_id,
+                publication_kind=(
+                    "proposal" if intent.mode == "guided_production" else "internal_document"
+                ),
+                requirement_revision=requirements,
+            ),
             asset_resolver=self._asset_resolver,
         )
         if intent.mode == "targeted_authoring":

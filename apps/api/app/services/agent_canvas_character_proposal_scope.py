@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas_capabilities import CharacterProposalTargetV1
+from app.schemas.agent_canvas_capabilities import (
+    CapabilityIdV1,
+    CharacterProposalTargetV1,
+)
 from app.schemas.agent_canvas_production_journey import JourneyActionProjectionV2
 from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 from app.services.agent_canvas_requirements import character_occurrence_authority_for_authoring
@@ -47,6 +52,25 @@ def resolve_character_proposal_target(
         occurrence_count=len(occurrences),
         requirement_revision_id=requirement_revision.revision_id,
         requirement_revision_no=requirement_revision.revision_no,
+    )
+
+
+def resolve_character_proposal_target_for_dispatch(
+    *,
+    action: JourneyActionProjectionV2 | None,
+    capability_id: CapabilityIdV1,
+    publication_kind: Literal["proposal", "internal_document"],
+    requirement_revision: RequirementLedgerRevisionV1,
+) -> CharacterProposalTargetV1 | None:
+    """Project scope only for a guided Character Proposal dispatch."""
+
+    if publication_kind != "proposal" or capability_id != "character_design":
+        return None
+    if action is None:
+        raise _scope_error("A Character Proposal dispatch requires a current Journey action.")
+    return resolve_character_proposal_target(
+        action=action,
+        requirement_revision=requirement_revision,
     )
 
 

@@ -39,6 +39,9 @@ from app.services.agent_canvas_capability_dispatch import CapabilityDispatchServ
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
+from app.services.agent_canvas_character_proposal_scope import (
+    resolve_character_proposal_target_for_dispatch,
+)
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_capability_reference_planner import CapabilityReferencePlanner
 from app.services.agent_canvas_next_action_context import (
@@ -318,6 +321,19 @@ class DurableNextActionExecutionService:
                 ).approved_node_ids,
                 asset_resolver=self._asset_resolver,
             )
+            requirement_revision = self._requirements.get_current(envelope.workflow_id)
+            publication_kind = (
+                "internal_document"
+                if journey_action is not None
+                and journey_action.action == "invoke_internal_checkpoint"
+                else "proposal"
+            )
+            character_target = resolve_character_proposal_target_for_dispatch(
+                action=session.journey.active_action,
+                capability_id=command.command.capability_id,
+                publication_kind=publication_kind,
+                requirement_revision=requirement_revision,
+            )
             lease_guard()
             self._capability_dispatch.dispatch_next_action(
                 turn,
@@ -329,7 +345,8 @@ class DurableNextActionExecutionService:
                     capability_id=command.command.capability_id,
                     objective=command.command.objective or envelope.objective,
                     reference_plan=reference_plan,
-                    requirement_revision=self._requirements.get_current(envelope.workflow_id),
+                    requirement_revision=requirement_revision,
+                    character_target=character_target,
                     asset_resolver=self._asset_resolver,
                 ),
                 session_id=session.session_id,
@@ -410,6 +427,12 @@ class DurableNextActionExecutionService:
             ).approved_node_ids,
             asset_resolver=self._asset_resolver,
         )
+        character_target = resolve_character_proposal_target_for_dispatch(
+            action=session.journey.active_action,
+            capability_id=envelope.capability_id,
+            publication_kind=envelope.publication_kind,
+            requirement_revision=requirement_revision,
+        )
         command = ValidatedNextActionV1(
             command=NextActionCommandV1(
                 action="invoke_capability",
@@ -430,6 +453,7 @@ class DurableNextActionExecutionService:
                 objective=envelope.objective,
                 reference_plan=reference_plan,
                 requirement_revision=requirement_revision,
+                character_target=character_target,
                 asset_resolver=self._asset_resolver,
             ),
             session_id=session.session_id,
