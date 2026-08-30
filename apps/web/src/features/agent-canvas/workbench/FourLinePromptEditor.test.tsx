@@ -21,4 +21,26 @@ describe("FourLinePromptEditor", () => {
 
     expect(editor.scrollTop).toBe(88);
   });
+
+  it("registers the custom wheel handler as non-passive and cleans it up", () => {
+    const addEventListener = vi.spyOn(HTMLTextAreaElement.prototype, "addEventListener");
+    const removeEventListener = vi.spyOn(HTMLTextAreaElement.prototype, "removeEventListener");
+    const { unmount } = render(
+      <FourLinePromptEditor
+        ariaLabel="Generation prompt"
+        value="Prompt"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const wheelRegistration = addEventListener.mock.calls.find(([type]) => type === "wheel");
+    expect(wheelRegistration?.[2]).toMatchObject({ passive: false });
+
+    unmount();
+
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "wheel",
+      wheelRegistration?.[1],
+    );
+  });
 });
