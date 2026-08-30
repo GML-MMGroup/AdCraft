@@ -37,6 +37,23 @@ RoleParameterSourceKindV2 = Literal[
     "style_advice",
     "installation_default",
 ]
+RolePromptContextSourceKindV2 = Literal[
+    "requirements",
+    "selected_direction",
+    "user_prompt",
+    "style",
+    "world_view",
+    "bindings",
+    "documents",
+    "installation",
+]
+RolePromptContextOwnershipV2 = Literal["compiler", "user", "unknown"]
+RolePromptContextDispositionV2 = Literal[
+    "preserve",
+    "duplicate_candidate",
+    "retain_unknown",
+]
+RolePromptCompactionOutcomeV2 = Literal["preserved", "compacted"]
 
 
 class _RolePromptModel(BaseModel):
@@ -84,6 +101,64 @@ class RoleBoundTextControlV2(_RolePromptModel):
     source_node_revision: int = Field(ge=1)
 
 
+class RolePromptContextBlockV2(_RolePromptModel):
+    """Safe identity metadata for one preserved prompt-context block."""
+
+    schema_version: Literal["1"] = "1"
+    block_id: str = Field(min_length=1, max_length=160)
+    source_kind: RolePromptContextSourceKindV2
+    source_id: str = Field(min_length=1, max_length=160)
+    source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    ownership: RolePromptContextOwnershipV2
+    precedence: int = Field(ge=0, le=128)
+    effective_constraints_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    disposition: RolePromptContextDispositionV2 = "retain_unknown"
+    retained_block_id: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_compaction_candidate(self) -> "RolePromptContextBlockV2":
+        if self.disposition == "duplicate_candidate" and (
+            self.ownership != "compiler" or not self.retained_block_id
+        ):
+            raise ValueError(
+                "Only compiler-owned blocks with a retained identity may be compacted."
+            )
+        if self.ownership == "user" and self.disposition != "preserve":
+            raise ValueError("User-owned context blocks must be preserved.")
+        return self
+
+
+class RolePromptCompactionPolicyV2(_RolePromptModel):
+    """Versioned, opt-in policy for lossless compiler-owned duplicate removal."""
+
+    schema_version: Literal["1"] = "1"
+    policy_id: str = Field(min_length=1, max_length=160)
+    policy_version: str = Field(min_length=1, max_length=32)
+    enabled: bool = False
+    eligible_source_kinds: tuple[RolePromptContextSourceKindV2, ...] = Field(
+        default=(), max_length=8
+    )
+    digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class RolePromptCompactionDecisionV2(_RolePromptModel):
+    """Non-content provenance for one context-block disposition."""
+
+    block_id: str = Field(min_length=1, max_length=160)
+    source_id: str = Field(min_length=1, max_length=160)
+    source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    outcome: RolePromptCompactionOutcomeV2
+    retained_block_id: str | None = Field(default=None, max_length=160)
+    reason: Literal[
+        "policy_disabled",
+        "not_eligible",
+        "ownership_unknown",
+        "identity_unproven",
+        "exact_duplicate",
+        "preserved_authority",
+    ]
+
+
 class RolePromptPreparationContextV2(_RolePromptModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
@@ -102,6 +177,8 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     style_projection: str | None = Field(default=None, max_length=8_192)
     world_view_projection: str | None = Field(default=None, max_length=8_192)
     bindings: tuple[RoleBindingSnapshotV2, ...] = Field(default=(), max_length=32)
+    context_blocks: tuple[RolePromptContextBlockV2, ...] = Field(default=(), max_length=64)
+    world_view_block_id: str | None = Field(default=None, max_length=160)
     explicit_controls: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     bound_text_controls: tuple[RoleBoundTextControlV2, ...] = Field(default=(), max_length=32)
     node_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
@@ -120,6 +197,15 @@ class RolePromptPreparationContextV2(_RolePromptModel):
             self.bindings
         ):
             raise ValueError("Role prompt Binding snapshots must use canonical order.")
+        block_ids = tuple(item.block_id for item in self.context_blocks)
+        if len(block_ids) != len(set(block_ids)):
+            raise ValueError("Role prompt context block identities must be unique.")
+        if tuple(sorted(self.context_blocks, key=lambda item: (item.precedence, item.block_id))) != (
+            self.context_blocks
+        ):
+            raise ValueError("Role prompt context blocks must use canonical order.")
+        if self.world_view_block_id is not None and self.world_view_block_id not in block_ids:
+            raise ValueError("WorldView block identity must refer to a context block.")
         control_names = tuple(item.name for item in self.bound_text_controls)
         if len(control_names) != len(set(control_names)):
             raise ValueError("Bound Text controls must have unique canonical names.")
@@ -185,6 +271,14 @@ class NodePromptPreparationV2(_RolePromptModel):
     parameter_origins: tuple["ResolvedNodeParameterV2", ...] = Field(
         default=(),
         max_length=32,
+    )
+    compaction_policy_version: str | None = Field(default=None, max_length=32)
+    compaction_policy_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    compaction_decisions: tuple[RolePromptCompactionDecisionV2, ...] = Field(
+        default=(), max_length=64
     )
     attempt_stage: str | None = Field(default=None, max_length=80)
     error: CanvasNodeErrorV2 | None = None
@@ -367,3 +461,8 @@ class CompiledNodePromptV2(_RolePromptModel):
     reference_purposes: tuple[str, ...] = Field(default=(), max_length=32)
     role_reference_policy_version: str | None = Field(default=None, max_length=64)
     assertion_evidence: PromptAssertionEvidenceV1
+    compaction_policy_version: str = Field(min_length=1, max_length=32)
+    compaction_policy_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    compaction_decisions: tuple[RolePromptCompactionDecisionV2, ...] = Field(
+        default=(), max_length=64
+    )

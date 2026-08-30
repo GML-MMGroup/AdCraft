@@ -8,7 +8,11 @@ import json
 from types import MappingProxyType
 
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas_role_prompt_preparation import RolePromptVariantV2
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    RolePromptCompactionPolicyV2,
+    RolePromptContextSourceKindV2,
+    RolePromptVariantV2,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +26,19 @@ class RolePromptRecipeRegistration:
     positive_boundary: str
     negative_boundary: str
     recipe_digest: str
+    compaction_policy: RolePromptCompactionPolicyV2
+
+
+_FOUNDATION_VARIANTS = frozenset(
+    {
+        "product_main",
+        "product_multiview",
+        "prop",
+        "character_main",
+        "character_turnaround",
+        "scene_board",
+    }
+)
 
 
 _RECIPE_DEFINITIONS: tuple[
@@ -158,10 +175,20 @@ def _registration(
         str,
         str,
     ],
+    *,
+    enable_compaction_candidate: bool = False,
 ) -> RolePromptRecipeRegistration:
     variant, selectors, purposes, parameters, positive, negative = definition
     recipe_id = f"adcraft.agent_canvas.{variant}"
     version = "1"
+    eligible_source_kinds: tuple[RolePromptContextSourceKindV2, ...] = (
+        ("world_view",) if variant in _FOUNDATION_VARIANTS else ()
+    )
+    compaction_policy = _compaction_policy(
+        recipe_id,
+        enabled=enable_compaction_candidate and variant in _FOUNDATION_VARIANTS,
+        eligible_source_kinds=eligible_source_kinds,
+    )
     payload = json.dumps(
         {
             "role_variant": variant,
@@ -172,6 +199,7 @@ def _registration(
             "parameter_names": parameters,
             "positive_boundary": positive,
             "negative_boundary": negative,
+            "compaction_policy": compaction_policy.model_dump(mode="json"),
         },
         ensure_ascii=True,
         separators=(",", ":"),
@@ -187,6 +215,31 @@ def _registration(
         positive_boundary=positive,
         negative_boundary=negative,
         recipe_digest=f"sha256:{sha256(payload.encode()).hexdigest()}",
+        compaction_policy=compaction_policy,
+    )
+
+
+def _compaction_policy(
+    recipe_id: str,
+    *,
+    enabled: bool,
+    eligible_source_kinds: tuple[RolePromptContextSourceKindV2, ...],
+) -> RolePromptCompactionPolicyV2:
+    policy_id = f"{recipe_id}.compaction"
+    policy_version = "1"
+    payload = {
+        "policy_id": policy_id,
+        "policy_version": policy_version,
+        "enabled": enabled,
+        "eligible_source_kinds": eligible_source_kinds,
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    return RolePromptCompactionPolicyV2(
+        policy_id=policy_id,
+        policy_version=policy_version,
+        enabled=enabled,
+        eligible_source_kinds=eligible_source_kinds,
+        digest=f"sha256:{sha256(encoded.encode()).hexdigest()}",
     )
 
 
@@ -196,8 +249,13 @@ class RolePromptRecipeRegistry:
     def __init__(
         self,
         registrations: tuple[RolePromptRecipeRegistration, ...] | None = None,
+        *,
+        enable_compaction_candidate: bool = False,
     ) -> None:
-        values = registrations or tuple(_registration(item) for item in _RECIPE_DEFINITIONS)
+        values = registrations or tuple(
+            _registration(item, enable_compaction_candidate=enable_compaction_candidate)
+            for item in _RECIPE_DEFINITIONS
+        )
         by_variant = {item.role_variant: item for item in values}
         if len(by_variant) != len(values):
             raise V2PersistenceError(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
 import re
 from typing import cast
 
@@ -16,6 +17,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     ResolvedNodeParameterV2,
     RoleBoundTextControlV2,
     RoleBindingSnapshotV2,
+    RolePromptContextBlockV2,
     RoleParameterSourceKindV2,
     RolePromptPreparationContextV2,
     RolePromptVariantV2,
@@ -132,6 +134,7 @@ class RolePromptContextProjector:
         style_parameters: dict[str, JsonValue] | None = None,
         installation_parameters: dict[str, JsonValue] | None = None,
         world_view_projection: str | None = None,
+        context_blocks: tuple[RolePromptContextBlockV2, ...] = (),
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
             raise _error(
@@ -190,6 +193,31 @@ class RolePromptContextProjector:
             selected.public_summary if selected is not None else None
         )
         response_locale = stage_context.requirement_facts.get("response_locale")
+        resolved_context_blocks = context_blocks or _default_context_blocks(
+            requirement_revision_id=requirement_revision_id,
+            requirement_revision_no=requirement_revision_no,
+            requirement_facts=_role_requirement_facts(
+                stage_context.requirement_facts,
+                role_variant,
+            ),
+            selected_direction=selected_direction,
+            user_prompt=_authoring_user_prompt(node),
+            style_projection=_aesthetic_style_projection(
+                stage_context.style_projection,
+                role_variant=role_variant,
+            ),
+            world_view_projection=world_view_projection,
+            document_revisions=document_revisions,
+            bindings=bindings,
+        )
+        world_view_block_id = next(
+            (
+                item.block_id
+                for item in resolved_context_blocks
+                if item.source_kind == "world_view"
+            ),
+            None,
+        )
         return RolePromptPreparationContextV2(
             workflow_id=node.workflow_id,
             node_id=node.node_id,
@@ -220,6 +248,8 @@ class RolePromptContextProjector:
             storyboard_parameters=storyboard_parameters or {},
             style_parameters=style_parameters or {},
             installation_parameters=installation_parameters or {},
+            context_blocks=resolved_context_blocks,
+            world_view_block_id=world_view_block_id,
             model_policy_revision=model_policy_revision,
             created_at=datetime.now(timezone.utc),
         )
@@ -439,3 +469,119 @@ def _parameter_error() -> V2PersistenceError:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="role_prompt_context_projector")
+
+
+def _default_context_blocks(
+    *,
+    requirement_revision_id: str,
+    requirement_revision_no: int,
+    requirement_facts: dict[str, JsonValue],
+    selected_direction: str | None,
+    user_prompt: str | None,
+    style_projection: str | None,
+    world_view_projection: str | None,
+    document_revisions: dict[str, int],
+    bindings: tuple[RoleBindingSnapshotV2, ...],
+) -> tuple[RolePromptContextBlockV2, ...]:
+    blocks: list[RolePromptContextBlockV2] = []
+
+    def add(
+        *,
+        block_id: str,
+        source_kind: str,
+        source_id: str,
+        value: object,
+        ownership: str,
+        precedence: int,
+        disposition: str = "preserve",
+    ) -> None:
+        digest = _prefixed_digest(value)
+        blocks.append(
+            RolePromptContextBlockV2(
+                block_id=block_id,
+                source_kind=source_kind,  # type: ignore[arg-type]
+                source_id=source_id,
+                source_digest=digest,
+                ownership=ownership,  # type: ignore[arg-type]
+                precedence=precedence,
+                effective_constraints_digest=digest,
+                disposition=disposition,  # type: ignore[arg-type]
+            )
+        )
+
+    add(
+        block_id=f"requirements:{requirement_revision_id}:{requirement_revision_no}",
+        source_kind="requirements",
+        source_id=f"{requirement_revision_id}:{requirement_revision_no}",
+        value=requirement_facts,
+        ownership="compiler",
+        precedence=0,
+    )
+    if selected_direction:
+        add(
+            block_id="selected-direction",
+            source_kind="selected_direction",
+            source_id="selected_direction",
+            value=selected_direction,
+            ownership="compiler",
+            precedence=1,
+        )
+    if user_prompt:
+        add(
+            block_id="user-prompt",
+            source_kind="user_prompt",
+            source_id="user_prompt",
+            value=user_prompt,
+            ownership="user",
+            precedence=2,
+        )
+    if style_projection:
+        add(
+            block_id="style-projection",
+            source_kind="style",
+            source_id="style_projection",
+            value=style_projection,
+            ownership="unknown",
+            precedence=3,
+        )
+    if world_view_projection:
+        world_digest = _prefixed_digest(world_view_projection)
+        add(
+            block_id=f"world_view:{world_digest[7:39]}",
+            source_kind="world_view",
+            source_id=f"world_view:{world_digest[7:39]}",
+            value=world_view_projection,
+            ownership="unknown",
+            precedence=4,
+            disposition="retain_unknown",
+        )
+    if document_revisions:
+        add(
+            block_id="documents",
+            source_kind="documents",
+            source_id="documents",
+            value=document_revisions,
+            ownership="compiler",
+            precedence=5,
+        )
+    if bindings:
+        add(
+            block_id="bindings",
+            source_kind="bindings",
+            source_id="bindings",
+            value=[item.model_dump(mode="json") for item in bindings],
+            ownership="compiler",
+            precedence=6,
+        )
+    return tuple(sorted(blocks, key=lambda item: (item.precedence, item.block_id)))
+
+
+def _prefixed_digest(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=lambda item: item.model_dump(mode="json"),
+    )
+    return f"sha256:{sha256(payload.encode('utf-8')).hexdigest()}"

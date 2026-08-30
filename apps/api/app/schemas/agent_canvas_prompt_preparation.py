@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     prompt_assertion_evidence_digest,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import ResolvedNodeParameterV2
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptCompactionDecisionV2
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 __all__ = (
@@ -51,6 +52,14 @@ class NodePromptPreparationV1(BaseModel):
     )
     brief_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     parameter_origins: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
+    compaction_policy_version: str | None = Field(default=None, max_length=32)
+    compaction_policy_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    compaction_decisions: tuple[RolePromptCompactionDecisionV2, ...] = Field(
+        default=(), max_length=64
+    )
     assertion_evidence: PromptAssertionEvidenceV1 | None = None
     attempt_stage: str | None = Field(default=None, max_length=80)
     error: CanvasNodeErrorV2 | None = None

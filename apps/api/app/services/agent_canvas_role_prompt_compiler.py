@@ -28,6 +28,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     ProductMainRoleBriefV2,
     ProductMultiviewRoleBriefV2,
     PropRoleBriefV2,
+    RolePromptCompactionDecisionV2,
     ResolvedNodeParameterV2,
     RoleCreativeBriefV2,
     RoleCreativeBriefMemberV2,
@@ -129,6 +130,13 @@ class AgentCanvasRolePromptCompiler:
         role_policy = self._reference_policy.for_prompt_variant(context.role_variant)
         if isinstance(concrete_brief, ProductMultiviewRoleBriefV2):
             concrete_brief = concrete_brief.model_copy(update={"views": PRODUCT_MULTIVIEW_VIEWS})
+        brief_payload = concrete_brief.model_dump(mode="json")
+        brief_digest = _digest(brief_payload)
+        compaction_decisions = _compaction_decisions(
+            context,
+            recipe,
+            brief_digest=brief_digest,
+        )
         prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
         if context.style_projection:
@@ -146,7 +154,16 @@ class AgentCanvasRolePromptCompiler:
                     "character_parent_provenance_invalid",
                     "Character Turnaround requires the exact same-occurrence Main provenance.",
                 )
-        if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
+        world_view_compacted = any(
+            item.outcome == "compacted"
+            and item.block_id == context.world_view_block_id
+            for item in compaction_decisions
+        )
+        if (
+            context.world_view_projection
+            and "world_view" in recipe.allowed_context_selectors
+            and not world_view_compacted
+        ):
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
         if context.role_variant == "script":
@@ -167,7 +184,6 @@ class AgentCanvasRolePromptCompiler:
             negative = f"{negative} {policy_negative}".strip()
         structured = _structured_content(concrete_brief, context)
         context_payload = context.model_dump(mode="json")
-        brief_payload = concrete_brief.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
         reference_digest = _digest([item.model_dump(mode="json") for item in context.bindings])
@@ -176,7 +192,6 @@ class AgentCanvasRolePromptCompiler:
             if context.role_variant == "video_segment"
             else (context.style_projection or "")
         )
-        brief_digest = _digest(brief_payload)
         prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
         prepared_prompt_digest = sha256(prompt.encode("utf-8")).hexdigest()
         sequence_value = context.storyboard_parameters.get("sequence_id")
@@ -245,6 +260,9 @@ class AgentCanvasRolePromptCompiler:
                 role_policy.policy_version if role_policy is not None else None
             ),
             assertion_evidence=assertion_evidence,
+            compaction_policy_version=recipe.compaction_policy.policy_version,
+            compaction_policy_digest=recipe.compaction_policy.digest,
+            compaction_decisions=compaction_decisions,
         )
 
     @staticmethod
@@ -540,6 +558,48 @@ def _validate_role_prompt_text(role_variant: str, text: str) -> None:
                 "node_prompt_role_contract_invalid",
                 "Role prompt text conflicts with the foundation isolation contract.",
             )
+
+
+def _compaction_decisions(
+    context: RolePromptPreparationContextV2,
+    recipe,
+    *,
+    brief_digest: str,
+) -> tuple[RolePromptCompactionDecisionV2, ...]:
+    """Apply only an explicit, digest-backed compiler duplicate proof."""
+
+    retained_brief_id = f"role_brief:{brief_digest}"
+    decisions: list[RolePromptCompactionDecisionV2] = []
+    for block in context.context_blocks:
+        reason = "preserved_authority"
+        outcome = "preserved"
+        if not recipe.compaction_policy.enabled:
+            reason = "policy_disabled"
+        elif block.source_kind not in recipe.compaction_policy.eligible_source_kinds:
+            reason = "not_eligible"
+        elif block.ownership != "compiler":
+            reason = "ownership_unknown"
+        elif (
+            block.disposition != "duplicate_candidate"
+            or block.retained_block_id != retained_brief_id
+            or block.source_digest != brief_digest
+            or block.effective_constraints_digest != brief_digest
+        ):
+            reason = "identity_unproven"
+        else:
+            reason = "exact_duplicate"
+            outcome = "compacted"
+        decisions.append(
+            RolePromptCompactionDecisionV2(
+                block_id=block.block_id,
+                source_id=block.source_id,
+                source_digest=block.source_digest,
+                outcome=outcome,  # type: ignore[arg-type]
+                retained_block_id=block.retained_block_id,
+                reason=reason,  # type: ignore[arg-type]
+            )
+        )
+    return tuple(decisions)
 
 
 def _error(code: str, message: str) -> V2PersistenceError:
