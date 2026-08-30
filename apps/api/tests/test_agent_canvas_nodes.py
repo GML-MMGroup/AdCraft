@@ -49,7 +49,9 @@ class _Repository:
         *,
         expected_node_revision: int,
         expected_workflow_revision: int,
+        dispatch_context: object | None = None,
     ) -> CanvasNodeV2:
+        del dispatch_context
         assert expected_node_revision == self.node.revision
         assert expected_workflow_revision == 1
         self.node = node

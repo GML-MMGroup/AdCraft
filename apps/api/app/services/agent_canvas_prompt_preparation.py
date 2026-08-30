@@ -329,6 +329,8 @@ class NodePromptPreparationService:
                 started_at=started_at,
                 duration_ms=round((monotonic() - started_monotonic) * 1000),
             )
+            if presentation_stream is not None and self._presentation_publisher is not None:
+                self._presentation_publisher.fail(presentation_stream, error_code)
             raise safe_error
 
     def retry(
@@ -361,10 +363,6 @@ class NodePromptPreparationService:
             operation_id=operation_id,
             context=context,
         )
-            if presentation_stream is not None and self._presentation_publisher is not None:
-                self._presentation_publisher.fail(presentation_stream, error_code)
-            raise safe_error
-
     def invalidate_for_dependency_change(
         self,
         workflow_id: str,
