@@ -657,6 +657,29 @@ class CharacterProposalTargetV1(BaseModel):
         return self
 
 
+def _validate_character_target_contract(
+    *,
+    target: CharacterProposalTargetV1 | None,
+    capability_id: CapabilityIdV1,
+    requirement_revision_id: str,
+    requirement_revision_no: int,
+    required: bool = False,
+) -> None:
+    """Keep occurrence scope present only on guided Character Proposal commands."""
+
+    if required and target is None:
+        raise ValueError("Guided Character Proposal commands require an occurrence target.")
+    if target is None:
+        return
+    if capability_id != "character_design":
+        raise ValueError("Character occurrence scope is valid only for Character proposals.")
+    if (
+        target.requirement_revision_id != requirement_revision_id
+        or target.requirement_revision_no != requirement_revision_no
+    ):
+        raise ValueError("Character occurrence scope must match the Requirement Ledger revision.")
+
+
 GuidanceSourceActionV1 = Literal[
     "required_deferred_final_review",
     "user_resumed_deferred_topic",
@@ -683,6 +706,16 @@ class CapabilityContextSnapshotV2(_CapabilityModel):
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityContextSnapshotV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.requirement_projection.capability_id,
+            requirement_revision_id=self.requirement_projection.ledger_revision_id,
+            requirement_revision_no=self.requirement_projection.ledger_revision_no,
+        )
+        return self
+
 
 class CapabilityInvocationContextV2(_CapabilityModel):
     context_kind: Literal["capability_operation"]
@@ -702,6 +735,16 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityInvocationContextV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.capability_id,
+            requirement_revision_id=self.requirement_projection.ledger_revision_id,
+            requirement_revision_no=self.requirement_projection.ledger_revision_no,
+        )
+        return self
 
 
 class CapabilityCommandEnvelopeV2(_CapabilityModel):
@@ -739,6 +782,21 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityCommandEnvelopeV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.capability_id,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+            required=(
+                self.publication_kind == "proposal"
+                and self.capability_id == "character_design"
+                and self.session_id is not None
+            ),
+        )
+        return self
 
     @model_validator(mode="after")
     def validate_publication_boundary(
