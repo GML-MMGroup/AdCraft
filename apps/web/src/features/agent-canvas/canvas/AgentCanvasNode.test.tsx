@@ -633,7 +633,7 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it.each<"image" | "video">(["image", "video"])(
-    "uses the blue-white star diffusion loader while a %s node is generating",
+    "uses the coalesce ImageLoader while a %s node is generating",
     (nodeType) => {
       const node = makeNode(nodeType, "draft");
       const { container } = render(
@@ -646,16 +646,18 @@ describe("AgentCanvasNodeCard", () => {
 
       expect(screen.getByTestId(`agent-canvas-node-${nodeType}-node`).classList.contains("agent-canvas-node--working")).toBe(true);
       const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
-      expect(loader.getAttribute("data-variant")).toBe("star-diffusion");
-      expect(loader.querySelectorAll(".agent-canvas-node__generation-star")).toHaveLength(20);
-      expect(container.querySelector(".iml-loader")).toBeNull();
+      expect(loader.getAttribute("data-variant")).toBe("coalesce");
+      expect(loader.classList.contains("iml-loader")).toBe(true);
+      expect(loader.querySelector(".iml-coalesce")).toBeTruthy();
+      expect(loader.style.getPropertyValue("--iml-size")).toBe("192px");
+      expect(container.querySelector(".agent-canvas-node__generation-star")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
       expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
       expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
     },
   );
 
-  it("keeps the blue-white star loader transparent and motion-aware", () => {
+  it("keeps the coalesce loader transparent and motion-aware", () => {
     const nodeCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css"),
       "utf8",
@@ -664,33 +666,30 @@ describe("AgentCanvasNodeCard", () => {
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
       "utf8",
     );
-    const starAsset = readFileSync(
-      resolve(process.cwd(), "public/imgs/node-icons/solar-star-outline.svg"),
-      "utf8",
-    );
     const mediaOverlayRule = nodeCss.match(
       /\.agent-canvas-node__working--media\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const loaderRule = nodeCss.match(
       /\.agent-canvas-node__generation-loader\s*\{([\s\S]*?)\n\}/,
     )?.[1];
-    const starRule = nodeCss.match(
-      /\.agent-canvas-node__generation-star\s*\{([\s\S]*?)\n\}/,
+    const loaderVisualRule = nodeCss.match(
+      /\.agent-canvas-node__generation-loader \.iml-visual\s*\{([\s\S]*?)\n\}/,
     )?.[1];
 
     expect(mediaOverlayRule).toContain("background: transparent");
     expect(loaderRule).toContain("color: #f4f7ff");
-    expect(starRule).toContain('mask: url("/imgs/node-icons/solar-star-outline.svg")');
-    expect(nodeCss).toContain("@keyframes agent-canvas-star-diffusion");
-    expect(nodeCss).toContain("drop-shadow(0 0 12px rgba(157, 175, 230, 0.72))");
+    expect(loaderRule).toContain("place-items: center");
+    expect(loaderVisualRule).toContain("background: transparent");
+    expect(nodeCss).not.toContain("agent-canvas-node__generation-star");
+    expect(nodeCss).not.toContain("agent-canvas-star-diffusion");
+    expect(nodeCss).not.toContain("solar-star-outline.svg");
     expect(nodeCss).not.toContain("rgba(225, 167, 80");
     expect(nodeCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-star[\s\S]*?animation: none/,
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-loader \*[\s\S]*?animation: none/,
     );
     expect(pageCss).toMatch(
-      /\.agent-canvas-board\.is-interacting :is\([\s\S]*?\.agent-canvas-node__generation-star[\s\S]*?animation-play-state: paused/,
+      /\.agent-canvas-board\.is-interacting :is\([\s\S]*?\.agent-canvas-node__generation-loader \*[\s\S]*?animation-play-state: paused/,
     );
-    expect(starAsset).toContain('viewBox="0 0 24 24"');
   });
 
   it("contains complete image outputs while keeping video frames full-bleed", () => {
