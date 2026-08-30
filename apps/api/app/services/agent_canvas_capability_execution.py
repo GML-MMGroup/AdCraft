@@ -79,6 +79,8 @@ def capability_context_from_envelope(
     """Project only immutable, capability-local context for the Pi boundary."""
 
     capability_context = dict(envelope.capability_context)
+    if envelope.character_target is not None:
+        capability_context["character_target"] = envelope.character_target.model_dump(mode="json")
     if envelope.publication_kind == "internal_document":
         capability_context["journey_stage"] = envelope.journey_stage
     existing_constraints = capability_context.get("explicit_constraints")
@@ -107,6 +109,7 @@ def capability_context_from_envelope(
         "capability_context": capability_context or {"objective": envelope.objective},
         "style_projection": envelope.style_projection,
         "response_locale": envelope.response_locale,
+        "character_target": envelope.character_target,
     }
 
 

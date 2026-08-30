@@ -9,10 +9,12 @@ from collections.abc import Callable
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
     CapabilityContextSnapshotV2,
     CapabilityReferencePlanV1,
+    CharacterProposalTargetV1,
     PlannedCapabilityReferenceV1,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
@@ -36,6 +38,7 @@ def build_capability_context_snapshot(
     reference_plan: CapabilityReferencePlanV1,
     requirement_revision: RequirementLedgerRevisionV1,
     target_node_id: str | None = None,
+    character_target: CharacterProposalTargetV1 | None = None,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
 ) -> CapabilityContextSnapshotV2:
     """Freeze only the current capability's approved authoring context."""
@@ -49,6 +52,26 @@ def build_capability_context_snapshot(
         target_node_id=target_node_id,
     )
     capability_context: dict[str, object] = {"objective": objective}
+    if character_target is not None:
+        _validate_character_target(
+            character_target,
+            capability_id=capability_id,
+            requirement_revision=requirement_revision,
+        )
+        occurrence = next(
+            item
+            for item in requirement_revision.ledger.character_occurrences
+            if item.occurrence_id == character_target.occurrence_id
+        )
+        capability_context["character_target"] = character_target.model_dump(mode="json")
+        capability_context["character_occurrence"] = {
+            "occurrence_id": occurrence.occurrence_id,
+            "occurrence_index": occurrence.occurrence_index,
+            "occurrence_count": character_target.occurrence_count,
+            "character_phase": character_target.character_phase,
+            "role": occurrence.role,
+            "identity_summary": occurrence.identity_summary,
+        }
     reference_summaries = _reference_summaries(
         workflow,
         reference_plan.references,
@@ -103,7 +126,47 @@ def build_capability_context_snapshot(
         style_projection=style_projection,
         reference_plan=reference_plan,
         response_locale=session.response_locale,
+        character_target=character_target,
     )
+
+
+def _validate_character_target(
+    target: CharacterProposalTargetV1,
+    *,
+    capability_id: CapabilityIdV1,
+    requirement_revision: RequirementLedgerRevisionV1,
+) -> None:
+    """Ensure a frozen target still belongs to the supplied Ledger revision."""
+
+    if capability_id != "character_design":
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "Character proposal scope is not valid for this capability.",
+            stage="agent_canvas_capability_context",
+        )
+    if (
+        target.requirement_revision_id != requirement_revision.revision_id
+        or target.requirement_revision_no != requirement_revision.revision_no
+    ):
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "Character proposal target does not match the Requirement Ledger revision.",
+            stage="agent_canvas_capability_context",
+        )
+    occurrence = next(
+        (
+            item
+            for item in requirement_revision.ledger.character_occurrences
+            if item.occurrence_id == target.occurrence_id
+        ),
+        None,
+    )
+    if occurrence is None or occurrence.occurrence_index != target.occurrence_index:
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "Character proposal target does not match the current occurrence.",
+            stage="agent_canvas_capability_context",
+        )
 
 
 def _digest(value: object) -> str:
