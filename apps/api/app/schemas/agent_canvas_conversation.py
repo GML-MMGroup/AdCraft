@@ -249,6 +249,10 @@ class _ConceptProposalBaseV2(_ConversationModel):
         max_length=64,
     )
     topic_id: str | None = Field(default=None, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_index: int | None = Field(default=None, ge=1, le=32)
+    occurrence_count: int | None = Field(default=None, ge=1, le=32)
+    character_phase: Literal["main"] | None = None
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
     proposal_purpose: str | None = Field(default=None, max_length=4_096)
@@ -270,6 +274,29 @@ class _ConceptProposalBaseV2(_ConversationModel):
             raise ValueError("Concept option IDs must be unique within a proposal.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
+        scope_values = (
+            self.occurrence_id,
+            self.occurrence_index,
+            self.occurrence_count,
+            self.character_phase,
+        )
+        if any(value is not None for value in scope_values) and not all(
+            value is not None for value in scope_values
+        ):
+            raise ValueError("Character Proposal scope must be complete when present.")
+        if self.capability_id != "character_design" and any(
+            value is not None for value in scope_values
+        ):
+            raise ValueError("Non-Character Proposals cannot carry occurrence scope.")
+        if (
+            self.capability_id == "character_design"
+            and self.proposal_card_schema_version >= 4
+            and not all(value is not None for value in scope_values)
+        ):
+            raise ValueError("Current Character Proposals require occurrence scope.")
+        if self.occurrence_index is not None and self.occurrence_count is not None:
+            if self.occurrence_index > self.occurrence_count:
+                raise ValueError("Character occurrence index exceeds the Proposal count.")
         return self
 
 

@@ -106,7 +106,10 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
     stage: JourneyStageV2
     stage_revision: int = Field(ge=1)
     action_id: str = Field(min_length=1, max_length=160)
-    occurrence_id: str | None = Field(default=None, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_index: int | None = Field(default=None, ge=1, le=32)
+    occurrence_count: int | None = Field(default=None, ge=1, le=32)
+    character_phase: Literal["main"] | None = None
     capability_id: str = Field(min_length=1, max_length=80)
     options: tuple[GuidedChoiceOptionV1, ...] = Field(min_length=3, max_length=3)
     allow_custom: Literal[True] = True
@@ -118,6 +121,25 @@ class GuidedConceptChoiceV2(_GuidedInteractionModel):
             raise ValueError("Guided concept option IDs must be unique.")
         if sum(option.recommended for option in self.options) != 1:
             raise ValueError("A guided concept requires exactly one recommended option.")
+        scope_values = (
+            self.occurrence_id,
+            self.occurrence_index,
+            self.occurrence_count,
+            self.character_phase,
+        )
+        if any(value is not None for value in scope_values) and not all(
+            value is not None for value in scope_values
+        ):
+            raise ValueError("Character concept scope must be complete when present.")
+        if self.capability_id == "character_design" and self.stage == "character":
+            if not all(value is not None for value in scope_values):
+                raise ValueError("Character concept choices require occurrence scope.")
+            assert self.occurrence_index is not None
+            assert self.occurrence_count is not None
+            if self.occurrence_index > self.occurrence_count:
+                raise ValueError("Character occurrence index exceeds the concept count.")
+        elif any(value is not None for value in scope_values):
+            raise ValueError("Non-Character concept choices cannot carry occurrence scope.")
         return self
 
 
