@@ -69,7 +69,7 @@ describe("buildComposerContextView", () => {
         assetId: "asset-1",
         displayName: "Hero bottle",
         mediaType: "image",
-        thumbnailUrl: "/preview/asset-1",
+        thumbnailUrl: "/content/asset-1",
       }],
       nodes: [{ nodeId: "node-1", title: "Product Main", nodeType: "image" },
         { nodeId: "node-2", title: "World Setting", nodeType: "text" }],

@@ -2425,6 +2425,8 @@ export interface ChatMessageV2 {
   script_node_id: string | null;
   proposal_id: string | null;
   capability_id: AgentCapabilityIdV2 | null;
+  /** Structured presentation metadata retained from the authoritative timeline. */
+  metadata?: Record<string, unknown>;
   sequence: number;
   created_at: string;
 }

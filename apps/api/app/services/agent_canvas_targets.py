@@ -23,7 +23,7 @@ class AgentCanvasTargetService:
         self._assets = assets
 
     def resolve(self, workflow_id: str, locator: str) -> AgentTargetResolutionV2:
-        kind, target_id = _parse_locator(locator)
+        kind, target_id, version_id = _parse_locator(locator)
         if kind == "node":
             node = self._workflows.get_node(workflow_id, target_id)
             target = AgentTargetRefV2(
@@ -35,7 +35,16 @@ class AgentCanvasTargetService:
                 creative_role=node.creative_role,
             )
         else:
-            asset = self._assets.resolve_target_asset(workflow_id, target_id)
+            if version_id is None:
+                raise _error(
+                    "asset_reference_version_required",
+                    "Asset locators require an immutable version identity.",
+                )
+            asset = self._assets.resolve_target_asset_version(
+                workflow_id,
+                target_id,
+                version_id,
+            )
             if asset.media_type != "image":
                 raise _error(
                     "target_type_not_supported",
@@ -44,20 +53,29 @@ class AgentCanvasTargetService:
             target = AgentTargetRefV2(
                 kind="image_asset",
                 target_id=asset.asset_id,
-                locator=f"asset:{asset.asset_id}",
+                locator=f"asset:{asset.asset_id}@{asset.version_id}",
                 display_name=asset.display_name,
                 media_type="image",
+                asset_version_id=asset.version_id,
             )
         return AgentTargetResolutionV2(workflow_id=workflow_id, target=target)
 
 
-def _parse_locator(locator: str) -> tuple[str, str]:
+def _parse_locator(locator: str) -> tuple[str, str, str | None]:
     if ":" not in locator:
         raise _error("locator_invalid", "Locator must contain a target kind.")
     kind, target_id = locator.split(":", 1)
     if kind not in {"node", "asset"} or not target_id.strip():
         raise _error("locator_invalid", "Locator is invalid.")
-    return kind, target_id.strip()
+    normalized = target_id.strip()
+    if kind == "node":
+        return kind, normalized, None
+    if "@" not in normalized:
+        return kind, normalized, None
+    asset_id, version_id = normalized.split("@", 1)
+    if not asset_id or not version_id:
+        raise _error("locator_invalid", "Locator is invalid.")
+    return kind, asset_id, version_id
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

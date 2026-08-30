@@ -96,7 +96,7 @@ describe("guided interaction references", () => {
 
     expect(guidedInteractionReferenceMediaUrls(references, workflow)).toEqual({
       "node:node-character": "/api/v2/assets/asset-character/content",
-      "image_asset:asset-scene": "/api/v2/assets/asset-scene/preview",
+      "image_asset:asset-scene": "/api/v2/assets/asset-scene/content",
     });
   });
 });

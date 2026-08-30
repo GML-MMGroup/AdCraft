@@ -46,6 +46,7 @@ from app.services.agent_canvas_guided_production_closure import (
     GuidedProductionClosureService,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.agent_canvas_editing_timeline import normalize_manifest
 
 
 class GuidedEditingPreparationService:
@@ -243,6 +244,28 @@ class GuidedEditingPreparationService:
                 else None
             ),
         )
+        current_manifest = None
+        if editing_node_id in nodes:
+            current_manifest = EditingNodeContentV2.model_validate(
+                nodes[editing_node_id].structured_content
+            ).manifest
+        if self._asset_resolver is not None:
+            source_durations = {
+                ("binding", binding.binding_id): asset.duration_seconds
+                for binding, source in zip(
+                    desired_bindings[: len(available_videos)],
+                    available_videos,
+                    strict=True,
+                )
+                if (asset := self._asset_resolver(source.output_asset_id)).duration_seconds
+                is not None
+            }
+            if len(source_durations) == len(available_videos):
+                manifest = normalize_manifest(
+                    manifest,
+                    current_manifest=current_manifest,
+                    source_durations=source_durations,
+                )
         changed = False
         now = self._clock()
         if editing_node_id not in nodes:

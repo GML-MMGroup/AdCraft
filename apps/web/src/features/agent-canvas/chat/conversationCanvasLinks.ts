@@ -31,11 +31,6 @@ export interface ConversationCanvasLinkIndex {
   sourceByNodeId: Map<string, ConversationCanvasLocation>;
 }
 
-export interface ConversationRevealRequest {
-  locationKey: string;
-  requestId: number;
-}
-
 interface ReverseSourceCandidate {
   location: ConversationCanvasLocation;
   priority: number;

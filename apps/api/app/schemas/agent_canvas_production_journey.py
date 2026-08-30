@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 
 JourneyStageStatusV2 = Literal[
@@ -106,6 +107,13 @@ class JourneyActionProjectionV2(_JourneyModel):
     status: Literal["reserved", "working", "waiting_user"]
     turn_id: str | None = Field(default=None, max_length=160)
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_character_phase(self) -> "JourneyActionProjectionV2":
+        if self.stage != "character" and self.character_phase is not None:
+            raise ValueError("Character phase is only valid for the Character stage.")
+        return self
 
 
 class JourneyTransitionEvidenceV2(_JourneyModel):
@@ -116,6 +124,7 @@ class JourneyTransitionEvidenceV2(_JourneyModel):
     stage: JourneyStageV2
     stage_revision: int = Field(ge=1)
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     actor: Literal["user", "delegated", "system"] = "system"
     recorded_at: datetime
 
@@ -128,6 +137,7 @@ class JourneyEvidenceV2(_JourneyModel):
     stage: JourneyStageV2 | None = None
     stage_revision: int | None = Field(default=None, ge=1)
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     action_id: str | None = Field(default=None, max_length=160)
     actor: Literal["user", "delegated", "system"] = "system"
 
@@ -146,6 +156,7 @@ class JourneyEvidenceV2(_JourneyModel):
             stage=stage,
             stage_revision=stage_revision,
             occurrence_id=self.occurrence_id,
+            character_phase=self.character_phase,
             actor=self.actor,
             recorded_at=recorded_at or datetime.now(timezone.utc),
         )
@@ -181,6 +192,10 @@ class GuidedProductionJourneyV2(_JourneyModel):
 class JourneyPolicyContextV2(_JourneyModel):
     journey: GuidedProductionJourneyV2
     clarification_required: bool = False
+    included_character_occurrence_ids: tuple[str, ...] | None = Field(
+        default=None,
+        max_length=32,
+    )
 
 
 class JourneyPolicyResultV2(_JourneyModel):
@@ -189,6 +204,7 @@ class JourneyPolicyResultV2(_JourneyModel):
     next_stage: JourneyStageV2 | None = None
     capability_id: CapabilityIdV1 | None = None
     occurrence_id: str | None = Field(default=None, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     requires_model_call: bool = False
 
     @model_validator(mode="after")
@@ -199,7 +215,19 @@ class JourneyPolicyResultV2(_JourneyModel):
             self.capability_id is None
         ):
             raise ValueError("Capability invocation requires a capability ID.")
+        if self.character_phase is not None and self.capability_id != "character_design":
+            raise ValueError("Character phase requires the Character capability.")
         return self
+
+
+class CharacterAuthoringCursorV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    occurrence_index: int = Field(ge=1, le=32)
+    phase: CharacterAuthoringPhaseV1
+    ledger_revision_id: str = Field(min_length=1, max_length=160)
+    stage_revision: int = Field(ge=1)
 
 
 DeterministicJourneyActionV2 = JourneyPolicyResultV2

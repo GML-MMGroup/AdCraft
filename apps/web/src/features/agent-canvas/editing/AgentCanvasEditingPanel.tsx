@@ -38,6 +38,7 @@ export interface AgentCanvasEditingPanelProps {
   omittedNodeIds?: string[];
   patchNode: PatchNode;
   onClose: () => void;
+  onRevisionConflict?: () => Promise<unknown> | unknown;
   onDownloadExport?: (assetId: string) => Promise<void> | void;
   onAddExportToCanvas?: (exportId: string) => Promise<void> | void;
 }
@@ -55,10 +56,11 @@ export function AgentCanvasEditingPanel({
   omittedNodeIds = [],
   patchNode,
   onClose,
+  onRevisionConflict,
   onDownloadExport,
   onAddExportToCanvas,
 }: AgentCanvasEditingPanelProps) {
-  const editing = useAgentCanvasEditing(workflow, node, patchNode);
+  const editing = useAgentCanvasEditing(workflow, node, patchNode, onRevisionConflict);
   const [addingToCanvas, setAddingToCanvas] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);

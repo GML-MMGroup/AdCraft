@@ -7,6 +7,7 @@ from hashlib import sha256
 from uuid import uuid4
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasBindingV2,
@@ -95,7 +96,7 @@ class AgentCanvasNodeService:
             bindings,
             expected_revision=expected_revision,
         )
-        return node
+        return self._repository.get_node(workflow_id, node.node_id)
 
     def patch(
         self,
@@ -108,6 +109,25 @@ class AgentCanvasNodeService:
         current = self._repository.get_node(workflow_id, node_id)
         changes = request.model_dump(exclude_unset=True)
         now = datetime.now(timezone.utc)
+        source_only_product = (
+            current.node_type == "image"
+            and current.creative_role == "product"
+            and current.execution_mode == "source_only"
+            and current.metadata.get("source_input_kind") in {"main", "multiview"}
+        )
+        if source_only_product:
+            immutable_changes = {
+                "model_selection_mode",
+                "model_ref",
+                "parameters",
+                "structured_content",
+            } & changes.keys()
+            if immutable_changes:
+                raise V2PersistenceError(
+                    "ready_node_immutable",
+                    "Source-only Product Nodes only allow generation prompt text edits.",
+                    stage="agent_canvas_nodes",
+                )
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
         prompt_changed = (
@@ -134,16 +154,22 @@ class AgentCanvasNodeService:
                 current.prompt_preparation,
                 now,
             )
-        elif "generation_prompt" in changes and request.generation_prompt:
+        elif (
+            "generation_prompt" in changes and request.generation_prompt and not source_only_product
+        ):
             changes["prompt_preparation"] = _ready_prompt_preparation(
                 request.generation_prompt,
                 now,
             )
-        status = validate_node_patch(
-            status=current.status,
-            node_type=current.node_type,
-            current=current.model_dump(mode="python"),
-            changes=changes,
+        status = (
+            current.status
+            if source_only_product
+            else validate_node_patch(
+                status=current.status,
+                node_type=current.node_type,
+                current=current.model_dump(mode="python"),
+                changes=changes,
+            )
         )
         updated = current.model_copy(
             update={
@@ -159,7 +185,7 @@ class AgentCanvasNodeService:
                 update={"model_summary": self._model_selection.summary_for(updated.model_ref)}
             )
         self._repository.update_node(updated, expected_revision=expected_revision)
-        return updated
+        return self._repository.get_node(workflow_id, node_id)
 
     def delete(
         self,

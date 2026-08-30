@@ -83,6 +83,7 @@ function createChatFixture() {
   return {
     state: {
       items: [message("message-1", "First answer."), message("message-2", "Second answer.")],
+      guidedAnswerBubbles: [],
       guidanceSession: null,
       guidedInteraction: null,
       guidanceAwaiting: null,
@@ -217,6 +218,29 @@ describe("Agent Conversation Shell v2", () => {
     expect(follows(dock, recovery)).toBe(true);
     expect(contextTray).toBeNull();
     expect(follows(recovery, composer)).toBe(true);
+  });
+
+  it("places a submitted guided answer before later timeline content", () => {
+    fixture.chat.state.items = [
+      message("message-1", "Before the answer."),
+      message("message-3", "The next step is ready."),
+    ];
+    fixture.chat.state.guidedAnswerBubbles = [{
+      bubble_id: "guided-answer:interaction-1:production_duration_seconds",
+      interaction_id: "interaction-1",
+      question_id: "production_duration_seconds",
+      label: "How long should the ad be?",
+      value: "30 seconds",
+      sequence: 2,
+    }];
+    renderPanel();
+
+    const answer = screen.getByRole("article", { name: "Your guided answer" });
+    const followUp = screen.getByText("The next step is ready.");
+
+    expect(Boolean(answer.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(screen.queryByText("How long should the ad be?")).toBeNull();
+    expect(screen.getByText("30 seconds")).toBeTruthy();
   });
 
   it("optimistically hides the submitted interaction and restores it when submission fails", async () => {
@@ -445,98 +469,23 @@ describe("Agent Conversation Shell v2", () => {
     expect(document.querySelector(":scope > .agent-chat__recovery")).toBeNull();
   });
 
-  it("reports structured node links and reveals their conversation source from a collapsed panel", async () => {
+  it("reports structured node links for viewing on canvas", async () => {
     fixture.chat.state.items = [{
       ...message("message-1", "The product frame is ready."),
       linked_node_ids: ["node-1"],
     }];
     const onViewNodes = vi.fn();
-    const onCollapsedChange = vi.fn();
-    const onConversationLinkIndexChange = vi.fn();
-    const { rerender } = render(
+    render(
       <AgentCanvasChatPanel
         workflow={workflow}
         chatRevision={0}
         chatEvents={[]}
         onFocusNode={vi.fn()}
         onViewNodes={onViewNodes}
-        onConversationLinkIndexChange={onConversationLinkIndexChange}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "View related nodes on canvas" }));
     expect(onViewNodes).toHaveBeenCalledWith(["node-1"]);
-    await waitFor(() => expect(onConversationLinkIndexChange).toHaveBeenCalled());
-    const index = onConversationLinkIndexChange.mock.calls.at(-1)?.[0];
-    expect(index.sourceByNodeId.get("node-1")?.key).toBe("message:message-1");
-
-    rerender(
-      <AgentCanvasChatPanel
-        workflow={workflow}
-        chatRevision={0}
-        chatEvents={[]}
-        onFocusNode={vi.fn()}
-        collapsed
-        onCollapsedChange={onCollapsedChange}
-        revealRequest={{ locationKey: "message:message-1", requestId: 1 }}
-      />,
-    );
-    expect(onCollapsedChange).toHaveBeenCalledWith(false);
-
-    rerender(
-      <AgentCanvasChatPanel
-        workflow={workflow}
-        chatRevision={0}
-        chatEvents={[]}
-        onFocusNode={vi.fn()}
-        collapsed={false}
-        onCollapsedChange={onCollapsedChange}
-        revealRequest={{ locationKey: "message:message-1", requestId: 1 }}
-      />,
-    );
-
-    await waitFor(() => {
-      const target = document.querySelector<HTMLElement>('[data-conversation-location="message:message-1"]');
-      expect(target?.classList.contains("is-highlighted")).toBe(true);
-      expect(document.activeElement).toBe(target);
-    });
-  });
-
-  it("retries a conversation reveal when the authoritative timeline arrives later", async () => {
-    fixture.chat.state.items = [];
-    const revealRequest = { locationKey: "message:message-1", requestId: 7 };
-    const { rerender } = render(
-      <AgentCanvasChatPanel
-        workflow={workflow}
-        chatRevision={0}
-        chatEvents={[]}
-        onFocusNode={vi.fn()}
-        revealRequest={revealRequest}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(document.querySelector('[data-conversation-location="message:message-1"]')).toBeNull();
-    });
-
-    fixture.chat.state.items = [{
-      ...message("message-1", "The product frame is ready."),
-      linked_node_ids: ["node-1"],
-    }];
-    rerender(
-      <AgentCanvasChatPanel
-        workflow={workflow}
-        chatRevision={1}
-        chatEvents={[]}
-        onFocusNode={vi.fn()}
-        revealRequest={revealRequest}
-      />,
-    );
-
-    await waitFor(() => {
-      const target = document.querySelector<HTMLElement>('[data-conversation-location="message:message-1"]');
-      expect(target?.classList.contains("is-highlighted")).toBe(true);
-      expect(document.activeElement).toBe(target);
-    });
   });
 });

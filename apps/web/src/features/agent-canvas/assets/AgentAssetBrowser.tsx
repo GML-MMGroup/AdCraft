@@ -25,6 +25,7 @@ import {
   toSourceNodeSelection,
 } from "./assetSelection.ts";
 import { useAgentCanvasAssets } from "./useAgentCanvasAssets.ts";
+import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import "./AgentAssetBrowser.css";
 
 export type {
@@ -68,7 +69,7 @@ function AssetTypeIcon({ mediaType }: Pick<AgentAssetBrowserItem, "mediaType">) 
 function AssetPreview({ item }: { item: AgentAssetBrowserItem }) {
   if (item.mediaType === "image" && item.previewUrl) {
     return (
-      <img
+      <StableMediaPreview
         className="agent-asset-card__media"
         src={item.previewUrl}
         alt=""
@@ -81,6 +82,7 @@ function AssetPreview({ item }: { item: AgentAssetBrowserItem }) {
       <video
         className="agent-asset-card__media"
         src={item.mediaUrl}
+        poster={item.previewUrl ?? undefined}
         muted
         playsInline
         preload="metadata"

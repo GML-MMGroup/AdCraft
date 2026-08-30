@@ -164,6 +164,15 @@ class DurableNextActionExecutionService:
         }:
             lease_guard()
             if journey_action.action == "wait_for_user":
+                if session.journey.stage == "character" and session.awaiting is None:
+                    admitted = self._journey.ensure_character_decision_authority(
+                        envelope.workflow_id,
+                        source_turn_id=envelope.next_action_turn_id,
+                        expected_session_revision=session.revision,
+                        idempotency_key=f"character-count:{envelope.next_action_turn_id}",
+                    )
+                    if admitted is not None:
+                        lease_guard()
                 self._journey.require_current_awaiting(envelope.workflow_id)
             if journey_action.action == "prepare_editing":
                 if self._editing_preparer is None:

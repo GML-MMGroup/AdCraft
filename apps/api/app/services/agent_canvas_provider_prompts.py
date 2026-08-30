@@ -7,6 +7,8 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from pydantic import ValidationError
+
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_ad_media import (
@@ -217,11 +219,25 @@ class AgentCanvasProviderPromptCompiler:
                     "world_setting_context_audience_invalid",
                     "World Setting context audience does not match the target role.",
                 )
-        structured = self._roles.validate_structured_content(
-            node.semantic_role,
-            node.structured_content,
+        try:
+            structured = self._roles.validate_structured_content(
+                node.semantic_role,
+                node.structured_content,
+            )
+        except V2PersistenceError as error:
+            if node.semantic_role in {"storyboard_video", "general_video"} and (
+                "style" in node.structured_content
+            ):
+                raise _error(
+                    "provider_prompt_style_contract_invalid",
+                    "Video style contract is invalid before provider dispatch.",
+                ) from error
+            raise
+        style = _style_from_content(
+            node,
+            structured,
+            creative_direction_projection=creative_direction_projection,
         )
-        style = _style_from_content(node, structured)
         character_policy = (
             CharacterReferencePromptPolicy().compile(structured)
             if isinstance(structured, CharacterDesignAssetContentV2)
@@ -404,15 +420,59 @@ def _storyboard_visual_anchor_clause(reference_bundle: AdReferenceBundleV2) -> s
     )
 
 
-def _style_from_content(node: CanvasNodeV2, structured: object) -> VisualStyleContractV2:
+_STYLE_PROJECTION_FIELDS = (
+    "style_prompt",
+    "role_guidance",
+    "global_guidance",
+    "rendering_style",
+    "summary",
+)
+
+
+def _style_from_content(
+    node: CanvasNodeV2,
+    structured: object,
+    *,
+    creative_direction_projection: Mapping[str, object] | None = None,
+) -> VisualStyleContractV2:
     style = getattr(structured, "style", None)
     if isinstance(style, VisualStyleContractV2):
         return style
     if node.semantic_role in {"storyboard_video", "general_video"}:
-        return VisualStyleContractV2(
-            style_prompt=str(node.generation_prompt).strip(),
-            source="user",
-        )
+        if creative_direction_projection is not None:
+            return _style_from_projection(creative_direction_projection)
+        return resolve_visual_style()
+    return resolve_visual_style()
+
+
+def _style_from_projection(
+    projection: Mapping[str, object],
+) -> VisualStyleContractV2:
+    for field in _STYLE_PROJECTION_FIELDS:
+        if field not in projection:
+            continue
+        value = projection[field]
+        if not isinstance(value, str) or not value.strip():
+            raise _error(
+                "provider_prompt_style_contract_invalid",
+                "Video style projection must contain one bounded non-empty string.",
+            )
+        normalized = value.strip()
+        if normalized.startswith(("{", "[")):
+            raise _error(
+                "provider_prompt_style_contract_invalid",
+                "Video style projection must not be a stringified mapping.",
+            )
+        try:
+            return VisualStyleContractV2(
+                style_prompt=normalized,
+                source="user" if field == "style_prompt" else "video_skill",
+            )
+        except ValidationError as error:
+            raise _error(
+                "provider_prompt_style_contract_invalid",
+                "Video style projection exceeds the bounded style contract.",
+            ) from error
     return resolve_visual_style()
 
 
@@ -521,6 +581,8 @@ def _render_reference_identities(
             "binding_id": reference.binding_id,
             "source_role": reference.source_semantic_role,
             "semantic_reference_role": reference.semantic_reference_role,
+            "occurrence_id": reference.occurrence_id,
+            "character_phase": reference.character_phase,
             "facts": reference.source_identity_facts,
         }
         for reference in reference_bundle.references

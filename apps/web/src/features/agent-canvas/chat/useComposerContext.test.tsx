@@ -136,7 +136,7 @@ describe("useComposerContext", () => {
       versionId: "version-product-1",
       pendingHandoffId: "handoff-product-1",
       displayName: "Asset uploaded-product",
-      previewUrl: "/preview/uploaded-product",
+      previewUrl: "/api/v2/assets/uploaded-product/content?v=version-product-1",
     });
   });
 

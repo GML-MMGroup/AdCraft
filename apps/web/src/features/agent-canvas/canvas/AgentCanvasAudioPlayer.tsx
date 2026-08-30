@@ -13,6 +13,7 @@ import type {
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
+import { mediaAssetContentPath } from "../../../workflow/mediaPreview.ts";
 
 const AUDIO_TITLE_LIMIT = 58;
 const AUDIO_SKIP_SECONDS = 5;
@@ -50,7 +51,7 @@ export function AgentCanvasAudioPlayer({
   asset?: ProjectAssetSummaryV2 | null;
 }) {
   const playable = status === "ready" && asset?.status === "ready";
-  const src = playable ? asset?.media_url ?? null : null;
+  const src = playable && asset ? mediaAssetContentPath(asset) || null : null;
   const [favorite, setFavorite] = useState(false);
   const playback = useAudioPlayback({
     src,

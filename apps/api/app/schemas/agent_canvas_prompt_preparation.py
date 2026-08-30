@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     prompt_assertion_evidence_digest,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import ResolvedNodeParameterV2
+from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 __all__ = (
     "NodePromptPreparationV1",
@@ -28,10 +29,13 @@ __all__ = (
 class NodePromptPreparationV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["queued", "working", "ready", "failed", "superseded"]
+    status: Literal["queued", "working", "ready", "failed", "superseded", "not_applicable"]
     operation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    presentation_stream_id: str | None = Field(default=None, max_length=160)
     attempt_no: int = Field(ge=0)
     context_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_phase: CharacterAuthoringPhaseV1 | None = None
     prompt_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     role_variant: str | None = Field(default=None, max_length=80)
     recipe_id: str | None = Field(default=None, max_length=160)
@@ -54,6 +58,30 @@ class NodePromptPreparationV1(BaseModel):
 
     @model_validator(mode="after")
     def validate_state(self) -> "NodePromptPreparationV1":
+        if self.status == "not_applicable":
+            if any(
+                value is not None
+                for value in (
+                    self.operation_id,
+                    self.presentation_stream_id,
+                    self.context_snapshot_id,
+                    self.prompt_digest,
+                    self.role_variant,
+                    self.recipe_id,
+                    self.recipe_version,
+                    self.recipe_digest,
+                    self.requirement_revision_id,
+                    self.binding_digest,
+                    self.style_projection_digest,
+                    self.brief_digest,
+                    self.assertion_evidence,
+                    self.error,
+                )
+            ):
+                raise ValueError("Not-applicable prompt preparation cannot have model identity.")
+            if self.document_revisions or self.parameter_origins:
+                raise ValueError("Not-applicable prompt preparation cannot have preparation data.")
+            return self
         if self.status == "failed" and self.error is None:
             raise ValueError("Failed prompt preparation requires a safe error.")
         if self.status not in {"failed", "superseded"} and self.error is not None:
@@ -61,6 +89,16 @@ class NodePromptPreparationV1(BaseModel):
         if self.status == "ready" and self.prompt_digest is None:
             raise ValueError("Ready prompt preparation requires a prompt digest.")
         return self
+
+    @classmethod
+    def source_only(cls, *, updated_at: datetime) -> "NodePromptPreparationV1":
+        """Return the explicit non-generative preparation state."""
+
+        return cls(
+            status="not_applicable",
+            attempt_no=0,
+            updated_at=updated_at,
+        )
 
     @classmethod
     def legacy_ready(cls) -> "NodePromptPreparationV1":

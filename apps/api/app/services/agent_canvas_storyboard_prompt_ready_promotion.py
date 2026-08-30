@@ -134,6 +134,42 @@ class StoryboardPromptReadyPromotionService:
         return self._repository.promote(command)
 
     @staticmethod
+    def required_dependency_node_ids(
+        workflow: AgentCanvasWorkflowV2,
+        target_node_ids: tuple[str, ...],
+        *,
+        guided_anchor_node_ids: frozenset[str] = frozenset(),
+    ) -> tuple[str, ...]:
+        """Return the deterministic transitive Node-output dependency closure."""
+
+        nodes = {node.node_id: node for node in workflow.nodes}
+        required_sources: dict[str, list[str]] = {}
+        for binding in workflow.bindings:
+            if (
+                binding.enabled
+                and binding.required
+                and isinstance(binding.source, CanvasBindingSourceNodeV2)
+            ):
+                required_sources.setdefault(binding.target_node_id, []).append(
+                    binding.source.node_id
+                )
+        pending = list(dict.fromkeys((*target_node_ids, *sorted(guided_anchor_node_ids))))
+        discovered: set[str] = set()
+        while pending:
+            target_node_id = pending.pop()
+            if target_node_id in discovered:
+                continue
+            if target_node_id not in nodes:
+                raise _invalid("dependency_node")
+            discovered.add(target_node_id)
+            pending.extend(
+                source_id
+                for source_id in sorted(required_sources.get(target_node_id, ()), reverse=True)
+                if source_id not in discovered
+            )
+        return tuple(sorted(discovered))
+
+    @staticmethod
     def _execution_preparations(
         workflow: AgentCanvasWorkflowV2,
         storyboard_preparations: tuple[StoryboardPromptPreparationPairV1, ...],

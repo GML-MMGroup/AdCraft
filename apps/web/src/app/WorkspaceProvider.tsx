@@ -30,7 +30,8 @@ import type {
 
 type WorkspaceRestoreRequest = {
   generation: number;
-  activeProjectId: string | null;
+  projectId: string | null;
+  source: "route" | "storage";
 };
 
 export type WorkspaceProjectCatalogScope = "active" | "trashed" | "both";
@@ -38,6 +39,8 @@ export type WorkspaceProjectCatalogScope = "active" | "trashed" | "both";
 type WorkspaceProviderProps = {
   children: ReactNode;
   startWithNewProject?: boolean;
+  projectId?: string | null;
+  onProjectCreated?: (projectId: string) => void;
   restoreActiveWorkflow?: boolean;
   projectCatalogScope?: WorkspaceProjectCatalogScope;
 };
@@ -45,9 +48,12 @@ type WorkspaceProviderProps = {
 export function WorkspaceProvider({
   children,
   startWithNewProject = false,
+  projectId = null,
+  onProjectCreated,
   restoreActiveWorkflow = true,
   projectCatalogScope = "both",
 }: WorkspaceProviderProps) {
+  const routeProjectId = projectId?.trim() || null;
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<UploadedAsset[]>([]);
   const [promptLibraryEntities, setPromptLibraryEntities] = useState<AssetLibraryEntitySummary[]>([]);
@@ -59,7 +65,9 @@ export function WorkspaceProvider({
   const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.active ?? []);
   const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.trashed ?? []);
   const [demoProjectFavorites, setDemoProjectFavorites] = useState<Record<string, boolean>>(() => loadDemoProjectFavorites(window.localStorage));
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadActiveProjectId(window.localStorage));
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => (
+    routeProjectId ?? loadActiveProjectId(window.localStorage)
+  ));
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [workspaceRestoreError, setWorkspaceRestoreError] = useState<string | null>(null);
   const [projectCatalogRefreshing, setProjectCatalogRefreshing] = useState(false);
@@ -67,7 +75,7 @@ export function WorkspaceProvider({
   const [busy, setBusy] = useState(false);
   const activeWorkflowIdRef = useRef<string | null>(null);
   const workspaceSessionGenerationRef = useRef(0);
-  const newProjectRequestRef = useRef<Promise<boolean> | null>(null);
+  const newProjectRequestRef = useRef<Promise<string | null> | null>(null);
   const routeProjectCreationStartedRef = useRef(false);
   const projectCatalogGenerationRef = useRef(0);
   const savedProjectsRef = useRef(savedProjects);
@@ -204,11 +212,13 @@ export function WorkspaceProvider({
   }, [projectCatalogScope]);
 
   const beginWorkspaceRestoreRequest = useCallback((): WorkspaceRestoreRequest => {
+    const storedProjectId = loadActiveProjectId(window.localStorage);
     return {
       generation: workspaceSessionGenerationRef.current,
-      activeProjectId: loadActiveProjectId(window.localStorage),
+      projectId: routeProjectId ?? storedProjectId,
+      source: routeProjectId ? "route" : "storage",
     };
-  }, []);
+  }, [routeProjectId]);
 
   const invalidateWorkspaceRestoreRequests = useCallback(() => {
     workspaceSessionGenerationRef.current += 1;
@@ -218,9 +228,11 @@ export function WorkspaceProvider({
   const shouldApplyWorkspaceRestoreRequest = useCallback((request: WorkspaceRestoreRequest) => {
     return (
       request.generation === workspaceSessionGenerationRef.current &&
-      request.activeProjectId === loadActiveProjectId(window.localStorage)
+      (request.source === "route"
+        ? request.projectId === routeProjectId
+        : request.projectId === loadActiveProjectId(window.localStorage))
     );
-  }, []);
+  }, [routeProjectId]);
 
   const startNewProject = useCallback(() => {
     if (newProjectRequestRef.current) return newProjectRequestRef.current;
@@ -247,11 +259,12 @@ export function WorkspaceProvider({
         setWorkspaceRestoreError(null);
         setWorkspaceHydrated(true);
         void refreshProjects();
-        return true;
+        if (startWithNewProject) onProjectCreated?.(nextWorkflow.project_id);
+        return nextWorkflow.project_id;
       } catch (error) {
         setWorkspaceRestoreError(error instanceof Error ? error.message : "Project creation failed.");
         setWorkspaceHydrated(true);
-        return false;
+        return null;
       } finally {
         setBusy(false);
       }
@@ -261,7 +274,7 @@ export function WorkspaceProvider({
       if (newProjectRequestRef.current === request) newProjectRequestRef.current = null;
     });
     return request;
-  }, [invalidateWorkspaceRestoreRequests, refreshProjects, workflow?.workflow_id]);
+  }, [invalidateWorkspaceRestoreRequests, onProjectCreated, refreshProjects, startWithNewProject, workflow?.workflow_id]);
 
   const openProject = useCallback(async (projectId: string, workflowId?: string) => {
     const requestGeneration = invalidateWorkspaceRestoreRequests();
@@ -348,6 +361,20 @@ export function WorkspaceProvider({
   }, [activeProjectId, agentCanvasWorkflow?.project_id, agentCanvasWorkflow?.workflow_id, refreshProjects]);
 
   useEffect(() => {
+    const expectedProjectId = routeProjectId ?? loadActiveProjectId(window.localStorage);
+    if (expectedProjectId === activeProjectId) return;
+    invalidateWorkspaceRestoreRequests();
+    activeWorkflowIdRef.current = null;
+    setActiveProjectId(expectedProjectId);
+    setWorkflow(null);
+    setAgentCanvasWorkflow(null);
+    setMessages([]);
+    setNodeRuns([]);
+    setWorkspaceHydrated(false);
+    setWorkspaceRestoreError(null);
+  }, [activeProjectId, invalidateWorkspaceRestoreRequests, routeProjectId]);
+
+  useEffect(() => {
     if (startWithNewProject) {
       if (routeProjectCreationStartedRef.current) return undefined;
       routeProjectCreationStartedRef.current = true;
@@ -376,15 +403,15 @@ export function WorkspaceProvider({
           setWorkspaceHydrated(true);
           return;
         }
-        const storedProjectId = loadActiveProjectId(window.localStorage);
-        if (storedProjectId) {
+        const restoreProjectId = restoreRequest.projectId;
+        if (restoreProjectId) {
           try {
-            const project = await v2Api.projectWithEtag(storedProjectId);
+            const project = await v2Api.projectWithEtag(restoreProjectId);
             const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
             if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
             const nextWorkflow = response.value;
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
-            setActiveProjectId(storedProjectId);
+            setActiveProjectId(restoreProjectId);
             setWorkflow(null);
             setAgentCanvasWorkflow(nextWorkflow);
             setMessages([]);
@@ -404,7 +431,7 @@ export function WorkspaceProvider({
               return;
             }
           }
-          saveActiveProjectId(window.localStorage, null);
+          if (restoreRequest.source === "storage") saveActiveProjectId(window.localStorage, null);
           setActiveProjectId(null);
           setWorkspaceRestoreError("The backend project could not be restored.");
         } else {

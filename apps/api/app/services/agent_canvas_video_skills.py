@@ -101,6 +101,13 @@ class LoadedVideoStyleSkillV2:
 
 
 @dataclass(frozen=True, slots=True)
+class VideoSkillPreviewFileV2:
+    path: Path
+    media_type: str
+    digest: str
+
+
+@dataclass(frozen=True, slots=True)
 class LoadedVideoSkillCatalogV2:
     catalog_version: str
     categories: tuple[VideoSkillCategoryV2, ...]
@@ -260,6 +267,44 @@ class VideoSkillRegistry:
         if entry is None:
             raise _skill_error("video_skill_not_found", "Video Style Skill was not found.")
         return self._load_published_entry(entry)
+
+    def get_preview_file(self, skill_id: str, version: str) -> VideoSkillPreviewFileV2:
+        public_skill = next(
+            (
+                item
+                for item in self.load_catalog().items
+                if item.skill_id == skill_id and item.version == version
+            ),
+            None,
+        )
+        if public_skill is None:
+            raise _skill_error("video_skill_not_found", "Video Style Skill was not found.")
+        loaded = self.load(skill_id, version)
+        preview = loaded.manifest.preview
+        relative_path = "previews/preview.webp"
+        digest = loaded.manifest.files.get(relative_path)
+        expected_media_url = f"/api/v2/video-skills/{skill_id}/preview?v={version}"
+        if (
+            preview is None
+            or preview.kind != "image"
+            or preview.media_url != expected_media_url
+            or not digest
+        ):
+            raise _skill_error(
+                "video_skill_preview_not_found",
+                "Video Style Skill preview was not found.",
+            )
+        path = (self._root / skill_id / version / relative_path).resolve()
+        if self._root.resolve() not in path.parents or not path.is_file():
+            raise _skill_error(
+                "video_skill_preview_not_found",
+                "Video Style Skill preview was not found.",
+            )
+        return VideoSkillPreviewFileV2(
+            path=path,
+            media_type="image/webp",
+            digest=digest,
+        )
 
     def _load_published_entry(self, entry: VideoSkillCatalogEntryV2) -> LoadedVideoStyleSkillV2:
         package = (self._root / entry.skill_id / entry.version).resolve()

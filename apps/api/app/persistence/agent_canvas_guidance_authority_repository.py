@@ -40,6 +40,9 @@ from app.schemas.agent_canvas_guidance import (
 )
 from app.schemas.agent_canvas_continuation import ContinuationOperationV2
 from app.schemas.agent_canvas_guided_checkpoint import GuidedCheckpointOriginV1
+from app.services.agent_canvas_storyboard_selection_identity import (
+    identity_digest_from_envelope,
+)
 
 
 GUIDANCE_ADVANCE_PRECONDITION_FIELDS = (
@@ -571,13 +574,22 @@ def _execution_leaf(
         raise _lineage_error("Guided action execution lineage is ambiguous.")
     incoming = incoming_rows[0] if incoming_rows else None
     if incoming is not None:
-        _validate_delivery_envelope(
+        incoming_envelope = _validate_delivery_envelope(
             connection,
             workflow_id=workflow_id,
             turn_id=str(current["turn_id"]),
             delivery=incoming,
             envelopes=envelopes,
         )
+        if incoming_envelope is not None:
+            _reject_ambiguous_storyboard_siblings(
+                connection,
+                workflow_id=workflow_id,
+                parent_turn_id=str(incoming["source_turn_id"]),
+                selected_envelope=incoming_envelope,
+                continuation_rows=continuation_rows,
+                envelopes=envelopes,
+            )
     root_turn_id = str(current["turn_id"])
     visited: set[str] = set()
     for _ in range(32):
@@ -644,18 +656,29 @@ def _validate_delivery_envelope(
     turn_id: str,
     delivery: RowMapping,
     envelopes: AgentCanvasOperationEnvelopeRepository,
-) -> None:
+) -> object:
     try:
         payload = json.loads(str(delivery["payload_json"]))
+        required_keys = {"schema_version", "envelope_id"}
+        allowed_keys = {
+            *required_keys,
+            "occurrence_id",
+            "character_phase",
+            "action_owner",
+        }
         if (
             not isinstance(payload, dict)
-            or set(payload) != {"schema_version", "envelope_id"}
+            or not required_keys <= set(payload) <= allowed_keys
             or payload.get("schema_version") != "1"
             or not str(payload.get("envelope_id") or "").strip()
+            or (payload.get("occurrence_id") is None) != (payload.get("character_phase") is None)
+            or payload.get("character_phase") not in {None, "main", "turnaround"}
+            or payload.get("action_owner")
+            not in {None, "guided_journey", "targeted_authoring", "quick_media"}
         ):
             raise ValueError("invalid continuation envelope reference")
         operation = _CONTINUATION_OPERATION_ADAPTER.validate_python(delivery["operation"])
-        envelopes.validate_identity_in_transaction(
+        return envelopes.validate_identity_in_transaction(
             connection,
             envelope_id=str(payload["envelope_id"]),
             workflow_id=workflow_id,
@@ -664,6 +687,99 @@ def _validate_delivery_envelope(
         )
     except (TypeError, ValueError, ValidationError, V2PersistenceError) as error:
         raise _lineage_error("Typed operation envelope is missing or invalid.") from error
+
+
+def _reject_ambiguous_storyboard_siblings(
+    connection: Connection,
+    *,
+    workflow_id: str,
+    parent_turn_id: str,
+    selected_envelope: object,
+    continuation_rows: list[RowMapping],
+    envelopes: AgentCanvasOperationEnvelopeRepository,
+) -> None:
+    """Fail closed when a Storyboard action has persisted sibling deliveries.
+
+    The active Journey pointer names one child Turn, but historical writers could
+    persist additional materialization rows with the same Proposal source Turn.
+    Resolve all such rows before selecting a leaf; insertion order is never an
+    authority signal.  Non-Storyboard operations intentionally retain their
+    existing multi-application semantics.
+    """
+
+    if getattr(selected_envelope, "capability_id", None) != "storyboard_design":
+        return
+    proposal_id = getattr(selected_envelope, "proposal_id", None)
+    proposal_row = (
+        connection.execute(
+            select(
+                AgentCanvasConceptProposalRow.availability,
+                AgentCanvasConceptProposalRow.materialization_id,
+                AgentCanvasConceptProposalRow.materialization_turn_id,
+            ).where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    explicit_reuse = (
+        proposal_row is not None
+        and str(proposal_row["availability"]) == "superseded"
+        and getattr(selected_envelope, "action", None) == "reuse_direction"
+    )
+    selected_identity = identity_digest_from_envelope(selected_envelope)
+    candidates = [
+        row
+        for row in continuation_rows
+        if str(row["source_turn_id"]) == parent_turn_id
+        and str(row["operation"]) == "capability_materialization"
+    ]
+    storyboard_candidates: list[object] = []
+    superseded_history_count = 0
+    for row in candidates:
+        try:
+            payload = json.loads(str(row["payload_json"]))
+            candidate = envelopes.validate_identity_in_transaction(
+                connection,
+                envelope_id=str(payload["envelope_id"]),
+                workflow_id=workflow_id,
+                operation="capability_materialization",
+                continuation_turn_id=str(row["continuation_turn_id"]),
+            )
+        except (KeyError, TypeError, ValueError, ValidationError, V2PersistenceError) as error:
+            raise _lineage_error("Typed Storyboard materialization lineage is invalid.") from error
+        if getattr(candidate, "capability_id", None) != "storyboard_design":
+            continue
+        if getattr(candidate, "proposal_id", None) != proposal_id:
+            continue
+        candidate_identity = identity_digest_from_envelope(candidate)
+        is_selected = (
+            candidate_identity is not None
+            and selected_identity is not None
+            and candidate_identity == selected_identity
+        ) or (
+            getattr(candidate, "action_turn_id", None)
+            == getattr(selected_envelope, "action_turn_id", None)
+        )
+        if explicit_reuse and not is_selected:
+            child_status = connection.execute(
+                select(AgentCanvasChatTurnRow.status).where(
+                    AgentCanvasChatTurnRow.turn_id == str(row["continuation_turn_id"]),
+                    AgentCanvasChatTurnRow.workflow_id == workflow_id,
+                )
+            ).scalar_one_or_none()
+            if str(row["status"]) in {"failed", "completed", "superseded"} and str(
+                child_status
+            ) in {"failed", "completed", "superseded"}:
+                superseded_history_count += 1
+                continue
+        if identity_digest_from_envelope(candidate) is None:
+            # Legacy rows are still candidates for this Proposal.  They must not
+            # be silently selected alongside a canonical branch.
+            storyboard_candidates.append(candidate)
+            continue
+        storyboard_candidates.append(candidate)
+    if superseded_history_count > 1 or len(storyboard_candidates) > 1:
+        raise _lineage_error("Storyboard materialization lineage has multiple candidates.")
 
 
 def _post_ready_owner(

@@ -203,24 +203,6 @@ describe("canvasGraphModel", () => {
     expect(refreshed[1]).toBe(first[1]);
   });
 
-  it("projects conversation-source availability and rebuilds only nodes whose source changes", () => {
-    const callbacks = { onShowInConversation: vi.fn() };
-    const first = toAgentCanvasFlowNodes(workflow, runtime, callbacks, {
-      conversationSourceNodeIds: new Set(["image-1"]),
-    });
-    const refreshed = toAgentCanvasFlowNodes(workflow, runtime, callbacks, {
-      previousNodes: first,
-      conversationSourceNodeIds: new Set(["video-1"]),
-    });
-
-    expect(first[0]?.data.conversationSourceAvailable).toBe(true);
-    expect(first[1]?.data.conversationSourceAvailable).toBe(false);
-    expect(refreshed[0]).not.toBe(first[0]);
-    expect(refreshed[1]).not.toBe(first[1]);
-    expect(refreshed[0]?.data.conversationSourceAvailable).toBe(false);
-    expect(refreshed[1]?.data.conversationSourceAvailable).toBe(true);
-  });
-
   it("keeps the last media asset while a canonical refresh temporarily omits it", () => {
     const first = toAgentCanvasFlowNodes(workflow, runtime, {});
     const refreshed = toAgentCanvasFlowNodes(

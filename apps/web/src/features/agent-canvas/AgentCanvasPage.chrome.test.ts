@@ -98,6 +98,9 @@ describe("AgentCanvasPage chrome", () => {
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
       "utf8",
     );
+    const progressiveRevealRule = canvasCss.match(
+      /\.agent-canvas-board \.react-flow__node\.is-progressive-reveal \.agent-canvas-node\s*\{([\s\S]*?)\n\}/m,
+    )?.[1];
 
     expect(source).toContain("useEdgesState<Edge>([])");
     expect(source).toContain("onEdgesChange={onEdgesChange}");
@@ -113,6 +116,9 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path[\s\S]*?animation: none;/,
     );
+    expect(progressiveRevealRule).toContain("animation: agent-canvas-progressive-reveal 420ms ease-out both");
+    expect(progressiveRevealRule).not.toContain("outline");
+    expect(progressiveRevealRule).not.toContain("box-shadow");
   });
 
   it("restores canonical bindings immediately when a delete mutation fails", () => {

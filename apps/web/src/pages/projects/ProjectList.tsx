@@ -264,15 +264,9 @@ const ProjectListCard = memo(function ProjectListCard({
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
   const { workflowId, coverAssetId, updatedAt } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
-  const directCover = coverAssetId ? directProjectCover(coverAssetId) : null;
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
-    if (directCover) {
-      setEntry({ cover: directCover });
-      return undefined;
-    }
-
     const cachedCover = loadProjectCoverCache(requestKey);
     setEntry(cachedCover ? { cover: cachedCover } : null);
     let active = true;
@@ -320,9 +314,9 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverAssetId, coverPriority, directCover, requestKey, updatedAt, workflowId]);
+  }, [coverAssetId, coverPriority, requestKey, updatedAt, workflowId]);
 
-  return directCover ?? entry?.cover;
+  return entry?.cover;
 }
 
 function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
@@ -335,22 +329,6 @@ function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "cov
     coverAssetId: project.coverAssetId ?? "fallback",
     updatedAt: project.updatedAt,
   };
-}
-
-const directProjectCoverCache = new Map<string, V2ProjectCover>();
-
-function directProjectCover(assetId: string): V2ProjectCover {
-  const cached = directProjectCoverCache.get(assetId);
-  if (cached) return cached;
-  const cover: V2ProjectCover = {
-    assetId,
-    versionId: assetId,
-    mediaType: "image" as const,
-    mediaPath: `/api/v2/assets/${encodeURIComponent(assetId)}/content?v=${encodeURIComponent(assetId)}`,
-    posterPath: null,
-  };
-  directProjectCoverCache.set(assetId, cover);
-  return cover;
 }
 
 function getWindowWidth() {

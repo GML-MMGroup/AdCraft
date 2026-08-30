@@ -72,8 +72,6 @@ export function areAgentCanvasNodePropsEqual(
     && sameWorkbench
     && previousData.onOpenVideoPreview === nextData.onOpenVideoPreview
     && previousData.onOpenEditing === nextData.onOpenEditing
-    && previousData.onShowInConversation === nextData.onShowInConversation
-    && previousData.conversationSourceAvailable === nextData.conversationSourceAvailable
     && previousData.showInputHandle === nextData.showInputHandle
     && previousData.showOutputHandle === nextData.showOutputHandle;
 }

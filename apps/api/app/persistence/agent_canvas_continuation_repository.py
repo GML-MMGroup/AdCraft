@@ -98,10 +98,19 @@ class AgentCanvasContinuationOutboxRepository:
     ) -> ContinuationDeliveryV2:
         if max_attempts < 1:
             raise _error("continuation_attempts_invalid", "Maximum attempts must be positive.")
-        if operation not in CONTINUATION_OPERATIONS_V2 or set(payload) != {
-            "schema_version",
-            "envelope_id",
-        }:
+        payload_keys = set(payload)
+        required_payload_keys = {"schema_version", "envelope_id"}
+        allowed_payload_keys = {
+            *required_payload_keys,
+            "occurrence_id",
+            "character_phase",
+            "action_owner",
+        }
+        if (
+            operation not in CONTINUATION_OPERATIONS_V2
+            or not required_payload_keys <= payload_keys
+            or not payload_keys <= allowed_payload_keys
+        ):
             raise _error(
                 "continuation_payload_invalid",
                 "Continuation delivery requires one typed operation envelope reference.",
@@ -109,6 +118,10 @@ class AgentCanvasContinuationOutboxRepository:
         if (
             payload.get("schema_version") != "1"
             or not str(payload.get("envelope_id") or "").strip()
+            or (payload.get("occurrence_id") is None) != (payload.get("character_phase") is None)
+            or payload.get("character_phase") not in {None, "main", "turnaround"}
+            or payload.get("action_owner")
+            not in {None, "guided_journey", "targeted_authoring", "quick_media"}
         ):
             raise _error(
                 "continuation_payload_invalid",
@@ -714,6 +727,7 @@ class AgentCanvasContinuationOutboxRepository:
         transition_key: str,
         created_at: datetime,
     ) -> None:
+        payload = json.loads(str(delivery["payload_json"]))
         self._events.append_in_transaction(
             connection,
             V2EventInsert(
@@ -730,6 +744,9 @@ class AgentCanvasContinuationOutboxRepository:
                     "lease_generation": int(delivery["lease_generation"]),
                     "next_attempt_at": str(delivery["next_attempt_at"]),
                     "error_code": delivery["last_error_code"],
+                    "occurrence_id": payload.get("occurrence_id"),
+                    "character_phase": payload.get("character_phase"),
+                    "action_owner": payload.get("action_owner"),
                 },
             ),
         )
@@ -809,6 +826,9 @@ def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
         continuation_turn_id=str(row["continuation_turn_id"]),
         operation=str(row["operation"]),
         envelope_id=str(payload["envelope_id"]),
+        occurrence_id=payload.get("occurrence_id"),
+        character_phase=payload.get("character_phase"),
+        action_owner=payload.get("action_owner"),
         payload_digest=str(row["payload_digest"]),
         status=row["status"],
         attempt_count=int(row["attempt_count"]),

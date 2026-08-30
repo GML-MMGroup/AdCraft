@@ -19,6 +19,10 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyResultV2,
     JourneyStageV2,
 )
+from app.schemas.agent_canvas_requirements import (
+    CharacterAuthoringPhaseV1,
+    CharacterOccurrenceV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,12 +146,16 @@ FIXED_JOURNEY_STAGE_DESCRIPTORS: dict[JourneyStageV2, FixedJourneyStageDescripto
 
 def initial_production_journey(
     decisions: tuple[CreativeElementDecisionV2, ...],
+    *,
+    character_occurrences: tuple[CharacterOccurrenceV1, ...] | None = None,
 ) -> GuidedProductionJourneyV2:
     """Create the clean-cut fixed journey without constructing hidden stage topology."""
 
     occurrences: list[JourneyElementDecisionV2] = []
     by_kind: dict[str, int] = {}
     for decision in decisions:
+        if decision.element_kind == "character" and character_occurrences is not None:
+            continue
         count_value = decision.requirements.get("count", 1)
         count = (
             count_value if isinstance(count_value, int) and not isinstance(count_value, bool) else 1
@@ -172,7 +180,99 @@ def initial_production_journey(
                     requirements=decision.requirements,
                 )
             )
+    if character_occurrences is not None:
+        occurrences.extend(
+            JourneyElementDecisionV2(
+                decision_id=f"decision:character:{occurrence.occurrence_id}",
+                element_kind="character",
+                occurrence_id=occurrence.occurrence_id,
+                occurrence_index=occurrence.occurrence_index,
+                outcome="unresolved" if occurrence.presence == "include" else "exclude",
+                source="user",
+                source_revision=occurrence.source_revision_no,
+                requirements={
+                    "role": occurrence.role,
+                    "identity_summary": occurrence.identity_summary,
+                    "presence": occurrence.presence,
+                    "specification_state": occurrence.specification_state,
+                },
+            )
+            for occurrence in character_occurrences
+        )
     return GuidedProductionJourneyV2(decisions=tuple(occurrences))
+
+
+def reconcile_character_occurrences(
+    journey: GuidedProductionJourneyV2,
+    character_occurrences: tuple[CharacterOccurrenceV1, ...],
+) -> GuidedProductionJourneyV2:
+    """Refresh the Journey roster projection without rewriting committed evidence."""
+
+    existing = {
+        item.occurrence_id: item for item in journey.decisions if item.element_kind == "character"
+    }
+    protected_ids = {
+        item.occurrence_id
+        for item in journey.transition_evidence
+        if item.stage == "character" and item.occurrence_id is not None
+    }
+    protected_ids.update(
+        action.occurrence_id
+        for action in (journey.active_action, journey.suspended_action)
+        if action is not None and action.occurrence_id is not None
+    )
+    reconciled: list[JourneyElementDecisionV2] = []
+    for occurrence in character_occurrences:
+        prior = existing.get(occurrence.occurrence_id)
+        if occurrence.presence == "include":
+            outcome = (
+                prior.outcome
+                if prior is not None and prior.outcome in {"include", "delegate", "unresolved"}
+                else "unresolved"
+            )
+        else:
+            outcome = "exclude"
+        reconciled.append(
+            JourneyElementDecisionV2(
+                decision_id=f"decision:character:{occurrence.occurrence_id}",
+                element_kind="character",
+                occurrence_id=occurrence.occurrence_id,
+                occurrence_index=occurrence.occurrence_index,
+                outcome=outcome,
+                source="user",
+                source_revision=occurrence.source_revision_no,
+                requirements={
+                    "role": occurrence.role,
+                    "identity_summary": occurrence.identity_summary,
+                    "presence": occurrence.presence,
+                    "specification_state": occurrence.specification_state,
+                },
+            )
+        )
+    current_ids = {item.occurrence_id for item in reconciled}
+    reconciled.extend(
+        item
+        for item in existing.values()
+        if item.occurrence_id in protected_ids and item.occurrence_id not in current_ids
+    )
+    decisions = (
+        *(item for item in journey.decisions if item.element_kind != "character"),
+        *reconciled,
+    )
+    active_occurrence_id = journey.active_occurrence_id
+    if active_occurrence_id is not None and active_occurrence_id not in {
+        item.occurrence_id for item in reconciled
+    }:
+        active_occurrence_id = next(
+            (item.occurrence_id for item in reconciled if item.outcome == "unresolved"),
+            None,
+        )
+    return journey.model_copy(
+        update={
+            "decisions": decisions,
+            "active_occurrence_id": active_occurrence_id,
+        }
+    )
 
 
 def parse_production_journey(payload: str) -> GuidedProductionJourneyV2:
@@ -202,11 +302,28 @@ class GuidedProductionJourneyPolicyService:
             return _result(journey, "complete")
         if journey.active_action is not None or journey.suspended_action is not None:
             return _result(journey, "wait_for_user")
+        if (
+            journey.stage == "character"
+            and isinstance(context, JourneyPolicyContextV2)
+            and context.included_character_occurrence_ids is None
+        ):
+            return _result(journey, "wait_for_user")
+        if (
+            journey.stage == "character"
+            and isinstance(context, JourneyPolicyContextV2)
+            and context.included_character_occurrence_ids == ()
+        ):
+            return _result(journey, "advance_stage", next_stage=descriptor.successor)
         if journey.stage == "editing":
             return _result(journey, "prepare_editing")
         if descriptor.capability_id is None:
             return _result(journey, "wait_for_user")
         occurrence_id = journey.active_occurrence_id or self._next_occurrence(journey, descriptor)
+        character_phase = (
+            self._next_character_phase(journey, occurrence_id)
+            if journey.stage == "character" and occurrence_id is not None
+            else None
+        )
         action = (
             "invoke_internal_checkpoint"
             if journey.stage in {"narrative_direction", "style_lock", "storyboard_plan"}
@@ -217,6 +334,7 @@ class GuidedProductionJourneyPolicyService:
             action,
             capability_id=descriptor.capability_id,
             occurrence_id=occurrence_id,
+            character_phase=character_phase,
         )
 
     def apply_evidence(
@@ -256,6 +374,32 @@ class GuidedProductionJourneyPolicyService:
             )
         if descriptor.successor is None:
             raise _error("journey_stage_action_mismatch", "Journey stage cannot advance.")
+
+        if (
+            journey.stage == "character"
+            and evidence.evidence_kind == "character_materialized"
+            and evidence.occurrence_id is not None
+            and evidence.character_phase is not None
+        ):
+            expected_phase = self._next_character_phase(journey, evidence.occurrence_id)
+            if evidence.character_phase != expected_phase:
+                raise _error(
+                    "character_authoring_phase_invalid",
+                    "Character materialization does not match the current authoring phase.",
+                )
+            transition = evidence.as_transition(
+                stage=journey.stage,
+                stage_revision=journey.stage_revision,
+                recorded_at=recorded_at,
+            )
+            if evidence.character_phase == "main":
+                return journey.model_copy(
+                    update={
+                        "active_occurrence_id": evidence.occurrence_id,
+                        "active_action": None,
+                        "transition_evidence": (*journey.transition_evidence, transition),
+                    }
+                )
 
         decisions = self._apply_occurrence_outcome(journey, evidence)
         if evidence.occurrence_id is not None and self._has_unresolved_occurrence(
@@ -438,6 +582,22 @@ class GuidedProductionJourneyPolicyService:
     ) -> str | None:
         return self._next_occurrence_from(journey.decisions, descriptor)
 
+    @staticmethod
+    def _next_character_phase(
+        journey: GuidedProductionJourneyV2,
+        occurrence_id: str,
+    ) -> CharacterAuthoringPhaseV1:
+        completed_phases = {
+            item.character_phase
+            for item in journey.transition_evidence
+            if item.stage == "character"
+            and item.stage_revision == journey.stage_revision
+            and item.occurrence_id == occurrence_id
+            and item.evidence_kind == "character_materialized"
+            and item.character_phase is not None
+        }
+        return "turnaround" if "main" in completed_phases else "main"
+
 
 def _result(
     journey: GuidedProductionJourneyV2,
@@ -445,6 +605,8 @@ def _result(
     *,
     capability_id: CapabilityIdV1 | None = None,
     occurrence_id: str | None = None,
+    character_phase: CharacterAuthoringPhaseV1 | None = None,
+    next_stage: JourneyStageV2 | None = None,
 ) -> JourneyPolicyResultV2:
     return JourneyPolicyResultV2.model_validate(
         {
@@ -452,6 +614,8 @@ def _result(
             "expected_stage_revision": journey.stage_revision,
             "capability_id": capability_id,
             "occurrence_id": occurrence_id,
+            "character_phase": character_phase,
+            "next_stage": next_stage,
             "requires_model_call": False,
         }
     )
