@@ -6356,6 +6356,17 @@
           "title": "Capability Turn Id",
           "type": "string"
         },
+        "character_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharacterProposalTargetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "context_snapshot_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Context Snapshot Digest",
@@ -6612,6 +6623,17 @@
           },
           "title": "Capability Context",
           "type": "object"
+        },
+        "character_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharacterProposalTargetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "digest": {
           "pattern": "^[a-f0-9]{64}$",
@@ -6932,6 +6954,17 @@
           ],
           "title": "Capability Id",
           "type": "string"
+        },
+        "character_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharacterProposalTargetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "context_kind": {
           "const": "capability_operation",
@@ -8693,6 +8726,62 @@
         "options"
       ],
       "title": "CharacterProposalResultV1",
+      "type": "object"
+    },
+    "CharacterProposalTargetV1": {
+      "additionalProperties": false,
+      "description": "Immutable identity of the Character occurrence a Proposal describes.",
+      "properties": {
+        "character_phase": {
+          "const": "main",
+          "default": "main",
+          "title": "Character Phase",
+          "type": "string"
+        },
+        "occurrence_count": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Count",
+          "type": "integer"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "occurrence_index": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Occurrence Index",
+          "type": "integer"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        },
+        "target_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Target Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "occurrence_count",
+        "occurrence_id",
+        "occurrence_index",
+        "requirement_revision_id",
+        "requirement_revision_no",
+        "target_digest"
+      ],
+      "title": "CharacterProposalTargetV1",
       "type": "object"
     },
     "CharacterTurnaroundRoleBriefV2": {
@@ -13201,16 +13290,44 @@
           "title": "Capability Id",
           "type": "string"
         },
+        "character_phase": {
+          "anyOf": [
+            {
+              "const": "main",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Phase"
+        },
         "content_kind": {
           "const": "concept_choice",
           "default": "concept_choice",
           "title": "Content Kind",
           "type": "string"
         },
+        "occurrence_count": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Count"
+        },
         "occurrence_id": {
           "anyOf": [
             {
               "maxLength": 160,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -13219,6 +13336,20 @@
           ],
           "default": null,
           "title": "Occurrence Id"
+        },
+        "occurrence_index": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Index"
         },
         "options": {
           "items": {
