@@ -29,5 +29,7 @@ def test_cpa_gpt_image_2_syncs_as_an_image_model_using_the_cpa_binding(
 
     assert model.capability == "image"
     assert model.capability_metadata["provider_protocol"] == "openai_image"
+    assert model.capability_metadata["accepted_input_types"] == ["text", "image"]
+    assert model.capability_metadata["reference_limits"] == {"image": 16, "video": 0, "audio": 0}
     assert binding.consumer == "llm"
     assert binding.dotenv_field == "LLM_API_KEY"

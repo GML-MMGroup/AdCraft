@@ -98,9 +98,9 @@ _TRUSTED_MANIFESTS = (
         display_name="GPT Image 2 (CPA)",
         capability="image",
         capability_metadata={
-            "accepted_input_types": ["text"],
-            "max_references": 0,
-            "reference_limits": {"image": 0, "video": 0, "audio": 0},
+            "accepted_input_types": ["text", "image"],
+            "max_references": 16,
+            "reference_limits": {"image": 16, "video": 0, "audio": 0},
             "supported_parameters": ["size"],
             "supported_aspect_ratios": [],
             "supported_sizes_by_aspect_ratio": {},

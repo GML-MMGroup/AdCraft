@@ -131,6 +131,66 @@ def serialize_openai_image_generation_request(
     )
 
 
+def serialize_openai_image_edit_request(
+    *,
+    model: str,
+    canonical_prompt: str,
+    size: str,
+    references: list[dict[str, Any]],
+    required_reference_asset_ids: list[str],
+) -> tuple[dict[str, Any], V2ProviderReferenceWireAudit]:
+    required_asset_ids = _ordered_unique(required_reference_asset_ids)
+    audit = V2ProviderReferenceWireAudit(
+        requested_reference_asset_ids=required_asset_ids,
+        request_schema="openai-image-edits",
+    )
+    body = {
+        "model": model,
+        "prompt": canonical_prompt,
+        "size": size,
+    }
+    if not all(isinstance(body.get(key), str) and body[key].strip() for key in body):
+        raise _contract_error("OpenAI image edit requires model, prompt, and size.", audit)
+
+    serialized_asset_ids: list[str] = []
+    seen_asset_ids: set[str] = set()
+    for reference in references:
+        asset_id = str(reference.get("asset_id") or "").strip()
+        if not asset_id or asset_id in seen_asset_ids:
+            if asset_id:
+                audit.warnings.append("duplicate_reference_asset_id_deduplicated")
+            continue
+        seen_asset_ids.add(asset_id)
+        value = _reference_input_value(reference)
+        if not value or not is_provider_compatible_model_input(value):
+            audit.warnings.append(
+                "required_reference_value_invalid"
+                if asset_id in required_asset_ids
+                else "optional_reference_value_invalid"
+            )
+            continue
+        serialized_asset_ids.append(asset_id)
+
+    missing_required = [
+        asset_id for asset_id in required_asset_ids if asset_id not in serialized_asset_ids
+    ]
+    if missing_required:
+        raise _reference_error(
+            "A required prepared reference is missing from the provider edit request.",
+            audit,
+        )
+    if len(serialized_asset_ids) > 16:
+        raise _reference_error("OpenAI image edit accepts at most sixteen references.", audit)
+    return body, audit.model_copy(
+        update={
+            "delivered_reference_asset_ids": list(serialized_asset_ids),
+            "serialized_reference_asset_ids": list(serialized_asset_ids),
+            "provider_request_field": "image" if serialized_asset_ids else None,
+            "provider_request_reference_count": len(serialized_asset_ids),
+        }
+    )
+
+
 def _validate_base_body(
     body: dict[str, Any],
     *,
