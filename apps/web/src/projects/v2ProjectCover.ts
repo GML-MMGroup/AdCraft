@@ -1,11 +1,12 @@
 import type { CanvasNodeV2, ProjectAssetSummaryV2 } from "../types-v2.ts";
-import { mediaAssetContentPath } from "../workflow/mediaPreview.ts";
+import { mediaAssetContentPath, versionedMediaPath } from "../workflow/mediaPreview.ts";
 
 export type V2ProjectCover = {
   assetId: string;
   versionId: string;
   mediaType: "image" | "video";
   mediaPath: string;
+  previewPath?: string | null;
   posterPath: string | null;
 };
 
@@ -72,11 +73,15 @@ function coverFromUsableAsset(asset: ProjectAssetSummaryV2 & { media_type: "imag
   if (!asset.version_id) return null;
   const mediaPath = mediaAssetContentPath(asset);
   if (!mediaPath) return null;
+  const previewPath = asset.preview_url && asset.preview_url !== asset.media_url
+    ? versionedMediaPath(asset.preview_url, asset)
+    : null;
   return {
     assetId: asset.asset_id,
     versionId: asset.version_id,
     mediaType: "image",
     mediaPath,
+    previewPath,
     posterPath: null,
   };
 }

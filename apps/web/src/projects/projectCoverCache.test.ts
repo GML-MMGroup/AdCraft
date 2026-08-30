@@ -41,4 +41,15 @@ describe("project cover cache", () => {
     expect(loadProjectCoverCache("workflow-1|preview")?.mediaPath)
       .toBe("/api/v2/assets/asset-1/content?v=version-1");
   });
+
+  it("preserves and versions a dedicated preview path", () => {
+    const previewCover: V2ProjectCover = {
+      ...cover,
+      previewPath: "/api/v2/assets/asset-1/preview",
+    };
+    saveProjectCoverCache("workflow-1|preview-rendition", previewCover);
+
+    expect(loadProjectCoverCache("workflow-1|preview-rendition")?.previewPath)
+      .toBe("/api/v2/assets/asset-1/preview?v=version-1");
+  });
 });

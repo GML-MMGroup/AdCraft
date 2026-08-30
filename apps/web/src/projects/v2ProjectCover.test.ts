@@ -82,6 +82,18 @@ describe("resolveV2ProjectCover", () => {
     expect(resolveV2ProjectCover(null, response.assets)?.mediaPath).toBe("/api/v2/assets/product-asset/content?v=product-version");
   });
 
+  it("retains an existing preview rendition separately from the immutable content path", () => {
+    const cover = resolveV2ProjectCover(null, [asset({
+      asset_id: "product-asset",
+      version_id: "version",
+      preview_url: "/api/v2/assets/product-asset/preview",
+      media_url: "/api/v2/assets/product-asset/content",
+    })]);
+
+    expect(cover?.previewPath).toBe("/api/v2/assets/product-asset/preview?v=version");
+    expect(cover?.mediaPath).toBe("/api/v2/assets/product-asset/content?v=version");
+  });
+
   it("uses source node authority when Product Main also consumes image references", () => {
     const assets = [
       asset({
