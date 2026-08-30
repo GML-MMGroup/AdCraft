@@ -265,6 +265,8 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
   const { workflowId, coverAssetId, updatedAt } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
+  const coverPriorityRef = useRef(coverPriority);
+  coverPriorityRef.current = coverPriority;
 
   useEffect(() => {
     const cachedCover = loadProjectCoverCache(requestKey);
@@ -282,7 +284,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
               needsAuthority: needsV2ProjectCoverNodeAuthority(response.assets),
             };
           }),
-        { signal, priority: coverPriority },
+        { signal, priority: coverPriorityRef.current },
       )
     ));
     void subscription.promise.then((lookup) => {
@@ -295,7 +297,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
         projectCoverQueue.schedule(
           () => agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId, { signal: authoritySignal })
             .then((workflow) => resolveV2ProjectCover(coverAssetId, lookup.assets, workflow.value.nodes)),
-          { signal: authoritySignal, priority: coverPriority },
+          { signal: authoritySignal, priority: coverPriorityRef.current },
         )
       ));
       void authoritySubscription.promise.then((authoritativeCover) => {
@@ -314,7 +316,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverAssetId, coverPriority, requestKey, updatedAt, workflowId]);
+  }, [coverAssetId, requestKey, updatedAt, workflowId]);
 
   return entry?.cover;
 }
