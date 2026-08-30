@@ -25,6 +25,7 @@ from app.services.agent_canvas_requirement_projection import (
     AgentCanvasRequirementProjectionService,
     requirement_projection_digest,
 )
+from app.services.agent_canvas_requirements import character_occurrence_authority_for_authoring
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
@@ -153,18 +154,20 @@ def _validate_character_target(
             "Character proposal target does not match the Requirement Ledger revision.",
             stage="agent_canvas_capability_context",
         )
+    authority = character_occurrence_authority_for_authoring(requirement_revision)
+    occurrences = authority.occurrences
     occurrence = next(
-        (
-            item
-            for item in requirement_revision.ledger.character_occurrences
-            if item.occurrence_id == target.occurrence_id
-        ),
+        (item for item in occurrences if item.occurrence_id == target.occurrence_id),
         None,
     )
-    if occurrence is None or occurrence.occurrence_index != target.occurrence_index:
+    if (
+        occurrence is None
+        or occurrence.occurrence_index != target.occurrence_index
+        or target.occurrence_count != len(occurrences)
+    ):
         raise V2PersistenceError(
             "character_proposal_scope_invalid",
-            "Character proposal target does not match the current occurrence.",
+            "Character proposal target does not match the current occurrence authority.",
             stage="agent_canvas_capability_context",
         )
 
