@@ -436,11 +436,12 @@ class DynamicCanvasScheduler:
                     )
                 for lease, context, future in prepared:
                     try:
+                        outcome, latest_lease = future.result()
                         self._complete_member(
                             current.workflow_id,
-                            lease,
+                            latest_lease,
                             context,
-                            future.result(),
+                            outcome,
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
@@ -1350,8 +1351,10 @@ class DynamicCanvasScheduler:
         self,
         lease: NodeExecutionLeaseV2,
         context: NodeExecutionContext,
-    ) -> NodeExecutionOutcome:
-        return self._leases.guard(lease).run(lambda: self._execute_member(context))
+    ) -> tuple[NodeExecutionOutcome, NodeExecutionLeaseV2]:
+        return self._leases.guard(lease).run_with_latest_lease(
+            lambda: self._execute_member(context)
+        )
 
     def _complete_member(
         self,
@@ -1360,8 +1363,8 @@ class DynamicCanvasScheduler:
         context: NodeExecutionContext,
         outcome: NodeExecutionOutcome,
     ) -> None:
-        now = self._clock()
         self._leases.assert_current(lease)
+        now = self._clock()
         execution_id = lease.execution_id
         node_id = lease.node_id
         if outcome.provider_task_id is not None:
@@ -1434,11 +1437,14 @@ class DynamicCanvasScheduler:
             return
         if self._output_preparer is not None and self._result_committer is not None:
             fingerprint = _execution_fingerprint(context)
-            prepared = self._output_preparer.prepare(
-                context,
-                outcome,
-                fingerprint=fingerprint,
+            prepared, lease = self._leases.guard(lease).run_with_latest_lease(
+                lambda: self._output_preparer.prepare(
+                    context,
+                    outcome,
+                    fingerprint=fingerprint,
+                )
             )
+            now = self._clock()
             member = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
             )
@@ -1464,7 +1470,9 @@ class DynamicCanvasScheduler:
             fingerprint = _execution_fingerprint(context)
             publication_started_at = self._clock()
             try:
-                asset_id = self._media_publisher(context, outcome.media, fingerprint)
+                asset_id, lease = self._leases.guard(lease).run_with_latest_lease(
+                    lambda: self._media_publisher(context, outcome.media, fingerprint)
+                )
             except Exception as error:
                 self._trace_stage(
                     context,
@@ -1597,6 +1605,29 @@ class DynamicCanvasScheduler:
             except V2PersistenceError as commit_error:
                 if commit_error.code != "stale_execution_lease":
                     raise
+                stale_detail = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                stale_digest = hashlib.sha256(stale_detail.model_dump_json().encode()).hexdigest()
+                self._result_committer.reconcile_stale_lease_failure(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=lease.execution_id,
+                        member_id=member.member_id,
+                        node_id=lease.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=f"{lease.execution_id}:{lease.node_id}:{lease.generation}:failed",
+                        payload_digest=stale_digest,
+                        provider_task_id=member.provider_task_id,
+                        outcome="failed",
+                        error=stale_detail,
+                        committed_at=self._clock(),
+                    )
+                )
+                return
             self._reconcile_terminal_member(
                 workflow_id,
                 member,
