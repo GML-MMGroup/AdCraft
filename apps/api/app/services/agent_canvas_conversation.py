@@ -134,6 +134,7 @@ from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
 from app.services.agent_canvas_character_proposal_scope import (
+    resolve_character_proposal_target,
     resolve_character_proposal_target_for_dispatch,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
@@ -2359,6 +2360,44 @@ class AgentConversationService:
             f"Revise this capability direction according to the user instruction. "
             f"Instruction: {action.instruction}\nCurrent direction:\n{public_direction}"
         )
+        requirements = self._requirements.get_current_revision(proposal.workflow_id)
+        session = self._conversations.get_guidance_session(proposal.workflow_id)
+        character_target = None
+        if proposal.capability_id == "character_design":
+            character_target = self._conversations.get_proposal_character_target(
+                proposal.proposal_id
+            )
+            if character_target is None:
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal revision requires an occurrence target.",
+                    stage="agent_conversation_service",
+                )
+            current_target = resolve_character_proposal_target(
+                action=session.journey.active_action,
+                requirement_revision=requirements,
+            )
+            if current_target != character_target:
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal revision target is stale or mismatched.",
+                    stage="agent_conversation_service",
+                    details={
+                        "proposal_target_digest": character_target.target_digest,
+                        "current_target_digest": current_target.target_digest,
+                    },
+                )
+            if (
+                proposal.occurrence_id != character_target.occurrence_id
+                or proposal.occurrence_index != character_target.occurrence_index
+                or proposal.occurrence_count != character_target.occurrence_count
+                or proposal.character_phase != character_target.character_phase
+            ):
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal public scope differs from its persisted target.",
+                    stage="agent_conversation_service",
+                )
         snapshot_payload = {
             "workflow_id": proposal.workflow_id,
             "proposal_id": proposal.proposal_id,
@@ -2366,11 +2405,15 @@ class AgentConversationService:
             "capability_id": proposal.capability_id,
             "instruction": action.instruction,
             "source_option_ids": [option.option_id for option in source_options],
+            "character_target": (
+                character_target.model_dump(mode="json")
+                if character_target is not None
+                else None
+            ),
         }
         snapshot_digest = hashlib.sha256(
             json.dumps(snapshot_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         ).hexdigest()
-        requirements = self._requirements.get_current_revision(proposal.workflow_id)
         reference_plan = CapabilityReferencePlanV1(
             capability_id=proposal.capability_id,
             references=tuple(
@@ -2395,7 +2438,6 @@ class AgentConversationService:
             goal_summary=objective,
             reference_plan=reference_plan,
         )
-        session = self._conversations.get_guidance_session(proposal.workflow_id)
         invocation = CapabilityInvocationContextV2(
             context_kind="capability_operation",
             workflow_id=proposal.workflow_id,
@@ -2410,6 +2452,7 @@ class AgentConversationService:
                 reference.source_id for reference in proposal.proposed_references
             ),
             response_locale=session.response_locale,
+            character_target=character_target,
         )
         request_identity = f"proposal-revision:{snapshot_digest}"
         activity = self._conversations.start_expert_activity(
@@ -2487,6 +2530,7 @@ class AgentConversationService:
             agent_request_identity=request_identity,
             created_at=datetime.now(timezone.utc),
             response_locale=session.response_locale,
+            character_target=character_target,
         )
         return AgentCanvasCapabilityProposalRepository(
             self._workflows.database,
