@@ -2406,9 +2406,7 @@ class AgentConversationService:
             "instruction": action.instruction,
             "source_option_ids": [option.option_id for option in source_options],
             "character_target": (
-                character_target.model_dump(mode="json")
-                if character_target is not None
-                else None
+                character_target.model_dump(mode="json") if character_target is not None else None
             ),
         }
         snapshot_digest = hashlib.sha256(
