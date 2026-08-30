@@ -514,8 +514,9 @@
 }
 
 .agent-chat__message--agent {
-  max-width: 100%;
-  align-self: stretch;
+  width: fit-content;
+  max-width: min(86%, 520px);
+  align-self: flex-start;
 }
 
 .agent-chat__message--agent.continues-speaker-run {
@@ -524,6 +525,16 @@
 
 .agent-chat__message--agent > span {
   display: none;
+}
+
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 12px;
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
 }
 
 .agent-chat__message--agent :is(p, .agent-chat__markdown) {

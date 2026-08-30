@@ -73,6 +73,21 @@ describe("NaturalMessage", () => {
     expect(document.querySelector(".agent-chat__message-skill")).toBeNull();
   });
 
+  it("renders Agent messages with the Agent bubble presentation", () => {
+    render(
+      <NaturalMessage
+        message={message("adcraft_video_agent", "Choose the total advertisement duration to continue.")}
+        presentation={presentation(true)}
+      />,
+    );
+
+    const article = document.querySelector(".agent-chat__message--agent");
+    const body = article?.querySelector(".agent-chat__message-body");
+    expect(article).toBeTruthy();
+    expect(body?.classList.contains("agent-chat__message-body--agent-bubble")).toBe(true);
+    expect(body?.textContent).toContain("Choose the total advertisement duration to continue.");
+  });
+
   it("shows Agent identity only when the run projection requests it", () => {
     const agentMessage = message("adcraft_video_agent", "The direction is ready.");
     const { rerender } = render(
