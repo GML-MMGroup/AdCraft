@@ -1684,20 +1684,35 @@ def create_project(
 @router.get("/projects", response_model=ProjectV2ListResponse)
 def list_projects(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    response: Response,
     project_status: Annotated[
         Literal["active", "archived", "trashed"], Query(alias="status")
     ] = "active",
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
-) -> ProjectV2ListResponse:
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
+) -> ProjectV2ListResponse | Response:
     try:
-        return runtime.projects.list_projects(
+        listing = runtime.projects.list_projects(
             status=project_status,
             limit=limit,
             cursor=cursor,
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
+    etag = f'"projects-{sha256(listing.model_dump_json().encode()).hexdigest()}"'
+    cache_control = "private, max-age=10, stale-while-revalidate=30"
+    if if_none_match and if_none_match.strip() == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": cache_control,
+            },
+        )
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = cache_control
+    return listing
 
 
 @router.get("/projects/{project_id}", response_model=ProjectV2)

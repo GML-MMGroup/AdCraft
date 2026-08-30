@@ -10,6 +10,18 @@ from pydantic import BaseModel, ConfigDict, Field
 ProjectStatusV2 = Literal["active", "archived", "trashed"]
 
 
+class ProjectCoverV2(BaseModel):
+    """Immutable AssetVersion identity and browser-safe preview metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asset_id: str = Field(min_length=1)
+    version_id: str = Field(min_length=1)
+    media_type: Literal["image", "video"]
+    preview_url: str | None = None
+    poster_url: str | None = None
+
+
 class ProjectCreate(BaseModel):
     """Internal immutable input for the initial Project transaction."""
 
@@ -96,6 +108,7 @@ class ProjectV2Summary(BaseModel):
     status: ProjectStatusV2
     is_favorite: bool
     cover_asset_id: str | None = None
+    cover: ProjectCoverV2 | None = None
     project_version: int = Field(ge=1)
     updated_at: str = Field(min_length=1)
 

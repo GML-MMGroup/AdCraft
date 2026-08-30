@@ -496,6 +496,14 @@ class AgentCanvasAssetService:
             for version in self._assets.list_versions_for_workflow(workflow_id)
         )
 
+    def find_latest_ready_versions(
+        self,
+        asset_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve selected cover assets without one database read per project."""
+
+        return self._assets.find_latest_ready_versions(asset_ids)
+
     def validate_asset_backed_node(self, asset_id: str, node_type: str) -> None:
         asset = self.resolve_asset(asset_id)
         if node_type not in {"image", "video", "audio"} or asset.media_type != node_type:
@@ -522,6 +530,8 @@ class AgentCanvasAssetService:
         headers = {
             "Accept-Ranges": "bytes",
             "Content-Length": str(len(body)),
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": f'"{version.asset_id}:{version.version_id}"',
         }
         if partial:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"

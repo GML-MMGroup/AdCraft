@@ -339,6 +339,41 @@ class V2AssetLibraryRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def find_latest_ready_versions(
+        self,
+        asset_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve the newest ready version for each asset in one bounded query."""
+
+        unique_ids = tuple(dict.fromkeys(asset_ids))
+        if not unique_ids:
+            return {}
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        _version_select()
+                        .where(
+                            AssetVersionRow.asset_id.in_(unique_ids),
+                            AssetVersionRow.status == "ready",
+                        )
+                        .order_by(
+                            AssetVersionRow.asset_id.asc(),
+                            AssetVersionRow.version_no.desc(),
+                            AssetVersionRow.version_id.desc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        versions: dict[str, AssetVersionMetadataV2] = {}
+        for row in rows:
+            asset_id = str(row["asset_id"])
+            versions.setdefault(asset_id, _version_from_row(row))
+        return versions
+
     def list_versions_for_slot(
         self,
         *,

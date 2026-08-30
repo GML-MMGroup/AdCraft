@@ -21,6 +21,7 @@ from app.schemas.agent_canvas import (
 from app.schemas.workflow_v2_projects import (
     ProjectCatalogRecord,
     ProjectCreate,
+    ProjectCoverV2,
     ProjectStatusV2,
     ProjectV2,
     ProjectV2ListResponse,
@@ -28,6 +29,7 @@ from app.schemas.workflow_v2_projects import (
 )
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.schemas.agent_canvas_conversation import VideoSkillRunCreateRequestV2
+from app.schemas.v2_asset_library import AssetVersionMetadataV2
 from app.services.agent_canvas_style_activation import StyleSkillActivationService
 
 
@@ -103,8 +105,18 @@ class AgentCanvasProjectService:
         cursor: str | None,
     ) -> ProjectV2ListResponse:
         page = self._projects.list_catalog(status=status, limit=limit, cursor=cursor)
+        cover_versions = self._assets.find_latest_ready_versions(
+            tuple(
+                project.cover_asset_id
+                for project in page.items
+                if project.cover_asset_id is not None
+            )
+        )
         return ProjectV2ListResponse(
-            items=tuple(self._summary(project) for project in page.items),
+            items=tuple(
+                self._summary(project, cover_versions.get(project.cover_asset_id or ""))
+                for project in page.items
+            ),
             next_cursor=page.next_cursor,
         )
 
@@ -133,9 +145,25 @@ class AgentCanvasProjectService:
         self._projects.restore(project_id, expected_version=expected_version)
         return self._detail(self._projects.get_catalog(project_id))
 
-    def _summary(self, project: ProjectCatalogRecord) -> ProjectV2Summary:
+    def _summary(
+        self,
+        project: ProjectCatalogRecord,
+        cover_version: AssetVersionMetadataV2 | None = None,
+    ) -> ProjectV2Summary:
+        cover = None
+        if cover_version is not None and cover_version.source_workflow_id == project.workflow_id:
+            media_type = _cover_media_type(cover_version.mime_type)
+            if media_type in {"image", "video"}:
+                cover = ProjectCoverV2(
+                    asset_id=cover_version.asset_id,
+                    version_id=cover_version.version_id,
+                    media_type=media_type,
+                    preview_url=f"/api/v2/assets/{cover_version.asset_id}/content",
+                    poster_url=None,
+                )
         return ProjectV2Summary(
             **project.model_dump(exclude={"description", "created_at", "deleted_at"}),
+            cover=cover,
         )
 
     def _detail(self, project: ProjectCatalogRecord) -> ProjectV2:
@@ -198,3 +226,11 @@ class AgentCanvasProjectService:
                 "active_style_skill": active_style_skill,
             }
         )
+
+
+def _cover_media_type(mime_type: str) -> str | None:
+    if mime_type.startswith("image/"):
+        return "image"
+    if mime_type.startswith("video/"):
+        return "video"
+    return None
