@@ -60,13 +60,14 @@ class NodePromptPreparationService:
         role_brief_author: RoleBriefAuthor | None = None,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         presentation_publisher: PresentationStreamPublisher | None = None,
+        recipe_registry: RolePromptRecipeRegistry | None = None,
     ) -> None:
         self._workflows = workflows
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
         self._presentation_publisher = presentation_publisher
         self._projector = RolePromptContextProjector()
-        self._recipes = RolePromptRecipeRegistry()
+        self._recipes = recipe_registry or RolePromptRecipeRegistry()
         self._parameter_resolver = RolePromptParameterResolver()
         self._compiler = AgentCanvasRolePromptCompiler(self._recipes)
 
@@ -196,6 +197,16 @@ class NodePromptPreparationService:
                         "prompt_assertion_evidence_digest": (
                             compiled_prompt.assertion_evidence.evidence_digest
                         ),
+                        "prompt_compaction_policy_version": (
+                            compiled_prompt.compaction_policy_version
+                        ),
+                        "prompt_compaction_policy_digest": (
+                            compiled_prompt.compaction_policy_digest
+                        ),
+                        "prompt_compaction_decisions": [
+                            item.model_dump(mode="json")
+                            for item in compiled_prompt.compaction_decisions
+                        ],
                         "prepared_reference_snapshots": [
                             item.model_dump(mode="json") for item in role_context.bindings
                         ],
@@ -240,6 +251,9 @@ class NodePromptPreparationService:
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
                         parameter_origins=compiled_prompt.parameters,
+                        compaction_policy_version=compiled_prompt.compaction_policy_version,
+                        compaction_policy_digest=compiled_prompt.compaction_policy_digest,
+                        compaction_decisions=compiled_prompt.compaction_decisions,
                         assertion_evidence=compiled_prompt.assertion_evidence,
                         attempt_stage="completed",
                         updated_at=_now(),
@@ -304,6 +318,16 @@ class NodePromptPreparationService:
                         binding_digest=(
                             _role_binding_digest(role_context.bindings)
                             if role_context is not None
+                            else None
+                        ),
+                        compaction_policy_version=(
+                            failed_recipe.compaction_policy.policy_version
+                            if failed_recipe is not None
+                            else None
+                        ),
+                        compaction_policy_digest=(
+                            failed_recipe.compaction_policy.digest
+                            if failed_recipe is not None
                             else None
                         ),
                         error=CanvasNodeErrorV2(
@@ -467,6 +491,12 @@ class NodePromptPreparationService:
                 "style_projection_digest": preparation.style_projection_digest,
                 "brief_digest": preparation.brief_digest,
                 "prompt_digest": preparation.prompt_digest,
+                "compaction_policy_version": preparation.compaction_policy_version,
+                "compaction_policy_digest": preparation.compaction_policy_digest,
+                "compaction_decisions": [
+                    item.model_dump(mode="json")
+                    for item in preparation.compaction_decisions
+                ],
                 "parameter_origins": [
                     item.model_dump(mode="json") for item in preparation.parameter_origins
                 ],
