@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectList, __resetProjectCoverResourceForTests, type ProjectListItem } from "./ProjectList.tsx";
-import { stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 
 const fixture = vi.hoisted(() => ({
@@ -284,15 +283,38 @@ describe("ProjectList covers", () => {
     expect(image.getAttribute("fetchpriority")).toBe("high");
   });
 
+  it("does not request project assets when the summary already contains a versioned cover", async () => {
+    const project = {
+      ...projects(1)[0],
+      cover: {
+        assetId: "summary-cover",
+        versionId: "summary-version",
+        mediaType: "image" as const,
+        mediaPath: "/api/v2/assets/summary-cover/preview?v=summary-version",
+        posterPath: null,
+      },
+    };
+    const view = render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("/api/v2/assets/summary-cover/preview?v=summary-version");
+  });
+
   it("shows a persisted cover while the background refresh is pending", async () => {
     const controlled = installControlledCoverRequests();
     const project = projects(1)[0];
     if (!project) throw new Error("Expected a project fixture.");
-    saveProjectCoverCache(stableQueryKey({
-      workflowId: project.workflowId,
-      coverAssetId: "fallback",
-      updatedAt: project.updatedAt,
-    }), {
+    saveProjectCoverCache(`project:${project.projectId}`, {
       assetId: "cached-cover",
       versionId: "cached-cover-version",
       mediaType: "image",

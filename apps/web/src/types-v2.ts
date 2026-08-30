@@ -94,6 +94,14 @@ export interface PersistedWorkflowV2 extends WorkflowV2 {
 
 export type ProjectV2Status = "active" | "archived" | "trashed";
 
+export interface ProjectCoverV2 {
+  asset_id: string;
+  version_id: string;
+  media_type: "image" | "video";
+  preview_url: string;
+  poster_url: string | null;
+}
+
 export interface ProjectV2Summary {
   project_id: string;
   workflow_id: string;
@@ -101,6 +109,7 @@ export interface ProjectV2Summary {
   status: ProjectV2Status;
   is_favorite: boolean;
   cover_asset_id: string | null;
+  cover?: ProjectCoverV2 | null;
   project_version: number;
   updated_at: string;
 }

@@ -31,6 +31,14 @@ describe("project cover cache", () => {
 
     expect(loadProjectCoverCache("workflow-1|updated-1")).toBeUndefined();
   });
+
+  it("can return an expired cover for stale-while-revalidate rendering", () => {
+    window.localStorage.setItem("adcraft-project-cover-cache-v1", JSON.stringify({
+      "workflow-1|updated-1": { cover, savedAt: Date.now() - 25 * 60 * 60 * 1000 },
+    }));
+
+    expect(loadProjectCoverCache("workflow-1|updated-1", undefined, { allowStale: true })).toEqual(cover);
+  });
   it("migrates cached preview paths to the immutable content path", () => {
     const previewCover: V2ProjectCover = {
       ...cover,

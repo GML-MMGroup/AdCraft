@@ -503,6 +503,7 @@
 }
 
 .agent-chat__message--user .agent-chat__message-body {
+  position: relative;
   width: fit-content;
   max-width: 100%;
   justify-self: end;
@@ -514,8 +515,9 @@
 }
 
 .agent-chat__message--agent {
-  max-width: 100%;
-  align-self: stretch;
+  width: fit-content;
+  max-width: min(86%, 520px);
+  align-self: flex-start;
 }
 
 .agent-chat__message--agent.continues-speaker-run {
@@ -524,6 +526,55 @@
 
 .agent-chat__message--agent > span {
   display: none;
+}
+
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 12px;
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__message--user .agent-chat__message-body::before,
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before,
+.agent-chat__message--user .agent-chat__message-body::after,
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  pointer-events: none;
+}
+
+.agent-chat__message--user .agent-chat__message-body::before,
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before {
+  content: "";
+  bottom: -7px;
+  border-width: 7px 7px 0 0;
+  border-color: var(--agent-chat-border) transparent transparent transparent;
+}
+
+.agent-chat__message--user .agent-chat__message-body::after,
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
+  content: "";
+  bottom: -5px;
+  border-width: 5px 5px 0 0;
+  border-color: var(--agent-chat-raised) transparent transparent transparent;
+}
+
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::before,
+.agent-chat__message--agent .agent-chat__message-body--agent-bubble::after {
+  left: 12px;
+}
+
+.agent-chat__message--user .agent-chat__message-body::before,
+.agent-chat__message--user .agent-chat__message-body::after {
+  right: 12px;
+  transform: scaleX(-1);
 }
 
 .agent-chat__message--agent :is(p, .agent-chat__markdown) {
