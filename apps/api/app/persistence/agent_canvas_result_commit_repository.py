@@ -317,10 +317,8 @@ class AgentCanvasResultCommitRepository:
 
                     lease = (
                         connection.execute(
-                            select(AgentCanvasNodeLeaseRow)
-                            .where(
-                                AgentCanvasNodeLeaseRow.execution_id
-                                == command.execution_id,
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == command.execution_id,
                                 AgentCanvasNodeLeaseRow.node_id == command.node_id,
                             )
                         )
@@ -340,8 +338,7 @@ class AgentCanvasResultCommitRepository:
                         connection.execute(
                             select(AgentCanvasExecutionMemberRow).where(
                                 AgentCanvasExecutionMemberRow.member_id == command.member_id,
-                                AgentCanvasExecutionMemberRow.execution_id
-                                == command.execution_id,
+                                AgentCanvasExecutionMemberRow.execution_id == command.execution_id,
                                 AgentCanvasExecutionMemberRow.node_id == command.node_id,
                             )
                         )
@@ -410,7 +407,9 @@ class AgentCanvasResultCommitRepository:
                     )
                     commit_id = (
                         "result_commit_"
-                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[:32]
+                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[
+                            :32
+                        ]
                     )
                     event_cursor = self._append_stale_failure_events(
                         connection,
@@ -717,7 +716,10 @@ class AgentCanvasResultCommitRepository:
 
         last = None
         events = (
-            ("node_result_publication_lease_lost", {"error": command.error.model_dump() if command.error else {}}),
+            (
+                "node_result_publication_lease_lost",
+                {"error": command.error.model_dump() if command.error else {}},
+            ),
             ("node_failed", {"error": command.error.model_dump() if command.error else {}}),
             ("runtime_snapshot_updated", {"execution_status": execution_status}),
         )

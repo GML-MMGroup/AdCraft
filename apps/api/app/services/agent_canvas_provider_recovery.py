@@ -393,9 +393,7 @@ class ProviderTaskRecoveryService:
                 node_id=task.node_id,
                 lease_owner_id=lease.owner_id,
                 lease_generation=lease.generation,
-                logical_result_key=(
-                    f"provider-task:{task.task_id}:{lease.generation}:{status}"
-                ),
+                logical_result_key=(f"provider-task:{task.task_id}:{lease.generation}:{status}"),
                 payload_digest=digest,
                 provider_task_id=task.task_id,
                 outcome=("cancelled" if status == "cancelled" else "failed"),
