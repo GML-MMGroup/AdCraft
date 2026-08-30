@@ -116,9 +116,8 @@ class AgentCanvasResultCommitRepository:
                             "execution_not_found",
                             "Execution was not found.",
                         )
-                    if (
-                        str(execution["status"]) in _TERMINAL_EXECUTION_STATES
-                        or bool(execution["cancel_requested"])
+                    if str(execution["status"]) in _TERMINAL_EXECUTION_STATES or bool(
+                        execution["cancel_requested"]
                     ):
                         raise _error(
                             "execution_result_terminal_conflict",
