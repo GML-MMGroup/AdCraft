@@ -551,12 +551,30 @@ def _digest(value: object) -> str:
 def _validate_role_prompt_text(role_variant: str, text: str) -> None:
     normalized = text.casefold()
     for phrase in _ROLE_PROMPT_CONFLICTS.get(role_variant, ()):
-        pattern = rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])"
-        if re.search(pattern, normalized):
+        pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])")
+        if any(
+            not _is_explicitly_negated(normalized, match.start())
+            for match in pattern.finditer(normalized)
+        ):
             raise _error(
                 "node_prompt_role_contract_invalid",
                 "Role prompt text conflicts with the foundation isolation contract.",
             )
+
+
+_NEGATED_ROLE_CONFLICT = re.compile(
+    r"(?:^|[\s,(])(?:no|without|not|never|do not|does not|must not)"
+    r"(?:\s+[a-z0-9-]+){0,3}\s*,?\s*$"
+)
+
+
+def _is_explicitly_negated(text: str, position: int) -> bool:
+    """Keep negative role facts separate from instructions to add a conflict."""
+
+    clause_start = max(
+        text.rfind(delimiter, 0, position) for delimiter in (".", "!", "?", ";", ":", "\n")
+    )
+    return _NEGATED_ROLE_CONFLICT.search(text[clause_start + 1 : position]) is not None
 
 
 def _compaction_decisions(
