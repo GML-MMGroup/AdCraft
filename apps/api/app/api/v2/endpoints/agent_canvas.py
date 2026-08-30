@@ -22,6 +22,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
@@ -232,6 +233,7 @@ from app.persistence.agent_canvas_guided_product_repository import (
 from app.services.product_upload_multiview_compiler import ProductUploadMultiviewCompiler
 from app.tools.ffmpeg import FfmpegTool
 from app.services.v2_final_composition_renderer import V2MediaProbe
+from app.services.v2_asset_renditions import V2AssetRenditionService
 from app.services.agent_canvas_accepted_background import (
     AcceptedBackgroundOperation,
     AcceptedBackgroundResourceType,
@@ -585,6 +587,10 @@ def create_agent_canvas_runtime(
             deterministic_media_facts_probe
             if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
             else None
+        ),
+        rendition_service=V2AssetRenditionService(
+            settings.media_data_dir,
+            ffmpeg_path=settings.ffmpeg_path,
         ),
     )
     guided_product_inputs = GuidedProductInputCommitService(
@@ -2478,6 +2484,27 @@ def list_my_assets(
     category: Annotated[str | None, Query()] = None,
 ) -> ImageLibraryListResponseV2:
     return _image_library_response(runtime.assets.list_images(scope="my", category=category))
+
+
+@router.get("/assets/{asset_id}/preview")
+@router.get("/assets/{asset_id}/poster")
+def get_asset_rendition(
+    asset_id: str,
+    request: Request,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version_id: Annotated[str, Query(alias="v", min_length=1, max_length=160)],
+) -> Response:
+    kind = request.url.path.rsplit("/", 1)[-1]
+    try:
+        rendition = runtime.assets.open_rendition(asset_id, version_id, kind=kind)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return Response(
+        content=rendition.body,
+        status_code=rendition.status_code,
+        media_type=rendition.media_type,
+        headers=rendition.headers,
+    )
 
 
 @router.get("/assets/{asset_id}/content")

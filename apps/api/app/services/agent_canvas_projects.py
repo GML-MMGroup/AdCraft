@@ -158,8 +158,16 @@ class AgentCanvasProjectService:
                     asset_id=cover_version.asset_id,
                     version_id=cover_version.version_id,
                     media_type=media_type,
-                    preview_url=f"/api/v2/assets/{cover_version.asset_id}/content",
-                    poster_url=None,
+                    preview_url=(
+                        f"/api/v2/assets/{cover_version.asset_id}/preview"
+                        f"?v={cover_version.version_id}"
+                    ),
+                    poster_url=(
+                        f"/api/v2/assets/{cover_version.asset_id}/poster"
+                        f"?v={cover_version.version_id}"
+                        if media_type == "video"
+                        else None
+                    ),
                 )
         return ProjectV2Summary(
             **project.model_dump(exclude={"description", "created_at", "deleted_at"}),

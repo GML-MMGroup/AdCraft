@@ -36,6 +36,7 @@ from app.schemas.v2_asset_library import (
     AssetVersionMetadataV2,
 )
 from app.services.v2_storage_adapter import StorageAdapter
+from app.services.v2_asset_renditions import V2AssetRenditionService
 from app.services.agent_canvas_asset_reference_resolver import (
     AgentCanvasAssetReferenceResolver,
 )
@@ -69,6 +70,7 @@ class AgentCanvasAssetService:
         workflows: AgentCanvasWorkflowRepository,
         *,
         media_facts_probe: MediaFactsProbe | None = None,
+        rendition_service: V2AssetRenditionService | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._assets = assets
@@ -76,6 +78,7 @@ class AgentCanvasAssetService:
         self._storage = StorageAdapter(data_dir)
         self._reference_resolver = AgentCanvasAssetReferenceResolver(data_dir, assets)
         self._media_facts_probe = media_facts_probe or V2MediaProbe()
+        self._renditions = rendition_service or V2AssetRenditionService(data_dir)
 
     def upload_bytes(
         self,
@@ -547,6 +550,43 @@ class AgentCanvasAssetService:
             status_code=206 if partial else 200,
             media_type=version.mime_type,
             headers=headers,
+        )
+
+    def open_rendition(
+        self,
+        asset_id: str,
+        version_id: str,
+        *,
+        kind: str,
+    ) -> AssetContentResponse:
+        """Return one exact version-pinned browser rendition."""
+
+        version = self._require_ready_version(asset_id, version_id=version_id)
+        media_type = _media_type_from_mime(version.mime_type)
+        if media_type not in {"image", "video"}:
+            raise V2PersistenceError(
+                "asset_rendition_media_unsupported",
+                "Asset rendition media type is unsupported.",
+                stage="agent_canvas_asset_service",
+            )
+        source_path = self._storage.resolve_local_path(version.storage_key)
+        rendition = self._renditions.ensure(
+            source_path,
+            asset_id=asset_id,
+            version_id=version_id,
+            media_type=media_type,
+            kind=kind,
+        )
+        body = rendition.path.read_bytes()
+        return AssetContentResponse(
+            body=body,
+            status_code=200,
+            media_type=rendition.media_type,
+            headers={
+                "Content-Length": str(len(body)),
+                "Cache-Control": "private, max-age=31536000, immutable",
+                "ETag": f'"{asset_id}:{version_id}:{kind}"',
+            },
         )
 
     def list_images(
