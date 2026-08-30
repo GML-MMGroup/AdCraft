@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -576,6 +578,85 @@ class CapabilityReferencePlanV1(_CapabilityModel):
         return tuple(reference.source_id for reference in self.references)
 
 
+class CharacterProposalTargetV1(BaseModel):
+    """Immutable identity of the Character occurrence a Proposal describes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    occurrence_index: int = Field(ge=1, le=32)
+    occurrence_count: int = Field(ge=1, le=32)
+    character_phase: Literal["main"] = "main"
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_no: int = Field(ge=1)
+    target_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @classmethod
+    def digest_for(
+        cls,
+        *,
+        occurrence_id: str,
+        occurrence_index: int,
+        occurrence_count: int,
+        character_phase: Literal["main"] = "main",
+        requirement_revision_id: str,
+        requirement_revision_no: int,
+    ) -> str:
+        payload = {
+            "character_phase": character_phase,
+            "occurrence_count": occurrence_count,
+            "occurrence_id": occurrence_id,
+            "occurrence_index": occurrence_index,
+            "requirement_revision_id": requirement_revision_id,
+            "requirement_revision_no": requirement_revision_no,
+        }
+        return hashlib.sha256(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        occurrence_id: str,
+        occurrence_index: int,
+        occurrence_count: int,
+        requirement_revision_id: str,
+        requirement_revision_no: int,
+    ) -> "CharacterProposalTargetV1":
+        return cls(
+            occurrence_id=occurrence_id,
+            occurrence_index=occurrence_index,
+            occurrence_count=occurrence_count,
+            character_phase="main",
+            requirement_revision_id=requirement_revision_id,
+            requirement_revision_no=requirement_revision_no,
+            target_digest=cls.digest_for(
+                occurrence_id=occurrence_id,
+                occurrence_index=occurrence_index,
+                occurrence_count=occurrence_count,
+                requirement_revision_id=requirement_revision_id,
+                requirement_revision_no=requirement_revision_no,
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "CharacterProposalTargetV1":
+        if self.occurrence_index > self.occurrence_count:
+            raise ValueError("Character occurrence index exceeds the target count.")
+        expected = self.digest_for(
+            occurrence_id=self.occurrence_id,
+            occurrence_index=self.occurrence_index,
+            occurrence_count=self.occurrence_count,
+            character_phase=self.character_phase,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+        )
+        if self.target_digest != expected:
+            raise ValueError("Character proposal target digest does not match its fields.")
+        return self
+
+
 GuidanceSourceActionV1 = Literal[
     "required_deferred_final_review",
     "user_resumed_deferred_topic",
@@ -598,6 +679,7 @@ class CapabilityContextSnapshotV2(_CapabilityModel):
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     shared_summary: str = Field(default="", max_length=8_192)
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
@@ -617,6 +699,7 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     repair_error: str | None = Field(default=None, max_length=160)
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
@@ -653,6 +736,7 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     agent_request_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
