@@ -58,13 +58,12 @@ _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
     "product_main": (
         "person",
         "people",
-        "hand",
-        "hands",
-        "lifestyle",
         "using the product",
         "application scene",
         "narrative environment",
         "active scene",
+        "lifestyle scene",
+        "lifestyle image",
     ),
     "prop": (
         "person",
