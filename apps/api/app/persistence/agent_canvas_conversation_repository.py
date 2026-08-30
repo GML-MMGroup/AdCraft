@@ -403,11 +403,15 @@ class AgentCanvasConversationRepository:
                     )
                     session_id = str(session_row["session_id"])
                     if expected_requirement_revision is not None:
-                        requirement_row = connection.execute(
-                            select(AgentCanvasRequirementLedgerRow).where(
-                                AgentCanvasRequirementLedgerRow.workflow_id == workflow_id
+                        requirement_row = (
+                            connection.execute(
+                                select(AgentCanvasRequirementLedgerRow).where(
+                                    AgentCanvasRequirementLedgerRow.workflow_id == workflow_id
+                                )
                             )
-                        ).mappings().one_or_none()
+                            .mappings()
+                            .one_or_none()
+                        )
                         if (
                             requirement_row is None
                             or int(requirement_row["current_revision_no"])

@@ -22,6 +22,12 @@ class AgentCanvasExecutionResultCommitService:
     ) -> CanvasExecutionResultCommitReceiptV2:
         return self._repository.commit(command)
 
+    def reconcile_stale_lease_failure(
+        self,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> CanvasExecutionResultCommitReceiptV2 | None:
+        return self._repository.reconcile_stale_lease_failure(command)
+
     def list_receipts(self, execution_id: str) -> tuple[CanvasExecutionResultCommitReceiptV2, ...]:
         return self._repository.list_receipts(execution_id)
 

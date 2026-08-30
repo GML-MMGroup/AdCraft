@@ -15,8 +15,8 @@ from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
 from app.schemas.agent_canvas_prompt_assertion import (
-    PromptAssertionEvidenceV1,
     PromptAssertionSourceSnapshotV1,
     safe_prompt_assertion_metadata,
 )
@@ -246,7 +246,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, ready)
+            persisted = self._persist(working, ready, context=context)
             self._append_trace(
                 persisted,
                 prompt=prompt,
@@ -316,7 +316,7 @@ class NodePromptPreparationService:
                     ),
                 }
             )
-            persisted = self._persist(working, failed)
+            persisted = self._persist(working, failed, context=context)
             self._append_trace(
                 persisted,
                 prompt=current.summary_prompt or current.generation_prompt or "",
@@ -336,7 +336,7 @@ class NodePromptPreparationService:
         *,
         operation_id: str,
     ) -> CanvasNodeV2:
-        """Invalidate one prepared Draft without changing its operation identity."""
+        """Invalidate one prepared Draft and create its successor identity."""
 
         current = self._workflows.get_node(workflow_id, node_id)
         if current.prompt_preparation.operation_id != operation_id:
@@ -357,16 +357,10 @@ class NodePromptPreparationService:
             )
             if stream is not None:
                 self._presentation_publisher.supersede(stream)
-        return self._transition(
-            current,
-            current.prompt_preparation.model_copy(
-                update={
-                    "status": "queued",
-                    "error": None,
-                    "attempt_stage": "queued",
-                    "updated_at": _now(),
-                }
-            ),
+        return self._workflows.invalidate_prompt_preparation_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
         )
 
     def refresh_dependency_evidence(
@@ -418,37 +412,17 @@ class NodePromptPreparationService:
             and preparation.binding_digest == binding_digest
         ):
             return current
-        refreshed_evidence = PromptAssertionEvidenceV1.build(
-            **evidence.model_dump(
-                mode="python",
-                exclude={"schema_version", "source_snapshots", "evidence_digest"},
-            ),
-            source_snapshots=current_sources,
+        # Dependency evidence is an immutable part of the preparation
+        # operation.  Once a source snapshot changes, never rewrite that
+        # evidence in place: supersede the old identity and enqueue exactly
+        # one successor for the next preparation wave.  The existing
+        # repository method performs the Node/dispatch mutation atomically.
+        del current_sources, binding_digest
+        return self.invalidate_for_dependency_change(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
         )
-        refreshed = current.model_copy(
-            update={
-                "revision": current.revision + 1,
-                "updated_at": _now(),
-                "metadata": {
-                    **current.metadata,
-                    "prompt_reference_bundle_digest": binding_digest,
-                    "prompt_assertion_evidence_digest": refreshed_evidence.evidence_digest,
-                    "prepared_reference_snapshots": [
-                        item.model_dump(mode="json") for item in bindings
-                    ],
-                },
-                "prompt_preparation": preparation.model_copy(
-                    update={
-                        "attempt_no": preparation.attempt_no + 1,
-                        "binding_digest": binding_digest,
-                        "assertion_evidence": refreshed_evidence,
-                        "attempt_stage": "completed",
-                        "updated_at": _now(),
-                    }
-                ),
-            }
-        )
-        return self._persist(current, refreshed)
 
     def _append_trace(
         self,
@@ -709,6 +683,8 @@ class NodePromptPreparationService:
         self,
         current: CanvasNodeV2,
         preparation: NodePromptPreparationV1,
+        *,
+        context: StageAuthoringContextV1 | None = None,
     ) -> CanvasNodeV2:
         next_node = current.model_copy(
             update={
@@ -717,25 +693,26 @@ class NodePromptPreparationService:
                 "prompt_preparation": preparation,
             }
         )
-        return self._persist(current, next_node)
+        return self._persist(current, next_node, context=context)
 
-    def _persist(self, current: CanvasNodeV2, next_node: CanvasNodeV2) -> CanvasNodeV2:
+    def _persist(
+        self,
+        current: CanvasNodeV2,
+        next_node: CanvasNodeV2,
+        *,
+        context: StageAuthoringContextV1 | None = None,
+    ) -> CanvasNodeV2:
         workflow = self._workflows.get_workflow(current.workflow_id)
         return self._workflows.update_node_prompt_preparation(
             next_node,
             expected_node_revision=current.revision,
             expected_workflow_revision=workflow.revision,
+            dispatch_context=(context.model_dump(mode="json") if context is not None else None),
         )
 
 
 def context_digest(context: StageAuthoringContextV1) -> str:
-    payload = json.dumps(
-        context.model_dump(mode="json"),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return sha256(canonical_context_bytes(context)).hexdigest()
 
 
 def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:

@@ -14,6 +14,9 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
@@ -92,7 +95,10 @@ from app.services.agent_canvas_capability_draft_bundle import (
     stage_draft_parameters,
     stage_draft_title,
 )
-from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_preparation import (
+    NodePromptPreparationService,
+    context_digest,
+)
 from app.services.agent_canvas_prompt_assertion_policy import (
     current_source_snapshots_for_evidence,
 )
@@ -119,6 +125,7 @@ class CapabilityMaterializationPublicationService:
         storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
         prompt_ready_activation: Callable[..., object] | None = None,
         parent_derived: ParentDerivedMaterializationCoordinator | None = None,
+        prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -129,6 +136,10 @@ class CapabilityMaterializationPublicationService:
         self._commit_service = commit_service or AgentCanvasMaterializationCommitService(
             materialization_repository,
             GuidedProductionJourneyReducer(),
+        )
+        self._prompt_dispatch = prompt_dispatch or AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            conversations.events,
         )
         self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
             workflows=workflows,
@@ -231,6 +242,21 @@ class CapabilityMaterializationPublicationService:
             preview_bundle.nodes,
         )
         workflow = self._workflows.get_workflow(envelope.workflow_id)
+        frozen_prompt_context = stage_authoring_context_from_materialization(
+            materialization_context,
+            session_id=session.session_id,
+            session_revision=session.revision,
+            stage=session.journey.stage,
+            occurrence_id=(
+                envelope.occurrence_id
+                or (
+                    session.journey.active_action.occurrence_id
+                    if session.journey.active_action is not None
+                    else None
+                )
+            ),
+            references=envelope.reference_plan.references,
+        )
         plan = self._plan_compiler.compile(
             envelope,
             normalization,
@@ -242,6 +268,7 @@ class CapabilityMaterializationPublicationService:
                 current_journey=session.journey,
             ),
             storyboard_documents=authority_documents,
+            prompt_context=frozen_prompt_context,
         )
         lease_guard()
         try:
@@ -254,8 +281,6 @@ class CapabilityMaterializationPublicationService:
                 "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
             ) from error
-        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
         self._prepare_prompts(
             envelope,
             materialization_context,
@@ -285,8 +310,11 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(
+                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
+                lease_guard=lease_guard,
+            )
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _prepare_guided_document_stage(
@@ -587,11 +615,34 @@ class CapabilityMaterializationPublicationService:
                 expected_parent_role = (
                     "character_main" if semantic_role == "character" else "product_main"
                 )
+                parent_source_matches = (
+                    isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
+                    and current_anchor.source.node_id == envelope.parent_snapshot.node_id
+                )
+                parent_revision_matches = (
+                    parent_source_matches
+                    and current_anchor.source.node_revision
+                    == envelope.parent_snapshot.node_revision
+                )
+                if parent_source_matches and not parent_revision_matches:
+                    try:
+                        current_parent = self._workflows.get_node(
+                            envelope.workflow_id,
+                            envelope.parent_snapshot.node_id,
+                        )
+                    except V2PersistenceError:
+                        current_parent = None
+                    parent_revision_matches = (
+                        current_parent is not None
+                        and current_parent.revision == envelope.parent_snapshot.node_revision
+                        and current_parent.prompt_preparation.status == "ready"
+                        and current_parent.prompt_preparation.operation_id
+                        == envelope.parent_snapshot.prompt_preparation_operation_id
+                    )
                 if (
-                    not isinstance(current_anchor.source, AgentAnchorNodeSourceV3)
-                    or current_anchor.source.node_id != envelope.parent_snapshot.node_id
-                    or current_anchor.source.node_revision != envelope.parent_snapshot.node_revision
-                    or envelope.parent_snapshot.semantic_role != expected_parent_role
+                    not parent_source_matches
+                    or not parent_revision_matches
+                    or (envelope.parent_snapshot.semantic_role != expected_parent_role)
                 ):
                     raise V2PersistenceError(
                         "parent_materialization_revision_stale",
@@ -811,33 +862,43 @@ class CapabilityMaterializationPublicationService:
         )
         if outcome is None:
             return None
-        if envelope.operation_kind == "parent" and envelope.capability_id == "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
-        pending_preparations = tuple(
-            (node_id, operation_id)
-            for node_id, operation_id in zip(
-                outcome.node_ids,
-                outcome.prompt_preparation_ids,
-                strict=True,
-            )
-            if self._workflows.get_node(
-                envelope.workflow_id,
-                node_id,
-            ).prompt_preparation.status
-            != "ready"
-        )
+        pending_preparations: list[tuple[str, str]] = []
+        for node_id, operation_id in zip(
+            outcome.node_ids,
+            outcome.prompt_preparation_ids,
+            strict=True,
+        ):
+            node = self._workflows.get_node(envelope.workflow_id, node_id)
+            if node.prompt_preparation.operation_id != operation_id:
+                raise V2PersistenceError(
+                    "prompt_preparation_dispatch_stale",
+                    "Committed prompt-preparation operation is no longer current.",
+                    stage="capability_materialization_publication",
+                    details={"node_id": node_id, "operation_id": operation_id},
+                )
+            if node.prompt_preparation.status == "ready":
+                continue
+            pending_preparations.append((node_id, operation_id))
+        pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
         if pending_preparations:
-            context = materialization_context_from_state(
-                envelope,
-                conversations=self._conversations,
-                workflows=self._workflows,
-                asset_resolver=self._asset_resolver,
-                validate_references=False,
-            )
+            # A committed materialization is recovered from the exact
+            # dispatch operation that was persisted with its Draft.  Rebuilding
+            # context from the mutable requirement/session state here could
+            # silently change the prompt after a restart or a later Journey
+            # revision.  Resolve every pending operation before preparing any
+            # sibling so malformed or missing authority fails closed.
+            persisted_contexts = {
+                node_id: self._load_persisted_prompt_context(
+                    workflow_id=envelope.workflow_id,
+                    node_id=node_id,
+                    operation_id=operation_id,
+                )
+                for node_id, operation_id in pending_preparations
+            }
             self._prepare_prompts(
                 envelope,
-                context,
+                next(iter(persisted_contexts.values())),
                 session_id=session.session_id,
                 session_revision=outcome.session_revision,
                 stage=outcome.journey_stage,
@@ -847,6 +908,7 @@ class CapabilityMaterializationPublicationService:
                 node_ids=tuple(item[0] for item in pending_preparations),
                 operation_ids=tuple(item[1] for item in pending_preparations),
                 lease_guard=lease_guard,
+                context_by_node=persisted_contexts,
             )
         context = materialization_context_from_state(
             envelope,
@@ -869,9 +931,147 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent" and envelope.capability_id != "character_design":
-            self._parent_derived.reconcile_after_parent(envelope, lease_guard=lease_guard)
+        if envelope.operation_kind == "parent":
+            self._parent_derived.reconcile_after_parent(
+                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
+                lease_guard=lease_guard,
+            )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _refreshed_parent_reconciliation_envelope(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome,
+    ) -> ProposalApplicationEnvelopeV1:
+        """Build a reconciliation input from the committed current parent Node.
+
+        The accepted publication envelope is immutable historical authority.  Prompt
+        preparation is a post-commit Node mutation that may advance its revision and
+        replace the provisional operation identity with the durable dispatch identity.
+        Parent-derived reconciliation must therefore use a detached envelope carrying
+        the exact persisted snapshot without mutating or replacing the original.
+        """
+
+        if envelope.operation_kind != "parent" or envelope.derivative_intent is None:
+            return envelope
+        parent_snapshot = envelope.derivative_intent.parent
+        try:
+            outcome_index = outcome.node_ids.index(parent_snapshot.node_id)
+        except ValueError as error:
+            raise V2PersistenceError(
+                "parent_materialization_missing",
+                "Committed parent outcome does not contain the derived source Node.",
+                stage="capability_materialization_publication",
+            ) from error
+        try:
+            expected_operation_id = outcome.prompt_preparation_ids[outcome_index]
+        except IndexError as error:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_missing",
+                "Committed parent outcome has no preparation identity for its source Node.",
+                stage="capability_materialization_publication",
+            ) from error
+        current = self._workflows.get_node(envelope.workflow_id, parent_snapshot.node_id)
+        current_operation_id = current.prompt_preparation.operation_id
+        if not current_operation_id or current_operation_id != expected_operation_id:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Current parent Node does not match its committed preparation identity.",
+                stage="capability_materialization_publication",
+                details={
+                    "node_id": current.node_id,
+                    "expected_operation_id": expected_operation_id,
+                    "current_operation_id": current_operation_id,
+                },
+            )
+        refreshed_snapshot = parent_snapshot.model_copy(
+            update={
+                "node_revision": current.revision,
+                "prompt_preparation_operation_id": current_operation_id,
+            }
+        )
+        refreshed_intent = envelope.derivative_intent.model_copy(
+            update={
+                "parent": refreshed_snapshot,
+                "payload_digest": _digest(
+                    f"{envelope.workflow_id}:{current.node_id}:{current.revision}:"
+                    f"{current_operation_id}:{envelope.derivative_intent.derivative_role}"
+                ),
+            }
+        )
+        return envelope.model_copy(update={"derivative_intent": refreshed_intent})
+
+    def _load_persisted_prompt_context(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+    ) -> StageAuthoringContextV1:
+        """Load and verify the immutable context for one recovery operation."""
+
+        dispatch = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            operation_id,
+        )
+        if dispatch is None:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_missing",
+                "Prompt-preparation recovery has no matching dispatch authority.",
+                stage="capability_materialization_publication",
+                details={"node_id": node_id, "operation_id": operation_id},
+            )
+        if any(
+            getattr(dispatch, field, None) != expected
+            for field, expected in (
+                ("workflow_id", workflow_id),
+                ("node_id", node_id),
+                ("operation_id", operation_id),
+            )
+        ):
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Prompt-preparation dispatch identity does not match recovery authority.",
+                stage="capability_materialization_publication",
+            )
+        payload = getattr(dispatch, "context_json", None)
+        if not isinstance(payload, Mapping) or not payload:
+            raise V2PersistenceError(
+                "prompt_preparation_context_missing",
+                "Prompt-preparation dispatch has no immutable context snapshot.",
+                stage="capability_materialization_publication",
+            )
+        try:
+            context = StageAuthoringContextV1.model_validate(dict(payload))
+        except (TypeError, ValueError, ValidationError) as error:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context is invalid.",
+                stage="capability_materialization_publication",
+            ) from error
+        persisted_digest = getattr(dispatch, "context_digest", None)
+        if not isinstance(persisted_digest, str) or not persisted_digest:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context has no digest proof.",
+                stage="capability_materialization_publication",
+            )
+        try:
+            current_digest = context_digest(context)
+        except (TypeError, ValueError) as error:
+            raise V2PersistenceError(
+                "prompt_preparation_context_invalid",
+                "Persisted prompt-preparation context cannot be serialized.",
+                stage="capability_materialization_publication",
+            ) from error
+        if current_digest != persisted_digest or context.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "prompt_preparation_dispatch_stale",
+                "Persisted prompt-preparation context does not match its dispatch proof.",
+                stage="capability_materialization_publication",
+            )
+        return context
 
     def _activate_prompt_ready_media(
         self,
@@ -1168,7 +1368,7 @@ class CapabilityMaterializationPublicationService:
     def _prepare_prompts(
         self,
         envelope: ProposalApplicationEnvelopeV1,
-        context: CapabilityMaterializationContextV1,
+        context: CapabilityMaterializationContextV1 | StageAuthoringContextV1,
         *,
         session_id: str,
         session_revision: int,
@@ -1181,14 +1381,45 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         if not operation_ids:
             return
-        stage_context = stage_authoring_context_from_materialization(
-            context,
-            session_id=session_id,
-            session_revision=session_revision,
-            stage=stage,
-            occurrence_id=occurrence_id,
-            references=envelope.reference_plan.references,
-        )
+        if context_by_node is not None:
+            # A dependency wave must carry one immutable context for every
+            # operation.  Never let a missing entry fall back to a sibling (or
+            # to mutable session state), because that would prepare a prompt
+            # under the wrong identity and digest.
+            missing_context_nodes = tuple(
+                node_id for node_id in node_ids if node_id not in context_by_node
+            )
+            if missing_context_nodes:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_missing",
+                    "Prompt-preparation context is missing for a required Node.",
+                    stage="capability_materialization_publication",
+                    details={"node_ids": list(missing_context_nodes)},
+                )
+            invalid_context_nodes = tuple(
+                node_id
+                for node_id in node_ids
+                if not isinstance(context_by_node[node_id], StageAuthoringContextV1)
+            )
+            if invalid_context_nodes:
+                raise V2PersistenceError(
+                    "prompt_preparation_context_invalid",
+                    "Prompt-preparation context is invalid for a required Node.",
+                    stage="capability_materialization_publication",
+                    details={"node_ids": list(invalid_context_nodes)},
+                )
+            stage_context = context_by_node[node_ids[0]] if node_ids else context
+        elif isinstance(context, StageAuthoringContextV1):
+            stage_context = context
+        else:
+            stage_context = stage_authoring_context_from_materialization(
+                context,
+                session_id=session_id,
+                session_revision=session_revision,
+                stage=stage,
+                occurrence_id=occurrence_id,
+                references=envelope.reference_plan.references,
+            )
         prompt_service = NodePromptPreparationService(self._workflows)
         if self._storyboard_gateway is not None:
             prompt_service = NodePromptPreparationService(
@@ -1213,7 +1444,9 @@ class CapabilityMaterializationPublicationService:
                     envelope.workflow_id,
                     node_id,
                     operation_id=operation_id,
-                    context=(context_by_node or {}).get(node_id, stage_context),
+                    context=(
+                        context_by_node[node_id] if context_by_node is not None else stage_context
+                    ),
                 )
             except Exception as error:  # noqa: BLE001 - preserve sibling preparation.
                 errors.append(error)
@@ -1295,6 +1528,17 @@ class CapabilityMaterializationPublicationService:
                     node_id,
                     operation_id=operation_id,
                 )
+                # Invalidation creates a new fenced preparation identity.  Do
+                # not carry the stale operation into the next dependency wave;
+                # the returned Node is the only current snapshot authority.
+                node = invalidated
+                operation_id = node.prompt_preparation.operation_id
+                if not operation_id:
+                    raise V2PersistenceError(
+                        "storyboard_prompt_ready_authority_invalid",
+                        "Invalidated Draft source has no successor operation.",
+                        stage="storyboard_prompt_ready_promotion",
+                    )
                 turn = self._conversations.get_turn(envelope.action_turn_id)
                 self._conversations.events.append(
                     V2EventInsert(
@@ -1424,6 +1668,16 @@ class CapabilityMaterializationPublicationService:
                 node_id,
                 operation_id=operation_id,
             )
+            # The dependency wave may publish a new Node revision and must be
+            # prepared under the successor identity returned by invalidation.
+            node = invalidated
+            operation_id = node.prompt_preparation.operation_id
+            if not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_ready_authority_invalid",
+                    "Invalidated Draft source has no successor operation.",
+                    stage="storyboard_prompt_ready_promotion",
+                )
             self._conversations.events.append(
                 V2EventInsert(
                     workflow_id=envelope.workflow_id,

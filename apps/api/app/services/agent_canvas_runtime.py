@@ -37,6 +37,7 @@ from app.schemas.agent_canvas_runtime import (
 from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
+from app.schemas.agent_canvas_video_parameters import CompiledVideoParametersV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.schemas.agent_canvas_world_setting import (
@@ -354,6 +355,7 @@ class DynamicCanvasScheduler:
                     continue
                 leases.append(lease)
             with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
+                dependency_barrier_seen = False
                 prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
                 for lease in leases:
                     try:
@@ -365,6 +367,7 @@ class DynamicCanvasScheduler:
                     except Exception as error:
                         if self._is_dependency_barrier(error):
                             self._defer_dependency_member(current.workflow_id, lease, error)
+                            dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
                         continue
@@ -382,6 +385,7 @@ class DynamicCanvasScheduler:
                     except Exception as error:
                         if self._is_dependency_barrier(error):
                             self._defer_dependency_member(current.workflow_id, lease, error)
+                            dependency_barrier_seen = True
                             continue
                         self._fail_member(current.workflow_id, lease, error)
                         continue
@@ -432,14 +436,23 @@ class DynamicCanvasScheduler:
                     )
                 for lease, context, future in prepared:
                     try:
+                        outcome, latest_lease = future.result()
                         self._complete_member(
                             current.workflow_id,
-                            lease,
+                            latest_lease,
                             context,
-                            future.result(),
+                            outcome,
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
+                # A dependency barrier is durable state owned by the prompt
+                # preparation/reconciliation path.  Do not immediately loop
+                # and reclaim the same member while its successor evidence is
+                # still queued; the preparation worker (or the next runtime
+                # recovery tick) will wake a subsequent scheduler wave.
+                if dependency_barrier_seen:
+                    self._finish_if_quiescent(execution_id)
+                    return
 
     def compute_ready_wave(self, execution_id: str) -> tuple[str, ...]:
         execution = self._runtime.get_execution(execution_id)
@@ -470,7 +483,18 @@ class DynamicCanvasScheduler:
                 blocked = tuple(
                     source_node_id
                     for source_node_id in required_waiting
-                    if (source := nodes.get(source_node_id)) is None or source.status == "failed"
+                    if (source := nodes.get(source_node_id)) is None
+                    or source.status == "failed"
+                    or _prompt_preparation_failure(source) is not None
+                )
+                blocked_error = next(
+                    (
+                        failure
+                        for source_node_id in blocked
+                        if (source := nodes.get(source_node_id)) is not None
+                        and (failure := _prompt_preparation_failure(source)) is not None
+                    ),
+                    None,
                 )
                 self._runtime.update_member(
                     execution_id,
@@ -479,6 +503,7 @@ class DynamicCanvasScheduler:
                     phase="blocked_by_upstream" if blocked else "waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
+                    error=blocked_error,
                     event_type=(
                         "execution_member_skipped_dependency"
                         if blocked
@@ -492,9 +517,37 @@ class DynamicCanvasScheduler:
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
                         "preferred_upstream_node_ids": list(preferred_waiting),
+                        **({"error_code": blocked_error.code} if blocked_error is not None else {}),
                         **({"reason_code": "skipped_dependency"} if blocked else {}),
                     },
                 )
+                continue
+            if _prompt_preparation_pending(node := nodes.get(member.node_id)):
+                # Queued/working prompt preparation is a typed durable barrier,
+                # not a user-facing manual wait.  Keep the execution member out
+                # of the ready wave until the shared preparation worker
+                # publishes current evidence.
+                waiting_for = _prompt_preparation_waiting_sources(member)
+                if not (
+                    member.state == "waiting"
+                    and member.phase == "blocked_by_upstream"
+                    and member.waiting_for_node_ids == waiting_for
+                ):
+                    self._runtime.update_member(
+                        execution_id,
+                        member.node_id,
+                        state="waiting",
+                        phase="blocked_by_upstream",
+                        waiting_for_node_ids=waiting_for,
+                        now=self._clock(),
+                        event_type="execution_member_prompt_preparation_barrier",
+                        event_payload={
+                            "node_id": member.node_id,
+                            "operation_id": node.prompt_preparation.operation_id,
+                            "prompt_preparation_status": node.prompt_preparation.status,
+                            "waiting_for_node_ids": list(waiting_for),
+                        },
+                    )
                 continue
             candidates.append(member)
         selected: list[str] = []
@@ -530,6 +583,8 @@ class DynamicCanvasScheduler:
         member = next(
             item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
         )
+        observed_node = self._workflows.get_node(workflow_id, node_id)
+        observed_revision = observed_node.revision
         frozen_node = member.prompt_metadata.get("frozen_node")
         node = (
             CanvasNodeV2.model_validate(frozen_node)
@@ -541,6 +596,18 @@ class DynamicCanvasScheduler:
             or node.prompt_preparation.recipe_id
             or node.metadata.get("prompt_recipe_id")
         )
+        if node.prompt_preparation.status == "failed":
+            preparation_error = _prompt_preparation_failure(node)
+            assert preparation_error is not None
+            raise V2PersistenceError(
+                preparation_error.code,
+                preparation_error.message,
+                stage="agent_canvas_scheduler",
+                details={
+                    "retryable": preparation_error.retryable,
+                    "reason": "prompt_preparation_failed",
+                },
+            )
         if managed_prompt and node.prompt_preparation.status != "ready":
             member_snapshot = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
@@ -589,6 +656,17 @@ class DynamicCanvasScheduler:
                 )
             )
         )
+        # Capturing a run input snapshot records its ID on the live Node
+        # without advancing the authoring revision.  Carry only that
+        # execution-owned projection into the immutable run snapshot; any
+        # real authoring revision change remains fenced below.
+        current_after_inputs = self._workflows.get_node(workflow_id, node_id)
+        if current_after_inputs.revision == observed_revision:
+            node = node.model_copy(
+                update={
+                    "prompt_context_snapshot_id": current_after_inputs.prompt_context_snapshot_id
+                }
+            )
         self._assert_current_dependency_fence(
             workflow_id,
             execution_id,
@@ -598,6 +676,7 @@ class DynamicCanvasScheduler:
                 node=node,
                 inputs=(),
                 input_manifest=manifest,
+                authoring_revision_observed=observed_revision,
             ),
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
@@ -695,12 +774,30 @@ class DynamicCanvasScheduler:
                             compiled.parameter_compilation_snapshot_id or ""
                         )
                     )
-                    node = node.model_copy(
+                    current_node = self._workflows.get_node(workflow_id, node_id)
+                    if not _parameter_compilation_revision_is_current(
+                        node,
+                        current_node,
+                        compiled,
+                    ):
+                        raise V2PersistenceError(
+                            "execution_dependency_barrier_pending",
+                            "Execution admission is waiting for the current dependency wave.",
+                            stage="agent_canvas_scheduler",
+                            details={
+                                "retryable": True,
+                                "reason": "target_node_revision_changed",
+                                "reasons": ["target_node_revision_changed"],
+                                "source_node_ids": [],
+                            },
+                        )
+                    node = current_node.model_copy(
                         update={
                             "parameters": compiled.requested_parameters,
                             "parameter_provenance": compiled.parameter_provenance,
                         }
                     )
+                    observed_revision = current_node.revision
                 effective_parameters = EffectiveMediaParameterSnapshotV2(
                     requested=parameter_compilation_snapshot.requested_parameters,
                     effective=parameter_compilation_snapshot.effective_parameters,
@@ -763,6 +860,7 @@ class DynamicCanvasScheduler:
             execution_id=execution_id,
             node=node,
             inputs=inputs,
+            authoring_revision_observed=observed_revision,
             model_id=model_id,
             provider_id=provider_id,
             model_resolution=resolution,
@@ -987,48 +1085,83 @@ class DynamicCanvasScheduler:
             },
             expected_lease_generation=lease.generation,
         )
-        if updated and self._run_snapshots is not None:
-            refreshed_node = None
-            if "prompt_evidence_digest_stale" in details.get("reasons", ()):
-                node = self._workflows.get_node(workflow_id, lease.node_id)
-                operation_id = node.prompt_preparation.operation_id
-                if operation_id is None:
-                    raise V2PersistenceError(
-                        "node_prompt_preparation_conflict",
-                        "Stale prompt evidence has no preparation operation identity.",
-                        stage="agent_canvas_scheduler",
-                    )
-                refreshed_node = self._prompt_preparation.refresh_dependency_evidence(
-                    workflow_id,
-                    lease.node_id,
-                    operation_id=operation_id,
-                )
-            self._run_snapshots.refresh_member_intent(
-                lease.execution_id,
-                lease.node_id,
-                now=now,
-            )
-            if refreshed_node is not None:
-                self._runtime.update_member(
+        try:
+            if updated and self._run_snapshots is not None:
+                refreshed_node = None
+                if "prompt_evidence_digest_stale" in details.get("reasons", ()):
+                    node = self._workflows.get_node(workflow_id, lease.node_id)
+                    operation_id = node.prompt_preparation.operation_id
+                    if operation_id is None:
+                        raise V2PersistenceError(
+                            "node_prompt_preparation_conflict",
+                            "Stale prompt evidence has no preparation operation identity.",
+                            stage="agent_canvas_scheduler",
+                        )
+                    # Only a ready projection can be recompiled in place.  A
+                    # source publication may already have queued its successor;
+                    # in that case the durable dispatch worker owns the next
+                    # preparation wave.
+                    if node.prompt_preparation.status == "ready":
+                        refreshed_node = self._prompt_preparation.refresh_dependency_evidence(
+                            workflow_id,
+                            lease.node_id,
+                            operation_id=operation_id,
+                        )
+                self._run_snapshots.refresh_member_intent(
                     lease.execution_id,
                     lease.node_id,
-                    state="waiting",
-                    phase="blocked_by_upstream",
-                    waiting_for_node_ids=source_node_ids,
                     now=now,
-                    event_type="execution_member_dependency_barrier_reprepared",
-                    event_payload={
-                        "node_id": lease.node_id,
-                        "node_revision": refreshed_node.revision,
-                        "prompt_evidence_digest": (
-                            refreshed_node.prompt_preparation.assertion_evidence.evidence_digest
-                            if refreshed_node.prompt_preparation.assertion_evidence is not None
-                            else None
-                        ),
-                    },
-                    expected_lease_generation=lease.generation,
                 )
-        self._runtime.complete_lease(lease, now=now)
+                if refreshed_node is not None:
+                    self._runtime.update_member(
+                        lease.execution_id,
+                        lease.node_id,
+                        state="waiting",
+                        phase="blocked_by_upstream",
+                        waiting_for_node_ids=source_node_ids,
+                        now=now,
+                        event_type="execution_member_dependency_barrier_reprepared",
+                        event_payload={
+                            "node_id": lease.node_id,
+                            "node_revision": refreshed_node.revision,
+                            "prompt_evidence_digest": (
+                                refreshed_node.prompt_preparation.assertion_evidence.evidence_digest
+                                if refreshed_node.prompt_preparation.assertion_evidence is not None
+                                else None
+                            ),
+                        },
+                        expected_lease_generation=lease.generation,
+                    )
+        except Exception as reconciliation_error:  # noqa: BLE001 - persist typed wait.
+            error_code = getattr(
+                reconciliation_error,
+                "code",
+                "execution_dependency_barrier_reconciliation_failed",
+            )
+            self._runtime.update_member(
+                lease.execution_id,
+                lease.node_id,
+                state="waiting",
+                phase="blocked_by_upstream",
+                waiting_for_node_ids=source_node_ids,
+                now=self._clock(),
+                error=CanvasNodeErrorV2(
+                    code=str(error_code)[:160],
+                    message="Dependency barrier reconciliation is retryable.",
+                    retryable=True,
+                ),
+                event_type="execution_member_dependency_barrier_retryable",
+                event_payload={
+                    "node_id": lease.node_id,
+                    "source_node_ids": list(source_node_ids),
+                    "error_code": str(error_code)[:160],
+                },
+                expected_lease_generation=lease.generation,
+            )
+        finally:
+            # Reconciliation must never strand the execution lease, even when
+            # a snapshot refresh or prompt successor write fails.
+            self._runtime.complete_lease(lease, now=self._clock())
 
     def _assert_current_dependency_fence(
         self,
@@ -1050,8 +1183,65 @@ class DynamicCanvasScheduler:
         reasons: list[str] = []
         source_node_ids: set[str] = set()
         current_node = nodes.get(node_id)
+        observed_revision = context.authoring_revision_observed or context.node.revision
+        frozen_target_revision = context.authoring_revision_observed is not None and (
+            context.authoring_revision_observed != context.node.revision
+        )
         if current_node is None:
             reasons.append("target_node_missing")
+        elif current_node.prompt_preparation.status != "ready" and (
+            current_node.prompt_preparation.operation_id is not None
+            or current_node.generation_prompt is None
+        ):
+            # A run snapshot may legitimately carry an older target revision,
+            # but it can never bypass the live prompt-preparation barrier.
+            # Otherwise a same-wave queued/working projection falls through to
+            # provider admission with an empty or stale prompt.
+            reasons.append("target_prompt_preparation_not_ready")
+        elif current_node.revision != observed_revision:
+            reasons.append("target_node_revision_changed")
+        elif not frozen_target_revision and (
+            current_node.prompt_preparation.operation_id
+            != context.node.prompt_preparation.operation_id
+        ):
+            reasons.append("target_prompt_operation_changed")
+        elif not frozen_target_revision and (
+            current_node.prompt_preparation.prompt_digest
+            != context.node.prompt_preparation.prompt_digest
+            or current_node.prompt_preparation.binding_digest
+            != context.node.prompt_preparation.binding_digest
+            or current_node.prompt_preparation.recipe_digest
+            != context.node.prompt_preparation.recipe_digest
+            or current_node.prompt_preparation.style_projection_digest
+            != context.node.prompt_preparation.style_projection_digest
+            or current_node.prompt_preparation.brief_digest
+            != context.node.prompt_preparation.brief_digest
+            or current_node.prompt_preparation.context_snapshot_id
+            != context.node.prompt_preparation.context_snapshot_id
+        ):
+            reasons.append("target_prompt_evidence_changed")
+        elif not frozen_target_revision and (
+            current_node.prompt_preparation.occurrence_id
+            != context.node.prompt_preparation.occurrence_id
+            or current_node.prompt_preparation.character_phase
+            != context.node.prompt_preparation.character_phase
+            or current_node.metadata.get("occurrence_id")
+            != context.node.metadata.get("occurrence_id")
+            or current_node.metadata.get("character_phase")
+            != context.node.metadata.get("character_phase")
+        ):
+            reasons.append("target_occurrence_mapping_changed")
+        else:
+            current_evidence = current_node.prompt_preparation.assertion_evidence
+            frozen_evidence = context.node.prompt_preparation.assertion_evidence
+            current_evidence_digest = (
+                current_evidence.evidence_digest if current_evidence is not None else None
+            )
+            frozen_evidence_digest = (
+                frozen_evidence.evidence_digest if frozen_evidence is not None else None
+            )
+            if current_evidence_digest != frozen_evidence_digest:
+                reasons.append("target_prompt_evidence_changed")
 
         manifest = context.input_manifest
         if manifest is not None:
@@ -1161,8 +1351,10 @@ class DynamicCanvasScheduler:
         self,
         lease: NodeExecutionLeaseV2,
         context: NodeExecutionContext,
-    ) -> NodeExecutionOutcome:
-        return self._leases.guard(lease).run(lambda: self._execute_member(context))
+    ) -> tuple[NodeExecutionOutcome, NodeExecutionLeaseV2]:
+        return self._leases.guard(lease).run_with_latest_lease(
+            lambda: self._execute_member(context)
+        )
 
     def _complete_member(
         self,
@@ -1171,8 +1363,8 @@ class DynamicCanvasScheduler:
         context: NodeExecutionContext,
         outcome: NodeExecutionOutcome,
     ) -> None:
-        now = self._clock()
         self._leases.assert_current(lease)
+        now = self._clock()
         execution_id = lease.execution_id
         node_id = lease.node_id
         if outcome.provider_task_id is not None:
@@ -1245,11 +1437,14 @@ class DynamicCanvasScheduler:
             return
         if self._output_preparer is not None and self._result_committer is not None:
             fingerprint = _execution_fingerprint(context)
-            prepared = self._output_preparer.prepare(
-                context,
-                outcome,
-                fingerprint=fingerprint,
+            prepared, lease = self._leases.guard(lease).run_with_latest_lease(
+                lambda: self._output_preparer.prepare(
+                    context,
+                    outcome,
+                    fingerprint=fingerprint,
+                )
             )
+            now = self._clock()
             member = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
             )
@@ -1275,7 +1470,9 @@ class DynamicCanvasScheduler:
             fingerprint = _execution_fingerprint(context)
             publication_started_at = self._clock()
             try:
-                asset_id = self._media_publisher(context, outcome.media, fingerprint)
+                asset_id, lease = self._leases.guard(lease).run_with_latest_lease(
+                    lambda: self._media_publisher(context, outcome.media, fingerprint)
+                )
             except Exception as error:
                 self._trace_stage(
                     context,
@@ -1408,6 +1605,29 @@ class DynamicCanvasScheduler:
             except V2PersistenceError as commit_error:
                 if commit_error.code != "stale_execution_lease":
                     raise
+                stale_detail = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                stale_digest = hashlib.sha256(stale_detail.model_dump_json().encode()).hexdigest()
+                self._result_committer.reconcile_stale_lease_failure(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=lease.execution_id,
+                        member_id=member.member_id,
+                        node_id=lease.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=f"{lease.execution_id}:{lease.node_id}:{lease.generation}:failed",
+                        payload_digest=stale_digest,
+                        provider_task_id=member.provider_task_id,
+                        outcome="failed",
+                        error=stale_detail,
+                        committed_at=self._clock(),
+                    )
+                )
+                return
             self._reconcile_terminal_member(
                 workflow_id,
                 member,
@@ -1810,6 +2030,91 @@ def _node_output_source_is_ready(
         and source.node_type in {"text", "script"}
         and source.status == "draft"
         and bool(source.structured_content)
+    )
+
+
+def _prompt_preparation_pending(node: CanvasNodeV2 | None) -> bool:
+    """Return whether a managed Draft is waiting on durable prompt work."""
+
+    if node is None or node.node_type not in {"text", "script", "image", "video", "audio"}:
+        return False
+    preparation = node.prompt_preparation
+    managed = bool(
+        preparation.role_variant or preparation.recipe_id or node.metadata.get("prompt_recipe_id")
+    )
+    return managed and preparation.status in {"queued", "working"}
+
+
+def _prompt_preparation_failure(node: CanvasNodeV2 | None) -> CanvasNodeErrorV2 | None:
+    """Return a terminal preparation error without inventing a user wait."""
+
+    if node is None or node.prompt_preparation.status != "failed":
+        return None
+    return node.prompt_preparation.error or CanvasNodeErrorV2(
+        code="prompt_preparation_failed",
+        message="Node prompt preparation failed without a typed error.",
+        retryable=False,
+    )
+
+
+def _prompt_preparation_waiting_sources(
+    member: CanvasExecutionMembershipV2,
+) -> tuple[str, ...]:
+    """Expose only dependency node IDs for a prompt-preparation barrier."""
+
+    snapshot = member.run_intent_snapshot
+    if snapshot is None:
+        return ()
+    return tuple(
+        dict.fromkeys(
+            binding.source_id
+            for binding in snapshot.binding_snapshots
+            if binding.source_kind == "node_output" and binding.source_id
+        )
+    )
+
+
+def _parameter_compilation_revision_is_current(
+    original: CanvasNodeV2,
+    current: CanvasNodeV2,
+    compiled: CompiledVideoParametersV2,
+) -> bool:
+    """Allow only the compiler's own derived-parameter revision bump."""
+
+    if current.revision not in {original.revision, original.revision + 1}:
+        return False
+    for field in (
+        "node_id",
+        "workflow_id",
+        "node_type",
+        "creative_role",
+        "role_contract_version",
+        "title",
+        "status",
+        "execution_mode",
+        "summary_prompt",
+        "generation_prompt",
+        "structured_content",
+        "model_selection_mode",
+        "model_ref",
+        "metadata",
+        "prompt_context_snapshot_id",
+        "output_asset_id",
+        "position",
+        "error",
+        "prompt_preparation",
+        "variation_draft",
+    ):
+        if getattr(current, field) != getattr(original, field):
+            return False
+    if current.revision == original.revision:
+        return (
+            current.parameters == original.parameters
+            and current.parameter_provenance == original.parameter_provenance
+        )
+    return (
+        current.parameters == compiled.authoring_parameters
+        and current.parameter_provenance == compiled.parameter_provenance
     )
 
 

@@ -121,7 +121,8 @@ class ProviderTaskRecoveryService:
         if lease is None:
             return False
         guard = self._leases.guard(lease)
-        poll = guard.run(lambda: self._poller(task))
+        poll, lease = guard.run_with_latest_lease(lambda: self._poller(task))
+        now = self._clock()
         remote_task_id = poll.remote_task_id or task.remote_task_id
         result_descriptor = _merge_result_descriptor(task, poll)
         if poll.status in {"submitted", "waiting", "running"}:
@@ -190,7 +191,9 @@ class ProviderTaskRecoveryService:
             payload={"status": "recovering"},
         )
         try:
-            payload = guard.run(lambda: self._downloader(current))
+            payload, lease = self._leases.guard(lease).run_with_latest_lease(
+                lambda: self._downloader(current)
+            )
         except Exception as error:
             source_code = getattr(error, "code", None)
             code = "provider_result_download_failed"
@@ -248,7 +251,7 @@ class ProviderTaskRecoveryService:
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
-            prepared = guard.run(
+            prepared, lease = self._leases.guard(lease).run_with_latest_lease(
                 lambda: self._output_preparer.prepare(
                     context,
                     NodeExecutionOutcome(
@@ -262,29 +265,59 @@ class ProviderTaskRecoveryService:
                     fingerprint=fingerprint,
                 )
             )
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=task.workflow_id,
-                    execution_id=task.execution_id,
-                    member_id=member.member_id,
-                    node_id=task.node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=prepared.logical_result_key,
-                    payload_digest=prepared.payload_digest,
-                    provider_task_id=task.task_id,
-                    outcome="succeeded",
-                    prepared_result=prepared,
-                    committed_at=now,
+            try:
+                self._result_committer.commit(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=task.workflow_id,
+                        execution_id=task.execution_id,
+                        member_id=member.member_id,
+                        node_id=task.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=prepared.logical_result_key,
+                        payload_digest=prepared.payload_digest,
+                        provider_task_id=task.task_id,
+                        outcome="succeeded",
+                        prepared_result=prepared,
+                        committed_at=self._clock(),
+                    )
                 )
-            )
+            except V2PersistenceError as commit_error:
+                if commit_error.code != "stale_execution_lease":
+                    raise
+                error = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                self._result_committer.reconcile_stale_lease_failure(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=task.workflow_id,
+                        execution_id=task.execution_id,
+                        member_id=member.member_id,
+                        node_id=task.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=(
+                            f"{task.execution_id}:{task.node_id}:{lease.generation}:failed"
+                        ),
+                        payload_digest=hashlib.sha256(error.model_dump_json().encode()).hexdigest(),
+                        provider_task_id=task.task_id,
+                        outcome="failed",
+                        error=error,
+                        committed_at=self._clock(),
+                    )
+                )
+                return True
             if task.submission_intent_id is not None:
                 self._submission_intents.complete(
                     self._runtime.get_submission_intent(task.submission_intent_id),
                     now=now,
                 )
             return True
-        asset_id = guard.run(lambda: self._media_publisher(context, payload, fingerprint))
+        asset_id, lease = self._leases.guard(lease).run_with_latest_lease(
+            lambda: self._media_publisher(context, payload, fingerprint)
+        )
         if not self._state_machine.transition_member(
             self._runtime,
             member,
@@ -353,24 +386,46 @@ class ProviderTaskRecoveryService:
         )
         if self._result_committer is not None:
             digest = hashlib.sha256(error.model_dump_json().encode()).hexdigest()
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=task.workflow_id,
-                    execution_id=task.execution_id,
-                    member_id=member.member_id,
-                    node_id=task.node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=(
-                        f"provider-task:{task.task_id}:{lease.generation}:{status}"
-                    ),
-                    payload_digest=digest,
-                    provider_task_id=task.task_id,
-                    outcome=("cancelled" if status == "cancelled" else "failed"),
-                    error=error,
-                    committed_at=now,
-                )
+            command = CanvasExecutionResultCommitCommandV2(
+                workflow_id=task.workflow_id,
+                execution_id=task.execution_id,
+                member_id=member.member_id,
+                node_id=task.node_id,
+                lease_owner_id=lease.owner_id,
+                lease_generation=lease.generation,
+                logical_result_key=(f"provider-task:{task.task_id}:{lease.generation}:{status}"),
+                payload_digest=digest,
+                provider_task_id=task.task_id,
+                outcome=("cancelled" if status == "cancelled" else "failed"),
+                error=error,
+                committed_at=now,
             )
+            try:
+                self._result_committer.commit(command)
+            except V2PersistenceError as commit_error:
+                if commit_error.code != "stale_execution_lease":
+                    raise
+                stale_error = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                self._result_committer.reconcile_stale_lease_failure(
+                    command.model_copy(
+                        update={
+                            "logical_result_key": (
+                                f"{task.execution_id}:{task.node_id}:{lease.generation}:failed"
+                            ),
+                            "payload_digest": hashlib.sha256(
+                                stale_error.model_dump_json().encode()
+                            ).hexdigest(),
+                            "outcome": "failed",
+                            "error": stale_error,
+                            "committed_at": self._clock(),
+                        }
+                    )
+                )
+                return
             if task.submission_intent_id is not None:
                 self._submission_intents.complete(
                     self._runtime.get_submission_intent(task.submission_intent_id),
