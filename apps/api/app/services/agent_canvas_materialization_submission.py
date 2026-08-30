@@ -38,7 +38,9 @@ from app.schemas.agent_canvas_materialization import (
     SelectedProposalCardV2,
     SelectedConceptOptionV1,
 )
-from app.services.agent_canvas_requirements import character_occurrences_for_authoring
+from app.services.agent_canvas_character_proposal_scope import (
+    resolve_character_proposal_target,
+)
 from app.services.agent_canvas_storyboard_selection_identity import (
     StoryboardSelectionIdentityV1,
     StoryboardSelectionIdsV1,
@@ -437,6 +439,24 @@ class _ProposalSelectionSubmissionService:
         requirement_revision_no = None
         journey_action_id = accepted.turn_id
         if proposal.capability_id == "character_design":
+            persisted_target = self._conversations.get_proposal_character_target(
+                proposal.proposal_id
+            )
+            if persisted_target is None:
+                raise _error(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal is missing its persisted occurrence target.",
+                )
+            if (
+                proposal.occurrence_id != persisted_target.occurrence_id
+                or proposal.occurrence_index != persisted_target.occurrence_index
+                or proposal.occurrence_count != persisted_target.occurrence_count
+                or proposal.character_phase != persisted_target.character_phase
+            ):
+                raise _error(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal public scope differs from its persisted target.",
+                )
             current_action = session.journey.active_action
             if (
                 session.journey.stage != "character"
@@ -456,24 +476,33 @@ class _ProposalSelectionSubmissionService:
             requirement = AgentCanvasRequirementRepository(
                 self._conversations.database
             ).get_current(proposal.workflow_id)
-            occurrence = next(
-                (
-                    item
-                    for item in character_occurrences_for_authoring(requirement)
-                    if item.occurrence_id == current_action.occurrence_id
-                    and item.presence == "include"
-                ),
-                None,
+            current_target = resolve_character_proposal_target(
+                action=current_action,
+                requirement_revision=requirement,
             )
-            if occurrence is None:
+            if current_target != persisted_target:
                 raise _error(
-                    "character_occurrence_invalid",
-                    "Character materialization does not match the current Ledger occurrence.",
+                    "character_proposal_scope_invalid",
+                    "Character Proposal target does not match the current Journey authority.",
+                    details={
+                        "proposal_occurrence_id": persisted_target.occurrence_id,
+                        "current_occurrence_id": current_target.occurrence_id,
+                        "proposal_target_digest": persisted_target.target_digest,
+                        "current_target_digest": current_target.target_digest,
+                    },
                 )
-            occurrence_id = occurrence.occurrence_id
-            character_phase = current_action.character_phase
-            requirement_revision_id = requirement.revision_id
-            requirement_revision_no = requirement.revision_no
+            if (
+                action.expected_session_revision != proposal.guidance_session_revision
+                or session.revision != action.expected_session_revision
+            ):
+                raise _error(
+                    "guidance_revision_conflict",
+                    "Guidance state changed before Character materialization.",
+                )
+            occurrence_id = persisted_target.occurrence_id
+            character_phase = persisted_target.character_phase
+            requirement_revision_id = persisted_target.requirement_revision_id
+            requirement_revision_no = persisted_target.requirement_revision_no
             journey_action_id = current_action.action_id
         if proposal.capability_id == "character_design":
             materialization_id = (
@@ -485,6 +514,9 @@ class _ProposalSelectionSubmissionService:
                             requirement_revision_id or "",
                             occurrence_id or "",
                             character_phase or "",
+                            persisted_target.target_digest
+                            if proposal.capability_id == "character_design"
+                            else "",
                             journey_action_id,
                             accepted.turn_id,
                             proposal.target_node_id or "",
@@ -523,6 +555,7 @@ class _ProposalSelectionSubmissionService:
                     "requirement_revision_id": requirement_revision_id,
                     "requirement_revision_no": requirement_revision_no,
                     "journey_action_id": journey_action_id,
+                    "character_scope_digest": persisted_target.target_digest,
                     "target_node_id": proposal.target_node_id,
                     "target_node_revision": proposal.target_node_revision,
                 }
@@ -686,5 +719,15 @@ def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
-def _error(code: str, message: str) -> V2PersistenceError:
-    return V2PersistenceError(code, message, stage="materialization_submission")
+def _error(
+    code: str,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> V2PersistenceError:
+    return V2PersistenceError(
+        code,
+        message,
+        stage="materialization_submission",
+        details=details,
+    )

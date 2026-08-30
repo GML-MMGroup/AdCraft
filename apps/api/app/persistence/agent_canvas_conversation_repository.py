@@ -3495,6 +3495,33 @@ class AgentCanvasConversationRepository:
 
         return self.get_proposal(proposal_id)
 
+    def get_proposal_character_target(
+        self,
+        proposal_id: str,
+    ) -> CharacterProposalTargetV1 | None:
+        """Read the immutable Character scope stored with one Proposal."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasConceptProposalRow).where(
+                            AgentCanvasConceptProposalRow.proposal_id == proposal_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        if row is None:
+            raise _error("proposal_not_found", "Concept proposal was not found.")
+        return _proposal_character_target(row)
+
     def list_open_proposals(self, workflow_id: str) -> tuple[ConceptProposalV2, ...]:
         try:
             with self._database.engine.connect() as connection:
