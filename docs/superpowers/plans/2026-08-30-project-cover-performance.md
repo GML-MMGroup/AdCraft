@@ -27,11 +27,11 @@
 - `useProjectCover(project, coverPriority)` continues returning `V2ProjectCover | null | undefined`.
 - `coverPriority` remains an image loading hint passed to `ProjectCard`, but no longer invalidates the metadata request effect.
 
-- [ ] **Step 1: Add a regression test** asserting that changing only `coverPriority` does not issue a second assets request for the same project identity.
-- [ ] **Step 2: Run the focused test and confirm it fails with the current effect dependency list.**
-- [ ] **Step 3: Remove `coverPriority` from the metadata effect dependencies and keep it only in queue scheduling/image props.**
-- [ ] **Step 4: Run the cover test file and confirm all request-count assertions pass.**
-- [ ] **Step 5: Commit:** `fix(projects): keep cover metadata identity stable across priority changes`.
+- [x] **Step 1: Add a regression test** asserting that changing only `coverPriority` does not issue a second assets request for the same project identity.
+- [x] **Step 2: Run the focused test and confirm it fails with the current effect dependency list.**
+- [x] **Step 3: Remove `coverPriority` from the metadata effect dependencies and keep it only in queue scheduling/image props.**
+- [x] **Step 4: Run the cover test file and confirm all request-count assertions pass.**
+- [x] **Step 5: Commit:** `fix(projects): keep cover metadata identity stable across priority changes`.
 
 ### Task 2: Preserve visible covers during stale-while-revalidate
 
@@ -43,11 +43,11 @@
 - A cached or previously resolved `V2ProjectCover` remains rendered while its background lookup is pending.
 - A confirmed null cover may still render the empty state; an in-flight refresh must not overwrite a non-null cover with `null` or `undefined`.
 
-- [ ] **Step 1: Add a regression test** that rerenders the same project identity while a refresh is pending and asserts the previous image remains present.
-- [ ] **Step 2: Run the test and confirm the current state reset produces the blank state.**
-- [ ] **Step 3: Initialize the cover entry from the previous entry/cache and only replace it after a lookup settles.**
-- [ ] **Step 4: Run the focused cover/cache tests and confirm the old cover remains visible during refresh.**
-- [ ] **Step 5: Commit:** `fix(projects): retain cached covers during background refresh`.
+- [x] **Step 1: Add a regression test** that rerenders the same project identity while a refresh is pending and asserts the previous image remains present.
+- [x] **Step 2: Run the test and confirm the current state reset produces the blank state.**
+- [x] **Step 3: Initialize the cover entry from the previous entry/cache and only replace it after a lookup settles.**
+- [x] **Step 4: Run the focused cover/cache tests and confirm the old cover remains visible during refresh.**
+- [x] **Step 5: Commit:** `fix(projects): retain cached covers during background refresh`.
 
 ### Task 3: Use a preview rendition for project cards when available
 
@@ -62,11 +62,11 @@
 - Extend the existing frontend cover model with an optional `previewPath` only when it is present in an already-returned asset payload; do not infer a new backend field.
 - `ProjectCard` uses `previewPath ?? mediaPath` for display and keeps `mediaPath` as the original AssetVersion content fallback.
 
-- [ ] **Step 1: Add fixtures with an existing `preview_url` and tests asserting it is retained/versioned for display.**
-- [ ] **Step 2: Run the focused cover tests and confirm the current model drops the preview URL.**
-- [ ] **Step 3: Thread the existing preview URL through cover resolution and localStorage normalization without changing generation identity.
-- [ ] **Step 4: Update `ProjectPreviewImage` to use the preview path for the card while preserving the original path for full media use.
-- [ ] **Step 5: Run cover/card tests and commit:** `perf(projects): prefer versioned preview renditions for cards`.
+- [x] **Step 1: Add fixtures with an existing `preview_url` and tests asserting it is retained/versioned for display.**
+- [x] **Step 2: Run the focused cover tests and confirm the current model drops the preview URL.**
+- [x] **Step 3: Thread the existing preview URL through cover resolution and localStorage normalization without changing generation identity.**
+- [x] **Step 4: Update `ProjectPreviewImage` to use the preview path for the card while preserving the original path for full media use.**
+- [x] **Step 5: Run cover/card tests and commit:** `perf(projects): prefer versioned preview renditions for cards`.
 
 ### Task 4: Add performance evidence and verify the complete frontend path
 
@@ -78,11 +78,11 @@
 - The browser test uses mocked frontend-owned API routes only and records assets/content requests, cache reuse, and visible cover timing state.
 - The test must not contact the canonical backend repository or claim live integration.
 
-- [ ] **Step 1: Add a deterministic browser fixture for first load, hard reload-equivalent remount, and virtual-window scroll.**
-- [ ] **Step 2: Assert one metadata request per mounted identity, no duplicate request from priority changes, and no provider/workflow request when asset data is sufficient.**
-- [ ] **Step 3: Assert cached cover metadata remains visible before the background request resolves.**
-- [ ] **Step 4: Run focused Vitest, browser mock tests, typecheck, and production build.
-- [ ] **Step 5: Commit:** `test(projects): cover cache and virtual list regression coverage`.
+- [x] **Step 1: Add a deterministic browser fixture for first load, hard reload-equivalent remount, and virtual-window scroll.**
+- [x] **Step 2: Assert one metadata request per mounted identity, no duplicate request from priority changes, and no provider/workflow request when asset data is sufficient.**
+- [x] **Step 3: Assert cached cover metadata remains visible before the background request resolves.**
+- [x] **Step 4: Run focused Vitest, browser mock tests, typecheck, and production build.**
+- [x] **Step 5: Commit:** `test(projects): cover cache and virtual list regression coverage`.
 
 ## Backend Follow-up (not implemented in this plan)
 
