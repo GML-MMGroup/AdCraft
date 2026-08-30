@@ -560,6 +560,8 @@ export type PropProposalOptionV1 = { readonly "title": string; readonly "public_
 
 export type CharacterProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
 
+export type CharacterProposalTargetV1 = { readonly "occurrence_id": string; readonly "occurrence_index": number; readonly "occurrence_count": number; readonly "character_phase"?: "main"; readonly "requirement_revision_id": string; readonly "requirement_revision_no": number; readonly "target_digest": string };
+
 export type SceneProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
 
 export type ScriptProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
