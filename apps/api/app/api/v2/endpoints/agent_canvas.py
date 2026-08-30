@@ -2485,12 +2485,14 @@ def get_asset_content(
     asset_id: str,
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version_id: Annotated[str | None, Query(alias="v", min_length=1, max_length=160)] = None,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     download: Annotated[bool, Query()] = False,
 ) -> Response:
     try:
         content = runtime.assets.open_content(
             asset_id,
+            version_id=version_id,
             range_header=range_header,
             download=download,
         )

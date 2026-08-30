@@ -517,10 +517,11 @@ class AgentCanvasAssetService:
         self,
         asset_id: str,
         *,
+        version_id: str | None = None,
         range_header: str | None = None,
         download: bool = False,
     ) -> AssetContentResponse:
-        version = self._require_ready_version(asset_id)
+        version = self._require_ready_version(asset_id, version_id=version_id)
         path = self._storage.resolve_local_path(version.storage_key)
         size = path.stat().st_size
         start, end, partial = _parse_range(range_header, size)
@@ -530,7 +531,11 @@ class AgentCanvasAssetService:
         headers = {
             "Accept-Ranges": "bytes",
             "Content-Length": str(len(body)),
-            "Cache-Control": "private, max-age=31536000, immutable",
+            "Cache-Control": (
+                "private, max-age=31536000, immutable"
+                if version_id is not None
+                else "private, max-age=0, must-revalidate"
+            ),
             "ETag": f'"{version.asset_id}:{version.version_id}"',
         }
         if partial:
@@ -630,8 +635,13 @@ class AgentCanvasAssetService:
                 continue
             self._storage.resolve_local_path(storage_key).unlink(missing_ok=True)
 
-    def _require_ready_version(self, asset_id: str) -> AssetVersionMetadataV2:
-        version = self._assets.find_version(asset_id=asset_id)
+    def _require_ready_version(
+        self,
+        asset_id: str,
+        *,
+        version_id: str | None = None,
+    ) -> AssetVersionMetadataV2:
+        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
         if (
             version is None
             or version.status != "ready"
