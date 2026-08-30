@@ -22998,6 +22998,12 @@
           "title": "Outcome",
           "type": "string"
         },
+        "precedence": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Precedence",
+          "type": "integer"
+        },
         "reason": {
           "enum": [
             "exact_duplicate",
@@ -23023,6 +23029,20 @@
           "default": null,
           "title": "Retained Block Id"
         },
+        "retained_precedence": {
+          "anyOf": [
+            {
+              "maximum": 128,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Precedence"
+        },
         "source_digest": {
           "pattern": "^sha256:[a-f0-9]{64}$",
           "title": "Source Digest",
@@ -23038,6 +23058,7 @@
       "required": [
         "block_id",
         "outcome",
+        "precedence",
         "reason",
         "source_digest",
         "source_id"
@@ -23157,6 +23178,20 @@
           ],
           "default": null,
           "title": "Retained Block Id"
+        },
+        "retained_precedence": {
+          "anyOf": [
+            {
+              "maximum": 128,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Precedence"
         },
         "schema_version": {
           "const": "1",

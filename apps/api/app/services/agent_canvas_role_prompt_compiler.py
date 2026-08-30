@@ -582,6 +582,7 @@ def _compaction_decisions(
         elif (
             block.disposition != "duplicate_candidate"
             or block.retained_block_id != retained_brief_id
+            or block.retained_precedence != block.precedence
             or block.source_digest != brief_digest
             or block.effective_constraints_digest != brief_digest
         ):
@@ -594,8 +595,10 @@ def _compaction_decisions(
                 block_id=block.block_id,
                 source_id=block.source_id,
                 source_digest=block.source_digest,
+                precedence=block.precedence,
                 outcome=outcome,  # type: ignore[arg-type]
                 retained_block_id=block.retained_block_id,
+                retained_precedence=block.retained_precedence,
                 reason=reason,  # type: ignore[arg-type]
             )
         )

@@ -114,14 +114,17 @@ class RolePromptContextBlockV2(_RolePromptModel):
     effective_constraints_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     disposition: RolePromptContextDispositionV2 = "retain_unknown"
     retained_block_id: str | None = Field(default=None, max_length=160)
+    retained_precedence: int | None = Field(default=None, ge=0, le=128)
 
     @model_validator(mode="after")
     def validate_compaction_candidate(self) -> "RolePromptContextBlockV2":
         if self.disposition == "duplicate_candidate" and (
-            self.ownership != "compiler" or not self.retained_block_id
+            self.ownership != "compiler"
+            or not self.retained_block_id
+            or self.retained_precedence is None
         ):
             raise ValueError(
-                "Only compiler-owned blocks with a retained identity may be compacted."
+                "Only compiler-owned blocks with retained identity and precedence may be compacted."
             )
         if self.ownership == "user" and self.disposition != "preserve":
             raise ValueError("User-owned context blocks must be preserved.")
@@ -147,8 +150,10 @@ class RolePromptCompactionDecisionV2(_RolePromptModel):
     block_id: str = Field(min_length=1, max_length=160)
     source_id: str = Field(min_length=1, max_length=160)
     source_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    precedence: int = Field(ge=0, le=128)
     outcome: RolePromptCompactionOutcomeV2
     retained_block_id: str | None = Field(default=None, max_length=160)
+    retained_precedence: int | None = Field(default=None, ge=0, le=128)
     reason: Literal[
         "policy_disabled",
         "not_eligible",
