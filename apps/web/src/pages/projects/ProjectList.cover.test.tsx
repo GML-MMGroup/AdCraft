@@ -350,6 +350,34 @@ describe("ProjectList covers", () => {
     expect(controlled.active()).toBe(1);
   });
 
+  it("keeps the previously resolved cover visible while a refresh is pending", async () => {
+    const controlled = installControlledCoverRequests();
+    const initial = projects(1)[0];
+    if (!initial) throw new Error("Expected a project fixture.");
+    const callbacks = {
+      onOpenProject: vi.fn(),
+      onTrashProject: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onRenameProject: vi.fn(),
+    };
+    const view = render(<ProjectList projects={[initial]} {...callbacks} />);
+
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("first-cover", "/api/v2/assets/first-cover/content")]);
+    });
+    await waitFor(() => {
+      expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+        .toContain("first-cover/content?v=first-cover-version");
+    });
+
+    view.rerender(<ProjectList projects={[{ ...initial, updatedAt: "2026-07-25T08:00:00Z" }]} {...callbacks} />);
+    await act(async () => {});
+
+    expect(controlled.active()).toBe(1);
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("first-cover/content?v=first-cover-version");
+  });
+
   it("loads source node authority when product assets have ambiguous public roles", async () => {
     const controlled = installControlledCoverRequests();
     let resolveAuthority: ((value: unknown) => void) | undefined;

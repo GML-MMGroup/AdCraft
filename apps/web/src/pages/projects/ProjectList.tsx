@@ -270,7 +270,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
 
   useEffect(() => {
     const cachedCover = loadProjectCoverCache(requestKey);
-    setEntry(cachedCover ? { cover: cachedCover } : null);
+    setEntry((current) => (cachedCover ? { cover: cachedCover } : current));
     let active = true;
     let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
     const subscription = projectCoverResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (signal) => (
@@ -308,7 +308,9 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
         // The preliminary cover remains usable when optional authority lookup fails.
       });
     }).catch(() => {
-      if (active) setEntry({ cover: null });
+      if (active) {
+        setEntry((current) => (current?.cover ? current : { cover: null }));
+      }
     });
 
     return () => {
