@@ -362,6 +362,10 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 
 你可以在**配置中心**统一管理 API Key、默认模型、比例、清晰度、时长、是否生成音频、是否加水印等参数。不同环节可选择不同平台，也可设置默认平台与备用平台，让广告生产更灵活、更稳定。
 
+### CLIProxyAPI 集成
+
+本项目支持通过 Docker Compose sidecar 接入 CLIProxyAPI，将 AdCraft 的 LLM 请求转发到已配置的兼容模型服务。配置、OAuth 凭据和本地 API Key 均只保存在本机，详见 [CLIProxyAPI Compose 配置指南](docs/cliproxyapi-compose-setup_zh.md)。
+
 ---
 
 ## 🏗️ 工作原理

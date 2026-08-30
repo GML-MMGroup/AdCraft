@@ -18,6 +18,7 @@ export const agentCanvasApi = {
   patchAgentCanvasLayout: v2Api.patchAgentCanvasLayout,
   createAgentCanvasNode: v2Api.createAgentCanvasNode,
   patchAgentCanvasNode: v2Api.patchAgentCanvasNode,
+  retryAgentCanvasNodePromptPreparation: v2Api.retryAgentCanvasNodePromptPreparation,
   deleteAgentCanvasNode: v2Api.deleteAgentCanvasNode,
   saveAgentCanvasVariationDraft: v2Api.saveAgentCanvasVariationDraft,
   discardAgentCanvasVariationDraft: v2Api.discardAgentCanvasVariationDraft,

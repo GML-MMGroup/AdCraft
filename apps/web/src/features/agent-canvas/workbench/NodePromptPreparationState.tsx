@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
@@ -15,9 +15,11 @@ const PREPARATION_LABELS = {
 
 export function NodePromptPreparationState({
   node,
+  onRetryPromptPreparation,
   onWorkflowRefresh,
 }: {
   node: CanvasNodeV2;
+  onRetryPromptPreparation?: (nodeId: string) => Promise<void>;
   onWorkflowRefresh?: () => Promise<void> | void;
 }) {
   const preparation = promptPreparationForNode(node);
@@ -29,6 +31,8 @@ export function NodePromptPreparationState({
     presentationStreamId ? [presentationStreamId] : [],
   );
   const handledTerminalEventRef = useRef<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!presentationStreamId || !onWorkflowRefresh) return;
@@ -48,6 +52,27 @@ export function NodePromptPreparationState({
   const streamPreview = presentationStreamId
     ? presentationStreams[presentationStreamId]?.text.trim()
     : "";
+  const canRetry = Boolean(
+    status === "failed" && error?.retryable && onRetryPromptPreparation,
+  );
+
+  const retry = async () => {
+    if (!onRetryPromptPreparation || retrying) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await onRetryPromptPreparation(node.node_id);
+      await onWorkflowRefresh?.();
+    } catch (retryFailure) {
+      setRetryError(
+        retryFailure instanceof Error
+          ? retryFailure.message
+          : "Prompt preparation retry failed.",
+      );
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <section
@@ -62,6 +87,20 @@ export function NodePromptPreparationState({
           {error.message}
           {error.retryable ? " Retryable." : ""}
         </small>
+      ) : null}
+      {retryError ? <small>{retryError}</small> : null}
+      {canRetry ? (
+        <div className="agent-node-workbench__prompt-preparation-action">
+          <span>仅重新准备提示词</span>
+          <button
+            type="button"
+            aria-label="Retry prompt preparation"
+            disabled={retrying}
+            onClick={() => void retry()}
+          >
+            {retrying ? "Preparing…" : "重新准备"}
+          </button>
+        </div>
       ) : null}
     </section>
   );

@@ -115,6 +115,7 @@ class ProviderCredentialRegistry:
             _siliconflow_definition(),
             _tianpuyue_definition(),
             _volcengine_ark_definition(),
+            _cliproxyapi_definition(),
         )
         self._definitions = MappingProxyType(
             {definition.provider_id: definition for definition in provider_definitions}
@@ -1207,6 +1208,27 @@ def _volcengine_ark_definition() -> ProviderCredentialDefinition:
         allowed_test_origins=("https://ark.cn-beijing.volces.com",),
         display_name="Volcengine Ark",
         capability_consumers=MappingProxyType({"text": "llm", "image": "image", "video": "video"}),
+    )
+
+
+def _cliproxyapi_definition() -> ProviderCredentialDefinition:
+    bindings: Mapping[ProviderCredentialConsumer, ConsumerCredentialBinding] = MappingProxyType(
+        {
+            "llm": ConsumerCredentialBinding(
+                consumer="llm",
+                dotenv_field="LLM_API_KEY",
+                settings_field="llm_api_key",
+                endpoint_field="llm_base_url",
+                test_capability="minimal_request",
+            ),
+        }
+    )
+    return ProviderCredentialDefinition(
+        provider_id="cliproxyapi",
+        bindings=bindings,
+        allowed_test_origins=("http://cpa:8317", "http://127.0.0.1:8317"),
+        display_name="CLIProxyAPI",
+        capability_consumers=MappingProxyType({"text": "llm", "image": "llm"}),
     )
 
 

@@ -439,6 +439,12 @@ export function AgentCanvasPage() {
     );
   }, []);
 
+  const retryPromptPreparation = useCallback(async (nodeId: string) => {
+    if (!workflow) throw new Error("Select a Workflow before retrying prompt preparation.");
+    setSurfaceError(null);
+    await agentCanvasApi.retryAgentCanvasNodePromptPreparation(workflow.workflow_id, nodeId);
+  }, [workflow]);
+
   const renderWorkbench = useCallback((node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => {
     if (!workflow || session.state.selectedNodeId !== node.node_id) return null;
     return (
@@ -464,6 +470,7 @@ export function AgentCanvasPage() {
           onSaveImageToLibrary={saveImageToLibrary}
           onDelete={deleteNode}
           onOpenEditing={() => openEditing(node.node_id)}
+          onRetryPromptPreparation={retryPromptPreparation}
           onWorkflowRefresh={refreshWorkflow}
           onOpenAssets={() => setAssetsOpen(true)}
           onUploadReferences={() => referenceUploadInputRef.current?.click()}
@@ -471,7 +478,7 @@ export function AgentCanvasPage() {
         />
       </Suspense>
     );
-  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, refreshWorkflow, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
+  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, refreshWorkflow, retryPromptPreparation, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
 
   const openNodeVideoPreview = useCallback((nodeId: string, asset: ProjectAssetSummaryV2) => {
     const node = workflowNodesRef.current.find((candidate) => candidate.node_id === nodeId);

@@ -709,6 +709,10 @@ class PiVideoAgentGateway:
             )
             validation_profile = "storyboard_sequence_window_parity_v1"
             validation_context = authority.model_dump(mode="json")
+        elif operation == "author_role_brief" and isinstance(
+            context, RolePromptPreparationContextV2
+        ):
+            validation_context = {"role_variant": context.role_variant}
         elif validation_profile == "proposal_candidate_count_v1":
             validation_context = {
                 "expected_candidate_count": getattr(context, "candidate_count", None),

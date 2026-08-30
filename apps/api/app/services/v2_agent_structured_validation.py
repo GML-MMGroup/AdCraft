@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.schemas.agent_runtime import (
     AgentStructuredNormalizationAuditV1,
+    AgentStructuredFallbackAuditV1,
     AgentStructuredSubmission,
     AgentStructuredValidationResult,
     StructuredViolation,
@@ -42,18 +43,21 @@ class V2AgentStructuredValidationService:
         identity_violations = _identity_violations(run, submission)
         if identity_violations:
             return _rejected(submission, identity_violations)
-        raw_semantic_violations = self._raw_semantic_violations(
-            run,
-            submission.value,
-        )
+        context_violations = self._validation_context_violations(run)
+        if context_violations:
+            return _rejected(submission, context_violations, repair_allowed=False)
         normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
             run.contract_name or "",
             submission.value,
+            validation_context=run.validation_context,
         )
         if normalization.violations:
-            return _rejected(
-                submission,
-                normalization.violations + raw_semantic_violations,
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=normalization.violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
             )
 
         try:
@@ -62,20 +66,28 @@ class V2AgentStructuredValidationService:
                 normalization.value,
             )
         except ValidationError as error:
-            return _rejected(
-                submission,
-                _project_validation_errors(error) + raw_semantic_violations,
+            violations = _project_validation_errors(error)
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
             )
         except AgentStructuredContractRegistryError:
-            return _rejected(
-                submission,
-                (
-                    StructuredViolation(
-                        code="agent_contract_not_allowed",
-                        message="The persisted Agent contract is not registered.",
-                        field_path="contract_name",
-                    ),
+            violations = (
+                StructuredViolation(
+                    code="agent_contract_not_allowed",
+                    message="The persisted Agent contract is not registered.",
+                    field_path="contract_name",
                 ),
+            )
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=violations,
+                candidate_value=normalization.value,
+                normalization=normalization,
                 repair_allowed=False,
             )
 
@@ -109,15 +121,22 @@ class V2AgentStructuredValidationService:
                     normalization,
                 ),
             )
+        raw_semantic_violations = self._raw_semantic_violations(
+            run,
+            normalized_value,
+        )
         semantic_violations = raw_semantic_violations + _semantic_violations(
             run.validation_profile,
             run.validation_context,
             normalized_value,
         )
         if semantic_violations:
-            return _rejected(
-                submission,
-                semantic_violations,
+            return _fallback_or_rejected(
+                run=run,
+                submission=submission,
+                violations=semantic_violations,
+                candidate_value=normalized_value,
+                normalization=normalization,
                 repair_allowed=(
                     False
                     if any(
@@ -146,8 +165,26 @@ class V2AgentStructuredValidationService:
     ) -> tuple[StructuredViolation, ...]:
         if run.validation_profile != "agent_intake_source_quotes_v1":
             return ()
+        context_violations = self._validation_context_violations(run)
+        if context_violations:
+            return context_violations
         source_turn_id = run.validation_context.get("source_turn_id")
-        if not isinstance(source_turn_id, str) or not source_turn_id:
+        source_message = self._repository.load_validation_source_message(
+            workflow_id=run.workflow_id,
+            conversation_id=run.conversation_id,
+            turn_id=source_turn_id,
+        )
+        assert source_message is not None
+        return _intake_source_quote_violations(source_message, value)
+
+    def _validation_context_violations(
+        self,
+        run: AgentRunRecord,
+    ) -> tuple[StructuredViolation, ...]:
+        if run.validation_profile != "agent_intake_source_quotes_v1":
+            return ()
+        source_turn_id = run.validation_context.get("source_turn_id")
+        if not isinstance(source_turn_id, str) or not source_turn_id.strip():
             return (_invalid_intake_validation_context(),)
         source_message = self._repository.load_validation_source_message(
             workflow_id=run.workflow_id,
@@ -156,7 +193,7 @@ class V2AgentStructuredValidationService:
         )
         if source_message is None:
             return (_invalid_intake_validation_context(),)
-        return _intake_source_quote_violations(source_message, value)
+        return ()
 
 
 def _identity_violations(
@@ -196,6 +233,70 @@ def _normalization_audit(
         rule_ids=normalization.rule_ids,
         normalized_path_count=normalization.normalized_path_count,
         submission_attempt=submission.attempt,
+    )
+
+
+_SAFE_FALLBACK_MESSAGE = (
+    "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。"
+)
+
+
+def _fallback_or_rejected(
+    *,
+    run: AgentRunRecord,
+    submission: AgentStructuredSubmission,
+    violations: tuple[StructuredViolation, ...],
+    candidate_value: dict[str, Any],
+    normalization: AgentStructuredNormalizationResult | None = None,
+    repair_allowed: bool | None = None,
+) -> AgentStructuredValidationResult:
+    if (
+        run.contract_name != "CompactTurnIntentDecisionV3"
+        or submission.attempt != 2
+        or any(item.code == "agent_validation_context_invalid" for item in violations)
+    ):
+        return _rejected(submission, violations, repair_allowed=repair_allowed)
+
+    message = _SAFE_FALLBACK_MESSAGE
+    used_model_message = False
+
+    fallback_value = {
+        "mode": "ordinary_conversation",
+        "objective": "Preserve a safe conversational response after structured validation failed.",
+        "assistant_message": message,
+    }
+    try:
+        normalized_fallback = validate_agent_contract(
+            "CompactTurnIntentDecisionV3",
+            fallback_value,
+        )
+    except (ValidationError, AgentStructuredContractRegistryError):
+        return _rejected(submission, violations, repair_allowed=repair_allowed)
+
+    failure_codes = tuple(dict.fromkeys(item.code for item in violations))[:32]
+    validation_paths = tuple(
+        dict.fromkeys(item.field_path for item in violations if item.field_path)
+    )[:32]
+    fallback_audit = AgentStructuredFallbackAuditV1(
+        contract_name="CompactTurnIntentDecisionV3",
+        error_code="agent_structured_fallback_applied",
+        failure_codes=failure_codes,
+        validation_paths=validation_paths,
+        submission_attempt=2,
+        used_model_message=used_model_message,
+        reason="validation_exhausted",
+    )
+    return AgentStructuredValidationResult(
+        accepted=True,
+        normalized_result_id=submission.submission_id,
+        normalized_value=normalized_fallback.model_dump(mode="json", exclude_unset=True),
+        repair_allowed=False,
+        normalization_audit=(
+            _normalization_audit(run, submission, normalization)
+            if normalization is not None
+            else None
+        ),
+        fallback_audit=fallback_audit,
     )
 
 

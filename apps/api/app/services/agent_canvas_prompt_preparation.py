@@ -36,6 +36,7 @@ from app.services.agent_canvas_role_prompt_context import (
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
 from app.services.agent_trace import V2AgentTraceWriter
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
 
@@ -264,8 +265,11 @@ class NodePromptPreparationService:
                 )
             return persisted
         except Exception as error:
+            safe_error = _safe_prompt_preparation_error(error)
             error_code = (
-                error.code if isinstance(error, V2PersistenceError) else "prompt_preparation_failed"
+                safe_error.code
+                if isinstance(safe_error, V2PersistenceError)
+                else "prompt_preparation_failed"
             )
             failed_recipe = (
                 self._recipes.resolve(role_context.role_variant)
@@ -309,7 +313,7 @@ class NodePromptPreparationService:
                         error=CanvasNodeErrorV2(
                             code=error_code,
                             message="Node prompt preparation failed.",
-                            retryable=not isinstance(error, V2PersistenceError),
+                            retryable=not isinstance(safe_error, V2PersistenceError),
                         ),
                         attempt_stage="failed",
                         updated_at=_now(),
@@ -327,8 +331,38 @@ class NodePromptPreparationService:
             )
             if presentation_stream is not None and self._presentation_publisher is not None:
                 self._presentation_publisher.fail(presentation_stream, error_code)
-            raise error
+            raise safe_error
 
+    def retry(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        operation_id: str,
+        context: StageAuthoringContextV1,
+    ) -> CanvasNodeV2:
+        """Retry only a retryable failed prompt-preparation attempt."""
+
+        current = self._workflows.get_node(workflow_id, node_id)
+        preparation = current.prompt_preparation
+        if preparation.status != "failed":
+            raise V2PersistenceError(
+                "node_prompt_preparation_not_failed",
+                "Node prompt preparation is not failed.",
+                stage="node_prompt_preparation",
+            )
+        if preparation.error is None or not preparation.error.retryable:
+            raise V2PersistenceError(
+                "node_prompt_preparation_not_retryable",
+                "Node prompt preparation is not retryable.",
+                stage="node_prompt_preparation",
+            )
+        return self.prepare(
+            workflow_id,
+            node_id,
+            operation_id=operation_id,
+            context=context,
+        )
     def invalidate_for_dependency_change(
         self,
         workflow_id: str,
@@ -727,6 +761,16 @@ def _role_binding_digest(bindings: tuple[RoleBindingSnapshotV2, ...]) -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _safe_prompt_preparation_error(error: Exception) -> Exception:
+    if isinstance(error, PiAgentRuntimeError):
+        return V2PersistenceError(
+            error.code,
+            error.message,
+            stage="node_prompt_preparation",
+        )
+    return error
 
 
 def _reference_purpose(

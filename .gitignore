@@ -46,6 +46,13 @@ __pycache__/
 # Docker deployment runtime state
 runtime-data/
 
+# CLIProxyAPI local configuration and credentials
+cpa/config.yaml
+cpa/auths/*
+!cpa/auths/.gitkeep
+cpa/logs/*
+!cpa/logs/.gitkeep
+
 # Local agent, skill, planning, and code-intelligence artifacts
 .superpowers/
 AGENT_PROPOSAL_CARD_UI.md
