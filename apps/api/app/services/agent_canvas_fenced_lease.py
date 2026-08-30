@@ -111,18 +111,6 @@ class NodeLeaseGuard(AbstractContextManager["NodeLeaseGuard"]):
             self.assert_current()
             return result
 
-    def run_with_latest_lease(
-        self,
-        operation: Callable[[], T],
-    ) -> tuple[T, NodeExecutionLeaseV2]:
-        """Run blocking work and return the lease held at its terminal boundary."""
-
-        with self:
-            result = operation()
-            self.heartbeat()
-            self.assert_current()
-            return result, self.lease
-
     def __enter__(self) -> "NodeLeaseGuard":
         self.assert_current()
         self._thread = Thread(target=self._renew_loop, daemon=True)
