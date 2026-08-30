@@ -33,6 +33,7 @@ from app.persistence.models import (
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2
 from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
+    CharacterProposalTargetV1,
     GuidedProposalAuthoringResultV4,
 )
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
@@ -98,6 +99,12 @@ class AgentCanvasCapabilityProposalRepository:
                 "Only Guided Proposal Authoring schema version 4 may be published after cutover.",
                 stage="capability_publication",
             )
+        if envelope.capability_id == "character_design" and envelope.character_target is None:
+            raise V2PersistenceError(
+                "character_proposal_scope_invalid",
+                "Character Proposal publication requires an occurrence target.",
+                stage="capability_publication",
+            )
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
@@ -128,6 +135,13 @@ class AgentCanvasCapabilityProposalRepository:
                         select(
                             AgentCanvasConceptProposalRow.proposal_id,
                             AgentCanvasConceptProposalRow.proposal_card_schema_version,
+                            AgentCanvasConceptProposalRow.character_occurrence_id,
+                            AgentCanvasConceptProposalRow.character_occurrence_index,
+                            AgentCanvasConceptProposalRow.character_occurrence_count,
+                            AgentCanvasConceptProposalRow.character_phase,
+                            AgentCanvasConceptProposalRow.character_scope_digest,
+                            AgentCanvasConceptProposalRow.requirement_revision_id,
+                            AgentCanvasConceptProposalRow.requirement_revision_no,
                         ).where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
                     )
                     .mappings()
@@ -185,6 +199,7 @@ class AgentCanvasCapabilityProposalRepository:
                                 "incoming_card_digest": incoming_digest,
                             },
                         )
+                    _validate_replayed_character_scope(existing, envelope)
                     connection.commit()
                     return str(existing["proposal_id"])
                 requirement_head = (
@@ -386,6 +401,31 @@ class AgentCanvasCapabilityProposalRepository:
                         availability="open",
                         guidance_session_id=session["session_id"],
                         guidance_session_revision=session_revision,
+                        character_occurrence_id=(
+                            envelope.character_target.occurrence_id
+                            if envelope.character_target is not None
+                            else None
+                        ),
+                        character_occurrence_index=(
+                            envelope.character_target.occurrence_index
+                            if envelope.character_target is not None
+                            else None
+                        ),
+                        character_occurrence_count=(
+                            envelope.character_target.occurrence_count
+                            if envelope.character_target is not None
+                            else None
+                        ),
+                        character_phase=(
+                            envelope.character_target.character_phase
+                            if envelope.character_target is not None
+                            else None
+                        ),
+                        character_scope_digest=(
+                            envelope.character_target.target_digest
+                            if envelope.character_target is not None
+                            else None
+                        ),
                         created_at=timestamp,
                         updated_at=timestamp,
                     )
@@ -573,6 +613,7 @@ class AgentCanvasCapabilityProposalRepository:
                                         envelope.capability_id
                                     ],
                                     "proposal_revision": 1,
+                                    **_character_scope_payload(envelope),
                                     "options": [
                                         public_option_metadata(option)
                                         for option in public_projection.options
@@ -596,6 +637,7 @@ class AgentCanvasCapabilityProposalRepository:
                             "source_proposal_id": source_proposal_id,
                             "reference_count": len(proposed_references),
                             "reference_plan_digest": envelope.reference_plan.digest,
+                            **_character_scope_payload(envelope),
                         },
                     ),
                 ]
@@ -692,12 +734,35 @@ def _concept_interaction(
     checkpoint_id = f"checkpoint_{_digest(str(session['session_id']), journey.stage, str(journey.stage_revision))[:32]}"
     interaction_id = f"interaction_{_digest(proposal_id, 'interaction')[:32]}"
     awaiting_id = f"awaiting_{_digest(proposal_id, 'awaiting')[:32]}"
+    character_scope = envelope.character_target
+    if envelope.capability_id == "character_design" and character_scope is None:
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "Character Proposal publication requires an occurrence target.",
+            stage="capability_publication",
+        )
+    if character_scope is not None and (
+        journey.active_action.occurrence_id != character_scope.occurrence_id
+        or journey.active_action.character_phase != character_scope.character_phase
+    ):
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "Character Proposal target does not match the active Journey occurrence.",
+            stage="capability_publication",
+        )
     content = GuidedConceptChoiceV2(
         proposal_id=proposal_id,
         stage=journey.stage,
         stage_revision=journey.stage_revision,
         action_id=journey.active_action.action_id,
-        occurrence_id=journey.active_action.occurrence_id,
+        occurrence_id=character_scope.occurrence_id if character_scope is not None else None,
+        occurrence_index=(
+            character_scope.occurrence_index if character_scope is not None else None
+        ),
+        occurrence_count=(
+            character_scope.occurrence_count if character_scope is not None else None
+        ),
+        character_phase=(character_scope.character_phase if character_scope is not None else None),
         capability_id=envelope.capability_id,
         options=public_options,
         allow_exclusion=FIXED_JOURNEY_STAGE_DESCRIPTORS[journey.stage].optional,
@@ -793,3 +858,73 @@ def _card_digest(options: tuple[tuple[str, str], ...]) -> str:
 def _style_snapshot_id(style_projection: dict[str, object]) -> str | None:
     value = style_projection.get("creative_direction_snapshot_id")
     return value if isinstance(value, str) and value else None
+
+
+def _character_scope_payload(
+    envelope: CapabilityCommandEnvelopeV2,
+) -> dict[str, object]:
+    target = envelope.character_target
+    if target is None:
+        return {}
+    return {
+        "occurrence_id": target.occurrence_id,
+        "occurrence_index": target.occurrence_index,
+        "occurrence_count": target.occurrence_count,
+        "character_phase": target.character_phase,
+        "character_scope_digest": target.target_digest,
+    }
+
+
+def _validate_replayed_character_scope(
+    existing: Mapping[str, object],
+    envelope: CapabilityCommandEnvelopeV2,
+) -> None:
+    """Ensure a replay uses the exact immutable occurrence scope."""
+
+    stored_values = (
+        existing.get("character_occurrence_id"),
+        existing.get("character_occurrence_index"),
+        existing.get("character_occurrence_count"),
+        existing.get("character_phase"),
+        existing.get("character_scope_digest"),
+    )
+    has_stored_scope = any(value is not None for value in stored_values)
+    target = envelope.character_target
+    if not has_stored_scope:
+        if target is not None:
+            raise V2PersistenceError(
+                "character_proposal_scope_invalid",
+                "The replayed Proposal is missing its immutable occurrence scope.",
+                stage="capability_publication",
+            )
+        return
+    if not all(value is not None for value in stored_values) or target is None:
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "The replayed Proposal occurrence scope is incomplete or missing.",
+            stage="capability_publication",
+        )
+    try:
+        stored_target = CharacterProposalTargetV1.model_validate(
+            {
+                "occurrence_id": stored_values[0],
+                "occurrence_index": stored_values[1],
+                "occurrence_count": stored_values[2],
+                "character_phase": stored_values[3],
+                "requirement_revision_id": existing.get("requirement_revision_id"),
+                "requirement_revision_no": existing.get("requirement_revision_no"),
+                "target_digest": stored_values[4],
+            }
+        )
+    except ValueError as error:
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "The persisted Proposal occurrence scope is invalid.",
+            stage="capability_publication",
+        ) from error
+    if stored_target != target:
+        raise V2PersistenceError(
+            "character_proposal_scope_invalid",
+            "The replayed Proposal occurrence scope differs from the persisted scope.",
+            stage="capability_publication",
+        )

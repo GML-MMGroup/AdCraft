@@ -98,6 +98,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
+    CharacterProposalTargetV1,
     NextActionEnvelopeV1,
 )
 from app.schemas.agent_canvas_capability_identity import (
@@ -5519,6 +5520,7 @@ def _proposal(
             "The persisted Proposal Card schema version is unsupported.",
         )
     availability = cast(str, row["availability"])
+    character_target = _proposal_character_target(row)
     materialization = (
         ProposalMaterializationProjectionV2(
             materialization_id=str(row["materialization_id"]),
@@ -5604,6 +5606,16 @@ def _proposal(
         materialization=materialization,
         guidance_session_id=str(row["guidance_session_id"]),
         guidance_session_revision=int(row["guidance_session_revision"]),
+        occurrence_id=(character_target.occurrence_id if character_target is not None else None),
+        occurrence_index=(
+            character_target.occurrence_index if character_target is not None else None
+        ),
+        occurrence_count=(
+            character_target.occurrence_count if character_target is not None else None
+        ),
+        character_phase=(
+            character_target.character_phase if character_target is not None else None
+        ),
         actions=actions,
         proposed_references=tuple(
             ProposedDraftReferenceV2.model_validate(item)
@@ -5625,6 +5637,47 @@ def _proposal(
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _proposal_character_target(row: RowMapping) -> CharacterProposalTargetV1 | None:
+    """Read and validate the immutable scope stored with a Character Proposal."""
+
+    values = (
+        row.get("character_occurrence_id"),
+        row.get("character_occurrence_index"),
+        row.get("character_occurrence_count"),
+        row.get("character_phase"),
+        row.get("character_scope_digest"),
+    )
+    if not any(value is not None for value in values):
+        return None
+    if not all(value is not None for value in values):
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Persisted Character Proposal scope is incomplete.",
+        )
+    if str(row["capability_id"]) != "character_design":
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Only Character Proposals may carry occurrence scope.",
+        )
+    try:
+        return CharacterProposalTargetV1.model_validate(
+            {
+                "occurrence_id": values[0],
+                "occurrence_index": values[1],
+                "occurrence_count": values[2],
+                "character_phase": values[3],
+                "requirement_revision_id": row["requirement_revision_id"],
+                "requirement_revision_no": row["requirement_revision_no"],
+                "target_digest": values[4],
+            }
+        )
+    except ValueError as error:
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Persisted Character Proposal scope is invalid.",
+        ) from error
 
 
 def _timeline_entry(row: RowMapping) -> ChatTimelineEntryV2:
