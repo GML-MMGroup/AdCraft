@@ -929,6 +929,7 @@ class CapabilityMaterializationPublicationService:
                 node_id=node_id,
                 committed_operation_id=operation_id,
                 current_operation_id=node.prompt_preparation.operation_id,
+                allow_successor=self._requires_reference_source_checkpoint(envelope),
             )
             if current_operation_id is None:
                 raise V2PersistenceError(
@@ -1019,10 +1020,11 @@ class CapabilityMaterializationPublicationService:
         node_id: str,
         committed_operation_id: str,
         current_operation_id: str | None,
+        allow_successor: bool,
     ) -> str | None:
         if current_operation_id == committed_operation_id:
             return current_operation_id
-        if current_operation_id is None:
+        if current_operation_id is None or not allow_successor:
             return None
         committed = self._prompt_dispatch.get_by_node_operation(
             workflow_id,
@@ -1037,10 +1039,11 @@ class CapabilityMaterializationPublicationService:
         if (
             committed is None
             or current is None
-            or committed.status != "superseded"
-            or committed.supersession_reason != "guided_reference_source_resolved"
-            or committed.superseded_by_dispatch_id != current.dispatch_id
-            or current.status not in {"queued", "leased", "completed"}
+            or getattr(committed, "status", None) != "superseded"
+            or getattr(committed, "supersession_reason", None) != "guided_reference_source_resolved"
+            or getattr(committed, "superseded_by_dispatch_id", None)
+            != getattr(current, "dispatch_id", None)
+            or getattr(current, "status", None) not in {"queued", "leased", "completed"}
         ):
             return None
         return current.operation_id
