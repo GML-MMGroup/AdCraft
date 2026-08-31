@@ -51,33 +51,53 @@ class V2RuntimeDispositionRepository:
 
         processes = process_ids or {}
         with self._database.engine.connect() as connection:
-            turn_rows = connection.execute(
-                select(AgentCanvasChatTurnRow).where(
-                    AgentCanvasChatTurnRow.status.in_(("queued", "running"))
+            turn_rows = (
+                connection.execute(
+                    select(AgentCanvasChatTurnRow).where(
+                        AgentCanvasChatTurnRow.status.in_(("queued", "running"))
+                    )
                 )
-            ).mappings().all()
-            continuation_rows = connection.execute(
-                select(AgentCanvasContinuationOutboxRow)
-            ).mappings().all()
-            action_rows = connection.execute(
-                select(AgentCanvasGuidedActionRow).where(
-                    AgentCanvasGuidedActionRow.state == "applying"
+                .mappings()
+                .all()
+            )
+            continuation_rows = (
+                connection.execute(select(AgentCanvasContinuationOutboxRow)).mappings().all()
+            )
+            action_rows = (
+                connection.execute(
+                    select(AgentCanvasGuidedActionRow).where(
+                        AgentCanvasGuidedActionRow.state == "applying"
+                    )
                 )
-            ).mappings().all()
-            skill_rows = connection.execute(
-                select(AgentCanvasSkillRunRow).where(AgentCanvasSkillRunRow.status == "active")
-            ).mappings().all()
-            stream_rows = connection.execute(
-                select(PresentationStreamRow).where(PresentationStreamRow.status == "open")
-            ).mappings().all()
-            interaction_rows = connection.execute(
-                select(AgentCanvasGuidedInteractionRow).where(
-                    AgentCanvasGuidedInteractionRow.status == "open"
+                .mappings()
+                .all()
+            )
+            skill_rows = (
+                connection.execute(
+                    select(AgentCanvasSkillRunRow).where(AgentCanvasSkillRunRow.status == "active")
                 )
-            ).mappings().all()
-            awaiting_rows = connection.execute(
-                select(AgentCanvasGuidanceAwaitingRow)
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
+            stream_rows = (
+                connection.execute(
+                    select(PresentationStreamRow).where(PresentationStreamRow.status == "open")
+                )
+                .mappings()
+                .all()
+            )
+            interaction_rows = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionRow).where(
+                        AgentCanvasGuidedInteractionRow.status == "open"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            awaiting_rows = (
+                connection.execute(select(AgentCanvasGuidanceAwaitingRow)).mappings().all()
+            )
 
         turns_by_id = {str(row["turn_id"]): row for row in turn_rows}
         continuations_by_source: dict[str, list[Mapping[str, Any]]] = {}
@@ -92,12 +112,9 @@ class V2RuntimeDispositionRepository:
             _guided_action_observation(row, turns_by_id, observed_at, processes)
             for row in action_rows
         )
+        records.extend(_skill_observation(row, observed_at, processes) for row in skill_rows)
         records.extend(
-            _skill_observation(row, observed_at, processes) for row in skill_rows
-        )
-        records.extend(
-            _stream_observation(row, turns_by_id, observed_at, processes)
-            for row in stream_rows
+            _stream_observation(row, turns_by_id, observed_at, processes) for row in stream_rows
         )
         awaiting_by_interaction = {
             str(row["interaction_id"]): row
@@ -136,9 +153,7 @@ class V2RuntimeDispositionRepository:
                     AgentCanvasContinuationOutboxRow,
                     ("queued", "leased", "retry_wait"),
                 ),
-                "agent_run": _count_active(
-                    connection, AgentRunRow, ("queued", "running")
-                ),
+                "agent_run": _count_active(connection, AgentRunRow, ("queued", "running")),
                 "provider": _count_active(
                     connection,
                     AgentCanvasProviderTaskRow,

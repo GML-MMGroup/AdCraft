@@ -7,7 +7,6 @@ repositories remain the only writers for their respective record classes.
 from __future__ import annotations
 
 from datetime import datetime
-from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -124,7 +123,10 @@ def authorize_disposition(
 
     disposition = classify_runtime_record(record)
     disposition_key = _disposition_key(record, disposition)
-    if record.record_class in {"guided_action", "presentation_stream"} and not record.has_source_proof:
+    if (
+        record.record_class in {"guided_action", "presentation_stream"}
+        and not record.has_source_proof
+    ):
         return RuntimeDispositionAuthorizationResultV1(
             authorized=False,
             disposition_key=disposition_key,
@@ -159,12 +161,6 @@ def authorize_disposition(
             authorized=False,
             disposition_key=disposition_key,
             reason_code="generation_conflict",
-        )
-    if record.record_class in {"guided_action", "presentation_stream"} and not record.has_source_proof:
-        return RuntimeDispositionAuthorizationResultV1(
-            authorized=False,
-            disposition_key=disposition_key,
-            reason_code="source_proof_required",
         )
     return RuntimeDispositionAuthorizationResultV1(
         authorized=True,
@@ -352,16 +348,17 @@ def _has_live_owner(record: RuntimeRecordObservationV1) -> bool:
 
 def _cross_scope_mismatch(record: RuntimeRecordObservationV1) -> bool:
     return (
-        record.source_workflow_id is not None
-        and record.source_workflow_id != record.workflow_id
-    ) or (
-        record.session_id is not None
-        and record.source_session_id is not None
-        and record.session_id != record.source_session_id
-    ) or (
-        record.source_revision is not None
-        and record.expected_revision is not None
-        and record.source_revision != record.expected_revision
+        (record.source_workflow_id is not None and record.source_workflow_id != record.workflow_id)
+        or (
+            record.session_id is not None
+            and record.source_session_id is not None
+            and record.session_id != record.source_session_id
+        )
+        or (
+            record.source_revision is not None
+            and record.expected_revision is not None
+            and record.source_revision != record.expected_revision
+        )
     )
 
 
