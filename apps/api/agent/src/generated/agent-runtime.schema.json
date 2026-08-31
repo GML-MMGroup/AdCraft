@@ -15642,6 +15642,49 @@
       "title": "GuidedStepCheckpointV2",
       "type": "object"
     },
+    "IdentitySafetyDecisionV1": {
+      "additionalProperties": false,
+      "description": "The only normalized identity classification accepted by V2 media admission.",
+      "properties": {
+        "classification": {
+          "enum": [
+            "fictional",
+            "identifiable_person_likeness"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "normalized_revision": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "title": "Normalized Revision",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "normalized_agent",
+            "platform_default",
+            "structured_request"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "classification",
+        "normalized_revision",
+        "source"
+      ],
+      "title": "IdentitySafetyDecisionV1",
+      "type": "object"
+    },
     "InitializeAnchorRegistryPatchV2": {
       "additionalProperties": false,
       "properties": {
@@ -23705,6 +23748,30 @@
           "title": "Explicit Controls",
           "type": "object"
         },
+        "identity_safety_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentitySafetyDecisionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "identity_safety_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identity Safety Digest"
+        },
         "installation_parameters": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -30592,6 +30659,7 @@
     "TurnIntentDecisionV2",
     "NextActionCommandV1",
     "DecisionBundleDraftV1",
+    "IdentitySafetyDecisionV1",
     "RoleCreativeBriefV2",
     "WorldSettingProposalResultV1",
     "ProposalCardResultV2",
