@@ -516,9 +516,7 @@ class ProgressiveStoryboardReadyService:
                 **({"generate_audio": generate_audio} if generate_audio is not None else {}),
             },
             parameter_provenance=(
-                {"generate_audio": audio_provenance}
-                if audio_provenance is not None
-                else {}
+                {"generate_audio": audio_provenance} if audio_provenance is not None else {}
             ),
             metadata={
                 "source_agent_document_id": plan_document_id,

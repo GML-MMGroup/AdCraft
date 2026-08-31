@@ -5251,9 +5251,7 @@ def _skill_run_with_public(
     if not isinstance(public_payload, dict):
         return _skill_run(row)
     public_payload = {
-        key: value
-        for key, value in public_payload.items()
-        if key != "video_representation_mode"
+        key: value for key, value in public_payload.items() if key != "video_representation_mode"
     }
     return _skill_run(
         row,
