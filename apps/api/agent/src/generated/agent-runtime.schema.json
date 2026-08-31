@@ -6689,9 +6689,11 @@
           "default": [],
           "items": {
             "enum": [
+              "character_reference",
               "environment_reference",
               "product_reference",
               "prop_reference",
+              "scene_reference",
               "storyboard_visual_reference",
               "style_composition_reference",
               "style_reference",
@@ -11149,9 +11151,11 @@
           "anyOf": [
             {
               "enum": [
+                "character_reference",
                 "environment_reference",
                 "product_reference",
                 "prop_reference",
+                "scene_reference",
                 "storyboard_visual_reference",
                 "style_composition_reference",
                 "style_reference",
@@ -18315,9 +18319,11 @@
           "anyOf": [
             {
               "enum": [
+                "character_reference",
                 "environment_reference",
                 "product_reference",
                 "prop_reference",
+                "scene_reference",
                 "storyboard_visual_reference",
                 "style_composition_reference",
                 "style_reference",
@@ -21130,9 +21136,11 @@
           "anyOf": [
             {
               "enum": [
+                "character_reference",
                 "environment_reference",
                 "product_reference",
                 "prop_reference",
+                "scene_reference",
                 "storyboard_visual_reference",
                 "style_composition_reference",
                 "style_reference",
