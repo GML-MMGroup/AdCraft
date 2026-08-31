@@ -544,9 +544,22 @@ class MediaNodeExecutor:
         if context.node.semantic_role == "bgm":
             _require_bgm_duration(effective_parameters)
         prompt = _saved_prompt(context)
+        prepared = self.prepare(context)
+        provider_only_instructions = tuple(
+            reference.reference_instruction
+            for reference in prepared.delivered_references
+            if (
+                reference.reference_instruction is not None
+                and reference.reference_instruction_transport == "provider_only"
+            )
+        )
+        provider_prompt = _provider_prompt_with_reference_instructions(
+            prompt,
+            provider_only_instructions,
+        )
         provider_payload: dict[str, Any] = {
-            "provider_prompt": prompt,
-            "prompt": prompt,
+            "provider_prompt": provider_prompt,
+            "prompt": provider_prompt,
             "node_id": context.node.node_id,
             "semantic_role": context.node.semantic_role,
             "model_id": context.model_resolution.provider_model_id,
@@ -559,7 +572,6 @@ class MediaNodeExecutor:
                 "provider_model_id": context.model_resolution.provider_model_id,
             }
         )
-        prepared = self.prepare(context)
         if prepared.delivered_references:
             provider_payload["reference_assets"] = [
                 reference.provider_asset() for reference in prepared.delivered_references
@@ -567,17 +579,9 @@ class MediaNodeExecutor:
             provider_payload["reference_asset_ids"] = [
                 reference.asset_id for reference in prepared.delivered_references
             ]
-            provider_only_instructions = [
-                reference.reference_instruction
-                for reference in prepared.delivered_references
-                if (
-                    reference.reference_instruction is not None
-                    and reference.reference_instruction_transport == "provider_only"
-                )
-            ]
             if provider_only_instructions:
                 provider_payload["provider_only_reference_instructions"] = (
-                    provider_only_instructions
+                    list(provider_only_instructions)
                 )
         intent = self._prepare_submission_intent(context, provider_payload)
         if intent is not None and intent.provider_idempotency_token is not None:
@@ -1063,6 +1067,20 @@ def _saved_prompt(context: NodeExecutionContext) -> str:
             )
         )
     return "\n\n".join(parts)
+
+
+def _provider_prompt_with_reference_instructions(
+    prompt: str,
+    instructions: tuple[str, ...],
+) -> str:
+    """Append bounded provider-only semantics without changing Node prompt authority."""
+
+    if not instructions:
+        return prompt
+    section = "Provider-only reference instructions:\n" + "\n".join(
+        f"{index}. {instruction}" for index, instruction in enumerate(instructions, start=1)
+    )
+    return f"{prompt}\n\n{section}"
 
 
 def _json_input(value: object) -> object:
