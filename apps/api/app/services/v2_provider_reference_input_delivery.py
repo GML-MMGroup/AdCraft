@@ -17,8 +17,12 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_asset_library import AssetBindingV2, AssetVersionMetadataV2
 from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
 from app.schemas.agent_canvas_runtime import (
+    ProviderReferenceInstructionTransportV1,
     ProviderReferenceDeliveryContextV1,
     ResolvedModelExecutionV1,
+)
+from app.services.agent_canvas_reference_semantics import (
+    compile_provider_reference_instruction,
 )
 from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
@@ -115,6 +119,9 @@ def reference_delivery_context_from_model_resolution(
             target_capability=resolution.capability,
             accepted_input_types=tuple(str(item) for item in accepted_value),
             reference_limits=dict(limits_value),
+            reference_instruction_transport=str(
+                metadata.get("reference_instruction_transport", "provider_only")
+            ),
         )
     except ValidationError as error:
         raise _canvas_context_error(
@@ -149,9 +156,11 @@ class V2DeliveredProviderReference(BaseModel):
     rendition_kind: Literal["original", "provider_ready"] = "original"
     checksum: str | None = None
     byte_count: int | None = None
+    reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
+    reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
 
     def provider_asset(self) -> dict[str, Any]:
-        return {
+        payload = {
             "asset_id": self.asset_id,
             "version_id": self.version_id,
             "slot_id": self.slot_id,
@@ -174,6 +183,10 @@ class V2DeliveredProviderReference(BaseModel):
             "checksum": self.checksum,
             "byte_count": self.byte_count,
         }
+        if self.reference_instruction is not None:
+            payload["reference_instruction"] = self.reference_instruction
+            payload["reference_instruction_transport"] = self.reference_instruction_transport
+        return payload
 
 
 class V2ProviderReferenceWireAudit(BaseModel):
@@ -242,6 +255,8 @@ class V2DeliveredReferenceSet(BaseModel):
                     "checksum": reference.checksum,
                     "byte_count": reference.byte_count,
                     "rendition_kind": reference.rendition_kind,
+                    "reference_instruction": reference.reference_instruction,
+                    "reference_instruction_transport": reference.reference_instruction_transport,
                 }
                 for reference in self.references
             ],
@@ -394,6 +409,39 @@ class V2ProviderReferenceInputDeliveryService:
             inputs,
             key=lambda item: (item.display_order, item.binding_id or ""),
         ):
+            is_guided_reference = input_snapshot.binding_metadata.get(
+                "semantic_reference_role"
+            ) in {"character_reference", "scene_reference"}
+            reference_kind = input_snapshot.binding_metadata.get("reference_kind")
+            reference_purpose = input_snapshot.binding_metadata.get("reference_purpose")
+            if is_guided_reference and reference_kind is None:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_invalid",
+                )
+                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                continue
+            try:
+                reference_instruction = compile_provider_reference_instruction(
+                    reference_kind=reference_kind,
+                    reference_purpose=reference_purpose,
+                )
+            except ValueError:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_invalid",
+                )
+                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                continue
+            if reference_instruction is not None and (
+                context.reference_instruction_transport == "unsupported"
+            ):
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_unsupported",
+                )
+                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                continue
             version = self._asset_library.find_version(
                 asset_id=input_snapshot.asset_id,
                 version_id=input_snapshot.asset_version_id,
@@ -425,6 +473,13 @@ class V2ProviderReferenceInputDeliveryService:
             if isinstance(delivered, V2ReferenceInputDeliveryFailure):
                 (failures if input_snapshot.required else optional_omissions).append(delivered)
                 continue
+            if reference_instruction is not None:
+                delivered = delivered.model_copy(
+                    update={
+                        "reference_instruction": reference_instruction.instruction,
+                        "reference_instruction_transport": context.reference_instruction_transport,
+                    }
+                )
             if delivered.provider_input_type == "data_url" and delivered.byte_count:
                 next_total = total_data_url_bytes + delivered.byte_count
                 if next_total > self._settings.v2_provider_reference_total_data_url_bytes:

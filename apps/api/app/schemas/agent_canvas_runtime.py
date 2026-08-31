@@ -261,6 +261,11 @@ class ResolvedModelExecutionV1(_RuntimeModel):
 
 
 ProviderReferenceMediaTypeV1 = Literal["text", "image", "video", "audio"]
+ProviderReferenceInstructionTransportV1 = Literal[
+    "native_slot",
+    "provider_only",
+    "unsupported",
+]
 
 
 class ProviderReferenceDeliveryContextV1(_RuntimeModel):
@@ -272,6 +277,7 @@ class ProviderReferenceDeliveryContextV1(_RuntimeModel):
     target_capability: Literal["image", "video", "audio"]
     accepted_input_types: tuple[ProviderReferenceMediaTypeV1, ...]
     reference_limits: dict[str, int] = Field(default_factory=dict)
+    reference_instruction_transport: ProviderReferenceInstructionTransportV1 = "provider_only"
 
     @model_validator(mode="before")
     @classmethod

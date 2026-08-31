@@ -19,6 +19,9 @@ from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
     ResolvedAdReferenceV2,
 )
+from app.services.agent_canvas_reference_semantics import (
+    compile_provider_reference_instruction,
+)
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
@@ -104,6 +107,31 @@ class AdReferenceBundleResolver:
                 )
             if source_role is None:
                 source_role = asset.source_semantic_role
+            reference_kind = binding.metadata.get("reference_kind")
+            if reference_kind is None and source_node_id is not None and source is not None:
+                reference_kind = source.metadata.get("reference_kind")
+            reference_purpose = (
+                binding.metadata.get("reference_purpose") if reference_kind is not None else None
+            )
+            if (
+                binding.metadata.get("semantic_reference_role")
+                in {"character_reference", "scene_reference"}
+                and reference_kind is None
+            ):
+                raise _error(
+                    "provider_reference_instruction_invalid",
+                    "Guided reference semantics are missing for provider delivery.",
+                )
+            try:
+                reference_instruction = compile_provider_reference_instruction(
+                    reference_kind=reference_kind,
+                    reference_purpose=reference_purpose,
+                )
+            except ValueError as error:
+                raise _error(
+                    "provider_reference_instruction_invalid",
+                    "Guided reference semantics are invalid for provider delivery.",
+                ) from error
             resolved = ResolvedAdReferenceV2(
                 binding_id=binding.binding_id,
                 binding_revision=int(binding.metadata.get("revision") or 1),
@@ -123,6 +151,9 @@ class AdReferenceBundleResolver:
                 ),
                 character_phase=binding.metadata.get("character_phase"),
                 semantic_reference_role=binding.metadata.get("semantic_reference_role"),
+                reference_kind=reference_kind,
+                reference_purpose=reference_purpose,
+                reference_instruction=reference_instruction,
                 storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),
                 asset_id=asset.asset_id,
                 asset_version_id=asset.version_id,

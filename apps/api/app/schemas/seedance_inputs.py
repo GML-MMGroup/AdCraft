@@ -49,6 +49,8 @@ class SeedanceDeliveredMediaInputV1(_SeedanceInputModel):
     provider_input_value: str = Field(min_length=1, exclude=True, repr=False)
     checksum: str = Field(min_length=1)
     byte_count: int | None = Field(default=None, ge=0)
+    reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
+    reference_instruction_transport: Literal["native_slot", "provider_only"] | None = None
 
 
 class SeedanceMediaInputV1(SeedanceDeliveredMediaInputV1):

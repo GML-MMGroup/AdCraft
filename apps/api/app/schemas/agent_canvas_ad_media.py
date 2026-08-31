@@ -32,12 +32,16 @@ SemanticReferenceRoleV2 = Literal[
     "world_setting_reference",
     "subject_reference",
     "environment_reference",
+    "character_reference",
+    "scene_reference",
     "product_reference",
     "prop_reference",
     "style_reference",
     "style_composition_reference",
     "storyboard_visual_reference",
 ]
+GuidedReferenceKindV1 = Literal["character_main", "scene_main"]
+GuidedReferencePurposeV1 = Literal["identity_guidance", "environment_guidance"]
 
 
 class _AdMediaModel(BaseModel):
@@ -48,6 +52,14 @@ class VisualStyleContractV2(_AdMediaModel):
     style_prompt: str = Field(min_length=1, max_length=8_192)
     source: Literal["user", "video_skill", "references", "platform_default"]
     negative_style_constraints: tuple[str, ...] = Field(default=(), max_length=64)
+
+
+class ProviderReferenceInstructionV1(_AdMediaModel):
+    """Provider-only semantics for one explicitly selected guided reference."""
+
+    reference_kind: GuidedReferenceKindV1
+    semantic_purpose: GuidedReferencePurposeV1
+    instruction: str = Field(min_length=1, max_length=512)
 
 
 class DesignAssetContentV2(_AdMediaModel):
@@ -190,6 +202,9 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     occurrence_id: str | None = Field(default=None, min_length=1)
     character_phase: Literal["main", "turnaround"] | None = None
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    reference_kind: GuidedReferenceKindV1 | None = None
+    reference_purpose: GuidedReferencePurposeV1 | None = None
+    reference_instruction: ProviderReferenceInstructionV1 | None = None
     storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
     asset_version_id: str = Field(min_length=1)
@@ -229,6 +244,7 @@ class CompiledProviderPromptV2(_AdMediaModel):
     prompt: str
     negative_prompt: str
     provider_parameters: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    reference_instructions: tuple[ProviderReferenceInstructionV1, ...] = ()
     assertion_evidence: ProviderPromptAssertionEvidenceV1 | None = None
 
 

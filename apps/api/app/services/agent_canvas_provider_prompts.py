@@ -35,6 +35,9 @@ from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
 )
+from app.services.agent_canvas_reference_semantics import (
+    compile_provider_reference_instruction,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +260,23 @@ class AgentCanvasProviderPromptCompiler:
             )
             for index, item in enumerate(reference_bundle.references, start=1)
         )
+        try:
+            reference_instructions = tuple(
+                instruction
+                for item in reference_bundle.references
+                if (
+                    instruction := item.reference_instruction
+                    or compile_provider_reference_instruction(
+                        reference_kind=item.reference_kind,
+                        reference_purpose=item.reference_purpose,
+                    )
+                )
+            )
+        except ValueError as error:
+            raise _error(
+                "provider_reference_instruction_invalid",
+                "Guided reference semantics are invalid for provider delivery.",
+            ) from error
         storyboard_anchor_clause = _storyboard_visual_anchor_clause(reference_bundle)
         is_video = node.semantic_role in {"storyboard_video", "general_video"}
         style_clause = (
@@ -347,6 +367,7 @@ class AgentCanvasProviderPromptCompiler:
             prompt=prompt,
             negative_prompt=negative,
             provider_parameters=_provider_parameters(node.semantic_role),
+            reference_instructions=reference_instructions,
             assertion_evidence=assertion_evidence,
         )
 

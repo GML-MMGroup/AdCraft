@@ -260,6 +260,7 @@ class AgentCanvasGuidedReferenceRepository:
                         metadata={
                             "operation_id": submission_id,
                             "rendition_kind": "original",
+                            "reference_kind": content.reference_kind,
                             "semantic_reference_role": (
                                 "character_reference"
                                 if content.reference_kind == "character_main"
