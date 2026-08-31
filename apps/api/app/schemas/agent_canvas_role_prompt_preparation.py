@@ -54,6 +54,7 @@ RolePromptContextDispositionV2 = Literal[
     "retain_unknown",
 ]
 RolePromptCompactionOutcomeV2 = Literal["preserved", "compacted"]
+VideoRepresentationModeV2 = Literal["illustrated", "illustration_to_live_action"]
 
 
 class _RolePromptModel(BaseModel):
@@ -190,6 +191,10 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     storyboard_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     style_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     installation_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
+    video_representation_mode: VideoRepresentationModeV2 | None = None
+    video_representation_source: str | None = Field(default=None, max_length=160)
+    video_representation_source_id: str | None = Field(default=None, max_length=160)
+    video_representation_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     model_policy_revision: int = Field(ge=1)
     created_at: datetime
 

@@ -85,5 +85,19 @@ def stage_authoring_context_from_materialization(
         style_snapshot_id=style_snapshot_id,
         internal_skill_ref=_SKILL_REFS[context.capability_id],
         style_projection=style_projection,
+        video_representation_mode=(
+            style.get("video_representation_mode")
+            if style.get("video_representation_mode")
+            in {
+                "illustrated",
+                "illustration_to_live_action",
+            }
+            else None
+        ),
+        video_representation_source_id=(
+            style.get("video_representation_source_id")
+            if isinstance(style.get("video_representation_source_id"), str)
+            else None
+        ),
         references=references,
     )

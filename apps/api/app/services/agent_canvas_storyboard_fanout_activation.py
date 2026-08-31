@@ -231,6 +231,18 @@ class StoryboardFanoutActivationService:
             fanout.visual_anchor_node_id,
         )
         style = anchor.structured_content.get("style")
+        get_snapshot = getattr(
+            self._conversations,
+            "get_active_creative_direction_snapshot",
+            None,
+        )
+        snapshot = get_snapshot(fanout.workflow_id) if get_snapshot is not None else None
+        public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
+        representation_mode = (
+            public_skill.get("video_representation_mode")
+            if isinstance(public_skill, dict)
+            else None
+        )
         return StageAuthoringContextV1(
             workflow_id=fanout.workflow_id,
             session_id=session.session_id,
@@ -244,6 +256,17 @@ class StoryboardFanoutActivationService:
                 else "agent/skills/video_agent_video_direction/SKILL.md"
             ),
             style_projection=str(style)[:8192] if style is not None else None,
+            video_representation_mode=(
+                representation_mode
+                if representation_mode in {"illustrated", "illustration_to_live_action"}
+                else None
+            ),
+            video_representation_source_id=(
+                f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
+                if snapshot
+                and representation_mode in {"illustrated", "illustration_to_live_action"}
+                else None
+            ),
             working_document_excerpts=excerpts,
         )
 

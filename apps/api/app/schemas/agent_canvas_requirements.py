@@ -50,6 +50,7 @@ RequirementControlNameV1: TypeAlias = Literal[
     "scene_count",
     "storyboard_sequence_count",
     "video_segment_count",
+    "video_representation_mode",
 ]
 DurationSecondsValueV1: TypeAlias = Annotated[float, Field(ge=1, le=3_600)]
 AspectRatioValueV1: TypeAlias = Annotated[str, Field(min_length=1, max_length=32)]
@@ -63,6 +64,7 @@ CharacterCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
 SceneCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
 StoryboardSequenceCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
 VideoSegmentCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
+VideoRepresentationModeValueV1: TypeAlias = Literal["illustrated", "illustration_to_live_action"]
 
 
 class _StrictModel(BaseModel):
@@ -145,6 +147,11 @@ class VideoSegmentCountControlV1(_StoredControlBase):
     value: VideoSegmentCountValueV1
 
 
+class VideoRepresentationModeControlV1(_StoredControlBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 RequirementControlV1: TypeAlias = Annotated[
     DurationSecondsControlV1
     | AspectRatioControlV1
@@ -157,7 +164,8 @@ RequirementControlV1: TypeAlias = Annotated[
     | CharacterCountControlV1
     | SceneCountControlV1
     | StoryboardSequenceCountControlV1
-    | VideoSegmentCountControlV1,
+    | VideoSegmentCountControlV1
+    | VideoRepresentationModeControlV1,
     Field(discriminator="control"),
 ]
 
@@ -226,6 +234,11 @@ class VideoSegmentCountControlPatchV1(_ControlPatchBase):
     value: VideoSegmentCountValueV1
 
 
+class VideoRepresentationModeControlPatchV1(_ControlPatchBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 RequirementControlPatchV1: TypeAlias = Annotated[
     DurationSecondsControlPatchV1
     | AspectRatioControlPatchV1
@@ -238,7 +251,8 @@ RequirementControlPatchV1: TypeAlias = Annotated[
     | CharacterCountControlPatchV1
     | SceneCountControlPatchV1
     | StoryboardSequenceCountControlPatchV1
-    | VideoSegmentCountControlPatchV1,
+    | VideoSegmentCountControlPatchV1
+    | VideoRepresentationModeControlPatchV1,
     Field(discriminator="control"),
 ]
 
@@ -307,6 +321,11 @@ class ManualVideoSegmentCountControlPatchV1(_ManualControlPatchBase):
     value: VideoSegmentCountValueV1
 
 
+class ManualVideoRepresentationModeControlPatchV1(_ManualControlPatchBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 ManualRequirementControlPatchV1: TypeAlias = Annotated[
     ManualDurationSecondsControlPatchV1
     | ManualAspectRatioControlPatchV1
@@ -319,7 +338,8 @@ ManualRequirementControlPatchV1: TypeAlias = Annotated[
     | ManualCharacterCountControlPatchV1
     | ManualSceneCountControlPatchV1
     | ManualStoryboardSequenceCountControlPatchV1
-    | ManualVideoSegmentCountControlPatchV1,
+    | ManualVideoSegmentCountControlPatchV1
+    | ManualVideoRepresentationModeControlPatchV1,
     Field(discriminator="control"),
 ]
 

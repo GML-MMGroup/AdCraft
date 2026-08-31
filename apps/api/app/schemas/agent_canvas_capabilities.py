@@ -193,6 +193,10 @@ class CompactVideoSegmentCountControlV2(_CompactControlValueV2):
     value: int = Field(ge=0, le=64)
 
 
+class CompactVideoRepresentationModeControlV2(_CompactControlValueV2):
+    value: Literal["illustrated", "illustration_to_live_action"]
+
+
 class CompactRequirementControlsV2(_CapabilityModel):
     # Non-nullable optional properties keep the model-facing schema precise: omission
     # means unspecified, while an explicitly supplied control must be a complete object.
@@ -208,6 +212,7 @@ class CompactRequirementControlsV2(_CapabilityModel):
     scene_count: CompactSceneCountControlV2 = Field(default=None)
     storyboard_sequence_count: CompactStoryboardSequenceCountControlV2 = Field(default=None)
     video_segment_count: CompactVideoSegmentCountControlV2 = Field(default=None)
+    video_representation_mode: CompactVideoRepresentationModeControlV2 = Field(default=None)
 
     def to_requirement_patches(self) -> tuple[RequirementControlPatchV1, ...]:
         patches: list[RequirementControlPatchV1] = []

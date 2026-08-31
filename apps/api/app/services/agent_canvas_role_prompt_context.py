@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RolePromptVariantV2,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
+from app.services.agent_canvas_video_representation import resolve_video_representation_mode
 
 
 _GLOBAL_REQUIREMENT_FIELDS = frozenset(
@@ -35,6 +36,7 @@ _GLOBAL_REQUIREMENT_FIELDS = frozenset(
         "response_locale",
         "spoken_language",
         "visual_style",
+        "video_representation_mode",
     }
 )
 _ROLE_REQUIREMENT_PREFIXES: dict[RolePromptVariantV2, tuple[str, ...]] = {
@@ -63,6 +65,7 @@ _STYLE_CONTROL_FIELDS = (
     "output_resolution",
     "resolution",
     "size",
+    "video_representation_mode",
 )
 _ASPECT_RATIO = re.compile(r"^(?P<width>[1-9][0-9]*):(?P<height>[1-9][0-9]*)$")
 _SIZE = re.compile(r"^(?P<width>[1-9][0-9]*)x(?P<height>[1-9][0-9]*)$")
@@ -77,6 +80,7 @@ ROLE_PARAMETER_CONTROL_NAMES = frozenset(
         "output_resolution",
         "resolution",
         "size",
+        "video_representation_mode",
     }
 )
 
@@ -214,6 +218,18 @@ class RolePromptContextProjector:
             (item.block_id for item in resolved_context_blocks if item.source_kind == "world_view"),
             None,
         )
+        representation = resolve_video_representation_mode(
+            explicit_control=(explicit_controls or {}).get("video_representation_mode"),
+            skill_mode=(
+                (style_parameters or {}).get("video_representation_mode")
+                or stage_context.video_representation_mode
+            ),
+            skill_source_id=(
+                stage_context.video_representation_source_id
+                or (style_parameters or {}).get("video_representation_source_id")
+                or "video-skill"
+            ),
+        )
         return RolePromptPreparationContextV2(
             workflow_id=node.workflow_id,
             node_id=node.node_id,
@@ -246,6 +262,16 @@ class RolePromptContextProjector:
             installation_parameters=installation_parameters or {},
             context_blocks=resolved_context_blocks,
             world_view_block_id=world_view_block_id,
+            video_representation_mode=(
+                representation.mode if role_variant in {"video_segment", "free_video"} else None
+            ),
+            video_representation_source=(
+                representation.source if role_variant in {"video_segment", "free_video"} else None
+            ),
+            video_representation_source_id=representation.source_id,
+            video_representation_digest=(
+                representation.digest if role_variant in {"video_segment", "free_video"} else None
+            ),
             model_policy_revision=model_policy_revision,
             created_at=datetime.now(timezone.utc),
         )
@@ -285,6 +311,26 @@ class RolePromptParameterResolver:
             ),
         )
         for name in recipe.parameter_names:
+            if name == "video_representation_mode" and context.video_representation_mode:
+                source_kind = (
+                    "explicit_user"
+                    if context.video_representation_source == "explicit_user"
+                    else "style_advice"
+                )
+                resolved[name] = ResolvedNodeParameterV2(
+                    name=name,
+                    value=context.video_representation_mode,
+                    source_kind=cast(RoleParameterSourceKindV2, source_kind),
+                    source_id=(
+                        context.requirement_revision_id
+                        if source_kind == "explicit_user"
+                        else (context.video_representation_source_id or "video-skill")
+                    ),
+                    source_revision=(
+                        context.requirement_revision_no if source_kind == "explicit_user" else None
+                    ),
+                )
+                continue
             explicit = context.explicit_controls.get(name)
             if explicit is not None:
                 resolved[name] = ResolvedNodeParameterV2(

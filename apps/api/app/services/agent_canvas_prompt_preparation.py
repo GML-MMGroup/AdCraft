@@ -536,6 +536,7 @@ class NodePromptPreparationService:
                 "output_resolution",
                 "resolution",
                 "size",
+                "video_representation_mode",
             }
         }
         return self._projector.project(

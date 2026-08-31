@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import CanvasCreativeRoleV2, CanvasNodeTypeV2
@@ -67,6 +69,8 @@ class StageAuthoringContextV1(_ProgressiveAuthoringModel):
     style_snapshot_id: str | None = Field(default=None, max_length=160)
     internal_skill_ref: str = Field(min_length=1, max_length=320)
     style_projection: str | None = Field(default=None, max_length=8_192)
+    video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
+    video_representation_source_id: str | None = Field(default=None, max_length=160)
     working_document_excerpts: tuple[AgentDocumentContextExcerptV2, ...] = Field(
         default=(),
         max_length=16,

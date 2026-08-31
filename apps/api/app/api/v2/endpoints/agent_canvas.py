@@ -903,10 +903,20 @@ def create_agent_canvas_runtime(
         )
 
     def resolve_storyboard_video_audio_constraints(workflow_id: str) -> dict[str, object]:
-        return {
+        constraints = {
             str(control.control): control.value
             for control in requirement_service.get_current(workflow_id).hard_controls
         }
+        snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
+        public_skill = snapshot.global_direction.get("public_skill")
+        if isinstance(public_skill, dict):
+            mode = public_skill.get("video_representation_mode")
+            if mode is not None:
+                constraints["_video_skill_representation_mode"] = mode
+                constraints["_video_skill_representation_source_id"] = (
+                    f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
+                )
+        return constraints
 
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,

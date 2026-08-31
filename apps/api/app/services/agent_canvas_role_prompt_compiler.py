@@ -165,6 +165,11 @@ class AgentCanvasRolePromptCompiler:
         ):
             prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
         prompt = f"{prompt}\n\n{policy.assertion_block}"
+        if (
+            context.role_variant in {"video_segment", "free_video"}
+            and context.video_representation_mode == "illustration_to_live_action"
+        ):
+            prompt = f"{prompt}\n\n{_LIVE_ACTION_IDENTITY_GUARDRAIL(context)}"
         if context.role_variant == "script":
             duration = context.explicit_controls.get("duration_seconds")
             if (
@@ -514,6 +519,7 @@ def _structured_content(
             segment_summary=brief.segment_summary,
             duration_seconds=brief.duration_seconds,
             storyboard_content=brief.action,
+            representation_mode=(context.video_representation_mode or "illustrated"),
             style=style,
             dialogue=brief.dialogue,
             voice_style=brief.voiceover,
@@ -536,6 +542,31 @@ def _structured_content(
             content["background_music"] = False
         return content
     raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
+
+
+def _LIVE_ACTION_IDENTITY_GUARDRAIL(context: RolePromptPreparationContextV2) -> str:
+    """Append immutable illustration identity constraints after advisory style text."""
+
+    facts: list[str] = []
+    for binding in context.bindings:
+        if binding.source_role != "character" or binding.character_phase != "turnaround":
+            continue
+        identity = "exact current Character Turnaround AssetVersion"
+        if binding.occurrence_id:
+            identity += f" for occurrence {binding.occurrence_id}"
+        facts.append(identity)
+    references = "; ".join(facts) or "each bound Character Turnaround AssetVersion"
+    return (
+        "Render fictional cinematic live action from the detailed illustration references. "
+        f"Use {references} as strict identity and design authority. Preserve character count, "
+        "occurrence mapping, age band, face and design cues, body proportions, overall model, "
+        "silhouette, hair shape and color, wardrobe construction, fit, colors, patterns, "
+        "materials, footwear, accessories, and markings. Only rendering medium, linework, "
+        "shading, photographic texture, lens, lighting, and color grading may drift. Do not "
+        "redesign, substitute wardrobe, change clothing colors/patterns/materials, change body "
+        "shape or model, merge, duplicate, or swap occurrences. These identity constraints are "
+        "the final instruction and override advisory style guidance."
+    )
 
 
 def _digest(value: object) -> str:

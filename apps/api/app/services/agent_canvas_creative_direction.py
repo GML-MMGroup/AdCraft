@@ -90,6 +90,7 @@ class CreativeDirectionService:
                     else None
                 ),
                 "display_order": skill.manifest.display_order,
+                "video_representation_mode": skill.manifest.video_representation_mode,
             },
             "package_digest": skill.package_digest,
         }
@@ -149,6 +150,14 @@ class CreativeDirectionService:
                 "style_skill_context_budget_exceeded",
                 "Style Guidance context exceeds its byte budget.",
             )
+        public_skill = snapshot.global_direction.get("public_skill")
+        skill_metadata = public_skill if isinstance(public_skill, dict) else {}
+        mode = skill_metadata.get("video_representation_mode", "illustrated")
+        if mode not in {"illustrated", "illustration_to_live_action"}:
+            raise _error(
+                "style_skill_snapshot_invalid",
+                "Creative Direction snapshot contains an invalid Video representation mode.",
+            )
         return StyleGuidanceContextV2(
             skill_run_id=snapshot.skill_run_id,
             skill_id=snapshot.source_skill_id or "",
@@ -160,6 +169,10 @@ class CreativeDirectionService:
             role_guidance=role_guidance,
             role_guidance_digest=(
                 (str(projection.get("digest") or "") or None) if projection else None
+            ),
+            video_representation_mode=mode,
+            video_representation_source_id=(
+                f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
             ),
         )
 

@@ -39,6 +39,7 @@ _INTAKE_CONTROL_NAMES = (
     "scene_count",
     "storyboard_sequence_count",
     "video_segment_count",
+    "video_representation_mode",
 )
 
 

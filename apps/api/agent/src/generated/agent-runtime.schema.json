@@ -7979,6 +7979,7 @@
                 "scene_count": "#/$defs/SceneCountControlV1",
                 "spoken_language": "#/$defs/SpokenLanguageControlV1",
                 "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_representation_mode": "#/$defs/VideoRepresentationModeControlV1",
                 "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
               },
               "propertyName": "control"
@@ -8019,6 +8020,9 @@
               },
               {
                 "$ref": "#/$defs/VideoSegmentCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoRepresentationModeControlV1"
               }
             ]
           },
@@ -9301,6 +9305,10 @@
           "$ref": "#/$defs/CompactStoryboardSequenceCountControlV2",
           "default": null
         },
+        "video_representation_mode": {
+          "$ref": "#/$defs/CompactVideoRepresentationModeControlV2",
+          "default": null
+        },
         "video_segment_count": {
           "$ref": "#/$defs/CompactVideoSegmentCountControlV2",
           "default": null
@@ -9589,6 +9597,31 @@
         "objective"
       ],
       "title": "CompactTurnIntentDecisionV3",
+      "type": "object"
+    },
+    "CompactVideoRepresentationModeControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactVideoRepresentationModeControlV2",
       "type": "object"
     },
     "CompactVideoSegmentCountControlV2": {
@@ -17030,6 +17063,37 @@
       "title": "ManualStoryboardSequenceCountControlPatchV1",
       "type": "object"
     },
+    "ManualVideoRepresentationModeControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_representation_mode",
+          "default": "video_representation_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualVideoRepresentationModeControlPatchV1",
+      "type": "object"
+    },
     "ManualVideoSegmentCountControlPatchV1": {
       "additionalProperties": false,
       "properties": {
@@ -21627,6 +21691,7 @@
               "scene_count",
               "spoken_language",
               "storyboard_sequence_count",
+              "video_representation_mode",
               "video_segment_count"
             ],
             "type": "string"
@@ -21781,6 +21846,7 @@
               "scene_count",
               "spoken_language",
               "storyboard_sequence_count",
+              "video_representation_mode",
               "video_segment_count"
             ],
             "type": "string"
@@ -21845,6 +21911,7 @@
               "scene_count",
               "spoken_language",
               "storyboard_sequence_count",
+              "video_representation_mode",
               "video_segment_count"
             ],
             "type": "string"
@@ -22340,6 +22407,7 @@
                 "scene_count": "#/$defs/ManualSceneCountControlPatchV1",
                 "spoken_language": "#/$defs/ManualSpokenLanguageControlPatchV1",
                 "storyboard_sequence_count": "#/$defs/ManualStoryboardSequenceCountControlPatchV1",
+                "video_representation_mode": "#/$defs/ManualVideoRepresentationModeControlPatchV1",
                 "video_segment_count": "#/$defs/ManualVideoSegmentCountControlPatchV1"
               },
               "propertyName": "control"
@@ -22380,6 +22448,9 @@
               },
               {
                 "$ref": "#/$defs/ManualVideoSegmentCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualVideoRepresentationModeControlPatchV1"
               }
             ]
           },
@@ -22460,6 +22531,7 @@
                 "scene_count": "#/$defs/SceneCountControlV1",
                 "spoken_language": "#/$defs/SpokenLanguageControlV1",
                 "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_representation_mode": "#/$defs/VideoRepresentationModeControlV1",
                 "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
               },
               "propertyName": "control"
@@ -22500,6 +22572,9 @@
               },
               {
                 "$ref": "#/$defs/VideoSegmentCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoRepresentationModeControlV1"
               }
             ]
           },
@@ -22718,6 +22793,7 @@
                 "scene_count": "#/$defs/SceneCountControlV1",
                 "spoken_language": "#/$defs/SpokenLanguageControlV1",
                 "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_representation_mode": "#/$defs/VideoRepresentationModeControlV1",
                 "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
               },
               "propertyName": "control"
@@ -22758,6 +22834,9 @@
               },
               {
                 "$ref": "#/$defs/VideoSegmentCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoRepresentationModeControlV1"
               }
             ]
           },
@@ -22828,6 +22907,7 @@
                 "scene_count": "#/$defs/SceneCountControlPatchV1",
                 "spoken_language": "#/$defs/SpokenLanguageControlPatchV1",
                 "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlPatchV1",
+                "video_representation_mode": "#/$defs/VideoRepresentationModeControlPatchV1",
                 "video_segment_count": "#/$defs/VideoSegmentCountControlPatchV1"
               },
               "propertyName": "control"
@@ -22868,6 +22948,9 @@
               },
               {
                 "$ref": "#/$defs/VideoSegmentCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/VideoRepresentationModeControlPatchV1"
               }
             ]
           },
@@ -23775,6 +23858,61 @@
           ],
           "default": null,
           "title": "User Prompt"
+        },
+        "video_representation_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Representation Digest"
+        },
+        "video_representation_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "illustrated",
+                "illustration_to_live_action"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Representation Mode"
+        },
+        "video_representation_source": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Representation Source"
+        },
+        "video_representation_source_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Representation Source Id"
         },
         "workflow_id": {
           "maxLength": 160,
@@ -27128,6 +27266,21 @@
           "default": "creative_direction_snapshot",
           "title": "Source",
           "type": "string"
+        },
+        "video_representation_mode": {
+          "default": "illustrated",
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Video Representation Mode",
+          "type": "string"
+        },
+        "video_representation_source_id": {
+          "default": "platform-default",
+          "maxLength": 160,
+          "title": "Video Representation Source Id",
+          "type": "string"
         }
       },
       "required": [
@@ -27166,6 +27319,7 @@
                 "scene_count": "#/$defs/SceneCountControlV1",
                 "spoken_language": "#/$defs/SpokenLanguageControlV1",
                 "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_representation_mode": "#/$defs/VideoRepresentationModeControlV1",
                 "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
               },
               "propertyName": "control"
@@ -27206,6 +27360,9 @@
               },
               {
                 "$ref": "#/$defs/VideoSegmentCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoRepresentationModeControlV1"
               }
             ]
           },
@@ -29003,7 +29160,8 @@
             "aspect_ratio",
             "duration_seconds",
             "generate_audio",
-            "resolution"
+            "resolution",
+            "video_representation_mode"
           ],
           "title": "Field",
           "type": "string"
@@ -29294,6 +29452,169 @@
       "title": "VideoProposalResultV1",
       "type": "object"
     },
+    "VideoRepresentationModeControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_representation_mode",
+          "default": "video_representation_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "VideoRepresentationModeControlPatchV1",
+      "type": "object"
+    },
+    "VideoRepresentationModeControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_representation_mode",
+          "default": "video_representation_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_bundle_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Bundle Id"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "decision_bundle_answer",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_option_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Option Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_question_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Question Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "VideoRepresentationModeControlV1",
+      "type": "object"
+    },
     "VideoSegmentContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -29331,6 +29652,15 @@
           "default": "",
           "maxLength": 8192,
           "title": "Negative Constraints",
+          "type": "string"
+        },
+        "representation_mode": {
+          "default": "illustrated",
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Representation Mode",
           "type": "string"
         },
         "segment_summary": {

@@ -28,6 +28,7 @@ AdMediaSemanticRoleV2 = Literal[
     "general_audio",
     "editing",
 ]
+VideoRepresentationModeV2 = Literal["illustrated", "illustration_to_live_action"]
 SemanticReferenceRoleV2 = Literal[
     "world_setting_reference",
     "subject_reference",
@@ -149,6 +150,7 @@ class VideoSegmentContentV2(_AdMediaModel):
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
     storyboard_content: str = Field(min_length=1, max_length=16_384)
+    representation_mode: VideoRepresentationModeV2 = "illustrated"
     style: VisualStyleContractV2 | None = None
     dialogue: str = Field(default="", max_length=8_192)
     voice_style: str = Field(default="", max_length=2_048)

@@ -10,6 +10,7 @@ from pydantic import BaseModel, JsonValue
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.services.provider_model_catalog import GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO
+from app.services.agent_canvas_video_representation import resolve_video_representation_mode
 
 
 _IMAGE_SIZE_BY_RATIO = GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO
@@ -132,6 +133,17 @@ class GuidedMediaParameterCompiler:
                     normalized,
                     normalized,
                 )
+        mode = _constraint(explicit_constraints, "video_representation_mode")
+        mode_origin = "user_explicit"
+        if mode is None:
+            mode = getattr(structured_content, "representation_mode", "illustrated")
+            mode_origin = "structured_content"
+        if mode is not None:
+            resolved_mode = resolve_video_representation_mode(explicit_control=mode)
+            parameters["video_representation_mode"] = resolved_mode.mode
+            provenance["video_representation_mode"] = _provenance(
+                mode_origin, mode, resolved_mode.mode
+            )
         generate_audio, audio_provenance = resolve_video_audio_parameter(
             structured_values=structured_content,
             explicit_constraints=explicit_constraints,
@@ -204,6 +216,7 @@ def _constraint(constraints: Mapping[str, object], field: str) -> object | None:
         "generate_audio": ("required_video_parameters",),
         "silent_video": ("required_video_parameters",),
         "audio_mode": ("required_video_parameters",),
+        "video_representation_mode": ("required_video_parameters",),
     }
     if field in constraints:
         return constraints[field]

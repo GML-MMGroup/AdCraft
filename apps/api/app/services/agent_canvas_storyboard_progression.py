@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardPanelV2,
     VideoSegmentContentV2,
 )
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -49,6 +50,7 @@ from app.services.agent_canvas_role_reference_policy import (
 from app.services.agent_canvas_guided_media_parameters import (
     resolve_video_audio_parameter,
 )
+from app.services.agent_canvas_video_representation import resolve_video_representation_mode
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
@@ -464,18 +466,26 @@ class ProgressiveStoryboardReadyService:
         if any(item.node_id == video_id for item in workflow.nodes):
             return ()
         content = StoryboardGridContentV2.model_validate(grid.structured_content)
-        video_content = VideoSegmentContentV2(
-            segment_summary=content.sequence_summary,
-            duration_seconds=duration_seconds,
-            storyboard_content="Follow the nine ordered storyboard frames.",
-            environment_sound="Preserve scene ambience.",
-            action_effects="Preserve declared action sounds.",
-            background_music=False,
-        )
         audio_constraints = (
             self._video_audio_constraints_resolver(grid.workflow_id)
             if self._video_audio_constraints_resolver is not None
             else {}
+        )
+        representation = resolve_video_representation_mode(
+            explicit_control=audio_constraints.get("video_representation_mode"),
+            skill_mode=audio_constraints.get("_video_skill_representation_mode"),
+            skill_source_id=str(
+                audio_constraints.get("_video_skill_representation_source_id") or "video-skill"
+            ),
+        )
+        video_content = VideoSegmentContentV2(
+            segment_summary=content.sequence_summary,
+            duration_seconds=duration_seconds,
+            storyboard_content="Follow the nine ordered storyboard frames.",
+            representation_mode=representation.mode,
+            environment_sound="Preserve scene ambience.",
+            action_effects="Preserve declared action sounds.",
+            background_music=False,
         )
         generate_audio, audio_provenance = resolve_video_audio_parameter(
             structured_values=video_content,
@@ -503,11 +513,27 @@ class ProgressiveStoryboardReadyService:
             parameters={
                 "duration_seconds": duration_seconds,
                 "aspect_ratio": aspect_ratio,
+                "video_representation_mode": representation.mode,
                 **({"resolution": resolution} if resolution is not None else {}),
                 **({"generate_audio": generate_audio} if generate_audio is not None else {}),
             },
             parameter_provenance=(
-                {"generate_audio": audio_provenance} if audio_provenance is not None else {}
+                {
+                    **(
+                        {"generate_audio": audio_provenance} if audio_provenance is not None else {}
+                    ),
+                    "video_representation_mode": CanvasParameterProvenanceV2(
+                        origin=(
+                            "user_explicit"
+                            if audio_constraints.get("video_representation_mode") is not None
+                            else "role_default"
+                            if audio_constraints.get("_video_skill_representation_mode") is not None
+                            else "guidance_default"
+                        ),
+                        requested_value=representation.mode,
+                        effective_value=representation.mode,
+                    ),
+                }
             ),
             metadata={
                 "source_agent_document_id": plan_document_id,
@@ -517,6 +543,10 @@ class ProgressiveStoryboardReadyService:
                     "start_seconds": sequence_start_seconds,
                     "end_seconds": sequence_end_seconds,
                 },
+                "video_representation_mode": representation.mode,
+                "video_representation_source": representation.source,
+                "video_representation_policy_version": representation.policy_version,
+                "video_representation_digest": representation.digest,
             },
             position=CanvasPositionV2(x=grid.position.x + 360, y=grid.position.y),
             revision=1,
