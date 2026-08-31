@@ -37,7 +37,7 @@ class GuidedReferenceSourceService:
         self._workflows = workflows
         self._commits = commits
 
-    def set_continuation_writer(self, writer: Callable[..., None]) -> None:
+    def set_continuation_writer(self, writer: Callable[..., None] | None) -> None:
         self._commits.set_continuation_writer(writer)
 
     def open_for_materialized_main(
@@ -87,7 +87,7 @@ class GuidedReferenceSourceService:
                 "Guidance session was not found.",
                 stage="guided_reference_service",
             )
-        self._commits.open_reference_source_with_journey(
+        interaction = self._commits.open_reference_source_with_journey(
             workflow_id,
             source_turn_id=source_turn_id,
             expected_session_revision=int(row["revision"]),
@@ -100,7 +100,7 @@ class GuidedReferenceSourceService:
             target_node_revision=target_node_revision,
             occurrence_id=occurrence_id,
         )
-        return True
+        return interaction.status == "open"
 
     def submit_interaction(
         self,

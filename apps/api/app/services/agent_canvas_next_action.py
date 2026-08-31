@@ -108,6 +108,11 @@ class DurableNextActionExecutionService:
         model_selection: ModelSelectionService | None = None,
         decision_bundles: AgentCanvasDecisionBundleRepository | None = None,
         editing_preparer: Callable[[str], object] | None = None,
+        materialization_resumer: Callable[
+            [str, Callable[[], None]],
+            object,
+        ]
+        | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -129,6 +134,15 @@ class DurableNextActionExecutionService:
         self._gateway = gateway
         self._journey = GuidedProductionJourneyService(conversations)
         self._editing_preparer = editing_preparer
+        self._materialization_resumer = materialization_resumer
+
+    def set_materialization_resumer(
+        self,
+        resumer: Callable[[str, Callable[[], None]], object],
+    ) -> None:
+        """Attach the canonical post-commit materialization recovery boundary."""
+
+        self._materialization_resumer = resumer
 
     def execute(
         self,
@@ -151,6 +165,33 @@ class DurableNextActionExecutionService:
             )
         lease_guard()
         turn = self._conversations.mark_turn_running(envelope.next_action_turn_id)
+        if envelope.resume_materialization_envelope_id is not None:
+            if self._materialization_resumer is None:
+                raise V2PersistenceError(
+                    "materialization_resume_unavailable",
+                    "Committed materialization recovery is unavailable.",
+                    stage="next_action_execution",
+                )
+            lease_guard()
+            recovered = self._materialization_resumer(
+                envelope.resume_materialization_envelope_id,
+                lease_guard,
+            )
+            if recovered is None:
+                raise V2PersistenceError(
+                    "materialization_resume_not_found",
+                    "Committed materialization recovery did not resolve its persisted result.",
+                    stage="next_action_execution",
+                )
+            lease_guard()
+            message = "The selected reference is applied and authoring has resumed."
+            self._conversations.complete_turn(
+                envelope.next_action_turn_id,
+                assistant_message=message,
+            )
+            return ValidatedNextActionV1(
+                command=NextActionCommandV1(action="reply", message=message)
+            )
         journey_action = None
         if session.journey.stage != "intake":
             session, journey_action = self._journey.reserve_next_action(

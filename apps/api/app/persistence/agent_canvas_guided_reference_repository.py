@@ -17,6 +17,9 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
 from app.persistence.agent_canvas_guided_reference_validation import (
     reference_target_is_current,
 )
+from app.persistence.agent_canvas_operation_envelope_repository import (
+    AgentCanvasOperationEnvelopeRepository,
+)
 from app.persistence.agent_canvas_repository import (
     AgentCanvasWorkflowRepository,
     _advance_workflow_revision,
@@ -67,8 +70,9 @@ class AgentCanvasGuidedReferenceRepository:
         self._events = events
         self._interactions = interactions
         self._continuation_writer = continuation_writer
+        self._envelopes = AgentCanvasOperationEnvelopeRepository(workflows.database)
 
-    def set_continuation_writer(self, writer: Callable[..., None]) -> None:
+    def set_continuation_writer(self, writer: Callable[..., None] | None) -> None:
         self._continuation_writer = writer
 
     def open_reference_source_with_journey(self, *args, **kwargs) -> GuidedInteractionV1:
@@ -364,21 +368,28 @@ class AgentCanvasGuidedReferenceRepository:
                         "guided_reference_source_revision_conflict",
                         "Guidance session changed before reference submit.",
                     )
-                source_turn = (
-                    connection.execute(
-                        select(AgentCanvasChatTurnRow)
-                        .where(
-                            AgentCanvasChatTurnRow.workflow_id == workflow_id,
-                            AgentCanvasChatTurnRow.status.in_(("queued", "running", "completed")),
-                        )
-                        .order_by(AgentCanvasChatTurnRow.created_at.desc())
-                        .limit(1)
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
                 continuation_id = None
-                if self._continuation_writer is not None and source_turn is not None:
+                if self._continuation_writer is not None:
+                    source_turn = (
+                        connection.execute(
+                            select(AgentCanvasChatTurnRow).where(
+                                AgentCanvasChatTurnRow.workflow_id == workflow_id,
+                                AgentCanvasChatTurnRow.turn_id == active_action.turn_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if source_turn is None:
+                        raise _error(
+                            "guided_reference_source_parent_authority_missing",
+                            "Reference source wait is missing its parent action Turn.",
+                        )
+                    parent_envelope = self._envelopes.get_materialization_for_turn_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        action_turn_id=active_action.turn_id,
+                    )
                     continuation_digest = hashlib.sha256(
                         f"guided-reference:{workflow_id}:{submission_id}".encode()
                     ).hexdigest()
@@ -393,6 +404,7 @@ class AgentCanvasGuidedReferenceRepository:
                             source_turn_id=str(source_turn["turn_id"]),
                             source_action_id=interaction.interaction_id,
                             idempotency_key=f"guided-reference:{workflow_id}:{submission_id}",
+                            resume_materialization_envelope_id=parent_envelope.envelope_id,
                         ),
                         now=now,
                     )

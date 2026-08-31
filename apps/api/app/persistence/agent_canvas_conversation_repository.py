@@ -3613,6 +3613,7 @@ class AgentCanvasConversationRepository:
             context_snapshot_digest=context_digest,
             occurrence_id=continuation.occurrence_id,
             character_phase=continuation.character_phase,
+            resume_materialization_envelope_id=(continuation.resume_materialization_envelope_id),
             action_owner=continuation.action_owner,
             created_at=timestamp,
         )

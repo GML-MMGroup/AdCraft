@@ -837,6 +837,11 @@ class NextActionEnvelopeV1(_CapabilityModel):
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: CharacterAuthoringPhaseV1 | None = None
+    resume_materialization_envelope_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
     action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     created_at: datetime
 

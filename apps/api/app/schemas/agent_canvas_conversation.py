@@ -108,6 +108,11 @@ class ContinuationCommitV2(_ConversationModel):
     video_skill_run_id: str | None = None
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: Literal["main", "turnaround"] | None = None
+    resume_materialization_envelope_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
     action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     max_attempts: int = Field(default=5, ge=1)
 

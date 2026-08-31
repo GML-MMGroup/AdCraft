@@ -19,6 +19,7 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
+    ProposalApplicationEnvelopeV1,
     ProposalPublicationEnvelopeV1,
 )
 from app.schemas.agent_canvas_continuation import ContinuationOperationV2
@@ -135,6 +136,43 @@ class AgentCanvasOperationEnvelopeRepository:
                 "Operation envelope was not found.",
             )
         return _persisted_envelope(payload)
+
+    def get_materialization_for_turn_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        action_turn_id: str,
+    ) -> ProposalApplicationEnvelopeV1:
+        """Resolve one exact persisted materialization owned by its action Turn."""
+
+        rows = tuple(
+            connection.execute(
+                select(AgentCanvasOperationEnvelopeRow).where(
+                    AgentCanvasOperationEnvelopeRow.workflow_id == workflow_id,
+                    AgentCanvasOperationEnvelopeRow.turn_id == action_turn_id,
+                )
+            ).mappings()
+        )
+        materializations = tuple(
+            envelope
+            for row in rows
+            if isinstance(
+                (envelope := _persisted_envelope(row)),
+                (CapabilityMaterializationEnvelopeV1, ProposalPublicationEnvelopeV1),
+            )
+        )
+        if not materializations:
+            raise _error(
+                "operation_envelope_not_found",
+                "Materialization envelope was not found for the action Turn.",
+            )
+        if len(materializations) != 1:
+            raise _error(
+                "operation_envelope_identity_invalid",
+                "Action Turn resolves to multiple materialization envelopes.",
+            )
+        return materializations[0]
 
     def validate_identity_in_transaction(
         self,

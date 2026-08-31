@@ -596,6 +596,54 @@ class AgentCanvasGuidedInteractionRepository:
                             "Reference source target does not match the selected capability.",
                         )
                     journey = _journey(session)
+                    identity = sha256(
+                        f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:"
+                        f"{target_node_id}:{target_node_revision}:{occurrence_id or '-'}:v1".encode()
+                    ).hexdigest()[:32]
+                    interaction_id = f"interaction_reference_source_{identity}"
+                    exact_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if exact_row is not None:
+                        exact = guided_interaction_from_row(exact_row)
+                        if (
+                            not isinstance(exact.content, GuidedReferenceSourceQuestionV1)
+                            or exact.content.reference_kind != reference_kind
+                            or exact.content.target_node_id != target_node_id
+                            or exact.content.target_node_revision != target_node_revision
+                            or exact.content.occurrence_id != occurrence_id
+                        ):
+                            raise _error(
+                                "guided_interaction_conflict",
+                                "Reference source interaction identity conflicts with persisted state.",
+                            )
+                        persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
+                        if exact.status == "open":
+                            if (
+                                persisted_awaiting is None
+                                or persisted_awaiting.interaction_id != exact.interaction_id
+                            ):
+                                raise _error(
+                                    "guidance_authority_conflict",
+                                    "Reference source interaction is missing matching awaiting authority.",
+                                )
+                        elif (
+                            persisted_awaiting is not None
+                            and persisted_awaiting.interaction_id == exact.interaction_id
+                        ):
+                            raise _error(
+                                "guidance_authority_conflict",
+                                "Closed reference source interaction still owns awaiting authority.",
+                            )
+                        connection.commit()
+                        return exact
                     existing_row = (
                         connection.execute(
                             select(AgentCanvasGuidedInteractionRow).where(
@@ -632,13 +680,9 @@ class AgentCanvasGuidedInteractionRepository:
                         connection.commit()
                         return existing
 
-                    identity = sha256(
-                        f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:"
-                        f"{target_node_id}:{target_node_revision}:{occurrence_id or '-'}:v1".encode()
-                    ).hexdigest()[:32]
                     now = datetime.now(timezone.utc)
                     interaction = GuidedInteractionV1(
-                        interaction_id=f"interaction_reference_source_{identity}",
+                        interaction_id=interaction_id,
                         workflow_id=workflow_id,
                         session_id=str(session["session_id"]),
                         checkpoint_id=f"reference_source:{journey.stage_revision}:{reference_kind}:{target_node_id}",

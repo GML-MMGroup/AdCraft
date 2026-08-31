@@ -1446,6 +1446,19 @@ def create_agent_canvas_runtime(
             GuidedProductionJourneyReducer(),
         ),
     )
+
+    def resume_reference_materialization(envelope_id: str, lease_guard) -> object:
+        envelope = materialization_repository.get_envelope(envelope_id)
+        recovered = materialization_publisher.resume_committed(envelope, lease_guard)
+        if recovered is None:
+            raise V2PersistenceError(
+                "materialization_resume_not_found",
+                "Committed reference materialization could not be resumed.",
+                stage="capability_materialization_publication",
+            )
+        return recovered
+
+    durable_next_action.set_materialization_resumer(resume_reference_materialization)
     materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,
         context_loader=lambda envelope: materialization_context_from_state(
