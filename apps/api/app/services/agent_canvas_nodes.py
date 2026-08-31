@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from uuid import uuid4
 
-from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_repository import (
+    AgentCanvasWorkflowRepository,
+    _has_managed_prompt_preparation,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
@@ -133,6 +136,9 @@ class AgentCanvasNodeService:
                 )
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
+        if "generation_prompt" in changes and not source_only_product:
+            normalized_prompt = normalize_manual_generation_prompt(request.generation_prompt)
+            changes["generation_prompt"] = normalized_prompt
         if (
             current.status == "draft"
             and current.prompt_preparation.recipe_id is not None
@@ -142,13 +148,16 @@ class AgentCanvasNodeService:
                 current.prompt_preparation,
                 now,
             )
-        elif (
-            "generation_prompt" in changes and request.generation_prompt and not source_only_product
-        ):
-            changes["prompt_preparation"] = _ready_prompt_preparation(
-                request.generation_prompt,
-                now,
-            )
+        elif "generation_prompt" in changes and not source_only_product:
+            if changes["generation_prompt"] is None:
+                changes["prompt_preparation"] = NodePromptPreparationV1.waiting_user(
+                    updated_at=now
+                )
+            elif not _has_managed_prompt_preparation(current):
+                changes["prompt_preparation"] = _ready_prompt_preparation(
+                    str(changes["generation_prompt"]),
+                    now,
+                )
         status = (
             current.status
             if source_only_product
