@@ -13,6 +13,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
+import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
   AssetsIcon,
@@ -128,6 +129,7 @@ function reducedMotionPreference(): boolean {
 type CanvasInteractionReason = "viewport" | "node-drag";
 
 export function AgentCanvasPage() {
+  const { refreshProjects } = useApp();
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
   const workflow = session.state.workflow;
@@ -1311,6 +1313,7 @@ export function AgentCanvasPage() {
           onActionReceipt={placeReceiptNodes}
           onWorkflowRefresh={refreshWorkflow}
           onRuntimeRefresh={refreshRuntime}
+          onProjectsRefresh={refreshProjects}
           collapsed={chatCollapsed}
           onCollapsedChange={setChatCollapsed}
           onViewNodes={revealAvailableCanvasNodes}

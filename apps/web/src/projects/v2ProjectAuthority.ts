@@ -9,6 +9,7 @@ export type V2ProjectListItem = {
   updatedAt: string;
   favorite: boolean;
   coverAssetId: string | null;
+  coverVersionId?: string | null;
   coverState?: ProjectV2Summary["cover_state"];
   cover: V2ProjectCover | null;
 };
@@ -22,6 +23,7 @@ export function projectSummaryToListItem(project: ProjectV2Summary): V2ProjectLi
     updatedAt: project.updated_at,
     favorite: project.is_favorite,
     coverAssetId: project.cover_asset_id,
+    coverVersionId: project.cover_version_id,
     coverState: project.cover_state,
     cover: resolveV2ProjectCoverSummary(project.cover),
   };

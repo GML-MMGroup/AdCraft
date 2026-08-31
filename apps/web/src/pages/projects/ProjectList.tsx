@@ -3,7 +3,11 @@ import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createRequestQueue } from "../../collections/requestQueue.ts";
 import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
-import { loadProjectCoverCache, saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
+import {
+  loadLatestProjectCoverCache,
+  projectCoverCacheKey,
+  saveProjectCoverCache,
+} from "../../projects/projectCoverCache.ts";
 import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 import { prefetchProjectCover } from "../../projects/projectCoverPrefetch.ts";
 import type { ProjectAssetSummaryV2, ProjectCoverStateV2 } from "../../types-v2.ts";
@@ -25,6 +29,7 @@ export type ProjectListItem = {
   favorite: boolean;
   workflowId: string;
   coverAssetId: string | null;
+  coverVersionId?: string | null;
   coverState?: ProjectCoverStateV2;
   cover?: V2ProjectCover | null;
 };
@@ -36,6 +41,7 @@ type ProjectListProps = {
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  onChangeCoverProject?: (project: ProjectListItem) => void;
   selectionMode?: boolean;
   selectedProjectIds?: ReadonlySet<string>;
   selectionDisabled?: boolean;
@@ -84,6 +90,7 @@ export function ProjectList({
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
+  onChangeCoverProject,
   selectionMode = false,
   selectedProjectIds,
   selectionDisabled = false,
@@ -177,13 +184,14 @@ export function ProjectList({
         onTrashProject={onTrashProject}
         onToggleFavorite={onToggleFavorite}
         onRenameProject={onRenameProject}
+        onChangeCoverProject={onChangeCoverProject}
         selectionMode={selectionMode}
         selected={selectedProjectIds?.has(project.projectId) ?? false}
         selectionDisabled={selectionDisabled}
         onToggleSelect={onToggleSelect ? () => onToggleSelect(project.projectId) : undefined}
       />
     );
-  }, [columnCount, firstVisibleRow, hasLeading, lastVisibleRow, leading, onOpenProject, onRenameProject, onToggleFavorite, onToggleSelect, onTrashProject, projects, selectedProjectIds, selectionDisabled, selectionMode]);
+  }, [columnCount, firstVisibleRow, hasLeading, lastVisibleRow, leading, onChangeCoverProject, onOpenProject, onRenameProject, onToggleFavorite, onToggleSelect, onTrashProject, projects, selectedProjectIds, selectionDisabled, selectionMode]);
 
   return (
     <div
@@ -218,6 +226,7 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
+  onChangeCoverProject,
   selectionMode,
   selected,
   selectionDisabled,
@@ -229,6 +238,7 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  onChangeCoverProject?: (project: ProjectListItem) => void;
   selectionMode: boolean;
   selected: boolean;
   selectionDisabled: boolean;
@@ -260,6 +270,7 @@ const ProjectListCard = memo(function ProjectListCard({
       onTrash={trashProject}
       onToggleFavorite={toggleFavorite}
       onRename={renameProject}
+      onChangeCover={onChangeCoverProject ? () => onChangeCoverProject(project) : undefined}
       selectionMode={selectionMode}
       selected={selected}
       selectionDisabled={selectionDisabled}
@@ -269,13 +280,13 @@ const ProjectListCard = memo(function ProjectListCard({
 });
 
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
-  const { workflowId, coverAssetId, coverState, updatedAt, cover: summaryCover } = project;
-  const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
-  const cacheKey = projectCoverCacheKey(project.projectId);
+  const { workflowId, coverAssetId, coverVersionId, coverState, updatedAt, cover: summaryCover } = project;
+  const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, coverVersionId, updatedAt });
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
     if (summaryCover) {
+      saveProjectCoverCache(projectCoverCacheKey(project.projectId, summaryCover), summaryCover);
       setEntry({ cover: summaryCover });
       return undefined;
     }
@@ -283,7 +294,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       setEntry({ cover: null });
       return undefined;
     }
-    const cachedCover = loadProjectCoverCache(cacheKey, undefined, { allowStale: true });
+    const cachedCover = loadLatestProjectCoverCache(project.projectId, undefined, { allowStale: true });
     setEntry(cachedCover ? { cover: cachedCover } : null);
     let active = true;
     let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
@@ -303,7 +314,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
     ));
     void subscription.promise.then((lookup) => {
       if (!active) return;
-      if (lookup.cover) saveProjectCoverCache(cacheKey, lookup.cover);
+      if (lookup.cover) saveProjectCoverCache(projectCoverCacheKey(project.projectId, lookup.cover), lookup.cover);
       setEntry({ cover: lookup.cover });
       if (!lookup.needsAuthority) return;
 
@@ -316,7 +327,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       ));
       void authoritySubscription.promise.then((authoritativeCover) => {
         const nextCover = authoritativeCover ?? lookup.cover;
-        if (nextCover) saveProjectCoverCache(cacheKey, nextCover);
+        if (nextCover) saveProjectCoverCache(projectCoverCacheKey(project.projectId, nextCover), nextCover);
         if (active) setEntry({ cover: nextCover });
       }).catch(() => {
         // The preliminary cover remains usable when optional authority lookup fails.
@@ -330,23 +341,20 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [cacheKey, coverAssetId, coverPriority, coverState, requestKey, summaryCover, updatedAt, workflowId]);
+  }, [coverAssetId, coverPriority, coverState, coverVersionId, project.projectId, requestKey, summaryCover, updatedAt, workflowId]);
 
   return entry?.cover;
 }
 
-function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
+function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "coverVersionId" | "updatedAt">) {
   return stableQueryKey(projectCoverIdentity(project));
 }
 
-function projectCoverCacheKey(projectId: string) {
-  return `project:${projectId}`;
-}
-
-function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "updatedAt">) {
+function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "coverVersionId" | "updatedAt">) {
   return {
     workflowId: project.workflowId,
     coverAssetId: project.coverAssetId ?? "fallback",
+    coverVersionId: project.coverVersionId ?? "fallback",
     updatedAt: project.updatedAt,
   };
 }

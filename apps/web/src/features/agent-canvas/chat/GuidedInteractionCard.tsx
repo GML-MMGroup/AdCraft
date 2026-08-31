@@ -20,6 +20,7 @@ export interface GuidedInteractionCardProps {
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
   onClearProductMainHandoff?: () => void;
+  onProjectsRefresh?: () => Promise<boolean> | void;
 }
 
 export function GuidedInteractionCard({
@@ -32,6 +33,7 @@ export function GuidedInteractionCard({
   onSubmit,
   pendingProductMainHandoff = null,
   onClearProductMainHandoff,
+  onProjectsRefresh,
 }: GuidedInteractionCardProps) {
   if (interaction.status !== "open" && interaction.status !== "submitted") return null;
 
@@ -69,6 +71,7 @@ export function GuidedInteractionCard({
         issue={issue}
         pendingProductMainHandoff={pendingProductMainHandoff}
         onClearProductMainHandoff={onClearProductMainHandoff}
+        onProjectsRefresh={onProjectsRefresh}
         onSubmit={onSubmit}
       />
     );
