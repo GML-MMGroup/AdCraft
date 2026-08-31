@@ -58,6 +58,8 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
     GuidedProductSourceQuestionV1,
+    GuidedReferenceKindV1,
+    GuidedReferenceSourceQuestionV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
     GuidedSkipAnswerV1,
@@ -533,6 +535,206 @@ class AgentCanvasGuidedInteractionRepository:
             input_kind=input_kind,
             prompt=prompt,
         )
+
+    def open_reference_source_with_journey(
+        self,
+        workflow_id: str,
+        *,
+        source_turn_id: str,
+        expected_session_revision: int,
+        idempotency_key: str,
+        reference_kind: GuidedReferenceKindV1,
+        target_node_id: str,
+        target_node_revision: int,
+        occurrence_id: str | None = None,
+    ) -> GuidedInteractionV1:
+        """Open one typed reference wait while reserving the current Journey stage."""
+
+        if not idempotency_key:
+            raise _error("guided_interaction_invalid", "Reference source idempotency is required.")
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    session = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceSessionRow).where(
+                                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if session is None:
+                        raise _error("guided_interaction_not_found", "Guidance session was not found.")
+                    if int(session["revision"]) != expected_session_revision:
+                        raise _error("guidance_revision_conflict", "Guidance session is stale.")
+                    target = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == target_node_id,
+                                AgentCanvasNodeRow.revision == target_node_revision,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    expected_role = "character" if reference_kind == "character_main" else "scene"
+                    if target is None or str(target["creative_role"]) != expected_role:
+                        raise _error(
+                            "guided_reference_source_target_invalid",
+                            "Reference source target does not match the selected capability.",
+                        )
+                    if reference_kind == "character_main" and occurrence_id is None:
+                        raise _error(
+                            "guided_reference_source_occurrence_mismatch",
+                            "Character reference source requires an occurrence.",
+                        )
+                    if reference_kind == "scene_main" and occurrence_id is not None:
+                        raise _error(
+                            "guided_reference_source_occurrence_mismatch",
+                            "Scene reference source cannot carry an occurrence.",
+                        )
+                    journey = _journey(session)
+                    existing_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.kind == "reference_source",
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing_row is not None:
+                        existing = guided_interaction_from_row(existing_row)
+                        if (
+                            not isinstance(existing.content, GuidedReferenceSourceQuestionV1)
+                            or existing.content.reference_kind != reference_kind
+                            or existing.content.target_node_id != target_node_id
+                            or existing.content.target_node_revision != target_node_revision
+                            or existing.content.occurrence_id != occurrence_id
+                        ):
+                            raise _error(
+                                "guided_interaction_conflict",
+                                "Another reference source interaction is already open.",
+                            )
+                        persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
+                        if persisted_awaiting is None or persisted_awaiting.interaction_id != existing.interaction_id:
+                            raise _error(
+                                "guidance_authority_conflict",
+                                "Reference source interaction is missing matching awaiting authority.",
+                            )
+                        connection.commit()
+                        return existing
+
+                    identity = sha256(
+                        f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:"
+                        f"{target_node_id}:{target_node_revision}:{occurrence_id or '-'}:v1".encode()
+                    ).hexdigest()[:32]
+                    now = datetime.now(timezone.utc)
+                    interaction = GuidedInteractionV1(
+                        interaction_id=f"interaction_reference_source_{identity}",
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=f"reference_source:{journey.stage_revision}:{reference_kind}:{target_node_id}",
+                        kind="reference_source",
+                        status="open",
+                        response_locale=str(session["response_locale"]),
+                        expected_session_revision=int(session["revision"]) + 1,
+                        revision=1,
+                        title=("Character reference" if reference_kind == "character_main" else "Scene reference"),
+                        context="Choose an optional reference image for this Main draft.",
+                        content=GuidedReferenceSourceQuestionV1(
+                            reference_kind=reference_kind,
+                            target_node_id=target_node_id,
+                            target_node_revision=target_node_revision,
+                            occurrence_id=occurrence_id,
+                            question="Would you like to use a reference image for this Main draft?",
+                            use_reference_label="Use reference",
+                            skip_reference_label="Skip reference",
+                            expected_guidance_revision=int(session["revision"]) + 1,
+                        ),
+                        allowed_actions=("use_reference", "skip_reference"),
+                        submit_path=(
+                            f"/api/v2/workflows/{workflow_id}/chat/interactions/"
+                            f"interaction_reference_source_{identity}/submit"
+                        ),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    awaiting = GuidanceAwaitingV2(
+                        awaiting_id=f"awaiting_reference_source_{identity}",
+                        workflow_id=workflow_id,
+                        session_id=str(session["session_id"]),
+                        checkpoint_id=interaction.checkpoint_id,
+                        kind="reference_source",
+                        requires_user_action=True,
+                        resume_policy="submit_interaction",
+                        interaction_id=interaction.interaction_id,
+                        stage=journey.stage,
+                        stage_revision=journey.stage_revision,
+                        created_at=now,
+                    )
+                    waiting_action = JourneyActionProjectionV2(
+                        action_id=f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:{target_node_id}",
+                        action_kind="wait_for_user:reference_source",
+                        stage=journey.stage,
+                        stage_revision=journey.stage_revision,
+                        status="waiting_user",
+                        turn_id=source_turn_id,
+                        occurrence_id=occurrence_id,
+                        character_phase="main" if reference_kind == "character_main" else None,
+                    )
+                    _insert_interaction_and_awaiting_in_transaction(connection, interaction, awaiting)
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=journey.model_copy(
+                                update={"stage_status": "waiting_user", "active_action": waiting_action}
+                            ).model_dump_json(),
+                            revision=expected_session_revision + 1,
+                            updated_at=now.isoformat(),
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _error("guidance_revision_conflict", "Guidance session changed before reference entry.")
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="guided_reference_source_opened",
+                            transition_key=f"guided-reference:{interaction.interaction_id}:opened",
+                            action_id=waiting_action.action_id,
+                            created_at=now.isoformat(),
+                            payload={
+                                "interaction_id": interaction.interaction_id,
+                                "reference_kind": reference_kind,
+                                "target_node_id": target_node_id,
+                                "target_node_revision": target_node_revision,
+                                "occurrence_id": occurrence_id,
+                                "stage_revision": journey.stage_revision,
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return interaction
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "guided_interaction_persistence_unavailable",
+                "Guided interaction storage failed.",
+            ) from error
 
     def get_submission(self, submission_id: str) -> GuidedInteractionSubmissionRecordV1:
         with self._database.engine.connect() as connection:

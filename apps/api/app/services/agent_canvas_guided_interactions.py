@@ -37,6 +37,8 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionV1,
     GuidedProductSourceQuestionV1,
     GuidedProductSourceSubmitV1,
+    GuidedReferenceSourceQuestionV1,
+    GuidedReferenceSourceSubmitV1,
     GuidedMediaReviewSubmitV1,
     GuidedMediaReviewV1,
     GuidedQuestionnaireSubmitV1,
@@ -59,6 +61,7 @@ class GuidedInteractionService:
         *,
         media_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
         product_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
+        reference_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
         reference_snapshot: Callable[[str, ProposedDraftReferenceV2], tuple[int | None, str | None]]
         | None = None,
     ) -> None:
@@ -67,6 +70,7 @@ class GuidedInteractionService:
         self._materializations = materializations
         self._media_submit = media_submit
         self._product_submit = product_submit
+        self._reference_submit = reference_submit
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
@@ -87,6 +91,14 @@ class GuidedInteractionService:
         """Attach the existing Product source authority after runtime wiring."""
 
         self._product_submit = submitter
+
+    def set_reference_submitter(
+        self,
+        submitter: Callable[..., GuidedInteractionAcceptedV1],
+    ) -> None:
+        """Attach the typed reference-source authority after runtime wiring."""
+
+        self._reference_submit = submitter
 
     def get_interaction(self, workflow_id: str, interaction_id: str) -> GuidedInteractionV1:
         interaction = self._interactions.get(interaction_id)
@@ -247,6 +259,22 @@ class GuidedInteractionService:
                     "Product source actions are unavailable.",
                 )
             return self._product_submit(
+                workflow_id,
+                interaction,
+                request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+            )
+        if isinstance(request, GuidedReferenceSourceSubmitV1) and isinstance(
+            interaction.content,
+            GuidedReferenceSourceQuestionV1,
+        ):
+            if self._reference_submit is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Reference source actions are unavailable.",
+                )
+            return self._reference_submit(
                 workflow_id,
                 interaction,
                 request,
