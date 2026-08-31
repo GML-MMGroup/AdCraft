@@ -6,7 +6,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
 import type {
@@ -23,8 +23,10 @@ import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
-import { requestNativeVideoFirstFrame } from "./nativeVideoFirstFrame.ts";
-import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
+import {
+  mediaAssetPosterRenditionPath,
+  mediaAssetPreviewRenditionPath,
+} from "../../../workflow/mediaPreview.ts";
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import {
   agentCanvasNodeSize,
@@ -32,7 +34,6 @@ import {
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
-import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -104,28 +105,33 @@ function MediaSurface({
   label: string;
 }) {
   const mediaUrl = asset
-    ? asset.media_type === "image" ? mediaAssetContentPath(asset) : mediaAssetPreviewPath(asset)
-    : null;
-  const videoUrl = asset?.media_type === "video" ? mediaAssetContentPath(asset) : null;
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoPosterUrl = useAgentCanvasVideoPoster(asset, videoRef);
-  if (node.node_type === "video" && videoUrl && asset) {
+    ? node.node_type === "image"
+      ? mediaAssetPreviewRenditionPath(asset)
+      : node.node_type === "video"
+        ? mediaAssetPosterRenditionPath(asset)
+        : ""
+    : "";
+  if (node.node_type === "video" && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
-        <video
-          ref={videoRef}
-          className="agent-canvas-node__media agent-canvas-node__media--cover"
-          src={videoUrl}
-          poster={videoPosterUrl ?? undefined}
-          aria-label={asset.display_name || "Video output"}
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedMetadata={({ currentTarget }) => {
-            if (!Number.isFinite(currentTarget.duration) || currentTarget.duration <= 0) return;
-            void requestNativeVideoFirstFrame(currentTarget);
-          }}
-        />
+        {mediaUrl ? (
+          <StableMediaPreview
+            className="agent-canvas-node__media agent-canvas-node__media--cover"
+            src={mediaUrl}
+            alt={asset.display_name || "Video output"}
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (naturalWidth > 0 && naturalHeight > 0) {
+                onMediaDimensionsResolved?.({ width: naturalWidth, height: naturalHeight });
+              }
+            }}
+          />
+        ) : (
+          <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />
+        )}
         {onOpenVideoPreview ? (
           <button
             className="agent-canvas-node__video-play nodrag nopan"

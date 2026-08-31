@@ -646,7 +646,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByLabelText("video output").classList.contains("agent-canvas-node__media")).toBe(true);
+    expect(screen.getByRole("img", { name: "video output" }).classList.contains("agent-canvas-node__media")).toBe(true);
     expect(screen.getByTestId("agent-canvas-node-video-node").classList.contains("agent-canvas-node--failed")).toBe(true);
     expect(document.querySelector(".agent-canvas-node__error")).toBeNull();
   });
@@ -711,11 +711,12 @@ describe("AgentCanvasNodeCard", () => {
     );
   });
 
-  it("contains complete image outputs while keeping video frames full-bleed", () => {
+  it("uses a derived image preview and keeps video source media out of the node", () => {
     const imageView = render(
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,
     );
     const image = screen.getByRole("img", { name: "image output" });
+    expect(image.getAttribute("src")).toBe("/media/image-poster.webp");
     expect(image.getAttribute("loading")).toBe("lazy");
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(image.classList.contains("agent-canvas-node__media--contain")).toBe(true);
@@ -723,26 +724,17 @@ describe("AgentCanvasNodeCard", () => {
 
     imageView.unmount();
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
-    const video = screen.getByLabelText("video output");
-    expect(video.tagName).toBe("VIDEO");
-    expect(video.getAttribute("src")).toBe("/media/video-output");
-    expect(video.getAttribute("preload")).toBe("metadata");
-    expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
-    expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+    expect(screen.queryByLabelText("video output")).toBeNull();
+    expect(screen.getByRole("img", { name: "video output" })).toBeTruthy();
   });
 
-  it("seeks the native video element to an early frame after metadata loads", () => {
+  it("does not mount a video element just to capture a node thumbnail", () => {
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
-    const video = screen.getByLabelText("video output") as HTMLVideoElement;
-    Object.defineProperty(video, "duration", { configurable: true, value: 12 });
-
-    fireEvent.loadedMetadata(video);
-
-    expect(video.currentTime).toBeCloseTo(0.5);
-    fireEvent.seeked(video);
+    expect(document.querySelector("video")).toBeNull();
+    expect(ensureVideoPosterFromElement).not.toHaveBeenCalled();
   });
 
-  it("uses the mounted video to cache a first-frame poster when the backend has no preview", async () => {
+  it("leaves a video without a backend poster as a stable placeholder", async () => {
     const createObjectURL = vi.fn(() => "blob:agent-video-poster");
     const revokeObjectURL = vi.fn();
     Object.defineProperties(URL, {
@@ -758,31 +750,13 @@ describe("AgentCanvasNodeCard", () => {
       version_id: "video-version-2",
     };
 
-    const view = render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={asset} />);
-    const video = screen.getByLabelText("video output");
-    expect(video.getAttribute("poster")).toBeNull();
-
-    await act(async () => {
-      fireEvent.loadedData(video);
-      await Promise.resolve();
-    });
-
+    render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={asset} />);
+    expect(screen.queryByLabelText("video output")).toBeNull();
+    expect(screen.getByTestId("agent-canvas-node-video-node").querySelector(
+      ".agent-canvas-node__media-placeholder",
+    )).toBeTruthy();
     expect(ensureVideoPoster).not.toHaveBeenCalled();
-    expect(ensureVideoPosterFromElement).toHaveBeenCalledWith({
-      projectId: "project-1",
-      workflowId: "workflow-1",
-      asset: expect.objectContaining({
-        asset_id: "video-asset",
-        asset_type: "video",
-        version: "video-version-2",
-      }),
-      sourceUrl: "/api/v2/assets/video-asset/content?v=video-version-2",
-      video,
-    });
-    expect(video.getAttribute("poster")).toBe("blob:agent-video-poster");
-
-    view.unmount();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:agent-video-poster");
+    expect(ensureVideoPosterFromElement).not.toHaveBeenCalled();
   });
 
   it("sizes an image node shell from the generated asset dimensions", () => {
@@ -931,7 +905,7 @@ describe("AgentCanvasNodeCard", () => {
       </div>,
     );
 
-    fireEvent.click(screen.getByLabelText("video output"));
+    fireEvent.click(screen.getByRole("img", { name: "video output" }));
 
     expect(onNodeClick).toHaveBeenCalledTimes(1);
   });
@@ -966,7 +940,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
+    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.preview_url);
     expect(screen.getByLabelText("General Image node type")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
