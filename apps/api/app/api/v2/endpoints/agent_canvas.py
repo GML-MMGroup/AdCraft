@@ -3785,6 +3785,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "project_cursor_invalid": 422,
         "project_page_invalid": 422,
         "project_update_invalid": 422,
+        "project_cover_version_required": 422,
+        "project_cover_media_invalid": 422,
         "workflow_not_found": 404,
         "workflow_not_agent_canvas": 409,
         "presentation_stream_not_found": 404,

@@ -149,4 +149,5 @@ class ProjectV2UpdateRequest(BaseModel):
     description: str | None = None
     is_favorite: bool | None = None
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
     status: Literal["active", "archived"] | None = None

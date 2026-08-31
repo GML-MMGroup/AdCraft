@@ -507,6 +507,14 @@ class AgentCanvasAssetService:
 
         return self._assets.find_latest_ready_versions(asset_ids)
 
+    def find_versions_by_id(
+        self,
+        version_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve immutable versions without promoting a cover to a newer version."""
+
+        return self._assets.find_versions_by_id(version_ids)
+
     def validate_asset_backed_node(self, asset_id: str, node_type: str) -> None:
         asset = self.resolve_asset(asset_id)
         if node_type not in {"image", "video", "audio"} or asset.media_type != node_type:

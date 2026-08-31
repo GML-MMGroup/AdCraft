@@ -374,6 +374,28 @@ class V2AssetLibraryRepository:
             versions.setdefault(asset_id, _version_from_row(row))
         return versions
 
+    def find_versions_by_id(
+        self,
+        version_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve exact immutable versions in one bounded query, ignoring misses."""
+
+        unique_ids = tuple(dict.fromkeys(version_ids))
+        if not unique_ids:
+            return {}
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        _version_select().where(AssetVersionRow.version_id.in_(unique_ids))
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return {str(row["version_id"]): _version_from_row(row) for row in rows}
+
     def list_versions_for_slot(
         self,
         *,
