@@ -3598,6 +3598,8 @@ export type GuidedInteractionContentV1 =
       stage_revision: number;
       action_id: string;
       occurrence_id: string | null;
+      occurrence_index?: number | null;
+      occurrence_count?: number | null;
       capability_id: string;
       options: GuidedChoiceOptionV1[];
       allow_custom: true;
