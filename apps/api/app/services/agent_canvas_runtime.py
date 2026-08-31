@@ -1880,6 +1880,11 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "node_already_working"
     if node.status == "failed" and not request.retry_failed:
         return "failed_node_retry_required"
+    if (
+        node.prompt_preparation.status == "waiting_user"
+        and not (node.generation_prompt or "").strip()
+    ):
+        return "node_prompt_empty"
     if node.prompt_preparation.status != "ready":
         return "node_prompt_preparation_incomplete"
     assertion_error = prompt_assertion_admission_error(node)
@@ -1897,6 +1902,7 @@ def _skip_message(reason: str) -> str:
         "node_already_ready": "Ready nodes are not rerun in place.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
+        "node_prompt_empty": "A generation prompt is required before running this node.",
         "node_prompt_preparation_incomplete": "Node prompt preparation is not ready.",
         "node_prompt_assertion_evidence_missing": "Current prompt assertion evidence is required.",
         "node_prompt_assertion_contract_invalid": "Prompt assertion evidence does not match current authority.",
