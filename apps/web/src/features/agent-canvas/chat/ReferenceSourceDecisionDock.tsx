@@ -91,6 +91,7 @@ export function ReferenceSourceDecisionDock({
           displayName: receipt.asset.display_name,
           previewUrl: receipt.asset.preview_url ?? receipt.asset.media_url ?? "",
         };
+        setSelected(exactAsset);
       }
       const request: GuidedInteractionSubmitRequestV1 = action === "use_reference"
         ? {
