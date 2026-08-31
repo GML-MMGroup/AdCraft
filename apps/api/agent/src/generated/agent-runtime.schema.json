@@ -17290,6 +17290,20 @@
           "default": null,
           "title": "Occurrence Id"
         },
+        "resume_materialization_envelope_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume Materialization Envelope Id"
+        },
         "schema_version": {
           "const": "1",
           "default": "1",
