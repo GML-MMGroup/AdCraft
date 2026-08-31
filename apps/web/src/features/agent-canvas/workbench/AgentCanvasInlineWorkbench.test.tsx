@@ -202,7 +202,7 @@ describe("AgentCanvasInlineWorkbench", () => {
   });
 
   it.each<[CanvasNodeTypeV2, string]>([
-    ["text", "Text content"],
+    ["text", "Text prompt"],
     ["image", "Generation prompt"],
   ])("uses a compact prompt composer for %s without node name chrome", (nodeType, textareaLabel) => {
     const node = makeNode(nodeType);
@@ -267,11 +267,53 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
-    expect(screen.queryByLabelText("Generation prompt")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+    expect(screen.getByLabelText("Generation prompt")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("keeps a new V2 Text node editable but disables Run when prompt preparation is missing", () => {
+  it("keeps a waiting-user media node editable without presenting a provider failure", () => {
+    const node = {
+      ...makeNode("video"),
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "waiting_user",
+        operation_id: null,
+        presentation_stream_id: null,
+        attempt_no: 0,
+        context_snapshot_id: null,
+        occurrence_id: null,
+        character_phase: null,
+        prompt_digest: null,
+        role_variant: null,
+        recipe_id: null,
+        recipe_version: null,
+        recipe_digest: null,
+        requirement_revision_id: null,
+        requirement_revision_no: null,
+        document_revisions: {},
+        binding_digest: null,
+        style_projection_digest: null,
+        brief_digest: null,
+        parameter_origins: [],
+        compaction_policy_version: null,
+        compaction_policy_digest: null,
+        compaction_decisions: [],
+        assertion_evidence: null,
+        attempt_stage: null,
+        error: null,
+        updated_at: "2026-08-31T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByLabelText("Generation prompt")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Prompt input needed");
+    expect(screen.getByRole("status").textContent).toContain("Enter a prompt to continue.");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps a new V2 Text node editable without a preparation warning", () => {
     const node = {
       ...makeNode("text"),
       prompt_preparation: null,
@@ -279,8 +321,9 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     renderWorkbench(node);
 
-    expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
-    expect((screen.getByRole("button", { name: "Run text node" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByLabelText("Text prompt")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Run text node" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("renders the prepared generation prompt and enables the existing Run action once preparation is ready", () => {
@@ -356,7 +399,35 @@ describe("AgentCanvasInlineWorkbench", () => {
       generation_prompt: "Write a quiet office story before the first meeting.",
     }));
     expect(patch).not.toHaveProperty("structured_content");
-    expect(props.onRun).toHaveBeenCalledWith(node);
+    expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
+      node_id: node.node_id,
+      generation_prompt: "Write a quiet office story before the first meeting.",
+    }));
+  });
+
+  it("waits for the manual prompt PATCH before running a Draft media node", async () => {
+    let resolvePatch!: () => void;
+    const patchNode = vi.fn(() => new Promise<void>((resolve) => {
+      resolvePatch = resolve;
+    }));
+    const node = {
+      ...makeNode("image"),
+      generation_prompt: null,
+      prompt_preparation: null,
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { patchNode });
+
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "A clean studio product shot" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run image node" }));
+
+    await waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+    expect(props.onRun).not.toHaveBeenCalled();
+    resolvePatch();
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
+      generation_prompt: "A clean studio product shot",
+    })));
   });
 
   it("saves a ready Script node without running it again", async () => {
@@ -444,17 +515,20 @@ describe("AgentCanvasInlineWorkbench", () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);
 
-    fireEvent.change(screen.getByLabelText("Text content"), {
+    fireEvent.change(screen.getByLabelText("Text prompt"), {
       target: { value: "A revised campaign brief" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Run text node" }));
 
     await waitFor(() => {
-      expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
-        structured_content: { content: "A revised campaign brief" },
-      }));
+      expect(props.patchNode).toHaveBeenCalledWith(node.node_id, {
+        generation_prompt: "A revised campaign brief",
+      }, { coalesce: true });
     });
-    expect(props.onRun).toHaveBeenCalledWith(node);
+    expect(props.onRun).toHaveBeenCalledWith(expect.objectContaining({
+      node_id: node.node_id,
+      generation_prompt: "A revised campaign brief",
+    }));
   });
 
   it("edits a World Setting in place without model or Run controls", async () => {

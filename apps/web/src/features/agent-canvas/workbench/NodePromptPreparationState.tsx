@@ -7,6 +7,7 @@ import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPres
 const PREPARATION_LABELS = {
   queued: "Preparing generation prompt",
   working: "Preparing generation prompt",
+  waiting_user: "Prompt input needed",
   failed: "Prompt preparation needs attention",
   superseded: "Prompt preparation was replaced",
   ready: "",
@@ -40,9 +41,12 @@ export function NodePromptPreparationState({
     void onWorkflowRefresh();
   }, [onWorkflowRefresh, presentationStreamId, presentationStreams]);
 
+  if (!preparation) return null;
   if (preparation?.status === "ready" || preparation?.status === "not_applicable") return null;
 
-  const summary = node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
+  const summary = preparation.status === "waiting_user"
+    ? "Enter a prompt to continue."
+    : node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
   const status = preparation?.status ?? "queued";
   const error = preparation?.error ?? null;
   const streamPreview = presentationStreamId

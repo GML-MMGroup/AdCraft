@@ -2682,6 +2682,60 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("accepts waiting_user as a prompt-only state with no preparation context", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      generation_prompt: null,
+      error: null,
+      prompt_preparation: {
+        status: "waiting_user",
+        operation_id: null,
+        presentation_stream_id: null,
+        attempt_no: 0,
+        context_snapshot_id: null,
+        occurrence_id: null,
+        character_phase: null,
+        prompt_digest: null,
+        role_variant: null,
+        recipe_id: null,
+        recipe_version: null,
+        recipe_digest: null,
+        requirement_revision_id: null,
+        requirement_revision_no: null,
+        document_revisions: {},
+        binding_digest: null,
+        style_projection_digest: null,
+        brief_digest: null,
+        parameter_origins: [],
+        compaction_policy_version: null,
+        compaction_policy_digest: null,
+        compaction_decisions: [],
+        assertion_evidence: null,
+        attempt_stage: null,
+        error: null,
+        updated_at: "2026-08-31T10:00:00Z",
+      },
+    });
+
+    expect(normalized.prompt_preparation?.status).toBe("waiting_user");
+    expect(normalized.prompt_preparation?.error).toBeNull();
+  });
+
+  it("rejects waiting_user when the backend includes preparation context", () => {
+    expect(() => normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      prompt_preparation: {
+        status: "waiting_user",
+        operation_id: "operation-1",
+        attempt_no: 0,
+        context_snapshot_id: null,
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-31T10:00:00Z",
+      },
+    })).toThrowError(/waiting_user.*preparation/i);
+  });
+
   it("accepts prompt compaction provenance returned by historical workflow reads", () => {
     const normalized = normalizeCanvasNodeV2({
       ...validWorkflowPayload().nodes[1],

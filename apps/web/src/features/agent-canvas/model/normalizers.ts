@@ -168,6 +168,7 @@ const CANVAS_NODE_EXECUTION_MODES = new Set<CanvasNodeExecutionModeV2>(["generat
 const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status"]>([
   "queued",
   "working",
+  "waiting_user",
   "ready",
   "failed",
   "superseded",
@@ -988,6 +989,7 @@ function normalizeNodePromptPreparationV1(
     path,
   );
   const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
+  const attemptNo = expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`);
   const operationId = nullableStringWithDefault(record.operation_id, `${path}.operation_id`);
   const presentationStreamId = nullableStringWithDefault(
     record.presentation_stream_id,
@@ -1031,23 +1033,41 @@ function normalizeNodePromptPreparationV1(
     item,
     `${path}.compaction_decisions[${index}]`,
   ));
+  const roleVariant = nullableStringWithDefault(record.role_variant, `${path}.role_variant`);
+  const recipeId = nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`);
+  const recipeVersion = nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`);
+  const recipeDigest = nullableDigest(record.recipe_digest, `${path}.recipe_digest`);
+  const requirementRevisionId = nullableStringWithDefault(
+    record.requirement_revision_id,
+    `${path}.requirement_revision_id`,
+  );
+  const requirementRevisionNo = record.requirement_revision_no === undefined || record.requirement_revision_no === null
+    ? null
+    : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`);
+  const bindingDigest = nullableDigest(record.binding_digest, `${path}.binding_digest`);
+  const styleProjectionDigest = nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`);
+  const briefDigest = nullableDigest(record.brief_digest, `${path}.brief_digest`);
+  const assertionEvidence = record.assertion_evidence === undefined || record.assertion_evidence === null
+    ? null
+    : normalizePromptAssertionEvidenceV1(record.assertion_evidence, `${path}.assertion_evidence`);
+  const attemptStage = nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`);
   if (status === "not_applicable" && (
     [
       operationId,
       presentationStreamId,
       contextSnapshotId,
       promptDigest,
-      record.role_variant,
-      record.recipe_id,
-      record.recipe_version,
-      record.recipe_digest,
-      record.requirement_revision_id,
-      record.binding_digest,
-      record.style_projection_digest,
-      record.brief_digest,
+      roleVariant,
+      recipeId,
+      recipeVersion,
+      recipeDigest,
+      requirementRevisionId,
+      bindingDigest,
+      styleProjectionDigest,
+      briefDigest,
       compactionPolicyVersion,
       compactionPolicyDigest,
-      record.assertion_evidence,
+      assertionEvidence,
       error,
     ].some((value) => value !== null && value !== undefined)
     || Object.keys(documentRevisions).length > 0
@@ -1055,6 +1075,34 @@ function normalizeNodePromptPreparationV1(
     || compactionDecisions.length > 0
   )) {
     fail(`${path}.status`, "not_applicable prompt preparation cannot have preparation data");
+  }
+  if (status === "waiting_user" && (
+    operationId !== null
+    || presentationStreamId !== null
+    || contextSnapshotId !== null
+    || occurrenceId !== null
+    || characterPhase !== null
+    || promptDigest !== null
+    || roleVariant !== null
+    || recipeId !== null
+    || recipeVersion !== null
+    || recipeDigest !== null
+    || requirementRevisionId !== null
+    || requirementRevisionNo !== null
+    || Object.keys(documentRevisions).length > 0
+    || bindingDigest !== null
+    || styleProjectionDigest !== null
+    || briefDigest !== null
+    || parameterOrigins.length > 0
+    || compactionPolicyVersion !== null
+    || compactionPolicyDigest !== null
+    || compactionDecisions.length > 0
+    || assertionEvidence !== null
+    || attemptStage !== null
+    || error !== null
+    || attemptNo !== 0
+  )) {
+    fail(`${path}.status`, "waiting_user prompt preparation cannot have preparation context");
   }
   if (status === "failed" && !error) fail(`${path}.error`, "failed prompt preparation requires a safe error");
   if (status !== "failed" && status !== "superseded" && error) {
@@ -1067,37 +1115,27 @@ function normalizeNodePromptPreparationV1(
     status,
     operation_id: operationId,
     presentation_stream_id: presentationStreamId,
-    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    attempt_no: attemptNo,
     context_snapshot_id: contextSnapshotId,
     occurrence_id: occurrenceId,
     character_phase: characterPhase,
     prompt_digest: promptDigest,
-    role_variant: nullableStringWithDefault(record.role_variant, `${path}.role_variant`),
-    recipe_id: nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`),
-    recipe_version: nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`),
-    recipe_digest: nullableDigest(record.recipe_digest, `${path}.recipe_digest`),
-    requirement_revision_id: nullableStringWithDefault(
-      record.requirement_revision_id,
-      `${path}.requirement_revision_id`,
-    ),
-    requirement_revision_no: record.requirement_revision_no === undefined || record.requirement_revision_no === null
-      ? null
-      : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
+    role_variant: roleVariant,
+    recipe_id: recipeId,
+    recipe_version: recipeVersion,
+    recipe_digest: recipeDigest,
+    requirement_revision_id: requirementRevisionId,
+    requirement_revision_no: requirementRevisionNo,
     document_revisions: documentRevisions,
-    binding_digest: nullableDigest(record.binding_digest, `${path}.binding_digest`),
-    style_projection_digest: nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`),
-    brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
+    binding_digest: bindingDigest,
+    style_projection_digest: styleProjectionDigest,
+    brief_digest: briefDigest,
     parameter_origins: parameterOrigins,
     compaction_policy_version: compactionPolicyVersion,
     compaction_policy_digest: compactionPolicyDigest,
     compaction_decisions: compactionDecisions,
-    assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
-      ? null
-      : normalizePromptAssertionEvidenceV1(
-          record.assertion_evidence,
-          `${path}.assertion_evidence`,
-        ),
-    attempt_stage: nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`),
+    assertion_evidence: assertionEvidence,
+    attempt_stage: attemptStage,
     error,
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };

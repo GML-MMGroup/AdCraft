@@ -1573,7 +1573,14 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
-export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded" | "not_applicable";
+export type NodePromptPreparationStatusV1 =
+  | "queued"
+  | "working"
+  | "waiting_user"
+  | "ready"
+  | "failed"
+  | "superseded"
+  | "not_applicable";
 
 export interface ResolvedNodeParameterV2 {
   name: string;
