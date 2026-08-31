@@ -11,6 +11,7 @@ const STALE_CODES = new Set([
   "guided_interaction_stale",
   "guidance_revision_conflict",
   "journey_revision_conflict",
+  "guided_reference_source_revision_conflict",
 ]);
 
 function technicalDetail(error: unknown): string | null {

@@ -58,6 +58,7 @@ describe("decisionDockIssueFromError", () => {
   it("classifies stale Guided Interaction authority", () => {
     expect(isDecisionDockStaleError(apiError(409, "guided_interaction_stale", "Stale"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(409, "guidance_revision_conflict", "Conflict"))).toBe(true);
+    expect(isDecisionDockStaleError(apiError(409, "guided_reference_source_revision_conflict", "Conflict"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(422, "guided_interaction_invalid", "Invalid"))).toBe(false);
   });
 
