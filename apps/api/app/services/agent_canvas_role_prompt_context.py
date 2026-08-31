@@ -218,20 +218,25 @@ class RolePromptContextProjector:
             (item.block_id for item in resolved_context_blocks if item.source_kind == "world_view"),
             None,
         )
-        representation = resolve_video_representation_mode(
-            explicit_control=(explicit_controls or {}).get("video_representation_mode"),
-            skill_mode=(
-                (style_parameters or {}).get("video_representation_mode")
-                or stage_context.video_representation_mode
-            ),
-            skill_source_id=(
-                stage_context.video_representation_source_id
-                or (style_parameters or {}).get("video_representation_source_id")
-                or "video-skill"
-            ),
-            identity_safety_decision=stage_context.requirement_facts.get(
-                "identity_safety_decision"
-            ),
+        is_video_role = role_variant in {"video_segment", "free_video"}
+        representation = (
+            resolve_video_representation_mode(
+                explicit_control=(explicit_controls or {}).get("video_representation_mode"),
+                skill_mode=(
+                    (style_parameters or {}).get("video_representation_mode")
+                    or stage_context.video_representation_mode
+                ),
+                skill_source_id=(
+                    stage_context.video_representation_source_id
+                    or (style_parameters or {}).get("video_representation_source_id")
+                    or "video-skill"
+                ),
+                identity_safety_decision=stage_context.requirement_facts.get(
+                    "identity_safety_decision"
+                ),
+            )
+            if is_video_role
+            else None
         )
         return RolePromptPreparationContextV2(
             workflow_id=node.workflow_id,
@@ -271,7 +276,9 @@ class RolePromptContextProjector:
             video_representation_source=(
                 representation.source if role_variant in {"video_segment", "free_video"} else None
             ),
-            video_representation_source_id=representation.source_id,
+            video_representation_source_id=(
+                representation.source_id if representation is not None else None
+            ),
             video_representation_digest=(
                 representation.digest if role_variant in {"video_segment", "free_video"} else None
             ),
