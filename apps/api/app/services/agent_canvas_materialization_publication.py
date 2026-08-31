@@ -11,6 +11,9 @@ from pydantic import BaseModel, ValidationError
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
@@ -81,6 +84,9 @@ from app.services.agent_canvas_parent_derived_materialization import (
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
 )
+from app.services.agent_canvas_materialization_prompt_barrier import (
+    AgentCanvasMaterializationPromptPreparationBarrier,
+)
 from app.services.agent_canvas_materialization_plan import (
     CapabilityMaterializationPlanCompiler,
 )
@@ -126,6 +132,9 @@ class CapabilityMaterializationPublicationService:
         prompt_ready_activation: Callable[..., object] | None = None,
         parent_derived: ParentDerivedMaterializationCoordinator | None = None,
         prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+        prompt_preparation_barrier: (
+            AgentCanvasMaterializationPromptPreparationBarrier | None
+        ) = None,
         reference_source_opener: Callable[..., object] | None = None,
     ) -> None:
         self._workflows = workflows
@@ -141,6 +150,16 @@ class CapabilityMaterializationPublicationService:
         self._prompt_dispatch = prompt_dispatch or AgentCanvasPromptPreparationDispatchRepository(
             workflows.database,
             conversations.events,
+        )
+        self._prompt_preparation_barrier = prompt_preparation_barrier or (
+            AgentCanvasMaterializationPromptPreparationBarrier(
+                dispatches=self._prompt_dispatch,
+                continuations=AgentCanvasContinuationOutboxRepository(
+                    workflows.database,
+                    conversations.events,
+                ),
+                events=conversations.events,
+            )
         )
         self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
             workflows=workflows,
@@ -1505,6 +1524,29 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         if not operation_ids:
             return
+        operation_pairs = tuple(zip(node_ids, operation_ids, strict=True))
+        dispatch_owned: list[tuple[str, str]] = []
+        direct: list[tuple[str, str]] = []
+        for node_id, operation_id in operation_pairs:
+            dispatch = self._prompt_dispatch.get_by_node_operation(
+                envelope.workflow_id,
+                node_id,
+                operation_id,
+            )
+            if dispatch is None:
+                direct.append((node_id, operation_id))
+            else:
+                dispatch_owned.append((node_id, operation_id))
+        if dispatch_owned:
+            self._prompt_preparation_barrier.require_terminal(
+                workflow_id=envelope.workflow_id,
+                materialization_id=envelope.materialization_id,
+                operations=tuple(dispatch_owned),
+            )
+        if not direct:
+            return
+        node_ids = tuple(node_id for node_id, _operation_id in direct)
+        operation_ids = tuple(operation_id for _node_id, operation_id in direct)
         if context_by_node is not None:
             # A dependency wave must carry one immutable context for every
             # operation.  Never let a missing entry fall back to a sibling (or

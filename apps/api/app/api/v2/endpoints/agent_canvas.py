@@ -367,6 +367,9 @@ from app.services.agent_canvas_capability_dispatch import CapabilityDispatchServ
 from app.services.agent_canvas_materialization_publication import (
     CapabilityMaterializationPublicationService,
 )
+from app.services.agent_canvas_materialization_prompt_barrier import (
+    AgentCanvasMaterializationPromptPreparationBarrier,
+)
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
 )
@@ -469,6 +472,7 @@ def _resume_prompt_preparation_barrier(
     *,
     runtime_repository: AgentCanvasRuntimeRepository,
     scheduler: DynamicCanvasScheduler,
+    materialization_barrier: (AgentCanvasMaterializationPromptPreparationBarrier | None) = None,
     prompt_ready_activation: Callable[..., object] | None = None,
     notified_dispatch_ids: set[str] | None = None,
 ) -> None:
@@ -483,6 +487,8 @@ def _resume_prompt_preparation_barrier(
 
     if dispatch.status not in {"completed", "failed"}:
         return
+    if materialization_barrier is not None:
+        materialization_barrier.reconcile_terminal_dispatch(dispatch)
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
@@ -1433,6 +1439,11 @@ def create_agent_canvas_runtime(
     )
     guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
     guided_interactions.set_reference_submitter(guided_reference_sources.submit_interaction)
+    materialization_prompt_barrier = AgentCanvasMaterializationPromptPreparationBarrier(
+        dispatches=prompt_dispatches,
+        continuations=continuation_outbox,
+        events=event_repository,
+    )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1445,6 +1456,8 @@ def create_agent_canvas_runtime(
             materialization_repository,
             GuidedProductionJourneyReducer(),
         ),
+        prompt_dispatch=prompt_dispatches,
+        prompt_preparation_barrier=materialization_prompt_barrier,
     )
 
     def resume_reference_materialization(
@@ -1539,6 +1552,13 @@ def create_agent_canvas_runtime(
         capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
+        dependency_reconciler=lambda delivery, materialization_id: (
+            materialization_prompt_barrier.reconcile_dependency_wait(
+                workflow_id=delivery.workflow_id,
+                continuation_id=delivery.continuation_id,
+                materialization_id=materialization_id,
+            )
+        ),
     )
 
     def activate_prompt_ready_nodes(
@@ -1598,6 +1618,7 @@ def create_agent_canvas_runtime(
             result,
             runtime_repository=runtime_repository,
             scheduler=scheduler,
+            materialization_barrier=materialization_prompt_barrier,
             prompt_ready_activation=activate_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
         ),

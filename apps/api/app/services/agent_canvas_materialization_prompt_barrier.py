@@ -15,6 +15,7 @@ from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import 
 )
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.schemas.agent_canvas_prompt_preparation_dispatch import PromptPreparationDispatchV1
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -81,7 +82,7 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
     def reconcile_terminal_dispatch(
         self,
         dispatch: PromptPreparationDispatchV1,
-    ):
+    ) -> ContinuationDeliveryV2 | None:
         """Wake the exact current dependency wait after its complete terminal set."""
 
         if dispatch.status not in {"completed", "failed"}:
@@ -101,9 +102,39 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
         )
         if operations is None or (dispatch.node_id, dispatch.operation_id) not in operations:
             return None
+        return self.reconcile_dependency_wait(
+            workflow_id=dispatch.workflow_id,
+            continuation_id=active.continuation_id,
+            materialization_id=materialization_id,
+        )
+
+    def reconcile_dependency_wait(
+        self,
+        *,
+        workflow_id: str,
+        continuation_id: str,
+        materialization_id: str,
+    ) -> ContinuationDeliveryV2 | None:
+        """Close callback-before-defer races through the same durable wait proof."""
+
+        active = self._continuations.get_active_for_workflow(workflow_id)
+        if (
+            active is None
+            or active.continuation_id != continuation_id
+            or active.status != "retry_wait"
+            or active.last_error_code != "prompt_preparation_pending"
+            or active.last_error_message != materialization_id
+        ):
+            return None
+        operations = self._latest_wait_operations(
+            workflow_id=workflow_id,
+            materialization_id=materialization_id,
+        )
+        if operations is None:
+            return None
         try:
             pending = self._inspect(
-                workflow_id=dispatch.workflow_id,
+                workflow_id=workflow_id,
                 operations=operations,
             )
         except V2PersistenceError as error:
@@ -113,7 +144,7 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
         if pending:
             return None
         return self._continuations.wake_prompt_preparation_wait(
-            active.continuation_id,
+            continuation_id,
             materialization_id=materialization_id,
             now=self._clock(),
         )
