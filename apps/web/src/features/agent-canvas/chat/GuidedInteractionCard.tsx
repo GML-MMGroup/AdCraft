@@ -7,6 +7,7 @@ import type { DecisionDockIssue } from "./decisionDockIssue.ts";
 import { MediaReviewDecisionDock } from "./MediaReviewDecisionDock.tsx";
 import { ProductSourceDecisionDock } from "./ProductSourceDecisionDock.tsx";
 import { QuestionnaireDecisionDock } from "./QuestionnaireDecisionDock.tsx";
+import { ReferenceSourceDecisionDock } from "./ReferenceSourceDecisionDock.tsx";
 import type { ProductMainHandoff } from "./productSourceHandoff.ts";
 
 export interface GuidedInteractionCardProps {
@@ -14,6 +15,7 @@ export interface GuidedInteractionCardProps {
   pending: boolean;
   issue?: DecisionDockIssue | null;
   selectedConceptOptionId?: string | null;
+  referenceOccurrenceLabel?: string | null;
   onSelectConceptOption?: (optionId: string) => void;
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
@@ -25,6 +27,7 @@ export function GuidedInteractionCard({
   pending,
   issue = null,
   selectedConceptOptionId = null,
+  referenceOccurrenceLabel = null,
   onSelectConceptOption,
   onSubmit,
   pendingProductMainHandoff = null,
@@ -66,6 +69,19 @@ export function GuidedInteractionCard({
         issue={issue}
         pendingProductMainHandoff={pendingProductMainHandoff}
         onClearProductMainHandoff={onClearProductMainHandoff}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+
+  if (interaction.content.content_kind === "reference_source") {
+    return (
+      <ReferenceSourceDecisionDock
+        key={interaction.interaction_id}
+        interaction={interaction}
+        occurrenceLabel={referenceOccurrenceLabel}
+        pending={pending}
+        issue={issue}
         onSubmit={onSubmit}
       />
     );
