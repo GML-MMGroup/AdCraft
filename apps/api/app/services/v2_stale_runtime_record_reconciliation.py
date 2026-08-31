@@ -85,6 +85,10 @@ class RuntimeDispositionPlanItemV1(BaseModel):
     workflow_id: str
     classification: RuntimeDispositionClass
     disposition_key: str = Field(min_length=1, max_length=160)
+    expected_status: str = Field(min_length=1, max_length=80)
+    expected_revision: int | None = Field(default=None, ge=1)
+    expected_generation: int | None = Field(default=None, ge=1)
+    has_source_proof: bool = False
     mutation_allowed: bool = False
     requires_runtime_owner_authorization: bool = True
     existing_authority: str | None = None
@@ -239,6 +243,10 @@ def build_disposition_plan(
             workflow_id=disposition.workflow_id,
             classification=disposition.classification,
             disposition_key=_disposition_key(record, disposition),
+            expected_status=record.status,
+            expected_revision=record.revision,
+            expected_generation=record.lease_generation,
+            has_source_proof=record.has_source_proof,
             existing_authority=_existing_authority(disposition),
         )
         for record in records
