@@ -226,6 +226,7 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.project_cover_authority import ProjectCoverAuthorityService
 from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
 from app.services.agent_canvas_guided_reference import GuidedReferenceSourceService
 from app.persistence.agent_canvas_guided_reference_repository import (
@@ -596,6 +597,11 @@ def create_agent_canvas_runtime(
     )
     document_repository = AgentCanvasDocumentRepository(database)
     asset_repository = V2AssetLibraryRepository(database)
+    project_cover_authority = ProjectCoverAuthorityService(
+        project_repository,
+        asset_repository,
+        workflow_repository,
+    )
     asset_service = AgentCanvasAssetService(
         settings.media_data_dir,
         asset_repository,
@@ -609,6 +615,7 @@ def create_agent_canvas_runtime(
             settings.media_data_dir,
             ffmpeg_path=settings.ffmpeg_path,
         ),
+        on_version_published=project_cover_authority.consider_product_main,
     )
     guided_product_inputs = GuidedProductInputCommitService(
         assets=asset_service,
@@ -2466,6 +2473,7 @@ async def upload_asset(
             title=parsed.title,
             media_type=parsed.media_type,
             idempotency_key=idempotency_key,
+            source_semantic_role=parsed.semantic_role,
         )
         pending_handoff_id = None
         if parsed.semantic_role == "product_main":

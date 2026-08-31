@@ -59,6 +59,37 @@ class ProjectCoverAuthorityService:
         self._assets = assets
         self._workflows = workflows
 
+    def consider_product_main(self, version: AssetVersionMetadataV2) -> bool:
+        """Set automatic authority for one newly ready Product Main version."""
+
+        if (
+            not _eligible_media(version)
+            or version.source_workflow_id is None
+            or _semantic_role(version, {}) not in {"product_main", "product_main_image"}
+        ):
+            return False
+        workflow = self._workflows.get_workflow(version.source_workflow_id)
+        project = self._projects.get(workflow.project_id)
+        if project.cover_state not in {"unresolved", "none", "broken"}:
+            return False
+        try:
+            self._projects.update(
+                project.project_id,
+                expected_version=project.project_version,
+                changes={
+                    "cover_asset_id": version.asset_id,
+                    "cover_version_id": version.version_id,
+                    "cover_state": "ready",
+                    "cover_source": "product_main",
+                    "cover_updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except V2PersistenceError as error:
+            if error.code == "project_state_conflict":
+                return False
+            raise
+        return True
+
     def backfill(
         self,
         *,

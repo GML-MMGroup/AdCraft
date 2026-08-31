@@ -44,6 +44,7 @@ from app.services.v2_final_composition_renderer import V2MediaProbe, V2MediaProb
 
 
 MediaFactsProbe = Callable[[Path, str], V2MediaProbeResult]
+AssetVersionPublishedCallback = Callable[[AssetVersionMetadataV2], object]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class AgentCanvasAssetService:
         *,
         media_facts_probe: MediaFactsProbe | None = None,
         rendition_service: V2AssetRenditionService | None = None,
+        on_version_published: AssetVersionPublishedCallback | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._assets = assets
@@ -79,6 +81,7 @@ class AgentCanvasAssetService:
         self._reference_resolver = AgentCanvasAssetReferenceResolver(data_dir, assets)
         self._media_facts_probe = media_facts_probe or V2MediaProbe()
         self._renditions = rendition_service or V2AssetRenditionService(data_dir)
+        self._on_version_published = on_version_published
 
     def upload_bytes(
         self,
@@ -90,6 +93,7 @@ class AgentCanvasAssetService:
         title: str,
         media_type: str,
         idempotency_key: str,
+        source_semantic_role: str | None = None,
     ) -> ProjectAssetSummaryV2:
         _validate_upload(media_type, mime_type, content, idempotency_key)
         asset_id = _stable_identifier("asset", workflow_id, idempotency_key)
@@ -107,6 +111,7 @@ class AgentCanvasAssetService:
                     "Idempotency key was reused with different upload content.",
                     stage="agent_canvas_asset_service",
                 )
+            self._notify_version_published(existing)
             return self._asset_summary(existing)
 
         extension = _extension(filename, mime_type)
@@ -133,9 +138,11 @@ class AgentCanvasAssetService:
                     "display_name": title,
                     "original_filename": Path(filename).name,
                     "source_type": "upload",
+                    "source_semantic_role": source_semantic_role,
                 },
             ),
         )
+        self._notify_version_published(version)
         return self._asset_summary(version)
 
     def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
@@ -256,6 +263,7 @@ class AgentCanvasAssetService:
                     "The node-run fingerprint resolved to different output bytes.",
                     stage="agent_canvas_asset_service",
                 )
+            self._notify_version_published(existing)
             return self._asset_summary(existing)
         extension = _extension(filename, mime_type)
         staging = (
@@ -344,7 +352,17 @@ class AgentCanvasAssetService:
                 },
             ),
         )
+        self._notify_version_published(version)
         return self._asset_summary(version)
+
+    def _notify_version_published(self, version: AssetVersionMetadataV2) -> None:
+        if self._on_version_published is None:
+            return
+        try:
+            self._on_version_published(version)
+        except V2PersistenceError:
+            # Cover metadata is repairable and must not invalidate published media.
+            return
 
     def prepare_generated_bytes(
         self,
