@@ -1193,6 +1193,16 @@ describe("Agent Canvas normalizers", () => {
     }))).toThrow(/Scene reference checkpoints cannot carry character scope/);
   });
 
+  it("requires reference_source awaiting state to remain submit-authoritative", () => {
+    expect(() => normalizeGuidedSessionStateV2({
+      ...referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null }),
+      awaiting: {
+        ...referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null }).awaiting,
+        resume_policy: "next_user_message",
+      },
+    })).toThrow("Invalid creativeSession.awaiting: invalid reference source awaiting authority");
+  });
+
   it("retains immutable image AssetVersion identity in a binding source", () => {
     const binding = normalizeCanvasBindingV2({
       binding_id: "binding-versioned-image-1",

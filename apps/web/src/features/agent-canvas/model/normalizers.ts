@@ -5126,6 +5126,12 @@ function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwai
   ) {
     fail(path, "invalid Product source awaiting authority");
   }
+  if (
+    kind === "reference_source"
+    && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
+  ) {
+    fail(path, "invalid reference source awaiting authority");
+  }
   return {
     awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
