@@ -37,6 +37,12 @@
   height: 100%;
 }
 
+/* React Flow owns the viewport matrix; keep it on a composited layer without
+   applying paint containment that could clip nodes or edge overflow. */
+.agent-canvas-board .react-flow__viewport {
+  will-change: transform;
+}
+
 .agent-canvas-board.is-layout-previewing .react-flow__node {
   transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
 }
