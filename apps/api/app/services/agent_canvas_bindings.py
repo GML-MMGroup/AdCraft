@@ -83,6 +83,10 @@ class AgentCanvasBindingService:
         workflow = self._workflows.get_workflow(workflow_id)
         target = self._workflows.get_node(workflow_id, request.target_node_id)
         validate_ready_node_input_history(status=target.status, node_type=target.node_type)
+        character_turnaround_target = (
+            target.creative_role == "character"
+            and target.structured_content.get("character_asset_kind") == "turnaround"
+        )
         incoming = tuple(
             binding for binding in workflow.bindings if binding.target_node_id == target.node_id
         )
@@ -91,6 +95,12 @@ class AgentCanvasBindingService:
         if isinstance(request.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, request.source.node_id)
             source_node = source
+            if character_turnaround_target and source.execution_mode == "source_only":
+                raise V2PersistenceError(
+                    "role_reference_mismatch",
+                    "Character Turnaround must derive from its Character Main Node.",
+                    stage="agent_canvas_binding_service",
+                )
             world_setting_source = source.creative_role == "world_setting"
             validate_node_binding(
                 bindings=tuple(
@@ -120,6 +130,12 @@ class AgentCanvasBindingService:
         else:
             if not isinstance(request.source, CanvasBindingSourceImageAssetV2):
                 raise _media_incompatible_error()
+            if character_turnaround_target:
+                raise V2PersistenceError(
+                    "role_reference_mismatch",
+                    "Character Turnaround must derive from its Character Main Node.",
+                    stage="agent_canvas_binding_service",
+                )
             asset = (
                 self.resolve_asset_version(
                     request.source.asset_id,
