@@ -580,8 +580,8 @@ class MediaNodeExecutor:
                 reference.asset_id for reference in prepared.delivered_references
             ]
             if provider_only_instructions:
-                provider_payload["provider_only_reference_instructions"] = (
-                    list(provider_only_instructions)
+                provider_payload["provider_only_reference_instructions"] = list(
+                    provider_only_instructions
                 )
         intent = self._prepare_submission_intent(context, provider_payload)
         if intent is not None and intent.provider_idempotency_token is not None:
