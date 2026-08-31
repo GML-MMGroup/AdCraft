@@ -92,6 +92,7 @@ class AgentCanvasGuidedReferenceRepository:
         if target.prompt_preparation.status == "queued":
             kwargs["prompt_dispatch"] = self._prompt_dispatch
             kwargs["prompt_operation_id"] = target.prompt_preparation.operation_id or ""
+        kwargs["allow_closed_terminal_replay"] = True
         return self._interactions.open_reference_source_with_journey(*args, **kwargs)
 
     def submit(

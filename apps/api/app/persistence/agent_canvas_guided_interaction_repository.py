@@ -556,6 +556,7 @@ class AgentCanvasGuidedInteractionRepository:
         occurrence_id: str | None = None,
         prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
         prompt_operation_id: str | None = None,
+        allow_closed_terminal_replay: bool = False,
     ) -> GuidedInteractionV1:
         """Open one typed reference wait while reserving the current Journey stage."""
 
@@ -585,6 +586,64 @@ class AgentCanvasGuidedInteractionRepository:
                         )
                     if int(session["revision"]) != expected_session_revision:
                         raise _error("guidance_revision_conflict", "Guidance session is stale.")
+                    if allow_closed_terminal_replay:
+                        historical_rows = (
+                            connection.execute(
+                                select(AgentCanvasGuidedInteractionRow).where(
+                                    AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                    AgentCanvasGuidedInteractionRow.kind == "reference_source",
+                                )
+                            )
+                            .mappings()
+                            .all()
+                        )
+                        terminal_matches: list[GuidedInteractionV1] = []
+                        for row in historical_rows:
+                            interaction = guided_interaction_from_row(row)
+                            content = interaction.content
+                            if (
+                                isinstance(content, GuidedReferenceSourceQuestionV1)
+                                and content.reference_kind == reference_kind
+                                and content.target_node_id == target_node_id
+                                and content.target_node_revision == target_node_revision
+                                and content.occurrence_id == occurrence_id
+                                and interaction.status == "closed"
+                            ):
+                                terminal_matches.append(interaction)
+                        if len(terminal_matches) > 1:
+                            raise _error(
+                                "guided_interaction_conflict",
+                                "Multiple terminal reference interactions match one Main draft.",
+                            )
+                        if terminal_matches:
+                            terminal = terminal_matches[0]
+                            persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
+                            if (
+                                persisted_awaiting is not None
+                                and persisted_awaiting.interaction_id == terminal.interaction_id
+                            ):
+                                raise _error(
+                                    "guidance_authority_conflict",
+                                    "Closed reference source interaction still owns awaiting authority.",
+                                )
+                            connection.commit()
+                            return terminal
+                    journey = _journey(session)
+                    identity = sha256(
+                        f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:"
+                        f"{target_node_id}:{target_node_revision}:{occurrence_id or '-'}:v1".encode()
+                    ).hexdigest()[:32]
+                    interaction_id = f"interaction_reference_source_{identity}"
+                    exact_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
                     target = (
                         connection.execute(
                             select(AgentCanvasNodeRow).where(
@@ -605,22 +664,6 @@ class AgentCanvasGuidedInteractionRepository:
                             "guided_reference_source_target_invalid",
                             "Reference source target does not match the selected capability.",
                         )
-                    journey = _journey(session)
-                    identity = sha256(
-                        f"reference-source:{workflow_id}:{journey.stage_revision}:{reference_kind}:"
-                        f"{target_node_id}:{target_node_revision}:{occurrence_id or '-'}:v1".encode()
-                    ).hexdigest()[:32]
-                    interaction_id = f"interaction_reference_source_{identity}"
-                    exact_row = (
-                        connection.execute(
-                            select(AgentCanvasGuidedInteractionRow).where(
-                                AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
-                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                            )
-                        )
-                        .mappings()
-                        .one_or_none()
-                    )
                     if exact_row is not None:
                         exact = guided_interaction_from_row(exact_row)
                         if (
