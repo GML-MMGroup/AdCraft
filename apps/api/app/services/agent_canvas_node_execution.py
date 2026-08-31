@@ -1132,6 +1132,9 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         and context.node.structured_content.get("character_asset_kind") == "turnaround"
     ):
         return
+    target_pair_id = context.node.metadata.get("character_pair_id")
+    target_occurrence_id = context.node.metadata.get("occurrence_id")
+    target_phase = context.node.metadata.get("character_phase")
     candidates = tuple(
         item
         for item in context.inputs
@@ -1143,6 +1146,18 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         and item.required
         and item.binding_metadata.get("reference_purpose") == "identity_master"
         and item.binding_metadata.get("semantic_reference_role") == "subject_reference"
+        and (
+            not isinstance(target_pair_id, str)
+            or item.binding_metadata.get("character_pair_id") == target_pair_id
+        )
+        and (
+            not isinstance(target_occurrence_id, str)
+            or item.binding_metadata.get("occurrence_id") == target_occurrence_id
+        )
+        and (
+            not isinstance(target_phase, str)
+            or item.binding_metadata.get("character_phase") == target_phase
+        )
     )
     if len(candidates) != 1:
         raise _error(
