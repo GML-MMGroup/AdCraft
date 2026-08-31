@@ -487,13 +487,19 @@ def _resume_prompt_preparation_barrier(
 
     if dispatch.status not in {"completed", "failed"}:
         return
+    materialization_owned = False
     if materialization_barrier is not None:
+        materialization_owned = materialization_barrier.owns_dispatch(dispatch)
         materialization_barrier.reconcile_terminal_dispatch(dispatch)
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
     activation_result: object | None = None
-    if dispatch.status == "completed" and prompt_ready_activation is not None:
+    if (
+        dispatch.status == "completed"
+        and prompt_ready_activation is not None
+        and not materialization_owned
+    ):
         operation_id = getattr(dispatch, "operation_id", None)
         if isinstance(operation_id, str) and operation_id:
             activation_result = prompt_ready_activation(

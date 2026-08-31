@@ -108,6 +108,21 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
             materialization_id=materialization_id,
         )
 
+    def owns_dispatch(self, dispatch: PromptPreparationDispatchV1) -> bool:
+        """Return whether an active materialization continuation owns this dispatch."""
+
+        active = self._continuations.get_active_for_workflow(dispatch.workflow_id)
+        if active is None or active.operation != "capability_materialization":
+            return False
+        operation = (dispatch.node_id, dispatch.operation_id)
+        for event in reversed(self._events.list_after(dispatch.workflow_id)):
+            if event.event_type != _WAIT_EVENT_TYPE:
+                continue
+            operations = _wait_operations(event.payload)
+            if operations is not None and operation in operations:
+                return True
+        return False
+
     def reconcile_dependency_wait(
         self,
         *,
@@ -205,25 +220,7 @@ class AgentCanvasMaterializationPromptPreparationBarrier:
                 or event.payload.get("materialization_id") != materialization_id
             ):
                 continue
-            node_ids = event.payload.get("node_ids")
-            operation_ids = event.payload.get("operation_ids")
-            if not isinstance(node_ids, list) or not isinstance(operation_ids, list):
-                return None
-            if len(node_ids) != len(operation_ids):
-                return None
-            operations = tuple(zip(node_ids, operation_ids, strict=True))
-            if not all(
-                isinstance(node_id, str)
-                and node_id
-                and isinstance(operation_id, str)
-                and operation_id
-                for node_id, operation_id in operations
-            ):
-                return None
-            expected_digest = event.payload.get("operation_set_digest")
-            if expected_digest != _operation_set_digest(tuple(sorted(operations))):
-                return None
-            return operations
+            return _wait_operations(event.payload)
         return None
 
 
@@ -234,6 +231,25 @@ def _operation_set_digest(operations: tuple[tuple[str, str], ...]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return sha256(encoded).hexdigest()
+
+
+def _wait_operations(payload: dict[str, object]) -> tuple[tuple[str, str], ...] | None:
+    node_ids = payload.get("node_ids")
+    operation_ids = payload.get("operation_ids")
+    if not isinstance(node_ids, list) or not isinstance(operation_ids, list):
+        return None
+    if len(node_ids) != len(operation_ids):
+        return None
+    operations = tuple(zip(node_ids, operation_ids, strict=True))
+    if not all(
+        isinstance(node_id, str) and node_id and isinstance(operation_id, str) and operation_id
+        for node_id, operation_id in operations
+    ):
+        return None
+    expected_digest = payload.get("operation_set_digest")
+    if expected_digest != _operation_set_digest(tuple(sorted(operations))):
+        return None
+    return operations
 
 
 __all__ = ("AgentCanvasMaterializationPromptPreparationBarrier",)
