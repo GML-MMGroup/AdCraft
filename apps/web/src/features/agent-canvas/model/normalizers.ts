@@ -5096,6 +5096,8 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       "stage_revision",
       "action_id",
       "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
       "capability_id",
       "options",
       "allow_custom",
@@ -5116,6 +5118,14 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     if (allowExclusion && !new Set<GuidedJourneyStageV2>(["world_view", "props", "character", "bgm"]).has(stage)) {
       fail(`${path}.allow_exclusion`, "exclusion is not allowed for this journey stage");
     }
+    const occurrenceIndex = record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`);
+    const occurrenceCount = record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`);
+    if (occurrenceIndex !== null && occurrenceIndex > 32) fail(`${path}.occurrence_index`, "expected at most 32");
+    if (occurrenceCount !== null && occurrenceCount > 32) fail(`${path}.occurrence_count`, "expected at most 32");
     return {
       content_kind: "concept_choice",
       proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`),
@@ -5123,6 +5133,8 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
       action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
       occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+      occurrence_index: occurrenceIndex,
+      occurrence_count: occurrenceCount,
       capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
       options,
       allow_custom: true,
