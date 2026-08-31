@@ -238,6 +238,16 @@ class AgentCanvasContinuationOutboxRepository:
         row = _select_active_for_workflow(connection, workflow_id)
         return _delivery(row) if row is not None else None
 
+    def get_active_for_workflow(self, workflow_id: str) -> ContinuationDeliveryV2 | None:
+        """Read the single current workflow continuation without mutating it."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = _select_active_for_workflow(connection, workflow_id)
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _delivery(row) if row is not None else None
+
     def get(self, continuation_id: str) -> ContinuationDeliveryV2:
         try:
             with self._database.engine.connect() as connection:
