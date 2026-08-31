@@ -227,6 +227,10 @@ from app.services.agent_canvas_assets import (
     deterministic_media_facts_probe,
 )
 from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
+from app.services.agent_canvas_guided_reference import GuidedReferenceSourceService
+from app.persistence.agent_canvas_guided_reference_repository import (
+    AgentCanvasGuidedReferenceRepository,
+)
 from app.persistence.agent_canvas_guided_product_repository import (
     AgentCanvasGuidedProductRepository,
 )
@@ -419,6 +423,7 @@ class AgentCanvasRuntime:
     connection_policy: AgentCanvasConnectionPolicyService
     assets: AgentCanvasAssetService
     guided_product_inputs: GuidedProductInputCommitService
+    guided_reference_sources: GuidedReferenceSourceService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
@@ -1378,6 +1383,19 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+    guided_reference_sources = GuidedReferenceSourceService(
+        assets=asset_service,
+        asset_repository=asset_repository,
+        workflows=workflow_repository,
+        commits=AgentCanvasGuidedReferenceRepository(
+            workflow_repository,
+            event_repository,
+            interactions=guided_interaction_repository,
+        ),
+    )
+    guided_reference_sources.set_continuation_writer(
+        conversation_repository.insert_continuation_in_transaction
+    )
 
     def guided_reference_snapshot(
         workflow_id: str,
@@ -1414,6 +1432,7 @@ def create_agent_canvas_runtime(
         ).submit,
     )
     guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
+    guided_interactions.set_reference_submitter(guided_reference_sources.submit_interaction)
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1421,6 +1440,7 @@ def create_agent_canvas_runtime(
         storyboard_authoring=storyboard_authoring,
         storyboard_gateway=video_agent_gateway,
         prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
+        reference_source_opener=guided_reference_sources.open_for_materialized_main,
         commit_service=AgentCanvasMaterializationCommitService(
             materialization_repository,
             GuidedProductionJourneyReducer(),
@@ -1615,6 +1635,7 @@ def create_agent_canvas_runtime(
         connection_policy=connection_policy,
         assets=asset_service,
         guided_product_inputs=guided_product_inputs,
+        guided_reference_sources=guided_reference_sources,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
         turn_retries=turn_retries,

@@ -126,6 +126,7 @@ class CapabilityMaterializationPublicationService:
         prompt_ready_activation: Callable[..., object] | None = None,
         parent_derived: ParentDerivedMaterializationCoordinator | None = None,
         prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+        reference_source_opener: Callable[..., object] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -157,6 +158,7 @@ class CapabilityMaterializationPublicationService:
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
         self._duration_authority = GuidedDurationAuthorityPolicy()
         self._prompt_ready_activation = prompt_ready_activation
+        self._reference_source_opener = reference_source_opener
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -281,21 +283,27 @@ class CapabilityMaterializationPublicationService:
                 "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
             ) from error
-        self._prepare_prompts(
+        reference_wait_opened = self._open_reference_source_checkpoint(
             envelope,
-            materialization_context,
-            session_id=session.session_id,
-            session_revision=session.revision,
-            stage=session.journey.stage,
-            occurrence_id=(
-                session.journey.active_action.occurrence_id
-                if session.journey.active_action is not None
-                else None
-            ),
-            node_ids=outcome.node_ids,
-            operation_ids=outcome.prompt_preparation_ids,
-            lease_guard=lease_guard,
+            outcome,
+            source_turn_id=envelope.action_turn_id,
         )
+        if not reference_wait_opened:
+            self._prepare_prompts(
+                envelope,
+                materialization_context,
+                session_id=session.session_id,
+                session_revision=session.revision,
+                stage=session.journey.stage,
+                occurrence_id=(
+                    session.journey.active_action.occurrence_id
+                    if session.journey.active_action is not None
+                    else None
+                ),
+                node_ids=outcome.node_ids,
+                operation_ids=outcome.prompt_preparation_ids,
+                lease_guard=lease_guard,
+            )
         self._prepare_storyboard_dependencies(
             envelope,
             materialization_context,
@@ -316,6 +324,38 @@ class CapabilityMaterializationPublicationService:
                 lease_guard=lease_guard,
             )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _open_reference_source_checkpoint(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome,
+        *,
+        source_turn_id: str,
+    ) -> bool:
+        """Open optional Main reference input before prompt-ready admission."""
+
+        if self._reference_source_opener is None:
+            return False
+        if envelope.operation_kind != "parent" or envelope.capability_id not in {
+            "character_design",
+            "scene_design",
+        }:
+            return False
+        if not outcome.node_ids:
+            return False
+        self._reference_source_opener(
+            workflow_id=envelope.workflow_id,
+            target_node_id=outcome.node_ids[0],
+            target_node_revision=1,
+            reference_kind=(
+                "character_main" if envelope.capability_id == "character_design" else "scene_main"
+            ),
+            occurrence_id=envelope.occurrence_id
+            if envelope.capability_id == "character_design"
+            else None,
+            source_turn_id=source_turn_id,
+        )
+        return True
 
     def _prepare_guided_document_stage(
         self,
@@ -881,7 +921,12 @@ class CapabilityMaterializationPublicationService:
             pending_preparations.append((node_id, operation_id))
         pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        if pending_preparations:
+        reference_wait_opened = self._open_reference_source_checkpoint(
+            envelope,
+            outcome,
+            source_turn_id=envelope.action_turn_id,
+        )
+        if pending_preparations and not reference_wait_opened:
             # A committed materialization is recovered from the exact
             # dispatch operation that was persisted with its Draft.  Rebuilding
             # context from the mutable requirement/session state here could
