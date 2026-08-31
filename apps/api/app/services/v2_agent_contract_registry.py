@@ -36,6 +36,7 @@ from app.schemas.agent_canvas_capabilities import (
     WorldSettingProposalResultV1,
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
+from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.schemas.agent_canvas_role_prompt_preparation import RoleCreativeBriefV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
@@ -115,6 +116,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     TurnIntentDecisionV2,
     NextActionCommandV1,
     DecisionBundleDraftV1,
+    IdentitySafetyDecisionV1,
     RoleCreativeBriefV2,
     WorldSettingProposalResultV1,
     ProposalCardResultV2,

@@ -229,6 +229,9 @@ class RolePromptContextProjector:
                 or (style_parameters or {}).get("video_representation_source_id")
                 or "video-skill"
             ),
+            identity_safety_decision=stage_context.requirement_facts.get(
+                "identity_safety_decision"
+            ),
         )
         return RolePromptPreparationContextV2(
             workflow_id=node.workflow_id,
@@ -271,6 +274,16 @@ class RolePromptContextProjector:
             video_representation_source_id=representation.source_id,
             video_representation_digest=(
                 representation.digest if role_variant in {"video_segment", "free_video"} else None
+            ),
+            identity_safety_decision=(
+                representation.identity_safety_decision
+                if role_variant in {"video_segment", "free_video"}
+                else None
+            ),
+            identity_safety_digest=(
+                representation.identity_safety_digest
+                if role_variant in {"video_segment", "free_video"}
+                else None
             ),
             model_policy_revision=model_policy_revision,
             created_at=datetime.now(timezone.utc),

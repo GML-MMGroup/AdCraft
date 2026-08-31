@@ -476,6 +476,7 @@ class ProgressiveStoryboardReadyService:
             skill_source_id=str(
                 audio_constraints.get("_video_skill_representation_source_id") or "video-skill"
             ),
+            identity_safety_decision=audio_constraints.get("identity_safety_decision"),
         )
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,

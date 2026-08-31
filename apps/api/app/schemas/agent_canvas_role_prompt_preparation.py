@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
@@ -195,6 +196,8 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     video_representation_source: str | None = Field(default=None, max_length=160)
     video_representation_source_id: str | None = Field(default=None, max_length=160)
     video_representation_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
+    identity_safety_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     model_policy_revision: int = Field(ge=1)
     created_at: datetime
 
