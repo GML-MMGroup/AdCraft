@@ -141,7 +141,7 @@ class AgentCanvasNodeService:
             changes["generation_prompt"] = normalized_prompt
         if (
             current.status == "draft"
-            and current.prompt_preparation.recipe_id is not None
+            and _has_managed_prompt_preparation(current)
             and _changes_prompt_authority(changes)
         ):
             changes["prompt_preparation"] = _queued_prompt_preparation(
