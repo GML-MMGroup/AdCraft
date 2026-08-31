@@ -53,9 +53,9 @@ class GuidedReferenceSourceService:
         """Open the optional reference wait for a newly published Main Draft."""
 
         if reference_kind == "character_main":
-            requirement = AgentCanvasRequirementRepository(
-                self._workflows.database
-            ).get_current(workflow_id)
+            requirement = AgentCanvasRequirementRepository(self._workflows.database).get_current(
+                workflow_id
+            )
             occurrences = character_occurrences_for_authoring(requirement)
             if not occurrences:
                 return False
