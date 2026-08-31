@@ -432,7 +432,10 @@ class MediaNodeExecutor:
                 )
             delivery = self._reference_delivery.deliver_canvas_inputs(
                 model_resolution=context.model_resolution,
-                inputs=media_inputs,
+                inputs=_delivery_inputs_with_validated_character_identity_semantics(
+                    context.node,
+                    media_inputs,
+                ),
             )
             try:
                 delivery.raise_for_canvas_failures()
@@ -1147,6 +1150,32 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
             "Character Turnaround requires exactly one Ready Character Main image Binding.",
             details={"target_node_id": context.node.node_id},
         )
+
+
+def _delivery_inputs_with_validated_character_identity_semantics(
+    node: CanvasNodeV2,
+    inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+) -> tuple[ResolvedMediaInputSnapshotV2, ...]:
+    """Project validated Character identity semantics into the delivery compiler."""
+
+    if not (
+        node.node_type == "image"
+        and node.creative_role == "character"
+        and node.structured_content.get("character_asset_kind") == "turnaround"
+    ):
+        return inputs
+    return tuple(
+        item.model_copy(
+            update={
+                "binding_metadata": {
+                    **item.binding_metadata,
+                    "reference_kind": "character_main",
+                    "reference_purpose": "identity_guidance",
+                }
+            }
+        )
+        for item in inputs
+    )
 
 
 def _seedance_checksum(asset_id: str, version_id: str | None) -> str:
