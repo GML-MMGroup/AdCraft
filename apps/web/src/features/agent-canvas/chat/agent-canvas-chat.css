@@ -266,6 +266,22 @@
   overflow-anchor: auto;
 }
 
+.agent-chat__timeline-virtualized {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.agent-chat__timeline-virtualized-item {
+  min-width: 0;
+}
+
+.agent-chat__timeline-virtualized-placeholder {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .agent-chat__timeline-hydration {
   display: grid;
   width: min(100%, 300px);
