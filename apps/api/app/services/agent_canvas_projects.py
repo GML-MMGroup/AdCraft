@@ -135,6 +135,8 @@ class AgentCanvasProjectService:
             cover_version_id = changes.get("cover_version_id")
             if cover_asset_id is None and cover_version_id is None:
                 changes.update(
+                    cover_asset_id=None,
+                    cover_version_id=None,
                     cover_state="none",
                     cover_source="manual",
                     cover_updated_at=datetime.now(timezone.utc).isoformat(),
