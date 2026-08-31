@@ -28,6 +28,7 @@ RuntimeDispositionClass = Literal[
     "ineligible",
     "unknown",
 ]
+RuntimeQuiescenceImpact = Literal["blocking", "non_blocking", "audit_only"]
 
 
 class RuntimeRecordObservationV1(BaseModel):
@@ -55,7 +56,14 @@ class RuntimeRecordObservationV1(BaseModel):
     source_status: str | None = Field(default=None, max_length=80)
     continuation_id: str | None = Field(default=None, max_length=160)
     continuation_status: str | None = Field(default=None, max_length=80)
+    has_active_continuation: bool = False
+    has_active_execution_dependency: bool = False
+    has_active_agent_run: bool = False
+    has_active_provider_task: bool = False
+    has_active_lease: bool = False
     has_current_awaiting: bool = False
+    submit_revision_fail_closed: bool = False
+    audit_record_preserved: bool = True
     has_source_proof: bool = False
     has_reliable_terminal_evidence: bool = False
     has_recovery_identity: bool = False
@@ -72,6 +80,7 @@ class RuntimeRecordDispositionV1(BaseModel):
     workflow_id: str
     classification: RuntimeDispositionClass
     reason_code: str
+    quiescence_impact: RuntimeQuiescenceImpact
     mutation_allowed: bool = False
     recovery_action: str | None = None
 
@@ -200,6 +209,7 @@ class RuntimeIdleAuditV1(BaseModel):
     node_lease_count: int = Field(ge=0)
     legal_wait_count: int = Field(ge=0)
     durable_selection_count: int = Field(ge=0)
+    audit_only_count: int = Field(ge=0)
     blocked_liveness_count: int = Field(ge=0)
 
     @property
@@ -215,6 +225,10 @@ class RuntimeIdleAuditV1(BaseModel):
                 self.node_lease_count,
             )
         )
+
+    @property
+    def policy_runtime_quiescent(self) -> bool:
+        return self.worker_queues_idle and self.blocked_liveness_count == 0
 
 
 def build_disposition_inventory(
@@ -347,7 +361,14 @@ def _classify_guided_interaction(
         and record.source_revision is not None
         and record.expected_revision != record.source_revision
     ):
-        return _disposition(record, "stale_candidate", "session_revision_advanced")
+        return _disposition(
+            record,
+            "stale_candidate",
+            "session_revision_advanced",
+            quiescence_impact=(
+                "audit_only" if _stale_interaction_is_audit_only(record) else "blocking"
+            ),
+        )
     if record.has_current_awaiting:
         return _disposition(record, "legal_wait", "current_user_awaiting")
     return _disposition(record, "unknown", "awaiting_proof_required")
@@ -361,6 +382,25 @@ def _has_live_owner(record: RuntimeRecordObservationV1) -> bool:
     if record.lease_expires_at is not None and record.lease_expires_at <= record.observed_at:
         return False
     return True
+
+
+def _stale_interaction_is_audit_only(record: RuntimeRecordObservationV1) -> bool:
+    return (
+        record.has_current_awaiting
+        and record.submit_revision_fail_closed
+        and record.audit_record_preserved
+        and record.owner_id is None
+        and record.heartbeat_at is None
+        and record.process_id is None
+        and record.continuation_id is None
+        and not record.has_active_continuation
+        and not record.has_active_execution_dependency
+        and not record.has_active_agent_run
+        and not record.has_active_provider_task
+        and not record.has_active_lease
+        and not record.has_recovery_identity
+        and not record.has_source_proof
+    )
 
 
 def _cross_scope_mismatch(record: RuntimeRecordObservationV1) -> bool:
@@ -377,13 +417,23 @@ def _disposition(
     record: RuntimeRecordObservationV1,
     classification: RuntimeDispositionClass,
     reason_code: str,
+    *,
+    quiescence_impact: RuntimeQuiescenceImpact | None = None,
 ) -> RuntimeRecordDispositionV1:
+    resolved_impact = quiescence_impact
+    if resolved_impact is None:
+        resolved_impact = (
+            "non_blocking"
+            if classification in {"legal_wait", "durable_selection", "ineligible"}
+            else "blocking"
+        )
     return RuntimeRecordDispositionV1(
         record_class=record.record_class,
         record_id=record.record_id,
         workflow_id=record.workflow_id,
         classification=classification,
         reason_code=reason_code,
+        quiescence_impact=resolved_impact,
     )
 
 

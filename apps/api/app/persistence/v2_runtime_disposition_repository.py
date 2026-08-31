@@ -97,6 +97,32 @@ class V2RuntimeDispositionRepository:
             session_rows = (
                 connection.execute(select(AgentCanvasGuidanceSessionRow)).mappings().all()
             )
+            active_execution_workflows = _active_workflow_ids(
+                connection,
+                AgentCanvasExecutionRow,
+                ("queued", "running", "waiting"),
+            )
+            active_continuation_workflows = _active_workflow_ids(
+                connection,
+                AgentCanvasContinuationOutboxRow,
+                ("queued", "leased", "retry_wait"),
+            )
+            active_agent_run_workflows = _active_workflow_ids(
+                connection,
+                AgentRunRow,
+                ("queued", "running"),
+            )
+            active_provider_workflows = _active_workflow_ids(
+                connection,
+                AgentCanvasProviderTaskRow,
+                ("submitted", "waiting", "recovering"),
+            )
+            active_lease_workflows = _active_workflow_ids(
+                connection,
+                AgentCanvasNodeLeaseRow,
+                ("claimed",),
+                field=AgentCanvasNodeLeaseRow.state,
+            )
 
         turns_by_id = {str(row["turn_id"]): row for row in all_turn_rows}
         continuations_by_source: dict[str, list[Mapping[str, Any]]] = {}
@@ -141,6 +167,11 @@ class V2RuntimeDispositionRepository:
                 row,
                 awaiting_by_interaction,
                 sessions_by_workflow,
+                active_execution_workflows,
+                active_continuation_workflows,
+                active_agent_run_workflows,
+                active_provider_workflows,
+                active_lease_workflows,
                 observed_at,
                 processes,
             )
@@ -202,9 +233,13 @@ class V2RuntimeDispositionRepository:
             node_lease_count=counts["node_lease"],
             legal_wait_count=inventory.classification_counts.get("legal_wait", 0),
             durable_selection_count=inventory.classification_counts.get("durable_selection", 0),
+            audit_only_count=sum(
+                disposition.quiescence_impact == "audit_only"
+                for disposition in inventory.dispositions
+            ),
             blocked_liveness_count=sum(
-                inventory.classification_counts.get(classification, 0)
-                for classification in ("unknown", "orphan_candidate", "stale_candidate")
+                disposition.quiescence_impact == "blocking"
+                for disposition in inventory.dispositions
             ),
         )
 
@@ -324,25 +359,54 @@ def _interaction_observation(
     row: Mapping[str, Any],
     awaiting_by_interaction: Mapping[str, Mapping[str, Any]],
     sessions_by_workflow: Mapping[str, Mapping[str, Any]],
+    active_execution_workflows: set[str],
+    active_continuation_workflows: set[str],
+    active_agent_run_workflows: set[str],
+    active_provider_workflows: set[str],
+    active_lease_workflows: set[str],
     observed_at: str,
     process_ids: Mapping[_PROCESS_KEY, int],
 ) -> RuntimeRecordObservationV1:
     interaction_id = str(row["interaction_id"])
-    session = sessions_by_workflow.get(str(row["workflow_id"]))
+    workflow_id = str(row["workflow_id"])
+    session = sessions_by_workflow.get(workflow_id)
+    expected_revision = int(row["expected_session_revision"])
+    source_revision = int(session["revision"]) if session else None
+    awaiting = awaiting_by_interaction.get(interaction_id)
+    identity_matches = bool(
+        session is not None
+        and str(session["workflow_id"]) == workflow_id
+        and str(session["session_id"]) == str(row["session_id"])
+        and awaiting is not None
+        and str(awaiting["workflow_id"]) == workflow_id
+        and str(awaiting["session_id"]) == str(row["session_id"])
+    )
     return RuntimeRecordObservationV1(
         record_class="guided_interaction",
         record_id=interaction_id,
-        workflow_id=str(row["workflow_id"]),
+        workflow_id=workflow_id,
         session_id=str(row["session_id"]),
         status=str(row["status"]),
         observed_at=observed_at,
         process_id=process_ids.get(("guided_interaction", interaction_id)),
         revision=int(row["revision"]),
-        expected_revision=int(row["expected_session_revision"]),
-        source_revision=int(session["revision"]) if session else None,
+        expected_revision=expected_revision,
+        source_revision=source_revision,
         source_workflow_id=str(session["workflow_id"]) if session else None,
         source_session_id=str(session["session_id"]) if session else None,
-        has_current_awaiting=interaction_id in awaiting_by_interaction,
+        has_active_continuation=workflow_id in active_continuation_workflows,
+        has_active_execution_dependency=workflow_id in active_execution_workflows,
+        has_active_agent_run=workflow_id in active_agent_run_workflows,
+        has_active_provider_task=workflow_id in active_provider_workflows,
+        has_active_lease=workflow_id in active_lease_workflows,
+        has_current_awaiting=awaiting is not None,
+        submit_revision_fail_closed=(
+            identity_matches
+            and source_revision is not None
+            and expected_revision != source_revision
+        ),
+        audit_record_preserved=True,
+        identity_matches=identity_matches,
     )
 
 
@@ -359,3 +423,19 @@ def _count_active(
             select(func.count()).select_from(model).where(status_field.in_(statuses))
         ).scalar_one()
     )
+
+
+def _active_workflow_ids(
+    connection: Any,
+    model: Any,
+    statuses: tuple[str, ...],
+    *,
+    field: Any | None = None,
+) -> set[str]:
+    status_field = field or model.status
+    return {
+        str(workflow_id)
+        for workflow_id in connection.execute(
+            select(model.workflow_id).where(status_field.in_(statuses))
+        ).scalars()
+    }
