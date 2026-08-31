@@ -4951,12 +4951,12 @@ export function normalizeGuidanceAdvancePreconditionV1(
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review", "reference_source"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
   return {
     interaction_id: expectNonEmptyString(record.interaction_id, `${path}.interaction_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind,
     status: expectLiteral(record.status, new Set<GuidedInteractionV1["status"]>(["open", "submitted", "closed", "superseded"]), `${path}.status`), response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`), expected_session_revision: expectPositiveInteger(record.expected_session_revision, `${path}.expected_session_revision`), revision: expectPositiveInteger(record.revision, `${path}.revision`), title: expectNonEmptyString(record.title, `${path}.title`), context: expectNonEmptyString(record.context, `${path}.context`), content,
-    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
+    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
     submit_path: expectNonEmptyString(record.submit_path, `${path}.submit_path`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`), updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
@@ -5049,6 +5049,46 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     if (kind !== "media_review") fail(path, "invalid media review interaction content");
     return { content_kind: "media_review", node_id: expectNonEmptyString(record.node_id, `${path}.node_id`), node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`), asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`), asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`), summary: expectNonEmptyString(record.summary, `${path}.summary`) };
   }
+  if (contentKind === "reference_source") {
+    forbidUnknownFields(record, [
+      "content_kind",
+      "reference_kind",
+      "target_node_id",
+      "target_node_revision",
+      "occurrence_id",
+      "question",
+      "use_reference_label",
+      "skip_reference_label",
+      "expected_guidance_revision",
+    ], path);
+    if (kind !== "reference_source") fail(path, "invalid reference source interaction content");
+    const referenceKind = expectLiteral(
+      record.reference_kind,
+      new Set(["character_main", "scene_main"] as const),
+      `${path}.reference_kind`,
+    );
+    const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+    if (referenceKind === "character_main" && occurrenceId === null) {
+      fail(path, "Character reference checkpoints require an occurrence identity.");
+    }
+    if (referenceKind === "scene_main" && occurrenceId !== null) {
+      fail(path, "Scene reference checkpoints cannot carry character scope.");
+    }
+    return {
+      content_kind: "reference_source",
+      reference_kind: referenceKind,
+      target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
+      target_node_revision: expectPositiveInteger(record.target_node_revision, `${path}.target_node_revision`),
+      occurrence_id: occurrenceId,
+      question: expectNonEmptyString(record.question, `${path}.question`),
+      use_reference_label: expectNonEmptyString(record.use_reference_label, `${path}.use_reference_label`),
+      skip_reference_label: expectNonEmptyString(record.skip_reference_label, `${path}.skip_reference_label`),
+      expected_guidance_revision: expectPositiveInteger(
+        record.expected_guidance_revision,
+        `${path}.expected_guidance_revision`,
+      ),
+    };
+  }
   fail(`${path}.content_kind`, "unknown guided interaction content");
 }
 
@@ -5075,7 +5115,7 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "reference_source", "manual_node_run", "milestone_idle"]), `${path}.kind`);
   const requiresUserAction = expectBoolean(record.requires_user_action, `${path}.requires_user_action`);
   const resumePolicy = expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`);
   const interactionId = nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`);
