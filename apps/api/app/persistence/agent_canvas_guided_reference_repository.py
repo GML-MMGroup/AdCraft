@@ -14,6 +14,9 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
     _journey,
     AgentCanvasGuidedInteractionRepository,
 )
+from app.persistence.agent_canvas_guided_reference_validation import (
+    reference_target_is_current,
+)
 from app.persistence.agent_canvas_repository import (
     AgentCanvasWorkflowRepository,
     _advance_workflow_revision,
@@ -157,6 +160,42 @@ class AgentCanvasGuidedReferenceRepository:
                     .one()
                 )
                 journey = _journey(session)
+                target = (
+                    connection.execute(
+                        select(AgentCanvasNodeRow).where(
+                            AgentCanvasNodeRow.workflow_id == workflow_id,
+                            AgentCanvasNodeRow.node_id == content.target_node_id,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if not reference_target_is_current(
+                    target,
+                    reference_kind=content.reference_kind,
+                    target_node_revision=content.target_node_revision,
+                    occurrence_id=content.occurrence_id,
+                ):
+                    raise _error(
+                        "guided_reference_source_target_invalid",
+                        "Reference source target is no longer the current Main Draft.",
+                    )
+                active_action = journey.active_action
+                expected_stage = (
+                    "character" if content.reference_kind == "character_main" else "scene"
+                )
+                if (
+                    journey.stage != expected_stage
+                    or journey.stage_status != "waiting_user"
+                    or active_action is None
+                    or active_action.action_kind != "wait_for_user:reference_source"
+                    or active_action.stage_revision != awaiting.stage_revision
+                    or active_action.occurrence_id != content.occurrence_id
+                ):
+                    raise _error(
+                        "guided_reference_source_revision_conflict",
+                        "Guided Journey advanced before reference submit.",
+                    )
                 current_revision = _require_workflow_revision(
                     connection, workflow_id, self._workflows.get_workflow(workflow_id).revision
                 )

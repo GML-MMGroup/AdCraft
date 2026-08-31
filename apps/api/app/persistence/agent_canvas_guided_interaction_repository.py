@@ -15,6 +15,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_guided_reference_validation import (
+    reference_target_is_current,
+)
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -577,47 +580,20 @@ class AgentCanvasGuidedInteractionRepository:
                             select(AgentCanvasNodeRow).where(
                                 AgentCanvasNodeRow.workflow_id == workflow_id,
                                 AgentCanvasNodeRow.node_id == target_node_id,
-                                AgentCanvasNodeRow.revision == target_node_revision,
                             )
                         )
                         .mappings()
                         .one_or_none()
                     )
-                    expected_role = "character" if reference_kind == "character_main" else "scene"
-                    if target is None or str(target["creative_role"]) != expected_role:
+                    if not reference_target_is_current(
+                        target,
+                        reference_kind=reference_kind,
+                        target_node_revision=target_node_revision,
+                        occurrence_id=occurrence_id,
+                    ):
                         raise _error(
                             "guided_reference_source_target_invalid",
                             "Reference source target does not match the selected capability.",
-                        )
-                    try:
-                        target_metadata = json.loads(str(target["metadata_json"]))
-                    except (TypeError, json.JSONDecodeError) as error:
-                        raise _error(
-                            "guided_reference_source_target_invalid",
-                            "Reference source target metadata is invalid.",
-                        ) from error
-                    if str(target["status"]) != "draft":
-                        raise _error(
-                            "guided_reference_source_target_invalid",
-                            "Reference source target must remain a Draft.",
-                        )
-                    if reference_kind == "character_main" and occurrence_id is None:
-                        raise _error(
-                            "guided_reference_source_occurrence_mismatch",
-                            "Character reference source requires an occurrence.",
-                        )
-                    if reference_kind == "character_main" and (
-                        target_metadata.get("occurrence_id") != occurrence_id
-                        or target_metadata.get("character_phase") not in {None, "main"}
-                    ):
-                        raise _error(
-                            "guided_reference_source_occurrence_mismatch",
-                            "Reference source occurrence does not match the Character Main target.",
-                        )
-                    if reference_kind == "scene_main" and occurrence_id is not None:
-                        raise _error(
-                            "guided_reference_source_occurrence_mismatch",
-                            "Scene reference source cannot carry an occurrence.",
                         )
                     journey = _journey(session)
                     existing_row = (
