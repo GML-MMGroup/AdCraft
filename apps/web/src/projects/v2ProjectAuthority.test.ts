@@ -13,6 +13,10 @@ describe("project cover authority", () => {
         status: "active",
         is_favorite: false,
         cover_asset_id: "cover-1",
+        cover_version_id: "version-4",
+        cover_state: "ready",
+        cover_source: "manual",
+        cover_updated_at: "2026-08-30T07:59:00Z",
         project_version: 3,
         updated_at: "2026-08-30T08:00:00Z",
         cover: {
@@ -33,5 +37,8 @@ describe("project cover authority", () => {
       mediaPath: "/api/v2/assets/cover-1/preview?v=version-4",
       posterPath: "/api/v2/assets/cover-1/poster?v=version-4",
     });
+    expect(projectSummaryToListItem(project).coverState).toBe("ready");
+    expect(project.cover_version_id).toBe("version-4");
+    expect(project.cover_source).toBe("manual");
   });
 });

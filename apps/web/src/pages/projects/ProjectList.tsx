@@ -6,7 +6,7 @@ import { ProjectCard } from "../../components/Cards";
 import { loadProjectCoverCache, saveProjectCoverCache } from "../../projects/projectCoverCache.ts";
 import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 import { prefetchProjectCover } from "../../projects/projectCoverPrefetch.ts";
-import type { ProjectAssetSummaryV2 } from "../../types-v2.ts";
+import type { ProjectAssetSummaryV2, ProjectCoverStateV2 } from "../../types-v2.ts";
 import {
   getProjectGridColumnCount,
   getVirtualProjectWindow,
@@ -25,6 +25,7 @@ export type ProjectListItem = {
   favorite: boolean;
   workflowId: string;
   coverAssetId: string | null;
+  coverState?: ProjectCoverStateV2;
   cover?: V2ProjectCover | null;
 };
 
@@ -268,14 +269,18 @@ const ProjectListCard = memo(function ProjectListCard({
 });
 
 function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
-  const { workflowId, coverAssetId, updatedAt, cover: summaryCover } = project;
+  const { workflowId, coverAssetId, coverState, updatedAt, cover: summaryCover } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, updatedAt });
   const cacheKey = projectCoverCacheKey(project.projectId);
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
-    if (summaryCover !== undefined) {
+    if (summaryCover) {
       setEntry({ cover: summaryCover });
+      return undefined;
+    }
+    if (coverState !== undefined && coverState !== "unresolved") {
+      setEntry({ cover: null });
       return undefined;
     }
     const cachedCover = loadProjectCoverCache(cacheKey, undefined, { allowStale: true });
@@ -325,7 +330,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [cacheKey, coverAssetId, coverPriority, requestKey, summaryCover, updatedAt, workflowId]);
+  }, [cacheKey, coverAssetId, coverPriority, coverState, requestKey, summaryCover, updatedAt, workflowId]);
 
   return entry?.cover;
 }

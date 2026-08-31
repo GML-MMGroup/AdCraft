@@ -286,6 +286,7 @@ describe("ProjectList covers", () => {
   it("does not request project assets when the summary already contains a versioned cover", async () => {
     const project = {
       ...projects(1)[0],
+      coverState: "ready" as const,
       cover: {
         assetId: "summary-cover",
         versionId: "summary-version",
@@ -309,6 +310,68 @@ describe("ProjectList covers", () => {
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
       .toContain("/api/v2/assets/summary-cover/preview?v=summary-version");
   });
+
+  it("falls back to workflow assets when the project summary cover is null", async () => {
+    const controlled = installControlledCoverRequests();
+    const project = { ...projects(1)[0], cover: null };
+    const view = render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledWith("workflow-0", {
+      signal: expect.any(AbortSignal),
+    });
+
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("historical-cover", "/media/historical.webp")]);
+    });
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("/api/v2/assets/historical-cover/content?v=historical-cover-version");
+  });
+
+  it("falls back to workflow assets when cover authority is unresolved", async () => {
+    const controlled = installControlledCoverRequests();
+    const project = { ...projects(1)[0], cover: null, coverState: "unresolved" as const };
+    render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(1);
+    controlled.resolve("workflow-0");
+  });
+
+  it.each(["none", "broken"] as const)(
+    "does not infer a cover when backend authority is %s",
+    async (coverState) => {
+      const project = { ...projects(1)[0], cover: null, coverState };
+      render(
+        <ProjectList
+          projects={[project]}
+          onOpenProject={vi.fn()}
+          onTrashProject={vi.fn()}
+          onToggleFavorite={vi.fn()}
+          onRenameProject={vi.fn()}
+        />,
+      );
+
+      await act(async () => {});
+      expect(fixture.listAgentCanvasProjectAssets).not.toHaveBeenCalled();
+    },
+  );
 
   it("shows a persisted cover while the background refresh is pending", async () => {
     const controlled = installControlledCoverRequests();
