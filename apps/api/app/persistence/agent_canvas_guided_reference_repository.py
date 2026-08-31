@@ -24,8 +24,12 @@ from app.persistence.agent_canvas_repository import (
     AgentCanvasWorkflowRepository,
     _advance_workflow_revision,
     _binding_values,
+    _invalidate_target_prompt_preparation,
     _node_values,
     _require_workflow_revision,
+)
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
@@ -71,6 +75,10 @@ class AgentCanvasGuidedReferenceRepository:
         self._interactions = interactions
         self._continuation_writer = continuation_writer
         self._envelopes = AgentCanvasOperationEnvelopeRepository(workflows.database)
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            events,
+        )
 
     def set_continuation_writer(self, writer: Callable[..., None] | None) -> None:
         self._continuation_writer = writer
@@ -78,6 +86,16 @@ class AgentCanvasGuidedReferenceRepository:
     def open_reference_source_with_journey(self, *args, **kwargs) -> GuidedInteractionV1:
         """Delegate opening to the canonical interaction transaction."""
 
+        workflow_id = str(args[0] if args else kwargs["workflow_id"])
+        target_node_id = str(kwargs["target_node_id"])
+        target = self._workflows.get_node(workflow_id, target_node_id)
+        if target.prompt_preparation.status == "queued":
+            self._prompt_dispatch.hold_for_waiting_user(
+                workflow_id=workflow_id,
+                node_id=target_node_id,
+                operation_id=target.prompt_preparation.operation_id or "",
+                now=datetime.now(timezone.utc),
+            )
         return self._interactions.open_reference_source_with_journey(*args, **kwargs)
 
     def submit(
@@ -101,7 +119,8 @@ class AgentCanvasGuidedReferenceRepository:
             raise _error("guided_reference_source_kind_invalid", "Reference kind is stale.")
         request_json = request.model_dump_json()
         request_digest = hashlib.sha256(request_json.encode()).hexdigest()
-        now = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(timezone.utc)
+        now = timestamp.isoformat()
         with self._workflows.database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
@@ -335,6 +354,37 @@ class AgentCanvasGuidedReferenceRepository:
                     )
                     created_node_ids = (node_id,)
                     created_binding_ids = (binding_id,)
+
+                    queued_target = _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
+                        workflow_id=workflow_id,
+                        target_node_id=content.target_node_id,
+                        updated_at=now,
+                        expected_operation_id=(
+                            NodePromptPreparationV1.model_validate_json(
+                                str(target["prompt_preparation_json"])
+                            ).operation_id
+                        ),
+                        supersession_reason="guided_reference_source_resolved",
+                    )
+                    if queued_target is None:
+                        raise _error(
+                            "guided_reference_source_target_invalid",
+                            "Reference source target cannot accept prompt preparation.",
+                        )
+                else:
+                    target_preparation = NodePromptPreparationV1.model_validate_json(
+                        str(target["prompt_preparation_json"])
+                    )
+                    self._prompt_dispatch.release_waiting_user_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        node_id=content.target_node_id,
+                        operation_id=target_preparation.operation_id or "",
+                        now=timestamp,
+                    )
 
                 _advance_workflow_revision(
                     connection,

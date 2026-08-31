@@ -52,6 +52,7 @@ class CapabilityMaterializationPlanCompiler:
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
         prompt_context: StageAuthoringContextV1 | None = None,
+        reference_source_admission: bool = False,
     ) -> MaterializationPlanV1:
         bundle = self.compile_draft_bundle(envelope, normalization)
         nodes = bundle.nodes
@@ -92,6 +93,14 @@ class CapabilityMaterializationPlanCompiler:
                     )
             nodes = tuple(normalized_nodes)
             preparations = tuple(normalized_preparations)
+        if reference_source_admission and preparations:
+            primary_node_id = nodes[0].node_id
+            preparations = tuple(
+                item.model_copy(update={"dispatch_admission": "reference_source"})
+                if item.node_id == primary_node_id
+                else item
+                for item in preparations
+            )
         derivative_intent = bundle.derivative_intent
         if derivative_intent is not None and prompt_context is not None:
             parent_node = next(

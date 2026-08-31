@@ -1758,7 +1758,7 @@ class AgentCanvasPromptPreparationOutboxRow(Base):
     __tablename__ = "agent_canvas_prompt_preparation_outbox"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','leased','completed','failed','superseded')",
+            "status IN ('waiting_user','queued','leased','completed','failed','superseded')",
             name="ck_agent_canvas_prompt_preparation_dispatch_status",
         ),
         CheckConstraint(

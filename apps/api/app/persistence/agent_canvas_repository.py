@@ -2694,6 +2694,7 @@ def _invalidate_target_prompt_preparation(
     target_node_id: str,
     updated_at: str,
     expected_operation_id: str | None = None,
+    supersession_reason: str = "dependency_or_binding_revision_changed",
 ) -> CanvasNodeV2 | None:
     row = (
         connection.execute(
@@ -2906,7 +2907,7 @@ def _invalidate_target_prompt_preparation(
             node=queued_node,
             bindings=bindings,
             context=frozen_context if has_frozen_context else None,
-            reason="dependency_or_binding_revision_changed",
+            reason=supersession_reason,
             now=_parse_datetime(updated_at),
         )
     return queued_node

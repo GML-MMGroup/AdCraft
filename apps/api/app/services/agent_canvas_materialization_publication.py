@@ -271,6 +271,7 @@ class CapabilityMaterializationPublicationService:
             ),
             storyboard_documents=authority_documents,
             prompt_context=frozen_prompt_context,
+            reference_source_admission=self._requires_reference_source_checkpoint(envelope),
         )
         lease_guard()
         try:
@@ -358,6 +359,16 @@ class CapabilityMaterializationPublicationService:
             source_turn_id=source_turn_id,
         )
         return bool(opened)
+
+    def _requires_reference_source_checkpoint(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+    ) -> bool:
+        if getattr(self, "_reference_source_opener", None) is None:
+            return False
+        return (
+            envelope.capability_id == "character_design" and envelope.operation_kind == "parent"
+        ) or (envelope.capability_id == "scene_design" and envelope.operation_kind == "standalone")
 
     def _prepare_guided_document_stage(
         self,
@@ -913,7 +924,13 @@ class CapabilityMaterializationPublicationService:
             strict=True,
         ):
             node = self._workflows.get_node(envelope.workflow_id, node_id)
-            if node.prompt_preparation.operation_id != operation_id:
+            current_operation_id = self._resolve_reference_prompt_successor(
+                workflow_id=envelope.workflow_id,
+                node_id=node_id,
+                committed_operation_id=operation_id,
+                current_operation_id=node.prompt_preparation.operation_id,
+            )
+            if current_operation_id is None:
                 raise V2PersistenceError(
                     "prompt_preparation_dispatch_stale",
                     "Committed prompt-preparation operation is no longer current.",
@@ -922,7 +939,7 @@ class CapabilityMaterializationPublicationService:
                 )
             if node.prompt_preparation.status == "ready":
                 continue
-            pending_preparations.append((node_id, operation_id))
+            pending_preparations.append((node_id, current_operation_id))
         pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
         reference_wait_opened = self._open_reference_source_checkpoint(
@@ -994,6 +1011,39 @@ class CapabilityMaterializationPublicationService:
                     source_turn_id=continuation_source_turn_id,
                 )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _resolve_reference_prompt_successor(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        committed_operation_id: str,
+        current_operation_id: str | None,
+    ) -> str | None:
+        if current_operation_id == committed_operation_id:
+            return current_operation_id
+        if current_operation_id is None:
+            return None
+        committed = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            committed_operation_id,
+        )
+        current = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            current_operation_id,
+        )
+        if (
+            committed is None
+            or current is None
+            or committed.status != "superseded"
+            or committed.supersession_reason != "guided_reference_source_resolved"
+            or committed.superseded_by_dispatch_id != current.dispatch_id
+            or current.status not in {"queued", "leased", "completed"}
+        ):
+            return None
+        return current.operation_id
 
     def _refreshed_parent_reconciliation_envelope(
         self,

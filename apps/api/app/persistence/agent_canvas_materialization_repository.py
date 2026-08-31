@@ -301,6 +301,10 @@ class AgentCanvasMaterializationRepository:
         preparation_contexts = {
             item.node_id: item.context for item in materialization_plan.prompt_preparations
         }
+        preparation_admissions = {
+            item.node_id: item.dispatch_admission
+            for item in materialization_plan.prompt_preparations
+        }
         node_ids = tuple(item.node_id for item in nodes)
         if len(set(node_ids)) != len(node_ids) or any(
             item.workflow_id != workflow_id for item in nodes
@@ -573,6 +577,10 @@ class AgentCanvasMaterializationRepository:
                             now=now,
                             prompt_dispatch=self._prompt_dispatch,
                             prompt_context=preparation_contexts.get(bundle_node.node_id),
+                            prompt_dispatch_admission=preparation_admissions.get(
+                                bundle_node.node_id,
+                                "immediate",
+                            ),
                         )
                         if bundle_node.node_id in planned_preparation_node_ids:
                             persisted_preparation_json = connection.execute(
@@ -3121,6 +3129,7 @@ def _insert_materialized_node(
     now: str,
     prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     prompt_context: object | None = None,
+    prompt_dispatch_admission: str = "immediate",
 ) -> str:
     # Bind the Node operation identity to the exact immutable context that is
     # persisted in the dispatch envelope.  Without this digest, two
@@ -3256,6 +3265,9 @@ def _insert_materialized_node(
             bindings=bindings,
             context=context_payload,
             now=datetime.fromisoformat(now),
+            initial_status=(
+                "waiting_user" if prompt_dispatch_admission == "reference_source" else "queued"
+            ),
         )
     return snapshot_id
 
