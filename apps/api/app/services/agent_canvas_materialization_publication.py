@@ -337,10 +337,11 @@ class CapabilityMaterializationPublicationService:
         reference_source_opener = getattr(self, "_reference_source_opener", None)
         if reference_source_opener is None:
             return False
-        if envelope.operation_kind != "parent" or envelope.capability_id not in {
-            "character_design",
-            "scene_design",
-        }:
+        expected_operation_kind = {
+            "character_design": "parent",
+            "scene_design": "standalone",
+        }.get(envelope.capability_id)
+        if expected_operation_kind is None or envelope.operation_kind != expected_operation_kind:
             return False
         if not outcome.node_ids:
             return False
