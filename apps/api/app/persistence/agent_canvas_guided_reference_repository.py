@@ -226,6 +226,8 @@ class AgentCanvasGuidedReferenceRepository:
                         parameters={},
                         metadata={
                             "source_type": "upload",
+                            "operation_id": submission_id,
+                            "rendition_kind": "original",
                             "reference_source": True,
                             "reference_kind": content.reference_kind,
                             "target_node_id": content.target_node_id,
@@ -256,6 +258,8 @@ class AgentCanvasGuidedReferenceRepository:
                         order=0,
                         label="Guided reference",
                         metadata={
+                            "operation_id": submission_id,
+                            "rendition_kind": "original",
                             "semantic_reference_role": content.reference_kind,
                             "reference_source_purpose": "guided_main_reference",
                             "occurrence_id": content.occurrence_id,
@@ -363,6 +367,15 @@ class AgentCanvasGuidedReferenceRepository:
                             "occurrence_id": content.occurrence_id,
                             "asset_id": request.asset_id,
                             "asset_version_id": request.asset_version_id,
+                            "asset_sha256": (
+                                asset_sha256 or str(version["sha256"])
+                                if request.action == "use_reference"
+                                else None
+                            ),
+                            "operation_id": submission_id,
+                            "rendition_kind": "original"
+                            if request.action == "use_reference"
+                            else None,
                             "created_node_ids": list(created_node_ids),
                             "created_binding_ids": list(created_binding_ids),
                         },
