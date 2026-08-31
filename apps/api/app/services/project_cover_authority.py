@@ -194,7 +194,13 @@ class ProjectCoverAuthorityService:
                 return _ready_decision(project, version, candidate_count=1)
 
         workflow = self._workflows.get_workflow(project.workflow_id)
-        node_roles = {node.node_id: node.semantic_role for node in workflow.nodes}
+        node_roles: dict[str, str] = {}
+        for node in workflow.nodes:
+            role = _node_product_role(node)
+            if role is not None:
+                node_roles[node.node_id] = role
+                if node.output_asset_id is not None:
+                    node_roles[node.output_asset_id] = role
         candidates = _latest_versions_by_asset(
             version
             for version in versions
@@ -244,8 +250,24 @@ def _semantic_role(
         role = version.metadata.get(key)
         if isinstance(role, str) and role.strip():
             return role.strip()
-    if version.source_node_id is not None:
-        return node_roles.get(version.source_node_id)
+    if version.source_node_id is not None and version.source_node_id in node_roles:
+        return node_roles[version.source_node_id]
+    return node_roles.get(version.asset_id)
+
+
+def _node_product_role(node) -> str | None:
+    """Return Product Main only from canonical node metadata, never display text."""
+
+    prompt_recipe_id = node.metadata.get("prompt_recipe_id")
+    if prompt_recipe_id == "adcraft.agent_canvas.product_main":
+        return "product_main"
+    if (
+        node.semantic_role == "product"
+        and node.metadata.get("source_input_kind") == "main"
+        and isinstance(node.metadata.get("provenance"), dict)
+        and node.metadata["provenance"].get("kind") == "direct_upload"
+    ):
+        return "product_main"
     return None
 
 
