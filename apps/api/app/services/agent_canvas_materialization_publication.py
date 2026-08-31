@@ -334,7 +334,8 @@ class CapabilityMaterializationPublicationService:
     ) -> bool:
         """Open optional Main reference input before prompt-ready admission."""
 
-        if self._reference_source_opener is None:
+        reference_source_opener = getattr(self, "_reference_source_opener", None)
+        if reference_source_opener is None:
             return False
         if envelope.operation_kind != "parent" or envelope.capability_id not in {
             "character_design",
@@ -343,7 +344,7 @@ class CapabilityMaterializationPublicationService:
             return False
         if not outcome.node_ids:
             return False
-        self._reference_source_opener(
+        reference_source_opener(
             workflow_id=envelope.workflow_id,
             target_node_id=outcome.node_ids[0],
             target_node_revision=1,
