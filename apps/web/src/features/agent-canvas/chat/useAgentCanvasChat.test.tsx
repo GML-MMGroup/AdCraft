@@ -271,6 +271,28 @@ function guidedProductInteraction(): GuidedInteractionV1 {
   };
 }
 
+function guidedReferenceInteraction(): GuidedInteractionV1 {
+  return {
+    ...guidedProductInteraction(),
+    interaction_id: "interaction-reference-character-1",
+    kind: "reference_source",
+    title: "Choose a reference",
+    context: "Choose a Character reference.",
+    content: {
+      content_kind: "reference_source",
+      reference_kind: "character_main",
+      target_node_id: "character-main-draft-1",
+      target_node_revision: 2,
+      occurrence_id: "character-occurrence-1",
+      question: "Use a reference for Character 1?",
+      use_reference_label: "Use reference",
+      skip_reference_label: "Skip reference",
+      expected_guidance_revision: 8,
+    },
+    allowed_actions: ["use_reference", "skip_reference"],
+  };
+}
+
 function descriptor(
   action: ProposalActionDescriptorV2["action"],
   actionId = `action-${action}`,
@@ -1557,6 +1579,50 @@ describe("useAgentCanvasChat", () => {
     });
     expect(result.current.state.actingInteractionId).toBeNull();
     expect(result.current.state.workflowRecovery).toBeNull();
+  });
+
+  it("refreshes authority after a reference source revision conflict without resubmitting it", async () => {
+    const interaction = guidedReferenceInteraction();
+    const session = { ...guidedSession(), interaction, awaiting: null };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
+    api.agentCanvasCreativeSession.mockResolvedValue(session);
+    api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
+      status: 409,
+      code: "guided_reference_source_revision_conflict",
+      message: "The reference checkpoint is stale.",
+    });
+    const onWorkflowRefresh = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+      onWorkflowRefresh,
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    api.agentCanvasChatTimeline.mockClear();
+
+    await act(async () => {
+      await result.current.actions.submitGuidedInteraction(interaction, {
+        submission_kind: "reference_source",
+        expected_interaction_revision: interaction.revision,
+        expected_session_revision: interaction.expected_session_revision,
+        action: "use_reference",
+        reference_kind: "character_main",
+        asset_id: "asset-character-1",
+        asset_version_id: "version-character-1",
+      });
+    });
+
+    expect(api.submitAgentCanvasGuidedInteraction).toHaveBeenCalledTimes(1);
+    expect(api.agentCanvasChatTimeline).toHaveBeenCalledTimes(1);
+    expect(onWorkflowRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.state.guidedInteractionIssue?.summary).toContain("workflow changed");
+    expect(result.current.state.actingInteractionId).toBeNull();
   });
 
   it("reuses one idempotency key when the same guided submission is retried", async () => {
