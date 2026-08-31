@@ -260,7 +260,7 @@ export type VideoParameterCapabilityContextV2 = { readonly "supported_parameters
 
 export type VideoParameterIntentContextV3 = { readonly "context_kind": "video_parameter_intent_v3"; readonly "unresolved_fields": ReadonlyArray<"aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution">; readonly "sources": ReadonlyArray<VideoParameterTextSourceV3>; readonly "capability": VideoParameterCapabilityContextV2 };
 
-export type VideoParameterCandidateV3 = { readonly "field": "aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution" | "video_representation_mode"; readonly "value": number | number | string | boolean; readonly "source_ref": string };
+export type VideoParameterCandidateV3 = { readonly "field": "aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution"; readonly "value": number | number | string | boolean; readonly "source_ref": string };
 
 export type VideoParameterIntentV3 = { readonly "status": "explicit_controls" | "no_explicit_controls"; readonly "candidates"?: ReadonlyArray<VideoParameterCandidateV3> };
 

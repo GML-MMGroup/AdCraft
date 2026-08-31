@@ -29160,8 +29160,7 @@
             "aspect_ratio",
             "duration_seconds",
             "generate_audio",
-            "resolution",
-            "video_representation_mode"
+            "resolution"
           ],
           "title": "Field",
           "type": "string"

@@ -23,7 +23,6 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardPanelV2,
     VideoSegmentContentV2,
 )
-from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -513,27 +512,13 @@ class ProgressiveStoryboardReadyService:
             parameters={
                 "duration_seconds": duration_seconds,
                 "aspect_ratio": aspect_ratio,
-                "video_representation_mode": representation.mode,
                 **({"resolution": resolution} if resolution is not None else {}),
                 **({"generate_audio": generate_audio} if generate_audio is not None else {}),
             },
             parameter_provenance=(
-                {
-                    **(
-                        {"generate_audio": audio_provenance} if audio_provenance is not None else {}
-                    ),
-                    "video_representation_mode": CanvasParameterProvenanceV2(
-                        origin=(
-                            "user_explicit"
-                            if audio_constraints.get("video_representation_mode") is not None
-                            else "role_default"
-                            if audio_constraints.get("_video_skill_representation_mode") is not None
-                            else "guidance_default"
-                        ),
-                        requested_value=representation.mode,
-                        effective_value=representation.mode,
-                    ),
-                }
+                {"generate_audio": audio_provenance}
+                if audio_provenance is not None
+                else {}
             ),
             metadata={
                 "source_agent_document_id": plan_document_id,

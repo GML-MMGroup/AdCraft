@@ -13,7 +13,6 @@ VideoParameterFieldV2 = Literal[
     "resolution",
     "aspect_ratio",
     "generate_audio",
-    "video_representation_mode",
 ]
 VideoParameterOriginV2 = Literal[
     "manual",

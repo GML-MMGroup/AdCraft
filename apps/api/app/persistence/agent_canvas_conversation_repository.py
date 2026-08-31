@@ -5250,6 +5250,11 @@ def _skill_run_with_public(
     public_payload = global_direction.get("public_skill")
     if not isinstance(public_payload, dict):
         return _skill_run(row)
+    public_payload = {
+        key: value
+        for key, value in public_payload.items()
+        if key != "video_representation_mode"
+    }
     return _skill_run(
         row,
         public_skill=VideoSkillPublicDetailV2.model_validate(public_payload),
