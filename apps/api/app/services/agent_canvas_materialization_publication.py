@@ -1089,7 +1089,14 @@ class CapabilityMaterializationPublicationService:
             ) from error
         current = self._workflows.get_node(envelope.workflow_id, parent_snapshot.node_id)
         current_operation_id = current.prompt_preparation.operation_id
-        if not current_operation_id or current_operation_id != expected_operation_id:
+        resolved_operation_id = self._resolve_reference_prompt_successor(
+            workflow_id=envelope.workflow_id,
+            node_id=parent_snapshot.node_id,
+            committed_operation_id=expected_operation_id,
+            current_operation_id=current_operation_id,
+            allow_successor=self._requires_reference_source_checkpoint(envelope),
+        )
+        if resolved_operation_id is None:
             raise V2PersistenceError(
                 "prompt_preparation_dispatch_stale",
                 "Current parent Node does not match its committed preparation identity.",
@@ -1100,6 +1107,7 @@ class CapabilityMaterializationPublicationService:
                     "current_operation_id": current_operation_id,
                 },
             )
+        current_operation_id = resolved_operation_id
         refreshed_snapshot = parent_snapshot.model_copy(
             update={
                 "node_revision": current.revision,
