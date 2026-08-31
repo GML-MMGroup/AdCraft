@@ -162,6 +162,9 @@ export function ReferenceSourceDecisionDock({
       issue={effectiveIssue}
       showSubmitBar={false}
     >
+      <p className="agent-chat__reference-source-target">
+        Target node · {content.target_node_id} · revision {content.target_node_revision}
+      </p>
       <div className="agent-chat__reference-source-picker">
         <div className="agent-chat__reference-source-assets" aria-label="Project reference images">
           {assets.loading ? <p role="status">Loading Project Assets</p> : null}

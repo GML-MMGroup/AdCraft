@@ -3467,6 +3467,13 @@ button.agent-chat__node-links--related:hover {
   gap: 10px;
 }
 
+.agent-chat__reference-source-target {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .agent-chat__reference-source-assets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));

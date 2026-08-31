@@ -212,6 +212,7 @@ describe("GuidedInteractionCard", () => {
 
     expect(screen.getByRole("article", { name: "Use a reference for Character 2?" })).toBeTruthy();
     expect(screen.getByText("Character 2 · Main")).toBeTruthy();
+    expect(screen.getByText("Target node · character-main-draft-2 · revision 4")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use reference" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skip reference" })).toBeTruthy();
     expect(screen.queryByText("Continue")).toBeNull();
