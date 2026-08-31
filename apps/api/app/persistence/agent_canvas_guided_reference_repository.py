@@ -185,11 +185,8 @@ class AgentCanvasGuidedReferenceRepository:
                         "Reference source target is no longer the current Main Draft.",
                     )
                 active_action = journey.active_action
-                expected_stage = (
-                    "character" if content.reference_kind == "character_main" else "scene"
-                )
                 if (
-                    journey.stage != expected_stage
+                    journey.stage != awaiting.stage
                     or journey.stage_status != "waiting_user"
                     or active_action is None
                     or active_action.action_kind != "wait_for_user:reference_source"
