@@ -67,9 +67,7 @@ export function createDefaultCanvasNodeRequest(
     role_contract_version: AGENT_CANVAS_ROLE_CONTRACT_VERSION,
     title: AGENT_CANVAS_NODE_LABELS[nodeType],
     summary_prompt: null,
-    generation_prompt: ["script", "image", "video", "audio"].includes(nodeType)
-      ? ""
-      : null,
+    generation_prompt: null,
     model_selection_mode: "default",
     model_ref: null,
     ...(nodeType === "text"
