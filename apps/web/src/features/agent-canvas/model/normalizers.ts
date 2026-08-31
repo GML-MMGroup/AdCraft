@@ -4953,10 +4953,18 @@ function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInter
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
   const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review", "reference_source"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
+  const allowedActions = expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`));
+  if (kind === "reference_source" && (
+    allowedActions.length !== 2
+    || !allowedActions.includes("use_reference")
+    || !allowedActions.includes("skip_reference")
+  )) {
+    fail(`${path}.allowed_actions`, "reference source requires use_reference and skip_reference actions");
+  }
   return {
     interaction_id: expectNonEmptyString(record.interaction_id, `${path}.interaction_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind,
     status: expectLiteral(record.status, new Set<GuidedInteractionV1["status"]>(["open", "submitted", "closed", "superseded"]), `${path}.status`), response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`), expected_session_revision: expectPositiveInteger(record.expected_session_revision, `${path}.expected_session_revision`), revision: expectPositiveInteger(record.revision, `${path}.revision`), title: expectNonEmptyString(record.title, `${path}.title`), context: expectNonEmptyString(record.context, `${path}.context`), content,
-    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
+    allowed_actions: allowedActions,
     submit_path: expectNonEmptyString(record.submit_path, `${path}.submit_path`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`), updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }

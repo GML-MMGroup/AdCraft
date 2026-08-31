@@ -1203,6 +1203,14 @@ describe("Agent Canvas normalizers", () => {
     })).toThrow("Invalid creativeSession.awaiting: invalid reference source awaiting authority");
   });
 
+  it("rejects reference_source interactions that expose non-reference actions", () => {
+    const payload = referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null });
+    expect(() => normalizeGuidedSessionStateV2({
+      ...payload,
+      interaction: { ...payload.interaction, allowed_actions: ["select_source"] },
+    })).toThrow("Invalid creativeSession.interaction.allowed_actions: reference source requires use_reference and skip_reference actions");
+  });
+
   it("retains immutable image AssetVersion identity in a binding source", () => {
     const binding = normalizeCanvasBindingV2({
       binding_id: "binding-versioned-image-1",
