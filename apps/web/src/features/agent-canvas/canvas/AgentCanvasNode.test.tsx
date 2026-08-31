@@ -609,6 +609,25 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
   });
 
+  it("renders a source-only Image reference as Ready without generation controls", () => {
+    render(
+      <AgentCanvasNodeCard
+        node={{
+          ...makeNode("image", "ready"),
+          execution_mode: "source_only",
+          creative_role: "character",
+          output_asset_id: "reference-asset",
+        }}
+        asset={{ ...makeAsset("image"), asset_id: "reference-asset", display_name: "Character reference" }}
+        onRun={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Character node, Ready")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Character reference" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
   it("labels a storyboard as one semantic Image output rather than nine shot nodes", () => {
     const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
