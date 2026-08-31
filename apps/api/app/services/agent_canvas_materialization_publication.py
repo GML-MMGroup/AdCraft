@@ -318,7 +318,7 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent":
+        if envelope.operation_kind == "parent" and not reference_wait_opened:
             self._parent_derived.reconcile_after_parent(
                 self._refreshed_parent_reconciliation_envelope(envelope, outcome),
                 lease_guard=lease_guard,
