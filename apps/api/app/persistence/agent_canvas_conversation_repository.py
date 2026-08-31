@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal, Mapping, cast
 from uuid import uuid4
@@ -128,6 +129,17 @@ from app.services.agent_canvas_production_journey import (
     initial_production_journey,
     parse_production_journey,
 )
+
+
+@dataclass(frozen=True)
+class GuidedActionTerminalDisposition:
+    """Private receipt for one failed Guided Action reconciliation."""
+
+    action_id: str
+    workflow_id: str
+    state: Literal["failed"]
+    error_code: str
+    disposition_key: str
 
 
 class AgentCanvasConversationRepository:
@@ -2527,6 +2539,112 @@ class AgentCanvasConversationRepository:
             ) from error
         return self.get_turn(turn_id)
 
+    def reconcile_completed_continuation_turn(
+        self,
+        turn_id: str,
+        *,
+        expected_status: Literal["queued", "running"],
+        expected_guidance_session_revision: int,
+        expected_updated_at: str,
+        inbound_continuation_id: str,
+        outbound_continuation_id: str,
+        downstream_turn_id: str,
+        disposition_key: str,
+    ) -> ChatTurnV2:
+        """Complete one internal Turn only from an exact terminal continuation chain."""
+
+        transition_key = f"runtime-reconciliation:chat-turn:{disposition_key}"
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    turn = _require_turn(connection, turn_id)
+                    existing_event = connection.execute(
+                        select(WorkflowEventRow.id).where(
+                            WorkflowEventRow.transition_key == transition_key
+                        )
+                    ).scalar_one_or_none()
+                    if str(turn["status"]) == "completed" and existing_event is not None:
+                        connection.commit()
+                        return _turn(turn)
+                    if (
+                        str(turn["turn_kind"]) != "next_action"
+                        or str(turn["status"]) != expected_status
+                        or int(turn["guidance_session_revision"] or 0)
+                        != expected_guidance_session_revision
+                        or str(turn["updated_at"]) != expected_updated_at
+                        or turn["operation_failure_json"] is not None
+                        or turn["error_code"] is not None
+                    ):
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Chat Turn changed before terminal reconciliation.",
+                        )
+                    inbound = _require_terminal_continuation(
+                        connection,
+                        continuation_id=inbound_continuation_id,
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        continuation_turn_id=turn_id,
+                    )
+                    outbound = _require_terminal_continuation(
+                        connection,
+                        continuation_id=outbound_continuation_id,
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        source_turn_id=turn_id,
+                        continuation_turn_id=downstream_turn_id,
+                    )
+                    downstream = _require_turn(connection, downstream_turn_id)
+                    if (
+                        str(downstream["workflow_id"]) != str(turn["workflow_id"])
+                        or str(downstream["conversation_id"]) != str(turn["conversation_id"])
+                        or str(downstream["status"]) != "completed"
+                    ):
+                        raise _error(
+                            "runtime_disposition_source_invalid",
+                            "Downstream Turn does not prove terminal continuation completion.",
+                        )
+                    _complete_turn_state_in_transaction(
+                        connection,
+                        events=self._events,
+                        turn=turn,
+                        now=now,
+                        owned_events=True,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(turn["workflow_id"]),
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type="chat_turn_reconciled",
+                            transition_key=transition_key,
+                            created_at=now,
+                            payload={
+                                "turn_id": turn_id,
+                                "inbound_continuation_id": str(inbound["continuation_id"]),
+                                "outbound_continuation_id": str(outbound["continuation_id"]),
+                                "downstream_turn_id": downstream_turn_id,
+                                "disposition_key": disposition_key,
+                            },
+                        ),
+                    )
+                    updated = _require_turn(connection, turn_id)
+                    connection.commit()
+                    return _turn(updated)
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
+
     def get_guided_action(self, action_id: str) -> GuidanceSessionActionV2:
         try:
             with self._database.engine.connect() as connection:
@@ -2709,6 +2827,146 @@ class AgentCanvasConversationRepository:
                 "Conversation storage failed.",
             ) from error
         return self.get_guided_action(action_id)
+
+    def reconcile_failed_guided_action(
+        self,
+        action_id: str,
+        *,
+        expected_updated_at: str,
+        expected_session_revision: int,
+        expected_current_session_revision: int,
+        apply_turn_id: str,
+        source_error_code: str,
+        disposition_key: str,
+    ) -> GuidedActionTerminalDisposition:
+        """Fail one applying action only from its exact terminal source proof."""
+
+        transition_key = f"runtime-reconciliation:guided-action:{disposition_key}"
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    action = (
+                        connection.execute(
+                            select(AgentCanvasGuidedActionRow).where(
+                                AgentCanvasGuidedActionRow.action_id == action_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if action is None:
+                        raise _error("guided_action_not_found", "Guided action was not found.")
+                    existing_event = connection.execute(
+                        select(WorkflowEventRow.id).where(
+                            WorkflowEventRow.transition_key == transition_key
+                        )
+                    ).scalar_one_or_none()
+                    if (
+                        str(action["state"]) == "failed"
+                        and str(action["error_code"]) == source_error_code
+                        and existing_event is not None
+                    ):
+                        connection.commit()
+                        return GuidedActionTerminalDisposition(
+                            action_id=action_id,
+                            workflow_id=str(action["workflow_id"]),
+                            state="failed",
+                            error_code=source_error_code,
+                            disposition_key=disposition_key,
+                        )
+                    if (
+                        str(action["state"]) != "applying"
+                        or str(action["apply_turn_id"] or "") != apply_turn_id
+                        or int(action["expected_session_revision"]) != expected_session_revision
+                        or str(action["updated_at"]) != expected_updated_at
+                        or action["receipt_id"] is not None
+                    ):
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guided Action changed before terminal reconciliation.",
+                        )
+                    source_turn = _require_turn(connection, apply_turn_id)
+                    if (
+                        str(source_turn["workflow_id"]) != str(action["workflow_id"])
+                        or str(source_turn["status"]) != "failed"
+                        or str(source_turn["error_code"] or "") != source_error_code
+                    ):
+                        raise _error(
+                            "runtime_disposition_source_invalid",
+                            "Guided Action source Turn does not prove terminal failure.",
+                        )
+                    session = _require_guidance_session_row_by_workflow(
+                        connection, str(action["workflow_id"])
+                    )
+                    if int(session["revision"]) != expected_current_session_revision:
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guidance session changed before terminal reconciliation.",
+                        )
+                    failed_action = _guidance_session_action(action).model_copy(
+                        update={"state": "failed"}
+                    )
+                    changed = connection.execute(
+                        update(AgentCanvasGuidedActionRow)
+                        .where(
+                            AgentCanvasGuidedActionRow.action_id == action_id,
+                            AgentCanvasGuidedActionRow.state == "applying",
+                            AgentCanvasGuidedActionRow.apply_turn_id == apply_turn_id,
+                            AgentCanvasGuidedActionRow.expected_session_revision
+                            == expected_session_revision,
+                            AgentCanvasGuidedActionRow.updated_at == expected_updated_at,
+                        )
+                        .values(
+                            state="failed",
+                            error_code=source_error_code,
+                            action_json=failed_action.model_dump_json(),
+                            updated_at=now,
+                        )
+                    )
+                    if changed.rowcount != 1:
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guided Action changed before terminal reconciliation.",
+                        )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(action["workflow_id"]),
+                            conversation_id=str(source_turn["conversation_id"]),
+                            turn_id=apply_turn_id,
+                            event_type="guided_action_failed",
+                            transition_key=transition_key,
+                            created_at=now,
+                            payload={
+                                "action_id": action_id,
+                                "turn_id": apply_turn_id,
+                                "error_code": source_error_code,
+                                "expected_session_revision": expected_session_revision,
+                                "current_session_revision": expected_current_session_revision,
+                                "disposition_key": disposition_key,
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return GuidedActionTerminalDisposition(
+                        action_id=action_id,
+                        workflow_id=str(action["workflow_id"]),
+                        state="failed",
+                        error_code=source_error_code,
+                        disposition_key=disposition_key,
+                    )
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
 
     def apply_guidance_session_action(
         self,
@@ -4722,6 +4980,37 @@ def _require_turn(connection: Connection, turn_id: str) -> RowMapping:
     )
     if row is None:
         raise _error("chat_turn_not_found", "Chat turn was not found.")
+    return row
+
+
+def _require_terminal_continuation(
+    connection: Connection,
+    *,
+    continuation_id: str,
+    workflow_id: str,
+    conversation_id: str,
+    source_turn_id: str | None = None,
+    continuation_turn_id: str,
+) -> RowMapping:
+    predicates = [
+        AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+        AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+        AgentCanvasContinuationOutboxRow.conversation_id == conversation_id,
+        AgentCanvasContinuationOutboxRow.continuation_turn_id == continuation_turn_id,
+        AgentCanvasContinuationOutboxRow.status == "completed",
+    ]
+    if source_turn_id is not None:
+        predicates.append(AgentCanvasContinuationOutboxRow.source_turn_id == source_turn_id)
+    row = (
+        connection.execute(select(AgentCanvasContinuationOutboxRow).where(*predicates))
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _error(
+            "runtime_disposition_source_invalid",
+            "Continuation does not prove the requested terminal transition.",
+        )
     return row
 
 
