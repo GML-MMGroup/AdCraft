@@ -17742,6 +17742,7 @@
             "queued",
             "ready",
             "superseded",
+            "waiting_user",
             "working"
           ],
           "title": "Status",
