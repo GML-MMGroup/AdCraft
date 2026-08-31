@@ -37,6 +37,7 @@ class ProjectCoverBackfillResult(BaseModel):
     scanned: int
     ready: int
     none: int
+    unresolved: int
     ambiguous: int
     skipped: int
     conflicts: int
@@ -142,6 +143,7 @@ class ProjectCoverAuthorityService:
             scanned=len(projects),
             ready=sum(item.outcome == "ready" for item in decisions),
             none=sum(item.outcome == "none" for item in decisions),
+            unresolved=sum(item.outcome == "unresolved" for item in decisions),
             ambiguous=sum(item.outcome == "ambiguous" for item in decisions),
             skipped=sum(item.outcome == "skipped" for item in decisions),
             conflicts=conflicts,
@@ -210,7 +212,7 @@ class ProjectCoverAuthorityService:
             return ProjectCoverBackfillDecision(
                 project_id=project.project_id,
                 workflow_id=project.workflow_id,
-                outcome="none",
+                outcome="none" if not versions else "unresolved",
             )
         if len(candidates) > 1:
             return ProjectCoverBackfillDecision(
