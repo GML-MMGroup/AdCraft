@@ -15,6 +15,7 @@ from app.persistence.models import (
     AgentCanvasExecutionMemberRow,
     AgentCanvasExecutionRow,
     AgentCanvasGuidanceAwaitingRow,
+    AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasGuidedInteractionRow,
     AgentCanvasNodeLeaseRow,
@@ -51,15 +52,10 @@ class V2RuntimeDispositionRepository:
 
         processes = process_ids or {}
         with self._database.engine.connect() as connection:
-            turn_rows = (
-                connection.execute(
-                    select(AgentCanvasChatTurnRow).where(
-                        AgentCanvasChatTurnRow.status.in_(("queued", "running"))
-                    )
-                )
-                .mappings()
-                .all()
-            )
+            all_turn_rows = connection.execute(select(AgentCanvasChatTurnRow)).mappings().all()
+            turn_rows = [
+                row for row in all_turn_rows if str(row["status"]) in {"queued", "running"}
+            ]
             continuation_rows = (
                 connection.execute(select(AgentCanvasContinuationOutboxRow)).mappings().all()
             )
@@ -98,18 +94,37 @@ class V2RuntimeDispositionRepository:
             awaiting_rows = (
                 connection.execute(select(AgentCanvasGuidanceAwaitingRow)).mappings().all()
             )
+            session_rows = (
+                connection.execute(select(AgentCanvasGuidanceSessionRow)).mappings().all()
+            )
 
-        turns_by_id = {str(row["turn_id"]): row for row in turn_rows}
+        turns_by_id = {str(row["turn_id"]): row for row in all_turn_rows}
         continuations_by_source: dict[str, list[Mapping[str, Any]]] = {}
+        continuations_by_target: dict[str, list[Mapping[str, Any]]] = {}
         for row in continuation_rows:
             continuations_by_source.setdefault(str(row["source_turn_id"]), []).append(row)
+            continuations_by_target.setdefault(str(row["continuation_turn_id"]), []).append(row)
+        sessions_by_workflow = {str(row["workflow_id"]): row for row in session_rows}
 
         records = [
-            _chat_turn_observation(row, continuations_by_source, observed_at, processes)
+            _chat_turn_observation(
+                row,
+                continuations_by_source,
+                continuations_by_target,
+                turns_by_id,
+                observed_at,
+                processes,
+            )
             for row in turn_rows
         ]
         records.extend(
-            _guided_action_observation(row, turns_by_id, observed_at, processes)
+            _guided_action_observation(
+                row,
+                turns_by_id,
+                sessions_by_workflow,
+                observed_at,
+                processes,
+            )
             for row in action_rows
         )
         records.extend(_skill_observation(row, observed_at, processes) for row in skill_rows)
@@ -122,7 +137,13 @@ class V2RuntimeDispositionRepository:
             if row["interaction_id"] is not None
         }
         records.extend(
-            _interaction_observation(row, awaiting_by_interaction, observed_at, processes)
+            _interaction_observation(
+                row,
+                awaiting_by_interaction,
+                sessions_by_workflow,
+                observed_at,
+                processes,
+            )
             for row in interaction_rows
         )
         return tuple(records)
@@ -164,9 +185,12 @@ class V2RuntimeDispositionRepository:
                     AgentCanvasEditingExportRow,
                     ("queued", "exporting"),
                 ),
-                "node_lease": connection.execute(
-                    select(func.count()).select_from(AgentCanvasNodeLeaseRow)
-                ).scalar_one(),
+                "node_lease": _count_active(
+                    connection,
+                    AgentCanvasNodeLeaseRow,
+                    ("claimed",),
+                    field=AgentCanvasNodeLeaseRow.state,
+                ),
             }
         return RuntimeIdleAuditV1(
             execution_queue_count=counts["execution"],
@@ -178,32 +202,53 @@ class V2RuntimeDispositionRepository:
             node_lease_count=counts["node_lease"],
             legal_wait_count=inventory.classification_counts.get("legal_wait", 0),
             durable_selection_count=inventory.classification_counts.get("durable_selection", 0),
-            blocked_liveness_count=inventory.classification_counts.get("unknown", 0),
+            blocked_liveness_count=sum(
+                inventory.classification_counts.get(classification, 0)
+                for classification in ("unknown", "orphan_candidate", "stale_candidate")
+            ),
         )
 
 
 def _chat_turn_observation(
     row: Mapping[str, Any],
     continuations_by_source: Mapping[str, list[Mapping[str, Any]]],
+    continuations_by_target: Mapping[str, list[Mapping[str, Any]]],
+    turns_by_id: Mapping[str, Mapping[str, Any]],
     observed_at: str,
     process_ids: Mapping[_PROCESS_KEY, int],
 ) -> RuntimeRecordObservationV1:
-    continuations = continuations_by_source.get(str(row["turn_id"]), [])
-    continuation = continuations[0] if continuations else None
+    turn_id = str(row["turn_id"])
+    outbound = continuations_by_source.get(turn_id, [])
+    inbound = continuations_by_target.get(turn_id, [])
+    continuation = outbound[0] if len(outbound) == 1 else None
     continuation_status = str(continuation["status"]) if continuation else None
+    inbound_terminal = len(inbound) == 1 and str(inbound[0]["status"]) == "completed"
+    downstream = (
+        turns_by_id.get(str(continuation["continuation_turn_id"]))
+        if continuation is not None
+        else None
+    )
     return RuntimeRecordObservationV1(
         record_class="chat_turn",
-        record_id=str(row["turn_id"]),
+        record_id=turn_id,
         workflow_id=str(row["workflow_id"]),
         status=str(row["status"]),
         observed_at=observed_at,
-        process_id=process_ids.get(("chat_turn", str(row["turn_id"]))),
+        process_id=process_ids.get(("chat_turn", turn_id)),
+        revision=(
+            int(row["guidance_session_revision"])
+            if row["guidance_session_revision"] is not None
+            else None
+        ),
         continuation_id=str(continuation["continuation_id"]) if continuation else None,
         continuation_status=continuation_status,
         has_reliable_terminal_evidence=bool(
-            continuation is not None
-            and continuation_status in _TERMINAL_STATUSES
-            and row["operation_failure_json"] is not None
+            str(row["turn_kind"]) == "next_action"
+            and inbound_terminal
+            and continuation is not None
+            and continuation_status == "completed"
+            and downstream is not None
+            and str(downstream["status"]) == "completed"
         ),
     )
 
@@ -211,11 +256,13 @@ def _chat_turn_observation(
 def _guided_action_observation(
     row: Mapping[str, Any],
     turns_by_id: Mapping[str, Mapping[str, Any]],
+    sessions_by_workflow: Mapping[str, Mapping[str, Any]],
     observed_at: str,
     process_ids: Mapping[_PROCESS_KEY, int],
 ) -> RuntimeRecordObservationV1:
     source_turn_id = row["apply_turn_id"] or row["creating_turn_id"]
     source_turn = turns_by_id.get(str(source_turn_id))
+    session = sessions_by_workflow.get(str(row["workflow_id"]))
     return RuntimeRecordObservationV1(
         record_class="guided_action",
         record_id=str(row["action_id"]),
@@ -223,6 +270,11 @@ def _guided_action_observation(
         status=str(row["state"]),
         observed_at=observed_at,
         process_id=process_ids.get(("guided_action", str(row["action_id"]))),
+        session_id=str(session["session_id"]) if session else None,
+        source_session_id=str(session["session_id"]) if session else None,
+        revision=int(row["expected_session_revision"]),
+        expected_revision=int(row["expected_session_revision"]),
+        source_revision=int(session["revision"]) if session else None,
         source_workflow_id=str(row["workflow_id"]),
         source_status=str(source_turn["status"]) if source_turn else None,
         has_source_proof=source_turn is not None
@@ -259,6 +311,10 @@ def _stream_observation(
         status=str(row["status"]),
         observed_at=observed_at,
         process_id=process_ids.get(("presentation_stream", str(row["stream_id"]))),
+        generation_id=str(row["generation_id"]),
+        revision=int(row["node_revision"]) if row["node_revision"] is not None else None,
+        source_workflow_id=(str(source_turn["workflow_id"]) if source_turn else None),
+        source_status=str(source_turn["status"]) if source_turn else None,
         has_source_proof=source_turn is not None
         and str(source_turn["status"]) in _TERMINAL_STATUSES,
     )
@@ -267,10 +323,12 @@ def _stream_observation(
 def _interaction_observation(
     row: Mapping[str, Any],
     awaiting_by_interaction: Mapping[str, Mapping[str, Any]],
+    sessions_by_workflow: Mapping[str, Mapping[str, Any]],
     observed_at: str,
     process_ids: Mapping[_PROCESS_KEY, int],
 ) -> RuntimeRecordObservationV1:
     interaction_id = str(row["interaction_id"])
+    session = sessions_by_workflow.get(str(row["workflow_id"]))
     return RuntimeRecordObservationV1(
         record_class="guided_interaction",
         record_id=interaction_id,
@@ -279,6 +337,11 @@ def _interaction_observation(
         status=str(row["status"]),
         observed_at=observed_at,
         process_id=process_ids.get(("guided_interaction", interaction_id)),
+        revision=int(row["revision"]),
+        expected_revision=int(row["expected_session_revision"]),
+        source_revision=int(session["revision"]) if session else None,
+        source_workflow_id=str(session["workflow_id"]) if session else None,
+        source_session_id=str(session["session_id"]) if session else None,
         has_current_awaiting=interaction_id in awaiting_by_interaction,
     )
 

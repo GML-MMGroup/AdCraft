@@ -44,6 +44,7 @@ class RuntimeRecordObservationV1(BaseModel):
     owner_id: str | None = Field(default=None, max_length=160)
     heartbeat_at: datetime | None = None
     lease_generation: int | None = Field(default=None, ge=1)
+    generation_id: str | None = Field(default=None, max_length=160)
     lease_expires_at: datetime | None = None
     process_id: int | None = Field(default=None, ge=1)
     revision: int | None = Field(default=None, ge=1)
@@ -88,6 +89,7 @@ class RuntimeDispositionPlanItemV1(BaseModel):
     expected_status: str = Field(min_length=1, max_length=80)
     expected_revision: int | None = Field(default=None, ge=1)
     expected_generation: int | None = Field(default=None, ge=1)
+    expected_generation_id: str | None = Field(default=None, max_length=160)
     has_source_proof: bool = False
     mutation_allowed: bool = False
     requires_runtime_owner_authorization: bool = True
@@ -246,6 +248,7 @@ def build_disposition_plan(
             expected_status=record.status,
             expected_revision=record.revision,
             expected_generation=record.lease_generation,
+            expected_generation_id=record.generation_id,
             has_source_proof=record.has_source_proof,
             existing_authority=_existing_authority(disposition),
         )
@@ -257,8 +260,8 @@ def build_disposition_plan(
 
 def _existing_authority(disposition: RuntimeRecordDispositionV1) -> str | None:
     authorities = {
-        "chat_turn": "AgentCanvasConversationRepository",
-        "guided_action": "AgentCanvasGuidedInteractionRepository",
+        "chat_turn": "AgentCanvasConversationRepository.reconcile_completed_continuation_turn",
+        "guided_action": "AgentCanvasConversationRepository.reconcile_failed_guided_action",
         "skill_run": "AgentCanvasConversationRepository.create_skill_run",
         "presentation_stream": "PresentationStreamPublisher",
         "guided_interaction": "AgentCanvasGuidedInteractionRepository",
@@ -339,6 +342,12 @@ def _classify_guided_interaction(
 ) -> RuntimeRecordDispositionV1:
     if record.status != "open":
         return _disposition(record, "ineligible", "closed_interaction")
+    if (
+        record.expected_revision is not None
+        and record.source_revision is not None
+        and record.expected_revision != record.source_revision
+    ):
+        return _disposition(record, "stale_candidate", "session_revision_advanced")
     if record.has_current_awaiting:
         return _disposition(record, "legal_wait", "current_user_awaiting")
     return _disposition(record, "unknown", "awaiting_proof_required")
@@ -356,17 +365,11 @@ def _has_live_owner(record: RuntimeRecordObservationV1) -> bool:
 
 def _cross_scope_mismatch(record: RuntimeRecordObservationV1) -> bool:
     return (
-        (record.source_workflow_id is not None and record.source_workflow_id != record.workflow_id)
-        or (
-            record.session_id is not None
-            and record.source_session_id is not None
-            and record.session_id != record.source_session_id
-        )
-        or (
-            record.source_revision is not None
-            and record.expected_revision is not None
-            and record.source_revision != record.expected_revision
-        )
+        record.source_workflow_id is not None and record.source_workflow_id != record.workflow_id
+    ) or (
+        record.session_id is not None
+        and record.source_session_id is not None
+        and record.session_id != record.source_session_id
     )
 
 
