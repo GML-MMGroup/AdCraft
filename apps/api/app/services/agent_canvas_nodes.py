@@ -42,6 +42,9 @@ class AgentCanvasNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
+        normalized_generation_prompt = normalize_manual_generation_prompt(
+            request.generation_prompt
+        )
         source = (
             self._repository.get_node(workflow_id, request.clone_inputs_from_node_id)
             if request.clone_inputs_from_node_id is not None
@@ -55,7 +58,7 @@ class AgentCanvasNodeService:
             title=request.title,
             status=_initial_status(request),
             summary_prompt=request.summary_prompt,
-            generation_prompt=request.generation_prompt,
+            generation_prompt=normalized_generation_prompt,
             structured_content=(
                 default_editing_content()
                 if request.node_type == "editing" and not request.structured_content
@@ -194,38 +197,42 @@ def _initial_status(request: CanvasNodeCreateRequestV2) -> str:
     return "draft"
 
 
+def normalize_manual_generation_prompt(value: str | None) -> str | None:
+    """Normalize user-authored prompt text at the persistence boundary."""
+
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def _initial_prompt_preparation(
     request: CanvasNodeCreateRequestV2,
     now: datetime,
 ) -> NodePromptPreparationV1:
-    prompt = request.generation_prompt
+    prompt = normalize_manual_generation_prompt(request.generation_prompt)
     if not prompt and request.node_type in {"text", "script"}:
         prompt = str(request.structured_content.get("content") or "").strip() or None
     if not prompt and request.source_asset_id is not None:
         prompt = request.source_asset_id
     if prompt:
         return _ready_prompt_preparation(prompt, now)
-    return NodePromptPreparationV1(
-        status="queued",
-        operation_id=None,
-        attempt_no=0,
-        context_snapshot_id=None,
-        prompt_digest=None,
-        error=None,
-        updated_at=now,
-    )
+    return NodePromptPreparationV1.waiting_user(updated_at=now)
 
 
 def _ready_prompt_preparation(
     prompt: str,
     now: datetime,
 ) -> NodePromptPreparationV1:
+    normalized_prompt = normalize_manual_generation_prompt(prompt)
+    if normalized_prompt is None:
+        return NodePromptPreparationV1.waiting_user(updated_at=now)
     return NodePromptPreparationV1(
         status="ready",
         operation_id=None,
         attempt_no=0,
         context_snapshot_id=None,
-        prompt_digest=sha256(prompt.encode("utf-8")).hexdigest(),
+        prompt_digest=sha256(normalized_prompt.encode("utf-8")).hexdigest(),
         error=None,
         updated_at=now,
     )
