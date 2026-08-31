@@ -432,49 +432,12 @@ class AgentCanvasPromptPreparationDispatchRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    row = self.get_for_node_operation_in_transaction(
+                    held = self.hold_for_waiting_user_in_transaction(
                         connection,
-                        workflow_id,
-                        node_id,
-                        operation_id,
-                    )
-                    if row is None:
-                        raise _error(
-                            "prompt_preparation_dispatch_missing",
-                            "Guided prompt-preparation dispatch was not found.",
-                        )
-                    if row.status == "waiting_user":
-                        connection.commit()
-                        return row
-                    if row.status != "queued":
-                        raise _error(
-                            "prompt_preparation_dispatch_state_conflict",
-                            "Prompt preparation advanced before the guided wait opened.",
-                        )
-                    changed = connection.execute(
-                        update(AgentCanvasPromptPreparationOutboxRow)
-                        .where(
-                            AgentCanvasPromptPreparationOutboxRow.dispatch_id == row.dispatch_id,
-                            AgentCanvasPromptPreparationOutboxRow.status == "queued",
-                            AgentCanvasPromptPreparationOutboxRow.lease_generation
-                            == row.lease_generation,
-                        )
-                        .values(status="waiting_user", updated_at=_iso(timestamp))
-                    )
-                    if changed.rowcount != 1:
-                        raise _error(
-                            "prompt_preparation_dispatch_state_conflict",
-                            "Prompt preparation advanced before the guided wait opened.",
-                        )
-                    held = row.model_copy(
-                        update={"status": "waiting_user", "updated_at": timestamp}
-                    )
-                    self._append_event(
-                        connection,
-                        held,
-                        event_type="node_prompt_preparation_waiting_user",
-                        transition_key=f"prompt-dispatch:{row.dispatch_id}:reference-waiting",
-                        created_at=timestamp,
+                        workflow_id=workflow_id,
+                        node_id=node_id,
+                        operation_id=operation_id,
+                        now=timestamp,
                     )
                     connection.commit()
                     return held
@@ -485,6 +448,60 @@ class AgentCanvasPromptPreparationDispatchRepository:
             raise
         except SQLAlchemyError as error:
             raise _persistence_error() from error
+
+    def hold_for_waiting_user_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Fence one exact dispatch inside the typed interaction transaction."""
+
+        row = self.get_for_node_operation_in_transaction(
+            connection,
+            workflow_id,
+            node_id,
+            operation_id,
+        )
+        if row is None:
+            raise _error(
+                "prompt_preparation_dispatch_missing",
+                "Guided prompt-preparation dispatch was not found.",
+            )
+        if row.status == "waiting_user":
+            return row
+        if row.status != "queued":
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Prompt preparation advanced before the guided wait opened.",
+            )
+        timestamp = _utc(now)
+        changed = connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.dispatch_id == row.dispatch_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "queued",
+                AgentCanvasPromptPreparationOutboxRow.lease_generation == row.lease_generation,
+            )
+            .values(status="waiting_user", updated_at=_iso(timestamp))
+        )
+        if changed.rowcount != 1:
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Prompt preparation advanced before the guided wait opened.",
+            )
+        held = row.model_copy(update={"status": "waiting_user", "updated_at": timestamp})
+        self._append_event(
+            connection,
+            held,
+            event_type="node_prompt_preparation_waiting_user",
+            transition_key=f"prompt-dispatch:{row.dispatch_id}:reference-waiting",
+            created_at=timestamp,
+        )
+        return held
 
     def get(self, dispatch_id: str) -> PromptPreparationDispatchV1:
         try:

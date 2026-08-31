@@ -90,12 +90,8 @@ class AgentCanvasGuidedReferenceRepository:
         target_node_id = str(kwargs["target_node_id"])
         target = self._workflows.get_node(workflow_id, target_node_id)
         if target.prompt_preparation.status == "queued":
-            self._prompt_dispatch.hold_for_waiting_user(
-                workflow_id=workflow_id,
-                node_id=target_node_id,
-                operation_id=target.prompt_preparation.operation_id or "",
-                now=datetime.now(timezone.utc),
-            )
+            kwargs["prompt_dispatch"] = self._prompt_dispatch
+            kwargs["prompt_operation_id"] = target.prompt_preparation.operation_id or ""
         return self._interactions.open_reference_source_with_journey(*args, **kwargs)
 
     def submit(

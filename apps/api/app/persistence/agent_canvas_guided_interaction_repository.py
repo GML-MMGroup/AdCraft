@@ -18,6 +18,9 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_guided_reference_validation import (
     reference_target_is_current,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -551,11 +554,18 @@ class AgentCanvasGuidedInteractionRepository:
         target_node_id: str,
         target_node_revision: int,
         occurrence_id: str | None = None,
+        prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+        prompt_operation_id: str | None = None,
     ) -> GuidedInteractionV1:
         """Open one typed reference wait while reserving the current Journey stage."""
 
         if not idempotency_key:
             raise _error("guided_interaction_invalid", "Reference source idempotency is required.")
+        if (prompt_dispatch is None) != (prompt_operation_id is None):
+            raise _error(
+                "guided_interaction_invalid",
+                "Reference prompt dispatch and operation must be supplied together.",
+            )
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -634,6 +644,14 @@ class AgentCanvasGuidedInteractionRepository:
                                     "guidance_authority_conflict",
                                     "Reference source interaction is missing matching awaiting authority.",
                                 )
+                            if prompt_dispatch is not None:
+                                prompt_dispatch.hold_for_waiting_user_in_transaction(
+                                    connection,
+                                    workflow_id=workflow_id,
+                                    node_id=target_node_id,
+                                    operation_id=prompt_operation_id or "",
+                                    now=datetime.now(timezone.utc),
+                                )
                         elif (
                             persisted_awaiting is not None
                             and persisted_awaiting.interaction_id == exact.interaction_id
@@ -677,10 +695,26 @@ class AgentCanvasGuidedInteractionRepository:
                                 "guidance_authority_conflict",
                                 "Reference source interaction is missing matching awaiting authority.",
                             )
+                        if prompt_dispatch is not None:
+                            prompt_dispatch.hold_for_waiting_user_in_transaction(
+                                connection,
+                                workflow_id=workflow_id,
+                                node_id=target_node_id,
+                                operation_id=prompt_operation_id or "",
+                                now=datetime.now(timezone.utc),
+                            )
                         connection.commit()
                         return existing
 
                     now = datetime.now(timezone.utc)
+                    if prompt_dispatch is not None:
+                        prompt_dispatch.hold_for_waiting_user_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            node_id=target_node_id,
+                            operation_id=prompt_operation_id or "",
+                            now=now,
+                        )
                     interaction = GuidedInteractionV1(
                         interaction_id=interaction_id,
                         workflow_id=workflow_id,
