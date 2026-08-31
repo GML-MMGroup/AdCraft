@@ -3475,11 +3475,14 @@ export type GuidedInteractionKindV1 =
   | "clarification_questionnaire"
   | "product_source"
   | "concept_choice"
-  | "media_review";
+  | "media_review"
+  | "reference_source";
 export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
 export type GuidedInteractionActionV1 =
   | "answer"
   | "select_source"
+  | "use_reference"
+  | "skip_reference"
   | "select"
   | "custom"
   | "skip"
@@ -3542,6 +3545,21 @@ export interface GuidedProductSourceActionV1 {
   question_id: string;
 }
 
+export type GuidedReferenceKindV1 = "character_main" | "scene_main";
+export type GuidedReferenceActionV1 = "use_reference" | "skip_reference";
+
+export interface GuidedReferenceSourceQuestionV1 {
+  content_kind: "reference_source";
+  reference_kind: GuidedReferenceKindV1;
+  target_node_id: string;
+  target_node_revision: number;
+  occurrence_id: string | null;
+  question: string;
+  use_reference_label: string;
+  skip_reference_label: string;
+  expected_guidance_revision: number;
+}
+
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
   | {
@@ -3572,7 +3590,8 @@ export type GuidedInteractionContentV1 =
       asset_id: string;
       asset_version_id: string;
       summary: string;
-    };
+    }
+  | GuidedReferenceSourceQuestionV1;
 
 export interface GuidedInteractionV1 {
   interaction_id: string;
@@ -3625,6 +3644,15 @@ export type GuidedInteractionSubmitRequestV1 =
       expected_session_revision: number;
       action: "accept" | "retry" | "replace" | "exclude";
       instruction?: string | null;
+    }
+  | {
+      submission_kind: "reference_source";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: GuidedReferenceActionV1;
+      reference_kind: GuidedReferenceKindV1;
+      asset_id?: string | null;
+      asset_version_id?: string | null;
     };
 
 export interface GuidedInteractionAcceptedV1 {
@@ -3647,7 +3675,7 @@ export interface GuidanceAwaitingV1 {
   workflow_id: string;
   session_id: string;
   checkpoint_id: string;
-  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "manual_node_run" | "milestone_idle";
+  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "reference_source" | "manual_node_run" | "milestone_idle";
   requires_user_action: boolean;
   resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
   interaction_id: string | null;

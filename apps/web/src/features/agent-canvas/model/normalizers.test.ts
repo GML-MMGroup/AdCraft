@@ -360,6 +360,65 @@ function productSourceGuidanceSessionPayload() {
   };
 }
 
+function referenceSourceGuidanceSessionPayload(overrides: {
+  reference_kind: "character_main" | "scene_main";
+  occurrence_id: string | null;
+}) {
+  const base = progressiveGuidanceSessionPayload();
+  const isCharacter = overrides.reference_kind === "character_main";
+  return {
+    ...base,
+    current_checkpoint: { ...base.current_checkpoint, stage_kind: isCharacter ? "character" : "scene" },
+    journey: {
+      ...base.journey,
+      stage: isCharacter ? "character" : "scene",
+      active_action: { ...base.journey.active_action, stage: isCharacter ? "character" : "scene" },
+    },
+    interaction: {
+      interaction_id: `interaction-${overrides.reference_kind}`,
+      workflow_id: "workflow-1",
+      session_id: "guidance-1",
+      checkpoint_id: "checkpoint-reference-1",
+      kind: "reference_source",
+      status: "open",
+      response_locale: "zh-CN",
+      expected_session_revision: 3,
+      revision: 2,
+      title: "Choose a reference source",
+      context: "Use an existing image or skip this reference.",
+      content: {
+        content_kind: "reference_source",
+        reference_kind: overrides.reference_kind,
+        target_node_id: isCharacter ? "character-main-draft-2" : "scene-main-draft-1",
+        target_node_revision: 4,
+        occurrence_id: overrides.occurrence_id,
+        question: isCharacter ? "Use a reference for Character 2?" : "Use a reference for the Scene?",
+        use_reference_label: "Use reference",
+        skip_reference_label: "Skip",
+        expected_guidance_revision: 9,
+      },
+      allowed_actions: ["use_reference", "skip_reference"],
+      submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-reference/submit",
+      created_at: "2026-08-31T08:00:00Z",
+      updated_at: "2026-08-31T08:00:00Z",
+    },
+    awaiting: {
+      awaiting_id: "awaiting-reference-1",
+      workflow_id: "workflow-1",
+      session_id: "guidance-1",
+      checkpoint_id: "checkpoint-reference-1",
+      kind: "reference_source",
+      requires_user_action: true,
+      resume_policy: "submit_interaction",
+      interaction_id: `interaction-${overrides.reference_kind}`,
+      node_ids: [],
+      stage: isCharacter ? "character" : "scene",
+      stage_revision: 4,
+      created_at: "2026-08-31T08:00:00Z",
+    },
+  };
+}
+
 describe("Agent Canvas normalizers", () => {
   it("accepts expert_activity_superseded in the canonical chat timeline", () => {
     const timeline = normalizeChatTimelineListResponseV2({
@@ -1096,6 +1155,60 @@ describe("Agent Canvas normalizers", () => {
         node_ids: ["node-product-1"],
       },
     })).toThrow("Invalid creativeSession.awaiting: invalid Product source awaiting authority");
+  });
+
+  it("normalizes Character and Scene reference_source interactions with exact scope rules", () => {
+    const character = referenceSourceGuidanceSessionPayload({
+      reference_kind: "character_main",
+      occurrence_id: "character-occurrence-2",
+    });
+    const scene = referenceSourceGuidanceSessionPayload({
+      reference_kind: "scene_main",
+      occurrence_id: null,
+    });
+
+    expect(normalizeGuidedSessionStateV2(character).interaction?.content).toMatchObject({
+      content_kind: "reference_source",
+      reference_kind: "character_main",
+      target_node_id: "character-main-draft-2",
+      target_node_revision: 4,
+      occurrence_id: "character-occurrence-2",
+      expected_guidance_revision: 9,
+    });
+    expect(normalizeGuidedSessionStateV2(scene).interaction?.content).toMatchObject({
+      content_kind: "reference_source",
+      reference_kind: "scene_main",
+      occurrence_id: null,
+    });
+  });
+
+  it("rejects reference_source interactions with mismatched occurrence scope", () => {
+    expect(() => normalizeGuidedSessionStateV2(referenceSourceGuidanceSessionPayload({
+      reference_kind: "character_main",
+      occurrence_id: null,
+    }))).toThrow(/Character reference checkpoints require an occurrence identity/);
+    expect(() => normalizeGuidedSessionStateV2(referenceSourceGuidanceSessionPayload({
+      reference_kind: "scene_main",
+      occurrence_id: "character-occurrence-1",
+    }))).toThrow(/Scene reference checkpoints cannot carry character scope/);
+  });
+
+  it("requires reference_source awaiting state to remain submit-authoritative", () => {
+    expect(() => normalizeGuidedSessionStateV2({
+      ...referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null }),
+      awaiting: {
+        ...referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null }).awaiting,
+        resume_policy: "next_user_message",
+      },
+    })).toThrow("Invalid creativeSession.awaiting: invalid reference source awaiting authority");
+  });
+
+  it("rejects reference_source interactions that expose non-reference actions", () => {
+    const payload = referenceSourceGuidanceSessionPayload({ reference_kind: "scene_main", occurrence_id: null });
+    expect(() => normalizeGuidedSessionStateV2({
+      ...payload,
+      interaction: { ...payload.interaction, allowed_actions: ["select_source"] },
+    })).toThrow("Invalid creativeSession.interaction.allowed_actions: reference source requires use_reference and skip_reference actions");
   });
 
   it("retains immutable image AssetVersion identity in a binding source", () => {

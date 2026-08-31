@@ -226,6 +226,17 @@ export function AgentCanvasChatPanel({
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const referenceOccurrenceLabel = useMemo(() => {
+    const content = standaloneGuidedInteraction?.content;
+    if (content?.content_kind !== "reference_source" || content.reference_kind !== "character_main") {
+      return null;
+    }
+    const occurrence = chat.state.guidanceSession?.journey.decisions.find((decision) => (
+      decision.element_kind === "character"
+      && decision.occurrence_id === content.occurrence_id
+    ));
+    return occurrence ? `Character ${occurrence.occurrence_index}` : null;
+  }, [chat.state.guidanceSession?.journey.decisions, standaloneGuidedInteraction]);
   const conceptInteraction = standaloneGuidedInteraction?.content.content_kind === "concept_choice"
     ? standaloneGuidedInteraction
     : null;
@@ -548,6 +559,7 @@ export function AgentCanvasChatPanel({
       <GuidedInteractionCard
         key={standaloneGuidedInteraction.interaction_id}
         interaction={standaloneGuidedInteraction}
+        referenceOccurrenceLabel={referenceOccurrenceLabel}
         pending={
           standaloneGuidedInteraction.status === "submitted"
           || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id

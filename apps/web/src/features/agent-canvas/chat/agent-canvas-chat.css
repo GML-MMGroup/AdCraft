@@ -3462,6 +3462,101 @@ button.agent-chat__node-links--related:hover {
   height: 13px;
 }
 
+.agent-chat__reference-source-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-chat__reference-source-target {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.agent-chat__reference-source-assets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.agent-chat__reference-source-assets > button {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 8px;
+  background: var(--agent-chat-panel);
+  color: var(--agent-chat-primary);
+  text-align: left;
+}
+
+.agent-chat__reference-source-assets > button.is-selected {
+  border-color: var(--agent-chat-primary);
+}
+
+.agent-chat__reference-source-assets > button img,
+.agent-chat__reference-source-selected img {
+  width: 100%;
+  height: 72px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.agent-chat__reference-source-assets > button span,
+.agent-chat__reference-source-selected > span {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat__reference-source-picker > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 7px 10px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 7px;
+  color: var(--agent-chat-primary);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.agent-chat__reference-source-picker > label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-chat__reference-source-selected {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 7px;
+}
+
+.agent-chat__reference-source-selected img {
+  width: 42px;
+  height: 42px;
+}
+
+.agent-chat__reference-source-selected button {
+  border: 0;
+  background: transparent;
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+}
+
 .agent-chat__decision-dock-issue {
   display: grid;
   gap: 5px;
