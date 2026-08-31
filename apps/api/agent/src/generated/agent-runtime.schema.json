@@ -25055,6 +25055,7 @@
           "scene_count": "#/$defs/SetSceneCountDecisionEffectV1",
           "spoken_language": "#/$defs/SetSpokenLanguageDecisionEffectV1",
           "storyboard_sequence_count": "#/$defs/SetStoryboardSequenceCountDecisionEffectV1",
+          "video_representation_mode": "#/$defs/SetVideoRepresentationModeDecisionEffectV1",
           "video_segment_count": "#/$defs/SetVideoSegmentCountDecisionEffectV1"
         },
         "propertyName": "control"
@@ -25095,6 +25096,9 @@
         },
         {
           "$ref": "#/$defs/SetVideoSegmentCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetVideoRepresentationModeDecisionEffectV1"
         }
       ],
       "title": "SetControlDecisionEffectV1"
@@ -25361,6 +25365,36 @@
         "value"
       ],
       "title": "SetStoryboardSequenceCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetVideoRepresentationModeDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_representation_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "illustrated",
+            "illustration_to_live_action"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetVideoRepresentationModeDecisionEffectV1",
       "type": "object"
     },
     "SetVideoSegmentCountDecisionEffectV1": {

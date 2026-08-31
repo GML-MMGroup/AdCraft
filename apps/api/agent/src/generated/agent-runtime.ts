@@ -158,7 +158,9 @@ export type SetStoryboardSequenceCountDecisionEffectV1 = { readonly "effect_type
 
 export type SetVideoSegmentCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "video_segment_count"; readonly "value": number };
 
-export type SetControlDecisionEffectV1 = SetDurationSecondsDecisionEffectV1 | SetAspectRatioDecisionEffectV1 | SetOutputResolutionDecisionEffectV1 | SetFrameRateDecisionEffectV1 | SetSpokenLanguageDecisionEffectV1 | SetAudioModeDecisionEffectV1 | SetProductCountDecisionEffectV1 | SetPropCountDecisionEffectV1 | SetCharacterCountDecisionEffectV1 | SetSceneCountDecisionEffectV1 | SetStoryboardSequenceCountDecisionEffectV1 | SetVideoSegmentCountDecisionEffectV1;
+export type SetVideoRepresentationModeDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "video_representation_mode"; readonly "value": "illustrated" | "illustration_to_live_action" };
+
+export type SetControlDecisionEffectV1 = SetDurationSecondsDecisionEffectV1 | SetAspectRatioDecisionEffectV1 | SetOutputResolutionDecisionEffectV1 | SetFrameRateDecisionEffectV1 | SetSpokenLanguageDecisionEffectV1 | SetAudioModeDecisionEffectV1 | SetProductCountDecisionEffectV1 | SetPropCountDecisionEffectV1 | SetCharacterCountDecisionEffectV1 | SetSceneCountDecisionEffectV1 | SetStoryboardSequenceCountDecisionEffectV1 | SetVideoSegmentCountDecisionEffectV1 | SetVideoRepresentationModeDecisionEffectV1;
 
 export type SetElementPresenceDecisionEffectV1 = { readonly "effect_type"?: "set_element_presence"; readonly "element_kind": "audio" | "character" | "product" | "prop" | "scene" | "script" | "storyboard" | "video" | "world_setting"; readonly "presence": "exclude" | "include" };
 
