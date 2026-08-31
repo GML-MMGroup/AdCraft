@@ -110,6 +110,7 @@ from app.services.agent_canvas_requirements import (
     reconcile_character_occurrence_authority_in_transaction,
 )
 from app.services.agent_canvas_production_journey import reconcile_character_occurrences
+from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
 class AgentCanvasGuidedInteractionRepository:
@@ -566,7 +567,9 @@ class AgentCanvasGuidedInteractionRepository:
                         .one_or_none()
                     )
                     if session is None:
-                        raise _error("guided_interaction_not_found", "Guidance session was not found.")
+                        raise _error(
+                            "guided_interaction_not_found", "Guidance session was not found."
+                        )
                     if int(session["revision"]) != expected_session_revision:
                         raise _error("guidance_revision_conflict", "Guidance session is stale.")
                     target = (
@@ -586,10 +589,30 @@ class AgentCanvasGuidedInteractionRepository:
                             "guided_reference_source_target_invalid",
                             "Reference source target does not match the selected capability.",
                         )
+                    try:
+                        target_metadata = json.loads(str(target["metadata_json"]))
+                    except (TypeError, json.JSONDecodeError) as error:
+                        raise _error(
+                            "guided_reference_source_target_invalid",
+                            "Reference source target metadata is invalid.",
+                        ) from error
+                    if str(target["status"]) != "draft":
+                        raise _error(
+                            "guided_reference_source_target_invalid",
+                            "Reference source target must remain a Draft.",
+                        )
                     if reference_kind == "character_main" and occurrence_id is None:
                         raise _error(
                             "guided_reference_source_occurrence_mismatch",
                             "Character reference source requires an occurrence.",
+                        )
+                    if reference_kind == "character_main" and (
+                        target_metadata.get("occurrence_id") != occurrence_id
+                        or target_metadata.get("character_phase") not in {None, "main"}
+                    ):
+                        raise _error(
+                            "guided_reference_source_occurrence_mismatch",
+                            "Reference source occurrence does not match the Character Main target.",
                         )
                     if reference_kind == "scene_main" and occurrence_id is not None:
                         raise _error(
@@ -622,7 +645,10 @@ class AgentCanvasGuidedInteractionRepository:
                                 "Another reference source interaction is already open.",
                             )
                         persisted_awaiting = _awaiting_for_workflow(connection, workflow_id)
-                        if persisted_awaiting is None or persisted_awaiting.interaction_id != existing.interaction_id:
+                        if (
+                            persisted_awaiting is None
+                            or persisted_awaiting.interaction_id != existing.interaction_id
+                        ):
                             raise _error(
                                 "guidance_authority_conflict",
                                 "Reference source interaction is missing matching awaiting authority.",
@@ -642,10 +668,16 @@ class AgentCanvasGuidedInteractionRepository:
                         checkpoint_id=f"reference_source:{journey.stage_revision}:{reference_kind}:{target_node_id}",
                         kind="reference_source",
                         status="open",
-                        response_locale=str(session["response_locale"]),
+                        response_locale=ResponseLocaleResolverV1().resolve(
+                            str(session["response_locale"])
+                        ),
                         expected_session_revision=int(session["revision"]) + 1,
                         revision=1,
-                        title=("Character reference" if reference_kind == "character_main" else "Scene reference"),
+                        title=(
+                            "Character reference"
+                            if reference_kind == "character_main"
+                            else "Scene reference"
+                        ),
                         context="Choose an optional reference image for this Main draft.",
                         content=GuidedReferenceSourceQuestionV1(
                             reference_kind=reference_kind,
@@ -688,7 +720,9 @@ class AgentCanvasGuidedInteractionRepository:
                         occurrence_id=occurrence_id,
                         character_phase="main" if reference_kind == "character_main" else None,
                     )
-                    _insert_interaction_and_awaiting_in_transaction(connection, interaction, awaiting)
+                    _insert_interaction_and_awaiting_in_transaction(
+                        connection, interaction, awaiting
+                    )
                     updated = connection.execute(
                         update(AgentCanvasGuidanceSessionRow)
                         .where(
@@ -697,14 +731,20 @@ class AgentCanvasGuidedInteractionRepository:
                         )
                         .values(
                             journey_state_json=journey.model_copy(
-                                update={"stage_status": "waiting_user", "active_action": waiting_action}
+                                update={
+                                    "stage_status": "waiting_user",
+                                    "active_action": waiting_action,
+                                }
                             ).model_dump_json(),
                             revision=expected_session_revision + 1,
                             updated_at=now.isoformat(),
                         )
                     )
                     if updated.rowcount != 1:
-                        raise _error("guidance_revision_conflict", "Guidance session changed before reference entry.")
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed before reference entry.",
+                        )
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
