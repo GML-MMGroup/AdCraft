@@ -283,6 +283,8 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
   const { workflowId, coverAssetId, coverVersionId, coverState, updatedAt, cover: summaryCover } = project;
   const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, coverVersionId, updatedAt });
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
+  const coverPriorityRef = useRef(coverPriority);
+  coverPriorityRef.current = coverPriority;
 
   useEffect(() => {
     if (summaryCover) {
@@ -309,7 +311,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
               needsAuthority: needsV2ProjectCoverNodeAuthority(response.assets),
             };
           }),
-        { signal, priority: coverPriority },
+        { signal, priority: coverPriorityRef.current },
       )
     ));
     void subscription.promise.then((lookup) => {
@@ -322,7 +324,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
         projectCoverQueue.schedule(
           () => agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId, { signal: authoritySignal })
             .then((workflow) => resolveV2ProjectCover(coverAssetId, lookup.assets, workflow.value.nodes)),
-          { signal: authoritySignal, priority: coverPriority },
+          { signal: authoritySignal, priority: coverPriorityRef.current },
         )
       ));
       void authoritySubscription.promise.then((authoritativeCover) => {
@@ -333,7 +335,9 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
         // The preliminary cover remains usable when optional authority lookup fails.
       });
     }).catch(() => {
-      if (active) setEntry({ cover: null });
+      if (active) {
+        setEntry((current) => (current?.cover ? current : { cover: null }));
+      }
     });
 
     return () => {
@@ -341,7 +345,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
       subscription.release();
       authoritySubscription?.release();
     };
-  }, [coverAssetId, coverPriority, coverState, coverVersionId, project.projectId, requestKey, summaryCover, updatedAt, workflowId]);
+  }, [coverAssetId, coverState, coverVersionId, project.projectId, requestKey, summaryCover, updatedAt, workflowId]);
 
   return entry?.cover;
 }

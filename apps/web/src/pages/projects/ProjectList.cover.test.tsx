@@ -224,6 +224,40 @@ describe("ProjectList covers", () => {
     controlled.resolve("workflow-0");
   });
 
+  it("does not restart cover metadata when only the virtual-row priority changes", async () => {
+    const controlled = installControlledCoverRequests();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    });
+    const view = render(
+      <ProjectList
+        projects={projects(20)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(4);
+
+    const list = view.container.querySelector("[data-project-list-virtualized]");
+    if (!list) throw new Error("Expected virtualized project list.");
+    Object.defineProperty(list, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top: -window.scrollY, left: 0, width: 1024, height: 4000 }),
+    });
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 308 });
+    fireEvent.scroll(window);
+    await act(async () => {});
+
+    expect(view.container.querySelector(".project-list-virtual__window")?.getAttribute("style")).toContain("translateY(0px)");
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledTimes(4);
+    expect(controlled.aborted).toEqual([]);
+  });
+
   it("aborts an obsolete project identity and keeps the fresh cover", async () => {
     const controlled = installControlledCoverRequests();
     const initial = projects(1);
@@ -399,6 +433,34 @@ describe("ProjectList covers", () => {
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
       .toContain("cached-cover/content?v=cached-cover-version");
     expect(controlled.active()).toBe(1);
+  });
+
+  it("keeps the previously resolved cover visible while a refresh is pending", async () => {
+    const controlled = installControlledCoverRequests();
+    const initial = projects(1)[0];
+    if (!initial) throw new Error("Expected a project fixture.");
+    const callbacks = {
+      onOpenProject: vi.fn(),
+      onTrashProject: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onRenameProject: vi.fn(),
+    };
+    const view = render(<ProjectList projects={[initial]} {...callbacks} />);
+
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("first-cover", "/api/v2/assets/first-cover/content")]);
+    });
+    await waitFor(() => {
+      expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+        .toContain("first-cover/content?v=first-cover-version");
+    });
+
+    view.rerender(<ProjectList projects={[{ ...initial, updatedAt: "2026-07-25T08:00:00Z" }]} {...callbacks} />);
+    await act(async () => {});
+
+    expect(controlled.active()).toBe(1);
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("first-cover/content?v=first-cover-version");
   });
 
   it("loads source node authority when product assets have ambiguous public roles", async () => {

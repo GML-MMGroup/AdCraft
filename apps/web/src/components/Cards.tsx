@@ -185,7 +185,7 @@ function ProjectPreviewImage({
 }) {
   const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
   const [previewFailed, setPreviewFailed] = useState(false);
-  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.mediaPath) : "";
+  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.previewPath || cover.mediaPath) : "";
   const generatedPosterKey = cover?.mediaType === "video" && !cover.posterPath
     ? `${cover.assetId}:${cover.versionId}:${cover.mediaPath}`
     : "";

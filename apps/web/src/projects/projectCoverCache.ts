@@ -116,6 +116,7 @@ function isProjectCover(value: unknown): value is V2ProjectCover {
     && typeof candidate.versionId === "string"
     && (candidate.mediaType === "image" || candidate.mediaType === "video")
     && typeof candidate.mediaPath === "string"
+    && (candidate.previewPath === undefined || candidate.previewPath === null || typeof candidate.previewPath === "string")
     && (candidate.posterPath === null || typeof candidate.posterPath === "string");
 }
 
@@ -128,6 +129,13 @@ function normalizeProjectCover(cover: V2ProjectCover): V2ProjectCover {
   return {
     ...cover,
     mediaPath: mediaAssetContentPath(identity) || cover.mediaPath,
+    ...(cover.previewPath !== undefined
+      ? {
+        previewPath: cover.previewPath
+          ? versionedMediaPath(cover.previewPath, identity)
+          : null,
+      }
+      : {}),
     posterPath: cover.posterPath
       ? versionedMediaPath(cover.posterPath, identity)
       : null,
