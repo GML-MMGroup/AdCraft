@@ -49,6 +49,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
       favorite: project.is_favorite,
       workflowId: project.workflow_id,
       coverAssetId: project.cover_asset_id,
+      coverState: project.cover_state,
       cover: resolveV2ProjectCoverSummary(project.cover),
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;

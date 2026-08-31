@@ -93,6 +93,8 @@ export interface PersistedWorkflowV2 extends WorkflowV2 {
 }
 
 export type ProjectV2Status = "active" | "archived" | "trashed";
+export type ProjectCoverStateV2 = "ready" | "unresolved" | "none" | "broken";
+export type ProjectCoverSourceV2 = "manual" | "product_main" | "migrated";
 
 export interface ProjectCoverV2 {
   asset_id: string;
@@ -109,6 +111,10 @@ export interface ProjectV2Summary {
   status: ProjectV2Status;
   is_favorite: boolean;
   cover_asset_id: string | null;
+  cover_version_id?: string | null;
+  cover_state?: ProjectCoverStateV2;
+  cover_source?: ProjectCoverSourceV2 | null;
+  cover_updated_at?: string | null;
   cover?: ProjectCoverV2 | null;
   project_version: number;
   updated_at: string;
@@ -131,6 +137,7 @@ export interface ProjectV2UpdateRequest {
   description?: string;
   is_favorite?: boolean;
   cover_asset_id?: string | null;
+  cover_version_id?: string | null;
   status?: "active" | "archived";
 }
 
