@@ -45,9 +45,7 @@ class AgentCanvasNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
-        normalized_generation_prompt = normalize_manual_generation_prompt(
-            request.generation_prompt
-        )
+        normalized_generation_prompt = normalize_manual_generation_prompt(request.generation_prompt)
         source = (
             self._repository.get_node(workflow_id, request.clone_inputs_from_node_id)
             if request.clone_inputs_from_node_id is not None
@@ -150,9 +148,7 @@ class AgentCanvasNodeService:
             )
         elif "generation_prompt" in changes and not source_only_product:
             if changes["generation_prompt"] is None:
-                changes["prompt_preparation"] = NodePromptPreparationV1.waiting_user(
-                    updated_at=now
-                )
+                changes["prompt_preparation"] = NodePromptPreparationV1.waiting_user(updated_at=now)
             elif not _has_managed_prompt_preparation(current):
                 changes["prompt_preparation"] = _ready_prompt_preparation(
                     str(changes["generation_prompt"]),
