@@ -230,6 +230,7 @@ describe("GuidedInteractionCard", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
     expect(onSubmit).toHaveBeenCalledWith({
       submission_kind: "reference_source",
       expected_interaction_revision: 2,
@@ -239,6 +240,7 @@ describe("GuidedInteractionCard", () => {
       asset_id: "asset-front",
       asset_version_id: "version-front",
     });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
 
     onSubmit.mockClear();
     rerender(
