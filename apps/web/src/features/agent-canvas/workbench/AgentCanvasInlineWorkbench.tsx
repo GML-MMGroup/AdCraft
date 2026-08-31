@@ -58,8 +58,14 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const requiresPreparedPrompt = ["text", "script", "image", "video", "audio"].includes(node.node_type)
     && !(node.node_type === "text" && node.creative_role === "world_setting");
   const promptReady = !requiresPreparedPrompt || isNodePromptReady(node);
+  const isManualBlankPromptNode = requiresPreparedPrompt
+    && node.status === "draft"
+    && !node.generation_prompt?.trim()
+    && !node.summary_prompt?.trim()
+    && (node.prompt_preparation === null || node.prompt_preparation?.status === "waiting_user");
   const promptPreparing = requiresPreparedPrompt
     && promptPreparationForNode(node) !== null
+    && !isManualBlankPromptNode
     && !promptReady;
 
   return (
