@@ -71,6 +71,14 @@ class ProjectRow(Base):
             name="ck_projects_status",
         ),
         CheckConstraint("project_version > 0", name="ck_projects_positive_version"),
+        CheckConstraint(
+            "cover_state IN ('ready','unresolved','none','broken')",
+            name="ck_projects_cover_state",
+        ),
+        CheckConstraint(
+            "cover_source IS NULL OR cover_source IN ('manual','product_main','migrated')",
+            name="ck_projects_cover_source",
+        ),
     )
 
     project_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -79,6 +87,10 @@ class ProjectRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cover_asset_id: Mapped[str | None] = mapped_column(Text)
+    cover_version_id: Mapped[str | None] = mapped_column(Text)
+    cover_state: Mapped[str] = mapped_column(Text, nullable=False, default="unresolved")
+    cover_source: Mapped[str | None] = mapped_column(Text)
+    cover_updated_at: Mapped[str | None] = mapped_column(Text)
     project_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)

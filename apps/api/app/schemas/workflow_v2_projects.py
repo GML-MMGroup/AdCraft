@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 ProjectStatusV2 = Literal["active", "archived", "trashed"]
+ProjectCoverStateV2 = Literal["ready", "unresolved", "none", "broken"]
+ProjectCoverSourceV2 = Literal["manual", "product_main", "migrated"]
 
 
 class ProjectCoverV2(BaseModel):
@@ -33,6 +35,10 @@ class ProjectCreate(BaseModel):
     status: ProjectStatusV2 = "active"
     is_favorite: bool = False
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
 
@@ -48,6 +54,10 @@ class ProjectRecord(BaseModel):
     status: ProjectStatusV2
     is_favorite: bool
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
@@ -90,6 +100,10 @@ class ProjectV2(BaseModel):
     status: ProjectStatusV2 = "active"
     is_favorite: bool = False
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
     semantic_revision_no: int = Field(ge=1)
     created_at: str = Field(min_length=1)
@@ -108,6 +122,10 @@ class ProjectV2Summary(BaseModel):
     status: ProjectStatusV2
     is_favorite: bool
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     cover: ProjectCoverV2 | None = None
     project_version: int = Field(ge=1)
     updated_at: str = Field(min_length=1)
