@@ -274,7 +274,7 @@ function useProjectCover(project: ProjectListItem, coverPriority: number): V2Pro
   const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
 
   useEffect(() => {
-    if (summaryCover !== undefined) {
+    if (summaryCover) {
       setEntry({ cover: summaryCover });
       return undefined;
     }

@@ -310,6 +310,31 @@ describe("ProjectList covers", () => {
       .toContain("/api/v2/assets/summary-cover/preview?v=summary-version");
   });
 
+  it("falls back to workflow assets when the project summary cover is null", async () => {
+    const controlled = installControlledCoverRequests();
+    const project = { ...projects(1)[0], cover: null };
+    const view = render(
+      <ProjectList
+        projects={[project]}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => {});
+    expect(fixture.listAgentCanvasProjectAssets).toHaveBeenCalledWith("workflow-0", {
+      signal: expect.any(AbortSignal),
+    });
+
+    await act(async () => {
+      controlled.resolve("workflow-0", [coverAsset("historical-cover", "/media/historical.webp")]);
+    });
+    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src)
+      .toContain("/api/v2/assets/historical-cover/content?v=historical-cover-version");
+  });
+
   it("shows a persisted cover while the background refresh is pending", async () => {
     const controlled = installControlledCoverRequests();
     const project = projects(1)[0];
