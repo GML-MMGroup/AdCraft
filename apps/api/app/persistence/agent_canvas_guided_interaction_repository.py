@@ -2124,6 +2124,7 @@ class AgentCanvasGuidedInteractionRepository:
             "clarification_questionnaire": "clarification",
             "concept_choice": "concept_selection",
             "product_source": "product_source",
+            "reference_source": "reference_source",
             "media_review": "media_review",
         }[interaction.kind]
         if awaiting.kind != expected_awaiting_kind:

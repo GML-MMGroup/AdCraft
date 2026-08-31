@@ -100,6 +100,32 @@ class GuidedProductSourceQuestionV1(_GuidedInteractionModel):
         return self
 
 
+GuidedReferenceKindV1 = Literal["character_main", "scene_main"]
+GuidedReferenceActionV1 = Literal["use_reference", "skip_reference"]
+
+
+class GuidedReferenceSourceQuestionV1(_GuidedInteractionModel):
+    """Server-owned optional reference checkpoint for one Main Draft."""
+
+    content_kind: Literal["reference_source"] = "reference_source"
+    reference_kind: GuidedReferenceKindV1
+    target_node_id: str = Field(min_length=1, max_length=160)
+    target_node_revision: int = Field(ge=1)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    question: str = Field(min_length=1, max_length=512)
+    use_reference_label: str = Field(min_length=1, max_length=160)
+    skip_reference_label: str = Field(min_length=1, max_length=160)
+    expected_guidance_revision: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_target_scope(self) -> "GuidedReferenceSourceQuestionV1":
+        if self.reference_kind == "character_main" and self.occurrence_id is None:
+            raise ValueError("Character reference checkpoints require an occurrence identity.")
+        if self.reference_kind == "scene_main" and self.occurrence_id is not None:
+            raise ValueError("Scene reference checkpoints cannot carry character scope.")
+        return self
+
+
 class GuidedConceptChoiceV2(_GuidedInteractionModel):
     content_kind: Literal["concept_choice"] = "concept_choice"
     proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -155,6 +181,7 @@ class GuidedMediaReviewV1(_GuidedInteractionModel):
 GuidedInteractionContentV1: TypeAlias = Annotated[
     GuidedQuestionnaireV1
     | GuidedProductSourceQuestionV1
+    | GuidedReferenceSourceQuestionV1
     | GuidedConceptChoiceV2
     | GuidedMediaReviewV1,
     Field(discriminator="content_kind"),
@@ -163,6 +190,7 @@ GuidedInteractionContentV1: TypeAlias = Annotated[
 GuidedInteractionKindV1 = Literal[
     "clarification_questionnaire",
     "product_source",
+    "reference_source",
     "concept_choice",
     "media_review",
 ]
@@ -180,6 +208,8 @@ GuidedInteractionActionV1 = Literal[
     "accept",
     "retry",
     "replace",
+    "use_reference",
+    "skip_reference",
 ]
 
 
@@ -206,6 +236,7 @@ class GuidedInteractionV1(_GuidedInteractionModel):
         expected_content = {
             "clarification_questionnaire": "questionnaire",
             "product_source": "product_source",
+            "reference_source": "reference_source",
             "concept_choice": "concept_choice",
             "media_review": "media_review",
         }[self.kind]
@@ -288,9 +319,33 @@ class GuidedProductSourceSubmitV1(_GuidedInteractionModel):
     action: GuidedProductSourceActionV1
 
 
+class GuidedReferenceSourceSubmitV1(_GuidedInteractionModel):
+    """Typed use/skip action for a persisted reference checkpoint."""
+
+    submission_kind: Literal["reference_source"]
+    expected_interaction_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    action: GuidedReferenceActionV1
+    reference_kind: GuidedReferenceKindV1
+    asset_id: str | None = Field(default=None, min_length=1, max_length=160)
+    asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_action_fields(self) -> "GuidedReferenceSourceSubmitV1":
+        has_asset = self.asset_id is not None or self.asset_version_id is not None
+        if self.action == "use_reference" and not (
+            self.asset_id is not None and self.asset_version_id is not None
+        ):
+            raise ValueError("Using a reference requires one exact AssetVersion.")
+        if self.action == "skip_reference" and has_asset:
+            raise ValueError("Skipping a reference cannot carry an AssetVersion.")
+        return self
+
+
 GuidedInteractionSubmitRequestV1: TypeAlias = Annotated[
     GuidedQuestionnaireSubmitV1
     | GuidedProductSourceSubmitV1
+    | GuidedReferenceSourceSubmitV1
     | GuidedConceptSubmitV2
     | GuidedMediaReviewSubmitV1,
     Field(discriminator="submission_kind"),
@@ -321,6 +376,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
         "clarification",
         "concept_selection",
         "product_source",
+        "reference_source",
         "media_review",
         "manual_node_run",
         "milestone_idle",
@@ -344,6 +400,7 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
             "clarification",
             "concept_selection",
             "product_source",
+            "reference_source",
             "media_review",
         }
         if self.kind in interaction_kinds:
