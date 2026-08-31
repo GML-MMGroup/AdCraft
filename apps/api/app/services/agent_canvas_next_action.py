@@ -109,7 +109,7 @@ class DurableNextActionExecutionService:
         decision_bundles: AgentCanvasDecisionBundleRepository | None = None,
         editing_preparer: Callable[[str], object] | None = None,
         materialization_resumer: Callable[
-            [str, Callable[[], None]],
+            [str, str, Callable[[], None]],
             object,
         ]
         | None = None,
@@ -138,7 +138,7 @@ class DurableNextActionExecutionService:
 
     def set_materialization_resumer(
         self,
-        resumer: Callable[[str, Callable[[], None]], object],
+        resumer: Callable[[str, str, Callable[[], None]], object],
     ) -> None:
         """Attach the canonical post-commit materialization recovery boundary."""
 
@@ -175,6 +175,7 @@ class DurableNextActionExecutionService:
             lease_guard()
             recovered = self._materialization_resumer(
                 envelope.resume_materialization_envelope_id,
+                envelope.next_action_turn_id,
                 lease_guard,
             )
             if recovered is None:

@@ -45,12 +45,14 @@ class ParentDerivedMaterializationCoordinator:
         parent: ProposalPublicationEnvelopeV1,
         *,
         lease_guard,
+        source_turn_id: str | None = None,
     ) -> ProposalPublicationEnvelopeV1 | None:
         """Create or replay the one durable derivative queue entry for a parent."""
 
         if parent.operation_kind != "parent" or parent.derivative_intent is None:
             return None
         intent = parent.derivative_intent
+        handoff_source_turn_id = source_turn_id or parent.action_turn_id
         derivative_materialization_id = (
             "materialization_" + sha256(intent.intent_id.encode("utf-8")).hexdigest()[:32]
         )
@@ -72,7 +74,7 @@ class ParentDerivedMaterializationCoordinator:
             lease_guard()
             return self._materializations.queue_derivative(
                 existing,
-                source_turn_id=parent.action_turn_id,
+                source_turn_id=handoff_source_turn_id,
             )
         lease_guard()
         workflow = self._workflows.get_workflow(parent.workflow_id)
@@ -147,7 +149,7 @@ class ParentDerivedMaterializationCoordinator:
         lease_guard()
         return self._materializations.queue_derivative(
             envelope,
-            source_turn_id=parent.action_turn_id,
+            source_turn_id=handoff_source_turn_id,
         )
 
     def queue_after_parent(

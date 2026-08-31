@@ -1447,9 +1447,17 @@ def create_agent_canvas_runtime(
         ),
     )
 
-    def resume_reference_materialization(envelope_id: str, lease_guard) -> object:
+    def resume_reference_materialization(
+        envelope_id: str,
+        source_turn_id: str,
+        lease_guard,
+    ) -> object:
         envelope = materialization_repository.get_envelope(envelope_id)
-        recovered = materialization_publisher.resume_committed(envelope, lease_guard)
+        recovered = materialization_publisher.resume_committed(
+            envelope,
+            lease_guard,
+            continuation_source_turn_id=source_turn_id,
+        )
         if recovered is None:
             raise V2PersistenceError(
                 "materialization_resume_not_found",

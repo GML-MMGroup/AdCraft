@@ -894,6 +894,8 @@ class CapabilityMaterializationPublicationService:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         lease_guard: Callable[[], None],
+        *,
+        continuation_source_turn_id: str | None = None,
     ) -> str | None:
         """Resume only prompt preparation after an immutable commit."""
 
@@ -978,10 +980,18 @@ class CapabilityMaterializationPublicationService:
         )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
-            self._parent_derived.reconcile_after_parent(
-                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
-                lease_guard=lease_guard,
-            )
+            parent = self._refreshed_parent_reconciliation_envelope(envelope, outcome)
+            if continuation_source_turn_id is None:
+                self._parent_derived.reconcile_after_parent(
+                    parent,
+                    lease_guard=lease_guard,
+                )
+            else:
+                self._parent_derived.reconcile_after_parent(
+                    parent,
+                    lease_guard=lease_guard,
+                    source_turn_id=continuation_source_turn_id,
+                )
         return outcome.node_ids[0] if outcome.node_ids else None
 
     def _refreshed_parent_reconciliation_envelope(
