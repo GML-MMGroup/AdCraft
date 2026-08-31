@@ -5098,6 +5098,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       "occurrence_id",
       "occurrence_index",
       "occurrence_count",
+      "character_phase",
       "capability_id",
       "options",
       "allow_custom",
@@ -5126,6 +5127,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`);
     if (occurrenceIndex !== null && occurrenceIndex > 32) fail(`${path}.occurrence_index`, "expected at most 32");
     if (occurrenceCount !== null && occurrenceCount > 32) fail(`${path}.occurrence_count`, "expected at most 32");
+    const characterPhase = record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main"] as const), `${path}.character_phase`);
     return {
       content_kind: "concept_choice",
       proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`),
@@ -5135,6 +5139,7 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
       occurrence_index: occurrenceIndex,
       occurrence_count: occurrenceCount,
+      character_phase: characterPhase,
       capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
       options,
       allow_custom: true,

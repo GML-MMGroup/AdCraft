@@ -3600,6 +3600,7 @@ export type GuidedInteractionContentV1 =
       occurrence_id: string | null;
       occurrence_index?: number | null;
       occurrence_count?: number | null;
+      character_phase?: "main" | null;
       capability_id: string;
       options: GuidedChoiceOptionV1[];
       allow_custom: true;

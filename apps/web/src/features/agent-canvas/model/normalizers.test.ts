@@ -1022,6 +1022,7 @@ describe("Agent Canvas normalizers", () => {
           stage: "scene", stage_revision: 4, action_id: "action-scene-1",
           occurrence_id: "occurrence:scene:1", capability_id: "scene_design",
           occurrence_index: 1, occurrence_count: 2,
+          character_phase: null,
           allow_custom: true, allow_exclusion: false, options: [
           { option_id: "option-a", title: "Morning", summary: "Soft morning light." },
           { option_id: "option-b", title: "Evening", summary: "Warm evening light." },
@@ -1041,6 +1042,7 @@ describe("Agent Canvas normalizers", () => {
     expect(session.interaction?.content).toMatchObject({
       occurrence_index: 1,
       occurrence_count: 2,
+      character_phase: null,
     });
     expect(session.awaiting?.kind).toBe("concept_selection");
   });
