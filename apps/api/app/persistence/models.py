@@ -1370,7 +1370,8 @@ class AgentCanvasGuidedInteractionRow(Base):
     __tablename__ = "agent_canvas_guided_interactions"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification_questionnaire','concept_choice','product_source','media_review')",
+            "kind IN ('clarification_questionnaire','concept_choice','product_source',"
+            "'reference_source','media_review')",
             name="ck_agent_canvas_guided_interactions_kind",
         ),
         CheckConstraint(
@@ -1556,7 +1557,8 @@ class AgentCanvasGuidanceAwaitingRow(Base):
     __tablename__ = "agent_canvas_guidance_awaiting"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification','concept_selection','product_source','media_review',"
+            "kind IN ('clarification','concept_selection','product_source','reference_source',"
+            "'media_review',"
             "'manual_node_run','milestone_idle')",
             name="ck_agent_canvas_guidance_awaiting_kind",
         ),
