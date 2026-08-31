@@ -276,6 +276,11 @@ class AgentCanvasGuidedReferenceRepository:
                             "target_node_id": content.target_node_id,
                             "target_node_revision": content.target_node_revision,
                             "occurrence_id": content.occurrence_id,
+                            **(
+                                {"character_phase": "main"}
+                                if content.reference_kind == "character_main"
+                                else {}
+                            ),
                             "asset_id": request.asset_id,
                             "asset_version_id": request.asset_version_id,
                             "asset_sha256": asset_sha256 or str(version["sha256"]),
@@ -315,6 +320,11 @@ class AgentCanvasGuidedReferenceRepository:
                                 else "environment_guidance"
                             ),
                             "occurrence_id": content.occurrence_id,
+                            **(
+                                {"character_phase": "main"}
+                                if content.reference_kind == "character_main"
+                                else {}
+                            ),
                             "source_node_revision": 1,
                             "source_asset_id": request.asset_id,
                             "source_asset_version_id": request.asset_version_id,
