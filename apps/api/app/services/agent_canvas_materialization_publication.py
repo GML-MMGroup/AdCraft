@@ -918,6 +918,7 @@ class CapabilityMaterializationPublicationService:
         if outcome is None:
             return None
         pending_preparations: list[tuple[str, str]] = []
+        reference_source_resolved = False
         for node_id, operation_id in zip(
             outcome.node_ids,
             outcome.prompt_preparation_ids,
@@ -938,16 +939,21 @@ class CapabilityMaterializationPublicationService:
                     stage="capability_materialization_publication",
                     details={"node_id": node_id, "operation_id": operation_id},
                 )
+            reference_source_resolved = reference_source_resolved or (
+                current_operation_id != operation_id
+            )
             if node.prompt_preparation.status == "ready":
                 continue
             pending_preparations.append((node_id, current_operation_id))
         pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        reference_wait_opened = self._open_reference_source_checkpoint(
-            envelope,
-            outcome,
-            source_turn_id=envelope.action_turn_id,
-        )
+        reference_wait_opened = False
+        if not reference_source_resolved:
+            reference_wait_opened = self._open_reference_source_checkpoint(
+                envelope,
+                outcome,
+                source_turn_id=envelope.action_turn_id,
+            )
         if pending_preparations and not reference_wait_opened:
             # A committed materialization is recovered from the exact
             # dispatch operation that was persisted with its Draft.  Rebuilding
