@@ -3083,6 +3083,10 @@ export function normalizeConceptProposalV2(
       "turn_id",
       "video_skill_run_id",
       "topic_id",
+      "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
+      "character_phase",
       "creative_direction_snapshot_id",
       "proposal_revision",
       "source_proposal_id",
@@ -3116,6 +3120,20 @@ export function normalizeConceptProposalV2(
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     video_skill_run_id: nullableStringWithDefault(record.video_skill_run_id, `${path}.video_skill_run_id`),
     topic_id: nullableStringWithDefault(record.topic_id, `${path}.topic_id`),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    occurrence_index: record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`),
+    occurrence_count: record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(
+        record.character_phase,
+        new Set<NonNullable<ConceptProposalV2["character_phase"]>>(["main", "turnaround"]),
+        `${path}.character_phase`,
+      ),
     creative_direction_snapshot_id: nullableStringWithDefault(
       record.creative_direction_snapshot_id,
       `${path}.creative_direction_snapshot_id`,

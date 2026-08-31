@@ -1408,6 +1408,47 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("accepts concept proposal occurrence metadata returned by the V2 API", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-world-setting",
+      workflow_id: "workflow-1",
+      turn_id: "turn-1",
+      video_skill_run_id: null,
+      topic_id: "topic-world-setting",
+      occurrence_id: null,
+      occurrence_index: null,
+      occurrence_count: null,
+      character_phase: null,
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "world_setting",
+      capability_id: "world_setting",
+      capability_display_name: "World Setting Designer",
+      options: [{ option_id: "option-1", title: "Modern Magic", public_summary: "A modern fantasy world." }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Define the advertising world.",
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      materialization: null,
+      guidance_session_id: "session-1",
+      guidance_session_revision: 5,
+      actions: [],
+      created_at: "2026-08-31T00:00:00Z",
+      updated_at: "2026-08-31T00:00:00Z",
+    });
+
+    expect(proposal).toMatchObject({
+      occurrence_id: null,
+      occurrence_index: null,
+      occurrence_count: null,
+      character_phase: null,
+    });
+  });
+
   it("normalizes the complete guidance completion projection", () => {
     const session = normalizeGuidedSessionStateV2({
       ...progressiveGuidanceSessionPayload(),

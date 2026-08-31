@@ -2582,6 +2582,10 @@ export interface ConceptProposalV2 extends CapabilityIdentityV2 {
   turn_id: string;
   video_skill_run_id: string | null;
   topic_id: string | null;
+  occurrence_id: string | null;
+  occurrence_index: number | null;
+  occurrence_count: number | null;
+  character_phase: "main" | "turnaround" | null;
   creative_direction_snapshot_id: string | null;
   proposal_revision: number;
   source_proposal_id: string | null;
