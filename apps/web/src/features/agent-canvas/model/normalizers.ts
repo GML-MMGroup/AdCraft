@@ -53,6 +53,7 @@ import type {
   CanvasNodeErrorV2,
   CanvasNodeExecutionModeV2,
   NodePromptPreparationV1,
+  RolePromptCompactionDecisionV2,
   PromptAssertionEvidenceV1,
   PromptAssertionSourceSnapshotV1,
   ResolvedNodeParameterV2,
@@ -171,6 +172,18 @@ const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status
   "failed",
   "superseded",
   "not_applicable",
+]);
+const ROLE_PROMPT_COMPACTION_OUTCOMES = new Set<RolePromptCompactionDecisionV2["outcome"]>([
+  "compacted",
+  "preserved",
+]);
+const ROLE_PROMPT_COMPACTION_REASONS = new Set<RolePromptCompactionDecisionV2["reason"]>([
+  "policy_disabled",
+  "not_eligible",
+  "ownership_unknown",
+  "identity_unproven",
+  "exact_duplicate",
+  "preserved_authority",
 ]);
 const PRESENTATION_STREAM_KINDS = new Set<PresentationStreamKindV1>(["assistant", "node_prompt"]);
 const PRESENTATION_STREAM_EVENT_TYPES = new Set<PresentationStreamEventTypeV1>([
@@ -900,6 +913,43 @@ function normalizePromptAssertionEvidenceV1(
   };
 }
 
+function normalizeRolePromptCompactionDecisionV2(
+  value: unknown,
+  path: string,
+): RolePromptCompactionDecisionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "block_id",
+    "source_id",
+    "source_digest",
+    "precedence",
+    "outcome",
+    "retained_block_id",
+    "retained_precedence",
+    "reason",
+  ], path);
+  const precedence = expectNonNegativeInteger(record.precedence, `${path}.precedence`);
+  if (precedence > 128) fail(`${path}.precedence`, "expected precedence at most 128");
+  const retainedPrecedence = record.retained_precedence === undefined || record.retained_precedence === null
+    ? null
+    : expectNonNegativeInteger(record.retained_precedence, `${path}.retained_precedence`);
+  if (retainedPrecedence !== null && retainedPrecedence > 128) {
+    fail(`${path}.retained_precedence`, "expected precedence at most 128");
+  }
+  return {
+    block_id: expectNonEmptyString(record.block_id, `${path}.block_id`),
+    source_id: expectNonEmptyString(record.source_id, `${path}.source_id`),
+    source_digest: requiredDigest(record.source_digest, `${path}.source_digest`),
+    precedence,
+    outcome: expectLiteral(record.outcome, ROLE_PROMPT_COMPACTION_OUTCOMES, `${path}.outcome`),
+    retained_block_id: record.retained_block_id === undefined || record.retained_block_id === null
+      ? null
+      : expectNonEmptyString(record.retained_block_id, `${path}.retained_block_id`),
+    retained_precedence: retainedPrecedence,
+    reason: expectLiteral(record.reason, ROLE_PROMPT_COMPACTION_REASONS, `${path}.reason`),
+  };
+}
+
 function normalizeNodePromptPreparationV1(
   value: unknown,
   path: string,
@@ -927,6 +977,9 @@ function normalizeNodePromptPreparationV1(
       "style_projection_digest",
       "brief_digest",
       "parameter_origins",
+      "compaction_policy_version",
+      "compaction_policy_digest",
+      "compaction_decisions",
       "assertion_evidence",
       "attempt_stage",
       "error",
@@ -960,6 +1013,24 @@ function normalizeNodePromptPreparationV1(
   const parameterOrigins = expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
     normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
   ));
+  const compactionPolicyVersion = nullableStringWithDefault(
+    record.compaction_policy_version,
+    `${path}.compaction_policy_version`,
+  );
+  if (compactionPolicyVersion !== null && !compactionPolicyVersion.trim()) {
+    fail(`${path}.compaction_policy_version`, "expected non-empty string");
+  }
+  const compactionPolicyDigest = nullableDigest(
+    record.compaction_policy_digest,
+    `${path}.compaction_policy_digest`,
+  );
+  const compactionDecisions = expectArray(
+    record.compaction_decisions ?? [],
+    `${path}.compaction_decisions`,
+  ).map((item, index) => normalizeRolePromptCompactionDecisionV2(
+    item,
+    `${path}.compaction_decisions[${index}]`,
+  ));
   if (status === "not_applicable" && (
     [
       operationId,
@@ -974,11 +1045,14 @@ function normalizeNodePromptPreparationV1(
       record.binding_digest,
       record.style_projection_digest,
       record.brief_digest,
+      compactionPolicyVersion,
+      compactionPolicyDigest,
       record.assertion_evidence,
       error,
     ].some((value) => value !== null && value !== undefined)
     || Object.keys(documentRevisions).length > 0
     || parameterOrigins.length > 0
+    || compactionDecisions.length > 0
   )) {
     fail(`${path}.status`, "not_applicable prompt preparation cannot have preparation data");
   }
@@ -1014,6 +1088,9 @@ function normalizeNodePromptPreparationV1(
     style_projection_digest: nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`),
     brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
     parameter_origins: parameterOrigins,
+    compaction_policy_version: compactionPolicyVersion,
+    compaction_policy_digest: compactionPolicyDigest,
+    compaction_decisions: compactionDecisions,
     assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
       ? null
       : normalizePromptAssertionEvidenceV1(

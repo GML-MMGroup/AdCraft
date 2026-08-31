@@ -2634,6 +2634,42 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("accepts prompt compaction provenance returned by historical workflow reads", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      error: null,
+      prompt_preparation: {
+        status: "ready",
+        attempt_no: 2,
+        prompt_digest: "a".repeat(64),
+        compaction_policy_version: "1",
+        compaction_policy_digest: "sha256:" + "b".repeat(64),
+        compaction_decisions: [{
+          block_id: "block-world-view",
+          source_id: "world-view-1",
+          source_digest: "sha256:" + "c".repeat(64),
+          precedence: 10,
+          outcome: "preserved",
+          retained_block_id: null,
+          retained_precedence: null,
+          reason: "preserved_authority",
+        }],
+        error: null,
+        updated_at: "2026-08-27T10:00:00Z",
+      },
+    });
+
+    expect(normalized.prompt_preparation).toMatchObject({
+      compaction_policy_version: "1",
+      compaction_policy_digest: "sha256:" + "b".repeat(64),
+      compaction_decisions: [{
+        block_id: "block-world-view",
+        outcome: "preserved",
+        reason: "preserved_authority",
+      }],
+    });
+  });
+
   it("accepts the explicit not-applicable prompt preparation state", () => {
     const normalized = normalizeCanvasNodeV2({
       ...validWorkflowPayload().nodes[1],

@@ -1621,6 +1621,23 @@ export interface PromptAssertionEvidenceV1 {
   evidence_digest: string;
 }
 
+export interface RolePromptCompactionDecisionV2 {
+  block_id: string;
+  source_id: string;
+  source_digest: string;
+  precedence: number;
+  outcome: "compacted" | "preserved";
+  retained_block_id: string | null;
+  retained_precedence: number | null;
+  reason:
+    | "policy_disabled"
+    | "not_eligible"
+    | "ownership_unknown"
+    | "identity_unproven"
+    | "exact_duplicate"
+    | "preserved_authority";
+}
+
 /**
  * Backend-owned prompt authoring progress for a visible Draft node.
  * It deliberately does not alter the Canvas node's four visible statuses.
@@ -1645,6 +1662,9 @@ export interface NodePromptPreparationV1 {
   style_projection_digest: string | null;
   brief_digest: string | null;
   parameter_origins: ResolvedNodeParameterV2[];
+  compaction_policy_version: string | null;
+  compaction_policy_digest: string | null;
+  compaction_decisions: RolePromptCompactionDecisionV2[];
   assertion_evidence: PromptAssertionEvidenceV1 | null;
   attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
