@@ -62,7 +62,7 @@ function exportedAsset() {
     status: "ready",
     size_bytes: 1024,
     storage_key: null,
-    preview_url: "/api/v2/assets/asset-export/content",
+    preview_url: "/api/v2/assets/asset-export/preview.webp",
     media_url: "/api/v2/assets/asset-export/content",
     width: 1920,
     height: 1080,
@@ -101,6 +101,7 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string) 
 test("exports, downloads, and imports a 30 second Editing result without creating Provider work", async ({ page }) => {
   const providerRequests: string[] = [];
   const downloadRequests: string[] = [];
+  const previewRequests: string[] = [];
   const exportRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const importRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const bindingRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
@@ -108,7 +109,19 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
   await page.route("**/api/v2/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.pathname === "/api/v2/assets/asset-export/preview.webp") {
+      previewRequests.push(request.url());
+    }
     if (/provider|run|execution/i.test(url.pathname)) providerRequests.push(url.pathname);
+
+    if (url.pathname === "/api/v2/assets/asset-export/preview.webp") {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/webp",
+        body: "mock-preview-bytes",
+      });
+      return;
+    }
 
     if (url.pathname === "/api/v2/assets/asset-export/content" && url.searchParams.get("download") === "true") {
       downloadRequests.push("asset-export");
@@ -240,6 +253,10 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
 
   await page.getByRole("button", { name: "Add exported video to canvas" }).click();
   await expect(page.getByTestId("agent-canvas-node-video-export")).toBeVisible();
+  const importedNodeCard = page.getByTestId("agent-canvas-node-video-export");
+  await expect(importedNodeCard.locator("video")).toHaveCount(0);
+  await expect.poll(() => previewRequests.length).toBe(1);
+  expect(new URL(previewRequests[0]).searchParams.get("v")).toBe("version-asset-export");
   await expect(page.getByTestId("import-binding")).toContainText("node_output:video-export");
   const importedWorkbench = page.getByTestId("imported-workbench");
   await expect(importedWorkbench.locator("button, input, select, textarea")).toHaveCount(0);
