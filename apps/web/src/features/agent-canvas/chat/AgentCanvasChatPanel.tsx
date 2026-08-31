@@ -138,6 +138,7 @@ export function AgentCanvasChatPanel({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  onProjectsRefresh,
   runtime = null,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -152,6 +153,7 @@ export function AgentCanvasChatPanel({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  onProjectsRefresh?: () => Promise<boolean> | void;
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -567,6 +569,7 @@ export function AgentCanvasChatPanel({
         issue={chat.state.guidedInteractionIssue}
         pendingProductMainHandoff={composerContext.productMainHandoff}
         onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
+        onProjectsRefresh={onProjectsRefresh}
         selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
         onSelectConceptOption={(optionId) => {
           setSelectedConceptOptionId(optionId);

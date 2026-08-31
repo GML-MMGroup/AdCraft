@@ -12,6 +12,50 @@ type ProjectCoverCacheEntry = {
 
 type ProjectCoverCache = Record<string, ProjectCoverCacheEntry>;
 
+export function projectCoverCacheKey(projectId: string, cover: Pick<V2ProjectCover, "assetId" | "versionId">) {
+  return `project:${encodeURIComponent(projectId)}:cover:${encodeURIComponent(cover.assetId)}:${encodeURIComponent(cover.versionId)}`;
+}
+
+/** Load the newest cached version for a project while migrating legacy project-only keys. */
+export function loadLatestProjectCoverCache(
+  projectId: string,
+  storage: Storage | undefined = getStorage(),
+  options: { allowStale?: boolean } = {},
+): V2ProjectCover | undefined {
+  if (!storage) return undefined;
+  try {
+    const raw = storage.getItem(PROJECT_COVER_CACHE_KEY);
+    if (!raw) return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isProjectCoverCache(parsed)) return undefined;
+    const prefix = `project:${encodeURIComponent(projectId)}:cover:`;
+    const candidates = Object.entries(parsed)
+      .filter(([key]) => key.startsWith(prefix) || key === `project:${projectId}`)
+      .filter(([, entry]) => options.allowStale || Date.now() - entry.savedAt <= PROJECT_COVER_CACHE_MAX_AGE_MS)
+      .sort(([, left], [, right]) => right.savedAt - left.savedAt);
+    const candidate = candidates[0];
+    if (!candidate) return undefined;
+    const [, entry] = candidate;
+    const cover = normalizeProjectCover(entry.cover);
+    if (candidate[0] === `project:${projectId}`) {
+      saveProjectCoverCache(projectCoverCacheKey(projectId, cover), cover, storage);
+      try {
+        const migratedRaw = storage.getItem(PROJECT_COVER_CACHE_KEY);
+        const migratedParsed: unknown = migratedRaw ? JSON.parse(migratedRaw) : null;
+        if (isProjectCoverCache(migratedParsed)) {
+          delete migratedParsed[candidate[0]];
+          storage.setItem(PROJECT_COVER_CACHE_KEY, JSON.stringify(migratedParsed));
+        }
+      } catch {
+        // Keep the migrated version usable even if legacy-key cleanup is unavailable.
+      }
+    }
+    return cover;
+  } catch {
+    return undefined;
+  }
+}
+
 export function loadProjectCoverCache(
   identity: string,
   storage: Storage | undefined = getStorage(),
