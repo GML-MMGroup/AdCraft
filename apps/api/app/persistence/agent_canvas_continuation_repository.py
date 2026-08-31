@@ -25,6 +25,9 @@ from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.schemas.v2_persistence import V2EventInsert
 
 
+_PROMPT_PREPARATION_RECOVERY_DELAY = timedelta(minutes=5)
+
+
 class AgentCanvasContinuationOutboxRepository:
     """Own durable continuation dispatch identities and worker leases."""
 
@@ -539,6 +542,105 @@ class AgentCanvasContinuationOutboxRepository:
             error_code=error_code,
             error_message=error_message,
         )
+
+    def defer_for_prompt_preparation(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        materialization_id: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
+        """Release one lease into a no-attempt durable dependency wait."""
+
+        if not materialization_id.startswith("materialization_") or len(materialization_id) > 160:
+            raise _error(
+                "continuation_dependency_invalid",
+                "Prompt-preparation dependency identity is invalid.",
+            )
+        timestamp = _utc(now)
+        return self._finish_owned(
+            continuation_id,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            status="retry_wait",
+            now=timestamp,
+            next_attempt_at=timestamp + _PROMPT_PREPARATION_RECOVERY_DELAY,
+            increment_attempt=False,
+            error_code="prompt_preparation_pending",
+            error_message=materialization_id,
+        )
+
+    def wake_prompt_preparation_wait(
+        self,
+        continuation_id: str,
+        *,
+        materialization_id: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2 | None:
+        """Requeue only the exact current Prompt Preparation dependency wait."""
+
+        timestamp = _utc(now)
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = _select_one(connection, continuation_id)
+                    if (
+                        row is None
+                        or str(row["status"]) != "retry_wait"
+                        or str(row["last_error_code"] or "") != "prompt_preparation_pending"
+                        or str(row["last_error_message"] or "") != materialization_id
+                    ):
+                        connection.rollback()
+                        return None
+                    values = {
+                        "status": "queued",
+                        "next_attempt_at": _iso(timestamp),
+                        "lease_owner": None,
+                        "lease_expires_at": None,
+                        "last_error_code": None,
+                        "last_error_message": None,
+                        "updated_at": _iso(timestamp),
+                    }
+                    changed = connection.execute(
+                        update(AgentCanvasContinuationOutboxRow)
+                        .where(
+                            AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+                            AgentCanvasContinuationOutboxRow.status == "retry_wait",
+                            AgentCanvasContinuationOutboxRow.last_error_code
+                            == "prompt_preparation_pending",
+                            AgentCanvasContinuationOutboxRow.last_error_message
+                            == materialization_id,
+                        )
+                        .values(**values)
+                    )
+                    if changed.rowcount != 1:
+                        connection.rollback()
+                        return None
+                    updated = {**row, **values}
+                    self._append_lifecycle_event(
+                        connection,
+                        updated,
+                        event_type="continuation_queued",
+                        transition_key=(
+                            "conversation:"
+                            f"{row['continuation_turn_id']}:"
+                            "continuation_queued:prompt_preparation:"
+                            f"{row['lease_generation']}"
+                        ),
+                        created_at=timestamp,
+                    )
+                    connection.commit()
+                    return _delivery(updated)
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
 
     def fail(
         self,

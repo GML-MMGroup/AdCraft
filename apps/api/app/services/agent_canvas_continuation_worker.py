@@ -27,12 +27,16 @@ from app.services.v2_agent_contract_registry import (
 logger = logging.getLogger(__name__)
 
 
+DependencyReconciler = Callable[[ContinuationDeliveryV2, str], object]
+
+
 @dataclass(frozen=True)
 class ContinuationWorkerCycle:
     claimed: int
     completed: int
     retried: int
     failed: int
+    deferred: int = 0
     lease_lost: int = 0
 
 
@@ -56,6 +60,7 @@ class AgentCanvasContinuationWorker:
         maximum_backoff: timedelta = timedelta(minutes=5),
         jitter: Callable[[int], timedelta] | None = None,
         fail_turn: Callable[[str, str, str, bool], object] | None = None,
+        dependency_reconciler: DependencyReconciler | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_heartbeat,
     ) -> None:
         self._outbox = outbox
@@ -74,6 +79,7 @@ class AgentCanvasContinuationWorker:
         self._maximum_backoff = maximum_backoff
         self._jitter = jitter or (lambda _: timedelta(0))
         self._fail_turn = fail_turn
+        self._dependency_reconciler = dependency_reconciler
         self._heartbeat_wait = heartbeat_wait
 
     def run_once(self) -> ContinuationWorkerCycle:
@@ -86,7 +92,7 @@ class AgentCanvasContinuationWorker:
         completed = 0
         retried = 0
         failed = 0
-        lease_lost = 0
+        deferred = lease_lost = 0
         for delivery in claimed:
             try:
                 outcome = self._process_one(delivery)
@@ -107,12 +113,14 @@ class AgentCanvasContinuationWorker:
             completed += outcome == "completed"
             retried += outcome == "retried"
             failed += outcome == "failed"
+            deferred += outcome == "deferred"
             lease_lost += outcome == "lease_lost"
         return ContinuationWorkerCycle(
             claimed=len(claimed),
             completed=completed,
             retried=retried,
             failed=failed,
+            deferred=deferred,
             lease_lost=lease_lost,
         )
 
@@ -146,6 +154,32 @@ class AgentCanvasContinuationWorker:
         except Exception as error:  # noqa: BLE001 - each delivery is isolated.
             if _is_stale_lease(error):
                 return "lease_lost"
+            materialization_id = _prompt_dependency_materialization_id(error)
+            if materialization_id is not None:
+                try:
+                    lease_scope.assert_owned()
+                    self._outbox.defer_for_prompt_preparation(
+                        delivery.continuation_id,
+                        worker_id=self._worker_id,
+                        lease_generation=delivery.lease_generation,
+                        materialization_id=materialization_id,
+                        now=self._clock(),
+                    )
+                except Exception as stale_error:  # noqa: BLE001 - fenced wait transition.
+                    if _is_stale_lease(stale_error):
+                        return "lease_lost"
+                    raise
+                if self._dependency_reconciler is not None:
+                    try:
+                        self._dependency_reconciler(delivery, materialization_id)
+                    except Exception:  # noqa: BLE001 - durable recovery remains available.
+                        logger.exception(
+                            "Prompt-preparation dependency reconciliation failed "
+                            "continuation_id=%s materialization_id=%s",
+                            delivery.continuation_id,
+                            materialization_id,
+                        )
+                return "deferred"
             if (
                 isinstance(error, V2PersistenceError)
                 and error.code == "requirement_revision_superseded"
@@ -308,3 +342,12 @@ def _structured_failure(error: Exception) -> tuple[str, bool, bool]:
 
 def _is_stale_lease(error: Exception) -> bool:
     return isinstance(error, V2PersistenceError) and error.code == "continuation_lease_stale"
+
+
+def _prompt_dependency_materialization_id(error: Exception) -> str | None:
+    if not isinstance(error, V2PersistenceError) or error.code != "prompt_preparation_pending":
+        return None
+    value = error.details.get("materialization_id")
+    if not isinstance(value, str) or not value.startswith("materialization_") or len(value) > 160:
+        return None
+    return value
