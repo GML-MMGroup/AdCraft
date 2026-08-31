@@ -344,7 +344,7 @@ class CapabilityMaterializationPublicationService:
             return False
         if not outcome.node_ids:
             return False
-        reference_source_opener(
+        opened = reference_source_opener(
             workflow_id=envelope.workflow_id,
             target_node_id=outcome.node_ids[0],
             target_node_revision=1,
@@ -356,7 +356,7 @@ class CapabilityMaterializationPublicationService:
             else None,
             source_turn_id=source_turn_id,
         )
-        return True
+        return bool(opened)
 
     def _prepare_guided_document_stage(
         self,

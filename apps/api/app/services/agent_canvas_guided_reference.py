@@ -7,6 +7,7 @@ from collections.abc import Callable
 from app.persistence.agent_canvas_guided_reference_repository import (
     AgentCanvasGuidedReferenceRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
@@ -17,6 +18,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedReferenceKindV1,
 )
 from app.services.agent_canvas_assets import AgentCanvasAssetService
+from app.services.agent_canvas_requirements import character_occurrences_for_authoring
 
 
 class GuidedReferenceSourceService:
@@ -47,8 +49,22 @@ class GuidedReferenceSourceService:
         reference_kind: GuidedReferenceKindV1,
         occurrence_id: str | None,
         source_turn_id: str,
-    ) -> None:
+    ) -> bool:
         """Open the optional reference wait for a newly published Main Draft."""
+
+        if reference_kind == "character_main":
+            requirement = AgentCanvasRequirementRepository(
+                self._workflows.database
+            ).get_current(workflow_id)
+            occurrences = character_occurrences_for_authoring(requirement)
+            if not occurrences:
+                return False
+            if occurrence_id not in {item.occurrence_id for item in occurrences}:
+                raise V2PersistenceError(
+                    "guided_reference_source_occurrence_mismatch",
+                    "Reference source occurrence is not present in the Requirement Ledger.",
+                    stage="guided_reference_service",
+                )
 
         session = self._workflows.database
         with session.engine.connect() as connection:
@@ -84,6 +100,7 @@ class GuidedReferenceSourceService:
             target_node_revision=target_node_revision,
             occurrence_id=occurrence_id,
         )
+        return True
 
     def submit_interaction(
         self,
