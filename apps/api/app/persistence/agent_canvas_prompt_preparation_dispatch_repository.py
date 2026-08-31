@@ -1296,7 +1296,9 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 if status == "superseded"
                 else "node_prompt_preparation_dispatch_reconciled"
             ),
-            transition_key=f"prompt-dispatch:{result.dispatch_id}:reconcile:{status}",
+            transition_key=(
+                f"prompt-dispatch:{result.dispatch_id}:reconcile:{status}:{result.lease_generation}"
+            ),
             created_at=timestamp,
         )
         return result
