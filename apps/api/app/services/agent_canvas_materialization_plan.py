@@ -23,6 +23,11 @@ from app.schemas.agent_canvas_materialization_commit import (
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    normalize_queued_node,
+)
+from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_working_documents import StoryboardProductionPlanContentV3
 from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
@@ -46,11 +51,75 @@ class CapabilityMaterializationPlanCompiler:
         *,
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
+        prompt_context: StageAuthoringContextV1 | None = None,
     ) -> MaterializationPlanV1:
         bundle = self.compile_draft_bundle(envelope, normalization)
         nodes = bundle.nodes
         bindings = bundle.bindings
-        preparations = bundle.prompt_preparations
+        preparations = tuple(
+            item.model_copy(update={"context": prompt_context})
+            if prompt_context is not None
+            else item
+            for item in bundle.prompt_preparations
+        )
+        if prompt_context is not None and preparations:
+            # Materialization operation identities must be compiled from the
+            # same detached context that the transaction persists.  Keeping
+            # the bundle's pre-context identity here would make the Node row,
+            # dispatch row, and immutable plan disagree during commit.
+            _, frozen_context_digest = detached_context_payload(prompt_context)
+            normalized_nodes: list[CanvasNodeV2] = []
+            preparation_by_node = {item.node_id: item for item in preparations}
+            normalized_preparations: list[NodePromptPreparationIntentV1] = []
+            for node in nodes:
+                node_bindings = tuple(
+                    binding for binding in bindings if binding.target_node_id == node.node_id
+                )
+                normalized = normalize_queued_node(
+                    node,
+                    bindings=node_bindings,
+                    context_digest=frozen_context_digest,
+                )
+                normalized_nodes.append(normalized)
+                preparation = preparation_by_node.get(node.node_id)
+                if preparation is not None:
+                    normalized_preparations.append(
+                        preparation.model_copy(
+                            update={
+                                "operation_id": normalized.prompt_preparation.operation_id,
+                            }
+                        )
+                    )
+            nodes = tuple(normalized_nodes)
+            preparations = tuple(normalized_preparations)
+        derivative_intent = bundle.derivative_intent
+        if derivative_intent is not None and prompt_context is not None:
+            parent_node = next(
+                (node for node in nodes if node.node_id == derivative_intent.parent.node_id),
+                None,
+            )
+            if parent_node is None:
+                raise ValueError("parent_materialization_missing")
+            parent = derivative_intent.parent.model_copy(
+                update={
+                    "node_revision": parent_node.revision,
+                    "prompt_preparation_operation_id": (
+                        parent_node.prompt_preparation.operation_id
+                    ),
+                }
+            )
+            if parent.prompt_preparation_operation_id is None:
+                raise ValueError("parent_prompt_preparation_identity_missing")
+            derivative_intent = derivative_intent.model_copy(
+                update={
+                    "parent": parent,
+                    "payload_digest": _digest(
+                        f"{derivative_intent.workflow_id}:{parent.node_id}:"
+                        f"{parent.node_revision}:{parent.prompt_preparation_operation_id}:"
+                        f"{derivative_intent.derivative_role}"
+                    ),
+                }
+            )
         storyboard_draft_preparation_queued = _has_storyboard_draft_preparation_evidence(
             envelope,
             nodes=nodes,
@@ -98,7 +167,7 @@ class CapabilityMaterializationPlanCompiler:
             "prompt_preparations": preparations,
             "operation_kind": envelope.operation_kind,
             "parent_snapshot": envelope.parent_snapshot,
-            "derivative_intent": bundle.derivative_intent,
+            "derivative_intent": derivative_intent,
             "journey_event": _journey_event(
                 envelope,
                 snapshot,

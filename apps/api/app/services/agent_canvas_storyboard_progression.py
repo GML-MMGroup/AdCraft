@@ -688,9 +688,9 @@ def _video_identity_nodes(workflow) -> tuple[tuple[str, object], ...]:
     selected: list[tuple[str, object]] = []
     for node in workflow.nodes:
         role = None
-        if (
-            node.creative_role == "product"
-            and node.structured_content.get("asset_kind") == "multi_view"
+        if node.creative_role == "product" and (
+            node.structured_content.get("asset_kind") == "multi_view"
+            or node.metadata.get("source_input_kind") == "multiview"
         ):
             role = "product_multiview"
         elif node.creative_role == "prop":

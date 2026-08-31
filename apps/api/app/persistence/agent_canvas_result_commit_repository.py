@@ -12,6 +12,12 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
+from app.persistence.agent_canvas_repository import (
+    invalidate_prompt_preparations_for_source_in_transaction,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -38,6 +44,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 FaultInjector = Callable[[str], None]
 _TERMINAL_MEMBER_STATES = ("succeeded", "failed", "cancelled")
+_TERMINAL_EXECUTION_STATES = ("completed", "partial_completed", "failed", "cancelled")
 
 
 class AgentCanvasResultCommitRepository:
@@ -56,6 +63,10 @@ class AgentCanvasResultCommitRepository:
         self._database = database
         self._assets = assets
         self._events = events
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(
+            database,
+            events,
+        )
         self._fault = fault_injector or (lambda _boundary: None)
 
     def commit(
@@ -91,6 +102,27 @@ class AgentCanvasResultCommitRepository:
                         )
                         connection.commit()
                         return receipt
+                    execution = (
+                        connection.execute(
+                            select(AgentCanvasExecutionRow).where(
+                                AgentCanvasExecutionRow.execution_id == command.execution_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if execution is None:
+                        raise _error(
+                            "execution_not_found",
+                            "Execution was not found.",
+                        )
+                    if str(execution["status"]) in _TERMINAL_EXECUTION_STATES or bool(
+                        execution["cancel_requested"]
+                    ):
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Execution is no longer accepting worker results.",
+                        )
                     self._assert_current_lease(connection, command)
                     member = (
                         connection.execute(
@@ -149,6 +181,14 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Canvas Node already has a terminal Ready result.",
                         )
+                    invalidate_prompt_preparations_for_source_in_transaction(
+                        connection,
+                        events=self._events,
+                        prompt_dispatch=self._prompt_dispatch,
+                        workflow_id=command.workflow_id,
+                        source_node_id=command.node_id,
+                        updated_at=timestamp,
+                    )
                     self._fault("after_node")
                     connection.execute(
                         update(AgentCanvasExecutionMemberRow)
@@ -255,6 +295,187 @@ class AgentCanvasResultCommitRepository:
             raise _error(
                 "execution_result_commit_failed",
                 "Execution result could not be committed.",
+            ) from error
+
+    def reconcile_stale_lease_failure(
+        self,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> CanvasExecutionResultCommitReceiptV2 | None:
+        """Terminalize the exact expired publication generation once.
+
+        A publication callback that loses its lease cannot use ``commit`` because
+        that method deliberately rejects expired ownership.  This authority path
+        records the typed failure only when the persisted lease still matches the
+        callback's exact generation and is expired; a newer generation or an
+        already-terminal result is a safe no-op.
+        """
+
+        if command.outcome != "failed":
+            raise ValueError("Stale lease reconciliation requires a failed result.")
+        timestamp = command.committed_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasExecutionResultCommitRow).where(
+                                AgentCanvasExecutionResultCommitRow.logical_result_key
+                                == command.logical_result_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is not None:
+                        receipt = _receipt(existing)
+                        if receipt.payload_digest != command.payload_digest:
+                            raise _error(
+                                "execution_result_payload_conflict",
+                                "Execution result identity is immutable.",
+                            )
+                        connection.commit()
+                        return receipt
+
+                    lease = (
+                        connection.execute(
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == command.execution_id,
+                                AgentCanvasNodeLeaseRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if lease is None or (
+                        str(lease["owner_id"]) != command.lease_owner_id
+                        or int(lease["generation"]) != command.lease_generation
+                        or str(lease["state"]) != "claimed"
+                        or str(lease["expires_at"]) > timestamp
+                    ):
+                        connection.rollback()
+                        return None
+
+                    member = (
+                        connection.execute(
+                            select(AgentCanvasExecutionMemberRow).where(
+                                AgentCanvasExecutionMemberRow.member_id == command.member_id,
+                                AgentCanvasExecutionMemberRow.execution_id == command.execution_id,
+                                AgentCanvasExecutionMemberRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if member is None or str(member["state"]) in _TERMINAL_MEMBER_STATES:
+                        connection.rollback()
+                        return None
+
+                    error_json = command.error.model_dump_json() if command.error else None
+                    changed = connection.execute(
+                        update(AgentCanvasNodeRow)
+                        .where(
+                            AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                            AgentCanvasNodeRow.node_id == command.node_id,
+                            AgentCanvasNodeRow.status != "ready",
+                        )
+                        .values(status="failed", error_json=error_json, updated_at=timestamp)
+                    )
+                    if changed.rowcount != 1:
+                        connection.rollback()
+                        return None
+                    connection.execute(
+                        update(AgentCanvasExecutionMemberRow)
+                        .where(AgentCanvasExecutionMemberRow.member_id == command.member_id)
+                        .values(
+                            state="failed",
+                            phase=None,
+                            error_json=error_json,
+                            updated_at=timestamp,
+                        )
+                    )
+                    if command.provider_task_id is not None:
+                        connection.execute(
+                            update(AgentCanvasProviderTaskRow)
+                            .where(
+                                AgentCanvasProviderTaskRow.task_id == command.provider_task_id,
+                                AgentCanvasProviderTaskRow.lease_generation
+                                <= command.lease_generation,
+                            )
+                            .values(
+                                status="failed",
+                                lease_generation=command.lease_generation,
+                                next_poll_at=None,
+                                error_json=error_json,
+                                updated_at=timestamp,
+                            )
+                        )
+                    connection.execute(
+                        update(AgentCanvasNodeLeaseRow)
+                        .where(
+                            AgentCanvasNodeLeaseRow.execution_id == command.execution_id,
+                            AgentCanvasNodeLeaseRow.node_id == command.node_id,
+                            AgentCanvasNodeLeaseRow.owner_id == command.lease_owner_id,
+                            AgentCanvasNodeLeaseRow.generation == command.lease_generation,
+                            AgentCanvasNodeLeaseRow.state == "claimed",
+                        )
+                        .values(state="expired", heartbeat_at=timestamp)
+                    )
+                    aggregate = self._derive_execution_status(connection, command.execution_id)
+                    connection.execute(
+                        update(AgentCanvasExecutionRow)
+                        .where(AgentCanvasExecutionRow.execution_id == command.execution_id)
+                        .values(status=aggregate, updated_at=timestamp)
+                    )
+                    commit_id = (
+                        "result_commit_"
+                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[
+                            :32
+                        ]
+                    )
+                    event_cursor = self._append_stale_failure_events(
+                        connection,
+                        command,
+                        execution_status=aggregate,
+                    )
+                    receipt = CanvasExecutionResultCommitReceiptV2(
+                        commit_id=commit_id,
+                        logical_result_key=command.logical_result_key,
+                        payload_digest=command.payload_digest,
+                        outcome="failed",
+                        asset_id=None,
+                        version_id=None,
+                        event_cursor=event_cursor,
+                        committed_at=command.committed_at,
+                    )
+                    connection.execute(
+                        insert(AgentCanvasExecutionResultCommitRow).values(
+                            commit_id=commit_id,
+                            logical_result_key=command.logical_result_key,
+                            payload_digest=command.payload_digest,
+                            workflow_id=command.workflow_id,
+                            execution_id=command.execution_id,
+                            member_id=command.member_id,
+                            node_id=command.node_id,
+                            outcome="failed",
+                            asset_id=None,
+                            version_id=None,
+                            event_cursor=event_cursor,
+                            receipt_json=receipt.model_dump_json(),
+                            committed_at=timestamp,
+                        )
+                    )
+                    connection.commit()
+                    return receipt
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_commit_failed",
+                "Stale execution result could not be reconciled.",
             ) from error
 
     def list_receipts(self, execution_id: str) -> tuple[CanvasExecutionResultCommitReceiptV2, ...]:
@@ -508,6 +729,41 @@ class AgentCanvasResultCommitRepository:
                     event_type=terminal_event,
                     created_at=command.committed_at.isoformat(),
                     payload={"execution_status": execution_status},
+                ),
+            )
+        return last.seq
+
+    def _append_stale_failure_events(self, connection, command, *, execution_status: str) -> int:
+        """Append deterministic diagnostics and terminal runtime events."""
+
+        last = None
+        events = (
+            (
+                "node_result_publication_lease_lost",
+                {"error": command.error.model_dump() if command.error else {}},
+            ),
+            ("node_failed", {"error": command.error.model_dump() if command.error else {}}),
+            ("runtime_snapshot_updated", {"execution_status": execution_status}),
+        )
+        terminal_event = {
+            "completed": "execution_completed",
+            "partial_completed": "execution_partial_completed",
+            "failed": "execution_failed",
+            "cancelled": "execution_cancelled",
+        }.get(execution_status)
+        if terminal_event is not None:
+            events += ((terminal_event, {"execution_status": execution_status}),)
+        for ordinal, (event_type, payload) in enumerate(events):
+            last = self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=command.workflow_id,
+                    execution_id=command.execution_id,
+                    node_id=command.node_id,
+                    transition_key=f"result:{command.logical_result_key}:stale:{ordinal}:{event_type}",
+                    event_type=event_type,
+                    created_at=command.committed_at.isoformat(),
+                    payload=payload,
                 ),
             )
         return last.seq

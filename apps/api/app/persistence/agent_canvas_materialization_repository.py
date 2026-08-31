@@ -19,6 +19,10 @@ from app.persistence.agent_canvas_auto_run_repository import (
     AgentCanvasAutomaticRunRepository,
     is_automatic_run_eligible_node_type,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+    normalize_queued_node,
+)
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
@@ -62,8 +66,10 @@ from app.persistence.models import (
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedInteractionSubmissionRow,
+    AgentCanvasIdempotencyRow,
     AgentCanvasMaterializationCommitRow,
     AgentCanvasNodeRow,
+    AgentCanvasOperationEnvelopeRow,
     AgentCanvasPromptContextSnapshotRow,
     AgentCanvasWorkflowRow,
     AgentWorkingDocumentRow,
@@ -91,6 +97,8 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationPlanV1,
     StageMaterializedJourneyEventV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.schemas.agent_canvas_prompt_preparation_dispatch import detached_context_payload
 from app.schemas.agent_working_documents import (
     AgentAnchorImageAssetVersionSourceV3,
     AgentAnchorNodeSourceV3,
@@ -126,9 +134,22 @@ from app.services.agent_canvas_production_journey_reducer import (
     GuidedProductionJourneyReducer,
 )
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+from app.services.agent_canvas_storyboard_selection_identity import (
+    StoryboardSelectionIdsV1,
+    derive_storyboard_selection_ids,
+    identity_digest_from_envelope,
+    identity_from_envelope,
+)
 
 
 MaterializationEnvelopeV1 = CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1
+
+
+# These records deliberately reuse the existing idempotency ledger.  They are
+# private persistence facts, not a second public interaction or lineage table.
+_STORYBOARD_IDENTITY_OPERATION = "storyboard_selection_identity_v1"
+_STORYBOARD_ALIAS_OPERATION = "storyboard_selection_alias_v1"
+_STORYBOARD_RECORD_SCHEMA = "storyboard-selection-lineage-v1"
 
 
 class AgentCanvasMaterializationRepository:
@@ -151,7 +172,72 @@ class AgentCanvasMaterializationRepository:
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
         self._requirements = AgentCanvasRequirementRepository(database)
         self._working_documents = AgentWorkingDocumentRepository(database, events)
+        self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
         self._fault_injector = fault_injector
+
+    def storyboard_identity_exists(self, identity_digest: str) -> bool:
+        """Return whether one canonical Storyboard selection claim is persisted.
+
+        The service uses this read only as a replay hint.  The authoritative
+        check-and-claim still happens inside :meth:`queue`'s ``BEGIN IMMEDIATE``
+        transaction, so a concurrent repository cannot race this helper.
+        """
+
+        if not _is_digest(identity_digest):
+            return False
+        try:
+            with self._database.engine.connect() as connection:
+                return (
+                    connection.execute(
+                        select(AgentCanvasIdempotencyRow.record_id).where(
+                            AgentCanvasIdempotencyRow.operation == _STORYBOARD_IDENTITY_OPERATION,
+                            AgentCanvasIdempotencyRow.idempotency_key == identity_digest,
+                        )
+                    ).scalar_one_or_none()
+                    is not None
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "capability_materialization_failed",
+                "Storyboard selection identity could not be read.",
+            ) from error
+
+    def storyboard_alias_exists(self, idempotency_key: str, identity_digest: str) -> bool:
+        """Return whether a client key aliases the supplied Storyboard identity.
+
+        A key already bound to another identity is misuse, not a cache miss.  It
+        therefore raises the same typed conflict used by the transactional queue
+        instead of allowing the caller to allocate a competing branch.
+        """
+
+        if not idempotency_key or not _is_digest(identity_digest):
+            return False
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasIdempotencyRow.response_json).where(
+                            AgentCanvasIdempotencyRow.operation == _STORYBOARD_ALIAS_OPERATION,
+                            AgentCanvasIdempotencyRow.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "capability_materialization_failed",
+                "Storyboard selection alias could not be read.",
+            ) from error
+        if row is None:
+            return False
+        record = _decode_storyboard_record(row["response_json"])
+        if record["identity_digest"] != identity_digest:
+            raise _error(
+                "idempotency_conflict",
+                "Idempotency key was reused for a different Storyboard selection.",
+            )
+        return True
 
     def get_completed_outcome(
         self,
@@ -212,6 +298,9 @@ class AgentCanvasMaterializationRepository:
         topic_id = proposal.topic_id
 
         primary_node = nodes[0] if nodes else None
+        preparation_contexts = {
+            item.node_id: item.context for item in materialization_plan.prompt_preparations
+        }
         node_ids = tuple(item.node_id for item in nodes)
         if len(set(node_ids)) != len(node_ids) or any(
             item.workflow_id != workflow_id for item in nodes
@@ -465,6 +554,10 @@ class AgentCanvasMaterializationRepository:
                             "Proposal is not the current Guidance checkpoint.",
                         )
                     snapshot_ids: dict[str, str] = {}
+                    persisted_prompt_preparation_ids: dict[str, str] = {}
+                    planned_preparation_node_ids = {
+                        item.node_id for item in materialization_plan.prompt_preparations
+                    }
                     for bundle_node in nodes:
                         node_bindings = tuple(
                             binding
@@ -478,7 +571,29 @@ class AgentCanvasMaterializationRepository:
                             creative_direction_snapshot_id=creative_direction_snapshot_id,
                             skill_refs=skill_refs,
                             now=now,
+                            prompt_dispatch=self._prompt_dispatch,
+                            prompt_context=preparation_contexts.get(bundle_node.node_id),
                         )
+                        if bundle_node.node_id in planned_preparation_node_ids:
+                            persisted_preparation_json = connection.execute(
+                                select(AgentCanvasNodeRow.prompt_preparation_json).where(
+                                    AgentCanvasNodeRow.workflow_id == workflow_id,
+                                    AgentCanvasNodeRow.node_id == bundle_node.node_id,
+                                )
+                            ).scalar_one()
+                            persisted_preparation = json.loads(str(persisted_preparation_json))
+                            persisted_operation_id = persisted_preparation.get("operation_id")
+                            if (
+                                not isinstance(persisted_operation_id, str)
+                                or not persisted_operation_id
+                            ):
+                                raise _error(
+                                    "prompt_preparation_dispatch_missing",
+                                    "Materialized Node has no persisted prompt-preparation owner.",
+                                )
+                            persisted_prompt_preparation_ids[bundle_node.node_id] = (
+                                persisted_operation_id
+                            )
                     if fault_injector is not None:
                         fault_injector("node")
                         fault_injector("binding")
@@ -1512,7 +1627,8 @@ class AgentCanvasMaterializationRepository:
                             before=False,
                         ),
                         prompt_preparation_ids=tuple(
-                            item.operation_id for item in materialization_plan.prompt_preparations
+                            persisted_prompt_preparation_ids[item.node_id]
+                            for item in materialization_plan.prompt_preparations
                         ),
                         receipt_id=(receipt.receipt_id if receipt is not None else None),
                         workflow_revision=expected_workflow_revision + 1,
@@ -1550,6 +1666,395 @@ class AgentCanvasMaterializationRepository:
             )
         return materialization_outcome
 
+    def _resolve_storyboard_identity_in_transaction(
+        self,
+        connection: Connection,
+        envelope: MaterializationEnvelopeV1,
+        *,
+        action_request: Mapping[str, object],
+        idempotency_key: str,
+        timestamp: str,
+    ) -> bool:
+        """Claim or replay one Storyboard selection under the queue writer lock.
+
+        This method is intentionally private and is called only by ``queue`` for
+        action submissions.  Direct legacy ``submit`` calls (which carry no
+        request key) continue through the existing generic path.  The identity
+        and alias rows use the existing idempotency ledger so no second lineage
+        authority or schema is introduced.
+
+        ``True`` means the canonical records already exist and the caller may
+        commit and return their projection without creating any new rows.
+        ``False`` means this transaction owns the first claim; the caller must
+        continue through the normal queue inserts before committing.
+        """
+
+        identity_digest, ids, record = _storyboard_identity_facts(envelope)
+        # The domain identity is the alias fingerprint.  Route-specific
+        # wrappers (guided metadata and accepted-reference ordering) are not
+        # independent lineage inputs; immutable option/reference/revision
+        # changes alter ``identity_digest`` and therefore still conflict.
+        request_fingerprint = identity_digest
+        alias = (
+            connection.execute(
+                select(AgentCanvasIdempotencyRow).where(
+                    AgentCanvasIdempotencyRow.operation == _STORYBOARD_ALIAS_OPERATION,
+                    AgentCanvasIdempotencyRow.idempotency_key == idempotency_key,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if alias is not None:
+            alias_record = _decode_storyboard_record(alias["response_json"])
+            if (
+                alias_record["identity_digest"] != identity_digest
+                or str(alias["request_fingerprint"]) != request_fingerprint
+            ):
+                raise _error(
+                    "idempotency_conflict",
+                    "Idempotency key was reused for a different Storyboard request.",
+                )
+        try:
+            _validate_storyboard_action_request(action_request, envelope)
+        except V2PersistenceError as error:
+            if alias is not None and error.code == "materialization_payload_conflict":
+                raise _error(
+                    "idempotency_conflict",
+                    "Idempotency key was reused for a different Storyboard request.",
+                ) from error
+            raise
+
+        claim = (
+            connection.execute(
+                select(AgentCanvasIdempotencyRow).where(
+                    AgentCanvasIdempotencyRow.operation == _STORYBOARD_IDENTITY_OPERATION,
+                    AgentCanvasIdempotencyRow.idempotency_key == identity_digest,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+
+        proposal = (
+            connection.execute(
+                select(AgentCanvasConceptProposalRow).where(
+                    AgentCanvasConceptProposalRow.proposal_id == envelope.proposal_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if proposal is None or str(proposal["workflow_id"]) != envelope.workflow_id:
+            # Let the existing generic queue path produce its established
+            # proposal_not_found error and avoid leaving a dangling claim.
+            if claim is not None or alias is not None:
+                raise _error(
+                    "guidance_action_lineage_invalid",
+                    "Storyboard selection lineage references a missing Proposal.",
+                )
+            return False
+
+        # Once an explicitly superseded Proposal has a replacement
+        # materialization, an envelope for the historical branch is stale.  Do
+        # not enter the retry/requeue path: doing so could reopen the old
+        # continuation while the replacement owns the workflow's unique
+        # active-delivery slot (and may otherwise surface as a generic SQLite
+        # constraint error).  The canonical supersession authority remains
+        # immutable; this is only an admission fence for late callbacks.
+        if (
+            str(proposal["availability"]) == "superseded"
+            and proposal["materialization_id"] is not None
+            and (
+                str(proposal["materialization_id"]) != envelope.materialization_id
+                or str(proposal["materialization_turn_id"]) != envelope.action_turn_id
+            )
+            and (envelope.action != "reuse_direction" or claim is not None)
+        ):
+            raise _error(
+                "proposal_action_stale",
+                "Storyboard materialization belongs to a superseded branch.",
+            )
+
+        # Any other claimed identity for this Proposal is an unresolvable
+        # historical fork.  Never select one by insertion or timestamp order.
+        # Malformed records belonging to another Workflow are ignored here so a
+        # corrupt unrelated operation cannot poison this Proposal's submit path;
+        # a malformed record that names this Proposal still fails closed.
+        for candidate in (
+            connection.execute(
+                select(AgentCanvasIdempotencyRow.response_json).where(
+                    AgentCanvasIdempotencyRow.operation == _STORYBOARD_IDENTITY_OPERATION,
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            try:
+                candidate_record = _decode_storyboard_record(candidate)
+            except V2PersistenceError:
+                candidate_record = _partially_decode_storyboard_record(candidate)
+                if candidate_record is None or (
+                    candidate_record.get("workflow_id") != record["workflow_id"]
+                    or candidate_record.get("proposal_id") != record["proposal_id"]
+                ):
+                    continue
+                raise
+            if (
+                candidate_record["workflow_id"] == record["workflow_id"]
+                and candidate_record["proposal_id"] == record["proposal_id"]
+                and candidate_record["identity_digest"] != identity_digest
+                and not _storyboard_supersession_allows_new_identity(proposal, envelope)
+            ):
+                raise _error(
+                    "guidance_action_lineage_invalid",
+                    "Storyboard selection has more than one persisted lineage.",
+                )
+
+        if claim is None:
+            if alias is not None:
+                raise _error(
+                    "guidance_action_lineage_invalid",
+                    "Storyboard selection alias has no canonical identity claim.",
+                )
+            # A pre-existing generic Storyboard projection without a canonical
+            # claim is historical data whose owner cannot be proven.  It must be
+            # surfaced rather than silently adopted.
+            if proposal[
+                "materialization_id"
+            ] is not None and not _storyboard_supersession_allows_new_identity(
+                proposal,
+                envelope,
+            ):
+                raise _error(
+                    "guidance_action_lineage_invalid",
+                    "Storyboard Proposal has materialization history without a canonical lineage claim.",
+                )
+            connection.execute(
+                insert(AgentCanvasIdempotencyRow).values(
+                    record_id=f"idem_{uuid4().hex}",
+                    operation=_STORYBOARD_IDENTITY_OPERATION,
+                    idempotency_key=identity_digest,
+                    request_fingerprint=identity_digest,
+                    response_json=_storyboard_record_json(record, ids),
+                    created_at=timestamp,
+                )
+            )
+            _insert_storyboard_alias(
+                connection,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
+                record=record,
+                ids=ids,
+                created_at=timestamp,
+            )
+            return False
+
+        claim_record = _decode_storyboard_record(claim["response_json"])
+        if claim_record != record or str(claim["request_fingerprint"]) != identity_digest:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Persisted Storyboard selection identity does not match the envelope.",
+            )
+        if alias is None:
+            _insert_storyboard_alias(
+                connection,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
+                record=record,
+                ids=ids,
+                created_at=timestamp,
+            )
+
+        if (
+            str(proposal["capability_id"]) != "storyboard_design"
+            or str(proposal["materialization_id"]) != ids.materialization_id
+            or str(proposal["materialization_turn_id"]) != ids.action_turn_id
+            or str(proposal["materialization_option_id"]) != str(envelope.selected_option.option_id)
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Storyboard Proposal points to a different materialization lineage.",
+            )
+        if int(proposal["proposal_revision"]) != envelope.proposal_revision:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Storyboard Proposal revision does not match its canonical lineage.",
+            )
+
+        turn = (
+            connection.execute(
+                select(AgentCanvasChatTurnRow).where(
+                    AgentCanvasChatTurnRow.turn_id == ids.action_turn_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        envelope_row = (
+            connection.execute(
+                select(AgentCanvasOperationEnvelopeRow).where(
+                    AgentCanvasOperationEnvelopeRow.envelope_id == ids.envelope_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        outbox = (
+            connection.execute(
+                select(AgentCanvasContinuationOutboxRow).where(
+                    AgentCanvasContinuationOutboxRow.continuation_id == ids.continuation_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        activity = (
+            connection.execute(
+                select(AgentCanvasExpertActivityRow).where(
+                    AgentCanvasExpertActivityRow.activity_id
+                    == "activity_" + _digest(ids.materialization_id)[:32],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        source_turn = (
+            connection.execute(
+                select(AgentCanvasChatTurnRow).where(
+                    AgentCanvasChatTurnRow.turn_id == str(proposal["turn_id"]),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        turn_alias = (
+            connection.execute(
+                select(AgentCanvasIdempotencyRow).where(
+                    AgentCanvasIdempotencyRow.operation == _STORYBOARD_ALIAS_OPERATION,
+                    AgentCanvasIdempotencyRow.idempotency_key == str(turn["idempotency_key"])
+                    if turn is not None
+                    else False,
+                )
+            )
+            .mappings()
+            .one_or_none()
+            if turn is not None
+            else None
+        )
+        if (
+            turn is None
+            or envelope_row is None
+            or outbox is None
+            or activity is None
+            or source_turn is None
+            or turn_alias is None
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard selection lineage is incomplete.",
+            )
+        if (
+            _decode_storyboard_record(turn_alias["response_json"])["identity_digest"]
+            != identity_digest
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard Turn is not owned by its selection alias.",
+            )
+        if (
+            str(turn["workflow_id"]) != envelope.workflow_id
+            or str(turn["conversation_id"]) != envelope.conversation_id
+            or str(turn["turn_kind"]) != "proposal_action"
+            or str(source_turn["workflow_id"]) != envelope.workflow_id
+            or str(source_turn["conversation_id"]) != envelope.conversation_id
+            or str(envelope_row["turn_id"]) != ids.action_turn_id
+            or str(envelope_row["workflow_id"]) != envelope.workflow_id
+            or str(outbox["workflow_id"]) != envelope.workflow_id
+            or str(outbox["conversation_id"]) != envelope.conversation_id
+            or str(outbox["source_turn_id"]) != str(proposal["turn_id"])
+            or str(outbox["continuation_turn_id"]) != ids.action_turn_id
+            or str(outbox["operation"]) != "capability_materialization"
+            or str(activity["workflow_id"]) != envelope.workflow_id
+            or str(activity["turn_id"]) != ids.action_turn_id
+            or str(activity["capability_id"]) != "storyboard_design"
+            or str(activity["operation"]) != "capability_materialization"
+            or str(activity["status"]) not in {"working", "completed", "failed"}
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard selection records have inconsistent ownership.",
+            )
+        try:
+            outbox_payload = json.loads(str(outbox["payload_json"]))
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard continuation payload is malformed.",
+            ) from error
+        if (
+            not isinstance(outbox_payload, dict)
+            or outbox_payload.get("schema_version") != "1"
+            or outbox_payload.get("envelope_id") != ids.envelope_id
+            or _digest(str(outbox["payload_json"])) != str(outbox["payload_digest"])
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard continuation payload is inconsistent.",
+            )
+        try:
+            persisted_envelope = self._envelopes.get_in_transaction(
+                connection,
+                ids.envelope_id,
+            )
+            persisted_digest, persisted_ids, _ = _storyboard_identity_facts(persisted_envelope)
+        except (V2PersistenceError, ValueError, TypeError) as error:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard operation envelope is invalid.",
+            ) from error
+        if (
+            persisted_digest != identity_digest
+            or persisted_ids != ids
+            or persisted_envelope.workflow_id != envelope.workflow_id
+            or persisted_envelope.proposal_id != envelope.proposal_id
+            or persisted_envelope.conversation_id != envelope.conversation_id
+            or persisted_envelope.action_turn_id != ids.action_turn_id
+        ):
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard operation envelope identity is inconsistent.",
+            )
+
+        status = str(proposal["materialization_status"])
+        if status == "failed":
+            if not bool(proposal["materialization_retryable"]):
+                raise _error(
+                    "proposal_action_stale",
+                    "The canonical Storyboard materialization is not retryable.",
+                )
+            if str(outbox["status"]) in {"completed", "superseded"}:
+                raise _error(
+                    "guidance_action_lineage_invalid",
+                    "Failed Storyboard materialization has a terminal continuation.",
+                )
+            _requeue_storyboard_lineage(
+                connection,
+                events=self._events,
+                workflow_id=envelope.workflow_id,
+                proposal_id=envelope.proposal_id,
+                materialization_id=ids.materialization_id,
+                turn_id=ids.action_turn_id,
+                continuation_id=ids.continuation_id,
+                timestamp=timestamp,
+            )
+        elif status not in {"queued", "working", "completed"}:
+            raise _error(
+                "guidance_action_lineage_invalid",
+                "Canonical Storyboard materialization has an invalid status.",
+            )
+        return True
+
     def queue(
         self,
         envelope: MaterializationEnvelopeV1,
@@ -1577,6 +2082,30 @@ class AgentCanvasMaterializationRepository:
                             separators=(",", ":"),
                             sort_keys=True,
                         )
+                        canonical_storyboard = (
+                            envelope.capability_id == "storyboard_design"
+                            and _has_storyboard_identity_marker(envelope)
+                        )
+                        if canonical_storyboard:
+                            if self._resolve_storyboard_identity_in_transaction(
+                                connection,
+                                envelope,
+                                action_request=action_request,
+                                idempotency_key=idempotency_key,
+                                timestamp=timestamp,
+                            ):
+                                replay_proposal = (
+                                    connection.execute(
+                                        select(AgentCanvasConceptProposalRow).where(
+                                            AgentCanvasConceptProposalRow.proposal_id
+                                            == envelope.proposal_id
+                                        )
+                                    )
+                                    .mappings()
+                                    .one()
+                                )
+                                connection.commit()
+                                return _projection(replay_proposal)
                         existing_turn = (
                             connection.execute(
                                 select(AgentCanvasChatTurnRow).where(
@@ -2590,7 +3119,49 @@ def _insert_materialized_node(
     creative_direction_snapshot_id: str | None,
     skill_refs: tuple[dict[str, str], ...],
     now: str,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+    prompt_context: object | None = None,
 ) -> str:
+    # Bind the Node operation identity to the exact immutable context that is
+    # persisted in the dispatch envelope.  Without this digest, two
+    # materializations with the same Node snapshot but different Stage
+    # Authoring contexts reuse one operation identity while producing distinct
+    # dispatch identities.
+    context_payload: dict[str, object] | None = None
+    context_digest: str | None = None
+    requires_prompt_context = (
+        prompt_dispatch is not None
+        and node.execution_mode == "generative"
+        and node.node_type in {"text", "script", "image", "video", "audio"}
+        and node.prompt_preparation.status == "queued"
+    )
+    if prompt_context is None:
+        if requires_prompt_context:
+            raise _error(
+                "prompt_preparation_context_missing",
+                "Applicable queued Draft requires an immutable prompt context.",
+            )
+    elif isinstance(prompt_context, StageAuthoringContextV1):
+        context_payload, context_digest = detached_context_payload(prompt_context)
+    elif isinstance(prompt_context, Mapping):
+        try:
+            typed_context = StageAuthoringContextV1.model_validate(prompt_context)
+            context_payload, context_digest = detached_context_payload(typed_context)
+        except (TypeError, ValueError) as error:
+            raise _error(
+                "prompt_preparation_context_invalid",
+                "Prompt-preparation context is not a valid immutable snapshot.",
+            ) from error
+    else:
+        raise _error(
+            "prompt_preparation_context_invalid",
+            "Prompt-preparation context is not a valid immutable snapshot.",
+        )
+    node = normalize_queued_node(
+        node,
+        bindings=bindings,
+        context_digest=context_digest,
+    )
     snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
     connection.execute(
         insert(AgentCanvasNodeRow).values(
@@ -2674,6 +3245,18 @@ def _insert_materialized_node(
             created_at=now,
         )
     )
+    if prompt_dispatch is not None:
+        # The materialization plan carries an immutable context identity.  The
+        # full StageAuthoringContext is supplied by the post-commit worker
+        # loader; this durable envelope prevents an orphaned queued projection
+        # while keeping the authoring transaction free of Agent calls.
+        prompt_dispatch.ensure_for_node_in_transaction(
+            connection,
+            node,
+            bindings=bindings,
+            context=context_payload,
+            now=datetime.fromisoformat(now),
+        )
     return snapshot_id
 
 
@@ -2964,6 +3547,350 @@ def _accepted_character_occurrence_patch(
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _is_digest(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def _has_storyboard_identity_marker(envelope: MaterializationEnvelopeV1) -> bool:
+    for field in ("agent_request_identity", "idempotency_identity"):
+        marker = getattr(envelope, field, None)
+        if isinstance(marker, str) and marker.startswith("storyboard-selection:"):
+            return True
+    return False
+
+
+def _storyboard_identity_facts(
+    envelope: MaterializationEnvelopeV1,
+) -> tuple[str, StoryboardSelectionIdsV1, dict[str, str]]:
+    """Validate and project the private identity marker on a Storyboard envelope."""
+
+    marker = identity_digest_from_envelope(envelope)
+    if marker is None:
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Storyboard materialization is missing a valid selection identity.",
+        )
+    try:
+        identity = identity_from_envelope(envelope)
+        if identity is None or identity.digest != marker:
+            raise ValueError("Storyboard identity marker does not match envelope facts.")
+        ids = derive_storyboard_selection_ids(identity)
+    except Exception as error:  # noqa: BLE001 - map private contract failures to a typed error.
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Storyboard materialization selection identity is invalid.",
+        ) from error
+    envelope_identity = getattr(envelope, "agent_request_identity", None)
+    if envelope_identity is None:
+        envelope_identity = getattr(envelope, "idempotency_identity", None)
+    if (
+        envelope.materialization_id != ids.materialization_id
+        or envelope.envelope_id != ids.envelope_id
+        or envelope.action_turn_id != ids.action_turn_id
+        or envelope_identity != ids.request_identity
+    ):
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Storyboard materialization IDs do not match the selection identity.",
+        )
+    record = {
+        "schema_version": _STORYBOARD_RECORD_SCHEMA,
+        "identity_digest": marker,
+        "workflow_id": str(envelope.workflow_id),
+        "proposal_id": str(envelope.proposal_id),
+        "materialization_id": ids.materialization_id,
+        "envelope_id": ids.envelope_id,
+        "action_turn_id": ids.action_turn_id,
+        "continuation_id": "continuation_" + _digest(ids.materialization_id)[:32],
+        "request_identity": ids.request_identity,
+    }
+    return marker, ids, record
+
+
+def _storyboard_record_json(record: Mapping[str, str], ids: StoryboardSelectionIdsV1) -> str:
+    payload = {
+        **dict(record),
+        "request_identity": ids.request_identity,
+    }
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
+
+def _decode_storyboard_record(value: object) -> dict[str, str]:
+    try:
+        payload = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Persisted Storyboard selection identity record is malformed.",
+        ) from error
+    if not isinstance(payload, dict):
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Persisted Storyboard selection identity record is malformed.",
+        )
+    required = {
+        "schema_version",
+        "identity_digest",
+        "workflow_id",
+        "proposal_id",
+        "materialization_id",
+        "envelope_id",
+        "action_turn_id",
+        "continuation_id",
+        "request_identity",
+    }
+    if set(payload) != required or any(not isinstance(payload[key], str) for key in required):
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Persisted Storyboard selection identity record is malformed.",
+        )
+    if payload["schema_version"] != _STORYBOARD_RECORD_SCHEMA or not _is_digest(
+        payload["identity_digest"]
+    ):
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Persisted Storyboard selection identity record is invalid.",
+        )
+    return cast(dict[str, str], payload)
+
+
+def _partially_decode_storyboard_record(value: object) -> dict[str, object] | None:
+    """Read only routing fields while classifying a malformed private row."""
+
+    try:
+        payload = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _storyboard_supersession_allows_new_identity(
+    proposal: Mapping[str, object],
+    envelope: MaterializationEnvelopeV1,
+) -> bool:
+    """Allow only the existing explicit historical-reuse action to fork identity."""
+
+    return envelope.action == "reuse_direction" and str(proposal["availability"]) == "superseded"
+
+
+def _validate_storyboard_action_request(
+    action_request: Mapping[str, object],
+    envelope: MaterializationEnvelopeV1,
+) -> None:
+    """Ensure a request alias cannot smuggle action data for another envelope."""
+
+    if action_request.get("proposal_id") != envelope.proposal_id:
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard selection request does not match its Proposal envelope.",
+        )
+    action = action_request.get("action")
+    if not isinstance(action, Mapping):
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard selection request action is invalid.",
+        )
+    if action.get("action") != envelope.action:
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard selection request action does not match its envelope.",
+        )
+    if action.get("expected_session_revision") != envelope.expected_session_revision:
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard selection request revision does not match its envelope.",
+        )
+    if envelope.action == "custom_direction":
+        if action.get("custom_text") != envelope.selected_option.custom_text:
+            raise _error(
+                "materialization_payload_conflict",
+                "Storyboard custom direction does not match its envelope.",
+            )
+    elif envelope.action == "select_option":
+        if action.get("option_id") != envelope.selected_option.option_id:
+            raise _error(
+                "materialization_payload_conflict",
+                "Storyboard option does not match its envelope.",
+            )
+    elif action.get("option_id") is not None and action.get("option_id") != (
+        envelope.selected_option.option_id
+    ):
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard option does not match its envelope.",
+        )
+    accepted_references = action.get("accepted_references")
+    if accepted_references is None:
+        return
+    if not isinstance(accepted_references, (list, tuple)):
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard accepted references are invalid.",
+        )
+    supplied = []
+    for reference in accepted_references:
+        if not isinstance(reference, Mapping):
+            raise _error(
+                "materialization_payload_conflict",
+                "Storyboard accepted references are invalid.",
+            )
+        source_kind = reference.get("source_kind")
+        source_id = reference.get("source_id")
+        if not isinstance(source_kind, str) or not isinstance(source_id, str):
+            raise _error(
+                "materialization_payload_conflict",
+                "Storyboard accepted references are invalid.",
+            )
+        supplied.append((source_kind, source_id))
+    expected = [
+        (reference.source_kind, reference.source_id)
+        for reference in envelope.reference_plan.references
+    ]
+    # Accepted references are normalized in Proposal order before the envelope
+    # is built.  A replay may arrive through either public route (and therefore
+    # in a different client order), but it must still describe the same source
+    # identities. Unknown or omitted identities remain a conflict.
+    expected_order = {identity: index for index, identity in enumerate(expected)}
+    normalized_supplied = tuple(
+        sorted(
+            dict.fromkeys(supplied),
+            key=lambda identity: expected_order.get(identity, len(expected_order)),
+        )
+    )
+    if normalized_supplied != tuple(dict.fromkeys(expected)):
+        raise _error(
+            "materialization_payload_conflict",
+            "Storyboard accepted references do not match their envelope.",
+        )
+
+
+def _insert_storyboard_alias(
+    connection: Connection,
+    *,
+    idempotency_key: str,
+    request_fingerprint: str,
+    record: Mapping[str, str],
+    ids: StoryboardSelectionIdsV1,
+    created_at: str,
+) -> None:
+    connection.execute(
+        insert(AgentCanvasIdempotencyRow).values(
+            record_id=f"idem_{uuid4().hex}",
+            operation=_STORYBOARD_ALIAS_OPERATION,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            response_json=_storyboard_record_json(record, ids),
+            created_at=created_at,
+        )
+    )
+
+
+def _requeue_storyboard_lineage(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    proposal_id: str,
+    materialization_id: str,
+    turn_id: str,
+    continuation_id: str,
+    timestamp: str,
+) -> None:
+    """Reset only operational delivery state for a retryable canonical branch."""
+
+    current_availability = connection.execute(
+        select(AgentCanvasConceptProposalRow.availability).where(
+            AgentCanvasConceptProposalRow.proposal_id == proposal_id
+        )
+    ).scalar_one_or_none()
+    # An explicit historical reuse remains superseded while its operational
+    # delivery is retried.  Reopening it would erase the authority fact that
+    # permitted the new identity and would make later sibling checks unsafe.
+    next_availability = "superseded" if str(current_availability) == "superseded" else "open"
+    proposal_update = connection.execute(
+        update(AgentCanvasConceptProposalRow)
+        .where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
+        .values(
+            availability=next_availability,
+            materialization_status="queued",
+            materialization_retryable=True,
+            materialization_error_code=None,
+            materialization_error_message=None,
+            materialization_updated_at=timestamp,
+            updated_at=timestamp,
+        )
+    )
+    turn_update = connection.execute(
+        update(AgentCanvasChatTurnRow)
+        .where(AgentCanvasChatTurnRow.turn_id == turn_id)
+        .values(
+            status="queued",
+            retryable=False,
+            operation_stage="queued",
+            operation_failure_json=None,
+            error_code=None,
+            error_message=None,
+            updated_at=timestamp,
+        )
+    )
+    activity_update = connection.execute(
+        update(AgentCanvasExpertActivityRow)
+        .where(AgentCanvasExpertActivityRow.turn_id == turn_id)
+        .values(
+            status="working",
+            error_code=None,
+            error_message=None,
+            updated_at=timestamp,
+        )
+    )
+    outbox_update = connection.execute(
+        update(AgentCanvasContinuationOutboxRow)
+        .where(
+            AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+            AgentCanvasContinuationOutboxRow.continuation_turn_id == turn_id,
+        )
+        .values(
+            status="queued",
+            next_attempt_at=timestamp,
+            lease_owner=None,
+            lease_generation=AgentCanvasContinuationOutboxRow.lease_generation + 1,
+            lease_expires_at=None,
+            last_error_code=None,
+            last_error_message=None,
+            updated_at=timestamp,
+        )
+    )
+    if (
+        proposal_update.rowcount != 1
+        or turn_update.rowcount != 1
+        or activity_update.rowcount != 1
+        or outbox_update.rowcount != 1
+    ):
+        raise _error(
+            "guidance_action_lineage_invalid",
+            "Canonical Storyboard retry lineage is incomplete.",
+        )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            turn_id=turn_id,
+            action_id=turn_id,
+            event_type="proposal_materialization_requeued",
+            transition_key=f"materialization:{materialization_id}:requeued",
+            created_at=timestamp,
+            payload={
+                "proposal_id": proposal_id,
+                "materialization_id": materialization_id,
+                "turn_id": turn_id,
+                "retryable": True,
+            },
+        ),
+    )
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

@@ -84,6 +84,9 @@ from app.persistence.agent_canvas_production_closure_repository import (
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
@@ -160,7 +163,10 @@ from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleActionRequestV1,
     DecisionBundleV1,
 )
-from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_creative_session import (
+    GuidedSessionStateV2,
+    ProposedDraftReferenceV2,
+)
 from app.schemas.agent_canvas_guided_interactions import (
     GuidedAcceptedReferenceV1,
     GuidedConceptChoiceV2,
@@ -277,6 +283,9 @@ from app.services.agent_canvas_post_ready_checkpoint import (
 from app.schemas.agent_canvas_media_review_authority import (
     CanvasPostReadyEffectDispositionV1,
 )
+from app.schemas.agent_canvas_prompt_preparation_dispatch import (
+    PromptPreparationDispatchV1,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -339,6 +348,9 @@ from app.services.agent_canvas_guided_production_closure import (
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_prompt_preparation_worker import (
+    AgentCanvasPromptPreparationWorker,
+)
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
@@ -441,6 +453,75 @@ class AgentCanvasRuntime:
     accepted_background: AgentCanvasAcceptedBackgroundRunner
     presentation_streams: PresentationStreamRepository
     presentation_publisher: PresentationStreamPublisher
+    prompt_preparation_worker: AgentCanvasPromptPreparationWorker | None = None
+
+
+def _resume_prompt_preparation_barrier(
+    dispatch: PromptPreparationDispatchV1,
+    _result: object,
+    *,
+    runtime_repository: AgentCanvasRuntimeRepository,
+    scheduler: DynamicCanvasScheduler,
+    prompt_ready_activation: Callable[..., object] | None = None,
+    notified_dispatch_ids: set[str] | None = None,
+) -> None:
+    """Wake the existing scheduler after a committed prompt terminal result.
+
+    A preparation completion is only useful to an execution that is currently
+    waiting on that source.  Keeping this check at the callback seam avoids
+    waking unrelated waves and makes duplicate worker callbacks harmless.  The
+    optional set is process-local notification bookkeeping; durable execution
+    state remains the authority and is re-evaluated by ``resume``.
+    """
+
+    if dispatch.status not in {"completed", "failed"}:
+        return
+    dispatch_id = getattr(dispatch, "dispatch_id", None)
+    if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
+        return
+    activation_result: object | None = None
+    if dispatch.status == "completed" and prompt_ready_activation is not None:
+        operation_id = getattr(dispatch, "operation_id", None)
+        if isinstance(operation_id, str) and operation_id:
+            activation_result = prompt_ready_activation(
+                dispatch.workflow_id,
+                (dispatch.node_id,),
+                source_id=operation_id,
+            )
+
+    active = runtime_repository.get_active_execution(dispatch.workflow_id)
+    if active is None:
+        activation_succeeded = bool(
+            activation_result is not None
+            and (
+                getattr(activation_result, "automatic_run_command_ids", ())
+                or getattr(activation_result, "manual_awaiting_id", None)
+            )
+        )
+        if activation_succeeded and notified_dispatch_ids is not None and dispatch_id:
+            notified_dispatch_ids.add(dispatch_id)
+        return
+
+    # Older lightweight test repositories do not expose members.  Preserve
+    # their compatibility while production repositories use the durable wait
+    # projection to fence unrelated wake-ups.
+    list_members = getattr(runtime_repository, "list_members", None)
+    if callable(list_members):
+        members = list_members(active.execution_id)
+        relevant = any(
+            member.state in {"queued", "waiting"}
+            and (
+                member.node_id == dispatch.node_id
+                or dispatch.node_id in member.waiting_for_node_ids
+            )
+            for member in members
+        )
+        if not relevant:
+            return
+
+    scheduler.resume(active.execution_id)
+    if notified_dispatch_ids is not None and dispatch_id:
+        notified_dispatch_ids.add(dispatch_id)
 
 
 def get_agent_canvas_runtime(
@@ -600,6 +681,21 @@ def create_agent_canvas_runtime(
                 )
             ),
         )
+    )
+    prompt_dispatches = AgentCanvasPromptPreparationDispatchRepository(
+        database,
+        event_repository,
+    )
+    prompt_preparation_service = NodePromptPreparationService(
+        workflow_repository,
+        role_brief_author=lambda role_context, request_identity: (
+            video_agent_gateway.author_role_brief(
+                role_context,
+                request_identity=request_identity,
+            )
+        ),
+        asset_resolver=asset_service.resolve_asset,
+        presentation_publisher=presentation_publisher,
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
@@ -853,11 +949,7 @@ def create_agent_canvas_runtime(
         output_preparer=output_preparer,
         result_committer=result_committer,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
-        prompt_preparation=NodePromptPreparationService(
-            workflow_repository,
-            asset_resolver=asset_service.resolve_asset,
-            presentation_publisher=presentation_publisher,
-        ),
+        prompt_preparation=prompt_preparation_service,
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
@@ -1037,17 +1129,7 @@ def create_agent_canvas_runtime(
         requirements=requirement_service,
         documents=working_documents,
         receipts=production_closure_receipts,
-        prompt_preparation=NodePromptPreparationService(
-            workflow_repository,
-            role_brief_author=lambda role_context, request_identity: (
-                video_agent_gateway.author_role_brief(
-                    role_context,
-                    request_identity=request_identity,
-                )
-            ),
-            asset_resolver=asset_service.resolve_asset,
-            presentation_publisher=presentation_publisher,
-        ),
+        prompt_preparation=prompt_preparation_service,
         progression=production_journey,
         execution_settings=execution_settings.get_or_create,
         awaiting=guidance_awaiting,
@@ -1290,10 +1372,31 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+
+    def guided_reference_snapshot(
+        workflow_id: str,
+        reference: ProposedDraftReferenceV2,
+    ) -> tuple[int | None, str | None]:
+        """Freeze the same source versions for guided and compatibility routes."""
+
+        return (
+            (
+                workflow_repository.get_node(workflow_id, reference.source_id).revision
+                if reference.source_kind == "node"
+                else None
+            ),
+            (
+                asset_service.resolve_asset(reference.source_id).version_id
+                if reference.source_kind == "image_asset"
+                else None
+            ),
+        )
+
     guided_interactions = GuidedInteractionService(
         guided_interaction_repository,
         conversation_repository,
         materialization_repository,
+        reference_snapshot=guided_reference_snapshot,
         media_submit=GuidedMediaReviewActionService(
             interactions=guided_interaction_repository,
             conversations=conversation_repository,
@@ -1390,6 +1493,68 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+
+    def activate_prompt_ready_nodes(
+        workflow_id: str,
+        node_ids: tuple[str, ...],
+        *,
+        source_id: str,
+    ) -> object | None:
+        """Re-admit only current prompt-ready Storyboard media authority."""
+
+        setting = execution_settings.get_or_create(workflow_id)
+        node = workflow_repository.get_node(workflow_id, node_ids[0]) if node_ids else None
+        if node is None or node.creative_role not in {
+            "storyboard_sequence",
+            "storyboard_video",
+        }:
+            return None
+        if setting.media_execution_mode == "manual":
+            return fanout_activation.activate_prompt_ready_nodes(
+                workflow_id,
+                node_ids,
+                source_id=source_id,
+            )
+        return fanout_activation.activate_prompt_ready_nodes(
+            workflow_id,
+            node_ids,
+            source_id=source_id,
+        )
+
+    notified_prompt_dispatch_ids: set[str] = set()
+    prompt_preparation_worker = AgentCanvasPromptPreparationWorker(
+        prompt_dispatches,
+        prepare=lambda dispatch, context: prompt_preparation_service.prepare(
+            dispatch.workflow_id,
+            dispatch.node_id,
+            operation_id=dispatch.operation_id,
+            context=context,
+        ),
+        # Production recovery must reconstruct only the immutable snapshot
+        # persisted with the dispatch row.  The test-only loader hook remains
+        # intentionally unset here so incomplete legacy rows fail closed.
+        context_loader=None,
+        stale_dispatch_reconciler=(
+            lambda dispatch, worker_id, lease_generation, reason, timestamp: (
+                workflow_repository.reconcile_stale_prompt_preparation_dispatch(
+                    dispatch,
+                    worker_id=worker_id,
+                    lease_generation=lease_generation,
+                    reason=reason,
+                    now=timestamp,
+                )
+            )
+        ),
+        worker_id=f"agent-canvas-prompt-preparation:{uuid4().hex}",
+        barrier_callback=lambda dispatch, result: _resume_prompt_preparation_barrier(
+            dispatch,
+            result,
+            runtime_repository=runtime_repository,
+            scheduler=scheduler,
+            prompt_ready_activation=activate_prompt_ready_nodes,
+            notified_dispatch_ids=notified_prompt_dispatch_ids,
+        ),
+    )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
         guided_media_resume_deliveries,
         resume_confirmation=resume_media_confirmation,
@@ -1484,6 +1649,7 @@ def create_agent_canvas_runtime(
         accepted_background=AgentCanvasAcceptedBackgroundRunner(),
         presentation_streams=presentation_streams,
         presentation_publisher=presentation_publisher,
+        prompt_preparation_worker=prompt_preparation_worker,
     )
 
 
@@ -1955,15 +2121,22 @@ def patch_node(
                 expected_revision=expected_revision,
             )
         else:
-            runtime.ad_media_validation.validate(
-                node_type=current.node_type,
-                semantic_role=current.semantic_role,
-                structured_content=(
-                    request.structured_content
-                    if request.structured_content is not None
-                    else current.structured_content
-                ),
+            source_only_product = (
+                current.node_type == "image"
+                and current.creative_role == "product"
+                and current.execution_mode == "source_only"
+                and current.metadata.get("source_input_kind") in {"main", "multiview"}
             )
+            if not source_only_product:
+                runtime.ad_media_validation.validate(
+                    node_type=current.node_type,
+                    semantic_role=current.semantic_role,
+                    structured_content=(
+                        request.structured_content
+                        if request.structured_content is not None
+                        else current.structured_content
+                    ),
+                )
             node = runtime.nodes.patch(
                 workflow_id,
                 node_id,
@@ -2760,6 +2933,25 @@ def act_on_chat_proposal(
                 events_cursor=replayed_interaction.events_cursor,
                 replayed=True,
             )
+        closed_replay = runtime.guided_interactions.replay_closed_storyboard_action(
+            workflow_id,
+            proposal_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+        if closed_replay is not None:
+            if not closed_replay.replayed:
+                background_tasks.add_task(
+                    runtime.accepted_background.run,
+                    AcceptedBackgroundWork(
+                        operation=AcceptedBackgroundOperation.GUIDED_INTERACTION_SUBMIT,
+                        workflow_id=workflow_id,
+                        resource_type=AcceptedBackgroundResourceType.TURN,
+                        resource_id=closed_replay.turn_id,
+                        callback=runtime.continuation_worker.run_once,
+                    ),
+                )
+            return closed_replay
         interaction = runtime.guided_interactions.get_current(workflow_id)
         if (
             interaction is not None
@@ -3643,6 +3835,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_option_not_found": 422,
         "proposal_revision_conflict": 409,
         "proposal_materialization_conflict": 409,
+        "materialization_payload_conflict": 409,
         "proposal_reference_plan_invalid": 422,
         "proposal_target_revision_stale": 409,
         "proposal_reference_revision_stale": 409,

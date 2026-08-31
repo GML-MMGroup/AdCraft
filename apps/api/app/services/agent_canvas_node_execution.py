@@ -77,6 +77,11 @@ class NodeExecutionContext:
     execution_id: str
     node: CanvasNodeV2
     inputs: tuple[ResolvedInputSnapshotV2 | object, ...]
+    # Revision observed when this admission preparation began.  A run may
+    # intentionally execute its immutable accepted snapshot after an
+    # authoring edit that happened before preparation; edits that happen
+    # during or after preparation must still be fenced.
+    authoring_revision_observed: int | None = None
     model_id: str | None = None
     provider_id: str | None = None
     model_resolution: ResolvedModelExecutionV1 | None = None

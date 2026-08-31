@@ -48,6 +48,8 @@ from app.schemas.agent_canvas_runtime_authority import (
 
 
 _ACTIVE_EXECUTION_STATES = ("queued", "running", "waiting")
+_TERMINAL_EXECUTION_STATES = ("completed", "partial_completed", "failed", "cancelled")
+_TERMINAL_MEMBER_STATES = ("succeeded", "failed", "skipped_dependency", "cancelled")
 
 
 class AgentCanvasRuntimeRepository:
@@ -736,6 +738,12 @@ class AgentCanvasRuntimeRepository:
                             payload=event_payload or {},
                         ),
                     )
+                if state in {"failed", "cancelled"}:
+                    self._reconcile_terminal_leases_in_transaction(
+                        connection,
+                        execution_id,
+                        now=now,
+                    )
                 return True
         except V2PersistenceError:
             raise
@@ -772,11 +780,100 @@ class AgentCanvasRuntimeRepository:
                         payload=payload or {},
                     ),
                 )
+                if status in _TERMINAL_EXECUTION_STATES:
+                    self._reconcile_terminal_leases_in_transaction(
+                        connection,
+                        execution_id,
+                        now=now,
+                    )
         except SQLAlchemyError as error:
             raise _error(
                 "execution_persistence_failed", "Execution storage is unavailable."
             ) from error
         return self.get_execution(execution_id)
+
+    def reconcile_terminal_leases(self, execution_id: str, *, now: datetime) -> int:
+        """Close current claimed leases that no longer have runnable work."""
+
+        try:
+            with self._database.engine.begin() as connection:
+                return self._reconcile_terminal_leases_in_transaction(
+                    connection,
+                    execution_id,
+                    now=now,
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
+
+    def _reconcile_terminal_leases_in_transaction(
+        self,
+        connection: Connection,
+        execution_id: str,
+        *,
+        now: datetime,
+    ) -> int:
+        execution = self._execution_in_transaction(connection, execution_id)
+        members = {
+            str(row["node_id"]): str(row["state"])
+            for row in connection.execute(
+                select(AgentCanvasExecutionMemberRow).where(
+                    AgentCanvasExecutionMemberRow.execution_id == execution_id
+                )
+            ).mappings()
+        }
+        leases = connection.execute(
+            select(AgentCanvasNodeLeaseRow).where(
+                AgentCanvasNodeLeaseRow.execution_id == execution_id,
+                AgentCanvasNodeLeaseRow.state == "claimed",
+            )
+        ).mappings()
+        timestamp = now.isoformat()
+        reconciled = 0
+        for lease in leases:
+            if (
+                execution.status not in _TERMINAL_EXECUTION_STATES
+                and members.get(str(lease["node_id"])) not in _TERMINAL_MEMBER_STATES
+            ):
+                continue
+            expired = datetime.fromisoformat(str(lease["expires_at"])) <= now
+            next_state = "expired" if expired else "released"
+            changed = connection.execute(
+                update(AgentCanvasNodeLeaseRow)
+                .where(
+                    AgentCanvasNodeLeaseRow.lease_id == lease["lease_id"],
+                    AgentCanvasNodeLeaseRow.execution_id == execution_id,
+                    AgentCanvasNodeLeaseRow.node_id == lease["node_id"],
+                    AgentCanvasNodeLeaseRow.owner_id == lease["owner_id"],
+                    AgentCanvasNodeLeaseRow.generation == lease["generation"],
+                    AgentCanvasNodeLeaseRow.state == "claimed",
+                )
+                .values(state=next_state, heartbeat_at=timestamp)
+            )
+            if changed.rowcount != 1:
+                continue
+            reconciled += 1
+            self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=execution.workflow_id,
+                    execution_id=execution_id,
+                    node_id=str(lease["node_id"]),
+                    event_type="node_lease_reconciled",
+                    created_at=timestamp,
+                    payload={
+                        "lease_id": str(lease["lease_id"]),
+                        "owner_id": str(lease["owner_id"]),
+                        "generation": int(lease["generation"]),
+                        "before_state": "claimed",
+                        "after_state": next_state,
+                        "execution_status": execution.status,
+                        "member_state": members.get(str(lease["node_id"])),
+                    },
+                ),
+            )
+        return reconciled
 
     def request_cancel(self, execution_id: str, *, now: datetime) -> CanvasExecutionRecordV2:
         execution = self.get_execution(execution_id)
