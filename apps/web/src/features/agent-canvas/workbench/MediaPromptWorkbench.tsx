@@ -37,6 +37,7 @@ export function MediaPromptWorkbench({
           disabled={draft.pending}
           placeholder={`Describe the ${node.node_type} you want to create.`}
           onChange={(event) => draft.setPrompt(event.currentTarget.value)}
+          onBlur={() => void draft.flushPrompt()}
         />
       </label>
 

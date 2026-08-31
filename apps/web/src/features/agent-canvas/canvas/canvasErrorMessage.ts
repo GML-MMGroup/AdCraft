@@ -24,6 +24,7 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   agent_model_incompatible: "The Agent default cannot perform this action.",
   model_catalog_sync_failed: "The provider model catalog could not be synchronized.",
   model_selection_invalid: "Choose a valid model selection before running this node.",
+  node_prompt_empty: "Enter a prompt before running this node.",
 };
 
 export function canvasAuthoringErrorMessage(error: unknown): string {

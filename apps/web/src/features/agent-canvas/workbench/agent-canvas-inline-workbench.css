@@ -270,6 +270,28 @@
   text-decoration: underline;
 }
 
+.agent-node-workbench__error button {
+  margin-left: 8px;
+  padding: 2px 6px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.agent-node-workbench__error button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.agent-node-workbench__prompt-saved {
+  margin: 0;
+  color: #9ed8c2;
+  font-size: 11px;
+}
+
 .agent-node-workbench__library {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 108px auto;

@@ -9,7 +9,7 @@ import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
 import { TextWorkbench } from "./TextWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
-import { isNodePromptReady } from "../model/promptPreparation.ts";
+import { isNodePromptReady, promptPreparationForNode } from "../model/promptPreparation.ts";
 import "./agent-canvas-inline-workbench.css";
 
 export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
@@ -58,7 +58,9 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const requiresPreparedPrompt = ["text", "script", "image", "video", "audio"].includes(node.node_type)
     && !(node.node_type === "text" && node.creative_role === "world_setting");
   const promptReady = !requiresPreparedPrompt || isNodePromptReady(node);
-  const promptPreparing = requiresPreparedPrompt && !promptReady;
+  const promptPreparing = requiresPreparedPrompt
+    && promptPreparationForNode(node) !== null
+    && !promptReady;
 
   return (
     <NodeWorkbenchShell
@@ -91,7 +93,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           promptReady={promptReady}
         />
       ) : null}
-      {["image", "video", "audio"].includes(node.node_type) && promptReady ? (
+      {["image", "video", "audio"].includes(node.node_type) ? (
         <MediaPromptWorkbench
           node={node}
           draft={draft}

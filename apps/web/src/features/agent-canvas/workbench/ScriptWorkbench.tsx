@@ -47,6 +47,7 @@ export function ScriptWorkbench({
             if (canRun) draft.setPrompt(event.currentTarget.value);
             else draft.setTextContent(event.currentTarget.value);
           }}
+          onBlur={() => void draft.flushPrompt()}
         />
       </label>
       <NodeWorkbenchError draft={draft} />
@@ -81,7 +82,7 @@ export function ScriptWorkbench({
               : canRun
                 ? status === "failed" ? "Retry script" : "Run script"
                 : "Save script"}
-            disabled={editorDisabled || (canRun && !promptReady)}
+            disabled={editorDisabled || (canRun && !draft.prompt.trim())}
             onClick={() => void (canRun ? draft.run() : draft.save())}
           >
             <SendIcon />
