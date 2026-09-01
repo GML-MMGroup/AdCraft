@@ -130,6 +130,18 @@
   filter: none;
 }
 
+.agent-canvas-frozen-edges {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.agent-canvas-frozen-edges .react-flow__edge {
+  pointer-events: none;
+}
+
 @keyframes agent-canvas-selected-edge-flow {
   to {
     stroke-dashoffset: -14;
@@ -162,6 +174,13 @@
 
 .agent-canvas-board[data-pointer-spotlight="active"] .agent-canvas-pointer-background {
   opacity: 1;
+}
+
+.agent-canvas-board.is-interacting .agent-canvas-pointer-background {
+  opacity: 0;
+  mask-image: none;
+  -webkit-mask-image: none;
+  transition: none;
 }
 
 .agent-canvas-pointer-dot {

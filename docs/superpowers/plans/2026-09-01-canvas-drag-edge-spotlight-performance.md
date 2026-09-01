@@ -27,12 +27,12 @@
 **Interfaces:**
 - `edgeIdsConnectedToNodes(edges, draggedNodeIds): Set<string>` returns live edge IDs.
 - `partitionCanvasEdges(edges, draggedNodeIds): { liveEdges; frozenEdges }` preserves original order and object identity.
-- `CanvasEdgeSnapshot` stores SVG path/visual attributes needed by the frozen overlay.
+- `FrozenCanvasEdgeSnapshot` stores the captured edge group SVG markup needed by the frozen overlay.
 
 - [ ] **Step 1: Write failing tests** for single-node and multi-node partitioning, empty drag sets, stable ordering, and identity preservation.
 - [ ] **Step 2: Run** `npm --prefix apps/web exec vitest run src/features/agent-canvas/canvas/frozenCanvasEdges.test.ts` and confirm the new module is missing.
 - [ ] **Step 3: Implement** the pure helpers without reading DOM or mutating source edges.
-- [ ] **Step 4: Add snapshot extraction helpers** that read the current edge SVG once and return serializable path/marker/class/style data; if extraction is unavailable, return an empty snapshot and let the caller retain full live edges.
+- [ ] **Step 4: Add snapshot extraction helpers** that read the current edge SVG once and return serializable edge-group markup containing path, marker, class, and style data; if extraction is unavailable, return an empty snapshot and let the caller retain full live edges.
 - [ ] **Step 5: Run the focused test** and confirm it passes.
 
 ### Task 2: Suspend pointer spotlight during interaction

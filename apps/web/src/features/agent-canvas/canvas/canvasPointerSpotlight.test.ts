@@ -83,4 +83,29 @@ describe("canvas pointer spotlight", () => {
 
     expect(host.dataset.pointerSpotlight).toBeUndefined();
   });
+
+  it("suspends pending and future spotlight work during canvas interaction", () => {
+    const host = createHost();
+    const getBoundingClientRect = vi.spyOn(host, "getBoundingClientRect");
+    const cancelFrame = vi.fn();
+    const requestFrame = vi.fn(() => 41);
+    const controller = createCanvasPointerSpotlightController({
+      getElement: () => host,
+      requestFrame,
+      cancelFrame,
+    });
+
+    controller.move(180, 150);
+    controller.suspend();
+    controller.move(240, 210);
+
+    expect(cancelFrame).toHaveBeenCalledWith(41);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(getBoundingClientRect).not.toHaveBeenCalled();
+    expect(host.dataset.pointerSpotlight).toBeUndefined();
+
+    controller.resume();
+    controller.move(260, 230);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+  });
 });

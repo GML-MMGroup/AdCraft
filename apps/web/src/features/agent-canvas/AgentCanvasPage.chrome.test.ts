@@ -220,9 +220,9 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("pendingPresentedNodesRef");
     expect(source).toContain("deferNodeSnapshotDuringDrag(");
     expect(source).toContain("finishNodeDrag(");
-    expect(source).toMatch(
-      /const handleNodeChanges = useCallback\([\s\S]*?applyNodeChanges\(changes, current\)[\s\S]*?flowNodesRef\.current = next;[\s\S]*?return next;/,
-    );
+    expect(source).toContain("const applyCanvasNodeChanges = useCallback(");
+    expect(source).toContain("pendingDragNodeChangesRef");
+    expect(source).toContain("flushPendingDragNodeChanges();");
     expect(source).toMatch(
       /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
     );
@@ -248,6 +248,27 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toMatch(
       /updateNodePositions\(dragResult\.positions\)[\s\S]*?catch\(\(\) => \{[\s\S]*?refreshWorkflow\(\)/,
     );
+  });
+
+  it("keeps unrelated edges visible through a frozen drag overlay", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const overlaySource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/canvas/FrozenCanvasEdgesOverlay.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("captureFrozenCanvasEdges(");
+    expect(source).toContain("edges={renderedEdges}");
+    expect(source).toContain("<FrozenCanvasEdgesOverlay snapshots={dragEdgeProjection.frozenSnapshots} />");
+    expect(overlaySource).toContain("className=\"agent-canvas-frozen-edges\"");
+    expect(canvasCss).toMatch(/\.agent-canvas-frozen-edges \{[\s\S]*?pointer-events: none;/);
   });
 
   it("keeps workflow nodes mounted so media previews survive viewport changes", () => {
