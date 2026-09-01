@@ -176,6 +176,11 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
 )
+from app.schemas.agent_canvas_guided_references import (
+    ReferenceCandidateKindV2,
+    ReferenceCandidateListResponseV2,
+    ReferenceCandidateScopeV2,
+)
 from app.schemas.agent_canvas_guided_product import (
     GuidedProductAssetVersionRefV1,
     GuidedProductInputCommitRequestV1,
@@ -229,6 +234,9 @@ from app.services.agent_canvas_assets import (
 from app.services.project_cover_authority import ProjectCoverAuthorityService
 from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
 from app.services.agent_canvas_guided_reference import GuidedReferenceSourceService
+from app.services.agent_canvas_guided_reference_candidates import (
+    GuidedReferenceCandidateService,
+)
 from app.persistence.agent_canvas_guided_reference_repository import (
     AgentCanvasGuidedReferenceRepository,
 )
@@ -428,6 +436,7 @@ class AgentCanvasRuntime:
     assets: AgentCanvasAssetService
     guided_product_inputs: GuidedProductInputCommitService
     guided_reference_sources: GuidedReferenceSourceService
+    guided_reference_candidates: GuidedReferenceCandidateService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
@@ -1425,6 +1434,10 @@ def create_agent_canvas_runtime(
     guided_reference_sources.set_continuation_writer(
         conversation_repository.insert_continuation_in_transaction
     )
+    guided_reference_candidates = GuidedReferenceCandidateService(
+        assets=asset_service,
+        workflows=workflow_repository,
+    )
 
     def guided_reference_snapshot(
         workflow_id: str,
@@ -1701,6 +1714,7 @@ def create_agent_canvas_runtime(
         assets=asset_service,
         guided_product_inputs=guided_product_inputs,
         guided_reference_sources=guided_reference_sources,
+        guided_reference_candidates=guided_reference_candidates,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
         turn_retries=turn_retries,
@@ -2553,6 +2567,30 @@ def list_project_assets(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     return ProjectAssetListResponseV2(workflow_id=workflow_id, assets=assets)
+
+
+@router.get(
+    "/workflows/{workflow_id}/reference-candidates",
+    response_model=ReferenceCandidateListResponseV2,
+)
+def list_guided_reference_candidates(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    reference_kind: Annotated[ReferenceCandidateKindV2, Query()],
+    scope: Annotated[ReferenceCandidateScopeV2, Query()],
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    query: Annotated[str | None, Query(max_length=128)] = None,
+) -> ReferenceCandidateListResponseV2:
+    try:
+        return runtime.guided_reference_candidates.list(
+            workflow_id,
+            reference_kind=reference_kind,
+            scope=scope,
+            cursor=cursor,
+            query=query,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
 
 
 @router.get("/assets/recommended", response_model=ImageLibraryListResponseV2)
