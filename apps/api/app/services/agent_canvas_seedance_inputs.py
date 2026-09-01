@@ -409,6 +409,12 @@ def _validate_grounding_manifest_inputs(
         (item.asset_id, item.version_id, item.checksum)
         for item in plan.ordered_references
     )
+    if any(
+        reference.required
+        and (reference.asset_id, reference.version_id, reference.checksum) not in actual
+        for reference in plan.ordered_references
+    ):
+        raise ValueError("v2_storyboard_grid_reference_dropped")
     if not actual or actual[0] != expected[0]:
         raise ValueError("v2_storyboard_grid_reference_dropped")
     if any(identity not in expected for identity in actual):
@@ -439,11 +445,6 @@ def _grounding_semantic_role(item: SeedanceMediaInputV1) -> str:
         "product": "product_reference",
         "prop": "prop_reference",
     }.get(item.source_semantic_role or "", item.source_semantic_role or "reference")
-    if any(
-        item.required and identity not in actual
-        for item, identity in zip(plan.ordered_references, expected, strict=True)
-    ):
-        raise ValueError("v2_storyboard_grid_reference_dropped")
 
 
 def _grounding_audit(
