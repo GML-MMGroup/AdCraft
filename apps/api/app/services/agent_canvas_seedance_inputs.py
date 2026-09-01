@@ -19,6 +19,9 @@ from app.schemas.seedance_inputs import (
     SeedanceMediaInputV1,
     SeedanceTextInputAuditV1,
     SeedanceTextInputV1,
+    StoryboardGridGroundingAuditV1,
+    StoryboardGridGroundingPlanV1,
+    StoryboardReferenceIdentityAuditV1,
 )
 
 
@@ -39,6 +42,7 @@ class AgentCanvasSeedanceInputCompiler:
         delivered_media: tuple[SeedanceDeliveredMediaInputV1, ...],
         compiled_prompt: str | None = None,
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None,
+        grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
     ) -> tuple[SeedanceInputManifestV1, SeedanceInputManifestAuditV1]:
         if node.node_type != "video":
             raise ValueError("Seedance manifests require a Video node.")
@@ -58,9 +62,11 @@ class AgentCanvasSeedanceInputCompiler:
             effective_parameters.normalizations if effective_parameters is not None else (),
         )
         text_inputs = self._compile_text_inputs(resolved_inputs)
-        media_inputs = self._compile_media_inputs(delivered_media)
-        media_inputs = _with_reference_purposes(node, media_inputs)
-        compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs)
+        media_inputs = self._compile_media_inputs(delivered_media, grounding_plan=grounding_plan)
+        media_inputs = _with_reference_purposes(node, media_inputs, grounding_plan)
+        if grounding_plan is not None:
+            _validate_grounding_manifest_inputs(grounding_plan, media_inputs)
+        compiled_prompt = _compile_prompt(prompt, text_inputs, media_inputs, grounding_plan)
         manifest = SeedanceInputManifestV1(
             node_id=node.node_id,
             model_id=model_id,
@@ -75,8 +81,9 @@ class AgentCanvasSeedanceInputCompiler:
             effective_duration_seconds=effective_duration,
             generate_audio=bool(effective.get("generate_audio", False)),
             normalizations=normalizations,
+            grounding_plan=grounding_plan,
         )
-        return manifest, _audit_projection(manifest)
+        return manifest, _audit_projection(manifest, grounding_plan=grounding_plan)
 
     def _duration_values(
         self,
@@ -139,18 +146,41 @@ class AgentCanvasSeedanceInputCompiler:
     @staticmethod
     def _compile_media_inputs(
         delivered_media: tuple[SeedanceDeliveredMediaInputV1, ...],
+        *,
+        grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
     ) -> tuple[SeedanceMediaInputV1, ...]:
         counters = {"image": 0, "video": 0, "audio": 0}
         result: list[SeedanceMediaInputV1] = []
-        for item in sorted(
-            delivered_media, key=lambda value: (value.display_order, value.binding_id)
-        ):
+        order_by_identity = (
+            {
+                (item.asset_id, item.version_id): index
+                for index, item in enumerate(grounding_plan.ordered_references)
+            }
+            if grounding_plan is not None
+            else {}
+        )
+        ordered = sorted(
+            delivered_media,
+            key=lambda value: (
+                order_by_identity.get((value.asset_id, value.version_id), 10_000),
+                value.display_order,
+                value.binding_id,
+            ),
+        )
+        for canonical_order, item in enumerate(ordered):
             counters[item.media_type] += 1
             result.append(
                 SeedanceMediaInputV1(
-                    **item.model_dump(),
-                    provider_input_value=item.provider_input_value,
-                    label=f"{item.media_type.title()} {counters[item.media_type]}",
+                    **{
+                        **item.model_dump(),
+                        "display_order": (
+                            canonical_order
+                            if grounding_plan is not None
+                            else item.display_order
+                        ),
+                        "provider_input_value": item.provider_input_value,
+                        "label": f"{item.media_type.title()} {counters[item.media_type]}",
+                    }
                 )
             )
         return tuple(result)
@@ -196,6 +226,7 @@ def _compile_prompt(
     saved_prompt: str,
     text_inputs: tuple[SeedanceTextInputV1, ...],
     media_inputs: tuple[SeedanceMediaInputV1, ...],
+    grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
 ) -> str:
     segments = [saved_prompt]
     for item in text_inputs:
@@ -204,6 +235,9 @@ def _compile_prompt(
     if labels:
         segments.append(f"Use the following bound references in order: {', '.join(labels)}.")
     storyboard_grid = next(
+        (item for item in media_inputs if item.reference_purpose == "storyboard_grid"),
+        None,
+    ) or next(
         (item for item in media_inputs if item.reference_purpose == "storyboard_sequence"),
         None,
     )
@@ -211,7 +245,46 @@ def _compile_prompt(
         (item for item in media_inputs if item.reference_purpose == "scene_reference"),
         None,
     )
-    if storyboard_grid is not None and scene_board is not None:
+    if grounding_plan is not None and storyboard_grid is not None:
+        panel_text = ", ".join(
+            f"Panel {panel.panel_index}: {panel.beat}" for panel in grounding_plan.panels
+        )
+        segments.append(
+            " ".join(
+                (
+                    f"{storyboard_grid.label} is the primary 3x3 storyboard grid for shot {grounding_plan.target_shot_id}.",
+                    "Follow its nine panels in persisted order as one continuous shot.",
+                    panel_text,
+                    "Use the grid for composition, camera, action progression, and timing.",
+                    "Do not show, split, crop, or recreate the grid.",
+                )
+            )
+        )
+        role_directives = {
+            "character_reference": (
+                "prioritize this reference for character identity, wardrobe, silhouette, and appearance style"
+            ),
+            "scene_reference": (
+                "prioritize this reference for location, layout, materials, lighting, and environment style"
+            ),
+            "product_reference": (
+                "prioritize this reference for product identity, proportions, materials, and markings"
+            ),
+            "prop_reference": (
+                "prioritize this reference for prop identity, proportions, materials, and markings"
+            ),
+        }
+        items_by_identity = {
+            (item.asset_id, item.version_id): item for item in media_inputs
+        }
+        for index, reference in enumerate(grounding_plan.ordered_references, start=1):
+            if reference.semantic_role == "storyboard_grid":
+                continue
+            item = items_by_identity.get((reference.asset_id, reference.version_id))
+            directive = role_directives.get(reference.semantic_role)
+            if item is not None and directive is not None:
+                segments.append(f"Image {index} is the bound {reference.semantic_role}; {directive}.")
+    elif storyboard_grid is not None and scene_board is not None:
         segments.append(
             " ".join(
                 (
@@ -237,12 +310,18 @@ def _compile_prompt(
 def _with_reference_purposes(
     node: CanvasNodeV2,
     media_inputs: tuple[SeedanceMediaInputV1, ...],
+    grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
 ) -> tuple[SeedanceMediaInputV1, ...]:
     return tuple(
         item.model_copy(
             update={
                 "reference_purpose": (
-                    "storyboard_sequence"
+                    "storyboard_grid"
+                    if item.media_type == "image"
+                    and grounding_plan is not None
+                    and item.asset_id == grounding_plan.grid_asset_id
+                    and item.version_id == grounding_plan.grid_version_id
+                    else "storyboard_sequence"
                     if item.media_type == "image"
                     and item.source_semantic_role == "storyboard_sequence"
                     else "scene_reference"
@@ -255,7 +334,11 @@ def _with_reference_purposes(
     )
 
 
-def _audit_projection(manifest: SeedanceInputManifestV1) -> SeedanceInputManifestAuditV1:
+def _audit_projection(
+    manifest: SeedanceInputManifestV1,
+    *,
+    grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
+) -> SeedanceInputManifestAuditV1:
     text_inputs = tuple(
         SeedanceTextInputAuditV1(
             binding_id=item.binding_id,
@@ -273,6 +356,7 @@ def _audit_projection(manifest: SeedanceInputManifestV1) -> SeedanceInputManifes
         SeedanceMediaInputAuditV1(
             binding_id=item.binding_id,
             asset_id=item.asset_id,
+            version_id=item.version_id,
             media_type=item.media_type,
             input_role=item.input_role,
             source_semantic_role=item.source_semantic_role,
@@ -286,6 +370,7 @@ def _audit_projection(manifest: SeedanceInputManifestV1) -> SeedanceInputManifes
         )
         for item in manifest.media_inputs
     )
+    grounding_audit = _grounding_audit(manifest, grounding_plan)
     return SeedanceInputManifestAuditV1(
         node_id=manifest.node_id,
         model_id=manifest.model_id,
@@ -305,4 +390,65 @@ def _audit_projection(manifest: SeedanceInputManifestV1) -> SeedanceInputManifes
         effective_duration_seconds=manifest.effective_duration_seconds,
         generate_audio=manifest.generate_audio,
         normalizations=manifest.normalizations,
+        grounding_audit=grounding_audit,
+    )
+
+
+def _validate_grounding_manifest_inputs(
+    plan: StoryboardGridGroundingPlanV1,
+    media_inputs: tuple[SeedanceMediaInputV1, ...],
+) -> None:
+    actual = tuple(
+        (item.asset_id, item.version_id, item.checksum)
+        for item in media_inputs
+        if item.media_type == "image"
+    )
+    expected = tuple(
+        (item.asset_id, item.version_id, item.checksum)
+        for item in plan.ordered_references
+    )
+    if not actual or actual[0] != expected[0]:
+        raise ValueError("v2_storyboard_grid_reference_dropped")
+    if any(identity not in expected for identity in actual):
+        raise ValueError("v2_storyboard_grid_reference_dropped")
+    if tuple(expected.index(identity) for identity in actual) != tuple(
+        sorted(expected.index(identity) for identity in actual)
+    ):
+        raise ValueError("v2_storyboard_grid_reference_dropped")
+    if any(
+        item.required and identity not in actual
+        for item, identity in zip(plan.ordered_references, expected, strict=True)
+    ):
+        raise ValueError("v2_storyboard_grid_reference_dropped")
+
+
+def _grounding_audit(
+    manifest: SeedanceInputManifestV1,
+    plan: StoryboardGridGroundingPlanV1 | None,
+) -> StoryboardGridGroundingAuditV1 | None:
+    if plan is None:
+        return None
+    lifecycle = tuple(
+        StoryboardReferenceIdentityAuditV1(
+            asset_id=item.asset_id,
+            version_id=item.version_id or "unknown",
+            checksum=item.checksum,
+            semantic_role=(item.reference_purpose or item.source_semantic_role or "reference"),
+            binding_id=item.binding_id,
+            display_order=index,
+            provider_input_type=item.provider_input_type,
+        )
+        for index, item in enumerate(manifest.media_inputs)
+    )
+    return StoryboardGridGroundingAuditV1(
+        requested=lifecycle,
+        delivered=lifecycle,
+        serialized=lifecycle,
+        submitted=(),
+        primary_reference_asset_id=plan.grid_asset_id,
+        primary_reference_version_id=plan.grid_version_id,
+        panel_sequence_fingerprint=plan.panel_sequence_fingerprint,
+        provider_request_field="content",
+        provider_input_order=tuple(item.semantic_role for item in plan.ordered_references),
+        prompt_reference_labels=tuple(item.label for item in manifest.image_inputs),
     )

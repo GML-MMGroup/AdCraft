@@ -94,7 +94,11 @@ class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
 
 
 SeedanceMediaTypeV1 = Literal["image", "video", "audio"]
-SeedanceReferencePurposeV1 = Literal["storyboard_sequence", "scene_reference"]
+SeedanceReferencePurposeV1 = Literal[
+    "storyboard_grid",
+    "storyboard_sequence",
+    "scene_reference",
+]
 SeedanceProviderInputTypeV1 = Literal[
     "image_url",
     "video_url",
@@ -120,6 +124,7 @@ class SeedanceTextInputV1(_SeedanceInputModel):
 class SeedanceDeliveredMediaInputV1(_SeedanceInputModel):
     binding_id: str = Field(min_length=1)
     asset_id: str = Field(min_length=1)
+    version_id: str | None = Field(default=None, min_length=1)
     media_type: SeedanceMediaTypeV1
     input_role: CanvasInputRoleV2
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
@@ -153,6 +158,7 @@ class SeedanceInputManifestV1(_SeedanceInputModel):
     effective_duration_seconds: int = Field(ge=1, le=15)
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
+    grounding_plan: StoryboardGridGroundingPlanV1 | None = None
 
     @property
     def media_inputs(self) -> tuple[SeedanceMediaInputV1, ...]:
@@ -178,6 +184,7 @@ class SeedanceTextInputAuditV1(_SeedanceInputModel):
 class SeedanceMediaInputAuditV1(_SeedanceInputModel):
     binding_id: str
     asset_id: str
+    version_id: str | None = None
     media_type: SeedanceMediaTypeV1
     input_role: CanvasInputRoleV2
     source_semantic_role: str | None = None
@@ -204,3 +211,4 @@ class SeedanceInputManifestAuditV1(_SeedanceInputModel):
     effective_duration_seconds: int
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
+    grounding_audit: StoryboardGridGroundingAuditV1 | None = None

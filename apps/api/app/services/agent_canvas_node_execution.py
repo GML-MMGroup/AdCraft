@@ -37,9 +37,14 @@ from app.schemas.seedance_inputs import (
     SeedanceDeliveredMediaInputV1,
     SeedanceInputManifestAuditV1,
     SeedanceInputManifestV1,
+    StoryboardGridGroundingPlanV1,
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
+from app.services.agent_canvas_storyboard_grounding import (
+    GroundingPlanError,
+    build_storyboard_grid_grounding_plan,
+)
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
@@ -58,6 +63,7 @@ from app.tools.mock_media_fixtures import (
     MockMediaFixtureError,
     deterministic_mock_media_bytes,
 )
+from app.tools.seedance_adapter import VolcengineSeedanceAdapter
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +259,10 @@ def generated_asset_publication_metadata(
                 ),
             }
         )
+    if context.seedance_input_audit is not None:
+        grounding_audit = context.seedance_input_audit.grounding_audit
+        if grounding_audit is not None:
+            metadata["storyboard_grid_grounding"] = grounding_audit.model_dump(mode="json")
     return {key: value for key, value in metadata.items() if value is not None}
 
 
@@ -491,6 +501,7 @@ class MediaNodeExecutor:
             )
             for reference in delivered_references
         )
+        grounding_plan = _seedance_grounding_plan(context, media_inputs)
         try:
             if context.model_resolution is None or not context.model_id:
                 raise _error(
@@ -513,10 +524,13 @@ class MediaNodeExecutor:
                     context.compiled_prompt.prompt if context.compiled_prompt is not None else None
                 ),
                 effective_parameters=context.effective_parameters,
+                grounding_plan=grounding_plan,
             )
-        except ValueError as error:
+        except (GroundingPlanError, ValueError) as error:
             code = str(error)
-            if code != "v2_video_prompt_empty":
+            if isinstance(error, GroundingPlanError):
+                pass
+            elif code != "v2_video_prompt_empty":
                 code = "provider_inputs_unsupported"
             raise _error(code, str(error)) from error
         return replace(
@@ -669,6 +683,10 @@ class MediaNodeExecutor:
                 "provider_reference_delivery_unavailable",
                 "The configured provider does not support Agent Canvas Seedance manifests.",
             )
+        try:
+            VolcengineSeedanceAdapter(self._settings).payload_for_manifest(manifest)
+        except ValueError as error:
+            raise _error(str(error), str(error)) from error
         intent = self._prepare_submission_intent(
             context,
             {
@@ -1070,6 +1088,95 @@ def _saved_prompt(context: NodeExecutionContext) -> str:
             )
         )
     return "\n\n".join(parts)
+
+
+def _seedance_grounding_plan(
+    context: NodeExecutionContext,
+    media_inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+) -> StoryboardGridGroundingPlanV1 | None:
+    """Build grounding only for persisted sequence video nodes with a grid binding."""
+
+    if context.node.creative_role != "storyboard_video":
+        return None
+    sequence_id = context.node.metadata.get("source_sequence_id")
+    if not isinstance(sequence_id, str) or not sequence_id.strip():
+        return None
+    grid_input = next(
+        (
+            item
+            for item in media_inputs
+            if item.media_type == "image"
+            and (
+                item.source_semantic_role in {"storyboard_grid", "storyboard_sequence"}
+                or item.binding_metadata.get("semantic_reference_role")
+                == "storyboard_visual_reference"
+            )
+        ),
+        None,
+    )
+    if context.model_resolution is None:
+        raise GroundingPlanError("v2_storyboard_grid_provider_payload_invalid")
+    limits = context.model_resolution.capability_metadata.get("reference_limits")
+    provider_reference_limit = limits.get("image") if isinstance(limits, dict) else None
+    if not isinstance(provider_reference_limit, int):
+        raise GroundingPlanError("v2_storyboard_grid_provider_payload_invalid")
+    if grid_input is None:
+        return build_storyboard_grid_grounding_plan(
+            node=context.node,
+            grid_input=None,
+            storyboard_content={},
+            target_shot_id=sequence_id,
+            prompt_snapshot=context.node.generation_prompt or "",
+            ordered_references=(),
+            provider_reference_limit=provider_reference_limit,
+        )
+    revision = context.node.metadata.get("source_plan_revision")
+    grid_with_revision = grid_input.model_copy(
+        update={
+            "binding_metadata": {
+                **grid_input.binding_metadata,
+                "storyboard_revision": str(revision) if revision is not None else "",
+            }
+        }
+    )
+    role_aliases = {
+        "character": "character_reference",
+        "scene": "scene_reference",
+        "scene_board": "scene_reference",
+        "product": "product_reference",
+        "prop": "prop_reference",
+    }
+    ordered_references = tuple(
+        {
+            "asset_id": item.asset_id,
+            "version_id": item.asset_version_id,
+            "checksum": item.asset_checksum,
+            "semantic_role": role_aliases.get(
+                str(item.binding_metadata.get("semantic_reference_role")
+                    or item.source_semantic_role
+                    or "reference"),
+                str(item.binding_metadata.get("semantic_reference_role")
+                    or item.source_semantic_role
+                    or "reference"),
+            ),
+            "binding_id": item.binding_id or f"asset:{item.asset_id}",
+            "media_type": item.media_type,
+            "required": item.required,
+            "display_order": item.display_order,
+        }
+        for item in media_inputs
+        if item is not grid_input and item.media_type == "image"
+    )
+    return build_storyboard_grid_grounding_plan(
+        node=context.node,
+        grid_input=grid_with_revision,
+        storyboard_content=grid_input.source_structured_content,
+        target_shot_id=sequence_id,
+        prompt_snapshot=context.node.generation_prompt or "",
+        ordered_references=ordered_references,
+        provider_reference_limit=provider_reference_limit,
+        expected_storyboard_revision=(str(revision) if revision is not None else None),
+    )
 
 
 def _provider_prompt_with_reference_instructions(

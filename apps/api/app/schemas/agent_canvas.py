@@ -555,6 +555,7 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     binding_kind: Literal["image_reference", "video_reference", "audio_reference"]
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     asset_id: str = Field(min_length=1)
     asset_version_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
@@ -599,6 +600,7 @@ class ResolvedMediaBindingInputV2(_AgentCanvasModel):
     input_role: Literal["image_reference", "video_reference", "audio_reference"]
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     required: bool = False
     display_order: int = Field(default=0, ge=0)
     asset_id: str = Field(min_length=1)

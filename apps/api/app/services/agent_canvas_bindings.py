@@ -472,6 +472,7 @@ class AgentCanvasBindingService:
                 continue
             source_node_id: str | None = None
             source_revision: int | None = None
+            source_structured_content: dict[str, object] = {}
             if isinstance(binding.source, CanvasBindingSourceNodeV2):
                 source = self._workflows.get_node(workflow_id, binding.source.node_id)
                 if source.status != "ready" or source.output_asset_id is None:
@@ -498,6 +499,7 @@ class AgentCanvasBindingService:
                 source_node_id = source.node_id
                 source_revision = source.revision
                 source_semantic_role = source.semantic_role
+                source_structured_content = source.structured_content
             else:
                 asset = self._resolve_direct_asset(binding.source)
                 source_kind = "image_asset"
@@ -510,6 +512,7 @@ class AgentCanvasBindingService:
                     binding_kind=binding.input_role,
                     source_semantic_role=source_semantic_role,
                     binding_metadata=binding.metadata,
+                    source_structured_content=source_structured_content,
                     asset_id=asset.asset_id,
                     asset_version_id=asset.version_id,
                     media_type=asset.media_type,
@@ -671,6 +674,7 @@ class AgentCanvasBindingService:
             asset: ProjectAssetSummaryV2
             source_node_id: str | None = None
             source_semantic_role: str | None = None
+            source_structured_content: dict[str, object] = {}
             if binding.source_kind == "node_output":
                 source = self._workflows.get_node(workflow_id, binding.source_id)
                 if source.status != "ready" or source.output_asset_id is None:
@@ -695,6 +699,7 @@ class AgentCanvasBindingService:
                 )
                 source_node_id = source.node_id
                 source_semantic_role = source.semantic_role
+                source_structured_content = source.structured_content
             else:
                 asset = self._resolve_required_asset_version(
                     binding.source_id,
@@ -711,6 +716,7 @@ class AgentCanvasBindingService:
                     binding_kind=binding.input_role,
                     source_semantic_role=source_semantic_role,
                     binding_metadata=binding.binding_metadata,
+                    source_structured_content=source_structured_content,
                     asset_id=asset.asset_id,
                     asset_version_id=asset.version_id,
                     media_type=asset.media_type,

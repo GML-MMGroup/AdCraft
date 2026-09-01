@@ -67,7 +67,7 @@ class VolcengineSeedanceAdapter:
 
         content: list[dict[str, Any]] = [{"type": "text", "text": manifest.prompt}]
         content.extend(_seedance_manifest_content_item(item) for item in manifest.media_inputs)
-        return {
+        payload = {
             "model": manifest.model_id,
             "content": content,
             "resolution": _normalize_video_resolution(manifest.resolution),
@@ -77,6 +77,8 @@ class VolcengineSeedanceAdapter:
             "watermark": False,
             "camera_fixed": False,
         }
+        _validate_storyboard_grounding_payload(manifest, payload)
+        return payload
 
     def task_url(self, task_id: str) -> str:
         return _video_generation_task_url(
@@ -149,6 +151,88 @@ def _seedance_manifest_content_item(item: SeedanceMediaInputV1) -> dict[str, Any
 
 def _seedance_wire_role(item: SeedanceMediaInputV1) -> str:
     return "reference_image" if item.media_type == "image" else item.input_role
+
+
+def _validate_storyboard_grounding_payload(
+    manifest: SeedanceInputManifestV1,
+    payload: dict[str, Any],
+) -> None:
+    plan = manifest.grounding_plan
+    if plan is None:
+        return
+    ordered_images = tuple(
+        item for item in manifest.media_inputs if item.media_type == "image"
+    )
+    expected = tuple(
+        (item.asset_id, item.version_id, item.checksum) for item in plan.ordered_references
+    )
+    actual = tuple(
+        (item.asset_id, item.version_id, item.checksum) for item in ordered_images
+    )
+    if (
+        not actual
+        or actual[0]
+        != (plan.grid_asset_id, plan.grid_version_id, plan.grid_checksum)
+        or any(identity not in expected for identity in actual)
+        or tuple(expected.index(identity) for identity in actual)
+        != tuple(sorted(expected.index(identity) for identity in actual))
+        or any(reference.required and identity not in actual for reference, identity in zip(
+            plan.ordered_references,
+            expected,
+            strict=True,
+        ))
+        or len(ordered_images) > plan.provider_reference_limit
+    ):
+        raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+
+    expected_labels = tuple(f"Image {index}" for index in range(1, len(ordered_images) + 1))
+    if tuple(item.label for item in ordered_images) != expected_labels:
+        raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+    if any(label not in manifest.prompt for label in expected_labels):
+        raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+    if any(
+        private_value in manifest.prompt
+        for item in ordered_images
+        for private_value in (
+            item.asset_id,
+            item.version_id or "",
+            item.binding_id,
+            item.provider_input_value,
+        )
+        if private_value
+    ):
+        raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+
+    wire_images = tuple(
+        item
+        for item in payload.get("content", ())
+        if isinstance(item, dict) and item.get("type") in {"image_url", "provider_file_id"}
+    )
+    if len(wire_images) != len(ordered_images):
+        raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+    for expected_item, wire_item in zip(ordered_images, wire_images, strict=True):
+        if (
+            wire_item.get("label") != expected_item.label
+            or wire_item.get("role") != "reference_image"
+        ):
+            raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+        if expected_item.provider_input_type == "provider_file_id":
+            if wire_item.get("file_id") != expected_item.provider_input_value:
+                raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+            continue
+        input_value = _wire_media_url(wire_item)
+        if input_value != expected_item.provider_input_value:
+            raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+        if not _is_seedance_compatible_image_input(input_value):
+            raise ValueError("v2_storyboard_grid_reference_delivery_failed")
+
+
+def _wire_media_url(content_item: dict[str, Any]) -> str:
+    image_url = content_item.get("image_url")
+    if not isinstance(image_url, dict):
+        return ""
+    value = image_url.get("url")
+    return value if isinstance(value, str) else ""
 
 
 def _is_seedance_compatible_image_input(value: str) -> bool:
