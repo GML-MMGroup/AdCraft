@@ -274,15 +274,17 @@ def _compile_prompt(
                 "prioritize this reference for prop identity, proportions, materials, and markings"
             ),
         }
-        items_by_identity = {
-            (item.asset_id, item.version_id): item for item in media_inputs
+        references_by_identity = {
+            (reference.asset_id, reference.version_id): reference
+            for reference in grounding_plan.ordered_references
         }
-        for index, reference in enumerate(grounding_plan.ordered_references, start=1):
+        image_inputs = tuple(item for item in media_inputs if item.media_type == "image")
+        for index, item in enumerate(image_inputs, start=1):
+            reference = references_by_identity[(item.asset_id, item.version_id)]
             if reference.semantic_role == "storyboard_grid":
                 continue
-            item = items_by_identity.get((reference.asset_id, reference.version_id))
             directive = role_directives.get(reference.semantic_role)
-            if item is not None and directive is not None:
+            if directive is not None:
                 segments.append(f"Image {index} is the bound {reference.semantic_role}; {directive}.")
     elif storyboard_grid is not None and scene_board is not None:
         segments.append(
@@ -415,6 +417,28 @@ def _validate_grounding_manifest_inputs(
         sorted(expected.index(identity) for identity in actual)
     ):
         raise ValueError("v2_storyboard_grid_reference_dropped")
+    expected_roles = {
+        (item.asset_id, item.version_id): item.semantic_role
+        for item in plan.ordered_references
+    }
+    for item in media_inputs:
+        if item.media_type != "image":
+            continue
+        identity = (item.asset_id, item.version_id)
+        if _grounding_semantic_role(item) != expected_roles[identity]:
+            raise ValueError("v2_storyboard_grid_reference_dropped")
+
+
+def _grounding_semantic_role(item: SeedanceMediaInputV1) -> str:
+    if item.reference_purpose == "storyboard_grid":
+        return "storyboard_grid"
+    return {
+        "character": "character_reference",
+        "scene": "scene_reference",
+        "scene_board": "scene_reference",
+        "product": "product_reference",
+        "prop": "prop_reference",
+    }.get(item.source_semantic_role or "", item.source_semantic_role or "reference")
     if any(
         item.required and identity not in actual
         for item, identity in zip(plan.ordered_references, expected, strict=True)

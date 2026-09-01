@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_runtime import (
     ProviderReferenceDeliveryContextV1,
     ResolvedModelExecutionV1,
 )
+from app.schemas.seedance_inputs import StoryboardGridGroundingPlanV1
 from app.services.agent_canvas_reference_semantics import (
     compile_provider_reference_instruction,
 )
@@ -395,6 +396,7 @@ class V2ProviderReferenceInputDeliveryService:
         *,
         model_resolution: ResolvedModelExecutionV1,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+        grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
     ) -> V2DeliveredReferenceSet:
         """Deliver explicit Canvas media bindings in persisted input order."""
 
@@ -405,10 +407,23 @@ class V2ProviderReferenceInputDeliveryService:
         failures: list[V2ReferenceInputDeliveryFailure] = []
         optional_omissions: list[V2ReferenceInputDeliveryFailure] = []
         total_data_url_bytes = 0
-        for input_snapshot in sorted(
+        order_by_identity = (
+            {
+                (item.asset_id, item.version_id): index
+                for index, item in enumerate(grounding_plan.ordered_references)
+            }
+            if grounding_plan is not None
+            else {}
+        )
+        ordered_inputs = sorted(
             inputs,
-            key=lambda item: (item.display_order, item.binding_id or ""),
-        ):
+            key=lambda item: (
+                order_by_identity.get((item.asset_id, item.asset_version_id), 10_000),
+                item.display_order,
+                item.binding_id or "",
+            ),
+        )
+        for input_snapshot in ordered_inputs:
             is_guided_reference = input_snapshot.binding_metadata.get(
                 "semantic_reference_role"
             ) in {"character_reference", "scene_reference"}

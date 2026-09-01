@@ -190,6 +190,15 @@ def _validate_storyboard_grounding_payload(
         raise ValueError("v2_storyboard_grid_provider_payload_invalid")
     if any(label not in manifest.prompt for label in expected_labels):
         raise ValueError("v2_storyboard_grid_provider_payload_invalid")
+    expected_roles = {
+        (reference.asset_id, reference.version_id): reference.semantic_role
+        for reference in plan.ordered_references
+    }
+    for item in ordered_images:
+        identity = (item.asset_id, item.version_id)
+        actual_role = _grounding_semantic_role(item)
+        if actual_role != expected_roles[identity]:
+            raise ValueError("v2_storyboard_grid_provider_payload_invalid")
     if any(
         private_value in manifest.prompt
         for item in ordered_images
@@ -233,6 +242,18 @@ def _wire_media_url(content_item: dict[str, Any]) -> str:
         return ""
     value = image_url.get("url")
     return value if isinstance(value, str) else ""
+
+
+def _grounding_semantic_role(item: SeedanceMediaInputV1) -> str:
+    if item.reference_purpose == "storyboard_grid":
+        return "storyboard_grid"
+    return {
+        "character": "character_reference",
+        "scene": "scene_reference",
+        "scene_board": "scene_reference",
+        "product": "product_reference",
+        "prop": "prop_reference",
+    }.get(item.source_semantic_role or "", item.source_semantic_role or "reference")
 
 
 def _is_seedance_compatible_image_input(value: str) -> bool:

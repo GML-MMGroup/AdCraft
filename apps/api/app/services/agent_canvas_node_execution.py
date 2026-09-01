@@ -433,6 +433,10 @@ class MediaNodeExecutor:
             return context
         if context.node.node_type != "video" and context.delivered_references:
             return context
+        try:
+            grounding_plan = _seedance_grounding_plan(context, media_inputs)
+        except GroundingPlanError as error:
+            raise _error(error.code, str(error)) from error
         delivery = None
         if media_inputs:
             if context.model_resolution is None:
@@ -446,6 +450,7 @@ class MediaNodeExecutor:
                     context.node,
                     media_inputs,
                 ),
+                grounding_plan=grounding_plan,
             )
             try:
                 delivery.raise_for_canvas_failures()
@@ -501,10 +506,6 @@ class MediaNodeExecutor:
             )
             for reference in delivered_references
         )
-        try:
-            grounding_plan = _seedance_grounding_plan(context, media_inputs)
-        except GroundingPlanError as error:
-            raise _error(error.code, str(error)) from error
         try:
             if context.model_resolution is None or not context.model_id:
                 raise _error(
