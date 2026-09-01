@@ -943,6 +943,8 @@ def _generated_provenance(
         provider=_optional_string(metadata.get("provider")) or "unknown",
         model_id=_optional_string(metadata.get("model_id")) or "unknown",
         provider_task_id=_optional_string(metadata.get("provider_task_id")),
+        execution_mode=_optional_string(metadata.get("execution_mode")) or "agent_assisted",
+        semantic_extraction=(_optional_string(metadata.get("semantic_extraction")) or "agent"),
         requested_parameters=_json_mapping(metadata.get("requested_parameters")),
         effective_parameters=_json_mapping(metadata.get("effective_parameters")),
         normalizations=_generated_normalizations(metadata.get("normalizations")),

@@ -446,6 +446,8 @@ def _snapshot(
         ),
         "requested_parameters": compiled.requested_parameters,
         "effective_parameters": compiled.effective_parameters,
+        "execution_mode": execution_mode,
+        "parameter_source": parameter_source,
     }
     digest = _digest(payload)
     return VideoParameterCompilationSnapshotV2(

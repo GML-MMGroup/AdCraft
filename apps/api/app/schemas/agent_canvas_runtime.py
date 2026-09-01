@@ -161,6 +161,8 @@ class GeneratedAssetProvenanceV2(_RuntimeModel):
     provider: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=320)
     provider_task_id: str | None = Field(default=None, max_length=160)
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
     requested_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     effective_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     normalizations: tuple[str | VideoParameterNormalizationV2, ...] = ()
