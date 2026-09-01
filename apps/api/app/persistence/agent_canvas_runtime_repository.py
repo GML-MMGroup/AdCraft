@@ -1111,6 +1111,40 @@ class AgentCanvasRuntimeRepository:
                 connection.execute(insert(AgentCanvasProviderSubmissionIntentRow).values(**values))
         except V2PersistenceError:
             raise
+        except IntegrityError as error:
+            # Another runtime may win the unique logical-operation insert after
+            # this transaction's read.  Re-read that winner and return the
+            # canonical immutable intent instead of surfacing a transient
+            # persistence failure.
+            try:
+                with self._database.engine.connect() as connection:
+                    raced = (
+                        connection.execute(
+                            select(AgentCanvasProviderSubmissionIntentRow).where(
+                                AgentCanvasProviderSubmissionIntentRow.logical_operation_key
+                                == intent.logical_operation_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+            except SQLAlchemyError as reread_error:
+                raise _error(
+                    "execution_persistence_failed",
+                    "Provider submission intent storage failed.",
+                ) from reread_error
+            if raced is not None:
+                stored = _submission_intent(raced)
+                if stored.request_digest != intent.request_digest:
+                    raise _error(
+                        "provider_submission_intent_conflict",
+                        "Provider submission intent content is immutable.",
+                    ) from error
+                return stored
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
         except SQLAlchemyError as error:
             raise _error(
                 "execution_persistence_failed",
