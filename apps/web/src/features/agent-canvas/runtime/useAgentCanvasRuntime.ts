@@ -326,15 +326,17 @@ export function useAgentCanvasRuntime(
     const replayEvents = async (
       afterSeq: number,
       isActive: () => boolean = () => !cancelled,
-    ) => {
+    ): Promise<boolean> => {
       let replayCursor = afterSeq;
+      let changed = false;
       for (;;) {
         const replay = await agentCanvasApi.agentCanvasEvents(workflowId, replayCursor, 200);
-        if (!isActive() || activeWorkflowIdRef.current !== workflowId) return;
+        if (!isActive() || activeWorkflowIdRef.current !== workflowId) return changed;
+        if (replay.events.length) changed = true;
         replay.events.forEach(processEvent);
         const nextCursor = Math.max(cursorRef.current, replay.next_cursor, replayCursor);
         cursorRef.current = nextCursor;
-        if (replay.events.length < 200 || nextCursor <= replayCursor) return;
+        if (replay.events.length < 200 || nextCursor <= replayCursor) return changed;
         replayCursor = nextCursor;
       }
     };
@@ -372,10 +374,12 @@ export function useAgentCanvasRuntime(
             // being assembled at the same time. Once the stream is truly open,
             // replay its boundary again and refresh the authoritative projections.
             try {
-              await replayEvents(streamCursor, isCurrentConnection);
+              const replayChanged = await replayEvents(streamCursor, isCurrentConnection);
               if (!isCurrentConnection() || !initialConnection) return;
-              void refreshWorkflow();
-              setChatRevision((current) => current + 1);
+              if (replayChanged) {
+                void refreshWorkflow();
+                setChatRevision((current) => current + 1);
+              }
             } catch (error) {
               if (!isCurrentConnection()) return;
               setRuntimeError(

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StableMediaPreview } from "./StableMediaPreview.tsx";
@@ -8,6 +8,7 @@ describe("StableMediaPreview", () => {
   afterEach(() => {
     cleanup();
     __resetStableMediaCacheForTests();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -67,6 +68,27 @@ describe("StableMediaPreview", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     observe?.([{ isIntersecting: true } as IntersectionObserverEntry]);
     await waitFor(() => expect(screen.getByAltText("lazy").getAttribute("src")).toBe("blob:lazy-image"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("delays media hydration by the requested amount", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("image", { status: 200 }));
+    const source = "/api/v2/assets/asset-4/content?v=version-6";
+
+    render(<StableMediaPreview src={source} alt="deferred" deferMs={500} />);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(499);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
