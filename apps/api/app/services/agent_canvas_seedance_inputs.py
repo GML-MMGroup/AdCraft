@@ -46,7 +46,11 @@ class AgentCanvasSeedanceInputCompiler:
     ) -> tuple[SeedanceInputManifestV1, SeedanceInputManifestAuditV1]:
         if node.node_type != "video":
             raise ValueError("Seedance manifests require a Video node.")
-        prompt = str(compiled_prompt or node.generation_prompt or "").strip()
+        # Grounded video prompts are rebuilt from the saved node prompt and the
+        # typed grounding plan so generic identity diagnostics cannot leak into
+        # the provider-facing request.
+        prompt_source = None if grounding_plan is not None else compiled_prompt
+        prompt = str(prompt_source or node.generation_prompt or "").strip()
         if not prompt:
             raise ValueError("v2_video_prompt_empty")
         effective = (
