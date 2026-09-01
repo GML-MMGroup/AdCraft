@@ -20,6 +20,7 @@ import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
+import { CanvasVideoPreview } from "./CanvasVideoPreview.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
@@ -131,7 +132,11 @@ function MediaSurface({
             }}
           />
         ) : (
-          <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />
+          <CanvasVideoPreview
+            asset={asset}
+            label={label}
+            onMediaDimensionsResolved={onMediaDimensionsResolved}
+          />
         )}
         {onOpenVideoPreview ? (
           <button

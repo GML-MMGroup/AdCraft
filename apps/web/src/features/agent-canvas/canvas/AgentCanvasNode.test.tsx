@@ -24,6 +24,7 @@ import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 const updateNodeInternals = vi.hoisted(() => vi.fn());
 const ensureVideoPoster = vi.hoisted(() => vi.fn());
 const ensureVideoPosterFromElement = vi.hoisted(() => vi.fn());
+const requestNativeVideoFirstFrame = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -39,6 +40,10 @@ vi.mock("@xyflow/react", async () => {
 vi.mock("../../../workflow/videoPosterCache.ts", () => ({
   ensureVideoPoster,
   ensureVideoPosterFromElement,
+}));
+
+vi.mock("./nativeVideoFirstFrame.ts", () => ({
+  requestNativeVideoFirstFrame,
 }));
 
 function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draft"): CanvasNodeV2 {
@@ -122,6 +127,7 @@ afterEach(() => {
   updateNodeInternals.mockClear();
   ensureVideoPoster.mockReset();
   ensureVideoPosterFromElement.mockReset();
+  requestNativeVideoFirstFrame.mockReset();
   vi.useRealTimers();
 });
 
@@ -745,7 +751,20 @@ describe("AgentCanvasNodeCard", () => {
     expect(ensureVideoPosterFromElement).not.toHaveBeenCalled();
   });
 
-  it("leaves a video without a backend poster as a stable placeholder", async () => {
+  it("lazily activates a source-backed preview when a video has no backend poster", async () => {
+    let notifyIntersection: ((entries: IntersectionObserverEntry[]) => void) | undefined;
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() { return []; }
+      root = null;
+      rootMargin = "240px";
+      thresholds = [0];
+    });
     const createObjectURL = vi.fn(() => "blob:agent-video-poster");
     const revokeObjectURL = vi.fn();
     Object.defineProperties(URL, {
@@ -762,12 +781,71 @@ describe("AgentCanvasNodeCard", () => {
     };
 
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={asset} />);
-    expect(screen.queryByLabelText("video output")).toBeNull();
-    expect(screen.getByTestId("agent-canvas-node-video-node").querySelector(
-      ".agent-canvas-node__media-placeholder",
-    )).toBeTruthy();
+    const video = screen.getByLabelText("video output");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video.getAttribute("preload")).toBe("none");
+    expect(video.getAttribute("src")).toBeNull();
     expect(ensureVideoPoster).not.toHaveBeenCalled();
     expect(ensureVideoPosterFromElement).not.toHaveBeenCalled();
+
+    await act(async () => {
+      notifyIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry]);
+    });
+    expect(video.getAttribute("preload")).toBe("metadata");
+    expect(video.getAttribute("src")).toContain("/api/v2/assets/video-asset/content?v=video-version-2");
+  });
+
+  it("loads only one poster-less video preview at a time", async () => {
+    const intersectionCallbacks: IntersectionObserverCallback[] = [];
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallbacks.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() { return []; }
+      root = null;
+      rootMargin = "240px";
+      thresholds = [0];
+    });
+    const firstAsset = {
+      ...makeAsset("video"),
+      display_name: "First video output",
+      preview_url: null,
+      version_id: "video-version-1",
+    };
+    const secondAsset = {
+      ...makeAsset("video"),
+      asset_id: "video-asset-2",
+      display_name: "Second video output",
+      preview_url: null,
+      version_id: "video-version-2",
+    };
+
+    render(
+      <>
+        <AgentCanvasNodeCard node={makeNode("video", "ready")} asset={firstAsset} />
+        <AgentCanvasNodeCard
+          node={{ ...makeNode("video", "ready"), node_id: "video-node-2", output_asset_id: "video-asset-2" }}
+          asset={secondAsset}
+        />
+      </>,
+    );
+    const videos = screen.getAllByLabelText(/video output/i);
+    await act(async () => {
+      for (const callback of intersectionCallbacks) {
+        callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      }
+    });
+
+    expect(videos[0].getAttribute("src")).toContain("video-asset/content?v=video-version-1");
+    expect(videos[1].getAttribute("src")).toBeNull();
+
+    await act(async () => {
+      fireEvent.loadedData(videos[0]);
+    });
+    expect(videos[1].getAttribute("src")).toContain("video-asset-2/content?v=video-version-2");
   });
 
   it("sizes an image node shell from the generated asset dimensions", () => {

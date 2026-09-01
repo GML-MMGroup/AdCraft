@@ -112,9 +112,19 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path");
     expect(canvasCss).toContain("stroke-dasharray: 8 6");
     expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
+    expect(canvasCss).toContain("vector-effect: non-scaling-stroke");
+    expect(canvasCss).toContain("stroke: rgb(229 231 238 / 86%)");
+    expect(canvasCss).toMatch(/\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?filter: none;/);
+    expect(canvasCss).not.toMatch(/\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path,[\s\S]*?filter: drop-shadow/);
     expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");
     expect(canvasCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path[\s\S]*?animation: none;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board\.is-interacting \.react-flow__node\s*\{[\s\S]*?will-change: transform;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board\.is-interacting \.agent-canvas-node__surface\s*\{[\s\S]*?box-shadow: none;/,
     );
     expect(progressiveRevealRule).toContain("animation: agent-canvas-progressive-reveal 420ms ease-out both");
     expect(progressiveRevealRule).not.toContain("outline");

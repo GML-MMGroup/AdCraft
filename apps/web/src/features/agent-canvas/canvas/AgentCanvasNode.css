@@ -162,6 +162,9 @@
 }
 
 .agent-canvas-node__video-stage > video {
+  display: block;
+  object-fit: cover;
+  object-position: center;
   pointer-events: none;
 }
 
