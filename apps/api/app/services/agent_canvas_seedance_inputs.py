@@ -453,22 +453,39 @@ def _grounding_audit(
 ) -> StoryboardGridGroundingAuditV1 | None:
     if plan is None:
         return None
-    lifecycle = tuple(
+    delivered = tuple(
         StoryboardReferenceIdentityAuditV1(
             asset_id=item.asset_id,
             version_id=item.version_id or "unknown",
             checksum=item.checksum,
-            semantic_role=(item.reference_purpose or item.source_semantic_role or "reference"),
+            semantic_role=_grounding_semantic_role(item),
             binding_id=item.binding_id,
             display_order=index,
             provider_input_type=item.provider_input_type,
         )
         for index, item in enumerate(manifest.media_inputs)
     )
+    requested = tuple(
+        StoryboardReferenceIdentityAuditV1(
+            asset_id=item.asset_id,
+            version_id=item.version_id,
+            checksum=item.checksum,
+            semantic_role=item.semantic_role,
+            binding_id=item.binding_id,
+            display_order=item.display_order,
+        )
+        for item in plan.ordered_references
+    )
+    delivered_keys = {(item.asset_id, item.version_id) for item in delivered}
+    omitted_optional = tuple(
+        f"{item.asset_id}:{item.version_id}"
+        for item in plan.ordered_references
+        if not item.required and (item.asset_id, item.version_id) not in delivered_keys
+    )
     return StoryboardGridGroundingAuditV1(
-        requested=lifecycle,
-        delivered=lifecycle,
-        serialized=lifecycle,
+        requested=requested,
+        delivered=delivered,
+        serialized=(),
         submitted=(),
         primary_reference_asset_id=plan.grid_asset_id,
         primary_reference_version_id=plan.grid_version_id,
@@ -477,4 +494,34 @@ def _grounding_audit(
         provider_request_field="content",
         provider_input_order=tuple(item.semantic_role for item in plan.ordered_references),
         prompt_reference_labels=tuple(item.label for item in manifest.image_inputs),
+        omitted_optional_references=omitted_optional,
+    )
+
+
+def mark_seedance_grounding_serialized(
+    audit: SeedanceInputManifestAuditV1,
+) -> SeedanceInputManifestAuditV1:
+    grounding_audit = audit.grounding_audit
+    if grounding_audit is None:
+        return audit
+    return audit.model_copy(
+        update={
+            "grounding_audit": grounding_audit.model_copy(
+                update={"serialized": grounding_audit.delivered}
+            )
+        }
+    )
+
+
+def mark_seedance_grounding_submitted(
+    audit: SeedanceInputManifestAuditV1,
+) -> SeedanceInputManifestAuditV1:
+    grounding_audit = audit.grounding_audit
+    if grounding_audit is None:
+        return audit
+    serialized = grounding_audit.serialized
+    return audit.model_copy(
+        update={
+            "grounding_audit": grounding_audit.model_copy(update={"submitted": serialized})
+        }
     )
