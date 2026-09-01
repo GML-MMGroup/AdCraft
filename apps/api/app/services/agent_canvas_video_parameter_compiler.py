@@ -399,6 +399,8 @@ def _snapshot(
     compiled: CompiledVideoParametersV2,
     gateway_result: VideoParameterIntentGatewayResult | None,
     now: datetime,
+    execution_mode: str = "agent_assisted",
+    parameter_source: str = "mixed",
 ) -> VideoParameterCompilationSnapshotV2:
     sources: list[VideoParameterSourceSnapshotV2] = []
     if node.generation_prompt and node.generation_prompt.strip():
@@ -466,10 +468,41 @@ def _snapshot(
         normalizations=compiled.normalizations,
         semantic_extraction="agent" if gateway_result is not None else "not_required",
         agent_run_id=gateway_result.agent_run_id if gateway_result is not None else None,
+        execution_mode=cast(object, execution_mode),
+        parameter_source=cast(object, parameter_source),
         contract_version=_CONTRACT_VERSION,
         prompt_descriptor=_PROMPT_DESCRIPTOR,
         output_digest=gateway_result.output_digest if gateway_result is not None else None,
         created_at=now,
+    )
+
+
+def build_direct_video_parameter_snapshot(
+    *,
+    node: CanvasNodeV2,
+    selected_model_ref: str,
+    capability: CanvasProviderModelCapabilityV2,
+    execution_id: str,
+    member_id: str,
+    model_defaults: dict[str, object],
+    compiled: CompiledVideoParametersV2,
+    now: datetime,
+) -> VideoParameterCompilationSnapshotV2:
+    """Build the existing immutable parameter snapshot for a direct attempt."""
+
+    return _snapshot(
+        node=node,
+        selected_model_ref=selected_model_ref,
+        capability=capability,
+        direct_text_inputs=(),
+        execution_id=execution_id,
+        member_id=member_id,
+        model_defaults=model_defaults,
+        compiled=compiled,
+        gateway_result=None,
+        now=now,
+        execution_mode="manual_prompt_direct",
+        parameter_source=compiled.parameter_source,
     )
 
 

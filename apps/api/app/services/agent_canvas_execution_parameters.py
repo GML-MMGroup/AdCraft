@@ -9,6 +9,7 @@ from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas import ResolvedTextBindingInputV2
 from app.schemas.agent_canvas_ad_media import BgmContentV2
 from app.schemas.agent_canvas_runtime import CanvasProviderModelCapabilityV2
+from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2
 from app.schemas.agent_canvas_video_parameters import (
     CanvasParameterProvenanceV2,
     CompiledVideoParametersV2,
@@ -197,6 +198,109 @@ class AgentCanvasExecutionParameterResolver:
             normalizations=normalizations,
         )
 
+    def resolve_direct_video(
+        self,
+        node: CanvasNodeV2,
+        *,
+        binding_snapshots: tuple[NodeRunBindingSnapshotV2, ...],
+        capability: CanvasProviderModelCapabilityV2,
+        model_defaults: dict[str, object],
+    ) -> CompiledVideoParametersV2:
+        """Resolve a manual Video without interpreting any natural-language input."""
+
+        if node.node_type != "video":
+            raise _error(
+                "manual_media_execution_mode_invalid",
+                "Direct manual media parameters require a Video Node.",
+            )
+        try:
+            manual_values, manual_provenance = _manual_parameters(node)
+            binding_candidates = _direct_typed_binding_candidates(
+                binding_snapshots,
+                capability=capability,
+            )
+            binding_values = _direct_binding_values(binding_candidates)
+            requested: dict[str, object] = dict(manual_values)
+            provenance: dict[str, CanvasParameterProvenanceV2] = dict(manual_provenance)
+            accepted: list[VideoParameterCandidateV2] = []
+            for field, candidate in binding_values.items():
+                if field in manual_values:
+                    continue
+                requested[field] = candidate.value
+                provenance[field] = CanvasParameterProvenanceV2(
+                    origin="binding",
+                    source_node_id=candidate.source_node_id,
+                    binding_id=candidate.binding_id,
+                    source_revision=candidate.source_revision,
+                    requested_value=candidate.value,
+                    effective_value=candidate.value,
+                )
+                accepted.append(candidate)
+            required_fields = capability.supported_parameters & {
+                "duration_seconds",
+                "resolution",
+                "aspect_ratio",
+                "generate_audio",
+            }
+            for field in sorted(required_fields - requested.keys()):
+                if field not in model_defaults:
+                    raise _error(
+                        "manual_media_parameters_unavailable",
+                        "The selected media model does not declare a required default.",
+                        details={"field": field, "model_id": capability.model_id},
+                    )
+                value = _validated_platform_value(field, model_defaults[field])
+                requested[field] = value
+                provenance[field] = CanvasParameterProvenanceV2(
+                    origin="model_default",
+                    requested_value=value,
+                    effective_value=value,
+                )
+            effective, normalizations = _normalize_video_parameters(
+                requested,
+                capability=capability,
+            )
+            for field, item in tuple(provenance.items()):
+                normalization = next(
+                    (record for record in normalizations if record.field == field),
+                    None,
+                )
+                provenance[field] = item.model_copy(
+                    update={
+                        "effective_value": effective[field],
+                        "normalization_code": (
+                            normalization.normalization_code if normalization is not None else None
+                        ),
+                    }
+                )
+        except V2PersistenceError as error:
+            if error.code in {
+                "manual_media_parameters_unavailable",
+                "manual_media_parameter_unsupported",
+                "manual_media_execution_mode_invalid",
+            }:
+                raise
+            if error.code in {
+                "node_parameter_unsupported",
+                "video_native_audio_unsupported",
+                "node_parameter_compilation_failed",
+            }:
+                raise _error(
+                    "manual_media_parameter_unsupported",
+                    str(error),
+                    details=error.details,
+                ) from error
+            raise
+        return CompiledVideoParametersV2(
+            authoring_parameters=dict(requested),
+            requested_parameters=requested,
+            effective_parameters=effective,
+            parameter_provenance=provenance,
+            accepted_candidates=tuple(accepted),
+            parameter_source=_direct_parameter_source(provenance),
+            normalizations=normalizations,
+        )
+
 
 def _positive_integer_duration(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -232,6 +336,74 @@ def _manual_parameters(
             effective_value=scalar,
         )
     return values, provenance
+
+
+def _direct_typed_binding_candidates(
+    binding_snapshots: tuple[NodeRunBindingSnapshotV2, ...],
+    *,
+    capability: CanvasProviderModelCapabilityV2,
+) -> tuple[VideoParameterCandidateV2, ...]:
+    candidates: list[VideoParameterCandidateV2] = []
+    for binding in binding_snapshots:
+        raw_parameters = binding.binding_metadata.get("typed_parameters")
+        if raw_parameters is None:
+            continue
+        if (
+            not isinstance(raw_parameters, dict)
+            or binding.source_kind != "node_output"
+            or binding.source_node_revision is None
+        ):
+            raise _error(
+                "manual_media_parameter_unsupported",
+                "Typed Video binding metadata has invalid source identity.",
+                details={"binding_id": binding.binding_id},
+            )
+        for field, value in raw_parameters.items():
+            if field not in capability.supported_parameters:
+                raise _error(
+                    "manual_media_parameter_unsupported",
+                    "Typed binding parameter is not supported by the selected model.",
+                    details={"binding_id": binding.binding_id, "field": field},
+                )
+            scalar = _validated_platform_value(field, value)
+            candidates.append(
+                VideoParameterCandidateV2(
+                    field=field,
+                    value=scalar,
+                    source_kind="binding",
+                    source_node_id=binding.source_id,
+                    binding_id=binding.binding_id,
+                    source_revision=binding.source_node_revision,
+                )
+            )
+    return tuple(candidates)
+
+
+def _direct_binding_values(
+    candidates: tuple[VideoParameterCandidateV2, ...],
+) -> dict[str, VideoParameterCandidateV2]:
+    values: dict[str, VideoParameterCandidateV2] = {}
+    for candidate in candidates:
+        previous = values.get(candidate.field)
+        if previous is not None and previous.value != candidate.value:
+            raise _error(
+                "manual_media_parameter_unsupported",
+                "Typed binding parameters contain conflicting values.",
+                details={"field": candidate.field},
+            )
+        values.setdefault(candidate.field, candidate)
+    return values
+
+
+def _direct_parameter_source(
+    provenance: dict[str, CanvasParameterProvenanceV2],
+) -> str:
+    origins = {item.origin for item in provenance.values()}
+    categories = {
+        "manual" if origin == "manual" else "typed_binding" if origin == "binding" else "model_default"
+        for origin in origins
+    }
+    return next(iter(categories)) if len(categories) == 1 else "mixed"
 
 
 def _validated_candidate(

@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
-
 from app.schemas.agent_canvas import CanvasNodeV2
-
-
-CanvasExecutionModeV2 = Literal["manual_prompt_direct", "agent_assisted"]
-CanvasSemanticExtractionModeV2 = Literal["not_required", "agent"]
-CanvasParameterSourceV2 = Literal["manual", "typed_binding", "model_default", "mixed"]
+from app.schemas.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasSemanticExtractionModeV2,
+)
 
 
 @dataclass(frozen=True, slots=True)

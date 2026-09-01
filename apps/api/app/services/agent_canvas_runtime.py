@@ -57,6 +57,7 @@ from app.services.agent_canvas_execution_parameters import (
 from app.services.agent_canvas_execution_mode import (
     CanvasExecutionModeDecisionV2,
     classify_canvas_execution_mode,
+    has_managed_prompt_preparation,
 )
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
@@ -86,6 +87,7 @@ from app.services.agent_canvas_role_reference_policy import (
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_video_parameter_compiler import (
     AgentCanvasVideoParameterCompiler,
+    build_direct_video_parameter_snapshot,
 )
 from app.services.model_resolution import ModelResolutionService
 
@@ -603,11 +605,7 @@ class DynamicCanvasScheduler:
                 semantic_extraction=member.run_intent_snapshot.semantic_extraction,
             )
         )
-        managed_prompt = bool(
-            node.prompt_preparation.role_variant
-            or node.prompt_preparation.recipe_id
-            or node.metadata.get("prompt_recipe_id")
-        )
+        managed_prompt = has_managed_prompt_preparation(node)
         if node.prompt_preparation.status == "failed":
             preparation_error = _prompt_preparation_failure(node)
             assert preparation_error is not None
@@ -830,6 +828,45 @@ class DynamicCanvasScheduler:
                     capability_revision=capability.capability_revision,
                     execution_mode=mode.execution_mode,
                     semantic_extraction=mode.semantic_extraction,
+                )
+                prompt_metadata["parameter_compilation_snapshot_id"] = (
+                    parameter_compilation_snapshot.snapshot_id
+                )
+            elif node.node_type == "video" and mode.execution_mode == "manual_prompt_direct":
+                direct_compiled = self._execution_parameters.resolve_direct_video(
+                    node,
+                    binding_snapshots=(
+                        member.run_intent_snapshot.binding_snapshots
+                        if member.run_intent_snapshot is not None
+                        else ()
+                    ),
+                    capability=capability,
+                    model_defaults=capability.default_parameters,
+                )
+                parameter_compilation_snapshot = build_direct_video_parameter_snapshot(
+                    node=node,
+                    selected_model_ref=(
+                        resolution.model_ref if resolution is not None else capability.model_id
+                    ),
+                    capability=capability,
+                    execution_id=execution_id,
+                    member_id=member.member_id,
+                    model_defaults=capability.default_parameters,
+                    compiled=direct_compiled,
+                    now=now,
+                )
+                self._runtime.put_parameter_compilation_snapshot(parameter_compilation_snapshot)
+                effective_parameters = EffectiveMediaParameterSnapshotV2(
+                    requested=direct_compiled.requested_parameters,
+                    effective=direct_compiled.effective_parameters,
+                    normalizations=direct_compiled.normalizations,
+                    parameter_compilation_snapshot_id=parameter_compilation_snapshot.snapshot_id,
+                    provider=capability.provider,
+                    model_id=capability.model_id,
+                    capability_revision=capability.capability_revision,
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
+                    parameter_source=direct_compiled.parameter_source,
                 )
                 prompt_metadata["parameter_compilation_snapshot_id"] = (
                     parameter_compilation_snapshot.snapshot_id
@@ -2077,9 +2114,7 @@ def _prompt_preparation_pending(node: CanvasNodeV2 | None) -> bool:
     if node is None or node.node_type not in {"text", "script", "image", "video", "audio"}:
         return False
     preparation = node.prompt_preparation
-    managed = bool(
-        preparation.role_variant or preparation.recipe_id or node.metadata.get("prompt_recipe_id")
-    )
+    managed = has_managed_prompt_preparation(node)
     return managed and preparation.status in {"queued", "working"}
 
 

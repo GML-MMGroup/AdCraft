@@ -16,7 +16,7 @@ from app.schemas.agent_canvas import (
     RoleContractVersionV2,
 )
 from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
-from app.services.agent_canvas_execution_mode import (
+from app.schemas.agent_canvas_execution_mode import (
     CanvasExecutionModeV2,
     CanvasParameterSourceV2,
     CanvasSemanticExtractionModeV2,
@@ -127,6 +127,7 @@ class NodeRunIntentSnapshotV2(_RuntimeModel):
     created_at: datetime
     execution_mode: CanvasExecutionModeV2 = "agent_assisted"
     semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
+    agent_run_id: str | None = Field(default=None, min_length=1, max_length=160)
 
     @model_validator(mode="after")
     def validate_sanitized_snapshot(self) -> "NodeRunIntentSnapshotV2":
