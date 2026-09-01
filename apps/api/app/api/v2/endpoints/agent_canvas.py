@@ -3696,11 +3696,12 @@ def _process_agent_turn_and_resume(
             else None
         )
         if stream is not None and turn.status == "completed":
-            message = turn.assistant_message or ""
+            persisted_result = _persisted_assistant_result(runtime, workflow_id, turn_id)
+            authoritative_id, message = persisted_result or (turn.turn_id, "")
             presentation_publisher.publish_validated_text(stream, message)
             presentation_publisher.commit(
                 stream,
-                authoritative_id=turn.message_id or turn.turn_id,
+                authoritative_id=authoritative_id,
                 content=message,
             )
         elif stream is not None and turn.status == "failed":
@@ -3711,6 +3712,22 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _persisted_assistant_result(
+    runtime: AgentCanvasRuntime,
+    workflow_id: str,
+    turn_id: str,
+) -> tuple[str, str] | None:
+    timeline = runtime.conversations.get_timeline(workflow_id)
+    for entry in reversed(timeline.items):
+        if (
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.metadata.get("turn_id") == turn_id
+        ):
+            return entry.entry_id, entry.content
+    return None
 
 
 def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
