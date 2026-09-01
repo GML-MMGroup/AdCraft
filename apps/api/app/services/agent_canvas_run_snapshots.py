@@ -199,10 +199,10 @@ class AgentCanvasRunIntentSnapshotService:
                 "structured_content_digest": structured_content_digest,
                 "model_selection_mode": frozen_node.model_selection_mode,
                 "model_ref": frozen_node.model_ref,
-            "requested_parameters": frozen_node.parameters,
-            "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
-            "execution_mode": mode.execution_mode,
-            "semantic_extraction": mode.semantic_extraction,
+                "requested_parameters": frozen_node.parameters,
+                "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
+                "execution_mode": mode.execution_mode,
+                "semantic_extraction": mode.semantic_extraction,
             }
             snapshot = NodeRunIntentSnapshotV2(
                 snapshot_id=f"run_intent_{_digest(identity)[:24]}",

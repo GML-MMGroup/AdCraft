@@ -400,7 +400,11 @@ def _direct_parameter_source(
 ) -> str:
     origins = {item.origin for item in provenance.values()}
     categories = {
-        "manual" if origin == "manual" else "typed_binding" if origin == "binding" else "model_default"
+        "manual"
+        if origin == "manual"
+        else "typed_binding"
+        if origin == "binding"
+        else "model_default"
         for origin in origins
     }
     return next(iter(categories)) if len(categories) == 1 else "mixed"
