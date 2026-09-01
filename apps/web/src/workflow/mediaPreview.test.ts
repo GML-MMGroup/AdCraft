@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   mediaAssetContentPath,
   mediaAssetOriginalPath,
+  mediaAssetPosterRenditionPath,
   mediaAssetPreviewPath,
+  mediaAssetPreviewRenditionPath,
 } from "./mediaPreview.ts";
 
 describe("media preview paths", () => {
@@ -29,5 +31,24 @@ describe("media preview paths", () => {
 
   it("does not invent a version when the backend has not supplied one", () => {
     expect(mediaAssetContentPath({ asset_id: "asset-1", media_url: "/media/image.png" })).toBe("/media/image.png");
+  });
+
+  it("exposes derived renditions without falling back to source media", () => {
+    const sourceOnly = {
+      asset_id: "asset-1",
+      version_id: "version-1",
+      media_url: "/api/v2/assets/asset-1/content",
+    };
+    expect(mediaAssetPreviewRenditionPath(sourceOnly)).toBe("");
+    expect(mediaAssetPosterRenditionPath(sourceOnly)).toBe("");
+  });
+
+  it("prefers an exact poster rendition over a preview rendition", () => {
+    expect(mediaAssetPosterRenditionPath({
+      asset_id: "asset-1",
+      version_id: "version-1",
+      poster_url: "/api/v2/assets/asset-1/poster",
+      preview_url: "/api/v2/assets/asset-1/preview",
+    })).toBe("/api/v2/assets/asset-1/poster?v=version-1");
   });
 });

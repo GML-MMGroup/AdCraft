@@ -311,4 +311,16 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toContain("animation-play-state: paused");
     expect(canvasCss).toContain("backdrop-filter: none");
   });
+
+  it("keeps viewport movement on the compositor and avoids layout containment on nodes", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__viewport\s*\{[\s\S]*?will-change:\s*transform;/,
+    );
+    expect(canvasCss).not.toContain("contain: paint");
+  });
 });

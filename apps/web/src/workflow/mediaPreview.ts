@@ -44,15 +44,22 @@ export function mediaAssetContentPath(asset?: MediaAssetLike | null) {
 }
 
 export function mediaAssetPreviewPath(asset?: MediaAssetLike | null) {
-  const previewPath = firstMediaPath(
+  const previewPath = mediaAssetPreviewRenditionPath(asset);
+  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
+}
+
+/**
+ * Return only a backend-provided derived preview rendition. Unlike
+ * mediaAssetPreviewPath this never falls back to the original content URL,
+ * which lets canvas nodes avoid downloading source media during first paint.
+ */
+export function mediaAssetPreviewRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
     asset?.thumbnail_path,
     asset?.thumbnail_url,
-    asset?.poster_path,
-    asset?.poster_url,
     asset?.preview_path,
     asset?.preview_url,
-  );
-  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
+  ), asset);
 }
 
 export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {
@@ -64,6 +71,18 @@ export function mediaAssetPosterPath(asset?: MediaAssetLike | null) {
     firstMediaPath(asset?.poster_path, asset?.poster_url, asset?.thumbnail_path, asset?.thumbnail_url, asset?.preview_path, asset?.preview_url),
     asset,
   );
+}
+
+/** Return only a backend-provided poster/preview rendition, never source media. */
+export function mediaAssetPosterRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    asset?.poster_path,
+    asset?.poster_url,
+    asset?.thumbnail_path,
+    asset?.thumbnail_url,
+    asset?.preview_path,
+    asset?.preview_url,
+  ), asset);
 }
 
 export function usesDerivedMediaPreview(asset?: MediaAssetLike | null) {
