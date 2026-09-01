@@ -25,16 +25,15 @@ import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import {
-  mediaAssetPosterRenditionPath,
-  mediaAssetPreviewRenditionPath,
+  mediaAssetCanvasPreviewRenditionPath,
 } from "../../../workflow/mediaPreview.ts";
-import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
+import { CanvasMediaPreview } from "./CanvasMediaPreview.tsx";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -105,39 +104,17 @@ function MediaSurface({
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
   label: string;
 }) {
-  const mediaUrl = asset
-    ? node.node_type === "image"
-      ? mediaAssetPreviewRenditionPath(asset)
-      : node.node_type === "video"
-        ? mediaAssetPosterRenditionPath(asset)
-        : ""
+  const mediaUrl = asset && node.node_type === "image"
+    ? mediaAssetCanvasPreviewRenditionPath(asset)
     : "";
   if (node.node_type === "video" && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
-        {mediaUrl ? (
-          <StableMediaPreview
-            className="agent-canvas-node__media agent-canvas-node__media--cover"
-            src={mediaUrl}
-            alt={asset.display_name || "Video output"}
-            draggable={false}
-            loading="lazy"
-            decoding="async"
-            deferMs={500}
-            onLoad={(event) => {
-              const { naturalWidth, naturalHeight } = event.currentTarget;
-              if (naturalWidth > 0 && naturalHeight > 0) {
-                onMediaDimensionsResolved?.({ width: naturalWidth, height: naturalHeight });
-              }
-            }}
-          />
-        ) : (
-          <CanvasVideoPreview
-            asset={asset}
-            label={label}
-            onMediaDimensionsResolved={onMediaDimensionsResolved}
-          />
-        )}
+        <CanvasVideoPreview
+          asset={asset}
+          label={label}
+          onMediaDimensionsResolved={onMediaDimensionsResolved}
+        />
         {onOpenVideoPreview ? (
           <button
             className="agent-canvas-node__video-play nodrag nopan"
@@ -163,14 +140,10 @@ function MediaSurface({
   }
 
   return (
-    <StableMediaPreview
+    <CanvasMediaPreview
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
-      draggable={false}
-      loading="lazy"
-      decoding="async"
-      deferMs={500}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {

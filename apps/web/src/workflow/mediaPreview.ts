@@ -62,6 +62,15 @@ export function mediaAssetPreviewRenditionPath(asset?: MediaAssetLike | null) {
   ), asset);
 }
 
+export function mediaAssetCanvasPreviewRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.thumbnail_path),
+    canvasPreviewCandidate(asset?.thumbnail_url),
+    canvasPreviewCandidate(asset?.preview_path),
+    canvasPreviewCandidate(asset?.preview_url),
+  ), asset);
+}
+
 export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {
   return withMediaVersion(path ?? "", asset);
 }
@@ -82,6 +91,18 @@ export function mediaAssetPosterRenditionPath(asset?: MediaAssetLike | null) {
     asset?.thumbnail_url,
     asset?.preview_path,
     asset?.preview_url,
+  ), asset);
+}
+
+/** Return only a derived poster safe for canvas video cards. */
+export function mediaAssetCanvasPosterRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.poster_path),
+    canvasPreviewCandidate(asset?.poster_url),
+    canvasPreviewCandidate(asset?.thumbnail_path),
+    canvasPreviewCandidate(asset?.thumbnail_url),
+    canvasPreviewCandidate(asset?.preview_path),
+    canvasPreviewCandidate(asset?.preview_url),
   ), asset);
 }
 
@@ -124,6 +145,16 @@ function firstMediaPath(...values: Array<string | null | undefined>) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+function canvasPreviewCandidate(path?: string | null) {
+  const value = firstMediaPath(path);
+  return isOriginalContentPath(value) ? "" : value;
+}
+
+function isOriginalContentPath(path: string) {
+  const normalized = path.split(/[?#]/, 1)[0];
+  return /\/api\/v2\/assets\/[^/]+\/content$/i.test(normalized);
 }
 
 function stringValue(value: unknown) {
