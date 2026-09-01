@@ -144,6 +144,8 @@ function MediaSurface({
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
+      width={asset?.width ?? undefined}
+      height={asset?.height ?? undefined}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {

@@ -28,6 +28,8 @@ export function CanvasVideoPreview({
       className="agent-canvas-node__media agent-canvas-node__media--cover"
       src={posterUrl}
       alt={asset.display_name || label}
+      width={asset.width ?? undefined}
+      height={asset.height ?? undefined}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {
