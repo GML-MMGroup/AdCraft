@@ -2724,18 +2724,12 @@ def _invalidate_target_prompt_preparation(
             "Source-only Nodes cannot carry a managed prompt-preparation state.",
             stage="agent_canvas_workflow_repository",
         )
+    if not _has_managed_prompt_preparation(node):
+        # Generic manual Nodes own their editable prompt directly.  A Binding
+        # mutation must not create internal preparation work for an ownerless
+        # prompt, including the blank waiting-user projection.
+        return None
     if node.status not in {"draft", "failed", "ready", "working"}:
-        return None
-    if node.status == "ready" and not _has_managed_prompt_preparation(node):
-        # Legacy/manual Ready content has no immutable preparation owner to
-        # supersede.  Do not turn a harmless first Binding into a queued
-        # re-preparation or clear its existing context projection.
-        return None
-    if node.prompt_preparation.status == "ready" and not _has_managed_prompt_preparation(node):
-        # A manually supplied generation prompt is already authoritative.  Its
-        # provider references are compiled from the execution binding snapshot,
-        # so a Binding/source publication must not turn this legacy-compatible
-        # Draft into an ownerless queued preparation.
         return None
     if node.prompt_preparation.status == "not_applicable":
         return None
