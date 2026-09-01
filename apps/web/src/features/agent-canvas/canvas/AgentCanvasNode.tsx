@@ -122,6 +122,7 @@ function MediaSurface({
             draggable={false}
             loading="lazy"
             decoding="async"
+            deferMs={200}
             onLoad={(event) => {
               const { naturalWidth, naturalHeight } = event.currentTarget;
               if (naturalWidth > 0 && naturalHeight > 0) {
@@ -164,6 +165,7 @@ function MediaSurface({
       draggable={false}
       loading="lazy"
       decoding="async"
+      deferMs={200}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {
