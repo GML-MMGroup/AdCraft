@@ -44,6 +44,16 @@ const workflow = {
   assets: [],
 } as const;
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function createWorkflowContractError() {
   try {
     normalizeCanvasNodeV2(null, "workflow.nodes[8]");
@@ -174,6 +184,81 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
     expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-1");
     expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-1");
     expect(screen.queryByText("local-workflow")).toBeNull();
+  });
+
+  it("restores the workflow before the project catalog refresh completes", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    const catalog = deferred<{ items: never[]; next_cursor: null }>();
+    v2Api.listProjects.mockReturnValue(catalog.promise);
+
+    render(<WorkspaceProvider projectCatalogScope="active"><Probe /></WorkspaceProvider>);
+
+    await waitFor(() => expect(screen.getByText("workflow-1")).toBeTruthy(), { timeout: 250 });
+    expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-1");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-1");
+
+    catalog.resolve({ items: [], next_cursor: null });
+    await waitFor(() => expect(screen.getByText("projects:0")).toBeTruthy());
+  });
+
+  it("uses a cached project workflow identity without waiting for project detail", async () => {
+    saveProjectCatalogCache({
+      active: [{
+        project_id: "project-1",
+        workflow_id: "workflow-1",
+        name: "Cached campaign",
+        description: "",
+        status: "active",
+        is_favorite: false,
+        cover_asset_id: null,
+        project_version: 1,
+        created_at: "2026-08-20T00:00:00Z",
+        updated_at: "2026-08-20T00:00:00Z",
+      }],
+      trashed: [],
+      savedAt: Date.now(),
+    });
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    const catalog = deferred<{ items: never[]; next_cursor: null }>();
+    v2Api.listProjects.mockReturnValue(catalog.promise);
+
+    render(<WorkspaceProvider projectCatalogScope="active"><Probe /></WorkspaceProvider>);
+
+    await waitFor(() => expect(screen.getByText("workflow-1")).toBeTruthy(), { timeout: 250 });
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-1");
+    expect(v2Api.projectWithEtag).not.toHaveBeenCalled();
+    catalog.resolve({ items: [], next_cursor: null });
+  });
+
+  it("falls back to authoritative project detail when the cached workflow is stale", async () => {
+    saveProjectCatalogCache({
+      active: [{
+        project_id: "project-1",
+        workflow_id: "workflow-stale",
+        name: "Cached campaign",
+        description: "",
+        status: "active",
+        is_favorite: false,
+        cover_asset_id: null,
+        project_version: 1,
+        created_at: "2026-08-20T00:00:00Z",
+        updated_at: "2026-08-20T00:00:00Z",
+      }],
+      trashed: [],
+      savedAt: Date.now(),
+    });
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    v2Api.agentCanvasWorkflowWithEtag.mockImplementation(async (workflowId: string) => ({
+      value: workflowId === "workflow-stale" ? { ...workflow, project_id: "other-project" } : workflow,
+      etag: `"${workflowId}-r1"`,
+    }));
+
+    render(<WorkspaceProvider projectCatalogScope="active"><Probe /></WorkspaceProvider>);
+
+    await screen.findByText("workflow-1");
+    expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-1");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenNthCalledWith(1, "workflow-stale");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenNthCalledWith(2, "workflow-1");
   });
 
   it("creates a backend project when the route requests a fresh project", async () => {
