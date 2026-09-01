@@ -493,6 +493,7 @@ class MediaNodeExecutor:
             SeedanceDeliveredMediaInputV1(
                 binding_id=reference.binding_id or f"asset_{reference.asset_id}",
                 asset_id=reference.asset_id,
+                version_id=reference.version_id,
                 media_type=reference.media_type,  # type: ignore[arg-type]
                 input_role=reference.input_role,  # type: ignore[arg-type]
                 source_semantic_role=reference.source_semantic_role,
