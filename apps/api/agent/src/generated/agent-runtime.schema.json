@@ -15289,6 +15289,20 @@
           "default": null,
           "title": "Asset Version Id"
         },
+        "entity_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
         "expected_interaction_revision": {
           "minimum": 1,
           "title": "Expected Interaction Revision",
@@ -15299,12 +15313,36 @@
           "title": "Expected Session Revision",
           "type": "integer"
         },
+        "member_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Member Id"
+        },
         "reference_kind": {
           "enum": [
             "character_main",
             "scene_main"
           ],
           "title": "Reference Kind",
+          "type": "string"
+        },
+        "source_scope": {
+          "default": "project",
+          "enum": [
+            "mine",
+            "project",
+            "recommended"
+          ],
+          "title": "Source Scope",
           "type": "string"
         },
         "submission_kind": {

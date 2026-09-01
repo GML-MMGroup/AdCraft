@@ -52,7 +52,7 @@ export type GuidedQuestionnaireSubmitV1 = { readonly "submission_kind": "questio
 
 export type GuidedProductSourceSubmitV1 = { readonly "submission_kind": "product_source"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": GuidedProductSourceActionV1 };
 
-export type GuidedReferenceSourceSubmitV1 = { readonly "submission_kind": "reference_source"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": "skip_reference" | "use_reference"; readonly "reference_kind": "character_main" | "scene_main"; readonly "asset_id"?: string | null; readonly "asset_version_id"?: string | null };
+export type GuidedReferenceSourceSubmitV1 = { readonly "submission_kind": "reference_source"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": "skip_reference" | "use_reference"; readonly "reference_kind": "character_main" | "scene_main"; readonly "source_scope"?: "mine" | "project" | "recommended"; readonly "entity_id"?: string | null; readonly "member_id"?: string | null; readonly "asset_id"?: string | null; readonly "asset_version_id"?: string | null };
 
 export type GuidedConceptSubmitV2 = { readonly "submission_kind": "concept_choice"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": "custom" | "defer" | "delegate" | "exclude" | "select"; readonly "option_id"?: string | null; readonly "custom_text"?: string | null; readonly "accepted_references"?: ReadonlyArray<GuidedAcceptedReferenceV1> };
 
