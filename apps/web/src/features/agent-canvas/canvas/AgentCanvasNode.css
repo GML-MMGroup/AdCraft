@@ -667,21 +667,44 @@
   background: transparent;
 }
 
-.agent-canvas-node__generation-loader {
+.agent-canvas-node__generation-energy {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  color: #f4f7ff;
-  background: transparent;
+  contain: paint;
+  pointer-events: none;
 }
 
-.agent-canvas-node__generation-loader .iml-visual {
-  background: transparent;
+.agent-canvas-node__generation-energy::before,
+.agent-canvas-node__generation-energy::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
+}
+
+.agent-canvas-node__generation-energy::before {
+  inset: -18%;
+  background-image: radial-gradient(circle, rgba(245, 247, 255, 0.92) 1px, transparent 1.6px);
+  background-repeat: space;
+  background-size: 11px 11px;
+  opacity: 0.74;
+  mix-blend-mode: screen;
+  mask-image:
+    radial-gradient(ellipse at 18% 24%, #000 0%, transparent 58%),
+    radial-gradient(ellipse at 72% 64%, #000 0%, transparent 54%);
+  mask-repeat: no-repeat;
+  mask-size: 72% 62%, 52% 52%;
+  mask-position: 0% 0%, 42% 34%;
+  animation: agent-canvas-node-energy-drift 4.2s cubic-bezier(0.35, 1.55, 0.65, 1) infinite;
+}
+
+.agent-canvas-node__generation-energy::after {
+  inset: 8%;
+  background: radial-gradient(ellipse at 34% 32%, rgba(246, 248, 255, 0.22), transparent 48%);
+  opacity: 0.64;
+  mix-blend-mode: screen;
+  animation: agent-canvas-node-energy-breathe 1.9s cubic-bezier(0.66, 0, 0.34, 1) infinite;
 }
 
 .agent-canvas-node__working-orbit {
@@ -794,7 +817,8 @@
   .agent-canvas-node__video-play,
   .agent-canvas-node__action,
   .agent-canvas-audio-player__waveform i,
-  .agent-canvas-node__generation-loader *,
+  .agent-canvas-node__generation-energy::before,
+  .agent-canvas-node__generation-energy::after,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen {
     animation: none;
@@ -809,6 +833,16 @@
     height: 24px;
     transform: none;
   }
+}
+
+@keyframes agent-canvas-node-energy-drift {
+  0%, 100% { transform: translate3d(-5%, -4%, 0) scale(0.96); }
+  50% { transform: translate3d(6%, 5%, 0) scale(1.04); }
+}
+
+@keyframes agent-canvas-node-energy-breathe {
+  0%, 100% { opacity: 0.46; transform: scale(0.94); }
+  50% { opacity: 0.9; transform: scale(1.06); }
 }
 
 :root .agent-canvas-node {

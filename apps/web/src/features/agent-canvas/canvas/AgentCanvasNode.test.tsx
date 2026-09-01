@@ -664,7 +664,7 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it.each<"image" | "video">(["image", "video"])(
-    "uses the coalesce ImageLoader while a %s node is generating",
+    "uses a transparent generation energy overlay while a %s node is generating",
     (nodeType) => {
       const node = makeNode(nodeType, "working");
       const { container } = render(
@@ -676,19 +676,16 @@ describe("AgentCanvasNodeCard", () => {
       );
 
       expect(screen.getByTestId(`agent-canvas-node-${nodeType}-node`).classList.contains("agent-canvas-node--working")).toBe(true);
-      const loader = screen.getByRole("status", { name: `Generating ${nodeType}` });
-      expect(loader.getAttribute("data-variant")).toBe("coalesce");
-      expect(loader.classList.contains("iml-loader")).toBe(true);
-      expect(loader.querySelector(".iml-coalesce")).toBeTruthy();
-      expect(loader.style.getPropertyValue("--iml-size")).toBe("192px");
-      expect(container.querySelector(".agent-canvas-node__generation-star")).toBeNull();
-      expect(container.querySelector(".agent-canvas-node__working-orbit")).toBeNull();
-      expect(container.querySelector(".agent-canvas-node__working-sheen")).toBeNull();
+      const overlay = screen.getByRole("status", { name: `Generating ${nodeType}` });
+      expect(overlay.classList.contains("agent-canvas-node__working--media")).toBe(true);
+      expect(overlay.querySelector(".agent-canvas-node__generation-energy")).toBeTruthy();
+      expect(overlay.querySelector(".agent-canvas-node__generation-loader")).toBeNull();
+      expect(overlay.querySelector(".iml-loader")).toBeNull();
       expect(screen.queryByRole("button", { name: `Run ${nodeType} node` })).toBeNull();
     },
   );
 
-  it("keeps the coalesce loader transparent and motion-aware", () => {
+  it("keeps the generation energy overlay transparent and motion-aware", () => {
     const nodeCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css"),
       "utf8",
@@ -700,26 +697,28 @@ describe("AgentCanvasNodeCard", () => {
     const mediaOverlayRule = nodeCss.match(
       /\.agent-canvas-node__working--media\s*\{([\s\S]*?)\n\}/,
     )?.[1];
-    const loaderRule = nodeCss.match(
-      /\.agent-canvas-node__generation-loader\s*\{([\s\S]*?)\n\}/,
+    const energyRule = nodeCss.match(
+      /\.agent-canvas-node__generation-energy\s*\{([\s\S]*?)\n\}/,
     )?.[1];
-    const loaderVisualRule = nodeCss.match(
-      /\.agent-canvas-node__generation-loader \.iml-visual\s*\{([\s\S]*?)\n\}/,
+    const energyGlowRule = nodeCss.match(
+      /\.agent-canvas-node__generation-energy::before\s*\{([\s\S]*?)\n\}/,
     )?.[1];
 
     expect(mediaOverlayRule).toContain("background: transparent");
-    expect(loaderRule).toContain("color: #f4f7ff");
-    expect(loaderRule).toContain("place-items: center");
-    expect(loaderVisualRule).toContain("background: transparent");
-    expect(nodeCss).not.toContain("agent-canvas-node__generation-star");
-    expect(nodeCss).not.toContain("agent-canvas-star-diffusion");
-    expect(nodeCss).not.toContain("solar-star-outline.svg");
-    expect(nodeCss).not.toContain("rgba(225, 167, 80");
+    expect(energyRule).toContain("pointer-events: none");
+    expect(energyRule).toContain("contain: paint");
+    expect(energyGlowRule).toContain("background-image: radial-gradient");
+    expect(energyGlowRule).toContain("animation: agent-canvas-node-energy-drift");
+    expect(nodeCss).not.toContain("generative-loaders");
+    expect(nodeCss).not.toContain("agent-canvas-node__generation-loader");
     expect(nodeCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-loader \*[\s\S]*?animation: none/,
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-node__generation-energy::before[\s\S]*?animation: none/,
     );
     expect(pageCss).toMatch(
-      /\.agent-canvas-board\.is-interacting :is\([\s\S]*?\.agent-canvas-node__generation-loader \*[\s\S]*?animation-play-state: paused/,
+      /\.agent-canvas-board\.is-interacting\s+\.agent-canvas-node__generation-energy::before,[\s\S]*?\.agent-canvas-board\.is-interacting\s+\.agent-canvas-node__generation-energy::after\s*\{[\s\S]*?animation-play-state: paused;/,
+    );
+    expect(pageCss).not.toMatch(
+      /\.agent-canvas-board\.is-interacting :is\([^)]*\.agent-canvas-node__generation-energy::before/,
     );
   });
 

@@ -119,10 +119,16 @@
 
 .agent-canvas-board.is-interacting :is(
   .agent-canvas-audio-player__waveform i,
-  .agent-canvas-node__generation-loader *,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen
 ) {
+  animation-play-state: paused;
+}
+
+.agent-canvas-board.is-interacting
+  .agent-canvas-node__generation-energy::before,
+.agent-canvas-board.is-interacting
+  .agent-canvas-node__generation-energy::after {
   animation-play-state: paused;
 }
 
