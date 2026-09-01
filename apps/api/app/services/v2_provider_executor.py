@@ -935,6 +935,20 @@ class V2ProviderExecutor:
                 error_code=str(error),
                 error_message="Seedance native-audio input parity is invalid.",
             )
+        adapter = VolcengineSeedanceAdapter(self._settings)
+        try:
+            adapter.payload_for_manifest(manifest)
+        except ValueError as error:
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot={
+                    "seedance_input_manifest": audit.model_dump(mode="json")
+                },
+                reference_asset_ids=reference_asset_ids,
+                error_code=str(error),
+                error_message="Seedance storyboard grounding payload is invalid.",
+            )
         missing_message = (
             self._missing_real_config("video")
             if self._settings.media_mode.strip().lower() == "real"
@@ -987,7 +1001,7 @@ class V2ProviderExecutor:
                     error_code="provider_reference_delivery_unavailable",
                     error_message="The configured provider cannot submit a Seedance input manifest.",
                 )
-            response = submit_manifest(manifest, VolcengineSeedanceAdapter(self._settings))
+            response = submit_manifest(manifest, adapter)
             task_id = _video_generation_task_id_from_response(response)
             output = {
                 "provider": "volcengine-seedance-agent-canvas",
