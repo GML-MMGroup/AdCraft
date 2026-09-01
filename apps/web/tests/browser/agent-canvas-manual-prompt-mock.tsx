@@ -8,7 +8,9 @@ import "../../src/styles/theme.css";
 
 const timestamp = "2026-08-31T10:00:00Z";
 
-function manualNode(): CanvasNodeV2 {
+function manualNode(
+  preparationStatus: "waiting_user" | "queued" | "failed" | "superseded" = "waiting_user",
+): CanvasNodeV2 {
   return {
     node_id: "manual-image-node",
     workflow_id: "workflow-manual-prompt-mock",
@@ -19,7 +21,7 @@ function manualNode(): CanvasNodeV2 {
     status: "draft",
     execution_mode: "generative",
     summary_prompt: null,
-    generation_prompt: null,
+    generation_prompt: preparationStatus === "waiting_user" ? null : "Existing generation prompt",
     structured_content: {},
     model_id: null,
     model_selection_mode: "default",
@@ -34,11 +36,11 @@ function manualNode(): CanvasNodeV2 {
     revision: 1,
     error: null,
     prompt_preparation: {
-      status: "waiting_user",
-      operation_id: null,
+      status: preparationStatus,
+      operation_id: preparationStatus === "waiting_user" ? null : "prompt-operation-1",
       presentation_stream_id: null,
-      attempt_no: 0,
-      context_snapshot_id: null,
+      attempt_no: preparationStatus === "waiting_user" ? 0 : 1,
+      context_snapshot_id: preparationStatus === "waiting_user" ? null : "prompt-context-1",
       occurrence_id: null,
       character_phase: null,
       prompt_digest: null,
@@ -58,7 +60,9 @@ function manualNode(): CanvasNodeV2 {
       compaction_decisions: [],
       assertion_evidence: null,
       attempt_stage: null,
-      error: null,
+      error: preparationStatus === "failed"
+        ? { code: "prompt_preparation_failed", message: "Preparation failed.", retryable: true }
+        : null,
       updated_at: timestamp,
     },
     variation_draft: null,
@@ -68,7 +72,13 @@ function manualNode(): CanvasNodeV2 {
 }
 
 function App() {
-  const [node, setNode] = useState(manualNode);
+  const preparation = new URLSearchParams(window.location.search).get("preparation");
+  const initialPreparation = preparation === "queued"
+    || preparation === "failed"
+    || preparation === "superseded"
+    ? preparation
+    : "waiting_user";
+  const [node, setNode] = useState(() => manualNode(initialPreparation));
   const [events, setEvents] = useState<string[]>([]);
   const workflow = useMemo<AgentCanvasWorkflowV2>(() => ({
     workflow_id: node.workflow_id,
@@ -108,6 +118,7 @@ function App() {
         onClose={() => undefined}
       />
       <output data-testid="manual-prompt-events">{events.join("|")}</output>
+      <output data-testid="manual-node-status">{node.status}</output>
     </main>
   );
 }

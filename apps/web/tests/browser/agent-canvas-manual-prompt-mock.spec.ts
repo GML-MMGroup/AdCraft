@@ -16,3 +16,17 @@ test("keeps a waiting-user prompt editable and runs only after its autosave comp
   await expect(page.getByTestId("manual-prompt-events")).toContainText("patch-complete|run:A clean studio product shot");
   await expect(page.getByText("Prompt ready")).toBeVisible();
 });
+
+test("keeps a non-empty prompt editable while preparation is not ready", async ({ page }) => {
+  for (const preparation of ["queued", "failed", "superseded"] as const) {
+    await page.goto(`/tests/browser/agent-canvas-manual-prompt-mock.html?preparation=${preparation}`);
+
+    const editor = page.getByLabel("Generation prompt");
+    await expect(editor).toBeVisible();
+    await expect(editor).toHaveValue("Existing generation prompt");
+    await expect(editor).toBeEnabled();
+    await expect(page.getByTestId("manual-node-status")).toHaveText("draft");
+    await expect(page.getByLabel("Prompt preparation status")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Run image node" })).toBeVisible();
+  }
+});

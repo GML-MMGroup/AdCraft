@@ -213,7 +213,7 @@ export function AgentCanvasNodeCard({
   onScriptContentHeightResolved,
   mediaDimensions,
 }: AgentCanvasNodeCardProps) {
-  const status = runtime?.visible_status ?? node.status;
+  const status = node.status;
   const label = creativeRoleDisplayName(node.creative_role);
   const resolvedMediaDimensions = mediaDimensions
     ?? (validAgentCanvasMediaDimensions(asset)
