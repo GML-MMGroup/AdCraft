@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { agentCanvasApi, V2ApiError } from "../../../api/agentCanvasApi.ts";
 import { AgentCanvasExecutionModeControl } from "./AgentCanvasExecutionModeControl.tsx";
+import { __resetExecutionSettingsReadsForTests } from "./useAgentCanvasExecutionSettings.ts";
 
 const manualSettings = {
   workflow_id: "workflow-1",
@@ -14,6 +16,7 @@ const manualSettings = {
 
 afterEach(() => {
   cleanup();
+  __resetExecutionSettingsReadsForTests();
   vi.restoreAllMocks();
 });
 
@@ -36,6 +39,20 @@ describe("AgentCanvasExecutionModeControl", () => {
     expect(screen.queryByText("Guidance")).toBeNull();
     expect(screen.queryByText("Delegated")).toBeNull();
     expect(screen.queryByText("Collaborative")).toBeNull();
+  });
+
+  it("reuses the initial settings read when StrictMode mounts the control twice", async () => {
+    const read = vi.spyOn(agentCanvasApi, "agentCanvasExecutionSettings")
+      .mockResolvedValue({ value: manualSettings, etag: '"1"' });
+
+    render(
+      <StrictMode>
+        <AgentCanvasExecutionModeControl workflowId="workflow-1" eventRevision={0} />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText("Collaboration")).toBeTruthy();
+    expect(read).toHaveBeenCalledOnce();
   });
 
   it("changes only future eligible media Draft auto-run behavior", async () => {
