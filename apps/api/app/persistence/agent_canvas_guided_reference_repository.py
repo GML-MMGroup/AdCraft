@@ -243,7 +243,10 @@ class AgentCanvasGuidedReferenceRepository:
                             "guided_reference_source_asset_not_found",
                             "Reference AssetVersion was not found.",
                         )
-                    if request.source_scope == "project" and str(version["source_workflow_id"]) != workflow_id:
+                    if (
+                        request.source_scope == "project"
+                        and str(version["source_workflow_id"]) != workflow_id
+                    ):
                         raise _error(
                             "guided_reference_source_asset_foreign_workflow",
                             "Reference AssetVersion is outside this Workflow.",

@@ -85,9 +85,12 @@ class ReferenceStyleAuthorityPolicyResolver:
             "binding_revision": binding.binding_revision,
             "source_node_revision": binding.source_node_revision,
         }
-        digest = "sha256:" + hashlib.sha256(
-            json.dumps(policy_payload, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        digest = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(policy_payload, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+        )
         return ReferenceStyleAuthorityPolicyV1(
             policy_id=f"reference-style:{reference_kind}:{binding.binding_id}",
             policy_version="reference_style_authority_v1",

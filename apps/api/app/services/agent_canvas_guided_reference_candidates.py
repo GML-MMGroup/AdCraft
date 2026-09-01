@@ -53,9 +53,7 @@ class GuidedReferenceCandidateService:
         )
         if normalized_query:
             candidates = tuple(
-                item
-                for item in candidates
-                if normalized_query in item.display_name.casefold()
+                item for item in candidates if normalized_query in item.display_name.casefold()
             )
         page = candidates[offset : offset + 100]
         next_cursor = str(offset + 100) if offset + 100 < len(candidates) else None
@@ -98,7 +96,9 @@ class GuidedReferenceCandidateService:
         expected_role = _semantic_role(reference_kind)
         expected_purpose = _reference_purpose(reference_kind)
         expected_semantic_type = (
-            "character_three_view" if reference_kind == "character_main" else "scene_multi_view_grid"
+            "character_three_view"
+            if reference_kind == "character_main"
+            else "scene_multi_view_grid"
         )
         result: list[ReferenceCandidateV2] = []
         for entity in self._assets.list_images(scope=scope):
@@ -118,6 +118,7 @@ class GuidedReferenceCandidateService:
                 )
             )
         return tuple(result)
+
 
 def _cursor_offset(cursor: str | None) -> int:
     if cursor is None:

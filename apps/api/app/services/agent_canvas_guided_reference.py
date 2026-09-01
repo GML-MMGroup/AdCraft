@@ -145,10 +145,10 @@ class GuidedReferenceSourceService:
                         stage="guided_reference_service",
                     )
                 entity = self._asset_repository.get_entity(request.entity_id)
-                if entity.status != "active" or (
-                    request.source_scope == "mine" and entity.scope != "user"
-                ) or (
-                    request.source_scope == "recommended" and entity.scope != "recommended"
+                if (
+                    entity.status != "active"
+                    or (request.source_scope == "mine" and entity.scope != "user")
+                    or (request.source_scope == "recommended" and entity.scope != "recommended")
                 ):
                     raise V2PersistenceError(
                         "reference_candidate_not_found",
@@ -159,7 +159,11 @@ class GuidedReferenceSourceService:
                     (item for item in entity.members if item.member_id == request.member_id),
                     None,
                 )
-                if member is None or member.asset_id != request.asset_id or member.version_id != request.asset_version_id:
+                if (
+                    member is None
+                    or member.asset_id != request.asset_id
+                    or member.version_id != request.asset_version_id
+                ):
                     raise V2PersistenceError(
                         "reference_candidate_not_found",
                         "Reference catalog candidate identity is stale.",
