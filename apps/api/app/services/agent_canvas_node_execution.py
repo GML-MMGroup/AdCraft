@@ -41,6 +41,10 @@ from app.schemas.seedance_inputs import (
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasSemanticExtractionModeV2,
+)
 from app.services.agent_canvas_storyboard_grounding import (
     GroundingPlanError,
     build_storyboard_grid_grounding_plan,
@@ -100,6 +104,8 @@ class NodeExecutionContext:
     input_manifest: ResolvedNodeInputManifestV2 | None = None
     optional_input_omissions: tuple[dict[str, str], ...] = ()
     world_setting: WorldSettingContextEnvelopeV2 | None = None
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +199,8 @@ def generated_asset_publication_metadata(
             if context.effective_parameters is not None
             else []
         ),
+        "execution_mode": context.execution_mode,
+        "semantic_extraction": context.semantic_extraction,
     }
     if context.world_setting is not None:
         metadata["world_setting_context"] = {

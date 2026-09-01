@@ -74,6 +74,7 @@ from app.schemas.workflow_v2_projects import ProjectCreate
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
+from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 
 
 class AgentCanvasWorkflowRepository:
@@ -2651,20 +2652,7 @@ def _prompt_input_changed(current: CanvasNodeV2, requested: CanvasNodeV2) -> boo
 def _has_managed_prompt_preparation(node: CanvasNodeV2) -> bool:
     """Return whether a node's prompt is owned by the preparation authority."""
 
-    preparation = node.prompt_preparation
-    return bool(
-        preparation.operation_id
-        or preparation.context_snapshot_id
-        or preparation.recipe_id
-        or preparation.recipe_version
-        or preparation.recipe_digest
-        or preparation.requirement_revision_id
-        or preparation.binding_digest
-        or preparation.style_projection_digest
-        or preparation.brief_digest
-        or preparation.assertion_evidence
-        or node.metadata.get("prompt_recipe_id")
-    )
+    return has_managed_prompt_preparation(node)
 
 
 def _queued_preparation_for_revision(

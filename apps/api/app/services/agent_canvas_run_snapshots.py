@@ -23,6 +23,7 @@ from app.services.agent_canvas_execution_parameters import (
 )
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_execution_mode import classify_canvas_execution_mode
 
 
 class AgentCanvasRunIntentSnapshotService:
@@ -53,6 +54,7 @@ class AgentCanvasRunIntentSnapshotService:
         intents: list[CanvasExecutionMemberIntentV2] = []
         for member_order, node in enumerate(nodes):
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
+            mode = classify_canvas_execution_mode(frozen_node)
             binding_snapshots = _binding_snapshots(workflow, frozen_node, workflow_nodes)
             source_asset_digests: dict[str, str] = {}
             for binding in binding_snapshots:
@@ -85,6 +87,8 @@ class AgentCanvasRunIntentSnapshotService:
                     snapshot_digest=digest,
                     expected_source_asset_digests=source_asset_digests,
                     parameter_normalizations=tuple(str(item) for item in normalizations),
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
                 )
             )
         return tuple(intents)
@@ -180,6 +184,7 @@ class AgentCanvasRunIntentSnapshotService:
                 for binding in bindings
             )
             structured_content_digest = _digest(frozen_node.structured_content)
+            mode = classify_canvas_execution_mode(frozen_node)
             identity = {
                 "workflow_id": frozen_node.workflow_id,
                 "execution_id": execution_id,
@@ -194,8 +199,10 @@ class AgentCanvasRunIntentSnapshotService:
                 "structured_content_digest": structured_content_digest,
                 "model_selection_mode": frozen_node.model_selection_mode,
                 "model_ref": frozen_node.model_ref,
-                "requested_parameters": frozen_node.parameters,
-                "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
+            "requested_parameters": frozen_node.parameters,
+            "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
+            "execution_mode": mode.execution_mode,
+            "semantic_extraction": mode.semantic_extraction,
             }
             snapshot = NodeRunIntentSnapshotV2(
                 snapshot_id=f"run_intent_{_digest(identity)[:24]}",
@@ -321,6 +328,8 @@ class AgentCanvasRunIntentSnapshotService:
             binding_snapshots=intent.binding_snapshots,
             snapshot_digest=intent.snapshot_digest,
             created_at=now,
+            execution_mode=intent.execution_mode,
+            semantic_extraction=intent.semantic_extraction,
         )
         self._runtime.update_member(
             execution_id,

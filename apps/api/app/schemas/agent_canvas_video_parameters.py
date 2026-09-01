@@ -22,6 +22,7 @@ VideoParameterOriginV2 = Literal[
     "structured_content",
     "guidance_default",
     "role_default",
+    "model_default",
     "provider_clamp",
 ]
 VideoParameterScalarV2 = int | float | str | bool
@@ -217,6 +218,8 @@ class VideoParameterCompilationSnapshotV2(_VideoParameterModel):
     normalizations: tuple[VideoParameterNormalizationV2, ...] = ()
     semantic_extraction: Literal["agent", "not_required"] = "agent"
     agent_run_id: str | None = Field(default=None, min_length=1, max_length=160)
+    execution_mode: Literal["manual_prompt_direct", "agent_assisted"] = "agent_assisted"
+    parameter_source: Literal["manual", "typed_binding", "model_default", "mixed"] = "mixed"
     contract_version: str = Field(min_length=1, max_length=80)
     prompt_descriptor: str = Field(min_length=1, max_length=320)
     output_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")

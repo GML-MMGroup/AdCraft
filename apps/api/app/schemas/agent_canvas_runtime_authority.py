@@ -13,6 +13,10 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRunScopeV2,
     NodeRunBindingSnapshotV2,
 )
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasSemanticExtractionModeV2,
+)
 
 
 class _AuthorityModel(BaseModel):
@@ -29,6 +33,8 @@ class CanvasExecutionMemberIntentV2(_AuthorityModel):
     snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     expected_source_asset_digests: dict[str, str] = Field(default_factory=dict)
     parameter_normalizations: tuple[str, ...] = ()
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
 
     @model_validator(mode="after")
     def validate_asset_digests(self) -> "CanvasExecutionMemberIntentV2":

@@ -16,6 +16,11 @@ from app.schemas.agent_canvas import (
     RoleContractVersionV2,
 )
 from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasParameterSourceV2,
+    CanvasSemanticExtractionModeV2,
+)
 
 
 CanvasRunScopeV2 = Literal["all_drafts", "selected_nodes"]
@@ -75,6 +80,9 @@ class EffectiveMediaParameterSnapshotV2(_RuntimeModel):
     provider: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=320)
     capability_revision: int = Field(ge=1)
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
+    parameter_source: CanvasParameterSourceV2 = "mixed"
 
     @model_validator(mode="after")
     def validate_sanitized_values(self) -> "EffectiveMediaParameterSnapshotV2":
@@ -117,6 +125,8 @@ class NodeRunIntentSnapshotV2(_RuntimeModel):
     binding_snapshots: tuple[NodeRunBindingSnapshotV2, ...] = ()
     snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     created_at: datetime
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
 
     @model_validator(mode="after")
     def validate_sanitized_snapshot(self) -> "NodeRunIntentSnapshotV2":

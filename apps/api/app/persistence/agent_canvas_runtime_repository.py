@@ -1509,6 +1509,8 @@ class AgentCanvasRuntimeRepository:
             binding_snapshots=intent.binding_snapshots,
             snapshot_digest=intent.snapshot_digest,
             created_at=command.created_at,
+            execution_mode=intent.execution_mode,
+            semantic_extraction=intent.semantic_extraction,
         )
 
     @staticmethod

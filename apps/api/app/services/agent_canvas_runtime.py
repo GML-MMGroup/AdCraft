@@ -54,6 +54,10 @@ from app.services.agent_canvas_node_execution import (
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeDecisionV2,
+    classify_canvas_execution_mode,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
 )
@@ -591,6 +595,14 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
+        mode = (
+            classify_canvas_execution_mode(node)
+            if member.run_intent_snapshot is None
+            else CanvasExecutionModeDecisionV2(
+                execution_mode=member.run_intent_snapshot.execution_mode,
+                semantic_extraction=member.run_intent_snapshot.semantic_extraction,
+            )
+        )
         managed_prompt = bool(
             node.prompt_preparation.role_variant
             or node.prompt_preparation.recipe_id
@@ -697,6 +709,12 @@ class DynamicCanvasScheduler:
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None
         parameter_compilation_snapshot = None
         prompt_metadata: dict[str, object] = dict(member.prompt_metadata)
+        prompt_metadata.update(
+            {
+                "execution_mode": mode.execution_mode,
+                "semantic_extraction": mode.semantic_extraction,
+            }
+        )
         execution_parameter_normalizations = prompt_metadata.get(
             "execution_parameter_normalizations"
         )
@@ -741,7 +759,11 @@ class DynamicCanvasScheduler:
                 else node
             )
             capability = self._capabilities.resolve(selected_node, inputs)
-            if node.node_type == "video" and self._video_parameter_compiler is not None:
+            if (
+                node.node_type == "video"
+                and mode.execution_mode == "agent_assisted"
+                and self._video_parameter_compiler is not None
+            ):
                 if member.parameter_compilation_snapshot_id is not None:
                     parameter_compilation_snapshot = (
                         self._runtime.get_parameter_compilation_snapshot(
@@ -806,6 +828,8 @@ class DynamicCanvasScheduler:
                     provider=capability.provider,
                     model_id=capability.model_id,
                     capability_revision=capability.capability_revision,
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
                 )
                 prompt_metadata["parameter_compilation_snapshot_id"] = (
                     parameter_compilation_snapshot.snapshot_id
@@ -815,6 +839,12 @@ class DynamicCanvasScheduler:
                     node,
                     capability,
                     normalizations=normalization_labels,
+                )
+                effective_parameters = effective_parameters.model_copy(
+                    update={
+                        "execution_mode": mode.execution_mode,
+                        "semantic_extraction": mode.semantic_extraction,
+                    }
                 )
             prompt_metadata["effective_parameters"] = effective_parameters.model_dump(mode="json")
             if resolution is None:
@@ -877,6 +907,8 @@ class DynamicCanvasScheduler:
                 for item in manifest.omitted_optional_inputs
             ),
             world_setting=world_setting,
+            execution_mode=mode.execution_mode,
+            semantic_extraction=mode.semantic_extraction,
         )
         trace_started_at = self._clock()
         try:
