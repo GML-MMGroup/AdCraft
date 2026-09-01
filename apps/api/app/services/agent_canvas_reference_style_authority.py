@@ -73,7 +73,7 @@ class ReferenceStyleAuthorityPolicyResolver:
             if isinstance(raw_overrides, Mapping)
             else ()
         )
-        control_level = "native" if context.explicit_controls.get("native_reference_control") else "provider_instruction"
+        control_level = "provider_instruction"
         policy_payload = {
             "reference_kind": reference_kind,
             "protected_dimensions": protected,
@@ -137,3 +137,14 @@ class ReferenceAwareAssetPromptRenderer:
             if values:
                 parts.append("Explicit visual overrides: " + "; ".join(values) + ".")
         return "\n\n".join(part for part in parts if part)
+
+
+def resolve_reference_control_level(capability: Mapping[str, Any] | None) -> str:
+    """Use native reference controls only when the selected capability declares one."""
+
+    if capability and (
+        capability.get("supports_native_reference_style") is True
+        or capability.get("supports_native_reference_strength") is True
+    ):
+        return "native"
+    return "provider_instruction"
