@@ -447,6 +447,18 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByText("Preparing")).toBeNull();
   });
 
+  it("uses the persisted Node status even when runtime telemetry says working", () => {
+    const node = makeNode("image", "draft");
+
+    render(<AgentCanvasNodeCard node={node} runtime={makeRuntime("working")} />);
+
+    const card = screen.getByTestId("agent-canvas-node-image-node");
+    expect(card.getAttribute("data-node-status")).toBe("draft");
+    expect(card.getAttribute("aria-label")).toBe("General Image node, Draft");
+    expect(card.classList.contains("agent-canvas-node--working")).toBe(false);
+    expect(card.classList.contains("agent-canvas-node--draft")).toBe(true);
+  });
+
   it("keeps a prompt preparation failure distinct from a media generation failure", () => {
     const node = {
       ...makeNode("image"),
@@ -654,7 +666,7 @@ describe("AgentCanvasNodeCard", () => {
   it.each<"image" | "video">(["image", "video"])(
     "uses the coalesce ImageLoader while a %s node is generating",
     (nodeType) => {
-      const node = makeNode(nodeType, "draft");
+      const node = makeNode(nodeType, "working");
       const { container } = render(
         <AgentCanvasNodeCard
           node={node}

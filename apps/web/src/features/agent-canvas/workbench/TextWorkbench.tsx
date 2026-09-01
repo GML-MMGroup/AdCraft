@@ -13,7 +13,6 @@ export function TextWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
-  promptReady,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
@@ -21,7 +20,6 @@ export function TextWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
-  promptReady: boolean;
 }) {
   const isWorldSetting = node.creative_role === "world_setting";
   const canRun = !isWorldSetting && (node.status === "draft" || node.status === "failed");

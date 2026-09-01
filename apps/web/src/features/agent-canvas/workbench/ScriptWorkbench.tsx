@@ -18,7 +18,6 @@ export function ScriptWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
-  promptReady,
 }: {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
@@ -27,7 +26,6 @@ export function ScriptWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
-  promptReady: boolean;
 }) {
   const canRun = status === "draft" || status === "failed";
   const isWorking = status === "working";

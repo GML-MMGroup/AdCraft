@@ -73,4 +73,33 @@ describe("useNodePromptAutosave", () => {
 
     expect(patchNode).toHaveBeenCalledWith("node-1", { generation_prompt: "on close" }, { coalesce: true });
   });
+
+  it("flushes the previous node's latest prompt when switching nodes", async () => {
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      ({ nodeId, value }) => useNodePromptAutosave({
+        nodeId,
+        value,
+        enabled: true,
+        patchNode,
+      }),
+      { initialProps: { nodeId: "node-a", value: "A original" } },
+    );
+
+    act(() => result.current.schedule("A latest"));
+    rerender({ nodeId: "node-a", value: "A latest" });
+    rerender({ nodeId: "node-b", value: "B original" });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(patchNode).toHaveBeenCalledWith(
+      "node-a",
+      { generation_prompt: "A latest" },
+      { coalesce: true },
+    );
+    expect(patchNode).not.toHaveBeenCalledWith(
+      "node-a",
+      { generation_prompt: "B original" },
+      { coalesce: true },
+    );
+  });
 });

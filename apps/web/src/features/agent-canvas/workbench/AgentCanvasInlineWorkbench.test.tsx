@@ -271,6 +271,61 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it.each([
+    ["queued", "Preparing generation prompt"],
+    ["working", "Preparing generation prompt"],
+    ["failed", "Prompt preparation needs attention"],
+    ["superseded", "Prompt preparation was replaced"],
+  ] as const)(
+    "keeps the generation prompt editable while preparation is %s",
+    (preparationStatus, expectedLabel) => {
+      const node = {
+        ...makeNode("image"),
+        generation_prompt: "Keep this user prompt",
+        prompt_preparation: {
+          status: preparationStatus,
+          operation_id: "prompt-operation-1",
+          attempt_no: 1,
+          context_snapshot_id: "snapshot-1",
+          prompt_digest: null,
+          error: preparationStatus === "failed"
+            ? { code: "prompt_preparation_failed", message: "Preparation failed.", retryable: true }
+            : null,
+          updated_at: "2026-08-11T10:00:00Z",
+        },
+      } as CanvasNodeV2;
+
+      renderWorkbench(node);
+
+      const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+      expect(editor.value).toBe("Keep this user prompt");
+      expect(editor.disabled).toBe(false);
+      expect(screen.getByLabelText("Prompt preparation status").textContent).toContain(expectedLabel);
+    },
+  );
+
+  it("keeps a blank manual Draft editable while it waits for user input", () => {
+    const node = {
+      ...makeNode("image"),
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "waiting_user",
+        operation_id: null,
+        attempt_no: 0,
+        context_snapshot_id: null,
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).disabled).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run image node" })).toBeTruthy();
+  });
+
   it("keeps a waiting-user media node editable without presenting a provider failure", () => {
     const node = {
       ...makeNode("video"),
@@ -460,9 +515,9 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("uses the live Working status to prevent editing a canonically Draft Script", () => {
-    const node = makeNode("script", "draft");
-    const props = renderWorkbench(node, { visibleStatus: "working" });
+  it("uses the persisted Working status to prevent editing a Script", () => {
+    const node = makeNode("script", "working");
+    const props = renderWorkbench(node);
 
     expect(screen.getByLabelText("Script content")).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Script node is working" }))
@@ -473,12 +528,12 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("uses the live Ready status when saving a canonically Draft Script", async () => {
+  it("uses the persisted Ready status when saving a Script", async () => {
     const node = {
-      ...makeNode("script", "draft"),
+      ...makeNode("script", "ready"),
       structured_content: {},
     } as CanvasNodeV2;
-    const props = renderWorkbench(node, { visibleStatus: "ready" });
+    const props = renderWorkbench(node);
 
     fireEvent.change(screen.getByLabelText("Script content"), {
       target: { value: "A recovered Script result." },
@@ -494,12 +549,12 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("uses the live Failed status when retrying a canonically Draft Script", async () => {
+  it("uses the persisted Failed status when retrying a Script", async () => {
     const node = {
-      ...makeNode("script", "draft"),
+      ...makeNode("script", "failed"),
       structured_content: {},
     } as CanvasNodeV2;
-    const props = renderWorkbench(node, { visibleStatus: "failed" });
+    const props = renderWorkbench(node);
 
     fireEvent.click(screen.getByRole("button", { name: "Retry script node" }));
 

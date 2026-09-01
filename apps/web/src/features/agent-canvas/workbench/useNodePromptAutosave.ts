@@ -13,6 +13,28 @@ function persistedPrompt(value: string): string | null {
   return trimmed ? trimmed : null;
 }
 
+interface PromptAutosaveSession {
+  nodeId: string;
+  latestValue: string;
+  persistedValue: string | null;
+  enabled: boolean;
+  localEdited: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  flushPromise: Promise<boolean> | null;
+}
+
+function createSession(nodeId: string, value: string, enabled: boolean): PromptAutosaveSession {
+  return {
+    nodeId,
+    latestValue: value,
+    persistedValue: persistedPrompt(value),
+    enabled,
+    localEdited: false,
+    timer: null,
+    flushPromise: null,
+  };
+}
+
 export function useNodePromptAutosave({
   nodeId,
   value,
@@ -30,130 +52,149 @@ export function useNodePromptAutosave({
 }) {
   const [status, setStatus] = useState<NodePromptAutosaveStatus>("clean");
   const [lastSavedValue, setLastSavedValue] = useState<string | null>(persistedPrompt(value));
-  const latestValueRef = useRef(value);
-  const persistedValueRef = useRef<string | null>(persistedPrompt(value));
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flushPromiseRef = useRef<Promise<boolean> | null>(null);
-  const localEditedRef = useRef(false);
+  const sessionsRef = useRef(new Map<string, PromptAutosaveSession>());
+  const activeSessionRef = useRef<PromptAutosaveSession | null>(null);
   const mountedRef = useRef(true);
-  const nodeIdRef = useRef(nodeId);
 
-  latestValueRef.current = value;
+  let activeSession = sessionsRef.current.get(nodeId);
+  if (!activeSession) {
+    activeSession = createSession(nodeId, value, enabled);
+    sessionsRef.current.set(nodeId, activeSession);
+  } else {
+    activeSession.latestValue = value;
+    activeSession.enabled = enabled;
+  }
+  activeSessionRef.current = activeSession;
 
-  const safeSetStatus = useCallback((next: NodePromptAutosaveStatus) => {
-    if (mountedRef.current) setStatus(next);
+  const setSessionStatus = useCallback((session: PromptAutosaveSession, next: NodePromptAutosaveStatus) => {
+    if (mountedRef.current && activeSessionRef.current === session) setStatus(next);
   }, []);
 
-  const flush = useCallback(async (): Promise<boolean> => {
-    if (!enabled) return true;
-    if (flushPromiseRef.current) return flushPromiseRef.current;
+  const flushSession = useCallback(async (session: PromptAutosaveSession): Promise<boolean> => {
+    if (!session.enabled && !session.localEdited) return true;
+    if (session.flushPromise) return session.flushPromise;
+
     const promise = (async () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
+      if (session.timer) {
+        clearTimeout(session.timer);
+        session.timer = null;
       }
       while (true) {
-        const nextValue = persistedPrompt(latestValueRef.current);
-        if (nextValue === persistedValueRef.current) {
-          localEditedRef.current = false;
-          safeSetStatus(nextValue === null ? "clean" : "saved");
+        const nextValue = persistedPrompt(session.latestValue);
+        if (nextValue === session.persistedValue) {
+          session.localEdited = false;
+          setSessionStatus(session, nextValue === null ? "clean" : "saved");
           return true;
         }
         const valueBeingSaved = nextValue;
-        safeSetStatus("saving");
+        setSessionStatus(session, "saving");
         try {
           const patch: CanvasNodePatchRequestV2 = { generation_prompt: valueBeingSaved };
-          await patchNode(nodeIdRef.current, patch, { coalesce: true });
-          persistedValueRef.current = valueBeingSaved;
-          if (mountedRef.current) setLastSavedValue(valueBeingSaved);
-          if (persistedPrompt(latestValueRef.current) !== valueBeingSaved) {
-            safeSetStatus("dirty");
+          await patchNode(session.nodeId, patch, { coalesce: true });
+          session.persistedValue = valueBeingSaved;
+          session.localEdited = false;
+          if (mountedRef.current && activeSessionRef.current === session) setLastSavedValue(valueBeingSaved);
+          if (persistedPrompt(session.latestValue) !== valueBeingSaved) {
+            session.localEdited = true;
+            setSessionStatus(session, "dirty");
             continue;
           }
-          safeSetStatus(valueBeingSaved === null ? "clean" : "saved");
+          setSessionStatus(session, valueBeingSaved === null ? "clean" : "saved");
           return true;
         } catch (error) {
           if (isV2ApiError(error) && (error.status === 412 || error.status === 428)) {
-            safeSetStatus("conflict");
-            if (mountedRef.current) await onConflict?.();
+            setSessionStatus(session, "conflict");
+            if (mountedRef.current && activeSessionRef.current === session) await onConflict?.();
             return false;
           }
-          safeSetStatus("dirty");
-          if (mountedRef.current) onError?.(error);
+          setSessionStatus(session, "dirty");
+          if (mountedRef.current && activeSessionRef.current === session) onError?.(error);
           return false;
         }
       }
     })();
-    flushPromiseRef.current = promise;
+    session.flushPromise = promise;
     try {
       return await promise;
     } finally {
-      if (flushPromiseRef.current === promise) flushPromiseRef.current = null;
+      if (session.flushPromise === promise) session.flushPromise = null;
     }
-  }, [enabled, onConflict, onError, patchNode, safeSetStatus]);
+  }, [onConflict, onError, patchNode, setSessionStatus]);
+
+  const flushSessionRef = useRef(flushSession);
+  flushSessionRef.current = flushSession;
+
+  const flush = useCallback(() => {
+    const session = activeSessionRef.current;
+    return session ? flushSession(session) : Promise.resolve(true);
+  }, [flushSession]);
 
   const schedule = useCallback((nextValue: string) => {
-    latestValueRef.current = nextValue;
-    if (!enabled) return;
-    localEditedRef.current = true;
-    safeSetStatus("dirty");
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      void flush();
+    const session = activeSessionRef.current;
+    if (!session) return;
+    session.latestValue = nextValue;
+    if (!session.enabled) return;
+    session.localEdited = true;
+    setSessionStatus(session, "dirty");
+    if (session.timer) clearTimeout(session.timer);
+    session.timer = setTimeout(() => {
+      session.timer = null;
+      void flushSession(session);
     }, DEBOUNCE_MS);
-  }, [enabled, flush, safeSetStatus]);
+  }, [flushSession, setSessionStatus]);
 
   const retry = useCallback(async () => {
-    if (!enabled) return true;
-    safeSetStatus("dirty");
-    return flush();
-  }, [enabled, flush, safeSetStatus]);
+    const session = activeSessionRef.current;
+    if (!session) return true;
+    session.localEdited = true;
+    setSessionStatus(session, "dirty");
+    return flushSession(session);
+  }, [flushSession, setSessionStatus]);
 
   const discard = useCallback(() => {
-    const nextValue = lastSavedValue ?? "";
-    latestValueRef.current = nextValue;
-    persistedValueRef.current = lastSavedValue;
-    localEditedRef.current = false;
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+    const session = activeSessionRef.current;
+    if (!session) return "";
+    const nextValue = session.persistedValue ?? "";
+    session.latestValue = nextValue;
+    session.localEdited = false;
+    if (session.timer) {
+      clearTimeout(session.timer);
+      session.timer = null;
     }
-    safeSetStatus(lastSavedValue === null ? "clean" : "saved");
+    setSessionStatus(session, session.persistedValue === null ? "clean" : "saved");
     return nextValue;
-  }, [lastSavedValue, safeSetStatus]);
+  }, [setSessionStatus]);
 
   useEffect(() => {
-    if (nodeIdRef.current === nodeId) return;
-    nodeIdRef.current = nodeId;
-    const initialValue = latestValueRef.current;
-    persistedValueRef.current = persistedPrompt(initialValue);
-    localEditedRef.current = false;
-    setLastSavedValue(persistedPrompt(initialValue));
+    const session = activeSessionRef.current;
+    if (!session) return undefined;
+    setLastSavedValue(session.persistedValue);
     setStatus("clean");
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
     return () => {
-      void flush();
+      void flushSessionRef.current(session);
     };
-  }, [flush, nodeId]);
+  }, [nodeId]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
-      void flush();
+      for (const session of sessionsRef.current.values()) {
+        if (session.timer) {
+          clearTimeout(session.timer);
+          session.timer = null;
+        }
+      }
+      const session = activeSessionRef.current;
+      if (session) void flushSessionRef.current(session);
     };
-  }, [flush]);
+  }, []);
 
   return {
     status,
     lastSavedValue,
     hasPending: status === "dirty" || status === "saving",
-    hasLocalChanges: localEditedRef.current,
+    hasLocalChanges: activeSessionRef.current?.localEdited ?? false,
     schedule,
     flush,
     retry,

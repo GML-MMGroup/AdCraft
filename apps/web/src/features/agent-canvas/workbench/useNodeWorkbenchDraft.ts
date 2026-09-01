@@ -53,7 +53,6 @@ function structuredText(node: CanvasNodeV2): string {
 export function useNodeWorkbenchDraft({
   workflow,
   node,
-  visibleStatus,
   patchNode,
   onRun,
   onSaveVariation,
@@ -65,7 +64,6 @@ export function useNodeWorkbenchDraft({
   AgentCanvasInlineWorkbenchProps,
   | "workflow"
   | "node"
-  | "visibleStatus"
   | "patchNode"
   | "onRun"
   | "onSaveVariation"
@@ -108,7 +106,7 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
-  const effectiveStatus = visibleStatus ?? node.status;
+  const effectiveStatus = node.status;
   const isRunnableScript = node.node_type === "script"
     && (effectiveStatus === "draft" || effectiveStatus === "failed");
   const isRunnableText = node.node_type === "text"
@@ -124,9 +122,7 @@ export function useNodeWorkbenchDraft({
     && !isReadyMedia
     && (effectiveStatus === "draft" || effectiveStatus === "failed");
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
-  const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
-    ? { ...node, status: effectiveStatus }
-    : node;
+  const nodeForRun = node;
 
   const handlePromptConflict = useCallback(async () => {
     setError("This prompt was changed elsewhere. Review the refreshed workflow, then retry or discard your local text.");

@@ -472,7 +472,6 @@ export function AgentCanvasPage() {
         <AgentCanvasInlineWorkbench
           workflow={workflow}
           node={node}
-          visibleStatus={runtime?.visible_status ?? node.status}
           patchNode={patchNode}
           patchBinding={patchBinding}
           deleteBinding={deleteBinding}
