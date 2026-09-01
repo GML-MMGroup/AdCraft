@@ -40,7 +40,11 @@ from app.services.v2_provider_prompt_compiler import (
     V2ProviderPromptCompiler,
     V2ProviderPromptCompilerError,
 )
-from app.services.agent_canvas_seedance_inputs import validate_seedance_audio_parity
+from app.services.agent_canvas_seedance_inputs import (
+    mark_seedance_grounding_serialized,
+    mark_seedance_grounding_submitted,
+    validate_seedance_audio_parity,
+)
 from app.services.v2_provider_input_quality import V2ProviderInputEngineeringService
 from app.services.v2_provider_reference_input_delivery import (
     V2DeliveredReferenceSet,
@@ -949,12 +953,13 @@ class V2ProviderExecutor:
                 error_code=str(error),
                 error_message="Seedance storyboard grounding payload is invalid.",
             )
+        serialized_audit = mark_seedance_grounding_serialized(audit)
         missing_message = (
             self._missing_real_config("video")
             if self._settings.media_mode.strip().lower() == "real"
             else None
         )
-        provider_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
+        provider_payload = {"seedance_input_manifest": serialized_audit.model_dump(mode="json")}
         if missing_message and not self._settings.v2_provider_allow_fallback:
             return V2ProviderResult(
                 status="failed",
@@ -965,6 +970,10 @@ class V2ProviderExecutor:
                 error_message=missing_message,
             )
         if self._settings.media_mode.strip().lower() != "real":
+            submitted_audit = mark_seedance_grounding_submitted(serialized_audit)
+            provider_payload = {
+                "seedance_input_manifest": submitted_audit.model_dump(mode="json")
+            }
             result = self._placeholder_result(
                 media_type="video",
                 slot_type="agent_canvas_video",
@@ -1001,6 +1010,10 @@ class V2ProviderExecutor:
                     error_code="provider_reference_delivery_unavailable",
                     error_message="The configured provider cannot submit a Seedance input manifest.",
                 )
+            submitted_audit = mark_seedance_grounding_submitted(serialized_audit)
+            provider_payload = {
+                "seedance_input_manifest": submitted_audit.model_dump(mode="json")
+            }
             response = submit_manifest(manifest, adapter)
             task_id = _video_generation_task_id_from_response(response)
             output = {
