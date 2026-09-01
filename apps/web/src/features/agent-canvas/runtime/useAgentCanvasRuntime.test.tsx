@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
@@ -57,10 +57,15 @@ const runtime: CanvasRuntimeSnapshotV2 = {
 };
 
 class EventSourceStub {
+  static instances: EventSourceStub[] = [];
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   private readonly listeners = new Map<string, Array<(event: MessageEvent<string>) => void>>();
+
+  constructor() {
+    EventSourceStub.instances.push(this);
+  }
 
   addEventListener(type: string, listener: EventListener) {
     const current = this.listeners.get(type) ?? [];
@@ -76,8 +81,31 @@ class EventSourceStub {
   }
 }
 
+function terminalEvent(sequence_no: number, event_type: string) {
+  return {
+    sequence_no,
+    workflow_id: "workflow-1",
+    event_type,
+    project_id: "project-1",
+    execution_id: "execution-1",
+    node_id: "node-1",
+    asset_id: "asset-1",
+    binding_id: null,
+    conversation_id: null,
+    turn_id: null,
+    action_id: null,
+    trace_id: null,
+    span_id: null,
+    transition_key: "node-1:ready:1",
+    attempt: 1,
+    created_at: "2026-07-28T00:02:00Z",
+    payload: { status: "ready" },
+  };
+}
+
 describe("useAgentCanvasRuntime", () => {
   beforeEach(() => {
+    EventSourceStub.instances = [];
     vi.clearAllMocks();
     api.agentCanvasEvents
       .mockRejectedValueOnce({
@@ -93,6 +121,10 @@ describe("useAgentCanvasRuntime", () => {
     api.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: workflow, etag: "\"workflow-r1\"" });
     api.agentCanvasNode.mockResolvedValue({ node_id: "image-1" } as CanvasNodeV2);
     api.openAgentCanvasEventStream.mockReturnValue(new EventSourceStub());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("recovers an expired replay cursor from the canonical runtime snapshot", async () => {
@@ -132,6 +164,105 @@ describe("useAgentCanvasRuntime", () => {
 
     expect(api.agentCanvasRuntime).toHaveBeenCalledOnce();
     expect(api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a terminal event when the first runtime read is still stale", async () => {
+    api.agentCanvasEvents.mockReset().mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const working = {
+      ...runtime,
+      working_node_ids: ["node-1"],
+      ready_node_ids: [],
+    };
+    const ready = {
+      ...runtime,
+      working_node_ids: [],
+      ready_node_ids: ["node-1"],
+      events_cursor: 44,
+    };
+    api.agentCanvasRuntime.mockReset()
+      .mockResolvedValueOnce(working)
+      .mockResolvedValueOnce(working)
+      .mockResolvedValueOnce(ready);
+    api.agentCanvasWorkflowWithEtag.mockReset().mockResolvedValue({
+      value: workflow,
+      etag: "\"workflow-r1\"",
+    });
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const hook = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+    try {
+      await waitFor(() => expect(eventSource.onmessage).not.toBeNull());
+      vi.useFakeTimers();
+      eventSource.emit("node_ready", terminalEvent(43, "node_ready"));
+
+      await vi.advanceTimersByTimeAsync(250);
+      vi.useRealTimers();
+      await waitFor(() => expect(api.agentCanvasRuntime).toHaveBeenCalledTimes(3));
+      await waitFor(() => expect(hook.result.current.state.runtime).toMatchObject({
+        working_node_ids: [],
+        ready_node_ids: ["node-1"],
+      }));
+    } finally {
+      hook.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes Workflow when reconnect replay contains a terminal event", async () => {
+    let restoreTimers = false;
+    let hook: ReturnType<typeof renderHook> | null = null;
+    try {
+      api.agentCanvasEvents
+        .mockReset()
+        .mockResolvedValueOnce({ workflow_id: "workflow-1", events: [], next_cursor: 42 })
+        .mockResolvedValueOnce({
+          workflow_id: "workflow-1",
+          events: [],
+          next_cursor: 42,
+        })
+        .mockResolvedValueOnce({
+          workflow_id: "workflow-1",
+          events: [terminalEvent(43, "node_ready")],
+          next_cursor: 43,
+        });
+      const first = new EventSourceStub();
+      const second = new EventSourceStub();
+      api.openAgentCanvasEventStream
+        .mockReset()
+        .mockReturnValueOnce(first)
+        .mockReturnValueOnce(second);
+      const callbacks = {
+        applyWorkflow: vi.fn(),
+        mergePublishedAsset: vi.fn(),
+        mergeNode: vi.fn(),
+      };
+      hook = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+      await waitFor(() => expect(first.onopen).not.toBeNull());
+      first.onopen?.();
+      vi.useFakeTimers();
+      restoreTimers = true;
+      first.onerror?.();
+      await vi.advanceTimersByTimeAsync(2_000);
+      vi.useRealTimers();
+      restoreTimers = false;
+      await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(second.onopen).not.toBeNull());
+      second.onopen?.();
+      await waitFor(() => expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalled());
+    } finally {
+      hook?.unmount();
+      if (restoreTimers) vi.useRealTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("performs a trailing Workflow refresh when another event arrives in flight", async () => {
