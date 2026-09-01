@@ -131,12 +131,40 @@ class GuidedReferenceSourceService:
                     "Reference AssetVersion was not found.",
                     stage="guided_reference_service",
                 )
-            if version.source_workflow_id != workflow_id:
+            if request.source_scope == "project" and version.source_workflow_id != workflow_id:
                 raise V2PersistenceError(
                     "guided_reference_source_asset_foreign_workflow",
                     "Reference AssetVersion is outside this Workflow.",
                     stage="guided_reference_service",
                 )
+            if request.source_scope in {"mine", "recommended"}:
+                if request.entity_id is None or request.member_id is None:
+                    raise V2PersistenceError(
+                        "reference_candidate_not_found",
+                        "Catalog provenance is required.",
+                        stage="guided_reference_service",
+                    )
+                entity = self._asset_repository.get_entity(request.entity_id)
+                if entity.status != "active" or (
+                    request.source_scope == "mine" and entity.scope != "user"
+                ) or (
+                    request.source_scope == "recommended" and entity.scope != "recommended"
+                ):
+                    raise V2PersistenceError(
+                        "reference_candidate_not_found",
+                        "Reference catalog candidate is not active.",
+                        stage="guided_reference_service",
+                    )
+                member = next(
+                    (item for item in entity.members if item.member_id == request.member_id),
+                    None,
+                )
+                if member is None or member.asset_id != request.asset_id or member.version_id != request.asset_version_id:
+                    raise V2PersistenceError(
+                        "reference_candidate_not_found",
+                        "Reference catalog candidate identity is stale.",
+                        stage="guided_reference_service",
+                    )
             if version.status != "ready":
                 raise V2PersistenceError(
                     "guided_reference_source_asset_unreadable",

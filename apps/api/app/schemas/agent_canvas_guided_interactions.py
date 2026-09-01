@@ -327,6 +327,9 @@ class GuidedReferenceSourceSubmitV1(_GuidedInteractionModel):
     expected_session_revision: int = Field(ge=1)
     action: GuidedReferenceActionV1
     reference_kind: GuidedReferenceKindV1
+    source_scope: Literal["project", "mine", "recommended"] = "project"
+    entity_id: str | None = Field(default=None, min_length=1, max_length=160)
+    member_id: str | None = Field(default=None, min_length=1, max_length=160)
     asset_id: str | None = Field(default=None, min_length=1, max_length=160)
     asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
 
@@ -339,6 +342,16 @@ class GuidedReferenceSourceSubmitV1(_GuidedInteractionModel):
             raise ValueError("Using a reference requires one exact AssetVersion.")
         if self.action == "skip_reference" and has_asset:
             raise ValueError("Skipping a reference cannot carry an AssetVersion.")
+        has_catalog = self.entity_id is not None or self.member_id is not None
+        if self.action == "skip_reference" and (has_catalog or self.source_scope != "project"):
+            raise ValueError("Skipping a reference cannot carry catalog provenance.")
+        if self.action == "use_reference":
+            if self.source_scope == "project" and has_catalog:
+                raise ValueError("Project references cannot carry catalog provenance.")
+            if self.source_scope in {"mine", "recommended"} and not (
+                self.entity_id is not None and self.member_id is not None
+            ):
+                raise ValueError("Catalog references require entity and member provenance.")
         return self
 
 

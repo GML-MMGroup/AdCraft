@@ -41,6 +41,8 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionSubmissionRow,
     AgentCanvasNodeRow,
     AssetVersionRow,
+    AssetEntityRow,
+    AssetEntityMemberRow,
 )
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
@@ -241,11 +243,50 @@ class AgentCanvasGuidedReferenceRepository:
                             "guided_reference_source_asset_not_found",
                             "Reference AssetVersion was not found.",
                         )
-                    if str(version["source_workflow_id"]) != workflow_id:
+                    if request.source_scope == "project" and str(version["source_workflow_id"]) != workflow_id:
                         raise _error(
                             "guided_reference_source_asset_foreign_workflow",
                             "Reference AssetVersion is outside this Workflow.",
                         )
+                    if request.source_scope in {"mine", "recommended"}:
+                        entity = (
+                            connection.execute(
+                                select(AssetEntityRow).where(
+                                    AssetEntityRow.entity_id == request.entity_id,
+                                    AssetEntityRow.status == "active",
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        member = (
+                            connection.execute(
+                                select(AssetEntityMemberRow).where(
+                                    AssetEntityMemberRow.entity_id == request.entity_id,
+                                    AssetEntityMemberRow.member_id == request.member_id,
+                                    AssetEntityMemberRow.asset_id == request.asset_id,
+                                    AssetEntityMemberRow.version_id == request.asset_version_id,
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        expected_scope = "user" if request.source_scope == "mine" else "recommended"
+                        expected_type = (
+                            "character_three_view"
+                            if content.reference_kind == "character_main"
+                            else "scene_multi_view_grid"
+                        )
+                        if (
+                            entity is None
+                            or str(entity["scope"]) != expected_scope
+                            or member is None
+                            or str(member["semantic_type"]) != expected_type
+                        ):
+                            raise _error(
+                                "reference_candidate_not_found",
+                                "Reference catalog candidate is not compatible.",
+                            )
                     if str(version["status"]) != "ready":
                         raise _error(
                             "guided_reference_source_asset_unreadable",
@@ -281,7 +322,9 @@ class AgentCanvasGuidedReferenceRepository:
                         model_ref=None,
                         parameters={},
                         metadata={
-                            "source_type": "upload",
+                            "source_type": (
+                                "upload" if request.source_scope == "project" else "catalog"
+                            ),
                             "operation_id": submission_id,
                             "rendition_kind": "original",
                             "reference_source": True,
@@ -297,6 +340,15 @@ class AgentCanvasGuidedReferenceRepository:
                             "asset_id": request.asset_id,
                             "asset_version_id": request.asset_version_id,
                             "asset_sha256": asset_sha256 or str(version["sha256"]),
+                            **(
+                                {
+                                    "source_scope": request.source_scope,
+                                    "entity_id": request.entity_id,
+                                    "member_id": request.member_id,
+                                }
+                                if request.source_scope != "project"
+                                else {}
+                            ),
                         },
                         output_asset_id=request.asset_id,
                         position=CanvasPositionV2(x=0, y=0),
@@ -341,6 +393,15 @@ class AgentCanvasGuidedReferenceRepository:
                             "source_node_revision": 1,
                             "source_asset_id": request.asset_id,
                             "source_asset_version_id": request.asset_version_id,
+                            **(
+                                {
+                                    "source_scope": request.source_scope,
+                                    "source_entity_id": request.entity_id,
+                                    "source_member_id": request.member_id,
+                                }
+                                if request.source_scope != "project"
+                                else {}
+                            ),
                         },
                         created_at=node.created_at,
                         updated_at=node.updated_at,
