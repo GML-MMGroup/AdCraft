@@ -241,6 +241,7 @@ class CompiledVideoParametersV2(_VideoParameterModel):
     rejected_lower_priority_candidates: tuple[VideoParameterCandidateV2, ...] = ()
     normalizations: tuple[VideoParameterNormalizationV2, ...] = ()
     parameter_compilation_snapshot_id: str | None = None
+    parameter_source: Literal["manual", "typed_binding", "model_default", "mixed"] = "mixed"
 
     @property
     def parameters(self) -> dict[str, JsonValue]:

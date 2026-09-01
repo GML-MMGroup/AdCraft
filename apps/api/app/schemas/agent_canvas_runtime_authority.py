@@ -13,7 +13,7 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRunScopeV2,
     NodeRunBindingSnapshotV2,
 )
-from app.services.agent_canvas_execution_mode import (
+from app.schemas.agent_canvas_execution_mode import (
     CanvasExecutionModeV2,
     CanvasSemanticExtractionModeV2,
 )
