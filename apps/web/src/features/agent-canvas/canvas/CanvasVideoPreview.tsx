@@ -1,5 +1,8 @@
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
-import { mediaAssetCanvasPosterRenditionPath } from "../../../workflow/mediaPreview.ts";
+import {
+  mediaAssetCanvasPosterRenditionPath,
+  mediaAssetCanvasPreviewSrcSet,
+} from "../../../workflow/mediaPreview.ts";
 import { CanvasMediaPreview } from "./CanvasMediaPreview.tsx";
 import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
 
@@ -17,7 +20,11 @@ export function CanvasVideoPreview({
   // Canvas cards must not fetch source video just to create a thumbnail. The
   // explicit preview dialog remains responsible for loading posterless video.
   const cachedPosterUrl = useAgentCanvasVideoPoster(asset);
-  const posterUrl = mediaAssetCanvasPosterRenditionPath(asset) || cachedPosterUrl;
+  const derivedPosterUrl = mediaAssetCanvasPosterRenditionPath(asset);
+  const posterUrl = derivedPosterUrl || cachedPosterUrl;
+  const posterSrcSet = derivedPosterUrl
+    ? mediaAssetCanvasPreviewSrcSet({ ...asset, poster_url: derivedPosterUrl })
+    : undefined;
 
   if (!posterUrl) {
     return <div className="agent-canvas-node__media-placeholder" aria-hidden="true" />;
@@ -27,6 +34,7 @@ export function CanvasVideoPreview({
     <CanvasMediaPreview
       className="agent-canvas-node__media agent-canvas-node__media--cover"
       src={posterUrl}
+      srcSet={posterSrcSet || undefined}
       alt={asset.display_name || label}
       width={asset.width ?? undefined}
       height={asset.height ?? undefined}
