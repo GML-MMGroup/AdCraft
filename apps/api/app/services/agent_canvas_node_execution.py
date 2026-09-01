@@ -49,6 +49,7 @@ from app.services.agent_canvas_storyboard_grounding import (
     GroundingPlanError,
     build_storyboard_grid_grounding_plan,
 )
+from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
@@ -543,7 +544,9 @@ class MediaNodeExecutor:
             code = str(error)
             if isinstance(error, GroundingPlanError):
                 pass
-            elif code != "v2_video_prompt_empty":
+            elif code != "v2_video_prompt_empty" and not code.startswith(
+                "v2_storyboard_reference_"
+            ):
                 code = "provider_inputs_unsupported"
             raise _error(code, str(error)) from error
         return replace(
@@ -1152,39 +1155,26 @@ def _seedance_grounding_plan(
             }
         }
     )
-    role_aliases = {
-        "character": "character_reference",
-        "scene": "scene_reference",
-        "scene_board": "scene_reference",
-        "environment_reference": "scene_reference",
-        "product": "product_reference",
-        "prop": "prop_reference",
-    }
-    ordered_references = tuple(
-        {
-            "asset_id": item.asset_id,
-            "version_id": item.asset_version_id,
-            "checksum": item.asset_checksum,
-            "semantic_role": role_aliases.get(
-                str(
-                    item.binding_metadata.get("semantic_reference_role")
-                    or item.source_semantic_role
-                    or "reference"
+    try:
+        ordered_references = tuple(
+            {
+                "asset_id": item.asset_id,
+                "version_id": item.asset_version_id,
+                "checksum": item.asset_checksum,
+                "semantic_role": canonical_storyboard_reference_role(
+                    binding_role=item.binding_metadata.get("semantic_reference_role"),
+                    source_role=item.source_semantic_role,
                 ),
-                str(
-                    item.binding_metadata.get("semantic_reference_role")
-                    or item.source_semantic_role
-                    or "reference"
-                ),
-            ),
-            "binding_id": item.binding_id or f"asset:{item.asset_id}",
-            "media_type": item.media_type,
-            "required": item.required,
-            "display_order": item.display_order,
-        }
-        for item in media_inputs
-        if item is not grid_input and item.media_type == "image"
-    )
+                "binding_id": item.binding_id or f"asset:{item.asset_id}",
+                "media_type": item.media_type,
+                "required": item.required,
+                "display_order": item.display_order,
+            }
+            for item in media_inputs
+            if item is not grid_input and item.media_type == "image"
+        )
+    except ValueError as error:
+        raise GroundingPlanError(str(error)) from error
     return build_storyboard_grid_grounding_plan(
         node=context.node,
         grid_input=grid_with_revision,

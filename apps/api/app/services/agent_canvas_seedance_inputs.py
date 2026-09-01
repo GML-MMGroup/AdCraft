@@ -23,6 +23,7 @@ from app.schemas.seedance_inputs import (
     StoryboardGridGroundingPlanV1,
     StoryboardReferenceIdentityAuditV1,
 )
+from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 
 
 class AgentCanvasSeedanceInputCompiler:
@@ -440,14 +441,7 @@ def _validate_grounding_manifest_inputs(
 def _grounding_semantic_role(item: SeedanceMediaInputV1) -> str:
     if item.reference_purpose == "storyboard_grid":
         return "storyboard_grid"
-    return {
-        "character": "character_reference",
-        "scene": "scene_reference",
-        "scene_board": "scene_reference",
-        "environment_reference": "scene_reference",
-        "product": "product_reference",
-        "prop": "prop_reference",
-    }.get(item.source_semantic_role or "", item.source_semantic_role or "reference")
+    return canonical_storyboard_reference_role(source_role=item.source_semantic_role)
 
 
 def _grounding_audit(
