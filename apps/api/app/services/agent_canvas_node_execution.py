@@ -1147,6 +1147,7 @@ def _seedance_grounding_plan(
         "character": "character_reference",
         "scene": "scene_reference",
         "scene_board": "scene_reference",
+        "environment_reference": "scene_reference",
         "product": "product_reference",
         "prop": "prop_reference",
     }
