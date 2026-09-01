@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mediaAssetContentPath,
+  mediaAssetCanvasPreviewRenditionPath,
   mediaAssetOriginalPath,
   mediaAssetPosterRenditionPath,
   mediaAssetPreviewPath,
@@ -27,6 +28,22 @@ describe("media preview paths", () => {
       preview_url: "/api/v2/assets/asset-1/preview",
       media_url: "/api/v2/assets/asset-1/content",
     })).toBe("/api/v2/assets/asset-1/preview?v=version-1");
+  });
+
+  it("rejects source content URLs for canvas previews", () => {
+    expect(mediaAssetCanvasPreviewRenditionPath({
+      asset_id: "asset-1",
+      version_id: "version-1",
+      preview_url: "/api/v2/assets/asset-1/content",
+    })).toBe("");
+  });
+
+  it("pins a derived canvas preview rendition to the asset version", () => {
+    expect(mediaAssetCanvasPreviewRenditionPath({
+      asset_id: "asset-1",
+      version_id: "version-1",
+      preview_url: "/api/v2/assets/asset-1/renditions/preview-640.webp",
+    })).toBe("/api/v2/assets/asset-1/renditions/preview-640.webp?v=version-1");
   });
 
   it("does not invent a version when the backend has not supplied one", () => {

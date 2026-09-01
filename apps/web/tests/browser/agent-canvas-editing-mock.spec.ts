@@ -102,6 +102,7 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
   const providerRequests: string[] = [];
   const downloadRequests: string[] = [];
   const previewRequests: string[] = [];
+  const canvasSourceContentRequests: string[] = [];
   const exportRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const importRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const bindingRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
@@ -135,6 +136,7 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
     }
 
     if (url.pathname === "/api/v2/assets/asset-export/content") {
+      canvasSourceContentRequests.push(request.url());
       await route.fulfill({
         status: 200,
         contentType: "video/mp4",
@@ -251,12 +253,14 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
   await expect.poll(() => downloadRequests.length).toBe(1);
   expect(downloadRequests).toEqual(["asset-export"]);
 
+  const sourceContentRequestsBeforeCanvasImport = canvasSourceContentRequests.length;
   await page.getByRole("button", { name: "Add exported video to canvas" }).click();
   await expect(page.getByTestId("agent-canvas-node-video-export")).toBeVisible();
   const importedNodeCard = page.getByTestId("agent-canvas-node-video-export");
   await expect(importedNodeCard.locator("video")).toHaveCount(0);
   await expect.poll(() => previewRequests.length).toBe(1);
   expect(new URL(previewRequests[0]).searchParams.get("v")).toBe("version-asset-export");
+  expect(canvasSourceContentRequests).toHaveLength(sourceContentRequestsBeforeCanvasImport);
   await expect(page.getByTestId("import-binding")).toContainText("node_output:video-export");
   const importedWorkbench = page.getByTestId("imported-workbench");
   await expect(importedWorkbench.locator("button, input, select, textarea")).toHaveCount(0);
