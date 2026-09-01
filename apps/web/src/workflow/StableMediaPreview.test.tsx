@@ -76,11 +76,11 @@ describe("StableMediaPreview", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("image", { status: 200 }));
     const source = "/api/v2/assets/asset-4/content?v=version-6";
 
-    render(<StableMediaPreview src={source} alt="deferred" deferMs={200} />);
+    render(<StableMediaPreview src={source} alt="deferred" deferMs={500} />);
     expect(fetchMock).not.toHaveBeenCalled();
 
     await act(async () => {
-      vi.advanceTimersByTime(199);
+      vi.advanceTimersByTime(499);
     });
     expect(fetchMock).not.toHaveBeenCalled();
 
