@@ -60,6 +60,14 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes the canonical node when media generation starts", () => {
+    expect(runtimeEventPolicy(event("node_generation_started"))).toMatchObject({
+      refreshRuntime: true,
+      refreshWorkflow: false,
+      refreshNodeId: "node-1",
+    });
+  });
+
   it("routes progressive guidance and Draft publication events without obsolete aliases", () => {
     expect(runtimeEventPolicy(event("node_created"))).toMatchObject({
       refreshWorkflow: true,
