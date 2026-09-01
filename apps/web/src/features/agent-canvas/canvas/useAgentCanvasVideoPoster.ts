@@ -39,6 +39,35 @@ export function useAgentCanvasVideoPoster(
   });
 
   useEffect(() => {
+    // A poster generated in an earlier session can be reused without
+    // reactivating the source video. Only the explicit preview dialog passes a
+    // video ref and is allowed to generate a missing poster.
+    if (!fallbackKey || videoRef) return;
+
+    let cancelled = false;
+    let objectUrl = "";
+    void import("../../../workflow/videoPosterCache.ts")
+      .then(({ loadVideoPosterRecordForAsset }) => loadVideoPosterRecordForAsset(projectId, workflowId, {
+        asset_id: assetId,
+        asset_type: "video",
+        version: versionId ?? checksum,
+      }))
+      .then((record) => {
+        if (cancelled || !record?.poster_blob) return;
+        objectUrl = URL.createObjectURL(record.poster_blob);
+        setGeneratedPoster({ key: fallbackKey, url: objectUrl });
+      })
+      .catch(() => {
+        // A missing cache entry is expected for a newly generated video.
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [assetId, checksum, fallbackKey, projectId, versionId, videoRef, workflowId]);
+
+  useEffect(() => {
     if (!fallbackKey || !assetId || !mediaUrl || !videoRef) return;
 
     let cancelled = false;

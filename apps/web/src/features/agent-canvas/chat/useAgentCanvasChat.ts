@@ -251,6 +251,7 @@ export function useAgentCanvasChat({
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshQueuedRef = useRef(false);
+  const chatRevisionRefreshTimerRef = useRef<number | null>(null);
   const refreshAbortControllerRef = useRef<AbortController | null>(null);
   const refreshGenerationRef = useRef(0);
   const workflowGenerationRef = useRef(0);
@@ -639,6 +640,18 @@ export function useAgentCanvasChat({
     }
   }, [runRefresh]);
 
+  const scheduleChatRevisionRefresh = useCallback(() => {
+    if (chatRevisionRefreshTimerRef.current !== null) return;
+    chatRevisionRefreshTimerRef.current = window.setTimeout(() => {
+      chatRevisionRefreshTimerRef.current = null;
+      if (refreshInFlightRef.current) {
+        refreshQueuedRef.current = true;
+        return;
+      }
+      void refresh();
+    }, 80);
+  }, [refresh]);
+
   const presentationStreams = useAgentCanvasPresentationStreams(
     workflowId,
     presentationStreamIds,
@@ -721,6 +734,10 @@ export function useAgentCanvasChat({
   useEffect(() => {
     return () => {
       refreshQueuedRef.current = false;
+      if (chatRevisionRefreshTimerRef.current !== null) {
+        window.clearTimeout(chatRevisionRefreshTimerRef.current);
+        chatRevisionRefreshTimerRef.current = null;
+      }
       refreshAbortControllerRef.current?.abort();
       refreshAbortControllerRef.current = null;
       refreshInFlightRef.current = null;
@@ -831,9 +848,8 @@ export function useAgentCanvasChat({
   useEffect(() => {
     proposalPointerHydrationsRef.current.clear();
     decisionBundlePointerHydrationsRef.current.clear();
-    const timer = window.setTimeout(() => void refresh(), 80);
-    return () => window.clearTimeout(timer);
-  }, [chatRevision, refresh]);
+    scheduleChatRevisionRefresh();
+  }, [chatRevision, scheduleChatRevisionRefresh]);
 
   useEffect(() => {
     if (!guidanceSession) return;

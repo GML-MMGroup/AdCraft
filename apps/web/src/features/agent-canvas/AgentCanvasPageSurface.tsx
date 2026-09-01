@@ -1099,7 +1099,7 @@ export function AgentCanvasPage() {
           panOnScroll
           zoomOnDoubleClick={false}
           selectionOnDrag
-          onlyRenderVisibleElements={false}
+          onlyRenderVisibleElements={true}
           nodesDraggable={!layoutPreview.active}
           onInit={initializeFlow}
           onEdgesChange={onEdgesChange}

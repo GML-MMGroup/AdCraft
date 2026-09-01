@@ -291,7 +291,7 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain("onlyRenderVisibleElements={false}");
+    expect(source).toContain("onlyRenderVisibleElements={true}");
     expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
     expect(nodeSource).toMatch(
       /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,

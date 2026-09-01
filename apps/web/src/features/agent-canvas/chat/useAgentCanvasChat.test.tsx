@@ -1044,6 +1044,30 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.guidanceSession).toMatchObject({ revision: 9 });
   });
 
+  it("coalesces chat revision bursts into one trailing refresh", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    const { rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    rerender({ chatRevision: 1 });
+    rerender({ chatRevision: 2 });
+    rerender({ chatRevision: 3 });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTimeline).toHaveBeenCalledOnce();
+  });
+
   it("refreshes Timeline, Session, Graph, and Runtime in order after a typed submit", async () => {
     const order: string[] = [];
     api.agentCanvasChatTimeline.mockImplementation(async () => {
