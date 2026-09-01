@@ -501,7 +501,10 @@ class MediaNodeExecutor:
             )
             for reference in delivered_references
         )
-        grounding_plan = _seedance_grounding_plan(context, media_inputs)
+        try:
+            grounding_plan = _seedance_grounding_plan(context, media_inputs)
+        except GroundingPlanError as error:
+            raise _error(error.code, str(error)) from error
         try:
             if context.model_resolution is None or not context.model_id:
                 raise _error(

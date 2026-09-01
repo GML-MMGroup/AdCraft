@@ -79,6 +79,7 @@ class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
     grid_rows: Literal[3] = 3
     grid_columns: Literal[3] = 3
     panel_sequence_fingerprint: str = Field(min_length=1)
+    plan_fingerprint: str = Field(min_length=1)
     provider_request_field: str = Field(min_length=1)
     provider_input_order: tuple[str, ...] = ()
     prompt_reference_labels: tuple[str, ...] = ()

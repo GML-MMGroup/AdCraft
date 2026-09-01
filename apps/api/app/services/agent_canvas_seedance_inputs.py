@@ -448,6 +448,7 @@ def _grounding_audit(
         primary_reference_asset_id=plan.grid_asset_id,
         primary_reference_version_id=plan.grid_version_id,
         panel_sequence_fingerprint=plan.panel_sequence_fingerprint,
+        plan_fingerprint=plan.plan_fingerprint,
         provider_request_field="content",
         provider_input_order=tuple(item.semantic_role for item in plan.ordered_references),
         prompt_reference_labels=tuple(item.label for item in manifest.image_inputs),
