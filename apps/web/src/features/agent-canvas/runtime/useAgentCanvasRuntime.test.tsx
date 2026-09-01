@@ -91,6 +91,7 @@ describe("useAgentCanvasRuntime", () => {
       });
     api.agentCanvasRuntime.mockResolvedValue(runtime);
     api.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: workflow, etag: "\"workflow-r1\"" });
+    api.agentCanvasNode.mockResolvedValue({ node_id: "image-1" } as CanvasNodeV2);
     api.openAgentCanvasEventStream.mockReturnValue(new EventSourceStub());
   });
 
@@ -238,6 +239,48 @@ describe("useAgentCanvasRuntime", () => {
       credential_revision: 3,
       catalog_revision: 12,
     }));
+  });
+
+  it("refreshes the canonical node once when generation starts", async () => {
+    api.agentCanvasEvents.mockReset().mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const canonicalNode = { node_id: "image-1", status: "working" } as CanvasNodeV2;
+    api.agentCanvasNode.mockResolvedValue(canonicalNode);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(eventSource.onmessage).not.toBeNull());
+    const event = {
+      sequence_no: 43,
+      workflow_id: "workflow-1",
+      event_type: "node_generation_started",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "image-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      created_at: "2026-08-03T00:00:00Z",
+      payload: {},
+    };
+    eventSource.onmessage?.({ data: JSON.stringify(event) } as MessageEvent<string>);
+    eventSource.onmessage?.({ data: JSON.stringify(event) } as MessageEvent<string>);
+
+    await waitFor(() => expect(api.agentCanvasNode).toHaveBeenCalledOnce());
+    expect(api.agentCanvasNode).toHaveBeenCalledWith("workflow-1", "image-1");
+    expect(callbacks.mergeNode).toHaveBeenCalledWith(canonicalNode);
+    expect(api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
   });
 
   it("starts replay from the runtime high-water mark instead of replaying historical receipts", async () => {

@@ -160,6 +160,7 @@ const CHAT_EVENTS = new Set([
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([
+  "node_generation_started",
   "node_output_published",
   "node_ready",
   "node_failed",
