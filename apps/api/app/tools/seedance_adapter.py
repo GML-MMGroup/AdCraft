@@ -249,6 +249,7 @@ def _grounding_semantic_role(item: SeedanceMediaInputV1) -> str:
         "character": "character_reference",
         "scene": "scene_reference",
         "scene_board": "scene_reference",
+        "environment_reference": "scene_reference",
         "product": "product_reference",
         "prop": "prop_reference",
     }.get(item.source_semantic_role or "", item.source_semantic_role or "reference")
