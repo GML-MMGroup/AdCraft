@@ -226,6 +226,8 @@ class ProviderTaskRecoveryService:
             or str(current.result_descriptor.get("parameter_compilation_snapshot_id") or "")
             or None
         )
+        execution_mode = "agent_assisted"
+        semantic_extraction = "agent"
         if effective_parameters is None and snapshot_id is not None:
             snapshot = self._runtime.get_parameter_compilation_snapshot(snapshot_id)
             effective_parameters = EffectiveMediaParameterSnapshotV2(
@@ -238,9 +240,14 @@ class ProviderTaskRecoveryService:
                     resolution.provider_model_id if resolution is not None else snapshot.model_ref
                 ),
                 capability_revision=snapshot.capability_revision,
+                execution_mode=snapshot.execution_mode,
+                semantic_extraction=snapshot.semantic_extraction,
+                parameter_source=snapshot.parameter_source,
             )
         if effective_parameters is not None:
             node = node.model_copy(update={"parameters": effective_parameters.requested})
+            execution_mode = effective_parameters.execution_mode
+            semantic_extraction = effective_parameters.semantic_extraction
         seedance_input_audit = _seedance_manifest_audit(current.result_descriptor)
         context = NodeExecutionContext(
             execution_id=task.execution_id,
@@ -251,6 +258,8 @@ class ProviderTaskRecoveryService:
             model_resolution=resolution,
             effective_parameters=effective_parameters,
             seedance_input_audit=seedance_input_audit,
+            execution_mode=execution_mode,
+            semantic_extraction=semantic_extraction,
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
