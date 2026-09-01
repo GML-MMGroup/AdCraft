@@ -768,6 +768,13 @@ def _asset_summary(
         "editing_export",
     }:
         source_type = "generated"
+    rendition_url = None
+    if version.status == "ready" and media_type in {"image", "video"}:
+        rendition_kind = "preview" if media_type == "image" else "poster"
+        rendition_url = (
+            f"/api/v2/assets/{version.asset_id}/{rendition_kind}"
+            f"?v={version.version_id}"
+        )
     return ProjectAssetSummaryV2(
         asset_id=version.asset_id,
         version_id=version.version_id,
@@ -780,9 +787,10 @@ def _asset_summary(
         status=version.status,
         size_bytes=version.size_bytes,
         storage_key=version.storage_key,
-        preview_url=(
-            f"/api/v2/assets/{version.asset_id}/content" if media_type == "image" else None
-        ),
+        # Canvas consumers must receive a derived, version-pinned rendition;
+        # source content remains available through media_url for explicit
+        # preview/download actions.
+        preview_url=rendition_url,
         media_url=f"/api/v2/assets/{version.asset_id}/content",
         width=version.width,
         height=version.height,
