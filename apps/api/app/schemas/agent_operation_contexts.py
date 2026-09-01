@@ -304,6 +304,7 @@ class VideoParameterTextSourceV3(_PlanningContextModel):
 
 class VideoParameterIntentContextV3(_PlanningContextModel):
     context_kind: Literal["video_parameter_intent_v3"]
+    workflow_id: str = Field(min_length=1, max_length=160)
     unresolved_fields: tuple[
         Literal["duration_seconds", "resolution", "aspect_ratio", "generate_audio"], ...
     ] = Field(min_length=1, max_length=4)

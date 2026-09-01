@@ -262,7 +262,7 @@ export type VideoParameterTextSourceV3 = { readonly "source_ref": string; readon
 
 export type VideoParameterCapabilityContextV2 = { readonly "supported_parameters": ReadonlyArray<string>; readonly "duration_seconds_min"?: number | null; readonly "duration_seconds_max"?: number | null; readonly "supported_resolutions"?: ReadonlyArray<string>; readonly "supported_aspect_ratios"?: ReadonlyArray<string>; readonly "supports_native_audio": boolean; readonly "default_parameters"?: Readonly<Record<string, unknown>>; readonly "capability_revision": number };
 
-export type VideoParameterIntentContextV3 = { readonly "context_kind": "video_parameter_intent_v3"; readonly "unresolved_fields": ReadonlyArray<"aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution">; readonly "sources": ReadonlyArray<VideoParameterTextSourceV3>; readonly "capability": VideoParameterCapabilityContextV2 };
+export type VideoParameterIntentContextV3 = { readonly "context_kind": "video_parameter_intent_v3"; readonly "workflow_id": string; readonly "unresolved_fields": ReadonlyArray<"aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution">; readonly "sources": ReadonlyArray<VideoParameterTextSourceV3>; readonly "capability": VideoParameterCapabilityContextV2 };
 
 export type VideoParameterCandidateV3 = { readonly "field": "aspect_ratio" | "duration_seconds" | "generate_audio" | "resolution"; readonly "value": number | number | string | boolean; readonly "source_ref": string };
 

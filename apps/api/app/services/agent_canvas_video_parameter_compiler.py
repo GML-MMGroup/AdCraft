@@ -172,6 +172,7 @@ class AgentCanvasVideoParameterCompiler:
         if plan.semantic_extraction_required:
             context = VideoParameterIntentContextV3(
                 context_kind="video_parameter_intent_v3",
+                workflow_id=node.workflow_id,
                 unresolved_fields=cast(tuple, plan.unresolved_fields),
                 sources=tuple(
                     VideoParameterTextSourceV3(source_ref=item.source_ref, text=item.text)

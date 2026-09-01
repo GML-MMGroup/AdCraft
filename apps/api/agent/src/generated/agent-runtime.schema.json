@@ -29412,13 +29412,20 @@
           "minItems": 1,
           "title": "Unresolved Fields",
           "type": "array"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
         }
       },
       "required": [
         "capability",
         "context_kind",
         "sources",
-        "unresolved_fields"
+        "unresolved_fields",
+        "workflow_id"
       ],
       "title": "VideoParameterIntentContextV3",
       "type": "object"
