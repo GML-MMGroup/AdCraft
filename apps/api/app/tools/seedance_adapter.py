@@ -141,12 +141,15 @@ def _seedance_manifest_content_item(item: SeedanceMediaInputV1) -> dict[str, Any
     expected_type = f"{item.media_type}_url"
     if input_type != expected_type:
         raise ValueError("provider_reference_delivery_unavailable")
-    return {
+    content_item = {
         "type": input_type,
         "label": item.label,
         "role": _seedance_wire_role(item),
         input_type: {"url": item.provider_input_value},
     }
+    if item.reference_instruction is not None:
+        content_item["reference_instruction"] = item.reference_instruction
+    return content_item
 
 
 def _seedance_wire_role(item: SeedanceMediaInputV1) -> str:
