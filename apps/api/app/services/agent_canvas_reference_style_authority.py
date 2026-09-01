@@ -1,0 +1,139 @@
+"""Conditional reference-style authority for Character Main and Scene Main."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Mapping
+from typing import Any
+
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
+from app.schemas.agent_canvas_reference_style import (
+    ReferencePromptProvenanceV1,
+    ReferenceStyleAuthorityPolicyV1,
+)
+
+
+_CHARACTER_PROTECTED = (
+    "medium",
+    "linework",
+    "palette",
+    "shading",
+    "texture",
+    "shape_language",
+    "silhouette",
+    "wardrobe",
+    "hair",
+    "signature_accessories",
+)
+_SCENE_PROTECTED = (
+    "medium",
+    "linework",
+    "palette",
+    "shading",
+    "texture",
+    "shape_language",
+    "spatial_layout",
+    "environment_materials",
+    "environment_lighting",
+)
+
+
+class ReferenceStyleAuthorityPolicyResolver:
+    """Resolve style authority only from one exact current role Binding."""
+
+    def resolve(
+        self, context: RolePromptPreparationContextV2
+    ) -> ReferenceStyleAuthorityPolicyV1 | None:
+        if context.role_variant == "character_main":
+            expected = ("character", "identity_guidance")
+            reference_kind = "character_main"
+            protected = _CHARACTER_PROTECTED
+        elif context.role_variant == "scene_board":
+            expected = ("scene", "environment_guidance")
+            reference_kind = "scene_main"
+            protected = _SCENE_PROTECTED
+        else:
+            return None
+        if len(context.bindings) != 1:
+            return None
+        binding = context.bindings[0]
+        if (
+            binding.source_role != expected[0]
+            or binding.reference_purpose != expected[1]
+            or binding.asset_id is None
+            or binding.asset_version_id is None
+            or binding.source_node_id is None
+            or binding.source_node_revision is None
+        ):
+            return None
+        raw_overrides = context.explicit_controls.get("visual_overrides", {})
+        overrides = (
+            tuple(sorted(str(key) for key in raw_overrides if str(key) in protected))
+            if isinstance(raw_overrides, Mapping)
+            else ()
+        )
+        control_level = "native" if context.explicit_controls.get("native_reference_control") else "provider_instruction"
+        policy_payload = {
+            "reference_kind": reference_kind,
+            "protected_dimensions": protected,
+            "explicit_override_dimensions": overrides,
+            "reference_control_level": control_level,
+            "binding_id": binding.binding_id,
+            "asset_id": binding.asset_id,
+            "asset_version_id": binding.asset_version_id,
+            "binding_revision": binding.binding_revision,
+            "source_node_revision": binding.source_node_revision,
+        }
+        digest = "sha256:" + hashlib.sha256(
+            json.dumps(policy_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return ReferenceStyleAuthorityPolicyV1(
+            policy_id=f"reference-style:{reference_kind}:{binding.binding_id}",
+            policy_version="reference_style_authority_v1",
+            reference_kind=reference_kind,
+            semantic_reference_role=expected[0] + "_reference",
+            reference_purpose=expected[1],
+            protected_dimensions=protected,
+            explicit_override_dimensions=overrides,
+            reference_control_level=control_level,
+            policy_digest=digest,
+            provenance=ReferencePromptProvenanceV1(
+                binding_id=binding.binding_id,
+                binding_revision=binding.binding_revision,
+                asset_id=binding.asset_id,
+                asset_version_id=binding.asset_version_id,
+                source_node_id=binding.source_node_id,
+                source_node_revision=binding.source_node_revision,
+            ),
+        )
+
+
+class ReferenceAwareAssetPromptRenderer:
+    """Render bounded reference authority without parsing free-form text."""
+
+    def render(
+        self,
+        prompt: str,
+        style_projection: str | None,
+        policy: ReferenceStyleAuthorityPolicyV1,
+        *,
+        explicit_controls: Mapping[str, Any] | None = None,
+    ) -> str:
+        parts = [prompt.strip()]
+        parts.append(
+            "Selected reference image is authoritative for protected visual dimensions: "
+            + ", ".join(policy.protected_dimensions)
+            + "."
+        )
+        controls = explicit_controls or {}
+        raw_overrides = controls.get("visual_overrides", {})
+        if isinstance(raw_overrides, Mapping):
+            values = [
+                f"{key}={raw_overrides[key]}"
+                for key in policy.explicit_override_dimensions
+                if key in raw_overrides
+            ]
+            if values:
+                parts.append("Explicit visual overrides: " + "; ".join(values) + ".")
+        return "\n\n".join(part for part in parts if part)

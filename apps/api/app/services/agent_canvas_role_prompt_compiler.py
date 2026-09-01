@@ -48,6 +48,10 @@ from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegist
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_reference_style_authority import (
+    ReferenceAwareAssetPromptRenderer,
+    ReferenceStyleAuthorityPolicyResolver,
+)
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingAuthoringProvenanceV2,
     WorldSettingCoreV2,
@@ -139,7 +143,15 @@ class AgentCanvasRolePromptCompiler:
         )
         prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
-        if context.style_projection:
+        style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
+        if style_authority is not None:
+            prompt = ReferenceAwareAssetPromptRenderer().render(
+                prompt,
+                context.style_projection,
+                style_authority,
+                explicit_controls=context.explicit_controls,
+            )
+        elif context.style_projection:
             _validate_role_prompt_text(context.role_variant, context.style_projection)
             prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
         self._validate_required_references(recipe.reference_purposes, context)
@@ -187,6 +199,11 @@ class AgentCanvasRolePromptCompiler:
         if policy_negative and policy_negative not in negative:
             negative = f"{negative} {policy_negative}".strip()
         structured = _structured_content(concrete_brief, context)
+        if style_authority is not None:
+            structured = {
+                **structured,
+                "reference_style_policy": style_authority.model_dump(mode="json"),
+            }
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
@@ -194,7 +211,14 @@ class AgentCanvasRolePromptCompiler:
         style_digest = _digest(
             structured.get("style", context.style_projection or "")
             if context.role_variant == "video_segment"
-            else (context.style_projection or "")
+            else (
+                {
+                    "projection": context.style_projection or "",
+                    "reference_style_policy": style_authority.model_dump(mode="json")
+                    if style_authority is not None
+                    else None,
+                }
+            )
         )
         prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
         prepared_prompt_digest = sha256(prompt.encode("utf-8")).hexdigest()
