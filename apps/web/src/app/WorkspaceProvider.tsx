@@ -392,7 +392,10 @@ export function WorkspaceProvider({
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
         const { v2Api, isV2ApiError, isNetworkError } = await import("../api/v2Client");
-        await refreshProjects();
+        // The catalog is useful for the Projects page but is not required to
+        // restore the routed workflow. Start it in the background so a slow
+        // catalog response cannot delay the canvas's critical path.
+        void refreshProjects().catch(() => undefined);
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
         if (!restoreActiveWorkflow) {
           activeWorkflowIdRef.current = null;
@@ -406,8 +409,24 @@ export function WorkspaceProvider({
         const restoreProjectId = restoreRequest.projectId;
         if (restoreProjectId) {
           try {
-            const project = await v2Api.projectWithEtag(restoreProjectId);
-            const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+            const cachedWorkflowId = savedProjectsRef.current.find(
+              (project) => project.project_id === restoreProjectId,
+            )?.workflow_id;
+            let response;
+            if (cachedWorkflowId) {
+              try {
+                response = await v2Api.agentCanvasWorkflowWithEtag(cachedWorkflowId);
+                if (response.value.project_id !== restoreProjectId) {
+                  throw new Error("Cached workflow identity is stale.");
+                }
+              } catch {
+                const project = await v2Api.projectWithEtag(restoreProjectId);
+                response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+              }
+            } else {
+              const project = await v2Api.projectWithEtag(restoreProjectId);
+              response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+            }
             if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
             const nextWorkflow = response.value;
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
