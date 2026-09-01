@@ -64,6 +64,8 @@ export function mediaAssetPreviewRenditionPath(asset?: MediaAssetLike | null) {
 
 export function mediaAssetCanvasPreviewRenditionPath(asset?: MediaAssetLike | null) {
   return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.poster_path),
+    canvasPreviewCandidate(asset?.poster_url),
     canvasPreviewCandidate(asset?.thumbnail_path),
     canvasPreviewCandidate(asset?.thumbnail_url),
     canvasPreviewCandidate(asset?.preview_path),

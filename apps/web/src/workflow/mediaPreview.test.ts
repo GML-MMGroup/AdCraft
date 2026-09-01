@@ -66,6 +66,17 @@ describe("media preview paths", () => {
     })).toBe("");
   });
 
+  it("supports responsive candidates for version-pinned video posters", () => {
+    expect(mediaAssetCanvasPreviewSrcSet({
+      asset_id: "asset-video",
+      version_id: "version-3",
+      poster_url: "/api/v2/assets/asset-video/poster?v=version-3",
+    })).toBe(
+      "/api/v2/assets/asset-video/poster?v=version-3&size=320 320w, "
+      + "/api/v2/assets/asset-video/poster?v=version-3&size=640 640w",
+    );
+  });
+
   it("does not invent a version when the backend has not supplied one", () => {
     expect(mediaAssetContentPath({ asset_id: "asset-1", media_url: "/media/image.png" })).toBe("/media/image.png");
   });
