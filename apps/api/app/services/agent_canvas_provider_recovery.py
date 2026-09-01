@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
+from app.schemas.seedance_inputs import SeedanceInputManifestAuditV1
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
     NodeExecutionContext,
@@ -240,6 +241,7 @@ class ProviderTaskRecoveryService:
             )
         if effective_parameters is not None:
             node = node.model_copy(update={"parameters": effective_parameters.requested})
+        seedance_input_audit = _seedance_manifest_audit(current.result_descriptor)
         context = NodeExecutionContext(
             execution_id=task.execution_id,
             node=node,
@@ -248,6 +250,7 @@ class ProviderTaskRecoveryService:
             provider_id=resolution.provider_id if resolution is not None else None,
             model_resolution=resolution,
             effective_parameters=effective_parameters,
+            seedance_input_audit=seedance_input_audit,
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
@@ -508,6 +511,21 @@ class ProviderTaskRecoveryService:
             event_type="provider_task_recovering",
             event_payload={"code": detail.code},
         )
+
+
+def _seedance_manifest_audit(
+    result_descriptor: dict[str, object],
+) -> SeedanceInputManifestAuditV1 | None:
+    provider_payload = result_descriptor.get("provider_payload")
+    if not isinstance(provider_payload, dict):
+        return None
+    manifest = provider_payload.get("seedance_input_manifest")
+    if not isinstance(manifest, dict):
+        return None
+    try:
+        return SeedanceInputManifestAuditV1.model_validate(manifest)
+    except ValueError:
+        return None
 
 
 def _merge_result_descriptor(
