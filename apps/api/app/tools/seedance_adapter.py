@@ -160,27 +160,25 @@ def _validate_storyboard_grounding_payload(
     plan = manifest.grounding_plan
     if plan is None:
         return
-    ordered_images = tuple(
-        item for item in manifest.media_inputs if item.media_type == "image"
-    )
+    ordered_images = tuple(item for item in manifest.media_inputs if item.media_type == "image")
     expected = tuple(
         (item.asset_id, item.version_id, item.checksum) for item in plan.ordered_references
     )
-    actual = tuple(
-        (item.asset_id, item.version_id, item.checksum) for item in ordered_images
-    )
+    actual = tuple((item.asset_id, item.version_id, item.checksum) for item in ordered_images)
     if (
         not actual
-        or actual[0]
-        != (plan.grid_asset_id, plan.grid_version_id, plan.grid_checksum)
+        or actual[0] != (plan.grid_asset_id, plan.grid_version_id, plan.grid_checksum)
         or any(identity not in expected for identity in actual)
         or tuple(expected.index(identity) for identity in actual)
         != tuple(sorted(expected.index(identity) for identity in actual))
-        or any(reference.required and identity not in actual for reference, identity in zip(
-            plan.ordered_references,
-            expected,
-            strict=True,
-        ))
+        or any(
+            reference.required and identity not in actual
+            for reference, identity in zip(
+                plan.ordered_references,
+                expected,
+                strict=True,
+            )
+        )
         or len(ordered_images) > plan.provider_reference_limit
     ):
         raise ValueError("v2_storyboard_grid_provider_payload_invalid")

@@ -1156,12 +1156,16 @@ def _seedance_grounding_plan(
             "version_id": item.asset_version_id,
             "checksum": item.asset_checksum,
             "semantic_role": role_aliases.get(
-                str(item.binding_metadata.get("semantic_reference_role")
+                str(
+                    item.binding_metadata.get("semantic_reference_role")
                     or item.source_semantic_role
-                    or "reference"),
-                str(item.binding_metadata.get("semantic_reference_role")
+                    or "reference"
+                ),
+                str(
+                    item.binding_metadata.get("semantic_reference_role")
                     or item.source_semantic_role
-                    or "reference"),
+                    or "reference"
+                ),
             ),
             "binding_id": item.binding_id or f"asset:{item.asset_id}",
             "media_type": item.media_type,

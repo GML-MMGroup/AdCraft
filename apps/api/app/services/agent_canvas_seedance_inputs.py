@@ -174,9 +174,7 @@ class AgentCanvasSeedanceInputCompiler:
                     **{
                         **item.model_dump(),
                         "display_order": (
-                            canonical_order
-                            if grounding_plan is not None
-                            else item.display_order
+                            canonical_order if grounding_plan is not None else item.display_order
                         ),
                         "provider_input_value": item.provider_input_value,
                         "label": f"{item.media_type.title()} {counters[item.media_type]}",
@@ -285,7 +283,9 @@ def _compile_prompt(
                 continue
             directive = role_directives.get(reference.semantic_role)
             if directive is not None:
-                segments.append(f"Image {index} is the bound {reference.semantic_role}; {directive}.")
+                segments.append(
+                    f"Image {index} is the bound {reference.semantic_role}; {directive}."
+                )
     elif storyboard_grid is not None and scene_board is not None:
         segments.append(
             " ".join(
@@ -406,8 +406,7 @@ def _validate_grounding_manifest_inputs(
         if item.media_type == "image"
     )
     expected = tuple(
-        (item.asset_id, item.version_id, item.checksum)
-        for item in plan.ordered_references
+        (item.asset_id, item.version_id, item.checksum) for item in plan.ordered_references
     )
     if any(
         reference.required
@@ -424,8 +423,7 @@ def _validate_grounding_manifest_inputs(
     ):
         raise ValueError("v2_storyboard_grid_reference_dropped")
     expected_roles = {
-        (item.asset_id, item.version_id): item.semantic_role
-        for item in plan.ordered_references
+        (item.asset_id, item.version_id): item.semantic_role for item in plan.ordered_references
     }
     for item in media_inputs:
         if item.media_type != "image":
@@ -521,7 +519,5 @@ def mark_seedance_grounding_submitted(
         return audit
     serialized = grounding_audit.serialized
     return audit.model_copy(
-        update={
-            "grounding_audit": grounding_audit.model_copy(update={"submitted": serialized})
-        }
+        update={"grounding_audit": grounding_audit.model_copy(update={"submitted": serialized})}
     )

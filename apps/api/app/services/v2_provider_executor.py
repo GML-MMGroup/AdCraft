@@ -971,9 +971,7 @@ class V2ProviderExecutor:
             )
         if self._settings.media_mode.strip().lower() != "real":
             submitted_audit = mark_seedance_grounding_submitted(serialized_audit)
-            provider_payload = {
-                "seedance_input_manifest": submitted_audit.model_dump(mode="json")
-            }
+            provider_payload = {"seedance_input_manifest": submitted_audit.model_dump(mode="json")}
             result = self._placeholder_result(
                 media_type="video",
                 slot_type="agent_canvas_video",
@@ -1011,9 +1009,7 @@ class V2ProviderExecutor:
                     error_message="The configured provider cannot submit a Seedance input manifest.",
                 )
             submitted_audit = mark_seedance_grounding_submitted(serialized_audit)
-            provider_payload = {
-                "seedance_input_manifest": submitted_audit.model_dump(mode="json")
-            }
+            provider_payload = {"seedance_input_manifest": submitted_audit.model_dump(mode="json")}
             response = submit_manifest(manifest, adapter)
             task_id = _video_generation_task_id_from_response(response)
             output = {

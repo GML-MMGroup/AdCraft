@@ -64,7 +64,9 @@ def build_storyboard_grid_grounding_plan(
         )
     except ValidationError as error:
         raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid") from error
-    if len(content.panels) != 9 or [panel.panel_index for panel in content.panels] != list(range(1, 10)):
+    if len(content.panels) != 9 or [panel.panel_index for panel in content.panels] != list(
+        range(1, 10)
+    ):
         raise GroundingPlanError("v2_storyboard_grid_panel_mapping_invalid")
 
     panel_shots = metadata.get("panel_shots")
@@ -105,7 +107,10 @@ def build_storyboard_grid_grounding_plan(
         references = tuple(item for item in references if item.required)
     ordered = (grid_reference, *references)
     panel_fingerprint = _digest(
-        [{"panel_index": item.panel_index, "shot_id": item.shot_id, "beat": item.beat} for item in panels]
+        [
+            {"panel_index": item.panel_index, "shot_id": item.shot_id, "beat": item.beat}
+            for item in panels
+        ]
     )
     prompt_digest = hashlib.sha256(prompt_snapshot.encode("utf-8")).hexdigest()
     plan_fingerprint = _digest(
@@ -147,8 +152,12 @@ def _reference_from_input(
         return value.model_copy(update={"display_order": display_order})
     try:
         payload = dict(value)
-        payload.setdefault("semantic_role", payload.get("source_semantic_role") or payload.get("role"))
-        payload.setdefault("binding_id", payload.get("binding_id") or f"binding:{payload.get('asset_id')}")
+        payload.setdefault(
+            "semantic_role", payload.get("source_semantic_role") or payload.get("role")
+        )
+        payload.setdefault(
+            "binding_id", payload.get("binding_id") or f"binding:{payload.get('asset_id')}"
+        )
         payload.setdefault("display_order", display_order)
         return StoryboardGroundingReferenceV1.model_validate(payload)
     except ValidationError as error:
