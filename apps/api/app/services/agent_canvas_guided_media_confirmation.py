@@ -203,6 +203,20 @@ class GuidedMediaConfirmationService:
                 and record.node_role == "storyboard_grid"
                 and record.sequence_id == _first_sequence_id(plan.content.segments)
             ):
+                publish = getattr(
+                    self._progression,
+                    "publish_confirmation_and_fanout",
+                    None,
+                )
+                if callable(publish):
+                    confirmation, created_node_ids = publish(
+                        source_grid=node,
+                        confirmation=candidate,
+                    )
+                    return GuidedMediaConfirmationResult(
+                        confirmation=confirmation,
+                        created_node_ids=created_node_ids,
+                    )
                 preflight = getattr(self._progression, "preflight_fanout", None)
                 if callable(preflight):
                     preflight(
