@@ -180,26 +180,38 @@ class GuidedMediaConfirmationService:
 
         created = confirmation is None
         if confirmation is None:
-            confirmation = self._receipts.save_confirmation(
-                GuidedMediaConfirmationV1(
-                    confirmation_id=confirmation_id,
-                    logical_identity=logical_identity,
-                    workflow_id=workflow_id,
-                    plan_document_id=plan.document_id,
-                    plan_revision=plan.revision,
-                    media_role=media_role,
-                    sequence_id=record.sequence_id,
-                    node_id=node.node_id,
-                    node_revision=node.revision,
-                    asset_id=asset.asset_id,
-                    asset_version_id=asset.version_id or "",
-                    asset_digest=asset.checksum,
-                    accepted_by=accepted_by,
-                    action_id=action_id,
-                    decision_id=decision_id,
-                    confirmed_at=self._clock(),
-                )
+            candidate = GuidedMediaConfirmationV1(
+                confirmation_id=confirmation_id,
+                logical_identity=logical_identity,
+                workflow_id=workflow_id,
+                plan_document_id=plan.document_id,
+                plan_revision=plan.revision,
+                media_role=media_role,
+                sequence_id=record.sequence_id,
+                node_id=node.node_id,
+                node_revision=node.revision,
+                asset_id=asset.asset_id,
+                asset_version_id=asset.version_id or "",
+                asset_digest=asset.checksum,
+                accepted_by=accepted_by,
+                action_id=action_id,
+                decision_id=decision_id,
+                confirmed_at=self._clock(),
             )
+            if (
+                self._progression is not None
+                and record.node_role == "storyboard_grid"
+                and record.sequence_id == _first_sequence_id(plan.content.segments)
+            ):
+                preflight = getattr(self._progression, "preflight_fanout", None)
+                if callable(preflight):
+                    preflight(
+                        workflow_id=workflow_id,
+                        plan_document_id=plan.document_id,
+                        source_grid=node,
+                        confirmation=candidate,
+                    )
+            confirmation = self._receipts.save_confirmation(candidate)
         if created:
             self._events.append(
                 V2EventInsert(
