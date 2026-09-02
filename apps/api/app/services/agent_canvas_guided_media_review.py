@@ -887,7 +887,7 @@ def _has_current_confirmation(confirmations, *, plan, record, node, asset) -> bo
     media_role = "audio" if record.node_role == "bgm" else "video"
     return any(
         confirmation.plan_document_id == plan.document_id
-        and confirmation.plan_revision == plan.revision
+        and confirmation.plan_revision <= plan.revision
         and confirmation.media_role == media_role
         and confirmation.sequence_id == record.sequence_id
         and confirmation.node_id == node.node_id
