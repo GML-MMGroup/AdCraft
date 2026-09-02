@@ -1,1 +1,5 @@
-Direct camera and subject motion through limited pixel palette and sprite readability, using arcade staging for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+先保证精灵轮廓和动作方向，再加入跳跃、冲刺、拾取和反馈。保持像素边缘与网格一致，不要用平滑模糊破坏 sprite readability。图形效果出现后要及时退出，让结果可读。
+
+声音可用按键、碰撞、拾取、短促提示和低层环境节奏，音效应对应动作而非盖住反馈。

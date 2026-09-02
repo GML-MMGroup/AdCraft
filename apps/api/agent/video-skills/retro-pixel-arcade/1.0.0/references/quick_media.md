@@ -1,1 +1,5 @@
-Apply limited pixel palette, sprite readability, and arcade staging as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速生成角色姿态、平台布局或图形反馈变体时，锁定 limited pixel palette、网格和主轮廓，只改变一个变量。变体用于可读性或节奏比较，不自动改写正式角色和场景。
+
+优先检查小尺寸识别、碰撞关系和结果反馈。

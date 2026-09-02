@@ -1,1 +1,5 @@
-Construct spaces that express limited pixel palette through layout and sprite readability through light, color, and material. Use arcade staging to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立平台、入口、障碍、目标、背景层和可通行路径。arcade staging 需要清楚的碰撞关系与前后景层级；limited pixel palette 让背景退后，不能与角色争夺高对比色。
+
+保持平台位置、视差、色盘和交互对象状态。
