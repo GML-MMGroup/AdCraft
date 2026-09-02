@@ -1,1 +1,5 @@
-Construct spaces that express readable action geography through layout and fabric and weapon motion through light, color, and material. Use poetic landscapes to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立山路、庭院、桥面、林间或水岸的地形图，标记高低差、落脚点、遮挡、光源和可退路线。poetic landscapes 用风、雾、水、石和植物形成层次，但要为动作留出清楚空间。
+
+记录服装、兵器、地面湿度和尘土状态。跨镜头保持地形方向、光线、天气、兵器位置和角色相对距离。
