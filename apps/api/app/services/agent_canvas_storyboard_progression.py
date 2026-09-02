@@ -562,13 +562,11 @@ class ProgressiveStoryboardReadyService:
                         stage="storyboard_progression",
                     )
             if replay is None:
-                preflight = self.preflight_fanout(
-                    workflow_id=node.workflow_id,
-                    plan_document_id=plan.document_id,
+                _confirmation, created_node_ids = self.publish_confirmation_and_fanout(
                     source_grid=node,
                     confirmation=confirmation,
                 )
-                self._validate_confirmation(plan, node, asset, confirmation)
+                return created_node_ids
         if replay is None:
             plan = self._authoring.freeze_visual_anchor(
                 workflow_id=node.workflow_id,
