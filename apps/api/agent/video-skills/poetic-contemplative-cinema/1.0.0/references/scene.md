@@ -1,1 +1,5 @@
-Construct spaces that express time through layout and texture through light, color, and material. Use silence to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+选择有真实纹理和时间痕迹的环境，记录表面、光向、湿度、尘埃、植物、声音来源和可触摸位置。environmental metaphor 要从场景事实中生长，不能把自然景观当作通用情绪背景。
+
+保持观察角度、材质状态和光线渐变；需要跨时间时记录变化前后的锚点。减少无关装饰，让空白成为可观察的部分。

@@ -1,1 +1,5 @@
-Build the narrative premise around time, then use texture to shape escalation and environmental metaphor to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+从一个可观察的状态开始，按接近、停留、变化、回望和落地动作组织叙事。用 time 和 repeated action 让情绪自然移动，避免用旁白直接命名情绪。每一段都写清楚观众能看到的材质、环境线索和人物选择。
+
+silence 应有目的：给观察、呼吸或回声留空间。正例是一个物件的磨损连接到人物关系；反例是连续抽象独白而没有可见行动。

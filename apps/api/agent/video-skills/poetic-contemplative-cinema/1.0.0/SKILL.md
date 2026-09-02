@@ -1,8 +1,21 @@
 ---
-name: Poetic Contemplative Cinema
-description: An advertising treatment built around time, texture, silence, environmental metaphor, and emotionally patient observation.
+name: 诗性沉思影像
+description: 以时间感、材质观察、静默和环境隐喻组织耐心而有情绪依据的商业影像。
 ---
 
-Use time, texture, silence, environmental metaphor, and emotionally patient observation as the style's creative grammar. Establish time as the primary visual idea, reinforce it through texture, and let silence shape the progression toward environmental metaphor.
+把 time、texture、silence、environmental metaphor、emotionally patient observation 作为诗性影像的五个创作支点。沉思不是把画面放慢或堆叠雾气，而是让观众有时间观察材质、关系和环境变化，并从具体细节感到情绪移动。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 观察与变化
+
+先选择一个可被观察的状态：光线移动、表面老化、植物生长、手部习惯、空间空置或产品被使用。让 time 通过前后状态、重复动作和季节性线索显现。texture 要有触觉来源，不能只用颗粒和模糊模拟深度。
+
+silence 留出理解和回望的空间，声音在必要时才进入。environmental metaphor 必须与人物处境、产品功能或品牌事实有对应关系，不把自然景观当作脱离主题的装饰。
+
+## 连续性与收束
+
+保持观察位置、光向、材质、人物身份和环境状态的渐变。情绪可以从疏离到靠近、从静止到行动，但不要突然改变语气。结尾回到一个可验证的动作或关系，让情绪落地。
+
+工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供观察与叙事判断。结果空泛时，删掉抽象词，补回触摸、等待、磨损、回声或光线变化。
+
+正例：同一窗边的光逐渐照到被反复使用的物件，手部动作让环境隐喻回到人物选择。
+反例：用慢动作、烟雾和空镜填满全片，却没有具体材质、关系或状态变化。
