@@ -8,6 +8,7 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 
 
 RequirementSourceKindV1: TypeAlias = Literal[
@@ -490,6 +491,7 @@ class RequirementPatchV1(_StrictModel):
 
 
 class RequirementLedgerPatchRequestV1(_StrictModel):
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
     controls_to_set: tuple[ManualRequirementControlPatchV1, ...] = Field(default=(), max_length=16)
     directives_to_add: tuple[ManualRequirementDirectivePatchV1, ...] = Field(
         default=(), max_length=16
@@ -506,6 +508,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
             and not self.directives_to_add
             and not self.directive_ids_to_supersede
             and self.character_occurrences_to_set is None
+            and self.identity_safety_decision is None
         ):
             raise ValueError("Requirement patches must contain at least one change.")
         control_names = tuple(item.control for item in self.controls_to_set)
@@ -519,6 +522,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
 
 class RequirementLedgerV1(_FrozenModel):
     schema_version: Literal["1"] = "1"
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
     hard_controls: tuple[RequirementControlV1, ...] = Field(default=(), max_length=16)
     active_directives: tuple[RequirementDirectiveV1, ...] = Field(default=(), max_length=256)
     element_presence: tuple[RequirementElementPresenceV1, ...] = Field(default=(), max_length=9)
@@ -561,6 +565,7 @@ class RequirementLedgerResponseV1(_FrozenModel):
     character_occurrences: tuple[CharacterOccurrenceV1, ...] = Field(default=(), max_length=32)
     unresolved_conflicts: tuple[RequirementConflictV1, ...] = Field(default=(), max_length=32)
     updated_at: datetime
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
 
 
 class EditableRequirementDirectiveV1(_FrozenModel):
@@ -591,6 +596,7 @@ class CapabilityRequirementProjectionV1(_FrozenModel):
     omitted_directives: tuple[OmittedRequirementDirectiveV1, ...] = Field(
         default=(), max_length=256
     )
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
 
 
 class RequirementApplicationDeltaV1(_FrozenModel):

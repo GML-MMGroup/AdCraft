@@ -93,6 +93,10 @@ def capability_context_from_envelope(
             for control in envelope.requirement_projection.hard_controls
         }
     )
+    if envelope.requirement_projection.identity_safety_decision is not None:
+        explicit_constraints["identity_safety_decision"] = (
+            envelope.requirement_projection.identity_safety_decision.model_dump(mode="json")
+        )
     if explicit_constraints:
         capability_context["explicit_constraints"] = explicit_constraints
     projected_context: dict[str, object] = {

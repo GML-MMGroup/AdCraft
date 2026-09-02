@@ -269,6 +269,10 @@ def materialization_context_from_state(
     requirement_controls = {
         control.control: control.value for control in requirement_head.ledger.hard_controls
     }
+    if requirement_head.ledger.identity_safety_decision is not None:
+        requirement_controls["identity_safety_decision"] = (
+            requirement_head.ledger.identity_safety_decision.model_dump(mode="json")
+        )
     bound_reference_ids: dict[str, tuple[str, ...]] = {}
     if envelope.target_node_id is not None:
         for binding in workflow.bindings:
