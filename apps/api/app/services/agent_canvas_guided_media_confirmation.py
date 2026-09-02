@@ -251,6 +251,8 @@ class GuidedMediaConfirmationService:
                     },
                 )
             )
+        if not created:
+            return GuidedMediaConfirmationResult(confirmation=confirmation)
         created_node_ids: tuple[str, ...] = ()
         if (
             self._progression is not None
