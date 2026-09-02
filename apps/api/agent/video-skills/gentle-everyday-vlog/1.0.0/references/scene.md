@@ -1,1 +1,5 @@
-Construct spaces that express intimate handheld observation through layout and soft routine through light, color, and material. Use natural gestures to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+选择真实可居住、可工作的空间，记录窗光、灯声、杯壁、水汽、织物、木面、地面和远处环境声。warm ambient detail 要保留材料差异，不用统一滤镜代替光线与触感。
+
+保持房间布局、物件状态、光向和时间顺序连续，给手持观察留出可走路径。

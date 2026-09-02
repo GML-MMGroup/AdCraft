@@ -1,1 +1,5 @@
-Direct camera and subject motion through intimate handheld observation and soft routine, using natural gestures for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+intimate handheld observation 要有呼吸、行走或取景动机，手持可以有轻微惯性但不能持续抖动。保留 natural gestures 的完整起止和物件接触，镜头靠近时证明一个细节，后退时交代关系。
+
+声音分层使用水、餐具、衣料、脚步、室内机械和远处生活声。结果做作时减少镜头运动和音乐，恢复真实动作。

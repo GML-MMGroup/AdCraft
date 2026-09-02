@@ -1,8 +1,21 @@
 ---
-name: Gentle Everyday Vlog
-description: An advertising treatment built around intimate handheld observation, soft routine, natural gestures, and warm ambient detail.
+name: 温柔日常Vlog影像
+description: 以亲密手持观察、柔和日常、自然手势和温暖环境细节组织可信而不做作的生活方式内容。
 ---
 
-Use intimate handheld observation, soft routine, natural gestures, and warm ambient detail as the style's creative grammar. Establish intimate handheld observation as the primary visual idea, reinforce it through soft routine, and let natural gestures shape the progression toward warm ambient detail.
+把 intimate handheld observation、soft routine、natural gestures、warm ambient detail 作为日常 Vlog 的四个创作支点。亲密感来自距离、等待和真实动作，不来自过度滤镜或持续晃动；日常也需要一个微小的目的、变化或关系回收。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 日常与动作
+
+先选一个具体 routine：准备、整理、通勤、烹饪、照料、收拾或与人分享。soft routine 由连续小动作组成，natural gestures 保留犹豫、停顿、触碰、视线和手部习惯，不把人物变成摆拍模型。人物身份、服装、物件和空间状态要可追踪。
+
+## 手持与环境
+
+intimate handheld observation 让镜头与人物保持有意义的距离，靠近是为了看见触感或关系，后退是为了交代空间。warm ambient detail 记录窗光、灯声、杯壁、水汽、织物、木面和远处生活声，不用统一暖滤镜抹平差异。
+
+## 连续性与纠偏
+
+保持时间顺序、光向、物件状态、人物关系和动作结果。结果平淡时补回具体目的和感官细节；结果过度表演时减少镜头干预。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供生活观察判断。
+
+正例：人物在准备早餐时反复寻找一个物件，镜头跟随自然手势，窗边环境声把小变化落地。
+反例：每个镜头都摆拍微笑、快速推拉和暖色滤镜，却没有真实 routine 或动作因果。
