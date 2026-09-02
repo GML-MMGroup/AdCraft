@@ -1,1 +1,5 @@
-Direct camera and subject motion through cut-paper layers and typography-aware rhythm without baked text, using tactile compositing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+让纸片滑动、折叠、翻转、撕开和重叠具有明确重量与摩擦。tactile compositing 保留边缘阴影和材料差异，镜头运动服务层级揭示，不要用噪点和晃动掩盖错位。
+
+声音可用纸张、胶带、剪切、盖章、翻页和短促低频形成节奏。结果过满时先删层、降动，再恢复主轮廓。
