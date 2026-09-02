@@ -1,1 +1,5 @@
-Direct camera and subject motion through scale contrast and macro optics, using handcrafted detail for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头运动要配合微型世界的重量和焦点变化，先保证动作轮廓，再安排推近、横移或俯视。macro optics 的焦点转移应有信息原因，不能连续失焦；材料边缘和接缝要保持稳定。
+
+声音可用微小脚步、工具、木质敲击、机械声和放大的环境底噪建立尺度。结果模糊时减少景深与背景动作。

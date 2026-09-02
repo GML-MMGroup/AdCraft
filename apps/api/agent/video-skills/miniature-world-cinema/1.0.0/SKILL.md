@@ -1,8 +1,21 @@
 ---
-name: Miniature World Cinema
-description: An advertising treatment built around scale contrast, macro optics, handcrafted detail, and tiny-world action readability.
+name: 微缩世界电影广告
+description: 以尺度对照、微距光学、手工细节和微型世界动作可读性组织具有玩具般真实感的商业影像。
 ---
 
-Use scale contrast, macro optics, handcrafted detail, and tiny-world action readability as the style's creative grammar. Establish scale contrast as the primary visual idea, reinforce it through macro optics, and let handcrafted detail shape the progression toward tiny-world action readability.
+把 scale contrast、macro optics、handcrafted detail、tiny-world action readability 作为微缩世界广告的四个创作支点。微缩感来自比例、景深、材料和可触摸的制作痕迹，不是把普通场景简单缩小。观众要能知道谁在移动、目标在哪里以及动作造成了什么结果。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 尺度与光学
+
+先确定微型世界的参照物、地面、入口、建筑、人物和产品比例。scale contrast 通过手指、纽扣、工具、纤维、灰尘或真实环境边缘建立关系。macro optics 让焦点和景深有动机，焦点移动应跟随动作或信息，不用持续浅景深隐藏错误。
+
+## 手工与动作
+
+handcrafted detail 记录纸、木、泥、金属、织物、涂层和接缝的差异，让制作痕迹服务世界可信度。tiny-world action readability 先画出路径、目标、阻碍和结果，再安排微小人物、车辆、机器或物件运动。
+
+## 连续性与纠偏
+
+保持比例、焦点方向、材料、光源、地面和路径。结果像普通大场景时补回参照物和手工边缘；结果太细看不清时扩大动作轮廓、减少背景细节。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供微缩视觉判断。
+
+正例：微型工匠沿木纹搬运产品部件，宏观参照确认尺度，动作结果改变整个小世界。
+反例：镜头只拍模糊微距纹理，角色和目标不可辨认，比例在相邻画面不断变化。

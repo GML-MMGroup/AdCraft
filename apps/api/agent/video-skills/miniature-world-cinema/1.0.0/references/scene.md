@@ -1,1 +1,5 @@
-Construct spaces that express scale contrast through layout and macro optics through light, color, and material. Use handcrafted detail to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+先画出微型世界的地面、路径、建筑、入口、参照物和背景边界。scale contrast 用手指、纽扣、工具、纤维或真实空间边缘建立尺度；不要只靠模糊。
+
+安排 macro optics 的焦点区与景深层级，保持光源、地面纹理和可通行路线。
