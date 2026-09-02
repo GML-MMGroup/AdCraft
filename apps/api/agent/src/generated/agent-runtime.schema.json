@@ -9732,6 +9732,21 @@
           "title": "Reference Bundle Digest",
           "type": "string"
         },
+        "reference_conditioning_plan": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Conditioning Plan"
+        },
         "reference_purposes": {
           "default": [],
           "items": {
@@ -21625,6 +21640,180 @@
         "options"
       ],
       "title": "QuickMediaProposalResultV1",
+      "type": "object"
+    },
+    "ReferenceConditioningPlanV1": {
+      "additionalProperties": false,
+      "description": "A per-attempt projection of one existing reference-style policy.",
+      "properties": {
+        "allowed_change_dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Allowed Change Dimensions",
+          "type": "array"
+        },
+        "explicit_override_dimensions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Explicit Override Dimensions",
+          "type": "array"
+        },
+        "plan_version": {
+          "const": "reference_conditioning_v1",
+          "default": "reference_conditioning_v1",
+          "title": "Plan Version",
+          "type": "string"
+        },
+        "protected_dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Protected Dimensions",
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ReferencePromptProvenanceV1"
+        },
+        "provenance_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Provenance Digest",
+          "type": "string"
+        },
+        "reference_control_level": {
+          "enum": [
+            "native",
+            "provider_instruction"
+          ],
+          "title": "Reference Control Level",
+          "type": "string"
+        },
+        "reference_kind": {
+          "enum": [
+            "character_main",
+            "scene_main"
+          ],
+          "title": "Reference Kind",
+          "type": "string"
+        },
+        "reference_label": {
+          "const": "Image 1",
+          "default": "Image 1",
+          "title": "Reference Label",
+          "type": "string"
+        },
+        "reference_position": {
+          "const": 1,
+          "default": 1,
+          "title": "Reference Position",
+          "type": "integer"
+        },
+        "reference_purpose": {
+          "enum": [
+            "environment_guidance",
+            "identity_guidance"
+          ],
+          "title": "Reference Purpose",
+          "type": "string"
+        },
+        "semantic_reference_role": {
+          "enum": [
+            "character_reference",
+            "scene_reference"
+          ],
+          "title": "Semantic Reference Role",
+          "type": "string"
+        },
+        "source_policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Policy Digest",
+          "type": "string"
+        },
+        "source_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Policy Id",
+          "type": "string"
+        },
+        "target_role": {
+          "enum": [
+            "character_main",
+            "scene_board"
+          ],
+          "title": "Target Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowed_change_dimensions",
+        "protected_dimensions",
+        "provenance",
+        "provenance_digest",
+        "reference_control_level",
+        "reference_kind",
+        "reference_purpose",
+        "semantic_reference_role",
+        "source_policy_digest",
+        "source_policy_id",
+        "target_role"
+      ],
+      "title": "ReferenceConditioningPlanV1",
+      "type": "object"
+    },
+    "ReferencePromptProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "binding_revision": {
+          "minimum": 1,
+          "title": "Binding Revision",
+          "type": "integer"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "asset_id",
+        "asset_version_id",
+        "binding_id",
+        "binding_revision",
+        "source_node_id",
+        "source_node_revision"
+      ],
+      "title": "ReferencePromptProvenanceV1",
       "type": "object"
     },
     "ReplaceNarrativeSegmentPatchV2": {
