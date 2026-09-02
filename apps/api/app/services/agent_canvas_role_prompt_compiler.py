@@ -207,11 +207,6 @@ class AgentCanvasRolePromptCompiler:
                 **structured,
                 "reference_style_policy": style_authority.model_dump(mode="json"),
             }
-        if conditioning_plan is not None:
-            structured = {
-                **structured,
-                "reference_conditioning_plan": conditioning_plan.model_dump(mode="json"),
-            }
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
