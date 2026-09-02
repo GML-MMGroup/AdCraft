@@ -1,8 +1,21 @@
 ---
-name: Retro Magical-Girl Animation
-description: An advertising treatment built around transformation grammar, symbolic props, pastel-neon contrast, and heroic reveal.
+name: 复古魔法少女动画
+description: 以变身语法、象征性道具、粉彩霓虹对比和英雄式揭示组织具有成长与行动感的动画广告。
 ---
 
-Use transformation grammar, symbolic props, pastel-neon contrast, and heroic reveal as the style's creative grammar. Establish transformation grammar as the primary visual idea, reinforce it through symbolic props, and let pastel-neon contrast shape the progression toward heroic reveal.
+把 transformation grammar、symbolic props、pastel-neon contrast、heroic reveal 作为复古魔法少女动画的四个创作支点。变身不是连续堆叠光效，而是从日常状态、触发信念、道具响应、服装变化到行动落点的可读过程；英雄感来自选择和结果。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 角色与道具
+
+先建立角色的日常轮廓、行动轮廓、发型、服装层次、配色和可辨认锚点。symbolic props 应有来源、握持方式和叙事功能，不能在变身中凭空增加无法解释的部件。pastel-neon contrast 用柔和底色衬托少量高亮，保持主体层级。
+
+## 变身与揭示
+
+transformation grammar 记录触发、聚能、局部变化、完整轮廓和动作确认。每一步都保留身份线索，服装、配件和光带沿身体与道具的真实方向变化。heroic reveal 让角色完成一个可见选择或救援动作，再展示产品或品牌落点。
+
+## 连续性与纠偏
+
+保持角色身份、配件、服装层次、道具、光向和动作方向。结果过度闪烁时先恢复变身顺序与轮廓，再减少光效。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供角色动画判断。
+
+正例：角色在日常动作中握住象征性道具，光线沿手臂和轮廓推进，变身完成后用同一动作解决问题。
+反例：光效遮住脸和服装，配件数量随机变化，揭示只剩摆姿势没有行动结果。

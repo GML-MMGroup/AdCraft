@@ -1,1 +1,5 @@
-Direct camera and subject motion through transformation grammar and symbolic props, using pastel-neon contrast for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+让变化沿角色轮廓、关节和道具路径发生，先确保脸、服装和身份可读，再增加光带、粒子和镜面闪光。heroic reveal 必须落在一个有目的的动作上，不停在静态姿势。
+
+声音分层使用道具触发、能量聚集、服装展开、脚步和结果反馈。效果过满时删减光效，恢复 transformation grammar。
