@@ -1,4 +1,14 @@
 @echo off
 setlocal
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy-windows.ps1"
-exit /b %ERRORLEVEL%
+set "deploy_exit_code=%ERRORLEVEL%"
+
+echo.
+if "%deploy_exit_code%"=="0" (
+    echo [AdCraft] Docker deployment command ended. Review the messages above before closing.
+) else (
+    echo [AdCraft] Docker deployment stopped with exit code %deploy_exit_code%. Review the messages above.
+)
+echo.
+pause
+exit /b %deploy_exit_code%
