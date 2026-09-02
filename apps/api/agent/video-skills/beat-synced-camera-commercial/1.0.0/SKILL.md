@@ -1,8 +1,28 @@
 ---
-name: Beat-Synced Camera Commercial
-description: An advertising treatment built around rhythmic camera accents, movement-to-cut coordination, and visual impact beats.
+name: 高能卡点运镜商业短片
+description: 以节奏重音、动作与剪辑的联动和视觉冲击点组织广告画面的创作方法。
 ---
 
-Use rhythmic camera accents, movement-to-cut coordination, and visual impact beats as the style's creative grammar. Establish rhythmic camera accents as the primary visual idea, reinforce it through movement-to-cut coordination, and let visual impact beats shape the progression toward visual impact beats.
+把节奏重音（rhythmic camera accents）、动作到剪辑的联动（movement-to-cut coordination）和视觉冲击点（visual impact beats）作为共同创作语法。每个镜头都要回答三个问题：观众此刻应该看见什么，镜头为什么在这里运动，以及这一运动怎样推动信息、情绪或卖点。节奏服务于表达，不用炫技取代信息。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 创作边界
+
+- 保留产品、品牌事实、受众承诺、人物身份、服装、道具和用户明确指定的内容；不为了追求节奏而改写事实。
+- 工具、Provider、模型、时长、格式、分辨率和工作流阶段由用户或系统的其他权威决定。本 Skill 只提供创作判断，不规定这些运行参数，也不创建节点或调用工具。
+- 根据实际主体、参考资产、声音素材和用户目标调整强度。没有足够依据时，选择清楚、可读、可连续的方案，不凭空增加复杂动作。
+- 视觉文字不是默认必需项；只有在信息确实需要文字承载时才加入，并确保文字不会遮挡主体或关键动作。
+
+## 判断顺序
+
+先确认广告要传达的单一核心，再安排主体层级、动作意图、镜头节奏和声音关系。遇到多个卖点时，建立主次：主卖点获得最清楚的视线和最稳定的展示，次要信息用节奏或细节支持。创作环节发生变化时，重新检查连续性和信息优先级，不把前一环节的草案当成不可改变的答案。
+
+## 连续性底线
+
+跨镜头保持主体身份、外形比例、服装与关键材质稳定；保持屏幕方向、视线、动作起止、光线方向、天气、空间层级和物体相对位置可解释。需要跳跃时，明确它是有意的节奏断点，并让断点前后的视觉锚点仍然可辨认。人物、产品和场景都应有可追踪的视觉锚点。
+
+## 正反例
+
+- 正例：先用一个清楚的动作建立主体，再在动作达到信息高点时切入卖点细节，下一镜从相同动作方向接出。
+- 反例：为了“更炸裂”连续改变主体服装、空间轴线和光源，观众无法判断是否还是同一主体或同一场景。
+- 正例：用户只要求突出材质时，用景别、光线和运动速度强化纹理，不额外添加无关特效。
+- 反例：把固定模型名称、固定输出规格或内部工作流步骤写进创作指导，导致 Skill 越权并限制其他合法方案。

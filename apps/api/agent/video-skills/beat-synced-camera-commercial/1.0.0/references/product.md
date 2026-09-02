@@ -1,1 +1,8 @@
-Preserve exact product identity while expressing rhythmic camera accents through silhouette and movement-to-cut coordination through surfaces and detail. Make functional features readable, and use visual impact beats only where it strengthens the requested selling point.
+把产品身份当作跨镜头的首要连续性锚点：保持轮廓、比例、颜色、材质、结构、标识和关键功能部件一致。先区分“不可改变的事实”和“可以设计的呈现方式”，再决定景别、入画方向、光线和运动；任何抽象化或风格化都不能遮蔽用户要求保留的事实。
+
+用层级组织展示：整体外形建立识别，中景说明使用关系，细节镜头证明材质或功能。每次切换景别都要有视觉理由，并让观众知道镜头仍在同一产品上。产品与人物互动时，维持手部、接触点、受力方向、视线和尺度关系；产品与场景互动时，维持落点、阴影、反射和光源逻辑。
+
+如果参考资产存在多个角度，优先把它们当作同一身份的互补证据，而不是不同产品。参考不足时，减少高风险旋转、遮挡和快速形变，选择能展示已知细节的动作。产品卖点应获得最清楚的焦点和最少的视觉噪声。
+
+正例：先展示完整轮廓，再沿真实接触方向推进到纹理或功能部件，切回全貌时颜色、比例和光线仍可对上。
+反例：为了制造冲击把 Logo、按钮位置或产品比例改掉，或用强烈特效覆盖用户需要检查的材质细节。

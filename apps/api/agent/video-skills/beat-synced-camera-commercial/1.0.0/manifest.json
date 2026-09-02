@@ -1,34 +1,39 @@
 {
   "skill_id": "beat-synced-camera-commercial",
   "version": "1.0.0",
-  "display_name": "Beat-Synced Camera Commercial",
-  "description": "An advertising treatment built around rhythmic camera accents, movement-to-cut coordination, and visual impact beats.",
+  "display_name": "高能卡点运镜商业短片",
+  "description": "以节奏重音、动作与剪辑的联动和视觉冲击点组织广告画面的创作方法。",
+  "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
-    "commercial",
-    "campaign",
-    "product"
+    "商业广告",
+    "节奏运镜",
+    "产品展示"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌宣传",
+    "产品广告"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Beat-Synced Camera Commercial creative treatment."
+    "kind": "image",
+    "summary": "高能卡点运镜商业短片视觉预览。",
+    "media_url": "/api/v2/video-skills/beat-synced-camera-commercial/preview?v=1.0.0"
   },
   "display_order": 60,
   "files": {
-    "SKILL.md": "106d495209880fbc46e65f1961ab6987aba12c31827e53af7bae786e02a3c8ee",
-    "references/script.md": "4725d626ef610813bd394f21ad755788c082041ba92da853f4271a00645635f0",
-    "references/product.md": "5c2b35926a798d10ae1c0fe0cbcfcbd546102e34c511e06bbfabbc0806b633d9",
-    "references/storyboard.md": "397829128f455944daa210c160e5c033cc52c9702f55540cac31cee27fe6dc39",
-    "references/video.md": "c642503d79f8d7560f795251626c70e0c882251e1311ee40bbfb63ea9b8e0ab4"
+    "SKILL.md": "234ce9c986123026d1af8ad9d54d2e2b42f798631601d3c2712a03822ae90ab7",
+    "references/script.md": "dba8580016e1bba5656c6ac44a12d1cb4e4c154ef1f5bd517760c4beb2458c68",
+    "references/product.md": "79efd7ebd38abb61416f300b64814215fd51eb4ce98b566c0289c9da2f07e8ec",
+    "references/storyboard.md": "de37ff27f10ed8c7b68daac817d8e8620ee257ea032527d25e48491dc9c4feef",
+    "references/video.md": "bef1d7ddcd7404699b088c9c7f5c9410a61be0366d206414d4533b9823c31748",
+    "references/bgm.md": "9dbb977132650abce2c32a33c1c363c793973509a2fb0112839d191132762c1e",
+    "previews/preview.webp": "122bd0132c3fdf8be493ac0cfe7e28b8b04daef8121f4dd34df29d588ab670e5"
   },
   "role_guidance": {
     "script": "references/script.md",
     "product": "references/product.md",
     "storyboard": "references/storyboard.md",
-    "video": "references/video.md"
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
   }
 }
