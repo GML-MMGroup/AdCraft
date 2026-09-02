@@ -1,30 +1,34 @@
 {
   "skill_id": "chinese-traditional-art-animation",
   "version": "1.0.0",
-  "display_name": "Chinese Traditional Art Animation",
-  "description": "An advertising treatment built around ink, paper, cutout and decorative traditions, negative space, and poetic motion.",
+  "display_name": "中国传统艺术动画",
+  "description": "以墨色、纸张、剪纸与装饰传统、负空间和诗性运动构建具有东方材料感的动画影像。",
+  "content_locale": "zh-CN",
   "category": "animation-illustration",
   "tags": [
-    "animation",
-    "illustration",
-    "motion"
+    "传统艺术动画",
+    "墨纸材质",
+    "东方意境"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "文化品牌",
+    "国风广告",
+    "艺术化产品展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Chinese Traditional Art Animation creative treatment."
+    "kind": "image",
+    "summary": "中国传统艺术动画视觉预览。",
+    "media_url": "/api/v2/video-skills/chinese-traditional-art-animation/preview?v=1.0.0"
   },
   "display_order": 360,
   "files": {
-    "SKILL.md": "f61e0bc4f7e7d483af5e669e5f32b825b8616f8f32bfb3c1e896b74fe816b13c",
-    "references/character.md": "63a06798c585dbdd9ce1737b60060aedffb74acab7269ff8959fbf5abd6a946a",
-    "references/scene.md": "e7b1c4bf77905584829f4f37eb55d58eafa9fc1aa823f1d38a25a29740c1c316",
-    "references/storyboard.md": "aa59f48adf676809b22e3e8a39dae0f10cde7a9e75f33162e6151233d881a8f7",
-    "references/video.md": "1bcbcbfa2c7d144a8eefe3060451a84646ed952bcdb65374dbb2635a8f788032",
-    "references/quick_media.md": "c853f97e1f4f28b91c890c921dfa73be64d5454608438a45e37499a4478dc656"
+    "SKILL.md": "e5257caa922d97af4a67ff5166b51b23b9da8ee464c9d8b94ef4cdf584897f94",
+    "references/character.md": "c8b66d2bcb2ef799adc72825c5c21855d7a799b2b20ec10d0c2a4a91f3ae2721",
+    "references/scene.md": "bd685ae17fda4b798dcdccf3a9c9746d1cabd100fb9af99306d7dadf0ccc284d",
+    "references/storyboard.md": "bb64ed008d57ff9c45718f0c414e6a0d8155ca6f25a0379c92e7c9ba806e1630",
+    "references/video.md": "d3fe2901527f25e6121b59d8062b0399c44e27b608b42936e0472f77ed708421",
+    "references/quick_media.md": "40fcc9df37f3450e09314e9bb8c9c95bbc963e7655ae10a6595a863b640e769a",
+    "previews/preview.webp": "2b4ff0a6dd123b97d512595bb72024c8e310bae3b22e4308b33adf4484ee9a59"
   },
   "role_guidance": {
     "character": "references/character.md",

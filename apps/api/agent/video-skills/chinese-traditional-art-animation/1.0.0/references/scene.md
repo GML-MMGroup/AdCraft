@@ -1,1 +1,5 @@
-Construct spaces that express ink through layout and paper through light, color, and material. Use cutout and decorative traditions to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立纸面、墨色层、剪纸层、装饰边缘和 negative space 的分区。记录纸张厚度、折痕、遮挡、光影和纹样来源；背景留白要为人物和产品留出呼吸。
+
+跨镜头保持层次顺序、色彩、纸纹和空间方向，避免所有景别变成同一平面。

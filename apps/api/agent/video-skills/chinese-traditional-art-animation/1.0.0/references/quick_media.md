@@ -1,1 +1,5 @@
-Apply ink, paper, and cutout and decorative traditions as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速探索墨色、纸纹、剪纸边缘或装饰层时，锁定角色和产品轮廓，只改变一个材料变量。变体用于材料试验或转场试验，不自动改变正式的传统语汇。
+
+比较时看层次、留白、边缘和运动阻力是否成立。
