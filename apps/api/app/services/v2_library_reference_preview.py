@@ -129,9 +129,7 @@ class V2LibraryReferencePreviewResolver:
             max_data_url_bytes=max_data_url_bytes,
         )
 
-    def _catalog_preview(
-        self, version: AssetVersionMetadataV2
-    ) -> tuple[Path, dict[str, object]]:
+    def _catalog_preview(self, version: AssetVersionMetadataV2) -> tuple[Path, dict[str, object]]:
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
         storage_key = metadata.get("preview_storage_key")
         if not isinstance(storage_key, str) or not storage_key.strip():
@@ -214,8 +212,10 @@ def _is_regular_file(path: Path) -> bool:
 
 def _image_metadata(content: bytes) -> tuple[str, int, int]:
     if content[:8] == b"\x89PNG\r\n\x1a\n" and len(content) >= 24 and content[12:16] == b"IHDR":
-        return "image/png", int.from_bytes(content[16:20], "big"), int.from_bytes(
-            content[20:24], "big"
+        return (
+            "image/png",
+            int.from_bytes(content[16:20], "big"),
+            int.from_bytes(content[20:24], "big"),
         )
     if content[:2] == b"\xff\xd8":
         position = 2
