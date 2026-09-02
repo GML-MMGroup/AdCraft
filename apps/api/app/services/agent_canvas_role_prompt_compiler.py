@@ -300,7 +300,7 @@ class AgentCanvasRolePromptCompiler:
                 role_policy.policy_version if role_policy is not None else None
             ),
             reference_conditioning_plan=(
-                conditioning_plan.model_dump(mode="json") if conditioning_plan is not None else None
+                conditioning_plan if conditioning_plan is not None else None
             ),
             assertion_evidence=assertion_evidence,
             compaction_policy_version=recipe.compaction_policy.policy_version,

@@ -210,7 +210,9 @@ class NodePromptPreparationService:
                         **(
                             {
                                 "prompt_reference_conditioning_plan": (
-                                    compiled_prompt.reference_conditioning_plan
+                                    compiled_prompt.reference_conditioning_plan.model_dump(
+                                        mode="json"
+                                    )
                                 )
                             }
                             if compiled_prompt.reference_conditioning_plan is not None
