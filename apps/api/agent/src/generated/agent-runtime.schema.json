@@ -9430,6 +9430,7 @@
             }
           ],
           "default": null,
+          "description": "Optional complete character occurrence roster. When character_count is also supplied, included occurrences must equal that count.",
           "title": "Character Occurrences To Set"
         },
         "controls_to_set": {
