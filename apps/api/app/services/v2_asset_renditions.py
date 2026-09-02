@@ -34,6 +34,7 @@ class V2AssetRenditionService:
         version_id: str,
         media_type: str,
         kind: str,
+        max_dimension: int | None = None,
     ) -> AssetRendition:
         if kind not in {"preview", "poster"}:
             raise V2PersistenceError(
@@ -53,10 +54,17 @@ class V2AssetRenditionService:
                 "Poster renditions require video media.",
                 stage="v2_asset_rendition_service",
             )
+        if max_dimension is not None and max_dimension not in {320, 640}:
+            raise V2PersistenceError(
+                "asset_rendition_size_invalid",
+                "Asset rendition size is invalid.",
+                stage="v2_asset_rendition_service",
+            )
         extension = "jpg"
+        target_name = f"{kind}-{max_dimension}.jpg" if max_dimension is not None else f"{kind}.{extension}"
         target = validate_v2_data_path(
             self._data_dir,
-            self._data_dir / "v2" / "renditions" / asset_id / version_id / f"{kind}.{extension}",
+            self._data_dir / "v2" / "renditions" / asset_id / version_id / target_name,
             operation="v2-asset-rendition-target",
         )
         if target.is_file() and not target.is_symlink():
@@ -64,7 +72,8 @@ class V2AssetRenditionService:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.stem}.{uuid4().hex}.{extension}")
         if media_type == "image":
-            filters = "scale=640:640:force_original_aspect_ratio=decrease"
+            dimension = max_dimension or 640
+            filters = f"scale={dimension}:{dimension}:force_original_aspect_ratio=decrease"
             command = [
                 self._ffmpeg_path,
                 "-y",
@@ -95,7 +104,7 @@ class V2AssetRenditionService:
                 "-frames:v",
                 "1",
                 "-vf",
-                "scale=640:640:force_original_aspect_ratio=decrease",
+                f"scale={max_dimension or 640}:{max_dimension or 640}:force_original_aspect_ratio=decrease",
                 "-q:v",
                 "5",
                 temporary.as_posix(),

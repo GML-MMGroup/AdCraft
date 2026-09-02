@@ -2618,10 +2618,16 @@ def get_asset_rendition(
     request: Request,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     version_id: Annotated[str, Query(alias="v", min_length=1, max_length=160)],
+    size: Annotated[int | None, Query(ge=320, le=640, multiple_of=320)] = None,
 ) -> Response:
     kind = request.url.path.rsplit("/", 1)[-1]
     try:
-        rendition = runtime.assets.open_rendition(asset_id, version_id, kind=kind)
+        rendition = runtime.assets.open_rendition(
+            asset_id,
+            version_id,
+            kind=kind,
+            max_dimension=size,
+        )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     return Response(

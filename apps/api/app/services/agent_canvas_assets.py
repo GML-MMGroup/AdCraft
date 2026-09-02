@@ -584,6 +584,7 @@ class AgentCanvasAssetService:
         version_id: str,
         *,
         kind: str,
+        max_dimension: int | None = None,
     ) -> AssetContentResponse:
         """Return one exact version-pinned browser rendition."""
 
@@ -602,6 +603,7 @@ class AgentCanvasAssetService:
             version_id=version_id,
             media_type=media_type,
             kind=kind,
+            max_dimension=max_dimension,
         )
         body = rendition.path.read_bytes()
         return AssetContentResponse(
@@ -611,7 +613,9 @@ class AgentCanvasAssetService:
             headers={
                 "Content-Length": str(len(body)),
                 "Cache-Control": "private, max-age=31536000, immutable",
-                "ETag": f'"{asset_id}:{version_id}:{kind}"',
+                "ETag": f'"{asset_id}:{version_id}:{kind}'
+                + (f':{max_dimension}' if max_dimension is not None else '')
+                + '"',
             },
         )
 
