@@ -288,7 +288,7 @@ def _current_confirmation(
             item
             for item in confirmations
             if item.plan_document_id == document.document_id
-            and item.plan_revision == document.revision
+            and item.plan_revision <= document.revision
             and item.node_id == node.node_id
             and item.node_revision == node.revision
             and item.asset_id == asset.asset_id
