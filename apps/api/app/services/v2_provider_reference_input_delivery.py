@@ -713,7 +713,10 @@ class V2ProviderReferenceInputDeliveryService:
                 reason=f"{target_media_type}_provider_reference_media_type_{record.media_type}_unsupported",
                 record=record,
             )
-        if record.library_entity_id is not None or record.metadata.get("reference_source") == "asset_library":
+        if (
+            record.library_entity_id is not None
+            or record.metadata.get("reference_source") == "asset_library"
+        ):
             try:
                 version = self._asset_library.find_version(
                     asset_id=record.asset_id,
