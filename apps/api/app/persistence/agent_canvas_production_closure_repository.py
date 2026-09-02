@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -227,12 +228,13 @@ class AgentCanvasProductionClosureRepository:
         logical_identity = str(getattr(model, "logical_identity"))
         workflow_id = str(getattr(model, "workflow_id"))
         created_at = _created_at(model)
-        existing = connection.execute(
-            select(AgentCanvasGuidedProductionReceiptRow).where(
-                AgentCanvasGuidedProductionReceiptRow.receipt_type == receipt_type,
-                AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+        with Session(bind=connection) as session:
+            existing = session.scalar(
+                select(AgentCanvasGuidedProductionReceiptRow).where(
+                    AgentCanvasGuidedProductionReceiptRow.receipt_type == receipt_type,
+                    AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+                )
             )
-        ).scalar_one_or_none()
         if existing is not None:
             return self._replay_or_conflict(existing, payload_digest, type(model))
         try:
