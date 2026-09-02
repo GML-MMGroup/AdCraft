@@ -1,1 +1,5 @@
-Construct spaces that express vast scale through layout and sparse geometry through light, color, and material. Use atmospheric depth to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立地平线、消失点、主结构、参照物、远近层次和大气遮挡。sparse geometry 只保留能表达方向、尺度和功能的形体；atmospheric depth 通过距离与光衰减分层，不把主体涂成无边界剪影。
+
+记录环境的材质、重力感、光源和可通行路径。跨镜头保持结构比例、地面方向和设备位置，避免背景随机变成另一种世界。

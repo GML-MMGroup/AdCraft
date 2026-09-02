@@ -1,1 +1,5 @@
-Direct camera and subject motion through vast scale and sparse geometry, using atmospheric depth for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+先保持空间稳定和运动方向清晰，再加入缓慢推进、升降或横移。vast scale 需要前景参照和远景视差；不要用剧烈镜头运动代替尺度。设备、服装、接口和光源在动作前后保持连续。
+
+声音可用低频环境、脚步、机械反馈和开阔回声建立深度，功能确认时保留清楚的动作声。结果失去极简秩序时，删减粒子和动态元素，恢复几何锚点。
