@@ -1,29 +1,33 @@
 {
   "skill_id": "industrial-product-commercial",
   "version": "1.0.0",
-  "display_name": "Industrial Product Commercial",
-  "description": "An advertising treatment built around engineering form, material precision, functional demonstration, and controlled light.",
+  "display_name": "工业产品功能广告",
+  "description": "以工程形态、材料精度、功能演示和受控光线呈现工业产品的可信价值。",
+  "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
-    "commercial",
-    "campaign",
-    "product"
+    "工业产品",
+    "功能演示",
+    "工程视觉"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "工业设备宣传",
+    "B2B产品广告",
+    "技术展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Industrial Product Commercial creative treatment."
+    "kind": "image",
+    "summary": "工业产品功能广告视觉预览。",
+    "media_url": "/api/v2/video-skills/industrial-product-commercial/preview?v=1.0.0"
   },
   "display_order": 20,
   "files": {
-    "SKILL.md": "9c9b079b61472744f8d951bbf31204ddea08afb21e9f7151a858ffbb179c76c5",
-    "references/script.md": "ef14d0cf43637cac5abe30f35aa47e3df0759b1743b3a913c5b6d804618d90c8",
-    "references/product.md": "7a5046c48a253c36b0b62e241058c25a06fa50c2344a1830bc5af42c4c5112a1",
-    "references/storyboard.md": "b3d63afe55e829f03386336c1fadc7e015fe867420c39bf06849aed953c4ab52",
-    "references/video.md": "d7abea0ee9b17fdd82577b59a28f58362bee2c19879cd7fdb651818ce4112eef"
+    "SKILL.md": "45cbbf46ba8cfc626e8cf9a4892ba9c23e45a9e2263c31cc853e499ce7ec0e4c",
+    "references/script.md": "a21d2cc8bfa700fc7093a1c54dfea16a518de020b779dd83947b80278c9789a4",
+    "references/product.md": "40bbf5d81a7bafc12a88b2686da1594e9f0a34ea43195f44a847f133de2ec330",
+    "references/storyboard.md": "467b28bfeae8bcbaf7442715ad2856305b9bc42b27ad25e71423d3f53a3bef19",
+    "references/video.md": "d9d09f1dd94134827dfc675579324b3175f93283f8fad94cbc31e22f8e7a8a31",
+    "previews/preview.webp": "b2fafc01187214f8d38ad322dd4cfbe217bbe270524628e5f26887ff8955bc20"
   },
   "role_guidance": {
     "script": "references/script.md",

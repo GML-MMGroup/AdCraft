@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing engineering form through silhouette and material precision through surfaces and detail. Make functional features readable, and use functional demonstration only where it strengthens the requested selling point.
+按工程层级描述产品：外壳与骨架、连接和运动部件、控制面、接口、材料和表面工艺。保持螺钉、接缝、倒角、散热口、线缆、指示灯和接触面的逻辑。光线要帮助区分平面、曲面、金属、塑胶、橡胶和玻璃，不要用高光抹平结构。
+
+功能展示时明确输入、动作、反馈和输出。检查产品与工件、地面、夹具和操作者的比例、受力和遮挡。参考图中的结构是事实；风格化不能添加未经确认的接口或改变设备用途。
+
+正例：从完整设备切入控制面，再沿受力方向展示夹持和反馈，最后回到设备与工件的空间关系。
+反例：把所有部件都做成发光金属，或让设备悬浮、穿过工件而没有支撑和受力依据。

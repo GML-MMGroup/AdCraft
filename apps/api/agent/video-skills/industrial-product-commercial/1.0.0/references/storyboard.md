@@ -1,1 +1,6 @@
-Organize shots around engineering form, develop visual progression through material precision, and reserve functional demonstration for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+用“工程问题—产品部件—动作过程—物理反馈—结果验证—整体回收”组织分镜。每个镜头只承担一个主要功能证据，并记录开始、变化和结束状态。需要剖面或示意时，明确它是解释层，不要让观众误认产品实际结构。
+
+保持设备、工件、操作者、指示状态、镜头轴线和光源连续。用接口、轨道、工件边缘或灯光方向作为视觉锚点。用切削声、卡合声、气流声或环境底噪帮助观众感到重量与精度，但声音不能代替画面证据。
+
+正例：稳定全景建立工作空间，近景展示一个接口动作，中景显示反馈和结果，再回到完整设备。
+反例：同时切换设备形态、工件位置和观察方向，导致功能演示无法复核。
