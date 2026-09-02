@@ -146,9 +146,7 @@ class ReferenceAwareAssetPromptRenderer:
                 + "."
             )
             parts.append(
-                "Allowed changes: "
-                + ", ".join(conditioning_plan.allowed_change_dimensions)
-                + "."
+                "Allowed changes: " + ", ".join(conditioning_plan.allowed_change_dimensions) + "."
             )
         else:
             parts.append(

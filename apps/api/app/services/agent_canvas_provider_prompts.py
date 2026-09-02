@@ -432,9 +432,7 @@ def _validate_conditioning_plan(
     node: CanvasNodeV2,
     reference_bundle: AdReferenceBundleV2,
 ) -> None:
-    expected_role = {"character": "character_main", "scene": "scene_board"}.get(
-        node.semantic_role
-    )
+    expected_role = {"character": "character_main", "scene": "scene_board"}.get(node.semantic_role)
     if expected_role != plan.target_role or len(reference_bundle.references) != 1:
         raise _error(
             "reference_conditioning_plan_invalid",
