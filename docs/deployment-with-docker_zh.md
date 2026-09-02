@@ -12,7 +12,7 @@
 - 首次部署时可用的互联网连接；启动器可能需要下载组件并构建镜像。
 - 下列任一受支持的操作系统：
   - **Windows：** 64 位 Windows 10 22H2（build 19045）或更高版本，或 64 位 Windows 11 23H2（build 22631）或更高版本。计算机必须支持硬件虚拟化。不支持 Windows Server 和 Windows containers。
-  - **Linux：** Ubuntu 或 Debian。首发启动器不支持其他 Linux 发行版。
+  - **Linux：** Ubuntu 或 Debian，并且主机能够运行 Docker Engine 服务。首发启动器不支持其他 Linux 发行版和无特权容器。
 - Windows 上能够以管理员身份运行文件的权限；Linux 上在启动器询问时能够输入 `sudo` 密码的账户。
 - 您计划使用的服务商提供的 API 密钥。AdCraft 启动后再添加密钥；不要将密钥发到聊天、公开文档或工单中。
 
@@ -32,7 +32,7 @@
 1. 在文件资源管理器中打开项目文件夹，再打开其中的 `scripts` 文件夹。
 2. 右键单击 `scripts\\deploy-windows.cmd`，选择 **Run as administrator**，然后确认 Windows 提示。
 3. 在新计算机上，启动器可能会启用或安装 WSL 2 和 Docker Desktop，Windows 也可能要求重启。若要求重启，请重启 Windows，然后再次右键以管理员身份运行**同一个** `scripts\\deploy-windows.cmd` 文件。
-4. 等待启动器检查系统、准备运行环境、构建 AdCraft 并启动 Web 与 API 服务。首次运行通常比之后运行更久。
+4. 等待启动器检查系统、准备运行环境、构建 AdCraft 并启动 Agent、API 和 Web 服务。首次运行通常比之后运行更久。
 5. 成功后，打开打印出的 `http://127.0.0.1:<port>` URL。启动器通常会自动打开浏览器；若没有，请在同一台计算机的浏览器中粘贴显示的 URL。
 
 预期结果：Agent、API 和 Web 均变为健康状态，AdCraft 在本机打开。Docker Desktop 必须处于 **Linux containers** 模式。部署者负责确认并遵守适用的 Docker Desktop 许可条款。
@@ -280,7 +280,7 @@ http://127.0.0.1:8080
 ## 打开 AdCraft 并添加 API 密钥
 
 1. 打开打印出的本地 URL，然后进入 **API Space**。
-2. 选择当前可用的服务商 **Volcengine Ark**。API Space 为 **LLM**、**Image** 和 **Video** 分别提供密钥输入框。请为计划使用的工作类型输入对应密钥。若服务商发放的一把密钥对三种类型都具有正确权限，可使用页面上的 **Use for all**；否则请分别填写适用的密钥。
+2. 选择 API Space 中显示的可用服务商。页面会显示该服务商支持的凭据输入项；只填写计划使用的能力对应的密钥。如果页面提供 **Use for all**，仅在同一个密钥确实具备所选全部能力权限时使用。
 3. 选择 **Save credentials**。保存成功时会提示凭据已保存并已应用，因此不需要为此重启 AdCraft。
 4. 若 API Space 为已配置的密钥提供连接测试，可用它确认服务商连接。测试成功会显示连接成功，有时还会显示模型名称。
 

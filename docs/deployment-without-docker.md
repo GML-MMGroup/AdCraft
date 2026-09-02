@@ -2,11 +2,11 @@
 
 # Native Deployment Without Docker
 
-This guide runs AdCraft directly on one computer without Docker, WSL, or containers. Both services listen only on that computer, so this path is for local Windows or Linux use.
+This guide runs AdCraft directly on one computer without Docker, WSL, or containers. The Agent, API, and Web services listen only on that computer, so this path is for local Windows or Linux use.
 
 Do not run the Docker launcher and the native launcher at the same time. They share apps/api/.env, apps/web/.env, and runtime-data/.
 
-## Two folders and two terminals
+## Two folders and three terminals
 
 - The AdCraft project root is the folder that contains both apps and scripts.
 - On Linux, run the commands below in the system terminal.
@@ -222,7 +222,7 @@ Keep the second terminal open. Open http://127.0.0.1:8000/api/v1/health in a bro
 
 ### 4. Start the web UI in the third terminal
 
-Open a second terminal and return to the AdCraft project root first.
+Open a third terminal and return to the AdCraft project root first.
 
 Linux:
 

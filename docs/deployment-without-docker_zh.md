@@ -2,11 +2,11 @@
 
 # 不使用 Docker 的原生部署
 
-本教程让 AdCraft 直接在本机运行，不使用 Docker、WSL 或容器。它只监听本机地址，适合在自己的 Windows 或 Linux 电脑上使用。
+本教程让 AdCraft 直接在本机运行，不使用 Docker、WSL 或容器。Agent、API 和 Web 服务都只监听本机地址，适合在自己的 Windows 或 Linux 电脑上使用。
 
 不要同时运行 Docker 启动器和原生启动器；它们会共用 apps/api/.env、apps/web/.env 和 runtime-data/。
 
-## 先认识两个目录和两个终端
+## 先认识两个目录和三个终端
 
 - AdCraft 根目录：同时包含 apps 和 scripts 两个文件夹的目录。
 - Linux：下文命令在系统的终端中执行。
@@ -222,7 +222,7 @@ Windows PowerShell：在 AdCraft 根目录执行：
 
 ### 4. 在第三个终端启动网页
 
-重新打开一个终端，并先回到 AdCraft 根目录。
+打开第三个终端，并先回到 AdCraft 根目录。
 
 Linux：
 
