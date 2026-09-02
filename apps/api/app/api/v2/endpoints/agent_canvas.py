@@ -423,6 +423,33 @@ from app.services.v2_provider_executor import V2ProviderExecutor
 router = APIRouter(tags=["v2-agent-canvas"])
 
 
+def _resolve_storyboard_video_audio_constraints(
+    requirement_service: object,
+    conversation_repository: object,
+    workflow_id: str,
+) -> dict[str, object]:
+    """Load the current typed Video constraints for storyboard fan-out."""
+
+    current = requirement_service.get_current(workflow_id)
+    constraints = {
+        str(control.control): control.value for control in current.hard_controls
+    }
+    if current.identity_safety_decision is not None:
+        constraints["identity_safety_decision"] = current.identity_safety_decision.model_dump(
+            mode="json"
+        )
+    snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
+    public_skill = snapshot.global_direction.get("public_skill")
+    if isinstance(public_skill, dict):
+        mode = public_skill.get("video_representation_mode")
+        if mode is not None:
+            constraints["_video_skill_representation_mode"] = mode
+            constraints["_video_skill_representation_source_id"] = (
+                f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
+            )
+    return constraints
+
+
 @dataclass(frozen=True)
 class AgentCanvasRuntime:
     database: V2Database
@@ -912,20 +939,11 @@ def create_agent_canvas_runtime(
         )
 
     def resolve_storyboard_video_audio_constraints(workflow_id: str) -> dict[str, object]:
-        constraints = {
-            str(control.control): control.value
-            for control in requirement_service.get_current(workflow_id).hard_controls
-        }
-        snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
-        public_skill = snapshot.global_direction.get("public_skill")
-        if isinstance(public_skill, dict):
-            mode = public_skill.get("video_representation_mode")
-            if mode is not None:
-                constraints["_video_skill_representation_mode"] = mode
-                constraints["_video_skill_representation_source_id"] = (
-                    f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
-                )
-        return constraints
+        return _resolve_storyboard_video_audio_constraints(
+            requirement_service,
+            conversation_repository,
+            workflow_id,
+        )
 
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
