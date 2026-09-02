@@ -58,6 +58,10 @@ import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import { FrozenCanvasEdgesOverlay } from "./canvas/FrozenCanvasEdgesOverlay.tsx";
 import {
+  CanvasPreviewPrefetcher,
+  type CanvasPreviewPrefetchHandle,
+} from "./canvas/CanvasPreviewPrefetcher.tsx";
+import {
   captureFrozenCanvasEdges,
   partitionCanvasEdges,
   type FrozenCanvasEdgeSnapshot,
@@ -213,6 +217,7 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const previewPrefetchRef = useRef<CanvasPreviewPrefetchHandle | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const workflowNodesRef = useRef(workflow?.nodes ?? []);
   const canonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
@@ -260,6 +265,7 @@ export function AgentCanvasPage() {
   const clearCanvasInteractions = useCallback(() => {
     if (canvasInteractionReasonsRef.current.size) resumePointerSpotlight();
     canvasInteractionReasonsRef.current.clear();
+    previewPrefetchRef.current?.setPaused(false);
     setCanvasInteracting(false);
   }, [resumePointerSpotlight]);
   const scheduleLayoutButtonFocus = useCallback(() => {
@@ -1018,6 +1024,7 @@ export function AgentCanvasPage() {
 
   const initializeFlow = useCallback((instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>) => {
     flowRef.current = instance;
+    previewPrefetchRef.current?.setViewport(instance.getViewport());
     if (workflow) scheduleWorkflowViewportInstall(instance, workflow);
   }, [scheduleWorkflowViewportInstall, workflow]);
 
@@ -1103,6 +1110,9 @@ export function AgentCanvasPage() {
           onlyRenderVisibleElements={true}
           nodesDraggable={!layoutPreview.active}
           onInit={initializeFlow}
+          onMove={(_event, viewport) => {
+            previewPrefetchRef.current?.setViewport(viewport);
+          }}
           onEdgesChange={onEdgesChange}
           onNodesChange={handleNodeChanges}
           onNodeClick={(_event, node) => {
@@ -1120,6 +1130,7 @@ export function AgentCanvasPage() {
           onNodeDragStart={(_event, node, draggedNodes) => {
             interruptReveal();
             beginCanvasInteraction("node-drag");
+            previewPrefetchRef.current?.setPaused(true);
             dragCancellationPendingRef.current = false;
             const draggedNodeIds = new Set([
               node.id,
@@ -1146,6 +1157,7 @@ export function AgentCanvasPage() {
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
             endCanvasInteraction("node-drag");
+            previewPrefetchRef.current?.setPaused(false);
             setDragEdgeProjection(null);
             flushPendingDragNodeChanges();
             if (dragCancellationPendingRef.current) {
@@ -1185,9 +1197,12 @@ export function AgentCanvasPage() {
           onMoveStart={() => {
             interruptReveal();
             beginCanvasInteraction("viewport");
+            previewPrefetchRef.current?.setPaused(true);
           }}
           onMoveEnd={(_event, viewport) => {
             endCanvasInteraction("viewport");
+            previewPrefetchRef.current?.setViewport(viewport);
+            previewPrefetchRef.current?.setPaused(false);
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {
               writeAgentCanvasViewport(workflow.workflow_id, viewport);
             }
@@ -1202,6 +1217,12 @@ export function AgentCanvasPage() {
           ) : null}
           <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
+
+        <CanvasPreviewPrefetcher
+          ref={previewPrefetchRef}
+          nodes={canonicalNodes}
+          boardRef={pointerSpotlight.hostRef}
+        />
 
         <div className="agent-canvas-toolbar" aria-label="Canvas controls">
           <div className="agent-canvas-toolbar__add">

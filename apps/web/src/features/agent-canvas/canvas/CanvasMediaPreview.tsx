@@ -1,5 +1,7 @@
 import type { ImgHTMLAttributes } from "react";
 
+import { cachedCanvasPreviewUrl } from "./canvasPreviewCache.ts";
+
 export type CanvasMediaPreviewProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
   src: string;
 };
@@ -8,17 +10,19 @@ export type CanvasMediaPreviewProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 
 export function CanvasMediaPreview({
   src,
   draggable = false,
-  loading = "lazy",
+  loading = "eager",
   decoding = "async",
+  sizes = "360px",
   ...props
 }: CanvasMediaPreviewProps) {
   return (
     <img
       {...props}
-      src={src}
+      src={cachedCanvasPreviewUrl(src) ?? src}
       draggable={draggable}
       loading={loading}
       decoding={decoding}
+      sizes={sizes}
     />
   );
 }

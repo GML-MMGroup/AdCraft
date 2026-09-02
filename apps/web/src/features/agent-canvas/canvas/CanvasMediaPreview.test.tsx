@@ -26,11 +26,24 @@ describe("CanvasMediaPreview", () => {
     const image = screen.getByRole("img", { name: "Campaign preview" });
 
     expect(image.getAttribute("src")).toBe("/api/v2/assets/asset-1/renditions/preview-640.webp?v=version-1");
-    expect(image.getAttribute("loading")).toBe("lazy");
+    expect(image.getAttribute("loading")).toBe("eager");
     expect(image.getAttribute("decoding")).toBe("async");
     expect(image.getAttribute("sizes")).toBe("(max-width: 480px) 100vw, 320px");
     expect(image.getAttribute("draggable")).toBe("false");
     expect(fetch).not.toHaveBeenCalled();
     expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("uses eager loading and a stable canvas size by default", () => {
+    render(
+      <CanvasMediaPreview
+        src="/api/v2/assets/asset-2/preview?v=version-2"
+        alt="Canvas preview"
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "Canvas preview" });
+    expect(image.getAttribute("loading")).toBe("eager");
+    expect(image.getAttribute("sizes")).toBe("360px");
   });
 });

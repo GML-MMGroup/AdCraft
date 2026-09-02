@@ -48,7 +48,7 @@ describe("CanvasVideoPreview", () => {
     const image = screen.getByRole("img", { name: "Campaign cut" });
 
     expect(image.getAttribute("src")).toBe("/api/v2/assets/video-asset/poster?v=version-1");
-    expect(image.getAttribute("loading")).toBe("lazy");
+    expect(image.getAttribute("loading")).toBe("eager");
     expect(image.getAttribute("decoding")).toBe("async");
     expect(image.getAttribute("draggable")).toBe("false");
   });
