@@ -1,1 +1,5 @@
-Construct spaces that express restrained tension through layout and motivated darkness through light, color, and material. Use exact blocking to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+为每个空间标记光源、遮挡物、可见范围、入口、出口和关键证据位置。motivated darkness 要能追溯到门缝、屏幕、走廊、夜色或物体遮挡；暗部不能吞掉人物身份、产品轮廓和安全动作。
+
+保留程序性环境细节，例如编号、开关、工具、表面磨损和排列顺序，但不要增加无法解释的线索。跨镜头保持空间轴线、光源方向、物件状态和可通行路径。

@@ -1,1 +1,5 @@
-Build the narrative premise around restrained tension, then use motivated darkness to shape escalation and procedural visual detail to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先列出观众、人物与品牌各自掌握的信息，再安排延迟揭示和证据回收。用重复操作、异常细节和反应变化制造 restrained tension，确保每次隐藏都有后续解释。产品或品牌的价值应成为解决问题的证据，而不是最后突然出现的口号。
+
+把关键动作写成可执行的次序：看见、确认、尝试、发现、判断、解决。正例是一个小状态变化重新解释前文；反例是依靠尖叫和无关惊吓推进故事。

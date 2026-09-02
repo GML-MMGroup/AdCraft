@@ -1,29 +1,33 @@
 {
   "skill_id": "controlled-psychological-thriller",
   "version": "1.0.0",
-  "display_name": "Controlled Psychological Thriller",
-  "description": "An advertising treatment built around restrained tension, motivated darkness, exact blocking, and procedural visual detail.",
+  "display_name": "克制心理悬疑广告",
+  "description": "以受控张力、有动机的暗部、精确调度和程序性视觉细节构建不喧闹却持续加压的商业叙事。",
+  "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
-    "cinematic",
-    "narrative",
-    "composition"
+    "心理悬疑",
+    "受控光线",
+    "程序细节"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "悬疑广告",
+    "品牌叙事",
+    "产品概念片"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Controlled Psychological Thriller creative treatment."
+    "kind": "image",
+    "summary": "克制心理悬疑广告视觉预览。",
+    "media_url": "/api/v2/video-skills/controlled-psychological-thriller/preview?v=1.0.0"
   },
   "display_order": 220,
   "files": {
-    "SKILL.md": "3c232fe651bcda1b1d2ac7eee38df66e9a4866ead658dfeff9a5619534fa3754",
-    "references/script.md": "1cb0f28c2792961fa2955005a3161e1979375641b4b884833d5c2b9cf169ec05",
-    "references/scene.md": "98ba8f36961a16c42e59ae5a849eb6ff5b5b2b6676616922c1da303202ba1803",
-    "references/storyboard.md": "2df3602b054fd424d53aa15d23b27c458f8f3b294f40b930f80de3cb8d1a99b7",
-    "references/video.md": "9048f022a36aaf61eee053edc8d8ae8ba5ab58c2cbdb5d2e2da1f4d67e71129e"
+    "SKILL.md": "c5feae7d874c98497e43f33849839189231a203fcceb5bd95abd0462fa8a0e5c",
+    "references/script.md": "f11c8bf36e1ec1790eba1ac22c9654262f23aa85db3c3a0fde01002b2cf35182",
+    "references/scene.md": "55da41f4eec055b6db5db031041b391144b4ebc617b697b16360bd0fe346c88f",
+    "references/storyboard.md": "04816188e56baea4f6b7596675e4b5398625bc39920587df74c4e78923c2d659",
+    "references/video.md": "a4fa49a575dd6fedde18da90db33b3351076c6d16cb6b2b1ce8ae5692597acf8",
+    "previews/preview.webp": "b6ed6874924fa38180cd510a924578b741f654d35e73ae2bb2a3b0a41b0b4a98"
   },
   "role_guidance": {
     "script": "references/script.md",
