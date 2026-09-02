@@ -427,6 +427,27 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         workflow = self._workflows.get_workflow(source_grid.workflow_id)
+        expected_plan = _fanout_plan(
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=fanout.plan_revision,
+            workflow=workflow,
+            content=content,
+            grid_one=source_grid,
+            asset=asset,
+            confirmation=confirmation,
+        )
+        if (
+            fanout.logical_identity != expected_plan.logical_identity
+            or fanout.nodes != expected_plan.nodes
+            or fanout.bindings != expected_plan.bindings
+            or fanout.prompt_preparation_keys != expected_plan.prompt_preparation_keys
+            or fanout.automatic_run_keys != expected_plan.automatic_run_keys
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out member identity does not match current Plan.",
+                stage="storyboard_progression",
+            )
         all_members = self._build_fanout_members(
             workflow=workflow,
             plan_document_id=fanout.plan_document_id,
