@@ -3601,6 +3601,13 @@ button.agent-chat__node-links--related:hover {
   pointer-events: none;
 }
 
+.agent-chat__reference-source-limit {
+  margin: -4px 0 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .agent-chat__reference-source-selected {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) auto;

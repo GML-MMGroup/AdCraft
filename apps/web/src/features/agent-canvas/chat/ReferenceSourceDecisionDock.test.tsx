@@ -80,6 +80,7 @@ describe("ReferenceSourceDecisionDock", () => {
     const onSubmit = vi.fn().mockResolvedValue(true);
     render(<ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />);
 
+    expect(screen.getByText("单张参考图不应超过 4 MB。")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Upload reference"), {
       target: { files: [new File(["image"], "reference.png", { type: "image/png" })] },
     });
@@ -121,6 +122,7 @@ describe("ReferenceSourceDecisionDock", () => {
     render(<ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
+    expect(screen.queryByText("单张参考图不应超过 4 MB。")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Recommended" }));
     fireEvent.click(screen.getByRole("button", { name: "Select Recommended studio" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reference" }));

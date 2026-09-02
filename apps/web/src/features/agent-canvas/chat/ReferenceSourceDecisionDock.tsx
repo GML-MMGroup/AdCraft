@@ -277,10 +277,13 @@ export function ReferenceSourceDecisionDock({
             </div>
           </>
         ) : (
-          <label>
-            <span>Upload reference</span>
-            <input aria-label="Upload reference" type="file" accept="image/*" disabled={busy} onChange={selectFile} />
-          </label>
+          <>
+            <label>
+              <span>Upload reference</span>
+              <input aria-label="Upload reference" type="file" accept="image/*" disabled={busy} onChange={selectFile} />
+            </label>
+            <p className="agent-chat__reference-source-limit">单张参考图不应超过 4 MB。</p>
+          </>
         )}
         {selected ? (
           <div className="agent-chat__reference-source-selected">
