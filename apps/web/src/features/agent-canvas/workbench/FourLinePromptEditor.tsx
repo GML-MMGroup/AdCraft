@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ChangeEventHandler } from "react";
+import type { FocusEventHandler } from "react";
 
 const FOUR_LINE_HEIGHT = 88;
 
@@ -9,12 +10,14 @@ export function FourLinePromptEditor({
   disabled = false,
   placeholder,
   onChange,
+  onBlur,
 }: {
   ariaLabel: string;
   value: string;
   disabled?: boolean;
   placeholder?: string;
   onChange: ChangeEventHandler<HTMLTextAreaElement>;
+  onBlur?: FocusEventHandler<HTMLTextAreaElement>;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
@@ -44,6 +47,7 @@ export function FourLinePromptEditor({
       disabled={disabled}
       placeholder={placeholder}
       onChange={onChange}
+      onBlur={onBlur}
     />
   );
 }

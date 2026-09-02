@@ -1,4 +1,5 @@
 import type { CanvasRuntimeEventV2 } from "../../../types-v2.ts";
+import { isTerminalRuntimeEvent } from "./runtimeRefreshIdentity.ts";
 
 export type AgentCanvasRuntimeRefreshPolicy = {
   refreshRuntime: boolean;
@@ -160,6 +161,7 @@ const CHAT_EVENTS = new Set([
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([
+  "node_generation_started",
   "node_output_published",
   "node_ready",
   "node_failed",
@@ -256,6 +258,9 @@ export function runtimeEventPolicy(
   const projectAssetPublished = type === "project_asset_published";
   const publishesOutput = type === "node_output_published";
   const guidedCanonicalRefresh = GUIDED_CANONICAL_REFRESH_EVENTS.has(type);
+  const terminalNode = type.startsWith("node_")
+    && isTerminalRuntimeEvent(type)
+    && Boolean(event.node_id);
   const documentEvent = DOCUMENT_EVENTS.has(type);
   const documentId = documentEvent
     ? typeof event.payload?.document_id === "string"
@@ -267,7 +272,7 @@ export function runtimeEventPolicy(
 
   return {
     refreshRuntime: projectAssetPublished || productSource || editingImported || RUNTIME_EVENTS.has(type) || guidedCanonicalRefresh,
-    refreshWorkflow: editing || editingImported || (!productSourcePending && productSource) || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
+    refreshWorkflow: terminalNode || editing || editingImported || (!productSourcePending && productSource) || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
     refreshAssets: projectAssetPublished || publishesOutput || productSource || editingImported,
     refreshChat: CHAT_EVENTS.has(type) || GUIDED_CHAT_EVENTS.has(type) || documentEvent,
     refreshSettings: type === "agent_settings_updated",

@@ -9,7 +9,7 @@ import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
 import { TextWorkbench } from "./TextWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
-import { isNodePromptReady } from "../model/promptPreparation.ts";
+import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import "./agent-canvas-inline-workbench.css";
 
 export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
@@ -20,7 +20,6 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const {
     workflow,
     node,
-    visibleStatus,
     deleteBinding,
     providerModels = [],
     providerModelsLoading = false,
@@ -57,8 +56,17 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   );
   const requiresPreparedPrompt = ["text", "script", "image", "video", "audio"].includes(node.node_type)
     && !(node.node_type === "text" && node.creative_role === "world_setting");
-  const promptReady = !requiresPreparedPrompt || isNodePromptReady(node);
-  const promptPreparing = requiresPreparedPrompt && !promptReady;
+  const preparationStatus = promptPreparationForNode(node)?.status;
+  const isManualBlankPromptNode = requiresPreparedPrompt
+    && node.status === "draft"
+    && !node.generation_prompt?.trim()
+    && !node.summary_prompt?.trim()
+    && (node.prompt_preparation === null || node.prompt_preparation?.status === "waiting_user");
+  const promptPreparing = requiresPreparedPrompt
+    && !isManualBlankPromptNode
+    && preparationStatus !== undefined
+    && preparationStatus !== "ready"
+    && preparationStatus !== "not_applicable";
 
   return (
     <NodeWorkbenchShell
@@ -76,22 +84,20 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
-          promptReady={promptReady}
         />
       ) : null}
       {node.node_type === "script" ? (
         <ScriptWorkbench
           node={node}
-          status={visibleStatus ?? node.status}
+          status={node.status}
           draft={draft}
           models={providerModels}
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
-          promptReady={promptReady}
         />
       ) : null}
-      {["image", "video", "audio"].includes(node.node_type) && promptReady ? (
+      {["image", "video", "audio"].includes(node.node_type) ? (
         <MediaPromptWorkbench
           node={node}
           draft={draft}

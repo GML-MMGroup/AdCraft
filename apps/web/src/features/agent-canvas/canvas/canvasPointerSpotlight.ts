@@ -20,6 +20,8 @@ type CanvasPointerSpotlightControllerOptions = {
 export type CanvasPointerSpotlightController = {
   move: (clientX: number, clientY: number) => void;
   leave: () => void;
+  suspend: () => void;
+  resume: () => void;
   dispose: () => void;
 };
 
@@ -28,6 +30,8 @@ export type CanvasPointerSpotlightBindings<T extends HTMLElement> = {
   onPointerMove: PointerEventHandler<T>;
   onPointerLeave: PointerEventHandler<T>;
   onPointerCancel: PointerEventHandler<T>;
+  suspend: () => void;
+  resume: () => void;
 };
 
 export function createCanvasPointerSpotlightController({
@@ -37,6 +41,7 @@ export function createCanvasPointerSpotlightController({
 }: CanvasPointerSpotlightControllerOptions): CanvasPointerSpotlightController {
   let frameId: number | null = null;
   let latestPoint: SpotlightPoint | null = null;
+  let suspended = false;
 
   const hide = () => {
     getElement()?.removeAttribute("data-pointer-spotlight");
@@ -52,7 +57,7 @@ export function createCanvasPointerSpotlightController({
     frameId = null;
     const host = getElement();
     const point = latestPoint;
-    if (!host || !point) return;
+    if (suspended || !host || !point) return;
 
     const bounds = host.getBoundingClientRect();
     host.style.setProperty("--canvas-pointer-x", `${point.clientX - bounds.left}px`);
@@ -62,6 +67,7 @@ export function createCanvasPointerSpotlightController({
 
   return {
     move(clientX, clientY) {
+      if (suspended) return;
       latestPoint = { clientX, clientY };
       if (frameId !== null) return;
       frameId = requestFrame(writePosition);
@@ -71,7 +77,17 @@ export function createCanvasPointerSpotlightController({
       cancelPendingFrame();
       hide();
     },
+    suspend() {
+      suspended = true;
+      latestPoint = null;
+      cancelPendingFrame();
+      hide();
+    },
+    resume() {
+      suspended = false;
+    },
     dispose() {
+      suspended = true;
       latestPoint = null;
       cancelPendingFrame();
       hide();
@@ -101,11 +117,19 @@ export function useCanvasPointerSpotlight<T extends HTMLElement>(): CanvasPointe
   const onPointerLeave = useCallback<PointerEventHandler<T>>(() => {
     controllerRef.current?.leave();
   }, []);
+  const suspend = useCallback(() => {
+    controllerRef.current?.suspend();
+  }, []);
+  const resume = useCallback(() => {
+    controllerRef.current?.resume();
+  }, []);
 
   return {
     hostRef,
     onPointerMove,
     onPointerLeave,
     onPointerCancel: onPointerLeave,
+    suspend,
+    resume,
   };
 }

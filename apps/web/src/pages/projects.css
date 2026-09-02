@@ -909,3 +909,115 @@
   background: var(--surface-input);
   color: var(--text-primary);
 }
+
+.project-cover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 7, 12, 0.72);
+}
+
+.project-cover-dialog {
+  width: min(720px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+}
+
+.project-cover-dialog__header,
+.project-cover-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-cover-dialog__eyebrow {
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.project-cover-dialog h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+
+.project-cover-dialog__close,
+.project-cover-action {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+.project-cover-dialog__close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+}
+
+.project-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.project-cover-option {
+  display: grid;
+  gap: 8px;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.project-cover-option img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--surface-contrast);
+}
+
+.project-cover-option.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.project-cover-dialog__status,
+.project-cover-dialog__error {
+  margin: 18px 0;
+  color: var(--text-secondary);
+}
+
+.project-cover-dialog__error {
+  color: var(--error);
+}
+
+.project-cover-action {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.project-cover-action--save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--text-primary);
+  color: var(--surface-contrast);
+}

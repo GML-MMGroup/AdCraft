@@ -37,6 +37,16 @@
   height: 100%;
 }
 
+/* React Flow owns the viewport matrix; keep it on a composited layer without
+   applying paint containment that could clip nodes or edge overflow. */
+.agent-canvas-board .react-flow__viewport {
+  will-change: auto;
+}
+
+.agent-canvas-board.is-interacting .react-flow__viewport {
+  will-change: transform;
+}
+
 .agent-canvas-board.is-layout-previewing .react-flow__node {
   transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
 }
@@ -65,28 +75,26 @@
 }
 
 .agent-canvas-board .react-flow__edge-path {
-  stroke: rgb(229 231 238 / 58%);
-  stroke-width: 1.6;
-  stroke-linecap: round;
+  vector-effect: none;
+  stroke: #686868;
+  stroke-width: var(--agent-canvas-edge-stroke-width, 0.9px);
+  stroke-linecap: butt;
   stroke-linejoin: round;
-  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 48%));
-  transition:
-    stroke 140ms ease,
-    stroke-width 140ms ease,
-    opacity 140ms ease;
+  shape-rendering: geometricPrecision;
+  filter: none;
+  transition: stroke 140ms ease, opacity 140ms ease;
 }
 
 .agent-canvas-board .react-flow__edge:hover .react-flow__edge-path {
-  stroke: rgb(247 248 251 / 78%);
+  stroke: #858585;
 }
 
 .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
 .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
-  stroke: rgb(255 255 255 / 96%);
-  stroke-width: 2;
-  stroke-dasharray: 8 6;
-  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 62%));
-  animation: agent-canvas-selected-edge-flow 760ms linear infinite;
+  stroke: #bdbdbd;
+  stroke-width: calc(var(--agent-canvas-edge-stroke-width, 0.9px) * 1.45);
+  stroke-dasharray: none;
+  filter: none;
 }
 
 .agent-canvas-board.is-interacting .react-flow__edge-path {
@@ -106,6 +114,14 @@
   transition: none;
 }
 
+.agent-canvas-board.is-interacting .react-flow__node {
+  will-change: transform;
+}
+
+.agent-canvas-board.is-interacting .agent-canvas-node__surface {
+  box-shadow: none;
+}
+
 .agent-canvas-board.is-interacting :is(
   .agent-canvas-node__video-play,
   .agent-canvas-audio-player,
@@ -119,10 +135,16 @@
 
 .agent-canvas-board.is-interacting :is(
   .agent-canvas-audio-player__waveform i,
-  .agent-canvas-node__generation-loader *,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen
 ) {
+  animation-play-state: paused;
+}
+
+.agent-canvas-board.is-interacting
+  .agent-canvas-node__generation-energy::before,
+.agent-canvas-board.is-interacting
+  .agent-canvas-node__generation-energy::after {
   animation-play-state: paused;
 }
 
@@ -130,10 +152,24 @@
   filter: none;
 }
 
-@keyframes agent-canvas-selected-edge-flow {
-  to {
-    stroke-dashoffset: -14;
-  }
+.agent-canvas-frozen-edges {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.agent-canvas-board .react-flow__edges {
+  z-index: 0;
+}
+
+.agent-canvas-board .react-flow__nodes {
+  z-index: 1;
+}
+
+.agent-canvas-frozen-edges .react-flow__edge {
+  pointer-events: none;
 }
 
 .agent-canvas-pointer-background {
@@ -162,6 +198,13 @@
 
 .agent-canvas-board[data-pointer-spotlight="active"] .agent-canvas-pointer-background {
   opacity: 1;
+}
+
+.agent-canvas-board.is-interacting .agent-canvas-pointer-background {
+  opacity: 0;
+  mask-image: none;
+  -webkit-mask-image: none;
+  transition: none;
 }
 
 .agent-canvas-pointer-dot {
@@ -1135,8 +1178,4 @@
     animation: none;
   }
 
-  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
-  .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
-    animation: none;
-  }
 }

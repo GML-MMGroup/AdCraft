@@ -60,4 +60,16 @@ describe("canvasAuthoringErrorMessage", () => {
       payload: null,
     }))).toBe("The selected model is currently unavailable.");
   });
+
+  it("explains that incomplete prompt preparation blocks Run admission", () => {
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 409,
+      code: "node_prompt_preparation_incomplete",
+      message: "Prompt preparation is incomplete.",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }))).toBe("Prompt preparation is still in progress. Try running this node again when it is ready.");
+  });
 });

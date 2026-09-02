@@ -13,6 +13,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
+import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
   AssetsIcon,
@@ -55,6 +56,20 @@ import {
 } from "./canvas/canvasAutoLayout.ts";
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
+import {
+  createCanvasEdgeZoomController,
+  type CanvasEdgeZoomController,
+} from "./canvas/canvasEdgeRendering.ts";
+import { FrozenCanvasEdgesOverlay } from "./canvas/FrozenCanvasEdgesOverlay.tsx";
+import {
+  CanvasPreviewPrefetcher,
+  type CanvasPreviewPrefetchHandle,
+} from "./canvas/CanvasPreviewPrefetcher.tsx";
+import {
+  captureFrozenCanvasEdges,
+  partitionCanvasEdges,
+  type FrozenCanvasEdgeSnapshot,
+} from "./canvas/frozenCanvasEdges.ts";
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
 import {
   installAgentCanvasWorkflowViewport,
@@ -128,8 +143,13 @@ function reducedMotionPreference(): boolean {
 type CanvasInteractionReason = "viewport" | "node-drag";
 
 export function AgentCanvasPage() {
+  const { refreshProjects } = useApp();
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
+  const {
+    resume: resumePointerSpotlight,
+    suspend: suspendPointerSpotlight,
+  } = pointerSpotlight;
   const workflow = session.state.workflow;
   const hasRunnableDraft = workflow ? hasPromptReadyDraft(workflow.nodes) : false;
   const {
@@ -169,6 +189,7 @@ export function AgentCanvasPage() {
     cancelRun,
     clearAutoRunNotice,
     refreshRuntime,
+    refreshAssets,
     refreshWorkflow,
     runAll,
     runNode,
@@ -179,6 +200,10 @@ export function AgentCanvasPage() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [canvasInteracting, setCanvasInteracting] = useState(false);
+  const [dragEdgeProjection, setDragEdgeProjection] = useState<{
+    liveEdgeIds: ReadonlySet<string>;
+    frozenSnapshots: readonly FrozenCanvasEdgeSnapshot[];
+  } | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [videoPreview, setVideoPreview] = useState<{
     asset: ProjectAssetSummaryV2;
@@ -196,6 +221,8 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const edgeZoomControllerRef = useRef<CanvasEdgeZoomController | null>(null);
+  const previewPrefetchRef = useRef<CanvasPreviewPrefetchHandle | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const workflowNodesRef = useRef(workflow?.nodes ?? []);
   const canonicalNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
@@ -206,25 +233,44 @@ export function AgentCanvasPage() {
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const canvasInteractionReasonsRef = useRef(new Set<CanvasInteractionReason>());
   const dragCancellationPendingRef = useRef(false);
+
+  if (edgeZoomControllerRef.current === null) {
+    edgeZoomControllerRef.current = createCanvasEdgeZoomController({
+      getElement: () => pointerSpotlight.hostRef.current,
+    });
+  }
+
+  useEffect(() => () => {
+    edgeZoomControllerRef.current?.dispose();
+  }, []);
   const latestPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
+  const pendingDragNodeChangesRef = useRef(new Map<string, NodeChange<AgentCanvasFlowNode>>());
+  const pendingDragNodeFrameRef = useRef<number | null>(null);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
   workflowNodesRef.current = workflow?.nodes ?? [];
   useEffect(() => {
     flowNodesRef.current = nodes;
   }, [nodes]);
+  const renderedEdges = useMemo(() => {
+    if (!dragEdgeProjection || !dragEdgeProjection.frozenSnapshots.length) return edges;
+    return edges.filter((edge) => dragEdgeProjection.liveEdgeIds.has(edge.id));
+  }, [dragEdgeProjection, edges]);
   const setCanvasInteractionReason = useCallback((
     reason: CanvasInteractionReason,
     active: boolean,
   ) => {
     const reasons = canvasInteractionReasonsRef.current;
+    const wasInteracting = reasons.size > 0;
     if (active) reasons.add(reason);
     else reasons.delete(reason);
     const nextInteracting = reasons.size > 0;
+    if (nextInteracting && !wasInteracting) suspendPointerSpotlight();
+    if (!nextInteracting && wasInteracting) resumePointerSpotlight();
     setCanvasInteracting((current) => current === nextInteracting ? current : nextInteracting);
-  }, []);
+  }, [resumePointerSpotlight, suspendPointerSpotlight]);
   const beginCanvasInteraction = useCallback((reason: CanvasInteractionReason) => {
     setCanvasInteractionReason(reason, true);
   }, [setCanvasInteractionReason]);
@@ -232,9 +278,11 @@ export function AgentCanvasPage() {
     setCanvasInteractionReason(reason, false);
   }, [setCanvasInteractionReason]);
   const clearCanvasInteractions = useCallback(() => {
+    if (canvasInteractionReasonsRef.current.size) resumePointerSpotlight();
     canvasInteractionReasonsRef.current.clear();
+    previewPrefetchRef.current?.setPaused(false);
     setCanvasInteracting(false);
-  }, []);
+  }, [resumePointerSpotlight]);
   const scheduleLayoutButtonFocus = useCallback(() => {
     window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
   }, []);
@@ -446,7 +494,6 @@ export function AgentCanvasPage() {
         <AgentCanvasInlineWorkbench
           workflow={workflow}
           node={node}
-          visibleStatus={runtime?.visible_status ?? node.status}
           patchNode={patchNode}
           patchBinding={patchBinding}
           deleteBinding={deleteBinding}
@@ -602,6 +649,12 @@ export function AgentCanvasPage() {
 
   const cancelActiveNodeDrag = useCallback(() => {
     endCanvasInteraction("node-drag");
+    setDragEdgeProjection(null);
+    if (pendingDragNodeFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingDragNodeFrameRef.current);
+      pendingDragNodeFrameRef.current = null;
+    }
+    pendingDragNodeChangesRef.current.clear();
     if (!activeDraggedNodeIdsRef.current.size) return;
     dragCancellationPendingRef.current = true;
     const nextNodes = cancelNodeDrag(
@@ -616,6 +669,7 @@ export function AgentCanvasPage() {
 
   useEffect(() => {
     const activeDraggedNodeIds = activeDraggedNodeIdsRef.current;
+    const pendingDragNodeChanges = pendingDragNodeChangesRef.current;
     const handleWindowBlur = () => {
       clearCanvasInteractions();
       cancelActiveNodeDrag();
@@ -630,6 +684,11 @@ export function AgentCanvasPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       activeDraggedNodeIds.clear();
       pendingPresentedNodesRef.current = null;
+      if (pendingDragNodeFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingDragNodeFrameRef.current);
+        pendingDragNodeFrameRef.current = null;
+      }
+      pendingDragNodeChanges.clear();
     };
   }, [cancelActiveNodeDrag, clearCanvasInteractions]);
 
@@ -659,13 +718,45 @@ export function AgentCanvasPage() {
     }
   }, [canonicalNodes, exitCanvasNodeFocus, focusedNodeId]);
 
-  const handleNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
-    setNodes((current) => {
-      const next = applyNodeChanges(changes, current);
-      flowNodesRef.current = next;
-      return next;
-    });
+  const applyCanvasNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
+    if (!changes.length) return;
+    const next = applyNodeChanges(changes, [...flowNodesRef.current]);
+    flowNodesRef.current = next;
+    setNodes(next);
   }, [setNodes]);
+
+  const flushPendingDragNodeChanges = useCallback(() => {
+    if (pendingDragNodeFrameRef.current !== null) {
+      window.cancelAnimationFrame(pendingDragNodeFrameRef.current);
+      pendingDragNodeFrameRef.current = null;
+    }
+    const changes = [...pendingDragNodeChangesRef.current.values()];
+    pendingDragNodeChangesRef.current.clear();
+    applyCanvasNodeChanges(changes);
+  }, [applyCanvasNodeChanges]);
+
+  const handleNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
+    const isDraggingPositionChange = (
+      change: NodeChange<AgentCanvasFlowNode>,
+    ): change is Extract<NodeChange<AgentCanvasFlowNode>, { type: "position" }> => (
+      change.type === "position" && change.dragging === true
+    );
+    const deferred = changes.filter(isDraggingPositionChange);
+    const immediate = changes.filter((change) => !isDraggingPositionChange(change));
+    applyCanvasNodeChanges(immediate);
+    if (!deferred.length) return;
+
+    for (const change of deferred) {
+      pendingDragNodeChangesRef.current.set(change.id, change);
+    }
+    if (pendingDragNodeFrameRef.current !== null) return;
+    pendingDragNodeFrameRef.current = window.requestAnimationFrame(() => {
+      pendingDragNodeFrameRef.current = null;
+      const queued = [...pendingDragNodeChangesRef.current.values()];
+      pendingDragNodeChangesRef.current.clear();
+      applyCanvasNodeChanges(queued);
+    });
+  }, [applyCanvasNodeChanges]);
 
   const connect = useCallback(async (connection: Connection) => {
     if (!workflow || !connectionPolicy || !connection.source || !connection.target || connection.source === connection.target) {
@@ -948,6 +1039,8 @@ export function AgentCanvasPage() {
 
   const initializeFlow = useCallback((instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>) => {
     flowRef.current = instance;
+    edgeZoomControllerRef.current?.setZoom(instance.getViewport().zoom);
+    previewPrefetchRef.current?.setViewport(instance.getViewport());
     if (workflow) scheduleWorkflowViewportInstall(instance, workflow);
   }, [scheduleWorkflowViewportInstall, workflow]);
 
@@ -1020,7 +1113,7 @@ export function AgentCanvasPage() {
       >
         <ReactFlow<AgentCanvasFlowNode, Edge>
           nodes={nodes}
-          edges={edges}
+          edges={renderedEdges}
           nodeTypes={nodeTypes}
           minZoom={0.05}
           maxZoom={focusedNodeId ? AGENT_CANVAS_FOCUS_MAX_ZOOM : 2}
@@ -1030,9 +1123,13 @@ export function AgentCanvasPage() {
           panOnScroll
           zoomOnDoubleClick={false}
           selectionOnDrag
-          onlyRenderVisibleElements={false}
+          onlyRenderVisibleElements={true}
           nodesDraggable={!layoutPreview.active}
           onInit={initializeFlow}
+          onMove={(_event, viewport) => {
+            edgeZoomControllerRef.current?.setZoom(viewport.zoom);
+            previewPrefetchRef.current?.setViewport(viewport);
+          }}
           onEdgesChange={onEdgesChange}
           onNodesChange={handleNodeChanges}
           onNodeClick={(_event, node) => {
@@ -1050,15 +1147,36 @@ export function AgentCanvasPage() {
           onNodeDragStart={(_event, node, draggedNodes) => {
             interruptReveal();
             beginCanvasInteraction("node-drag");
+            previewPrefetchRef.current?.setPaused(true);
             dragCancellationPendingRef.current = false;
+            const draggedNodeIds = new Set([
+              node.id,
+              ...draggedNodes.map((item) => item.id),
+            ]);
             beginNodeDrag(
               activeDraggedNodeIdsRef.current,
               node.id,
               draggedNodes.map((item) => item.id),
             );
+            const projection = partitionCanvasEdges(edges, draggedNodeIds);
+            const frozenSnapshots = captureFrozenCanvasEdges(
+              new Set(projection.frozenEdges.map((edge) => edge.id)),
+              pointerSpotlight.hostRef.current,
+            );
+            if (frozenSnapshots.length === projection.frozenEdges.length) {
+              setDragEdgeProjection({
+                liveEdgeIds: new Set(projection.liveEdges.map((edge) => edge.id)),
+                frozenSnapshots,
+              });
+            } else {
+              setDragEdgeProjection(null);
+            }
           }}
           onNodeDragStop={(_event, node, draggedNodes) => {
             endCanvasInteraction("node-drag");
+            previewPrefetchRef.current?.setPaused(false);
+            setDragEdgeProjection(null);
+            flushPendingDragNodeChanges();
             if (dragCancellationPendingRef.current) {
               dragCancellationPendingRef.current = false;
               return;
@@ -1096,9 +1214,13 @@ export function AgentCanvasPage() {
           onMoveStart={() => {
             interruptReveal();
             beginCanvasInteraction("viewport");
+            previewPrefetchRef.current?.setPaused(true);
           }}
           onMoveEnd={(_event, viewport) => {
             endCanvasInteraction("viewport");
+            edgeZoomControllerRef.current?.setZoom(viewport.zoom);
+            previewPrefetchRef.current?.setViewport(viewport);
+            previewPrefetchRef.current?.setPaused(false);
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {
               writeAgentCanvasViewport(workflow.workflow_id, viewport);
             }
@@ -1108,8 +1230,17 @@ export function AgentCanvasPage() {
           proOptions={{ hideAttribution: true }}
         >
           <AgentCanvasPointerBackgrounds />
+          {dragEdgeProjection ? (
+            <FrozenCanvasEdgesOverlay snapshots={dragEdgeProjection.frozenSnapshots} />
+          ) : null}
           <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
+
+        <CanvasPreviewPrefetcher
+          ref={previewPrefetchRef}
+          nodes={canonicalNodes}
+          boardRef={pointerSpotlight.hostRef}
+        />
 
         <div className="agent-canvas-toolbar" aria-label="Canvas controls">
           <div className="agent-canvas-toolbar__add">
@@ -1311,6 +1442,8 @@ export function AgentCanvasPage() {
           onActionReceipt={placeReceiptNodes}
           onWorkflowRefresh={refreshWorkflow}
           onRuntimeRefresh={refreshRuntime}
+          onAssetsRefresh={refreshAssets}
+          onProjectsRefresh={refreshProjects}
           collapsed={chatCollapsed}
           onCollapsedChange={setChatCollapsed}
           onViewNodes={revealAvailableCanvasNodes}

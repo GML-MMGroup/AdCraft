@@ -13,6 +13,18 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("proOptions={{ hideAttribution: true }}");
   });
 
+  it("keeps visibility culling enabled while wiring viewport preview prefetch", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("onlyRenderVisibleElements={true}");
+    expect(source).toContain("<CanvasPreviewPrefetcher");
+    expect(source).toContain("onMove={(_event, viewport) => {");
+    expect(source).toContain("previewPrefetchRef.current?.setViewport(viewport)");
+  });
+
   it("uses a monochrome treatment for the workflow toolbar and add-node menu", () => {
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
@@ -110,11 +122,19 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("session.state.selectedNodeId");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path");
-    expect(canvasCss).toContain("stroke-dasharray: 8 6");
-    expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
-    expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");
+    expect(canvasCss).toContain("stroke: #bdbdbd");
+    expect(canvasCss).toContain("stroke-dasharray: none");
+    expect(canvasCss).toContain("vector-effect: none");
+    expect(canvasCss).toContain("stroke: #686868");
+    expect(canvasCss).toContain("stroke: #858585");
+    expect(canvasCss).toMatch(/\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?filter: none;/);
+    expect(canvasCss).not.toMatch(/\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path,[\s\S]*?filter: drop-shadow/);
+    expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge-path");
     expect(canvasCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path[\s\S]*?animation: none;/,
+      /\.agent-canvas-board\.is-interacting \.react-flow__node\s*\{[\s\S]*?will-change: transform;/,
+    );
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board\.is-interacting \.agent-canvas-node__surface\s*\{[\s\S]*?box-shadow: none;/,
     );
     expect(progressiveRevealRule).toContain("animation: agent-canvas-progressive-reveal 420ms ease-out both");
     expect(progressiveRevealRule).not.toContain("outline");
@@ -220,9 +240,9 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("pendingPresentedNodesRef");
     expect(source).toContain("deferNodeSnapshotDuringDrag(");
     expect(source).toContain("finishNodeDrag(");
-    expect(source).toMatch(
-      /const handleNodeChanges = useCallback\([\s\S]*?applyNodeChanges\(changes, current\)[\s\S]*?flowNodesRef\.current = next;[\s\S]*?return next;/,
-    );
+    expect(source).toContain("const applyCanvasNodeChanges = useCallback(");
+    expect(source).toContain("pendingDragNodeChangesRef");
+    expect(source).toContain("flushPendingDragNodeChanges();");
     expect(source).toMatch(
       /const dragResult = finishNodeDrag\([\s\S]*?pendingPresentedNodesRef\.current = null;[\s\S]*?setNodes\(dragResult\.nodes\);[\s\S]*?updateNodePositions\(dragResult\.positions\)/,
     );
@@ -250,6 +270,48 @@ describe("AgentCanvasPage chrome", () => {
     );
   });
 
+  it("keeps unrelated edges visible through a frozen drag overlay", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const overlaySource = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/canvas/FrozenCanvasEdgesOverlay.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("captureFrozenCanvasEdges(");
+    expect(source).toContain("edges={renderedEdges}");
+    expect(source).toContain("<FrozenCanvasEdgesOverlay snapshots={dragEdgeProjection.frozenSnapshots} />");
+    expect(overlaySource).toContain("className=\"agent-canvas-frozen-edges\"");
+    expect(canvasCss).toMatch(/\.agent-canvas-frozen-edges \{[\s\S]*?pointer-events: none;/);
+  });
+
+  it("keeps edge strokes zoom-aware, opaque, and below node cards", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("createCanvasEdgeZoomController");
+    expect(source).toContain("edgeZoomControllerRef.current?.setZoom(viewport.zoom)");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?vector-effect: none;[\s\S]*?stroke-width: var\(--agent-canvas-edge-stroke-width, 0\.9px\);[\s\S]*?shape-rendering: geometricPrecision;/,
+    );
+    expect(canvasCss).not.toContain("vector-effect: non-scaling-stroke");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__edges \{[\s\S]*?z-index: 0;[\s\S]*?\.agent-canvas-board \.react-flow__nodes \{[\s\S]*?z-index: 1;/,
+    );
+  });
+
   it("keeps workflow nodes mounted so media previews survive viewport changes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
@@ -260,7 +322,7 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain("onlyRenderVisibleElements={false}");
+    expect(source).toContain("onlyRenderVisibleElements={true}");
     expect(nodeSource).toContain("areAgentCanvasNodePropsEqual");
     expect(nodeSource).toMatch(
       /memo\(\s*AgentCanvasNodeRendererComponent,\s*areAgentCanvasNodePropsEqual,?\s*\)/,
@@ -289,5 +351,17 @@ describe("AgentCanvasPage chrome", () => {
     );
     expect(canvasCss).toContain("animation-play-state: paused");
     expect(canvasCss).toContain("backdrop-filter: none");
+  });
+
+  it("keeps viewport movement on the compositor and avoids layout containment on nodes", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__viewport\s*\{[\s\S]*?will-change:\s*transform;/,
+    );
+    expect(canvasCss).not.toContain("contain: paint");
   });
 });

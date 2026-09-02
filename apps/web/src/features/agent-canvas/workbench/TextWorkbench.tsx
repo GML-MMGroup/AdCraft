@@ -13,7 +13,6 @@ export function TextWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
-  promptReady,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
@@ -21,21 +20,25 @@ export function TextWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
-  promptReady: boolean;
 }) {
   const isWorldSetting = node.creative_role === "world_setting";
+  const canRun = !isWorldSetting && (node.status === "draft" || node.status === "failed");
 
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
         <FourLinePromptEditor
-          ariaLabel={isWorldSetting ? "World Setting content" : "Text content"}
-          value={draft.textContent}
+          ariaLabel={isWorldSetting ? "World Setting content" : canRun ? "Text prompt" : "Text content"}
+          value={isWorldSetting || !canRun ? draft.textContent : draft.prompt}
           disabled={draft.pending}
           placeholder={isWorldSetting
             ? "Describe the world, its rules, place, era, and visual continuity."
-            : "Write the brief, direction, or notes for the next node."}
-          onChange={(event) => draft.setTextContent(event.currentTarget.value)}
+            : canRun ? "Describe the text you want to create." : "Write the brief, direction, or notes for the next node."}
+          onChange={(event) => {
+            if (isWorldSetting || !canRun) draft.setTextContent(event.currentTarget.value);
+            else draft.setPrompt(event.currentTarget.value);
+          }}
+          onBlur={() => void draft.flushPrompt()}
         />
       </label>
       <NodeWorkbenchError draft={draft} />
@@ -65,8 +68,8 @@ export function TextWorkbench({
             title={isWorldSetting
               ? "Save changes"
               : node.status === "failed" ? "Retry text" : "Run text"}
-            disabled={draft.pending || (!isWorldSetting && !promptReady)}
-            onClick={() => void (isWorldSetting ? draft.save() : draft.run())}
+            disabled={draft.pending || (canRun && !draft.prompt.trim())}
+            onClick={() => void (isWorldSetting || !canRun ? draft.save() : draft.run())}
           >
             {isWorldSetting ? <SaveIcon /> : <SendIcon />}
           </button>

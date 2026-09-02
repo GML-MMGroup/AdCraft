@@ -266,6 +266,22 @@
   overflow-anchor: auto;
 }
 
+.agent-chat__timeline-virtualized {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.agent-chat__timeline-virtualized-item {
+  min-width: 0;
+}
+
+.agent-chat__timeline-virtualized-placeholder {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .agent-chat__timeline-hydration {
   display: grid;
   width: min(100%, 300px);
@@ -3460,6 +3476,158 @@ button.agent-chat__node-links--related:hover {
 .agent-chat__product-source-selected button svg {
   width: 13px;
   height: 13px;
+}
+
+.agent-chat__reference-source-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-chat__reference-source-modes,
+.agent-chat__reference-source-scopes {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 8px;
+  background: var(--agent-chat-panel);
+}
+
+.agent-chat__reference-source-modes button,
+.agent-chat__reference-source-scopes button {
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--agent-chat-muted);
+  font-size: 11px;
+}
+
+.agent-chat__reference-source-modes button[aria-selected="true"],
+.agent-chat__reference-source-scopes button[aria-selected="true"] {
+  background: var(--agent-chat-raised);
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__reference-source-modes button:disabled,
+.agent-chat__reference-source-scopes button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.agent-chat__reference-source-picker > input[type="search"] {
+  min-height: 32px;
+  padding: 7px 9px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 7px;
+  background: var(--agent-chat-panel);
+  color: var(--agent-chat-primary);
+  font-size: 11px;
+  outline: none;
+}
+
+.agent-chat__reference-source-picker > input[type="search"]:focus {
+  border-color: var(--agent-chat-strong-line);
+}
+
+.agent-chat__reference-source-target {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.agent-chat__reference-source-assets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.agent-chat__reference-source-assets > button {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 8px;
+  background: var(--agent-chat-panel);
+  color: var(--agent-chat-primary);
+  text-align: left;
+}
+
+.agent-chat__reference-source-assets > button.is-selected {
+  border-color: var(--agent-chat-primary);
+}
+
+.agent-chat__reference-source-assets > button img,
+.agent-chat__reference-source-selected img {
+  width: 100%;
+  height: 72px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.agent-chat__reference-source-assets > button span,
+.agent-chat__reference-source-selected > span {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat__reference-source-picker > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 7px 10px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 7px;
+  color: var(--agent-chat-primary);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.agent-chat__reference-source-picker > label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-chat__reference-source-limit {
+  margin: -4px 0 0;
+  color: var(--agent-chat-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.agent-chat__reference-source-selected {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--agent-chat-border);
+  border-radius: 7px;
+}
+
+.agent-chat__reference-source-selected img {
+  width: 42px;
+  height: 42px;
+}
+
+.agent-chat__reference-source-selected button {
+  border: 0;
+  background: transparent;
+  color: var(--agent-chat-muted);
+  font-size: 10px;
 }
 
 .agent-chat__decision-dock-issue {

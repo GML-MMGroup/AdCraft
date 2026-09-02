@@ -87,6 +87,7 @@ import { projectNaturalMessagePresentation } from "./naturalMessagePresentation.
 import { useComposerContext } from "./useComposerContext.ts";
 import { projectProductionFocus } from "./productionFocusProjection.ts";
 import { GuidedAnswerBubble } from "./GuidedAnswerBubble.tsx";
+import { VirtualizedTimeline } from "./VirtualizedTimeline.tsx";
 import {
   isPersistedGuidedAnswerMessage,
   type GuidedAnswerBubbleV1,
@@ -108,6 +109,10 @@ type TimelineRenderOptions = {
 type TimelineEntry =
   | { entry_type: "timeline"; key: string; sequence: number; unit: ReturnType<typeof buildStageThreadTimeline>[number] }
   | { entry_type: "guided_answer"; key: string; sequence: number; answer: GuidedAnswerBubbleV1 };
+
+function timelineEntryKey(entry: TimelineEntry) {
+  return entry.key;
+}
 
 export function TimelineHydrationSkeleton({
   itemType,
@@ -138,6 +143,8 @@ export function AgentCanvasChatPanel({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  onAssetsRefresh,
+  onProjectsRefresh,
   runtime = null,
   collapsed: controlledCollapsed,
   onCollapsedChange,
@@ -152,6 +159,8 @@ export function AgentCanvasChatPanel({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  onAssetsRefresh?: () => Promise<void> | void;
+  onProjectsRefresh?: () => Promise<boolean> | void;
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -164,6 +173,7 @@ export function AgentCanvasChatPanel({
     onActionReceipt,
     onWorkflowRefresh,
     onRuntimeRefresh,
+    onAssetsRefresh,
   });
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -226,6 +236,17 @@ export function AgentCanvasChatPanel({
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const referenceOccurrenceLabel = useMemo(() => {
+    const content = standaloneGuidedInteraction?.content;
+    if (content?.content_kind !== "reference_source" || content.reference_kind !== "character_main") {
+      return null;
+    }
+    const occurrence = chat.state.guidanceSession?.journey.decisions.find((decision) => (
+      decision.element_kind === "character"
+      && decision.occurrence_id === content.occurrence_id
+    ));
+    return occurrence ? `Character ${occurrence.occurrence_index}` : null;
+  }, [chat.state.guidanceSession?.journey.decisions, standaloneGuidedInteraction]);
   const conceptInteraction = standaloneGuidedInteraction?.content.content_kind === "concept_choice"
     ? standaloneGuidedInteraction
     : null;
@@ -548,6 +569,7 @@ export function AgentCanvasChatPanel({
       <GuidedInteractionCard
         key={standaloneGuidedInteraction.interaction_id}
         interaction={standaloneGuidedInteraction}
+        referenceOccurrenceLabel={referenceOccurrenceLabel}
         pending={
           standaloneGuidedInteraction.status === "submitted"
           || chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id
@@ -555,6 +577,7 @@ export function AgentCanvasChatPanel({
         issue={chat.state.guidedInteractionIssue}
         pendingProductMainHandoff={composerContext.productMainHandoff}
         onClearProductMainHandoff={composerContext.actions.clearProductMainHandoff}
+        onProjectsRefresh={onProjectsRefresh}
         selectedConceptOptionId={conceptInteraction ? selectedConceptOptionId : null}
         onSelectConceptOption={(optionId) => {
           setSelectedConceptOptionId(optionId);
@@ -807,29 +830,25 @@ export function AgentCanvasChatPanel({
               .map((continuation) => (
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
-            {timelineEntries.map((entry) => {
-              if (entry.entry_type === "guided_answer") {
-                return <GuidedAnswerBubble key={entry.key} answer={entry.answer} />;
-              }
-              const unit = entry.unit;
-              const location = conversationLinkIndex.locations.get(unit.key) ?? null;
-              if (unit.unit_type === "item") {
-                const content = renderTimelineItem(unit.item, location);
-                if (!content) return null;
+            <VirtualizedTimeline
+              items={timelineEntries}
+              getKey={timelineEntryKey}
+              renderItem={(entry) => {
+                if (entry.entry_type === "guided_answer") {
+                  return <GuidedAnswerBubble answer={entry.answer} />;
+                }
+                const unit = entry.unit;
+                const location = conversationLinkIndex.locations.get(unit.key) ?? null;
+                if (unit.unit_type === "item") {
+                  return renderTimelineItem(unit.item, location);
+                }
+                const failedReceipts = unit.receipts.filter(({ action_receipt }) => (
+                  action_receipt.status === "failed"
+                  || action_receipt.status === "rejected"
+                  || action_receipt.status === "not_applied"
+                  || action_receipt.status === "applied_with_run_error"
+                ));
                 return (
-                  <div key={unit.key}>
-                    {content}
-                  </div>
-                );
-              }
-              const failedReceipts = unit.receipts.filter(({ action_receipt }) => (
-                action_receipt.status === "failed"
-                || action_receipt.status === "rejected"
-                || action_receipt.status === "not_applied"
-                || action_receipt.status === "applied_with_run_error"
-              ));
-              return (
-                <div key={unit.key}>
                   <StageThread
                     unit={unit}
                     result={location ? (
@@ -857,9 +876,9 @@ export function AgentCanvasChatPanel({
                       { compactCapability: true },
                     ))}
                   </StageThread>
-                </div>
-              );
-            })}
+                );
+              }}
+            />
             {chat.state.currentSessionActions.length ? (
               <GuidedActionsCard
                 actions={chat.state.currentSessionActions}

@@ -12,6 +12,7 @@ import type {
 import { normalizeProviderParameters } from "../model/providerModels.ts";
 import { canvasAuthoringErrorMessage } from "../canvas/canvasErrorMessage.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
+import { useNodePromptAutosave } from "./useNodePromptAutosave.ts";
 
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
   const role = node.creative_role.toLocaleLowerCase();
@@ -52,24 +53,24 @@ function structuredText(node: CanvasNodeV2): string {
 export function useNodeWorkbenchDraft({
   workflow,
   node,
-  visibleStatus,
   patchNode,
   onRun,
   onSaveVariation,
   onDiscardVariation,
   onMaterializeVariation,
   onSaveImageToLibrary,
+  onWorkflowRefresh,
 }: Pick<
   AgentCanvasInlineWorkbenchProps,
   | "workflow"
   | "node"
-  | "visibleStatus"
   | "patchNode"
   | "onRun"
   | "onSaveVariation"
   | "onDiscardVariation"
   | "onMaterializeVariation"
   | "onSaveImageToLibrary"
+  | "onWorkflowRefresh"
 >) {
   const [title, setTitle] = useState(node.variation_draft?.title ?? node.title);
   const [prompt, setPrompt] = useState(
@@ -105,17 +106,41 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
-  const effectiveStatus = visibleStatus ?? node.status;
+  const effectiveStatus = node.status;
   const isRunnableScript = node.node_type === "script"
     && (effectiveStatus === "draft" || effectiveStatus === "failed");
-  const editsTextContent = node.node_type === "text"
-    || (node.node_type === "script" && !isRunnableScript);
+  const isRunnableText = node.node_type === "text"
+    && !isWorldSetting
+    && (effectiveStatus === "draft" || effectiveStatus === "failed");
+  const editsTextContent = (node.node_type === "text" && isWorldSetting)
+    || (node.node_type === "script" && !isRunnableScript)
+    || (node.node_type === "text" && !isRunnableText);
   const editsGenerationPrompt = isRunnableScript
+    || isRunnableText
     || ["image", "video", "audio"].includes(node.node_type);
+  const canAutosavePrompt = editsGenerationPrompt
+    && !isReadyMedia
+    && (effectiveStatus === "draft" || effectiveStatus === "failed");
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
-  const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
-    ? { ...node, status: effectiveStatus }
-    : node;
+  const nodeForRun = node;
+
+  const handlePromptConflict = useCallback(async () => {
+    setError("This prompt was changed elsewhere. Review the refreshed workflow, then retry or discard your local text.");
+    await onWorkflowRefresh?.();
+  }, [onWorkflowRefresh]);
+  const handlePromptError = useCallback((promptError: unknown) => {
+    const nextError = errorState(promptError);
+    setError(nextError.message);
+    setErrorAction(nextError.action);
+  }, []);
+  const promptAutosave = useNodePromptAutosave({
+    nodeId: node.node_id,
+    value: prompt,
+    enabled: canAutosavePrompt,
+    patchNode,
+    onConflict: handlePromptConflict,
+    onError: handlePromptError,
+  });
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
@@ -138,11 +163,21 @@ export function useNodeWorkbenchDraft({
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
-    if (!changedNode && dirty) return;
+    const authoritativePrompt = (node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "").trim() || null;
+    const waitingForPromptResponse = !changedNode
+      && promptAutosave.lastSavedValue !== authoritativePrompt;
+    if (!changedNode && (
+      dirty
+      || promptAutosave.status === "dirty"
+      || promptAutosave.status === "saving"
+      || promptAutosave.status === "conflict"
+      || promptAutosave.hasLocalChanges
+      || waitingForPromptResponse
+    )) return;
     draftNodeIdRef.current = node.node_id;
     restoreFromNode();
     if (changedNode) setDirty(false);
-  }, [dirty, node, restoreFromNode]);
+  }, [dirty, node, promptAutosave.hasLocalChanges, promptAutosave.lastSavedValue, promptAutosave.status, restoreFromNode]);
 
   useEffect(() => {
     const discardConflictDraft = (event: Event) => {
@@ -216,14 +251,15 @@ export function useNodeWorkbenchDraft({
       return saved;
     }
 
+    if (canAutosavePrompt && !(await promptAutosave.flush())) return false;
+
     if (isRunnableScript && !prompt.trim()) {
-      setError("Enter a script direction before running.");
+      setError("Enter a prompt before running this node.");
       return false;
     }
 
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
-      ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
       ...(usesProvider ? {
         model_selection_mode: modelSelectionMode,
         model_ref: modelSelectionMode === "explicit" ? modelRef : null,
@@ -244,8 +280,18 @@ export function useNodeWorkbenchDraft({
   };
 
   const run = async () => {
+    if (canAutosavePrompt) {
+      if (!(await promptAutosave.flush())) return;
+      if (!prompt.trim()) {
+        setError("Enter a prompt before running this node.");
+        return;
+      }
+    }
     if ((dirty || parameterMigrationRequired) && !(await save())) return;
-    await perform(() => onRun(nodeForRun));
+    const runNode = editsGenerationPrompt
+      ? { ...nodeForRun, generation_prompt: prompt.trim() || null }
+      : nodeForRun;
+    await perform(() => onRun(runNode));
   };
 
   const materializeVariation = async (action: "create_draft" | "generate") => {
@@ -278,7 +324,11 @@ export function useNodeWorkbenchDraft({
     title,
     setTitle: (value: string) => { setTitle(value); setDirty(true); },
     prompt,
-    setPrompt: (value: string) => { setPrompt(value); setDirty(true); },
+    setPrompt: (value: string) => {
+      setPrompt(value);
+      if (canAutosavePrompt) promptAutosave.schedule(value);
+      else setDirty(true);
+    },
     textContent,
     setTextContent: (value: string) => { setTextContent(value); setDirty(true); },
     modelSelectionMode,
@@ -307,6 +357,19 @@ export function useNodeWorkbenchDraft({
     error,
     errorAction,
     dirty,
+    promptSaveStatus: promptAutosave.status,
+    promptSaveError: promptAutosave.status === "conflict" ? "Prompt conflict needs your decision." : null,
+    flushPrompt: promptAutosave.flush,
+    retryPromptSave: promptAutosave.retry,
+    discardPromptChanges: () => {
+      const discarded = promptAutosave.discard();
+      restoreFromNode();
+      setPrompt(discarded);
+      setDirty(false);
+      setError(null);
+      return discarded;
+    },
+    refreshWorkflow: onWorkflowRefresh,
     isReadyMedia,
     isWorldSetting,
     editsTextContent,

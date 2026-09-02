@@ -44,15 +44,46 @@ export function mediaAssetContentPath(asset?: MediaAssetLike | null) {
 }
 
 export function mediaAssetPreviewPath(asset?: MediaAssetLike | null) {
-  const previewPath = firstMediaPath(
+  const previewPath = mediaAssetPreviewRenditionPath(asset);
+  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
+}
+
+/**
+ * Return only a backend-provided derived preview rendition. Unlike
+ * mediaAssetPreviewPath this never falls back to the original content URL,
+ * which lets canvas nodes avoid downloading source media during first paint.
+ */
+export function mediaAssetPreviewRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
     asset?.thumbnail_path,
     asset?.thumbnail_url,
-    asset?.poster_path,
-    asset?.poster_url,
     asset?.preview_path,
     asset?.preview_url,
-  );
-  return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.media_url, asset?.local_path), asset);
+  ), asset);
+}
+
+export function mediaAssetCanvasPreviewRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.poster_path),
+    canvasPreviewCandidate(asset?.poster_url),
+    canvasPreviewCandidate(asset?.thumbnail_path),
+    canvasPreviewCandidate(asset?.thumbnail_url),
+    canvasPreviewCandidate(asset?.preview_path),
+    canvasPreviewCandidate(asset?.preview_url),
+  ), asset);
+}
+
+/**
+ * Return responsive, version-pinned candidates for the canvas rendition.
+ * Only the first-party preview/poster routes support size negotiation; legacy
+ * or opaque rendition URLs intentionally return no srcset.
+ */
+export function mediaAssetCanvasPreviewSrcSet(asset?: MediaAssetLike | null) {
+  const source = mediaAssetCanvasPreviewRenditionPath(asset);
+  if (!source || !isResizableCanvasRenditionPath(source)) return "";
+  const small = withMediaRenditionSize(source, 320);
+  const large = withMediaRenditionSize(source, 640);
+  return `${small} 320w, ${large} 640w`;
 }
 
 export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {
@@ -64,6 +95,30 @@ export function mediaAssetPosterPath(asset?: MediaAssetLike | null) {
     firstMediaPath(asset?.poster_path, asset?.poster_url, asset?.thumbnail_path, asset?.thumbnail_url, asset?.preview_path, asset?.preview_url),
     asset,
   );
+}
+
+/** Return only a backend-provided poster/preview rendition, never source media. */
+export function mediaAssetPosterRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    asset?.poster_path,
+    asset?.poster_url,
+    asset?.thumbnail_path,
+    asset?.thumbnail_url,
+    asset?.preview_path,
+    asset?.preview_url,
+  ), asset);
+}
+
+/** Return only a derived poster safe for canvas video cards. */
+export function mediaAssetCanvasPosterRenditionPath(asset?: MediaAssetLike | null) {
+  return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.poster_path),
+    canvasPreviewCandidate(asset?.poster_url),
+    canvasPreviewCandidate(asset?.thumbnail_path),
+    canvasPreviewCandidate(asset?.thumbnail_url),
+    canvasPreviewCandidate(asset?.preview_path),
+    canvasPreviewCandidate(asset?.preview_url),
+  ), asset);
 }
 
 export function usesDerivedMediaPreview(asset?: MediaAssetLike | null) {
@@ -105,6 +160,25 @@ function firstMediaPath(...values: Array<string | null | undefined>) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+function canvasPreviewCandidate(path?: string | null) {
+  const value = firstMediaPath(path);
+  return isOriginalContentPath(value) ? "" : value;
+}
+
+function isOriginalContentPath(path: string) {
+  const normalized = path.split(/[?#]/, 1)[0];
+  return /\/api\/v2\/assets\/[^/]+\/content$/i.test(normalized);
+}
+
+function isResizableCanvasRenditionPath(path: string) {
+  return /^\/api\/v2\/assets\/[^/]+\/(preview|poster)(?:\?|$)/i.test(path);
+}
+
+function withMediaRenditionSize(path: string, size: 320 | 640) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}size=${size}`;
 }
 
 function stringValue(value: unknown) {

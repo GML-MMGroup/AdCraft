@@ -53,6 +53,7 @@ import type {
   CanvasNodeErrorV2,
   CanvasNodeExecutionModeV2,
   NodePromptPreparationV1,
+  RolePromptCompactionDecisionV2,
   PromptAssertionEvidenceV1,
   PromptAssertionSourceSnapshotV1,
   ResolvedNodeParameterV2,
@@ -129,6 +130,8 @@ import type {
   GuidedInteractionAcceptedV1,
   GuidedInteractionContentV1,
   GuidedInteractionActionV1,
+  GuidedReferenceCandidateListResponseV2,
+  GuidedReferenceCandidateV2,
   GuidanceAwaitingV1,
   GuidanceAdvancePreconditionV1,
   JourneyElementDecisionV2,
@@ -167,10 +170,23 @@ const CANVAS_NODE_EXECUTION_MODES = new Set<CanvasNodeExecutionModeV2>(["generat
 const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status"]>([
   "queued",
   "working",
+  "waiting_user",
   "ready",
   "failed",
   "superseded",
   "not_applicable",
+]);
+const ROLE_PROMPT_COMPACTION_OUTCOMES = new Set<RolePromptCompactionDecisionV2["outcome"]>([
+  "compacted",
+  "preserved",
+]);
+const ROLE_PROMPT_COMPACTION_REASONS = new Set<RolePromptCompactionDecisionV2["reason"]>([
+  "policy_disabled",
+  "not_eligible",
+  "ownership_unknown",
+  "identity_unproven",
+  "exact_duplicate",
+  "preserved_authority",
 ]);
 const PRESENTATION_STREAM_KINDS = new Set<PresentationStreamKindV1>(["assistant", "node_prompt"]);
 const PRESENTATION_STREAM_EVENT_TYPES = new Set<PresentationStreamEventTypeV1>([
@@ -900,6 +916,43 @@ function normalizePromptAssertionEvidenceV1(
   };
 }
 
+function normalizeRolePromptCompactionDecisionV2(
+  value: unknown,
+  path: string,
+): RolePromptCompactionDecisionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "block_id",
+    "source_id",
+    "source_digest",
+    "precedence",
+    "outcome",
+    "retained_block_id",
+    "retained_precedence",
+    "reason",
+  ], path);
+  const precedence = expectNonNegativeInteger(record.precedence, `${path}.precedence`);
+  if (precedence > 128) fail(`${path}.precedence`, "expected precedence at most 128");
+  const retainedPrecedence = record.retained_precedence === undefined || record.retained_precedence === null
+    ? null
+    : expectNonNegativeInteger(record.retained_precedence, `${path}.retained_precedence`);
+  if (retainedPrecedence !== null && retainedPrecedence > 128) {
+    fail(`${path}.retained_precedence`, "expected precedence at most 128");
+  }
+  return {
+    block_id: expectNonEmptyString(record.block_id, `${path}.block_id`),
+    source_id: expectNonEmptyString(record.source_id, `${path}.source_id`),
+    source_digest: requiredDigest(record.source_digest, `${path}.source_digest`),
+    precedence,
+    outcome: expectLiteral(record.outcome, ROLE_PROMPT_COMPACTION_OUTCOMES, `${path}.outcome`),
+    retained_block_id: record.retained_block_id === undefined || record.retained_block_id === null
+      ? null
+      : expectNonEmptyString(record.retained_block_id, `${path}.retained_block_id`),
+    retained_precedence: retainedPrecedence,
+    reason: expectLiteral(record.reason, ROLE_PROMPT_COMPACTION_REASONS, `${path}.reason`),
+  };
+}
+
 function normalizeNodePromptPreparationV1(
   value: unknown,
   path: string,
@@ -927,6 +980,9 @@ function normalizeNodePromptPreparationV1(
       "style_projection_digest",
       "brief_digest",
       "parameter_origins",
+      "compaction_policy_version",
+      "compaction_policy_digest",
+      "compaction_decisions",
       "assertion_evidence",
       "attempt_stage",
       "error",
@@ -935,6 +991,7 @@ function normalizeNodePromptPreparationV1(
     path,
   );
   const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
+  const attemptNo = expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`);
   const operationId = nullableStringWithDefault(record.operation_id, `${path}.operation_id`);
   const presentationStreamId = nullableStringWithDefault(
     record.presentation_stream_id,
@@ -960,27 +1017,94 @@ function normalizeNodePromptPreparationV1(
   const parameterOrigins = expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
     normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
   ));
+  const compactionPolicyVersion = nullableStringWithDefault(
+    record.compaction_policy_version,
+    `${path}.compaction_policy_version`,
+  );
+  if (compactionPolicyVersion !== null && !compactionPolicyVersion.trim()) {
+    fail(`${path}.compaction_policy_version`, "expected non-empty string");
+  }
+  const compactionPolicyDigest = nullableDigest(
+    record.compaction_policy_digest,
+    `${path}.compaction_policy_digest`,
+  );
+  const compactionDecisions = expectArray(
+    record.compaction_decisions ?? [],
+    `${path}.compaction_decisions`,
+  ).map((item, index) => normalizeRolePromptCompactionDecisionV2(
+    item,
+    `${path}.compaction_decisions[${index}]`,
+  ));
+  const roleVariant = nullableStringWithDefault(record.role_variant, `${path}.role_variant`);
+  const recipeId = nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`);
+  const recipeVersion = nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`);
+  const recipeDigest = nullableDigest(record.recipe_digest, `${path}.recipe_digest`);
+  const requirementRevisionId = nullableStringWithDefault(
+    record.requirement_revision_id,
+    `${path}.requirement_revision_id`,
+  );
+  const requirementRevisionNo = record.requirement_revision_no === undefined || record.requirement_revision_no === null
+    ? null
+    : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`);
+  const bindingDigest = nullableDigest(record.binding_digest, `${path}.binding_digest`);
+  const styleProjectionDigest = nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`);
+  const briefDigest = nullableDigest(record.brief_digest, `${path}.brief_digest`);
+  const assertionEvidence = record.assertion_evidence === undefined || record.assertion_evidence === null
+    ? null
+    : normalizePromptAssertionEvidenceV1(record.assertion_evidence, `${path}.assertion_evidence`);
+  const attemptStage = nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`);
   if (status === "not_applicable" && (
     [
       operationId,
       presentationStreamId,
       contextSnapshotId,
       promptDigest,
-      record.role_variant,
-      record.recipe_id,
-      record.recipe_version,
-      record.recipe_digest,
-      record.requirement_revision_id,
-      record.binding_digest,
-      record.style_projection_digest,
-      record.brief_digest,
-      record.assertion_evidence,
+      roleVariant,
+      recipeId,
+      recipeVersion,
+      recipeDigest,
+      requirementRevisionId,
+      bindingDigest,
+      styleProjectionDigest,
+      briefDigest,
+      compactionPolicyVersion,
+      compactionPolicyDigest,
+      assertionEvidence,
       error,
     ].some((value) => value !== null && value !== undefined)
     || Object.keys(documentRevisions).length > 0
     || parameterOrigins.length > 0
+    || compactionDecisions.length > 0
   )) {
     fail(`${path}.status`, "not_applicable prompt preparation cannot have preparation data");
+  }
+  if (status === "waiting_user" && (
+    operationId !== null
+    || presentationStreamId !== null
+    || contextSnapshotId !== null
+    || occurrenceId !== null
+    || characterPhase !== null
+    || promptDigest !== null
+    || roleVariant !== null
+    || recipeId !== null
+    || recipeVersion !== null
+    || recipeDigest !== null
+    || requirementRevisionId !== null
+    || requirementRevisionNo !== null
+    || Object.keys(documentRevisions).length > 0
+    || bindingDigest !== null
+    || styleProjectionDigest !== null
+    || briefDigest !== null
+    || parameterOrigins.length > 0
+    || compactionPolicyVersion !== null
+    || compactionPolicyDigest !== null
+    || compactionDecisions.length > 0
+    || assertionEvidence !== null
+    || attemptStage !== null
+    || error !== null
+    || attemptNo !== 0
+  )) {
+    fail(`${path}.status`, "waiting_user prompt preparation cannot have preparation context");
   }
   if (status === "failed" && !error) fail(`${path}.error`, "failed prompt preparation requires a safe error");
   if (status !== "failed" && status !== "superseded" && error) {
@@ -993,34 +1117,27 @@ function normalizeNodePromptPreparationV1(
     status,
     operation_id: operationId,
     presentation_stream_id: presentationStreamId,
-    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    attempt_no: attemptNo,
     context_snapshot_id: contextSnapshotId,
     occurrence_id: occurrenceId,
     character_phase: characterPhase,
     prompt_digest: promptDigest,
-    role_variant: nullableStringWithDefault(record.role_variant, `${path}.role_variant`),
-    recipe_id: nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`),
-    recipe_version: nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`),
-    recipe_digest: nullableDigest(record.recipe_digest, `${path}.recipe_digest`),
-    requirement_revision_id: nullableStringWithDefault(
-      record.requirement_revision_id,
-      `${path}.requirement_revision_id`,
-    ),
-    requirement_revision_no: record.requirement_revision_no === undefined || record.requirement_revision_no === null
-      ? null
-      : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
+    role_variant: roleVariant,
+    recipe_id: recipeId,
+    recipe_version: recipeVersion,
+    recipe_digest: recipeDigest,
+    requirement_revision_id: requirementRevisionId,
+    requirement_revision_no: requirementRevisionNo,
     document_revisions: documentRevisions,
-    binding_digest: nullableDigest(record.binding_digest, `${path}.binding_digest`),
-    style_projection_digest: nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`),
-    brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
+    binding_digest: bindingDigest,
+    style_projection_digest: styleProjectionDigest,
+    brief_digest: briefDigest,
     parameter_origins: parameterOrigins,
-    assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
-      ? null
-      : normalizePromptAssertionEvidenceV1(
-          record.assertion_evidence,
-          `${path}.assertion_evidence`,
-        ),
-    attempt_stage: nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`),
+    compaction_policy_version: compactionPolicyVersion,
+    compaction_policy_digest: compactionPolicyDigest,
+    compaction_decisions: compactionDecisions,
+    assertion_evidence: assertionEvidence,
+    attempt_stage: attemptStage,
     error,
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -3006,6 +3123,10 @@ export function normalizeConceptProposalV2(
       "turn_id",
       "video_skill_run_id",
       "topic_id",
+      "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
+      "character_phase",
       "creative_direction_snapshot_id",
       "proposal_revision",
       "source_proposal_id",
@@ -3039,6 +3160,20 @@ export function normalizeConceptProposalV2(
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     video_skill_run_id: nullableStringWithDefault(record.video_skill_run_id, `${path}.video_skill_run_id`),
     topic_id: nullableStringWithDefault(record.topic_id, `${path}.topic_id`),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    occurrence_index: record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`),
+    occurrence_count: record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(
+        record.character_phase,
+        new Set<NonNullable<ConceptProposalV2["character_phase"]>>(["main", "turnaround"]),
+        `${path}.character_phase`,
+      ),
     creative_direction_snapshot_id: nullableStringWithDefault(
       record.creative_direction_snapshot_id,
       `${path}.creative_direction_snapshot_id`,
@@ -4951,12 +5086,20 @@ export function normalizeGuidanceAdvancePreconditionV1(
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review", "reference_source"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
+  const allowedActions = expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`));
+  if (kind === "reference_source" && (
+    allowedActions.length !== 2
+    || !allowedActions.includes("use_reference")
+    || !allowedActions.includes("skip_reference")
+  )) {
+    fail(`${path}.allowed_actions`, "reference source requires use_reference and skip_reference actions");
+  }
   return {
     interaction_id: expectNonEmptyString(record.interaction_id, `${path}.interaction_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind,
     status: expectLiteral(record.status, new Set<GuidedInteractionV1["status"]>(["open", "submitted", "closed", "superseded"]), `${path}.status`), response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`), expected_session_revision: expectPositiveInteger(record.expected_session_revision, `${path}.expected_session_revision`), revision: expectPositiveInteger(record.revision, `${path}.revision`), title: expectNonEmptyString(record.title, `${path}.title`), context: expectNonEmptyString(record.context, `${path}.context`), content,
-    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
+    allowed_actions: allowedActions,
     submit_path: expectNonEmptyString(record.submit_path, `${path}.submit_path`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`), updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
@@ -5011,6 +5154,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       "stage_revision",
       "action_id",
       "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
+      "character_phase",
       "capability_id",
       "options",
       "allow_custom",
@@ -5031,6 +5177,17 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     if (allowExclusion && !new Set<GuidedJourneyStageV2>(["world_view", "props", "character", "bgm"]).has(stage)) {
       fail(`${path}.allow_exclusion`, "exclusion is not allowed for this journey stage");
     }
+    const occurrenceIndex = record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`);
+    const occurrenceCount = record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`);
+    if (occurrenceIndex !== null && occurrenceIndex > 32) fail(`${path}.occurrence_index`, "expected at most 32");
+    if (occurrenceCount !== null && occurrenceCount > 32) fail(`${path}.occurrence_count`, "expected at most 32");
+    const characterPhase = record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main"] as const), `${path}.character_phase`);
     return {
       content_kind: "concept_choice",
       proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`),
@@ -5038,6 +5195,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
       action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
       occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+      occurrence_index: occurrenceIndex,
+      occurrence_count: occurrenceCount,
+      character_phase: characterPhase,
       capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
       options,
       allow_custom: true,
@@ -5048,6 +5208,46 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     forbidUnknownFields(record, ["content_kind", "node_id", "node_revision", "asset_id", "asset_version_id", "summary"], path);
     if (kind !== "media_review") fail(path, "invalid media review interaction content");
     return { content_kind: "media_review", node_id: expectNonEmptyString(record.node_id, `${path}.node_id`), node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`), asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`), asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`), summary: expectNonEmptyString(record.summary, `${path}.summary`) };
+  }
+  if (contentKind === "reference_source") {
+    forbidUnknownFields(record, [
+      "content_kind",
+      "reference_kind",
+      "target_node_id",
+      "target_node_revision",
+      "occurrence_id",
+      "question",
+      "use_reference_label",
+      "skip_reference_label",
+      "expected_guidance_revision",
+    ], path);
+    if (kind !== "reference_source") fail(path, "invalid reference source interaction content");
+    const referenceKind = expectLiteral(
+      record.reference_kind,
+      new Set(["character_main", "scene_main"] as const),
+      `${path}.reference_kind`,
+    );
+    const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+    if (referenceKind === "character_main" && occurrenceId === null) {
+      fail(path, "Character reference checkpoints require an occurrence identity.");
+    }
+    if (referenceKind === "scene_main" && occurrenceId !== null) {
+      fail(path, "Scene reference checkpoints cannot carry character scope.");
+    }
+    return {
+      content_kind: "reference_source",
+      reference_kind: referenceKind,
+      target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
+      target_node_revision: expectPositiveInteger(record.target_node_revision, `${path}.target_node_revision`),
+      occurrence_id: occurrenceId,
+      question: expectNonEmptyString(record.question, `${path}.question`),
+      use_reference_label: expectNonEmptyString(record.use_reference_label, `${path}.use_reference_label`),
+      skip_reference_label: expectNonEmptyString(record.skip_reference_label, `${path}.skip_reference_label`),
+      expected_guidance_revision: expectPositiveInteger(
+        record.expected_guidance_revision,
+        `${path}.expected_guidance_revision`,
+      ),
+    };
   }
   fail(`${path}.content_kind`, "unknown guided interaction content");
 }
@@ -5072,10 +5272,105 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
   return { source_kind: expectLiteral(record.source_kind, new Set(["node", "image_asset"] as const), `${path}.source_kind`), source_id: expectNonEmptyString(record.source_id, `${path}.source_id`), display_name: expectNonEmptyString(record.display_name, `${path}.display_name`), media_type: expectLiteral(record.media_type, new Set(["text", "image", "video", "audio"] as const), `${path}.media_type`) };
 }
 
+function normalizeGuidedReferenceCandidateV2(value: unknown, path: string): GuidedReferenceCandidateV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "entity_id",
+    "member_id",
+    "asset_id",
+    "asset_version_id",
+    "media_type",
+    "display_name",
+    "preview_url",
+    "content_url",
+    "reference_kind",
+    "semantic_reference_role",
+    "reference_purpose",
+    "selectable",
+  ], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const semanticReferenceRole = expectLiteral(
+    record.semantic_reference_role,
+    new Set(["character_reference", "scene_reference"] as const),
+    `${path}.semantic_reference_role`,
+  );
+  const referencePurpose = expectLiteral(
+    record.reference_purpose,
+    new Set(["identity_guidance", "environment_guidance"] as const),
+    `${path}.reference_purpose`,
+  );
+  const expectedRole = referenceKind === "character_main" ? "character_reference" : "scene_reference";
+  const expectedPurpose = referenceKind === "character_main" ? "identity_guidance" : "environment_guidance";
+  if (semanticReferenceRole !== expectedRole || referencePurpose !== expectedPurpose) {
+    fail(path, "reference candidate role and purpose do not match its kind");
+  }
+  const previewUrl = nullableBrowserSafeUrl(record.preview_url, `${path}.preview_url`);
+  const contentUrl = nullableBrowserSafeUrl(record.content_url, `${path}.content_url`);
+  if (!previewUrl || !contentUrl) fail(path, "reference candidate requires browser-safe preview and content URLs");
+  return {
+    entity_id: nullableStringWithDefault(record.entity_id, `${path}.entity_id`),
+    member_id: nullableStringWithDefault(record.member_id, `${path}.member_id`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`),
+    media_type: expectLiteral(record.media_type, new Set(["image"] as const), `${path}.media_type`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    preview_url: previewUrl,
+    content_url: contentUrl,
+    reference_kind: referenceKind,
+    semantic_reference_role: semanticReferenceRole,
+    reference_purpose: referencePurpose,
+    selectable: expectBoolean(record.selectable, `${path}.selectable`),
+  };
+}
+
+export function normalizeGuidedReferenceCandidateListResponseV2(
+  value: unknown,
+  path = "referenceCandidates",
+): GuidedReferenceCandidateListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "reference_kind", "scope", "items", "next_cursor"], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const scope = expectLiteral(
+    record.scope,
+    new Set(["project", "mine", "recommended"] as const),
+    `${path}.scope`,
+  );
+  const items = expectArray(record.items, `${path}.items`).map((item, index) => {
+    const candidate = normalizeGuidedReferenceCandidateV2(item, `${path}.items[${index}]`);
+    if (candidate.reference_kind !== referenceKind) {
+      fail(`${path}.items[${index}].reference_kind`, "does not match response reference_kind");
+    }
+    if (scope === "project" && (candidate.entity_id !== null || candidate.member_id !== null)) {
+      fail(`${path}.items[${index}]`, "project candidates cannot carry catalog provenance");
+    }
+    if (scope !== "project" && (!candidate.entity_id || !candidate.member_id)) {
+      fail(`${path}.items[${index}]`, "catalog candidates require entity and member provenance");
+    }
+    return candidate;
+  });
+  const identityKeys = new Set(items.map((item) => `${item.asset_id}:${item.asset_version_id}`));
+  if (identityKeys.size !== items.length) fail(`${path}.items`, "candidate AssetVersions must be unique");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    reference_kind: referenceKind,
+    scope,
+    items,
+    next_cursor: nullableStringWithDefault(record.next_cursor, `${path}.next_cursor`),
+  };
+}
+
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "reference_source", "manual_node_run", "milestone_idle"]), `${path}.kind`);
   const requiresUserAction = expectBoolean(record.requires_user_action, `${path}.requires_user_action`);
   const resumePolicy = expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`);
   const interactionId = nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`);
@@ -5085,6 +5380,12 @@ function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwai
     && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
   ) {
     fail(path, "invalid Product source awaiting authority");
+  }
+  if (
+    kind === "reference_source"
+    && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
+  ) {
+    fail(path, "invalid reference source awaiting authority");
   }
   return {
     awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`),

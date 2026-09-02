@@ -16,6 +16,7 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash,
   onToggleFavorite,
   onRename,
+  onChangeCover,
   selectionMode = false,
   selected = false,
   selectionDisabled = false,
@@ -33,6 +34,7 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash?: () => void;
   onToggleFavorite?: () => void;
   onRename?: (trigger: HTMLButtonElement) => void;
+  onChangeCover?: () => void;
   selectionMode?: boolean;
   selected?: boolean;
   selectionDisabled?: boolean;
@@ -132,6 +134,21 @@ export const ProjectCard = memo(function ProjectCard({
           >
             <EditIcon />
           </button>
+          <button
+            className="project-menu-btn project-cover-btn"
+            type="button"
+            role="menuitem"
+            tabIndex={actionsOpen ? 0 : -1}
+            aria-label={`Change cover for ${name}`}
+            title="Change cover"
+            onClick={(event) => {
+              event.stopPropagation();
+              setActionsOpen(false);
+              onChangeCover?.();
+            }}
+          >
+            <ImageIcon />
+          </button>
           <button className="project-menu-btn project-trash-btn" type="button" role="menuitem" tabIndex={actionsOpen ? 0 : -1} aria-label={`Move ${name} to trash`} title="Move to trash" onClick={handleTrash}>
             <TrashIcon />
           </button>
@@ -168,7 +185,7 @@ function ProjectPreviewImage({
 }) {
   const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
   const [previewFailed, setPreviewFailed] = useState(false);
-  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.mediaPath) : "";
+  const sourceUrl = cover ? projectCoverMediaUrl(cover.posterPath || cover.previewPath || cover.mediaPath) : "";
   const generatedPosterKey = cover?.mediaType === "video" && !cover.posterPath
     ? `${cover.assetId}:${cover.versionId}:${cover.mediaPath}`
     : "";

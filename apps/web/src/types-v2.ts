@@ -93,6 +93,8 @@ export interface PersistedWorkflowV2 extends WorkflowV2 {
 }
 
 export type ProjectV2Status = "active" | "archived" | "trashed";
+export type ProjectCoverStateV2 = "ready" | "unresolved" | "none" | "broken";
+export type ProjectCoverSourceV2 = "manual" | "product_main" | "migrated";
 
 export interface ProjectCoverV2 {
   asset_id: string;
@@ -109,6 +111,10 @@ export interface ProjectV2Summary {
   status: ProjectV2Status;
   is_favorite: boolean;
   cover_asset_id: string | null;
+  cover_version_id?: string | null;
+  cover_state?: ProjectCoverStateV2;
+  cover_source?: ProjectCoverSourceV2 | null;
+  cover_updated_at?: string | null;
   cover?: ProjectCoverV2 | null;
   project_version: number;
   updated_at: string;
@@ -131,6 +137,7 @@ export interface ProjectV2UpdateRequest {
   description?: string;
   is_favorite?: boolean;
   cover_asset_id?: string | null;
+  cover_version_id?: string | null;
   status?: "active" | "archived";
 }
 
@@ -1566,7 +1573,14 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
-export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded" | "not_applicable";
+export type NodePromptPreparationStatusV1 =
+  | "queued"
+  | "working"
+  | "waiting_user"
+  | "ready"
+  | "failed"
+  | "superseded"
+  | "not_applicable";
 
 export interface ResolvedNodeParameterV2 {
   name: string;
@@ -1614,6 +1628,23 @@ export interface PromptAssertionEvidenceV1 {
   evidence_digest: string;
 }
 
+export interface RolePromptCompactionDecisionV2 {
+  block_id: string;
+  source_id: string;
+  source_digest: string;
+  precedence: number;
+  outcome: "compacted" | "preserved";
+  retained_block_id: string | null;
+  retained_precedence: number | null;
+  reason:
+    | "policy_disabled"
+    | "not_eligible"
+    | "ownership_unknown"
+    | "identity_unproven"
+    | "exact_duplicate"
+    | "preserved_authority";
+}
+
 /**
  * Backend-owned prompt authoring progress for a visible Draft node.
  * It deliberately does not alter the Canvas node's four visible statuses.
@@ -1638,6 +1669,9 @@ export interface NodePromptPreparationV1 {
   style_projection_digest: string | null;
   brief_digest: string | null;
   parameter_origins: ResolvedNodeParameterV2[];
+  compaction_policy_version: string | null;
+  compaction_policy_digest: string | null;
+  compaction_decisions: RolePromptCompactionDecisionV2[];
   assertion_evidence: PromptAssertionEvidenceV1 | null;
   attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
@@ -2555,6 +2589,10 @@ export interface ConceptProposalV2 extends CapabilityIdentityV2 {
   turn_id: string;
   video_skill_run_id: string | null;
   topic_id: string | null;
+  occurrence_id: string | null;
+  occurrence_index: number | null;
+  occurrence_count: number | null;
+  character_phase: "main" | "turnaround" | null;
   creative_direction_snapshot_id: string | null;
   proposal_revision: number;
   source_proposal_id: string | null;
@@ -3468,11 +3506,14 @@ export type GuidedInteractionKindV1 =
   | "clarification_questionnaire"
   | "product_source"
   | "concept_choice"
-  | "media_review";
+  | "media_review"
+  | "reference_source";
 export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
 export type GuidedInteractionActionV1 =
   | "answer"
   | "select_source"
+  | "use_reference"
+  | "skip_reference"
   | "select"
   | "custom"
   | "skip"
@@ -3535,6 +3576,45 @@ export interface GuidedProductSourceActionV1 {
   question_id: string;
 }
 
+export type GuidedReferenceKindV1 = "character_main" | "scene_main";
+export type GuidedReferenceActionV1 = "use_reference" | "skip_reference";
+export type GuidedReferenceCandidateScopeV2 = "project" | "mine" | "recommended";
+
+export interface GuidedReferenceCandidateV2 {
+  entity_id: string | null;
+  member_id: string | null;
+  asset_id: string;
+  asset_version_id: string;
+  media_type: "image";
+  display_name: string;
+  preview_url: string;
+  content_url: string;
+  reference_kind: GuidedReferenceKindV1;
+  semantic_reference_role: "character_reference" | "scene_reference";
+  reference_purpose: "identity_guidance" | "environment_guidance";
+  selectable: boolean;
+}
+
+export interface GuidedReferenceCandidateListResponseV2 {
+  workflow_id: string;
+  reference_kind: GuidedReferenceKindV1;
+  scope: GuidedReferenceCandidateScopeV2;
+  items: GuidedReferenceCandidateV2[];
+  next_cursor: string | null;
+}
+
+export interface GuidedReferenceSourceQuestionV1 {
+  content_kind: "reference_source";
+  reference_kind: GuidedReferenceKindV1;
+  target_node_id: string;
+  target_node_revision: number;
+  occurrence_id: string | null;
+  question: string;
+  use_reference_label: string;
+  skip_reference_label: string;
+  expected_guidance_revision: number;
+}
+
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
   | {
@@ -3553,6 +3633,9 @@ export type GuidedInteractionContentV1 =
       stage_revision: number;
       action_id: string;
       occurrence_id: string | null;
+      occurrence_index?: number | null;
+      occurrence_count?: number | null;
+      character_phase?: "main" | null;
       capability_id: string;
       options: GuidedChoiceOptionV1[];
       allow_custom: true;
@@ -3565,7 +3648,8 @@ export type GuidedInteractionContentV1 =
       asset_id: string;
       asset_version_id: string;
       summary: string;
-    };
+    }
+  | GuidedReferenceSourceQuestionV1;
 
 export interface GuidedInteractionV1 {
   interaction_id: string;
@@ -3618,6 +3702,18 @@ export type GuidedInteractionSubmitRequestV1 =
       expected_session_revision: number;
       action: "accept" | "retry" | "replace" | "exclude";
       instruction?: string | null;
+    }
+  | {
+      submission_kind: "reference_source";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: GuidedReferenceActionV1;
+      reference_kind: GuidedReferenceKindV1;
+      source_scope: GuidedReferenceCandidateScopeV2;
+      entity_id?: string | null;
+      member_id?: string | null;
+      asset_id?: string | null;
+      asset_version_id?: string | null;
     };
 
 export interface GuidedInteractionAcceptedV1 {
@@ -3640,7 +3736,7 @@ export interface GuidanceAwaitingV1 {
   workflow_id: string;
   session_id: string;
   checkpoint_id: string;
-  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "manual_node_run" | "milestone_idle";
+  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "reference_source" | "manual_node_run" | "milestone_idle";
   requires_user_action: boolean;
   resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
   interaction_id: string | null;

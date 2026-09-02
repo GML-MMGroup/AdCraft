@@ -60,6 +60,30 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes canonical Workflow state for terminal node transitions", () => {
+    for (const eventType of [
+      "node_ready",
+      "node_failed",
+      "node_blocked",
+      "node_skipped",
+      "node_cancelled",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshRuntime: true,
+        refreshWorkflow: true,
+        refreshNodeId: "node-1",
+      });
+    }
+  });
+
+  it("refreshes the canonical node when media generation starts", () => {
+    expect(runtimeEventPolicy(event("node_generation_started"))).toMatchObject({
+      refreshRuntime: true,
+      refreshWorkflow: false,
+      refreshNodeId: "node-1",
+    });
+  });
+
   it("routes progressive guidance and Draft publication events without obsolete aliases", () => {
     expect(runtimeEventPolicy(event("node_created"))).toMatchObject({
       refreshWorkflow: true,

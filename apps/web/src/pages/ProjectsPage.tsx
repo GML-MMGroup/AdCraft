@@ -6,9 +6,11 @@ import type { AppNavigate } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
+import { ProjectCoverDialog } from "./projects/ProjectCoverDialog";
 import { ProjectCatalogNotice } from "./projects/ProjectCatalogNotice";
 import { resolveV2ProjectCoverSummary } from "../projects/v2ProjectCover.ts";
 import "./projects.css";
+import { v2Api, V2ApiError } from "../api/v2Client.ts";
 
 export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
@@ -19,6 +21,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [batchAction, setBatchAction] = useState<"favorite" | "trash" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
+  const [coverTarget, setCoverTarget] = useState<ProjectListItem | null>(null);
   const [projectOpenError, setProjectOpenError] = useState<{ projectId: string; message: string } | null>(null);
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
   const {
@@ -38,6 +41,23 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     });
   }, [navigate, startNewProject]);
 
+  const updateProjectCover = useCallback(async (projectId: string, selection: { assetId: string; versionId: string } | null) => {
+    try {
+      await v2Api.updateProject(projectId, {
+        cover_asset_id: selection?.assetId ?? null,
+        cover_version_id: selection?.versionId ?? null,
+      });
+      await refreshProjects();
+    } catch (error) {
+      if (error instanceof V2ApiError && [409, 412, 428].includes(error.status)) {
+        await v2Api.projectWithEtag(projectId).catch(() => undefined);
+        await refreshProjects();
+        throw new Error("This project changed elsewhere. Review the latest cover and try again.");
+      }
+      throw error;
+    }
+  }, [refreshProjects]);
+
   const projects = useMemo(() => {
     return savedProjects.map((project) => ({
       key: project.project_id,
@@ -49,6 +69,8 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
       favorite: project.is_favorite,
       workflowId: project.workflow_id,
       coverAssetId: project.cover_asset_id,
+      coverVersionId: project.cover_version_id,
+      coverState: project.cover_state,
       cover: resolveV2ProjectCoverSummary(project.cover),
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;
@@ -266,6 +288,7 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
         onTrashProject={trashSavedProject}
         onToggleFavorite={toggleSavedProjectFavorite}
         onRenameProject={openRenameDialog}
+        onChangeCoverProject={setCoverTarget}
         selectionMode={selectionMode}
         selectedProjectIds={selectedProjectIds}
         selectionDisabled={selectionBusy}
@@ -277,6 +300,14 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
           project={renameTarget}
           onClose={closeRenameDialog}
           onRename={renameProject}
+        />
+      ) : null}
+      {coverTarget ? (
+        <ProjectCoverDialog
+          key={coverTarget.projectId}
+          project={coverTarget}
+          onClose={() => setCoverTarget(null)}
+          onUpdateCover={updateProjectCover}
         />
       ) : null}
     </section>
