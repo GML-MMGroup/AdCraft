@@ -734,7 +734,7 @@ describe("AgentCanvasNodeCard", () => {
     );
     const image = screen.getByRole("img", { name: "image output" });
     expect(image.getAttribute("src")).toBe("/media/image-poster.webp");
-    expect(image.getAttribute("loading")).toBe("lazy");
+    expect(image.getAttribute("loading")).toBe("eager");
     expect(image.getAttribute("width")).toBe("1280");
     expect(image.getAttribute("height")).toBe("720");
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);

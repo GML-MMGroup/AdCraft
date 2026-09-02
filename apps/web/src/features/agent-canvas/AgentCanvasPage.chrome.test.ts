@@ -13,6 +13,18 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("proOptions={{ hideAttribution: true }}");
   });
 
+  it("keeps visibility culling enabled while wiring viewport preview prefetch", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("onlyRenderVisibleElements={true}");
+    expect(source).toContain("<CanvasPreviewPrefetcher");
+    expect(source).toContain("onMove={(_event, viewport) => {");
+    expect(source).toContain("previewPrefetchRef.current?.setViewport(viewport)");
+  });
+
   it("uses a monochrome treatment for the workflow toolbar and add-node menu", () => {
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
