@@ -8,6 +8,7 @@ from typing import Literal, TypeVar, cast
 
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
@@ -54,11 +55,25 @@ class AgentCanvasProductionClosureRepository:
     ) -> GuidedMediaConfirmationV1:
         return self._save("media_confirmation", confirmation)
 
+    def save_confirmation_in_transaction(
+        self,
+        connection: Connection,
+        confirmation: GuidedMediaConfirmationV1,
+    ) -> GuidedMediaConfirmationV1:
+        return self._save_in_transaction(connection, "media_confirmation", confirmation)
+
     def get_confirmation(self, confirmation_id: str) -> GuidedMediaConfirmationV1:
         return self._get("media_confirmation", confirmation_id, GuidedMediaConfirmationV1)
 
     def save_fanout(self, plan: StoryboardFanoutPlanV1) -> StoryboardFanoutPlanV1:
         return self._save("storyboard_fanout", plan)
+
+    def save_fanout_in_transaction(
+        self,
+        connection: Connection,
+        plan: StoryboardFanoutPlanV1,
+    ) -> StoryboardFanoutPlanV1:
+        return self._save_in_transaction(connection, "storyboard_fanout", plan)
 
     def get_fanout(self, fanout_plan_id: str) -> StoryboardFanoutPlanV1:
         return self._get("storyboard_fanout", fanout_plan_id, StoryboardFanoutPlanV1)
@@ -197,6 +212,45 @@ class AgentCanvasProductionClosureRepository:
             raise _error(
                 "guided_production_receipt_persistence_failed",
                 "Guided production receipt storage is unavailable.",
+            ) from error
+        return model
+
+    def _save_in_transaction(
+        self,
+        connection: Connection,
+        receipt_type: ReceiptType,
+        model: ReceiptT,
+    ) -> ReceiptT:
+        payload_json = _canonical_payload(model)
+        payload_digest = sha256(payload_json.encode()).hexdigest()
+        receipt_id = _receipt_id(model)
+        logical_identity = str(getattr(model, "logical_identity"))
+        workflow_id = str(getattr(model, "workflow_id"))
+        created_at = _created_at(model)
+        existing = connection.execute(
+            select(AgentCanvasGuidedProductionReceiptRow).where(
+                AgentCanvasGuidedProductionReceiptRow.receipt_type == receipt_type,
+                AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return self._replay_or_conflict(existing, payload_digest, type(model))
+        try:
+            connection.execute(
+                AgentCanvasGuidedProductionReceiptRow.__table__.insert().values(
+                    receipt_id=receipt_id,
+                    receipt_type=receipt_type,
+                    logical_identity=logical_identity,
+                    workflow_id=workflow_id,
+                    payload_digest=payload_digest,
+                    payload_json=payload_json,
+                    created_at=created_at,
+                )
+            )
+        except IntegrityError as error:
+            raise _error(
+                "guided_production_receipt_conflict",
+                "Guided production receipt identity was claimed concurrently.",
             ) from error
         return model
 
