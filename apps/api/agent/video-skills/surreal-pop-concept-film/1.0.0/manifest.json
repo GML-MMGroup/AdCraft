@@ -1,30 +1,34 @@
 {
   "skill_id": "surreal-pop-concept-film",
   "version": "1.0.0",
-  "display_name": "Surreal Pop Concept Film",
-  "description": "An advertising treatment built around impossible scale, pop color, visual metaphor, and bold object transformation.",
+  "display_name": "超现实波普概念影像",
+  "description": "以不可能尺度、波普色彩、视觉隐喻和大胆物体变形组织具有记忆点的概念广告。",
+  "content_locale": "zh-CN",
   "category": "experimental-graphic",
   "tags": [
-    "experimental",
-    "graphic",
-    "compositing"
+    "超现实广告",
+    "波普色彩",
+    "物体变形"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "概念广告",
+    "品牌影像",
+    "产品创意展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Surreal Pop Concept Film creative treatment."
+    "kind": "image",
+    "summary": "超现实波普概念影像视觉预览。",
+    "media_url": "/api/v2/video-skills/surreal-pop-concept-film/preview?v=1.0.0"
   },
   "display_order": 420,
   "files": {
-    "SKILL.md": "861c2a492375e8e00a90927367ee27429f124cf50ef1517ab745255e6772b111",
-    "references/prop.md": "537fb117ceaeea9a4391b73db4d5896d741f48be3cde1f554077364eed7612ed",
-    "references/scene.md": "86dc1be4be5ea6b067682a1bdc981b632b537be0cfa52fb10bef0c7629f953c3",
-    "references/storyboard.md": "220dfbf77e506811ce7670ded8da53af8d8b51f40944072fceedf5b588023e93",
-    "references/video.md": "495ca3dd0458252b1a91a36b55e88ef493e635e131a3c881deb48c0d2ef749e4",
-    "references/quick_media.md": "52e4b6388d4f1e17da35fc16641b861392a2667c7a9c4c6287cefdaa3b0bec90"
+    "SKILL.md": "056edc4693873c74c1a1a1a61121ace59170a3adbde52e57ed72bbd19582f6cf",
+    "references/prop.md": "7c1f564079b0614c11321b509f67e22b9a829d766b51ba05d95845e7ddb152b3",
+    "references/scene.md": "55a0b6d56e9ec77d4e849fa30e99c392c74b99b626ede237df6386877db368f7",
+    "references/storyboard.md": "68b76448c5d6b6e7d5cc255c79ef4cae3789f2401af0987cc53c1225018fcdf3",
+    "references/video.md": "e3b456448f4d31c43369d74662fced64b3f319e4a9bb387055a014485cd64a67",
+    "references/quick_media.md": "4e5627993b3e574b1c68055e635153a51f7e61f073c5e7fb4e7abe85e3de8f5f",
+    "previews/preview.webp": "812769275e53a2afd858b6514400f258c44a4c556964f737ba8b2d17ad6a99b8"
   },
   "role_guidance": {
     "prop": "references/prop.md",

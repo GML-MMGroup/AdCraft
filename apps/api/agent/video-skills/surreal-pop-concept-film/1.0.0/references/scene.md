@@ -1,1 +1,5 @@
-Construct spaces that express impossible scale through layout and pop color through light, color, and material. Use visual metaphor to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+先建立一条可持续的超现实规则，再安排地面、墙面、入口、参照物和色块。pop color 用背景退后、主体强调和隐喻色三层组织，不让所有表面同样高饱和。
+
+保持空间轴线、尺度参照、光向和规则连续。

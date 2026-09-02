@@ -1,8 +1,21 @@
 ---
-name: Surreal Pop Concept Film
-description: An advertising treatment built around impossible scale, pop color, visual metaphor, and bold object transformation.
+name: 超现实波普概念影像
+description: 以不可能尺度、波普色彩、视觉隐喻和大胆物体变形组织具有记忆点的概念广告。
 ---
 
-Use impossible scale, pop color, visual metaphor, and bold object transformation as the style's creative grammar. Establish impossible scale as the primary visual idea, reinforce it through pop color, and let visual metaphor shape the progression toward bold object transformation.
+把 impossible scale、pop color、visual metaphor、bold object transformation 作为超现实波普影像的四个创作支点。超现实不是随机堆放不可能物体，而是用一个清楚的规则把熟悉事物重新组合，让观众在惊奇之后仍能理解产品、人物或品牌信息。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 规则与尺度
+
+先确定一个不可违背的视觉规则：物体变大、空间折叠、颜色产生重量、影子脱离主体或日常动作改变环境。impossible scale 通过参照物、接触和视差让尺度变化可读；没有参照的巨大物体只是背景装饰。
+
+## 色彩与隐喻
+
+pop color 用少量高饱和色建立层级，避免所有颜色同样抢眼。visual metaphor 应对应产品特征、用户感受或品牌事实，并在后续动作中得到回收。bold object transformation 要记录变形前轮廓、触发动作、中间状态和结果用途。
+
+## 连续性与纠偏
+
+保持核心物体轮廓、色彩逻辑、人物身份和变形因果。结果只剩奇观时，先恢复规则和产品触点，再减少物体数量。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供概念视觉判断。
+
+正例：一个日常物件按既定规则扩大，人物用它解决真实问题，颜色和形变共同回到产品利益。
+反例：每个镜头更换尺度规则和色盘，物体不停变形，却没有隐喻或行动结果。
