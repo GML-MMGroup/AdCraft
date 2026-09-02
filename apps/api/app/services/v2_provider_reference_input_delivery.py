@@ -32,6 +32,7 @@ from app.services.v2_storage_adapter import StorageAdapter
 from app.services.v2_data_boundary import validate_v2_relative_path
 from app.services.v2_library_reference_preview import (
     LibraryReferencePreviewError,
+    ResolvedLibraryPreview,
     V2LibraryReferencePreviewResolver,
 )
 
@@ -712,6 +713,63 @@ class V2ProviderReferenceInputDeliveryService:
                 reason=f"{target_media_type}_provider_reference_media_type_{record.media_type}_unsupported",
                 record=record,
             )
+        if record.library_entity_id is not None or record.metadata.get("reference_source") == "asset_library":
+            try:
+                version = self._asset_library.find_version(
+                    asset_id=record.asset_id,
+                    version_id=record.version_id,
+                )
+            except V2PersistenceError:
+                version = None
+            if version is None:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason="asset_metadata_missing",
+                    record=record,
+                )
+            try:
+                provenance = dict(record.metadata)
+                provenance.setdefault("reference_source", "asset_library")
+                provenance.setdefault("source_scope", "my")
+                preview = self._library_preview.resolve_version(
+                    asset_id=record.asset_id,
+                    version_id=record.version_id,
+                    media_type=record.media_type,
+                    provenance=provenance,
+                    version=version,
+                    max_data_url_bytes=self._settings.v2_provider_reference_max_data_url_bytes,
+                )
+            except LibraryReferencePreviewError as error:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason=error.reason,
+                    record=record,
+                )
+            if preview is None:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason="library_provenance_invalid",
+                    record=record,
+                )
+            if "data_url" not in delivery_modes:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_UNSUPPORTED,
+                    reason="preview_rendition_delivery_unsupported",
+                    record=record,
+                )
+            return _record_preview_delivered(record, version, preview)
         provider_file_id = _first_metadata_string(
             record, "provider_file_id", "file_id", "ark_file_id"
         )
@@ -882,6 +940,37 @@ def _delivered_reference(
         source=source,
         checksum=str(record.metadata.get("checksum") or "") or None,
         byte_count=byte_count,
+    )
+
+
+def _record_preview_delivered(
+    record: WorkflowAssetVersionV2,
+    version: AssetVersionMetadataV2,
+    preview: ResolvedLibraryPreview,
+) -> V2DeliveredProviderReference:
+    return V2DeliveredProviderReference(
+        asset_id=record.asset_id,
+        version_id=record.version_id,
+        slot_id=record.slot_id,
+        role=_provider_reference_role_from_record(record),
+        semantic_type=record.semantic_type,
+        binding_id=None,
+        input_role=str(record.metadata.get("reference_role") or "image_reference"),
+        media_type=record.media_type,
+        mime_type=preview.mime_type,
+        provider_input_type="data_url",
+        provider_input_value=preview.data_url,
+        source="local_file",
+        checksum=version.sha256,
+        byte_count=preview.data_url_byte_count,
+        rendition_kind="preview",
+        source_checksum=version.sha256,
+        source_byte_count=version.size_bytes,
+        source_mime_type=version.mime_type,
+        rendition_checksum=preview.sha256,
+        rendition_byte_count=preview.byte_count,
+        rendition_width=preview.width,
+        rendition_height=preview.height,
     )
 
 
@@ -1071,6 +1160,10 @@ def _workflow_asset_from_library_binding(
     metadata = dict(version.metadata)
     metadata["mime_type"] = version.mime_type
     metadata["reference_role"] = binding.reference_role
+    metadata["reference_source"] = "asset_library"
+    metadata["source_scope"] = (
+        "recommended" if metadata.get("source_scope") == "recommended" else "my"
+    )
     semantic_type = metadata.get("semantic_type")
     return WorkflowAssetVersionV2(
         asset_id=version.asset_id,
