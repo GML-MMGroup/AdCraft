@@ -1,29 +1,33 @@
 {
   "skill_id": "theatrical-revue-glamour",
   "version": "1.0.0",
-  "display_name": "Theatrical Revue Glamour",
-  "description": "An advertising treatment built around stage blocking, chorus geometry, spotlight glamour, and escalating theatrical reveal.",
+  "display_name": "舞台歌舞华彩广告",
+  "description": "以舞台调度、群体几何、聚光魅力和递进式舞台揭示组织具有表演感的商业影像。",
+  "content_locale": "zh-CN",
   "category": "luxury-fashion",
   "tags": [
-    "luxury",
-    "editorial",
-    "material"
+    "舞台广告",
+    "群体调度",
+    "聚光展示"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌宣传",
+    "时尚表演",
+    "产品发布"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Theatrical Revue Glamour creative treatment."
+    "kind": "image",
+    "summary": "舞台歌舞华彩广告视觉预览。",
+    "media_url": "/api/v2/video-skills/theatrical-revue-glamour/preview?v=1.0.0"
   },
   "display_order": 150,
   "files": {
-    "SKILL.md": "1020170cd87fb40b3d06b8708a40abdd845f516b1df970f10bf5436862197522",
-    "references/product.md": "7c8cae563d89677aabb78306025c3c49c75bb551bdbb2efb6d32f4cbe05f66a9",
-    "references/character.md": "56704c8d241ac0c786f2fd850fdeaaf38f158c756984c5e1d3f8c6fb63aec25f",
-    "references/scene.md": "11669dc98f8a165f1c21d5c56c77b8db3d201b8fa784ab4f22067998d5f57f7c",
-    "references/video.md": "69dd36d4a0d3cff06184884ba49835cfa2c8ede193a9dbc527e40d5444102b80"
+    "SKILL.md": "99ada9c32dc98479be59e514f24d0452a9086a215a73021f25813ede15e14245",
+    "references/product.md": "31fd03e151d6bdd750f0d99e90f12db7b55082ae6e5839b4202e917deca61d75",
+    "references/character.md": "108c1cda1b403eb0cd12817c7e61aea9b1e885692e089319d7111c54762a4c9c",
+    "references/scene.md": "06991d164f772628605c6572277820f0688b80619ad04fdf3c927b29ed5f2e9c",
+    "references/video.md": "6068748f521f79364a05f4f995825c2ba48093c3fcfafcc005191821217fde7a",
+    "previews/preview.webp": "5bd9383de57a760cbccef401f2277476d74a072f8824c3210482dc379fcb65d8"
   },
   "role_guidance": {
     "product": "references/product.md",

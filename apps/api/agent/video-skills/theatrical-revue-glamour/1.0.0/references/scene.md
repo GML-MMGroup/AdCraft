@@ -1,1 +1,6 @@
-Construct spaces that express stage blocking through layout and chorus geometry through light, color, and material. Use spotlight glamour to direct attention toward the advertised subject while preserving the stated location and product context.
+舞台场景要交代地面、背景幕、台阶、灯位、入口、出口和观众视线。用有限的材质和层次建立深度，聚光灯形成主次，舞台装饰围绕产品或主角。换景可以通过幕布、队形、灯光或声音完成，但保留地面和轴线锚点。
+
+纯舞台环境不要无故引入街道或自然景物。检查人物影子、产品落点、反射和灯光来源。背景屏幕上的文字只在用户明确需要时出现，避免不可控文字。
+
+正例：台阶形成层级，主轴把视线带到中央，侧后方灯光让人物和产品从背景分离。
+反例：灯位没有来源，人物影子方向互相冲突，或舞台装饰比主角更亮。

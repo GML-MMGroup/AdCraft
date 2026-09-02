@@ -1,1 +1,6 @@
-Shape wardrobe, pose, and expression around stage blocking and chorus geometry. Use spotlight glamour to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+角色指导以 stage blocking 为核心。为主角和群体分别指定站位、入口、动作方向、停顿、视线和服装层级。主角的姿态要清楚，群体动作要统一但不抹平身份。手部和脚步必须有可执行的起止状态。
+
+保持妆发、服装、道具和队形关系连续。多人场面明确谁先动、谁响应、谁让出中心。结果过于拥挤时减少群体成员和动作维度，不用更快节奏解决站位问题。
+
+正例：主角先完成一个明确动作，群体按同一方向展开并在揭示时停住。
+反例：群体同时改变方向和姿态，主角被遮挡，观众无法知道谁在推动场面。
