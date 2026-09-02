@@ -40,6 +40,10 @@
 /* React Flow owns the viewport matrix; keep it on a composited layer without
    applying paint containment that could clip nodes or edge overflow. */
 .agent-canvas-board .react-flow__viewport {
+  will-change: auto;
+}
+
+.agent-canvas-board.is-interacting .react-flow__viewport {
   will-change: transform;
 }
 
@@ -71,29 +75,26 @@
 }
 
 .agent-canvas-board .react-flow__edge-path {
-  vector-effect: non-scaling-stroke;
-  stroke: rgb(133 133 133 / 72%);
-  stroke-width: 1.2;
-  stroke-linecap: round;
+  vector-effect: none;
+  stroke: #686868;
+  stroke-width: var(--agent-canvas-edge-stroke-width, 0.9px);
+  stroke-linecap: butt;
   stroke-linejoin: round;
+  shape-rendering: geometricPrecision;
   filter: none;
-  transition:
-    stroke 140ms ease,
-    stroke-width 140ms ease,
-    opacity 140ms ease;
+  transition: stroke 140ms ease, opacity 140ms ease;
 }
 
 .agent-canvas-board .react-flow__edge:hover .react-flow__edge-path {
-  stroke: rgb(168 168 168 / 82%);
+  stroke: #858585;
 }
 
 .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
 .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
-  stroke: rgb(208 208 208 / 92%);
-  stroke-width: 2;
-  stroke-dasharray: 8 6;
+  stroke: #bdbdbd;
+  stroke-width: calc(var(--agent-canvas-edge-stroke-width, 0.9px) * 1.45);
+  stroke-dasharray: none;
   filter: none;
-  animation: agent-canvas-selected-edge-flow 760ms linear infinite;
 }
 
 .agent-canvas-board.is-interacting .react-flow__edge-path {
@@ -159,14 +160,16 @@
   pointer-events: none;
 }
 
-.agent-canvas-frozen-edges .react-flow__edge {
-  pointer-events: none;
+.agent-canvas-board .react-flow__edges {
+  z-index: 0;
 }
 
-@keyframes agent-canvas-selected-edge-flow {
-  to {
-    stroke-dashoffset: -14;
-  }
+.agent-canvas-board .react-flow__nodes {
+  z-index: 1;
+}
+
+.agent-canvas-frozen-edges .react-flow__edge {
+  pointer-events: none;
 }
 
 .agent-canvas-pointer-background {
@@ -1175,8 +1178,4 @@
     animation: none;
   }
 
-  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
-  .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
-    animation: none;
-  }
 }

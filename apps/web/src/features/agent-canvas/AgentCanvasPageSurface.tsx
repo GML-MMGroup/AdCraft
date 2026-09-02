@@ -56,6 +56,10 @@ import {
 } from "./canvas/canvasAutoLayout.ts";
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
+import {
+  createCanvasEdgeZoomController,
+  type CanvasEdgeZoomController,
+} from "./canvas/canvasEdgeRendering.ts";
 import { FrozenCanvasEdgesOverlay } from "./canvas/FrozenCanvasEdgesOverlay.tsx";
 import {
   CanvasPreviewPrefetcher,
@@ -217,6 +221,7 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const edgeZoomControllerRef = useRef<CanvasEdgeZoomController | null>(null);
   const previewPrefetchRef = useRef<CanvasPreviewPrefetchHandle | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const workflowNodesRef = useRef(workflow?.nodes ?? []);
@@ -228,6 +233,16 @@ export function AgentCanvasPage() {
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const canvasInteractionReasonsRef = useRef(new Set<CanvasInteractionReason>());
   const dragCancellationPendingRef = useRef(false);
+
+  if (edgeZoomControllerRef.current === null) {
+    edgeZoomControllerRef.current = createCanvasEdgeZoomController({
+      getElement: () => pointerSpotlight.hostRef.current,
+    });
+  }
+
+  useEffect(() => () => {
+    edgeZoomControllerRef.current?.dispose();
+  }, []);
   const latestPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[]>([]);
   const pendingPresentedNodesRef = useRef<readonly AgentCanvasFlowNode[] | null>(null);
   const flowNodesRef = useRef<readonly AgentCanvasFlowNode[]>(nodes);
@@ -1024,6 +1039,7 @@ export function AgentCanvasPage() {
 
   const initializeFlow = useCallback((instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>) => {
     flowRef.current = instance;
+    edgeZoomControllerRef.current?.setZoom(instance.getViewport().zoom);
     previewPrefetchRef.current?.setViewport(instance.getViewport());
     if (workflow) scheduleWorkflowViewportInstall(instance, workflow);
   }, [scheduleWorkflowViewportInstall, workflow]);
@@ -1111,6 +1127,7 @@ export function AgentCanvasPage() {
           nodesDraggable={!layoutPreview.active}
           onInit={initializeFlow}
           onMove={(_event, viewport) => {
+            edgeZoomControllerRef.current?.setZoom(viewport.zoom);
             previewPrefetchRef.current?.setViewport(viewport);
           }}
           onEdgesChange={onEdgesChange}
@@ -1201,6 +1218,7 @@ export function AgentCanvasPage() {
           }}
           onMoveEnd={(_event, viewport) => {
             endCanvasInteraction("viewport");
+            edgeZoomControllerRef.current?.setZoom(viewport.zoom);
             previewPrefetchRef.current?.setViewport(viewport);
             previewPrefetchRef.current?.setPaused(false);
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {

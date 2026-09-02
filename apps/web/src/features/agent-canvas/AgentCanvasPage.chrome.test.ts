@@ -122,18 +122,14 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("session.state.selectedNodeId");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path");
-    expect(canvasCss).toContain("stroke-dasharray: 8 6");
-    expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
-    expect(canvasCss).toContain("vector-effect: non-scaling-stroke");
-    expect(canvasCss).toContain("stroke: rgb(133 133 133 / 72%)");
-    expect(canvasCss).toContain("stroke: rgb(168 168 168 / 82%)");
-    expect(canvasCss).toContain("stroke: rgb(208 208 208 / 92%)");
+    expect(canvasCss).toContain("stroke: #bdbdbd");
+    expect(canvasCss).toContain("stroke-dasharray: none");
+    expect(canvasCss).toContain("vector-effect: none");
+    expect(canvasCss).toContain("stroke: #686868");
+    expect(canvasCss).toContain("stroke: #858585");
     expect(canvasCss).toMatch(/\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?filter: none;/);
     expect(canvasCss).not.toMatch(/\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path,[\s\S]*?filter: drop-shadow/);
-    expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");
-    expect(canvasCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path[\s\S]*?animation: none;/,
-    );
+    expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge-path");
     expect(canvasCss).toMatch(
       /\.agent-canvas-board\.is-interacting \.react-flow__node\s*\{[\s\S]*?will-change: transform;/,
     );
@@ -293,6 +289,27 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("<FrozenCanvasEdgesOverlay snapshots={dragEdgeProjection.frozenSnapshots} />");
     expect(overlaySource).toContain("className=\"agent-canvas-frozen-edges\"");
     expect(canvasCss).toMatch(/\.agent-canvas-frozen-edges \{[\s\S]*?pointer-events: none;/);
+  });
+
+  it("keeps edge strokes zoom-aware, opaque, and below node cards", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("createCanvasEdgeZoomController");
+    expect(source).toContain("edgeZoomControllerRef.current?.setZoom(viewport.zoom)");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?vector-effect: none;[\s\S]*?stroke-width: var\(--agent-canvas-edge-stroke-width, 0\.9px\);[\s\S]*?shape-rendering: geometricPrecision;/,
+    );
+    expect(canvasCss).not.toContain("vector-effect: non-scaling-stroke");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.react-flow__edges \{[\s\S]*?z-index: 0;[\s\S]*?\.agent-canvas-board \.react-flow__nodes \{[\s\S]*?z-index: 1;/,
+    );
   });
 
   it("keeps workflow nodes mounted so media previews survive viewport changes", () => {

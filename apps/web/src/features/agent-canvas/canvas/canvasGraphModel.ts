@@ -335,7 +335,7 @@ export function toAgentCanvasFlowEdges(
           type: MarkerType.ArrowClosed,
           width: 14,
           height: 14,
-          color: "rgba(133, 133, 133, 0.72)",
+          color: "#686868",
         },
         data: { binding },
       }]

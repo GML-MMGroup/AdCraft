@@ -359,7 +359,7 @@ describe("canvasGraphModel", () => {
     })]);
     expect(edges[0]?.style).toBeUndefined();
     expect(edges[0]?.markerEnd).toMatchObject({
-      color: "rgba(133, 133, 133, 0.72)",
+      color: "#686868",
     });
   });
 
