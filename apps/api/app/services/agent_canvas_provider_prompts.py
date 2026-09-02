@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
     CharacterDesignAssetContentV2,
     CompiledProviderPromptV2,
+    ProviderReferenceInstructionV1,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
@@ -26,6 +27,7 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
+from app.schemas.agent_canvas_reference_conditioning import ReferenceConditioningPlanV1
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
@@ -223,9 +225,14 @@ class AgentCanvasProviderPromptCompiler:
                     "World Setting context audience does not match the target role.",
                 )
         try:
+            structured_payload = {
+                key: value
+                for key, value in node.structured_content.items()
+                if key not in {"reference_style_policy", "reference_conditioning_plan"}
+            }
             structured = self._roles.validate_structured_content(
                 node.semantic_role,
-                node.structured_content,
+                structured_payload,
             )
         except V2PersistenceError as error:
             if node.semantic_role in {"storyboard_video", "general_video"} and (
@@ -261,17 +268,22 @@ class AgentCanvasProviderPromptCompiler:
             for index, item in enumerate(reference_bundle.references, start=1)
         )
         try:
-            reference_instructions = tuple(
-                instruction
-                for item in reference_bundle.references
-                if (
-                    instruction := item.reference_instruction
-                    or compile_provider_reference_instruction(
-                        reference_kind=item.reference_kind,
-                        reference_purpose=item.reference_purpose,
+            conditioning_plan = _conditioning_plan_from_node(node)
+            if conditioning_plan is not None:
+                _validate_conditioning_plan(conditioning_plan, node, reference_bundle)
+                reference_instructions = (_conditioning_instruction(conditioning_plan),)
+            else:
+                reference_instructions = tuple(
+                    instruction
+                    for item in reference_bundle.references
+                    if (
+                        instruction := item.reference_instruction
+                        or compile_provider_reference_instruction(
+                            reference_kind=item.reference_kind,
+                            reference_purpose=item.reference_purpose,
+                        )
                     )
                 )
-            )
         except ValueError as error:
             raise _error(
                 "provider_reference_instruction_invalid",
@@ -399,6 +411,70 @@ def _reference_evidence_matches(source_snapshots, reference_bundle: AdReferenceB
         snapshot.binding_id in actual_binding_ids
         for snapshot in expected
         if snapshot.asset_id is not None
+    )
+
+
+def _conditioning_plan_from_node(node: CanvasNodeV2) -> ReferenceConditioningPlanV1 | None:
+    raw = node.metadata.get("prompt_reference_conditioning_plan")
+    if raw is None:
+        return None
+    try:
+        return ReferenceConditioningPlanV1.model_validate(raw)
+    except ValidationError as error:
+        raise _error(
+            "reference_conditioning_plan_invalid",
+            "Reference conditioning metadata is invalid before provider delivery.",
+        ) from error
+
+
+def _validate_conditioning_plan(
+    plan: ReferenceConditioningPlanV1,
+    node: CanvasNodeV2,
+    reference_bundle: AdReferenceBundleV2,
+) -> None:
+    expected_role = {"character": "character_main", "scene": "scene_board"}.get(
+        node.semantic_role
+    )
+    if expected_role != plan.target_role or len(reference_bundle.references) != 1:
+        raise _error(
+            "reference_conditioning_plan_invalid",
+            "Conditioning plan role or reference cardinality is invalid.",
+        )
+    reference = reference_bundle.references[0]
+    if (
+        reference.display_order != plan.reference_position - 1
+        or reference.binding_id != plan.provenance.binding_id
+        or reference.asset_id != plan.provenance.asset_id
+        or reference.asset_version_id != plan.provenance.asset_version_id
+        or reference.source_node_id != plan.provenance.source_node_id
+        or reference.source_node_revision != plan.provenance.source_node_revision
+        or reference.reference_kind != plan.reference_kind
+        or reference.reference_purpose != plan.reference_purpose
+    ):
+        raise _error(
+            "reference_conditioning_plan_stale",
+            "Conditioning plan does not match the current delivered reference.",
+        )
+
+
+def _conditioning_instruction(plan: ReferenceConditioningPlanV1):
+    role_label = "Character Main" if plan.target_role == "character_main" else "Scene Main"
+    protected = ", ".join(plan.protected_dimensions)
+    allowed = ", ".join(plan.allowed_change_dimensions)
+    override = (
+        ", ".join(plan.explicit_override_dimensions)
+        if plan.explicit_override_dimensions
+        else "none"
+    )
+    return ProviderReferenceInstructionV1(
+        reference_kind=plan.reference_kind,
+        semantic_purpose=plan.reference_purpose,
+        instruction=(
+            f"Image 1 is the primary {role_label} reference. Preserve protected dimensions: "
+            f"{protected}. Allowed changes: {allowed}. "
+            f"Explicit structured overrides: {override}. Do not substitute an unrelated "
+            "subject or environment."
+        ),
     )
 
 

@@ -207,6 +207,15 @@ class NodePromptPreparationService:
                             item.model_dump(mode="json")
                             for item in compiled_prompt.compaction_decisions
                         ],
+                        **(
+                            {
+                                "prompt_reference_conditioning_plan": (
+                                    compiled_prompt.reference_conditioning_plan
+                                )
+                            }
+                            if compiled_prompt.reference_conditioning_plan is not None
+                            else {}
+                        ),
                         "prepared_reference_snapshots": [
                             item.model_dump(mode="json") for item in role_context.bindings
                         ],
