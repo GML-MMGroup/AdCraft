@@ -1,1 +1,5 @@
-Construct spaces that express axial framing through layout and curated palettes through light, color, and material. Use chapter-like staging to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立对称轴、入口、中心焦点、前中后景和可移动道具。curated palettes 先定义主色、区分色和情绪变化色，再把材质、光线与时代感放入同一秩序。门框、桌面、窗格和地面线条应帮助读懂人物与产品的位置。
+
+每个场景只保留能支撑章节动作的物件。保持轴线、尺度、阴影方向和负空间连续；需要打破对称时，记录触发动作。不要用装饰填满画面来掩盖主体不清。
