@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around subjective transitions and identity motifs. Use layered realities to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+建立身份锚点：轮廓、发型、服装、手势、道具、表情和声音关系。identity motifs 可以在不同现实层变形，但必须保留一个可辨认的核心。记录角色在清醒、记忆和主观层中的差异边界，避免每层都变成新角色。
+
+跨镜头保持身份、关键物件和姿态因果。

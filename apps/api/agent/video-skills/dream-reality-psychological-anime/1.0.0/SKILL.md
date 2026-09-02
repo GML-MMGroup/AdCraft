@@ -1,8 +1,21 @@
 ---
-name: Dream-Reality Psychological Anime
-description: An advertising treatment built around subjective transitions, identity motifs, layered realities, and graphic match cuts.
+name: 梦境现实心理动画
+description: 以主观转场、身份母题、层叠现实和图形匹配剪辑组织具有心理深度的动画叙事。
 ---
 
-Use subjective transitions, identity motifs, layered realities, and graphic match cuts as the style's creative grammar. Establish subjective transitions as the primary visual idea, reinforce it through identity motifs, and let layered realities shape the progression toward graphic match cuts.
+把 subjective transitions、identity motifs、layered realities、graphic match cuts 作为心理动画的四个创作支点。梦境与现实的差异应由视角、规则、材质和因果逐渐显现，而不是靠随机变形；观众需要知道什么改变了、为什么改变，以及哪一个身份线索仍然可靠。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 主观与身份
+
+先确定人物欲望、恐惧或记忆缺口，再选择一个 identity motif：手势、物件、颜色、轮廓、声音或空间动作。母题在不同现实层可以改变外观，但要保留可追踪的核心关系。角色身份、服装和表情边界要有稳定锚点。
+
+## 层叠现实与转场
+
+layered realities 为每层定义材质规则、重力、时间感、空间连续性和可见证据。subjective transitions 由触碰、闭眼、镜面、声音、光线或动作触发。graphic match cuts 用相同形状、方向或构图连接两个状态，不能把任意跳变称为匹配剪辑。
+
+## 纠偏边界
+
+保持母题、角色、关键道具和转场因果。结果难以理解时，先恢复一个现实层和一个身份线索，再减少变形与叠化。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供心理叙事判断。
+
+正例：人物触碰一枚物件，材质变换但轮廓相接，现实层改变后同一手势仍可辨认。
+反例：人物、空间、颜色和规则同时随机切换，观众无法判断哪一条线索持续存在。

@@ -1,1 +1,5 @@
-Construct spaces that express subjective transitions through layout and identity motifs through light, color, and material. Use layered realities to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+为每个现实层写清材质、重力、时间感、光源、可见范围和空间规则。layered realities 之间至少保留一个可追踪的形状、路径、声音或物件。不要用大量雾和碎片掩盖空间关系。
+
+标记 subjective transitions 的触发位置和回到现实的出口。
