@@ -431,9 +431,7 @@ def _resolve_storyboard_video_audio_constraints(
     """Load the current typed Video constraints for storyboard fan-out."""
 
     current = requirement_service.get_current(workflow_id)
-    constraints = {
-        str(control.control): control.value for control in current.hard_controls
-    }
+    constraints = {str(control.control): control.value for control in current.hard_controls}
     if current.identity_safety_decision is not None:
         constraints["identity_safety_decision"] = current.identity_safety_decision.model_dump(
             mode="json"
