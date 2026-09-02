@@ -455,6 +455,23 @@ class ProgressiveStoryboardReadyService:
         self._events.append_in_transaction(
             connection,
             V2EventInsert(
+                workflow_id=fanout.workflow_id,
+                node_id=fanout.visual_anchor_node_id,
+                event_type="storyboard_visual_anchor_frozen",
+                transition_key=f"storyboard_visual_anchor_frozen:{fanout.plan_document_id}",
+                created_at=event_time,
+                payload={
+                    "node_id": fanout.visual_anchor_node_id,
+                    "asset_id": fanout.visual_anchor_asset_id,
+                    "asset_version_id": fanout.visual_anchor_asset_version_id,
+                    "plan_document_id": fanout.plan_document_id,
+                    "plan_revision": fanout.plan_revision,
+                },
+            ),
+        )
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
                 workflow_id=confirmation.workflow_id,
                 node_id=confirmation.node_id,
                 event_type="guided_media_confirmed",
