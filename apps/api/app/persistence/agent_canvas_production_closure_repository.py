@@ -66,6 +66,35 @@ class AgentCanvasProductionClosureRepository:
     def get_confirmation(self, confirmation_id: str) -> GuidedMediaConfirmationV1:
         return self._get("media_confirmation", confirmation_id, GuidedMediaConfirmationV1)
 
+    def find_confirmation_for_source(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        node_id: str,
+        node_revision: int,
+        asset_id: str,
+        asset_version_id: str,
+        asset_digest: str,
+    ) -> GuidedMediaConfirmationV1 | None:
+        """Find the immutable acceptance for one exact media source."""
+
+        return next(
+            (
+                cast(GuidedMediaConfirmationV1, item)
+                for item in reversed(self._list("media_confirmation", workflow_id))
+                if (
+                    item.plan_document_id == plan_document_id
+                    and item.node_id == node_id
+                    and item.node_revision == node_revision
+                    and item.asset_id == asset_id
+                    and item.asset_version_id == asset_version_id
+                    and item.asset_digest == asset_digest
+                )
+            ),
+            None,
+        )
+
     def save_fanout(self, plan: StoryboardFanoutPlanV1) -> StoryboardFanoutPlanV1:
         return self._save("storyboard_fanout", plan)
 

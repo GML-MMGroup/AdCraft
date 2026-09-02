@@ -161,25 +161,27 @@ class GuidedMediaConfirmationService:
                 "Media Asset bytes are not readable through canonical storage.",
             )
 
-        logical_identity = ":".join(
-            (
-                plan.document_id,
-                str(plan.revision),
-                node.node_id,
-                str(node.revision),
-                asset.version_id or "",
-            )
+        confirmation = self._receipts.find_confirmation_for_source(
+            workflow_id=workflow_id,
+            plan_document_id=plan.document_id,
+            node_id=node.node_id,
+            node_revision=node.revision,
+            asset_id=asset.asset_id,
+            asset_version_id=asset.version_id or "",
+            asset_digest=asset.checksum,
         )
-        confirmation_id = "confirmation_" + sha256(logical_identity.encode()).hexdigest()[:32]
-        confirmation: GuidedMediaConfirmationV1 | None = None
-        try:
-            confirmation = self._receipts.get_confirmation(confirmation_id)
-        except V2PersistenceError as error:
-            if error.code != "guided_production_receipt_not_found":
-                raise
-
         created = confirmation is None
         if confirmation is None:
+            logical_identity = ":".join(
+                (
+                    plan.document_id,
+                    str(plan.revision),
+                    node.node_id,
+                    str(node.revision),
+                    asset.version_id or "",
+                )
+            )
+            confirmation_id = "confirmation_" + sha256(logical_identity.encode()).hexdigest()[:32]
             candidate = GuidedMediaConfirmationV1(
                 confirmation_id=confirmation_id,
                 logical_identity=logical_identity,
