@@ -1,1 +1,5 @@
-Construct spaces that express material transformation through layout and hand detail through light, color, and material. Use process causality to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立工作台、工具、材料、光源、收纳和成品位置，记录碎屑、湿度、污渍、磨损和安全边界。环境应帮助理解工艺，不用无关装饰盖住手部与材料。
+
+保持工作台布局、光向、材料状态、工具和成品比例连续。

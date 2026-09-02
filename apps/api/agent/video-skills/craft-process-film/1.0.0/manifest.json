@@ -1,30 +1,34 @@
 {
   "skill_id": "craft-process-film",
   "version": "1.0.0",
-  "display_name": "Craft Process Film",
-  "description": "An advertising treatment built around material transformation, hand detail, process causality, and maker-focused pacing.",
+  "display_name": "匠人工艺过程片",
+  "description": "以材料变形、手部细节、过程因果和以制作者为中心的节奏呈现可信的制作故事。",
+  "content_locale": "zh-CN",
   "category": "lifestyle-documentary",
   "tags": [
-    "lifestyle",
-    "documentary",
-    "observational"
+    "工艺过程",
+    "手部细节",
+    "材料叙事"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "工艺宣传",
+    "品牌故事",
+    "制作过程片"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Craft Process Film creative treatment."
+    "kind": "image",
+    "summary": "匠人工艺过程片视觉预览。",
+    "media_url": "/api/v2/video-skills/craft-process-film/preview?v=1.0.0"
   },
   "display_order": 550,
   "files": {
-    "SKILL.md": "1942e865f56384e7a8071f11550f141d81e34d0a0a3c324fb552268efa3fc531",
-    "references/script.md": "777a1c5230134a7506f48ab2195e3e814122590ce316fdf3312f8da9baf2200c",
-    "references/scene.md": "5eeafef05b81b8d81c9f8963055bb82d587621e9c0162578c102414143183334",
-    "references/storyboard.md": "5d00fcccb80e48df7e2423d50e1f4c22a31f8b1bae32c27ef9375deab1975da7",
-    "references/video.md": "fb6211a9dd82eed65cc4e6deb0ef9552d811cf37ea744d15d647844e5163ee2e",
-    "references/bgm.md": "d63f4a8febaafded841c4e002de7f193895f86150f974e29e390b762d3a36dcb"
+    "SKILL.md": "cf0d158c5806a1b3e0cf9c157c27a478e2eb3bf9b9d4fe86fb50d7a6001a6cb4",
+    "references/script.md": "34e26bc8e534d659d5db609d69fafa3bac282b67ea568ae14a45f9bfc07b3ff9",
+    "references/scene.md": "039707d591ecd4867bfd1f3d2b9f06c739af5fc52baef9891dfbe6e8df726ef1",
+    "references/storyboard.md": "fe7233c5441f759cab3028b9b1c237aa4a3fcba2f920c3d6e9c945e6fc2e0b6d",
+    "references/video.md": "36d36258c3e9d8b784db3d7767e9ae9c8718746975f978895f10d294caef1a90",
+    "references/bgm.md": "f36cecd177a11fa85de090d6bbe192d40fe1a30ca530d75046cff744bd05e07b",
+    "previews/preview.webp": "97826b6052555fef13759707785d0d4f8bbc87fbc9c9436308900fb1020a80ff"
   },
   "role_guidance": {
     "script": "references/script.md",
