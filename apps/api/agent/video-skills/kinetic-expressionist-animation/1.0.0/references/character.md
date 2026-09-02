@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around elastic drawing and expressive distortion. Use energetic staging to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+记录角色中性轮廓、面部锚点、关节方向和可接受的拉伸压缩范围。elastic drawing 与 expressive distortion 要绑定到力量、情绪或声音，变形结束后必须能回到同一身份。
+
+不要用变形掩盖服装、配件或动作方向丢失。

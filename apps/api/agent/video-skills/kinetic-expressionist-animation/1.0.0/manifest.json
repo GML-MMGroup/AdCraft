@@ -1,30 +1,34 @@
 {
   "skill_id": "kinetic-expressionist-animation",
   "version": "1.0.0",
-  "display_name": "Kinetic Expressionist Animation",
-  "description": "An advertising treatment built around elastic drawing, expressive distortion, energetic staging, and color-driven motion.",
+  "display_name": "动势表现主义动画",
+  "description": "以弹性绘制、表现性变形、能量化调度和色彩驱动运动组织具有强烈主观节奏的动画影像。",
+  "content_locale": "zh-CN",
   "category": "animation-illustration",
   "tags": [
-    "animation",
-    "illustration",
-    "motion"
+    "表现主义动画",
+    "弹性变形",
+    "色彩运动"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "概念广告",
+    "音乐视觉",
+    "品牌动画"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Kinetic Expressionist Animation creative treatment."
+    "kind": "image",
+    "summary": "动势表现主义动画视觉预览。",
+    "media_url": "/api/v2/video-skills/kinetic-expressionist-animation/preview?v=1.0.0"
   },
   "display_order": 350,
   "files": {
-    "SKILL.md": "29823977ed940513939ccc8d910d2a62d2df5abb7111fdf0606db8048f538a0b",
-    "references/character.md": "f5054291bc9b3e3ad553dc8b09d4ac01904dee10616a2c5699388d8dc3cca6b1",
-    "references/scene.md": "205b40dec01c807066b7b1f797a8bece1f48d8091952c4eafb9501db8741b115",
-    "references/storyboard.md": "b1c2e1a0d6b38ef7018baba4a524ca6dd4d121e1597d8928875345f0a357053f",
-    "references/video.md": "96fafe9e74be2a6cbab6f393346ffa2b17dacf6bf92ae18ae3ce7f4566b8c866",
-    "references/quick_media.md": "8f94529e52e1f1dec32003e56b0f535edd680d07ac0b55f529da4e95cbd865a8"
+    "SKILL.md": "5eaf93275826647197865c33b0ae35731153c625a03d4aeff466b3a1d6664800",
+    "references/character.md": "50d25d8c4850fe67b40f1e37fe9fe16d63d6cf1810c809dcd6c5aad6b610a6d8",
+    "references/scene.md": "b7e2d7c71065b3485e1c888fff05755ab1f1f9582adf3e0320fbf9c4f0133057",
+    "references/storyboard.md": "dc267e20b5f265a6740d1e9686bba93c586822680d0d98d3dce73d898ab58234",
+    "references/video.md": "665a566565a1e9e89ac32f539eb860defde343d5f76a3230c0e0e4b4b529338f",
+    "references/quick_media.md": "3dd96043f5d048c8d3599c0bf6c52a65dc8cd03cef630917d54277daa9dc19f9",
+    "previews/preview.webp": "1b29f65c199b0cfcf170461b23a99a2e5390514925d6f3760acf01ced6d25153"
   },
   "role_guidance": {
     "character": "references/character.md",

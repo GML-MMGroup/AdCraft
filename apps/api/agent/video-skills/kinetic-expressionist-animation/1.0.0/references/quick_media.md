@@ -1,1 +1,5 @@
-Apply elastic drawing, expressive distortion, and energetic staging as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速测试一个动作变形、色彩流向或背景节拍时，只改变一个变量，保留角色中性轮廓与主运动线。变体用于验证能量表达，不自动成为正式角色或场景资产。
+
+先判断落点、恢复和身份是否清楚，再评价夸张程度。
