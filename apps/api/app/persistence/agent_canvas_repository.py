@@ -582,10 +582,7 @@ class AgentCanvasWorkflowRepository:
         )
         connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
         for binding in bindings:
-            if (
-                binding.workflow_id != node.workflow_id
-                or binding.target_node_id != node.node_id
-            ):
+            if binding.workflow_id != node.workflow_id or binding.target_node_id != node.node_id:
                 raise _invalid_binding_batch_error()
             if isinstance(binding.source, CanvasBindingSourceNodeV2):
                 _require_node(connection, binding.workflow_id, binding.source.node_id)
