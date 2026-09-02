@@ -217,6 +217,10 @@ class StoryboardFanoutActivationService:
         requirement_facts = {
             item.control: item.value for item in controls if item.control != "duration_seconds"
         }
+        if node_role == "video_segment":
+            decision = getattr(requirement_revision.ledger, "identity_safety_decision", None)
+            if decision is not None:
+                requirement_facts["identity_safety_decision"] = decision.model_dump(mode="json")
         excerpts = ()
         build_context = getattr(self._documents, "build_bounded_context", None)
         if build_context is not None:
