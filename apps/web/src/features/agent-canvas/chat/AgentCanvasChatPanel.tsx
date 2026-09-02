@@ -143,6 +143,7 @@ export function AgentCanvasChatPanel({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  onAssetsRefresh,
   onProjectsRefresh,
   runtime = null,
   collapsed: controlledCollapsed,
@@ -158,6 +159,7 @@ export function AgentCanvasChatPanel({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  onAssetsRefresh?: () => Promise<void> | void;
   onProjectsRefresh?: () => Promise<boolean> | void;
   runtime?: CanvasRuntimeSnapshotV2 | null;
   collapsed?: boolean;
@@ -171,6 +173,7 @@ export function AgentCanvasChatPanel({
     onActionReceipt,
     onWorkflowRefresh,
     onRuntimeRefresh,
+    onAssetsRefresh,
   });
   const [draft, setDraft] = useState("");
   const [internalCollapsed, setInternalCollapsed] = useState(false);

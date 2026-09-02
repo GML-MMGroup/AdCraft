@@ -211,6 +211,7 @@ export function useAgentCanvasChat({
   onActionReceipt,
   onWorkflowRefresh,
   onRuntimeRefresh,
+  onAssetsRefresh,
 }: {
   workflow: AgentCanvasWorkflowV2 | null;
   chatRevision: number;
@@ -218,6 +219,7 @@ export function useAgentCanvasChat({
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRuntimeRefresh?: () => Promise<void> | void;
+  onAssetsRefresh?: () => Promise<void> | void;
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
@@ -1509,6 +1511,7 @@ export function useAgentCanvasChat({
       await refresh();
       await onWorkflowRefresh?.();
       await onRuntimeRefresh?.();
+      await onAssetsRefresh?.();
       return true;
     } catch (interactionError) {
       if (workflowGeneration !== workflowGenerationRef.current) return false;
@@ -1532,6 +1535,7 @@ export function useAgentCanvasChat({
     actingInteractionId,
     chatEvents,
     onRuntimeRefresh,
+    onAssetsRefresh,
     onWorkflowRefresh,
     refresh,
     workflowId,

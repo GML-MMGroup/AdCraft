@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GuidedInteractionV1 } from "../../../types-v2.ts";
 import { ReferenceSourceDecisionDock } from "./ReferenceSourceDecisionDock.tsx";
 
-const uploadFilesWithReceipts = vi.fn();
+const fixtures = vi.hoisted(() => ({
+  uploadFilesWithReceipts: vi.fn(),
+  useGuidedReferenceCandidates: vi.fn(),
+}));
+const { uploadFilesWithReceipts, useGuidedReferenceCandidates } = fixtures;
 
 vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
   useAgentCanvasAssets: () => ({
@@ -17,6 +21,10 @@ vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
     uploadFiles: vi.fn(),
     uploadFilesWithReceipts,
   }),
+}));
+
+vi.mock("./useGuidedReferenceCandidates.ts", () => ({
+  useGuidedReferenceCandidates: fixtures.useGuidedReferenceCandidates,
 }));
 
 const interaction: GuidedInteractionV1 = {
@@ -51,10 +59,15 @@ const interaction: GuidedInteractionV1 = {
 afterEach(() => {
   cleanup();
   uploadFilesWithReceipts.mockReset();
+  useGuidedReferenceCandidates.mockReset();
 });
 
 describe("ReferenceSourceDecisionDock", () => {
   it("uploads an image and submits the returned exact AssetVersion", async () => {
+    useGuidedReferenceCandidates.mockReturnValue({
+      items: [], loading: false, loadingMore: false, error: null,
+      hasMore: false, retry: vi.fn(), loadMore: vi.fn(),
+    });
     uploadFilesWithReceipts.mockResolvedValue([{
       asset: {
         asset_id: "uploaded-asset",
@@ -78,9 +91,51 @@ describe("ReferenceSourceDecisionDock", () => {
       expected_session_revision: 7,
       action: "use_reference",
       reference_kind: "character_main",
+      source_scope: "project",
       asset_id: "uploaded-asset",
       asset_version_id: "uploaded-version",
     }));
     expect(uploadFilesWithReceipts).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects a catalog candidate and submits its exact provenance", async () => {
+    useGuidedReferenceCandidates.mockReturnValue({
+      items: [{
+        entity_id: "entity-scene-1",
+        member_id: "member-scene-1",
+        asset_id: "asset-scene-1",
+        asset_version_id: "version-scene-1",
+        media_type: "image",
+        display_name: "Recommended studio",
+        preview_url: "/api/v2/assets/asset-scene-1/content",
+        content_url: "/api/v2/assets/asset-scene-1/content",
+        reference_kind: "character_main",
+        semantic_reference_role: "character_reference",
+        reference_purpose: "identity_guidance",
+        selectable: true,
+      }],
+      loading: false, loadingMore: false, error: null,
+      hasMore: false, retry: vi.fn(), loadMore: vi.fn(),
+    });
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(<ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Recommended studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      submission_kind: "reference_source",
+      expected_interaction_revision: 3,
+      expected_session_revision: 7,
+      action: "use_reference",
+      reference_kind: "character_main",
+      source_scope: "recommended",
+      entity_id: "entity-scene-1",
+      member_id: "member-scene-1",
+      asset_id: "asset-scene-1",
+      asset_version_id: "version-scene-1",
+    }));
   });
 });

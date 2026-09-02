@@ -3578,6 +3578,30 @@ export interface GuidedProductSourceActionV1 {
 
 export type GuidedReferenceKindV1 = "character_main" | "scene_main";
 export type GuidedReferenceActionV1 = "use_reference" | "skip_reference";
+export type GuidedReferenceCandidateScopeV2 = "project" | "mine" | "recommended";
+
+export interface GuidedReferenceCandidateV2 {
+  entity_id: string | null;
+  member_id: string | null;
+  asset_id: string;
+  asset_version_id: string;
+  media_type: "image";
+  display_name: string;
+  preview_url: string;
+  content_url: string;
+  reference_kind: GuidedReferenceKindV1;
+  semantic_reference_role: "character_reference" | "scene_reference";
+  reference_purpose: "identity_guidance" | "environment_guidance";
+  selectable: boolean;
+}
+
+export interface GuidedReferenceCandidateListResponseV2 {
+  workflow_id: string;
+  reference_kind: GuidedReferenceKindV1;
+  scope: GuidedReferenceCandidateScopeV2;
+  items: GuidedReferenceCandidateV2[];
+  next_cursor: string | null;
+}
 
 export interface GuidedReferenceSourceQuestionV1 {
   content_kind: "reference_source";
@@ -3685,6 +3709,9 @@ export type GuidedInteractionSubmitRequestV1 =
       expected_session_revision: number;
       action: GuidedReferenceActionV1;
       reference_kind: GuidedReferenceKindV1;
+      source_scope: GuidedReferenceCandidateScopeV2;
+      entity_id?: string | null;
+      member_id?: string | null;
       asset_id?: string | null;
       asset_version_id?: string | null;
     };

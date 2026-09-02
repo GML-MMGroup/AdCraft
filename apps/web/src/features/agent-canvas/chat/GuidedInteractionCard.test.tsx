@@ -34,6 +34,31 @@ vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
   }),
 }));
 
+vi.mock("./useGuidedReferenceCandidates.ts", () => ({
+  useGuidedReferenceCandidates: () => ({
+    items: [{
+      entity_id: null,
+      member_id: null,
+      asset_id: "asset-front",
+      asset_version_id: "version-front",
+      media_type: "image",
+      display_name: "Existing Front",
+      preview_url: "/asset-front.png",
+      content_url: "/asset-front.png",
+      reference_kind: "character_main",
+      semantic_reference_role: "character_reference",
+      reference_purpose: "identity_guidance",
+      selectable: true,
+    }],
+    loading: false,
+    loadingMore: false,
+    error: null,
+    hasMore: false,
+    retry: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}));
+
 const conceptInteraction: GuidedInteractionV1 = {
   interaction_id: "interaction-concept",
   workflow_id: "workflow-1",
@@ -212,7 +237,6 @@ describe("GuidedInteractionCard", () => {
 
     expect(screen.getByRole("article", { name: "Use a reference for Character 2?" })).toBeTruthy();
     expect(screen.getByText("Character 2 · Main")).toBeTruthy();
-    expect(screen.getByText("Target node · character-main-draft-2 · revision 4")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use reference" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skip reference" })).toBeTruthy();
     expect(screen.queryByText("Continue")).toBeNull();
@@ -229,6 +253,7 @@ describe("GuidedInteractionCard", () => {
         onSubmit={onSubmit}
       />,
     );
+    fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
     fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
     fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
@@ -238,6 +263,7 @@ describe("GuidedInteractionCard", () => {
       expected_session_revision: 4,
       action: "use_reference",
       reference_kind: "character_main",
+      source_scope: "project",
       asset_id: "asset-front",
       asset_version_id: "version-front",
     });
@@ -269,6 +295,7 @@ describe("GuidedInteractionCard", () => {
       expected_session_revision: 4,
       action: "skip_reference",
       reference_kind: "scene_main",
+      source_scope: "project",
     });
   });
 

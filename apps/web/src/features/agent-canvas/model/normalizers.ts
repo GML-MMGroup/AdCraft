@@ -130,6 +130,8 @@ import type {
   GuidedInteractionAcceptedV1,
   GuidedInteractionContentV1,
   GuidedInteractionActionV1,
+  GuidedReferenceCandidateListResponseV2,
+  GuidedReferenceCandidateV2,
   GuidanceAwaitingV1,
   GuidanceAdvancePreconditionV1,
   JourneyElementDecisionV2,
@@ -5268,6 +5270,101 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["source_kind", "source_id", "display_name", "media_type"], path);
   return { source_kind: expectLiteral(record.source_kind, new Set(["node", "image_asset"] as const), `${path}.source_kind`), source_id: expectNonEmptyString(record.source_id, `${path}.source_id`), display_name: expectNonEmptyString(record.display_name, `${path}.display_name`), media_type: expectLiteral(record.media_type, new Set(["text", "image", "video", "audio"] as const), `${path}.media_type`) };
+}
+
+function normalizeGuidedReferenceCandidateV2(value: unknown, path: string): GuidedReferenceCandidateV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "entity_id",
+    "member_id",
+    "asset_id",
+    "asset_version_id",
+    "media_type",
+    "display_name",
+    "preview_url",
+    "content_url",
+    "reference_kind",
+    "semantic_reference_role",
+    "reference_purpose",
+    "selectable",
+  ], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const semanticReferenceRole = expectLiteral(
+    record.semantic_reference_role,
+    new Set(["character_reference", "scene_reference"] as const),
+    `${path}.semantic_reference_role`,
+  );
+  const referencePurpose = expectLiteral(
+    record.reference_purpose,
+    new Set(["identity_guidance", "environment_guidance"] as const),
+    `${path}.reference_purpose`,
+  );
+  const expectedRole = referenceKind === "character_main" ? "character_reference" : "scene_reference";
+  const expectedPurpose = referenceKind === "character_main" ? "identity_guidance" : "environment_guidance";
+  if (semanticReferenceRole !== expectedRole || referencePurpose !== expectedPurpose) {
+    fail(path, "reference candidate role and purpose do not match its kind");
+  }
+  const previewUrl = nullableBrowserSafeUrl(record.preview_url, `${path}.preview_url`);
+  const contentUrl = nullableBrowserSafeUrl(record.content_url, `${path}.content_url`);
+  if (!previewUrl || !contentUrl) fail(path, "reference candidate requires browser-safe preview and content URLs");
+  return {
+    entity_id: nullableStringWithDefault(record.entity_id, `${path}.entity_id`),
+    member_id: nullableStringWithDefault(record.member_id, `${path}.member_id`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`),
+    media_type: expectLiteral(record.media_type, new Set(["image"] as const), `${path}.media_type`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    preview_url: previewUrl,
+    content_url: contentUrl,
+    reference_kind: referenceKind,
+    semantic_reference_role: semanticReferenceRole,
+    reference_purpose: referencePurpose,
+    selectable: expectBoolean(record.selectable, `${path}.selectable`),
+  };
+}
+
+export function normalizeGuidedReferenceCandidateListResponseV2(
+  value: unknown,
+  path = "referenceCandidates",
+): GuidedReferenceCandidateListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "reference_kind", "scope", "items", "next_cursor"], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const scope = expectLiteral(
+    record.scope,
+    new Set(["project", "mine", "recommended"] as const),
+    `${path}.scope`,
+  );
+  const items = expectArray(record.items, `${path}.items`).map((item, index) => {
+    const candidate = normalizeGuidedReferenceCandidateV2(item, `${path}.items[${index}]`);
+    if (candidate.reference_kind !== referenceKind) {
+      fail(`${path}.items[${index}].reference_kind`, "does not match response reference_kind");
+    }
+    if (scope === "project" && (candidate.entity_id !== null || candidate.member_id !== null)) {
+      fail(`${path}.items[${index}]`, "project candidates cannot carry catalog provenance");
+    }
+    if (scope !== "project" && (!candidate.entity_id || !candidate.member_id)) {
+      fail(`${path}.items[${index}]`, "catalog candidates require entity and member provenance");
+    }
+    return candidate;
+  });
+  const identityKeys = new Set(items.map((item) => `${item.asset_id}:${item.asset_version_id}`));
+  if (identityKeys.size !== items.length) fail(`${path}.items`, "candidate AssetVersions must be unique");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    reference_kind: referenceKind,
+    scope,
+    items,
+    next_cursor: nullableStringWithDefault(record.next_cursor, `${path}.next_cursor`),
+  };
 }
 
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {

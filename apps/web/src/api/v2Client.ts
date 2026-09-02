@@ -8,6 +8,9 @@ import type {
   AgentCanvasGuidedActionApplyRequestV2,
   GuidedInteractionAcceptedV1,
   GuidedInteractionSubmitRequestV1,
+  GuidedReferenceCandidateListResponseV2,
+  GuidedReferenceCandidateScopeV2,
+  GuidedReferenceKindV1,
   GuidanceAdvanceRequestV1,
   GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
@@ -174,6 +177,7 @@ import {
   normalizeDecisionBundleV2,
   normalizeGuidedSessionStateV2,
   normalizeGuidedInteractionAcceptedV1,
+  normalizeGuidedReferenceCandidateListResponseV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
@@ -797,6 +801,29 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/assets`,
       { signal: options.signal },
       normalizeProjectAssetListResponseV2,
+    );
+  },
+
+  listAgentCanvasReferenceCandidates(
+    workflowId: string,
+    options: {
+      referenceKind: GuidedReferenceKindV1;
+      scope: GuidedReferenceCandidateScopeV2;
+      cursor?: string | null;
+      query?: string | null;
+      signal?: AbortSignal;
+    },
+  ): Promise<GuidedReferenceCandidateListResponseV2> {
+    const params = new URLSearchParams({
+      reference_kind: options.referenceKind,
+      scope: options.scope,
+    });
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query?.trim()) params.set("query", options.query.trim());
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/reference-candidates?${params.toString()}`,
+      { signal: options.signal },
+      normalizeGuidedReferenceCandidateListResponseV2,
     );
   },
 

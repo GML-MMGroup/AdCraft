@@ -181,6 +181,7 @@ export function AgentCanvasPage() {
     cancelRun,
     clearAutoRunNotice,
     refreshRuntime,
+    refreshAssets,
     refreshWorkflow,
     runAll,
     runNode,
@@ -1402,6 +1403,7 @@ export function AgentCanvasPage() {
           onActionReceipt={placeReceiptNodes}
           onWorkflowRefresh={refreshWorkflow}
           onRuntimeRefresh={refreshRuntime}
+          onAssetsRefresh={refreshAssets}
           onProjectsRefresh={refreshProjects}
           collapsed={chatCollapsed}
           onCollapsedChange={setChatCollapsed}

@@ -582,6 +582,7 @@ export function useAgentCanvasRuntime(
         await refreshRuntime();
       },
       refreshWorkflow,
+      refreshAssets,
       runAll,
       runNode,
       cancelRun,

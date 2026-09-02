@@ -1637,6 +1637,7 @@ describe("useAgentCanvasChat", () => {
         expected_session_revision: interaction.expected_session_revision,
         action: "use_reference",
         reference_kind: "character_main",
+        source_scope: "project",
         asset_id: "asset-character-1",
         asset_version_id: "version-character-1",
       });

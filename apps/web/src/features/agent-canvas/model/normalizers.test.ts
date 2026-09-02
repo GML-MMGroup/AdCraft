@@ -28,6 +28,7 @@ import {
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
   normalizeGuidedSessionStateV2,
+  normalizeGuidedReferenceCandidateListResponseV2,
   normalizeProjectAssetListResponseV2,
   normalizeProjectAssetUploadResponseV2,
   normalizeProjectAssetSummaryV2,
@@ -1216,6 +1217,110 @@ describe("Agent Canvas normalizers", () => {
       ...payload,
       interaction: { ...payload.interaction, allowed_actions: ["select_source"] },
     })).toThrow("Invalid creativeSession.interaction.allowed_actions: reference source requires use_reference and skip_reference actions");
+  });
+
+  it("normalizes reference candidates with exact browser-safe identity and scope provenance", () => {
+    const project = normalizeGuidedReferenceCandidateListResponseV2({
+      workflow_id: "workflow-1",
+      reference_kind: "character_main",
+      scope: "project",
+      items: [{
+        entity_id: null,
+        member_id: null,
+        asset_id: "asset-character-1",
+        asset_version_id: "version-character-1",
+        media_type: "image",
+        display_name: "Character portrait",
+        preview_url: "/api/v2/assets/asset-character-1/content?version_id=version-character-1",
+        content_url: "/api/v2/assets/asset-character-1/content?version_id=version-character-1",
+        reference_kind: "character_main",
+        semantic_reference_role: "character_reference",
+        reference_purpose: "identity_guidance",
+        selectable: true,
+      }],
+      next_cursor: null,
+    });
+    const catalog = normalizeGuidedReferenceCandidateListResponseV2({
+      workflow_id: "workflow-1",
+      reference_kind: "scene_main",
+      scope: "recommended",
+      items: [{
+        entity_id: "scene-entity-1",
+        member_id: "scene-member-1",
+        asset_id: "asset-scene-1",
+        asset_version_id: "version-scene-1",
+        media_type: "image",
+        display_name: "Blue studio",
+        preview_url: "https://cdn.example.test/scene.webp",
+        content_url: "https://cdn.example.test/scene.webp",
+        reference_kind: "scene_main",
+        semantic_reference_role: "scene_reference",
+        reference_purpose: "environment_guidance",
+        selectable: true,
+      }],
+      next_cursor: "cursor-2",
+    });
+
+    expect(project.items[0]).toMatchObject({
+      asset_id: "asset-character-1",
+      asset_version_id: "version-character-1",
+      entity_id: null,
+      member_id: null,
+    });
+    expect(catalog.items[0]).toMatchObject({
+      entity_id: "scene-entity-1",
+      member_id: "scene-member-1",
+      reference_kind: "scene_main",
+    });
+  });
+
+  it("rejects unsafe, mismatched, duplicate, and malformed reference candidates", () => {
+    const base = {
+      workflow_id: "workflow-1",
+      reference_kind: "character_main" as const,
+      scope: "project" as const,
+      items: [{
+        entity_id: null,
+        member_id: null,
+        asset_id: "asset-character-1",
+        asset_version_id: "version-character-1",
+        media_type: "image" as const,
+        display_name: "Character portrait",
+        preview_url: "/api/v2/assets/asset-character-1/content",
+        content_url: "/api/v2/assets/asset-character-1/content",
+        reference_kind: "character_main" as const,
+        semantic_reference_role: "character_reference" as const,
+        reference_purpose: "identity_guidance" as const,
+        selectable: true,
+      }],
+      next_cursor: null,
+    };
+
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      items: [{ ...base.items[0], preview_url: "javascript:alert(1)" }],
+    })).toThrow(/preview_url/i);
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      items: [{ ...base.items[0], reference_kind: "scene_main" }],
+    })).toThrow(/role and purpose/i);
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      items: [{ ...base.items[0], unexpected: true }],
+    })).toThrow(/unexpected/i);
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      items: [base.items[0], base.items[0]],
+    })).toThrow(/unique/i);
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      items: [{ ...base.items[0], entity_id: "entity-1", member_id: "member-1" }],
+    })).toThrow(/catalog provenance/i);
+    expect(() => normalizeGuidedReferenceCandidateListResponseV2({
+      ...base,
+      scope: "mine",
+      items: [{ ...base.items[0], entity_id: null, member_id: null }],
+    })).toThrow(/provenance/i);
   });
 
   it("retains immutable image AssetVersion identity in a binding source", () => {

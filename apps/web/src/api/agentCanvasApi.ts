@@ -29,6 +29,7 @@ export const agentCanvasApi = {
   createAgentCanvasConnectedNode: v2Api.createAgentCanvasConnectedNode,
   uploadAgentCanvasAsset: v2Api.uploadAgentCanvasAsset,
   listAgentCanvasProjectAssets: v2Api.listAgentCanvasProjectAssets,
+  listAgentCanvasReferenceCandidates: v2Api.listAgentCanvasReferenceCandidates,
   listAgentCanvasMyAssets: v2Api.listAgentCanvasMyAssets,
   listAgentCanvasRecommendedAssets: v2Api.listAgentCanvasRecommendedAssets,
   saveAgentCanvasImageToLibrary: v2Api.saveAgentCanvasImageToLibrary,
