@@ -1,29 +1,33 @@
 {
   "skill_id": "new-product-tvc-campaign",
   "version": "1.0.0",
-  "display_name": "New Product TVC Campaign",
-  "description": "An advertising treatment built around campaign concept, premium product reveal, visual anchor, and brand arc.",
+  "display_name": "新品视觉TVC广告",
+  "description": "以广告概念、产品高级感揭示、视觉锚点和品牌弧线组织新品商业影像。",
+  "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
-    "commercial",
-    "campaign",
-    "product"
+    "新品广告",
+    "品牌叙事",
+    "产品展示"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "新品发布",
+    "品牌广告",
+    "产品宣传"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "New Product TVC Campaign creative treatment."
+    "kind": "image",
+    "summary": "新品视觉TVC广告视觉预览。",
+    "media_url": "/api/v2/video-skills/new-product-tvc-campaign/preview?v=1.0.0"
   },
   "display_order": 10,
   "files": {
-    "SKILL.md": "db694a7a3bc7c3f8ff17d1fe64f0400814533039c737881525bf711bcc055115",
-    "references/script.md": "97a5f08e23033e45b4426533c4b3cbb674497a70631afde63f990ef9fa3e1cce",
-    "references/product.md": "6eca4b2451528410de7bbe878031d8bf458b1d982bbf394636159ee6898315e1",
-    "references/storyboard.md": "9dd5507f0fd82db16fec84cef86224c40ee7e0f31bc51cce2e8bedb37c5216f7",
-    "references/video.md": "40261e492e89a8d736833bba12c96ba5de817c027bd3db6ed949d47b46c5706f"
+    "SKILL.md": "5b2498d479bd860fbbe363f0f379223653cd45259b892dd3ea13eb224e7c2d92",
+    "references/script.md": "7b9af270b96bc5d3c03a4210bd86284d488100e213a80b6996a21fbd43bb1ab5",
+    "references/product.md": "85e9ed6838a5fddd72407d1b249e903791f63ac2da7e07dd45b12da94b6c0691",
+    "references/storyboard.md": "0546349d32dd4f6ff4b850fe29c0aa8a813eed3772e153f39655963e04d7705c",
+    "references/video.md": "44a70ffbdab84e9e4068c4e84b1d2d9b4acc13792aee3b678b900510e211b917",
+    "previews/preview.webp": "d77c5dcc3356b7cebb82a0efd22fc4202a489327e62e383fde8241657441cd47"
   },
   "role_guidance": {
     "script": "references/script.md",

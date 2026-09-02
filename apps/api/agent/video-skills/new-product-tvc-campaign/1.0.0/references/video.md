@@ -1,1 +1,6 @@
-Direct camera and subject motion through campaign concept and premium product reveal, using visual anchor for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把分镜翻译成可观察的产品动作和摄影机动作。说明镜头从哪里开始、如何靠近或跟随、产品如何响应、焦点何时转移、动作在哪里完成，以及下一镜继承什么视觉锚点。运动要服从产品重量、接触面、材质和空间尺度。
+
+视频提示同时交代产品身份、人物与产品的关系、场景锚点、动作顺序、光线反应、材质细节和连续性约束。参考图用于锁定已知结构和颜色；不要用“高级”“未来感”等风格词替代具体部件。声音可以标注按钮、摩擦、开启或环境反馈，但不能制造画面中没有的事实。
+
+正例：镜头沿人物拿起产品的方向跟随，焦点在关键部件响应时转移，动作结束后保留完整轮廓和稳定光源。
+反例：快速旋转造成 Logo 和结构变形，或只写“电影感展示”而没有动作起止和产品证据。

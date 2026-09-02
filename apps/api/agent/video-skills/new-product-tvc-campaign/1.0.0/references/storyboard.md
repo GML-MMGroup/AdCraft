@@ -1,1 +1,6 @@
-Organize shots around campaign concept, develop visual progression through premium product reveal, and reserve visual anchor for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+用“镜头目的—主体动作—产品证据—构图锚点—声音关系—转场接口”组织新品分镜。先安排广告信息和 brand arc，再选择景别、机位和运动。关键镜头记录开始、变化和结束状态，尤其标明产品何时被看见、何时被使用、何时完成揭示。
+
+visual anchor 可以是轮廓、接口、手部动作、光线边缘、空间线条或品牌色。相邻镜头继承至少一个锚点；需要换场时用动作、遮挡、形状呼应或声音桥接。复杂镜头减少同时变化的维度，避免产品、人物、轴线和光源一起改变。
+
+正例：稳定构图交代人物需求，手部动作引导镜头进入产品细节，功能完成时切回全貌，结尾保留品牌和受众承诺。
+反例：只写“宏大、奢华、震撼”，没有产品证据、起止状态或镜头之间的连接理由。
