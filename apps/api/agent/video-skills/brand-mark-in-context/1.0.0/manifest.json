@@ -1,30 +1,34 @@
 {
   "skill_id": "brand-mark-in-context",
   "version": "1.0.0",
-  "display_name": "Brand Mark in Context",
-  "description": "An advertising treatment built around brand-shape echoes, environmental integration, and reveal and recognition hierarchy.",
+  "display_name": "品牌标志场景化广告",
+  "description": "以品牌形状回响、环境融入和揭示与识别层级组织不依赖硬贴标志的品牌影像。",
+  "content_locale": "zh-CN",
   "category": "experimental-graphic",
   "tags": [
-    "experimental",
-    "graphic",
-    "compositing"
+    "品牌识别",
+    "环境融入",
+    "标志叙事"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌广告",
+    "产品识别",
+    "视觉营销"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Brand Mark in Context creative treatment."
+    "kind": "image",
+    "summary": "品牌标志场景化广告视觉预览。",
+    "media_url": "/api/v2/video-skills/brand-mark-in-context/preview?v=1.0.0"
   },
   "display_order": 430,
   "files": {
-    "SKILL.md": "bc7417f5fcf32efd9a9685fdcc4b4d19b243709d9ea3b55c2c1fb3a5d79ea4ec",
-    "references/prop.md": "7f8b8e926e896778f4dae6cffc52777f6caac9f2047f41aff324e93ee8a65c4b",
-    "references/scene.md": "193ccab30967a1793dd266801bcf38c7869a3af097b3f62f86fd70345f4ae208",
-    "references/storyboard.md": "3937d2dbf60196fb8c838f4b5ef0bd0d6cdb78c5b11df928de459c11a6f84b1e",
-    "references/video.md": "2f5191db8296d79fe1026c62039662d0cb5b64fd659dc8890515081603285398",
-    "references/quick_media.md": "3bd5425b1d65f32c55041f513690b516eba04370d018c60ab69ce43b24b4c648"
+    "SKILL.md": "9db2cb3fb7cd036911c9cd2506f4ae3d8ea4257ceb05d7ca7bced7404da2abc3",
+    "references/prop.md": "eaa3d866f983a5b59c781860e082f47155a07c307cb64236cf39ecdfaf3c7b66",
+    "references/scene.md": "cb999d50751bdc25164108a0d8ffc3830a9382c696d0e590364fbbf62c22d79b",
+    "references/storyboard.md": "06b003c191cc43b9e3c10887c632c85d0ee7dd3990a06eed9da021664b3a5855",
+    "references/video.md": "b31556333a80a4ce7beadf368618608b980f050dc17e38aae5eb0a384143f591",
+    "references/quick_media.md": "4a0a0d1acd35bf98e4b96e8195d97c8b88c2e0eb89d52da3dbcb7e2ef1d7d957",
+    "previews/preview.webp": "e70b802c6a1b460549073de8374e4acb0170d74f1b50cae7e26bc00ff79626ad"
   },
   "role_guidance": {
     "prop": "references/prop.md",

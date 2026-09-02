@@ -1,1 +1,5 @@
-Direct camera and subject motion through brand-shape echoes and environmental integration, using reveal and recognition hierarchy for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头运动先服务产品与人物，再在适当时机让 brand-shape echoes 清楚出现。保持标志比例、透视、光线和材质，避免漂浮、扭曲或反复闪现。
+
+声音可用产品动作、环境回声和品牌落点的简洁声学标记，但不要让声音替代视觉识别。

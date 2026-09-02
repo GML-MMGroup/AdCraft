@@ -1,8 +1,23 @@
 ---
-name: Brand Mark in Context
-description: An advertising treatment built around brand-shape echoes, environmental integration, and reveal and recognition hierarchy.
+name: 品牌标志场景化广告
+description: 以品牌形状回响、环境融入和揭示与识别层级组织不依赖硬贴标志的品牌影像。
 ---
 
-Use brand-shape echoes, environmental integration, and reveal and recognition hierarchy as the style's creative grammar. Establish brand-shape echoes as the primary visual idea, reinforce it through environmental integration, and let reveal and recognition hierarchy shape the progression toward reveal and recognition hierarchy.
+把 brand-shape echoes、environmental integration、reveal and recognition hierarchy 作为品牌标志场景化的三个创作支点。品牌识别可以来自轮廓、路径、负空间、重复动作、材质或色彩关系，但必须尊重用户提供的品牌资产，不能凭空重绘或改变标志事实。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 形状与环境
+
+先拆解品牌资产中可授权使用的形状、比例、颜色和节奏，再寻找环境中的自然回响：建筑边缘、光影、产品轮廓、道路、手势或物件排列。brand-shape echoes 是隐约的结构联系，不是把标志复制到每个表面。
+
+environmental integration 让品牌形状成为空间或动作的一部分，保持材质、光线和透视真实。不要用贴纸、漂浮水印或无依据的发光替代融入。
+
+## 揭示与识别
+
+reveal and recognition hierarchy 先让观众理解场景和产品，再逐步确认品牌关系，最后给清楚但不遮挡主体的识别落点。每一次出现都要承担识别、导航或记忆职责，避免品牌元素过早抢走叙事。
+
+## 连续性与纠偏
+
+保持品牌资产比例、颜色、产品结构、场景轴线和光源。结果品牌感弱时，先恢复形状回响和产品事实；结果过度露出时，减少重复标志。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供品牌视觉判断。
+
+正例：产品轮廓与环境拱门产生形状回响，动作完成后品牌关系在清楚负空间中被识别。
+反例：把标志贴满墙面并改变比例，观众看见的是装饰而不是产品或品牌经验。

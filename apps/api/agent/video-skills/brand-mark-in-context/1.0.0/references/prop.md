@@ -1,1 +1,5 @@
-Design supporting objects around brand-shape echoes and environmental integration, with a material hierarchy that reinforces reveal and recognition hierarchy. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
+# 道具指导
+
+只使用已确认的品牌资产与产品事实，记录标志比例、颜色、轮廓、材质和可见状态。寻找 brand-shape echoes 时优先从产品结构、包装边缘、开合动作和手势中提取关系，不擅自重绘标志。
+
+跨镜头保持标志、包装、产品数量和朝向一致。
