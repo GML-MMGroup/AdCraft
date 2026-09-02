@@ -442,12 +442,14 @@ def _validate_conditioning_plan(
     if (
         reference.display_order != plan.reference_position - 1
         or reference.binding_id != plan.provenance.binding_id
+        or reference.binding_revision != plan.provenance.binding_revision
         or reference.asset_id != plan.provenance.asset_id
         or reference.asset_version_id != plan.provenance.asset_version_id
         or reference.source_node_id != plan.provenance.source_node_id
         or reference.source_node_revision != plan.provenance.source_node_revision
         or reference.reference_kind != plan.reference_kind
         or reference.reference_purpose != plan.reference_purpose
+        or reference.semantic_reference_role != plan.semantic_reference_role
     ):
         raise _error(
             "reference_conditioning_plan_stale",
