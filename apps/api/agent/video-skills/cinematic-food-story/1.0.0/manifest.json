@@ -1,30 +1,34 @@
 {
   "skill_id": "cinematic-food-story",
   "version": "1.0.0",
-  "display_name": "Cinematic Food Story",
-  "description": "An advertising treatment built around ingredient texture, process progression, steam and sound detail, and appetite-led reveal.",
+  "display_name": "电影感美食叙事广告",
+  "description": "以食材质地、制作过程、蒸汽与声音细节和食欲揭示组织广告叙事的美食影像创作方法。",
+  "content_locale": "zh-CN",
   "category": "lifestyle-documentary",
   "tags": [
-    "lifestyle",
-    "documentary",
-    "observational"
+    "美食叙事",
+    "感官影像",
+    "生活纪录"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌广告",
+    "产品宣传",
+    "餐饮与食品内容"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Cinematic Food Story creative treatment."
+    "kind": "image",
+    "summary": "电影感美食叙事广告视觉预览。",
+    "media_url": "/api/v2/video-skills/cinematic-food-story/preview?v=1.0.0"
   },
   "display_order": 530,
   "files": {
-    "SKILL.md": "4aaeaa123a023c7e3d3a69fca31bd46898ef02dac1882656b24e345808aa5b82",
-    "references/script.md": "99118dba6cbf68fbe340ccf0701e606555d97369039b06f4bb02015426b4fca1",
-    "references/scene.md": "8d6dd302838a2243b03299010ae7170c9cf2cfc279b1152a767f05a124f12fb8",
-    "references/storyboard.md": "e08675419b3a4490e67a3e1b575aaffb9ff0aa2e3f4feec13e32e30506389d69",
-    "references/video.md": "4ee1c0c712264cf6cb5c2f560fa5bc30ef1aa32b7411c89c2deee09c302479fe",
-    "references/bgm.md": "9ead8cb4a2ef138cd80a342579525b391498534aba2df40021482406d296504c"
+    "SKILL.md": "a770886cdeb12c374dff0244b1b493fdac0883592dbdd7a608b3cf321798c208",
+    "references/script.md": "78aeba1b9d5b4c4c9e9dab83ade5e76eb0277f92b01afe2809c0c9456891d60e",
+    "references/scene.md": "f00c0bf1e2f8d967569a965810e2de2d6043420334ad5178113ed185f3d2a979",
+    "references/storyboard.md": "078645574fb2c74ee53a2225b1406925caa8059c26e4b2923ac03c9425ca38c6",
+    "references/video.md": "5a74336d5d84ea8d6fe803c993784c3d76aceb8901cb2c2edd7617f02e5722b5",
+    "references/bgm.md": "07765897a1d102938c5b6fc7058b4e08443eaa2be4e07ad65e0ef51e2b15cec9",
+    "previews/preview.webp": "5ba30c367be111bd495ae7b0e8b400991670cba216068cf82b8877c343b4b4c2"
   },
   "role_guidance": {
     "script": "references/script.md",

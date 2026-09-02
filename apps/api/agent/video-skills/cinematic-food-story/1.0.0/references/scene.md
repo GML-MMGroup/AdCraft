@@ -1,1 +1,9 @@
-Construct spaces that express ingredient texture through layout and process progression through light, color, and material. Use steam and sound detail to direct attention toward the advertised subject while preserving the stated location and product context.
+场景要让食材和制作过程有可感知的环境依据，而不是只提供一张好看的背景。根据主体选择厨房、集市、田地、作坊、餐桌或开放环境，并说明地面、台面、器皿、光源、空气湿度、烟气去向和可用的空间层次。环境材料应帮助观众理解温度、时间和劳动痕迹。
+
+保持场景中的固定锚点：操作面方向、主要光源、容器位置、背景层次、入口与出口以及声音来源。蒸汽、雾气、火焰和反射要服从空间和光线，不能在没有热源或遮挡依据的地方凭空出现。需要换场时，用食材形状、动作方向、色彩或环境声建立连接。
+
+用户要求纯场景时，不主动加入人物、手部或无关道具；人物进入时，明确他与食物、工具或地点的关系。场景细节不能夺走产品的可辨识轮廓，也不能为了复古或高级感改变用户指定的地点和品牌事实。
+
+正例：用木台、潮湿空气和侧后方暖光说明刚出锅的温度，再让同一束光中的蒸汽把视线带向成品。
+
+反例：每个镜头都更换厨房布局和光源，或用无来源的烟雾覆盖主体；观众既无法确认空间连续，也无法判断热气来自什么动作。

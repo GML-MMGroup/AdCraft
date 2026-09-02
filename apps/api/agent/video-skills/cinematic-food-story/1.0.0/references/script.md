@@ -1,1 +1,9 @@
-Build the narrative premise around ingredient texture, then use process progression to shape escalation and appetite-led reveal to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+先把“好吃”拆成一个可证明的广告命题，再选择食材溯源、制作过程或人文关系作为叙事主线。开头交代主体和来处，中段让一个具体动作带来可观察的变化，结尾把 appetite-led reveal 放在最能承接品牌承诺的位置。不要用抒情旁白替代食物、工艺或产品证据。
+
+为每个段落写清信息目的、主体状态、动作原因、感官细节、声音提示和转折依据。食材从生到熟、从粗糙到细腻、从分散到成盘的变化，都应有中间动作和物理反馈。复杂的工艺可以通过手部节奏、器具接触、温度反应和环境声压缩表达，而不是堆叠形容词。
+
+旁白只补充画面无法独立说明的事实、记忆或情感；画面负责质地与过程，动作声负责触感和重量，环境声负责地点。让三者互相补充，避免旁白逐句复述画面。没有可靠事实时，不虚构产地、传统或人物背景。
+
+正例：先交代食材来自何处，再让一个重复而稳定的手工动作展示耐心，最后以热气、纹理和完成品的反应证明口感与品牌主张。
+
+反例：开头连续使用“匠心、极致、传承”等抽象词，却没有主体、动作和事实；或为了追求戏剧性让食材状态突然跳跃，旁白也无法解释变化。
