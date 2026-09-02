@@ -358,6 +358,152 @@ class ProgressiveStoryboardReadyService:
             )
         return stored_confirmation, tuple(created_node_ids)
 
+    def reconcile_fanout(
+        self,
+        *,
+        fanout_plan_id: str,
+        source_grid: CanvasNodeV2,
+    ) -> tuple[str, ...]:
+        """Complete only missing members of one persisted fan-out receipt."""
+
+        if self._receipts is None or self._events is None or self._asset_resolver is None:
+            raise V2PersistenceError(
+                "storyboard_transaction_authority_required",
+                "Storyboard recovery requires shared receipt and event transaction authority.",
+                stage="storyboard_progression",
+            )
+        fanout = self._receipts.get_fanout(fanout_plan_id)
+        confirmation = self._receipts.get_confirmation(fanout.visual_anchor_confirmation_id)
+        if fanout.fanout_plan_id != fanout_plan_id:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out identity does not match the requested recovery.",
+                stage="storyboard_progression",
+            )
+        if (
+            fanout.workflow_id != source_grid.workflow_id
+            or fanout.visual_anchor_node_id != source_grid.node_id
+            or fanout.visual_anchor_node_revision != source_grid.revision
+            or fanout.visual_anchor_asset_id != source_grid.output_asset_id
+            or fanout.visual_anchor_asset_version_id != confirmation.asset_version_id
+            or fanout.visual_anchor_asset_digest != confirmation.asset_digest
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source proof is stale.",
+                stage="storyboard_progression",
+            )
+        asset = self._asset_resolver(source_grid.output_asset_id or "")
+        if (
+            asset.version_id != confirmation.asset_version_id
+            or asset.checksum != confirmation.asset_digest
+            or asset.status != "ready"
+            or asset.media_type != "image"
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Asset proof is stale.",
+                stage="storyboard_progression",
+            )
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(source_grid.workflow_id).items
+                if item.document_id == fanout.plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Plan is not current.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        if not _anchor_matches_confirmation(content, source_grid, confirmation):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out anchor no longer matches its source proof.",
+                stage="storyboard_progression",
+            )
+        workflow = self._workflows.get_workflow(source_grid.workflow_id)
+        all_members = self._build_fanout_members(
+            workflow=workflow,
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=plan.revision,
+            content=content,
+            source_grid=source_grid,
+        )
+        allowed_node_ids = {item.node_id for item in fanout.nodes}
+        members = tuple(
+            (node, bindings) for node, bindings in all_members if node.node_id in allowed_node_ids
+        )
+        next_content = _published_plan_content(
+            content,
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=plan.revision,
+            source_grid=source_grid,
+            confirmation=confirmation,
+            members=members,
+            fanout=fanout,
+            existing_nodes=workflow.nodes,
+        )
+        created_node_ids: list[str] = []
+        event_time = datetime.now(timezone.utc).isoformat()
+        with self._workflows.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                self._workflows.require_node_revision_in_transaction(
+                    connection,
+                    workflow_id=source_grid.workflow_id,
+                    node_id=source_grid.node_id,
+                    expected_revision=source_grid.revision,
+                    expected_output_asset_id=source_grid.output_asset_id,
+                )
+                current_workflow_revision = workflow.revision
+                for node, bindings in members:
+                    current_workflow_revision = (
+                        self._workflows.add_node_with_bindings_in_transaction(
+                            connection,
+                            node,
+                            bindings,
+                            expected_revision=current_workflow_revision,
+                        )
+                    )
+                    created_node_ids.append(node.node_id)
+                if next_content != content:
+                    self._authoring.commit_plan_content_in_transaction(
+                        connection,
+                        workflow_id=source_grid.workflow_id,
+                        agent_run_id=f"storyboard-reconcile:{fanout_plan_id}",
+                        document_id=plan.document_id,
+                        expected_revision=plan.revision,
+                        operation="reconcile_storyboard_fanout",
+                        idempotency_key=f"reconcile:{fanout_plan_id}",
+                        next_content=next_content,
+                    )
+                self._receipts.save_fanout_in_transaction(connection, fanout)
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=fanout.workflow_id,
+                        node_id=fanout.visual_anchor_node_id,
+                        event_type="storyboard_fanout_reconciled",
+                        transition_key=f"storyboard-fanout-reconciled:{fanout_plan_id}",
+                        created_at=event_time,
+                        payload={
+                            "fanout_plan_id": fanout_plan_id,
+                            "created_node_ids": created_node_ids,
+                            "plan_revision": plan.revision,
+                        },
+                    ),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return tuple(created_node_ids)
+
     def _build_fanout_members(
         self,
         *,
@@ -1362,6 +1508,29 @@ def _fanout_plan(
 
 def _fanout_plan_id(confirmation: GuidedMediaConfirmationV1) -> str:
     return "fanout_" + sha256(confirmation.logical_identity.encode()).hexdigest()[:32]
+
+
+def _anchor_matches_confirmation(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    source_grid: CanvasNodeV2,
+    confirmation: GuidedMediaConfirmationV1,
+) -> bool:
+    anchor = content.visual_anchor
+    if anchor is None:
+        return True
+    if isinstance(anchor, StoryboardVisualAnchorV3):
+        return (
+            anchor.node_id == source_grid.node_id
+            and anchor.node_revision == source_grid.revision
+            and anchor.asset_id == confirmation.asset_id
+            and anchor.asset_version_id == confirmation.asset_version_id
+            and anchor.acceptance_evidence_id == confirmation.confirmation_id
+        )
+    return (
+        anchor.node_id == source_grid.node_id
+        and anchor.node_revision == source_grid.revision
+        and anchor.asset_id == confirmation.asset_id
+    )
 
 
 def _published_plan_content(
