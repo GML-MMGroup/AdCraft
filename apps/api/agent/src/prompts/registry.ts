@@ -95,6 +95,7 @@ function instructionForOperation(operation: string): string {
       "The deterministic Python journey policy is the sole authority for the next stage; never encode or infer stage selection through assistant prose.",
       "Represent explicit_elements as one strict object with only the optional product, prop, character, scene, world_setting, script, storyboard, video, and audio keys. Every present key must contain presence and an exact source_quote.",
       "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
+      "When character_count and character_occurrences_to_set are both present, they are one complete typed fact and the included occurrence count must equal character_count. If the roster is not supported by the current message, omit the roster rather than inventing, truncating, or silently correcting it.",
       "Represent each directive as either scope_kind global without capability_id or scope_kind capability with exactly one registered capability_id.",
       "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
       "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
