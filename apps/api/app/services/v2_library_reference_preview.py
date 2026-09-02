@@ -7,6 +7,7 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from collections.abc import Mapping
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
@@ -42,7 +43,7 @@ class ResolvedLibraryPreview:
 class V2LibraryReferencePreviewResolver:
     """Resolve previews only for explicitly marked library provenance."""
 
-    _LIBRARY_SCOPES = frozenset({"mine", "project", "recommended"})
+    _LIBRARY_SCOPES = frozenset({"my", "project", "recommended"})
 
     def __init__(
         self,
@@ -61,6 +62,25 @@ class V2LibraryReferencePreviewResolver:
         max_data_url_bytes: int,
     ) -> ResolvedLibraryPreview | None:
         provenance = snapshot.binding_metadata
+        return self.resolve_version(
+            asset_id=snapshot.asset_id,
+            version_id=snapshot.asset_version_id,
+            media_type=snapshot.media_type,
+            provenance=provenance,
+            version=version,
+            max_data_url_bytes=max_data_url_bytes,
+        )
+
+    def resolve_version(
+        self,
+        *,
+        asset_id: str,
+        version_id: str | None,
+        media_type: str,
+        provenance: Mapping[str, object],
+        version: AssetVersionMetadataV2,
+        max_data_url_bytes: int,
+    ) -> ResolvedLibraryPreview | None:
         marker = provenance.get("reference_source")
         scope = provenance.get("source_scope")
         if marker != "asset_library":
@@ -69,9 +89,9 @@ class V2LibraryReferencePreviewResolver:
             return None
         if scope not in self._LIBRARY_SCOPES:
             raise LibraryReferencePreviewError("library_provenance_invalid")
-        if snapshot.asset_id != version.asset_id or snapshot.asset_version_id != version.version_id:
+        if asset_id != version.asset_id or version_id != version.version_id:
             raise LibraryReferencePreviewError("asset_version_mismatch")
-        if snapshot.media_type != "image" or version.mime_type.split("/", 1)[0] != "image":
+        if media_type != "image" or version.mime_type.split("/", 1)[0] != "image":
             raise LibraryReferencePreviewError("preview_media_type_invalid")
 
         if scope == "recommended":
