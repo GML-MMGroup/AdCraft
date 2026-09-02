@@ -1,1 +1,5 @@
-Construct spaces that express weathered worlds through layout and tactile production design through light, color, and material. Use grounded spectacle to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+为环境建立天气、磨损、修补、工具、路径和生活痕迹清单。tactile production design 要区分材料的重量、湿度、反光和受力；不要把所有表面处理成同一种旧色。
+
+为奇观预留清楚的地理参照和安全退路。跨镜头保持地形、天气、光向、关键道具和可通行路线连续。

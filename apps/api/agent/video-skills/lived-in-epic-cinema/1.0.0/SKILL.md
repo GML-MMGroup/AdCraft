@@ -1,8 +1,21 @@
 ---
-name: Lived-In Epic Cinema
-description: An advertising treatment built around weathered worlds, tactile production design, grounded spectacle, and layered stakes.
+name: 生活质感史诗影像
+description: 以有磨损的世界、触觉化场景设计、扎实的奇观和层层递进的利害关系构建可信的史诗商业叙事。
 ---
 
-Use weathered worlds, tactile production design, grounded spectacle, and layered stakes as the style's creative grammar. Establish weathered worlds as the primary visual idea, reinforce it through tactile production design, and let grounded spectacle shape the progression toward layered stakes.
+把 weathered worlds、tactile production design、grounded spectacle、layered stakes 作为生活质感史诗的四个创作支点。史诗感不等于把规模无限放大，而是让环境有历史、人物有代价、动作有重量，奇观因此显得可信。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 世界与细节
+
+weathered worlds 通过磨损、修补、污渍、标记、天气和使用痕迹说明时间。tactile production design 要让木材、金属、布料、石头、泥土和工具具有不同触感，所有细节都应支持人物生活或产品功能。不要用随机废墟和烟尘替代具体历史。
+
+## 奇观与利害关系
+
+grounded spectacle 先建立可理解的地理和参照，再让规模事件发生。layered stakes 按个人、关系、群体和环境逐层升级，每一层都改变行动选择。高潮之后回到人物手中的具体物件或结果，让奇观有后果。
+
+## 连续性与纠偏
+
+保持天气、磨损、服装、道具、地形、光向和人物关系。参考图锁定角色与关键物，结果偏离时先修复动作重量和空间因果，再降低群众与特效复杂度。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供叙事判断。
+
+正例：修补过的设备在恶劣天气中承担关键任务，远景奇观改变局势，近景回到手上的磨损与选择。
+反例：所有物体都崭新发光，群众和爆炸不断增加，却没有人物代价或结果。
