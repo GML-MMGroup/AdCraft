@@ -8,6 +8,7 @@ from typing import Literal, Protocol, cast
 
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from sqlalchemy.engine import Connection
 from app.schemas.agent_canvas_ad_media import ProviderModelCapabilityV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardGridAuthoringContextV2,
@@ -113,6 +114,38 @@ class StoryboardSequenceAuthoringService:
             workflow_id,
             kind="storyboard_production_plan",
             limit=20,
+        )
+
+    def commit_plan_content_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        agent_run_id: str,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        idempotency_key: str,
+        next_content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    ) -> AgentWorkingDocumentV2:
+        """Commit a plan mutation through the shared document transaction."""
+
+        commit = getattr(self._documents, "commit_content_mutation_in_transaction", None)
+        if not callable(commit):
+            raise V2PersistenceError(
+                "storyboard_transaction_authority_required",
+                "Storyboard fan-out requires the shared document transaction authority.",
+                stage="storyboard_sequence_authoring",
+            )
+        return commit(
+            connection,
+            workflow_id=workflow_id,
+            agent_run_id=agent_run_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            next_content=next_content,
         )
 
     @staticmethod
