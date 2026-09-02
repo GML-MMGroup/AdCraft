@@ -330,7 +330,11 @@ class AgentCanvasGuidedReferenceRepository:
                             ),
                             "operation_id": submission_id,
                             "rendition_kind": "original",
-                            "reference_source": True,
+                            **(
+                                {"reference_source": "asset_library"}
+                                if request.source_scope in {"mine", "recommended"}
+                                else {}
+                            ),
                             "reference_kind": content.reference_kind,
                             "target_node_id": content.target_node_id,
                             "target_node_revision": content.target_node_revision,
@@ -376,6 +380,11 @@ class AgentCanvasGuidedReferenceRepository:
                         metadata={
                             "operation_id": submission_id,
                             "rendition_kind": "original",
+                            **(
+                                {"reference_source": "asset_library"}
+                                if request.source_scope in {"mine", "recommended"}
+                                else {}
+                            ),
                             "reference_kind": content.reference_kind,
                             "semantic_reference_role": (
                                 "character_reference"
