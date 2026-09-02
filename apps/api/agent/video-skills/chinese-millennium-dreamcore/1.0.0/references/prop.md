@@ -1,1 +1,5 @@
-Design supporting objects around nostalgic digital texture and liminal familiarity, with a material hierarchy that reinforces memory fragments. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
+# 道具指导
+
+选择能承载 memory fragments 的具体物件，如旧屏幕、塑料包装、票据、钥匙、家用电器或褪色印刷。记录磨损、反光、按键、声音和被拿取的方式；nostalgic digital texture 要来自材质与使用痕迹，不只是噪点。
+
+保持核心物件的形状、数量、颜色和状态连续。

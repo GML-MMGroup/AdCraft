@@ -1,1 +1,5 @@
-Direct camera and subject motion through nostalgic digital texture and liminal familiarity, using memory fragments for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头可以有轻微数字不稳定、缓慢跟随或突然停顿，但主体、路径和动作要可读。nostalgic digital texture 保留材料细节，不能用压缩噪点覆盖人物与产品。
+
+声音分层使用荧光灯、电器、远处广播、脚步、回声和短暂静默。结果混乱时减少故障效果，恢复空间与记忆锚点。

@@ -1,30 +1,34 @@
 {
   "skill_id": "chinese-millennium-dreamcore",
   "version": "1.0.0",
-  "display_name": "Chinese Millennium Dreamcore",
-  "description": "An advertising treatment built around nostalgic digital texture, liminal familiarity, memory fragments, and saturated night color.",
+  "display_name": "千禧中式梦核影像",
+  "description": "以怀旧数字质感、似曾相识的临界空间、记忆碎片和饱和夜色组织具有地方感的梦境广告。",
+  "content_locale": "zh-CN",
   "category": "experimental-graphic",
   "tags": [
-    "experimental",
-    "graphic",
-    "compositing"
+    "中式梦核",
+    "数字怀旧",
+    "饱和夜色"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "概念广告",
+    "情绪影像",
+    "品牌叙事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Chinese Millennium Dreamcore creative treatment."
+    "kind": "image",
+    "summary": "千禧中式梦核影像视觉预览。",
+    "media_url": "/api/v2/video-skills/chinese-millennium-dreamcore/preview?v=1.0.0"
   },
   "display_order": 440,
   "files": {
-    "SKILL.md": "a499bd03f2a89f9015c95f6ed7b379db9cf8a6b5f1f8783cbba4225630c579ff",
-    "references/prop.md": "c72cc4f32e89ca62c48e545283d43a636532db3e0bb139cc91caa3d85532b4e4",
-    "references/scene.md": "f48849a6abc1e3055155e0cba5fbb7ba5470aa596bf220a60edd0d3dfcbb46cc",
-    "references/storyboard.md": "e7d4df5a77c11d87c12ccf541438547276a315eab8c5a2a94b9e77466c83910c",
-    "references/video.md": "dbe8a388a4cc611b6b258668362d3d9791e1c9fd083bc776918bb096bd9b2600",
-    "references/quick_media.md": "2ef6e91853ea9a62d99325ed951124157fc965e52485b12e99d9428eb3cbbd8a"
+    "SKILL.md": "d13bc0e1d03a5f81b54233d785c8e7b9b4dc880c8ee262f66178202d3371e8b3",
+    "references/prop.md": "24fa5312935310b3386eb365e058ff0f2541f138c9d62844370af1b521874b62",
+    "references/scene.md": "1c377e3e2b7004684a45d53976338866d875ee74c807196f768295609cc95eed",
+    "references/storyboard.md": "50a932fd5e649a70b17032f3995f43cec3277000143dc80b076cb949ece5d8e1",
+    "references/video.md": "42363d71d4d7870cee4cdc6eccf8b2d7eba3dab77de2378ec44514ae22a05ce7",
+    "references/quick_media.md": "f36ef057d99630ed88c5d3270580b7a9979f5b91a5a24891b126d0cdd0ab4f7a",
+    "previews/preview.webp": "b43b5662b8d58d8025427c6b87c5a6b427b8bfce74eb0358e4655685a8aba737"
   },
   "role_guidance": {
     "prop": "references/prop.md",
