@@ -1,1 +1,5 @@
-Apply luminous atmosphere, weather detail, and youthful longing as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速探索天空、天气、城市反射或角色一个姿态时，锁定人物身份和主色，只改变单一环境变量。变体应说明是氛围、天气、过渡还是动作探索，不把临时天空当作角色或场景真相。
+
+比较时优先看情绪是否来自动作和天气，而非只看亮度。

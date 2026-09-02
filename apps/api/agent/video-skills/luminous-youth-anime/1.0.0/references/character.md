@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around luminous atmosphere and weather detail. Use youthful longing to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+建立发型、服装层次、鞋履、随身物、姿态和表情边界。用一个可重复的物件或动作承载 youthful longing，但不要让角色只靠眼泪表达情绪。记录湿度、风向对头发和衣物的影响。
+
+保持年龄感、身高关系、服装和身份锚点连续。

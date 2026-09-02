@@ -1,1 +1,5 @@
-Direct camera and subject motion through luminous atmosphere and weather detail, using youthful longing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头先让人物动作与天气可读，再使用轻微跟拍、仰视、横移或推近。luminous atmosphere 要保留轮廓和阴影，weather detail 要符合风、雨、湿度与材质，不用光晕覆盖身份。
+
+声音分层使用雨、风、远处交通、衣物摩擦和克制的环境音乐。结果空泛时，恢复人物目标和可见天气动作。

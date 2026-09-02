@@ -1,1 +1,5 @@
-Organize shots around luminous atmosphere, develop visual progression through weather detail, and reserve youthful longing for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按等待、观察、错过、追赶、相遇或回望组织 youthful longing。关键帧记录视线、手中物件、天气接触、脚步方向和 sky and city transitions 的连接点。
+
+用玻璃反射、仰视、楼群遮挡、同向移动或灯光变化转场；检查情绪是否由动作推进。

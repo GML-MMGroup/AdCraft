@@ -1,1 +1,5 @@
-Construct spaces that express luminous atmosphere through layout and weather detail through light, color, and material. Use youthful longing to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+选择能连接天空与城市的空间，如站台、天桥、屋顶、窗边或街道。weather detail 记录雨、湿地反光、风、云、雾和光线变化的具体来源。为人物留出视线方向和行走路径。
+
+保持建筑线、天气状态、时间线和光向，避免背景只剩发光色块。
