@@ -9735,17 +9735,13 @@
         "reference_conditioning_plan": {
           "anyOf": [
             {
-              "additionalProperties": {
-                "$ref": "#/$defs/JsonValue"
-              },
-              "type": "object"
+              "$ref": "#/$defs/ReferenceConditioningPlanV1"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Reference Conditioning Plan"
+          "default": null
         },
         "reference_purposes": {
           "default": [],
