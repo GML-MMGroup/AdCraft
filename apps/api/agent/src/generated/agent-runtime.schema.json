@@ -21648,6 +21648,14 @@
       "properties": {
         "allowed_change_dimensions": {
           "items": {
+            "enum": [
+              "background",
+              "camera",
+              "content",
+              "framing",
+              "pose",
+              "view"
+            ],
             "type": "string"
           },
           "maxItems": 8,
@@ -21658,6 +21666,25 @@
         "explicit_override_dimensions": {
           "default": [],
           "items": {
+            "enum": [
+              "accessories",
+              "architecture",
+              "atmosphere",
+              "environment_identity",
+              "face_and_hair",
+              "identity",
+              "lighting",
+              "linework",
+              "materials",
+              "medium",
+              "palette",
+              "shading",
+              "shape_language",
+              "silhouette_and_proportions",
+              "spatial_layout",
+              "texture",
+              "wardrobe"
+            ],
             "type": "string"
           },
           "maxItems": 16,
@@ -21672,6 +21699,25 @@
         },
         "protected_dimensions": {
           "items": {
+            "enum": [
+              "accessories",
+              "architecture",
+              "atmosphere",
+              "environment_identity",
+              "face_and_hair",
+              "identity",
+              "lighting",
+              "linework",
+              "materials",
+              "medium",
+              "palette",
+              "shading",
+              "shape_language",
+              "silhouette_and_proportions",
+              "spatial_layout",
+              "texture",
+              "wardrobe"
+            ],
             "type": "string"
           },
           "maxItems": 16,
