@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing belief-led narration through silhouette and symbolic imagery through surfaces and detail. Make functional features readable, and use emotional escalation only where it strengthens the requested selling point.
+品牌宣言中的产品不一定每镜出现，但其身份、功能和价值不能被象征画面改写。选择一个轮廓、材质、使用动作或结果作为产品锚点，让它在需要时自然进入叙事。
+
+产品与人物的关系应具体：谁使用、为什么使用、使用后发生什么。若产品只作为象征，仍要保留真实结构和可辨识特征。结尾的产品或 Logo 展示要与前面的信念证据相呼应，不用特效替代品牌识别。
+
+正例：人物反复面对同一实际问题，产品以稳定的使用动作成为解决路径，最后以简洁全貌收束。
+反例：产品在最后突然出现，既没有参与故事，也没有解释品牌为何值得相信。

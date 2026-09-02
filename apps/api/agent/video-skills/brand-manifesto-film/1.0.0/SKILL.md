@@ -1,8 +1,23 @@
 ---
-name: Brand Manifesto Film
-description: An advertising treatment built around belief-led narration, symbolic imagery, emotional escalation, and brand resolution.
+name: 品牌宣言叙事片
+description: 以信念驱动的叙事、象征性画面、情绪升级和品牌落点构建有依据的品牌表达。
 ---
 
-Use belief-led narration, symbolic imagery, emotional escalation, and brand resolution as the style's creative grammar. Establish belief-led narration as the primary visual idea, reinforce it through symbolic imagery, and let emotional escalation shape the progression toward brand resolution.
+把 belief-led narration、symbolic imagery、emotional escalation、brand resolution 作为品牌宣言的四个创作支点。宣言不是把口号写得更大，而是把品牌相信什么、为谁解决什么问题、希望观众感受到什么，转译成一条有证据的情绪路径。象征画面必须能回到品牌事实或人物经验。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 信念与叙事
+
+先写清品牌信念、受众处境和一个可感知的冲突或愿望。选择人物行动、群体关系、环境变化、产品细节或日常片段承载信念。象征元素出现时，说明它与品牌主张的对应关系，不让符号变成脱离内容的装饰。
+
+情绪升级来自视野扩大、动作累积、关系建立、阻力变化或声音层次增加。每个升高都要有前因，高潮之后给观众理解品牌的空间。产品可以显性出现，也可以作为行动结果和价值证据出现，但不能完全消失。
+
+## 画面与品牌落点
+
+保持人物身份、服装、空间、光线和关键道具连续。symbolic imagery 可以通过形状、颜色、重复动作、影子、门窗、道路或自然变化建立，但不要在相邻镜头中任意改变符号含义。结尾的 brand resolution 要回答品牌做了什么、与观众有什么关系，而不是只显示 Logo。
+
+## 约束与纠偏
+
+保留用户提供的品牌事实和语言语气，不虚构社会议题、人物经历或承诺。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供叙事判断。结果空泛时，删掉抽象形容词，补回人物动作、产品证据和情绪转折。
+
+正例：一个具体人物困境贯穿全片，重复出现的动作逐渐改变意义，最后回到品牌能兑现的承诺。
+反例：镜头充满火焰、城市和人群，却没有人物目标、品牌事实或情绪变化的因果。
