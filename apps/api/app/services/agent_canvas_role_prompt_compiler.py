@@ -202,6 +202,15 @@ class AgentCanvasRolePromptCompiler:
         if policy_negative and policy_negative not in negative:
             negative = f"{negative} {policy_negative}".strip()
         structured = _structured_content(concrete_brief, context)
+        if conditioning_plan is not None and isinstance(structured.get("style"), dict):
+            structured = {
+                **structured,
+                "style": {
+                    **structured["style"],
+                    "style_prompt": "Selected reference visual style governs protected dimensions.",
+                    "source": "references",
+                },
+            }
         if style_authority is not None:
             structured = {
                 **structured,
