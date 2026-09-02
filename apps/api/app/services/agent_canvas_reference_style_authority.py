@@ -15,18 +15,24 @@ from app.schemas.agent_canvas_reference_style import (
 
 
 _CHARACTER_PROTECTED = (
+    "identity",
+    "face_and_hair",
+    "silhouette_and_proportions",
+    "accessories",
     "medium",
     "linework",
     "palette",
     "shading",
     "texture",
     "shape_language",
-    "silhouette",
     "wardrobe",
-    "hair",
-    "signature_accessories",
 )
 _SCENE_PROTECTED = (
+    "environment_identity",
+    "architecture",
+    "materials",
+    "lighting",
+    "atmosphere",
     "medium",
     "linework",
     "palette",
@@ -34,8 +40,6 @@ _SCENE_PROTECTED = (
     "texture",
     "shape_language",
     "spatial_layout",
-    "environment_materials",
-    "environment_lighting",
 )
 
 
