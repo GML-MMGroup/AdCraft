@@ -43,7 +43,7 @@ class ResolvedLibraryPreview:
 class V2LibraryReferencePreviewResolver:
     """Resolve previews only for explicitly marked library provenance."""
 
-    _LIBRARY_SCOPES = frozenset({"my", "project", "recommended"})
+    _LIBRARY_SCOPES = frozenset({"mine", "my", "project", "recommended"})
 
     def __init__(
         self,
