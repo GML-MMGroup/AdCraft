@@ -300,6 +300,13 @@ class ProgressiveStoryboardReadyService:
             with self._workflows.database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
+                    self._workflows.require_node_revision_in_transaction(
+                        connection,
+                        workflow_id=source_grid.workflow_id,
+                        node_id=source_grid.node_id,
+                        expected_revision=source_grid.revision,
+                        expected_output_asset_id=source_grid.output_asset_id,
+                    )
                     stored_confirmation = self._receipts.save_confirmation_in_transaction(
                         connection,
                         confirmation,

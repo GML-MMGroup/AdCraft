@@ -616,6 +616,43 @@ class AgentCanvasWorkflowRepository:
         )
         return current_revision + 1
 
+    def require_node_revision_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        expected_revision: int,
+        expected_output_asset_id: str | None,
+    ) -> None:
+        """Revalidate a source Node while the caller owns the write lock."""
+
+        row = (
+            connection.execute(
+                select(
+                    AgentCanvasNodeRow.revision,
+                    AgentCanvasNodeRow.output_asset_id,
+                ).where(
+                    AgentCanvasNodeRow.workflow_id == workflow_id,
+                    AgentCanvasNodeRow.node_id == node_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None or int(row["revision"]) != expected_revision:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source changed before publication.",
+                stage="agent_canvas_repository",
+            )
+        if str(row["output_asset_id"] or "") != str(expected_output_asset_id or ""):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source Asset changed before publication.",
+                stage="agent_canvas_repository",
+            )
+
     def upsert_guided_editing(
         self,
         node: CanvasNodeV2,
