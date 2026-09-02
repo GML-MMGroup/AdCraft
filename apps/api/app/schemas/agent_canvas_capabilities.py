@@ -288,8 +288,26 @@ class CompactRequirementPatchV3(_CapabilityModel):
         default=(), max_length=16
     )
     character_occurrences_to_set: tuple[CompactCharacterOccurrencePatchV3, ...] | None = Field(
-        default=None, max_length=32
+        default=None,
+        max_length=32,
+        description=(
+            "Optional complete character occurrence roster. When character_count "
+            "is also supplied, included occurrences must equal that count."
+        ),
     )
+
+    @model_validator(mode="after")
+    def validate_character_count_occurrences(self) -> "CompactRequirementPatchV3":
+        character_count = self.controls_to_set.character_count
+        occurrences = self.character_occurrences_to_set
+        if character_count is None or occurrences is None:
+            return self
+        included_count = sum(item.presence == "include" for item in occurrences)
+        if included_count != character_count.value:
+            raise ValueError(
+                "character occurrence count must match the included occurrence roster."
+            )
+        return self
 
 
 class CompactTurnIntentDecisionV3(_CapabilityModel):
