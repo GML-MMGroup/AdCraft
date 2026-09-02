@@ -483,21 +483,22 @@ class ProgressiveStoryboardReadyService:
                         next_content=next_content,
                     )
                 self._receipts.save_fanout_in_transaction(connection, fanout)
-                self._events.append_in_transaction(
-                    connection,
-                    V2EventInsert(
-                        workflow_id=fanout.workflow_id,
-                        node_id=fanout.visual_anchor_node_id,
-                        event_type="storyboard_fanout_reconciled",
-                        transition_key=f"storyboard-fanout-reconciled:{fanout_plan_id}",
-                        created_at=event_time,
-                        payload={
-                            "fanout_plan_id": fanout_plan_id,
-                            "created_node_ids": created_node_ids,
-                            "plan_revision": plan.revision,
-                        },
-                    ),
-                )
+                if created_node_ids:
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=fanout.workflow_id,
+                            node_id=fanout.visual_anchor_node_id,
+                            event_type="storyboard_fanout_reconciled",
+                            transition_key=f"storyboard-fanout-reconciled:{fanout_plan_id}",
+                            created_at=event_time,
+                            payload={
+                                "fanout_plan_id": fanout_plan_id,
+                                "created_node_ids": created_node_ids,
+                                "plan_revision": plan.revision,
+                            },
+                        ),
+                    )
                 connection.commit()
             except BaseException:
                 connection.rollback()
