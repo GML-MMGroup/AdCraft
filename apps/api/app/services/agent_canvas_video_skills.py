@@ -70,6 +70,7 @@ class VideoSkillManifestV2(BaseModel):
     version: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    content_locale: Literal["en-US", "zh-CN"] = "en-US"
     category: str = Field(min_length=1)
     tags: tuple[str, ...] = ()
     supported_use_cases: tuple[str, ...] = ()
