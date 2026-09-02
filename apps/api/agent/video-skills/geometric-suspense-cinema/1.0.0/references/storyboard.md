@@ -1,1 +1,5 @@
-Organize shots around spatial suspense, develop visual progression through controlled viewpoint, and reserve visual motifs for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+每个镜头注明观众位置、可见信息、遮挡边界、主体方向和母题状态。controlled viewpoint 的切换必须对应新证据；关键帧覆盖进入遮挡、揭示瞬间和揭示后的空间关系。
+
+用构图对齐、视线、反射或同向移动转场。检查左右关系、镜面反射和消失点是否一致，避免剪辑后空间无法复原。

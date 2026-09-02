@@ -1,1 +1,5 @@
-Direct camera and subject motion through spatial suspense and controlled viewpoint, using visual motifs for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头运动围绕视点和信息展开：缓慢横移、穿过框线、沿走廊推进或在揭示处停住。保持主体方向和空间轴线，不用无目的旋转、翻转或快速推拉制造紧张。
+
+声音可用脚步回声、门响、远近声源和短暂静默强化几何距离。结果失去悬疑时，先固定视点与路径，再减小镜头和动作复杂度。

@@ -1,1 +1,5 @@
-Construct spaces that express spatial suspense through layout and controlled viewpoint through light, color, and material. Use visual motifs to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+绘制平面图，标记入口、出口、遮挡、反射、消失点、光源和可见区。spatial suspense 依赖空间真实可走、可看和可隐藏；镜面、门框和栅格要有材质与方向依据。
+
+维护 visual motifs 的形状、颜色和位置逻辑。跨镜头保持建筑比例、轴线、光源和物件状态，不用新的背景解决构图问题。

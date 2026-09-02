@@ -1,1 +1,5 @@
-Build the narrative premise around spatial suspense, then use controlled viewpoint to shape escalation and structural escalation to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先定义空间限制、观众知道的信息和一个会被重新解释的视觉母题。按发现、受阻、换位、验证、回收组织 structural escalation，每次升级都改变角色选择或观众理解。
+
+把门、镜面、走廊、缺口和重复动作写成因果，不要只写“神秘”。正例是同一形状在结尾获得新含义；反例是用随机反转制造悬疑。
