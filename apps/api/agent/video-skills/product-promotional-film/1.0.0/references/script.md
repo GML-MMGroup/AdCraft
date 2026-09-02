@@ -1,1 +1,6 @@
-Build the narrative premise around selling-point hierarchy, then use use context to shape escalation and clean packshot logic to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+先写出一个单一主卖点，再为它安排需求、使用动作、利益结果和品牌收束。脚本中的每一句话都应服务于事实、操作或情绪，不用夸张口号填补证据空白。
+
+让人物先处于可理解的使用情境，再通过产品动作推动状态变化。多个卖点按层级出现，次要信息可以作为结果旁证。旁白、对白和画面不要重复同一信息，结尾明确产品名称、利益或品牌记忆点。
+
+正例：用户在真实情境中遇到麻烦，产品通过一个可见动作解除麻烦，结果被人物反应和产品细节共同证明。
+反例：人物从开头到结尾只微笑举着商品，旁白却声称解决了多个问题。

@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing selling-point hierarchy through silhouette and use context through surfaces and detail. Make functional features readable, and use benefit reveal only where it strengthens the requested selling point.
+建立产品识别清单：轮廓、比例、颜色、包装、标识、材质、开合方式和关键功能部件。用全貌建立身份，用细节证明卖点，用使用关系说明利益。每次切换景别都要保留一个能让观众认出同一产品的锚点。
+
+检查手部接触、尺度、落点、阴影、反射和包装方向。不能为了更醒目改变产品结构或添加未确认配件。结尾的产品全貌要简洁、留出信息空间，并与前面的使用结果形成对应。
+
+正例：先展示包装和轮廓，再沿真实操作进入功能细节，完成后回到完整产品与清楚的利益层级。
+反例：用强烈光效遮住标签和按钮，或在使用镜头里把产品换成不同颜色和形状。

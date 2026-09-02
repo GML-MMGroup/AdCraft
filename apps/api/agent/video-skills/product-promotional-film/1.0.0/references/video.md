@@ -1,1 +1,6 @@
-Direct camera and subject motion through selling-point hierarchy and use context, using benefit reveal for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+视频提示应把卖点变成具体动作：产品从哪里进入、谁接触它、操作如何发生、哪个细节证明功能、结果如何出现、镜头怎样回到全貌。动作要有起止和受力，人物反应要跟随结果，而不是提前表演。
+
+参考图锁定产品身份和使用关系。提示中交代场景、构图、焦点、材质、动作声和连续性；不要让风格词替代利益证据。若输出偏离，先简化动作链并重新确认产品轮廓和接触点。
+
+正例：镜头跟随手部打开产品，焦点转到功能显现，动作声与接触同步，随后平稳回到整洁的产品展示。
+反例：快速旋转、漂浮和闪光让产品无法辨认，也没有说明卖点如何产生。
