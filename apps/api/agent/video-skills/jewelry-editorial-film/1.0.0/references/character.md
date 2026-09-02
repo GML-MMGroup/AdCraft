@@ -1,1 +1,6 @@
-Shape wardrobe, pose, and expression around macro detail and specular light. Use gesture-led display to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+角色只承担尺度、佩戴和手势。锁定手部、腕部、颈部、耳侧或脸部的身份区域，说明动作起点、接触点、力度、视线和结束状态。姿态要给珠宝留出清楚的轮廓和反射空间，避免夸张表演遮挡细节。
+
+保持肤色、妆发、服装领口和佩戴位置连续。动作可以亲密、克制、迟疑或自信，但每个变化都要与珠宝的佩戴或观看有关。结果偏离时先恢复手指数量、接触点和珠宝位置。
+
+正例：人物抬手整理耳饰，手指离开后保留短暂稳定状态，让耳饰与面部轮廓同时可见。
+反例：手指穿过珠宝、佩戴位置漂移，或用面部表演代替对珠宝的观察。

@@ -1,1 +1,6 @@
-Direct camera and subject motion through macro detail and specular light, using gesture-led display for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把珠宝动作写成微小、可控制的连续变化：手指靠近、佩戴、轻触、转动或停留；摄影机说明何时从轮廓进入切面，焦点如何转移，高光怎样沿结构移动，动作何时结束。保持佩戴位置、链条张力和反射逻辑。
+
+参考图用于锁定主石、金属和镶嵌。提示中交代手势、皮肤或织物接触、光线和声音；不要用大量闪光代替 specular light 的具体路径。若结果变形，减小旋转和遮挡，恢复稳定角度。
+
+正例：镜头沿手腕动作缓慢推进，焦点在宝石切面出现时稳定，手势停住后回到完整佩戴关系。
+反例：珠宝高速翻转、复制或变色，镜面高光没有结构依据。

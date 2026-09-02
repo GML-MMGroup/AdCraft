@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing macro detail through silhouette and specular light through surfaces and detail. Make functional features readable, and use gesture-led display only where it strengthens the requested selling point.
+先建立珠宝的结构身份：主石形状、切面、颜色、金属、镶嵌方式、链节、扣件和比例。用完整轮廓建立识别，用微距证明切面与材质，用佩戴中景说明尺度和使用关系。每次靠近都保留能回到全貌的边缘或轮廓锚点。
+
+镜面高光应沿真实曲面移动，透明宝石要有可理解的折射和内部层次。检查珠宝与皮肤、织物、盒面和手指的接触、阴影与反射。参考图中的数量和结构不可被“更华丽”的想象替换。
+
+正例：先展示吊坠轮廓，再沿金属边缘进入宝石切面，手势完成后回到颈部尺度。
+反例：高光过曝成白块，链条无张力悬浮，或主石形状在旋转中改变。

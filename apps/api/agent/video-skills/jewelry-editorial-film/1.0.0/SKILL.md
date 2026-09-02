@@ -1,8 +1,23 @@
 ---
-name: Jewelry Editorial Film
-description: An advertising treatment built around macro detail, specular light, gesture-led display, and intimate editorial pacing.
+name: 珠宝微距编辑片
+description: 以微距细节、镜面高光、手势引导展示和亲密编辑节奏突出珠宝的材质与佩戴关系。
 ---
 
-Use macro detail, specular light, gesture-led display, and intimate editorial pacing as the style's creative grammar. Establish macro detail as the primary visual idea, reinforce it through specular light, and let gesture-led display shape the progression toward intimate editorial pacing.
+把 macro detail、specular light、gesture-led display、intimate editorial pacing 作为珠宝影像的四个创作支点。珠宝的价值来自可检查的切面、镶嵌、金属、透明度、重量和佩戴关系；镜头要让观众看见光如何回应结构，而不是用过曝闪光制造“奢华”。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 结构与光线
+
+建立宝石、金属、爪镶、链节、扣件、纹理和比例清单。微距镜头先选择一个主细节，再保持焦点和景深变化可理解。specular light 应沿真实曲面移动，反射和折射不能改变宝石形状或颜色。高光可以短暂强调切面，但要保留边缘和镶嵌证据。
+
+gesture-led display 让手腕、颈部、耳侧、指尖或拿取动作承担尺度和情绪。动作要慢而准确，检查接触、佩戴位置、链条张力和皮肤关系。人物只是展示媒介，不应抢走珠宝的焦点。
+
+## 节奏与连续性
+
+用观察、靠近、触碰、闪现、佩戴和回望等相对段落组织 intimate editorial pacing。每次切换保留宝石轮廓、金属边缘、手势方向、光线或声音锚点。背景可以简洁、柔和或抽象，但不能让珠宝消失。
+
+## 约束与纠偏
+
+保留用户提供的珠宝结构、数量、材质、颜色和品牌事实，不擅自增加宝石或改变镶嵌。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供创作判断。结果偏离时先修正形状、佩戴位置、反射和手势，再处理氛围。
+
+正例：手指轻触吊坠，镜面高光沿切面移动，焦点稳定地从金属边缘转到宝石内部，最后回到佩戴关系。
+反例：用连续闪光遮盖结构，或让一件珠宝在相邻镜头变成不同数量、不同切面和不同佩戴位置。
