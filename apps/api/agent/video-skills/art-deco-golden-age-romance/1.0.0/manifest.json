@@ -1,29 +1,33 @@
 {
   "skill_id": "art-deco-golden-age-romance",
   "version": "1.0.0",
-  "display_name": "Art Deco Golden-Age Romance",
-  "description": "An advertising treatment built around geometric opulence, jewel-tone contrast, romantic decadence, and period spectacle.",
+  "display_name": "几何华丽浪漫广告",
+  "description": "以几何秩序、宝石色对比、浪漫丰盛感和舞台化时代氛围构建精致的商业叙事。",
+  "content_locale": "zh-CN",
   "category": "luxury-fashion",
   "tags": [
-    "luxury",
-    "editorial",
-    "material"
+    "几何构图",
+    "宝石色彩",
+    "舞台浪漫"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌广告",
+    "珠宝时尚",
+    "华丽叙事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Art Deco Golden-Age Romance creative treatment."
+    "kind": "image",
+    "summary": "几何华丽浪漫广告视觉预览。",
+    "media_url": "/api/v2/video-skills/art-deco-golden-age-romance/preview?v=1.0.0"
   },
   "display_order": 140,
   "files": {
-    "SKILL.md": "5c4cd50cdc2f5cbdfb2b6a9939cd2d5f8131761f7cc17d72ceb8c0c6a474f4cb",
-    "references/product.md": "c6f1ff7da28a6c02a67331e96a53ee4f8eb6eda7c5745907a151459fa7ea2656",
-    "references/character.md": "52a2fc238e2741f159fa740f97bceac18f46f123e3eb3f5e396b40fdedbf1351",
-    "references/scene.md": "411b02d0d90de171d13fb0fc6b93ee7900c2f3b8639bc98b1d847829701be388",
-    "references/video.md": "81da460a02fa316d4a8d511d617eff1d6bcc2569c6e51d07bfaa1b7d6183d6e7"
+    "SKILL.md": "00884d2f2cc9e108bea641cf45ead812564c5c44544fb1bf6d59d5d117526150",
+    "references/product.md": "7844bda1521593d02495974742396abb1e4392788e0f8305f1d0b90524057797",
+    "references/character.md": "500f1c00c5efed27969d3ccaeb4d60307ed3115cbda176f53cfe80dc37448865",
+    "references/scene.md": "12434e07b9c82a1f00682bc80fd36f17ea561c7592960d9ec98af0c6b11c1735",
+    "references/video.md": "9d2714f2a505c97313dac349760ebd844b800cf1a371f9cdc0b2dd49356953cb",
+    "previews/preview.webp": "c400894b7018b6ceec8e418be9f5d1a8eae834d106bb3d34f768269c1799d019"
   },
   "role_guidance": {
     "product": "references/product.md",

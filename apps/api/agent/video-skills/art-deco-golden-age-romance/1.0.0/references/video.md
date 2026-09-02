@@ -1,1 +1,6 @@
-Direct camera and subject motion through geometric opulence and jewel-tone contrast, using romantic decadence for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把舞台化运动写成清楚的空间动作：摄影机沿中央轴线推进、横移或绕过框景，人物如何进入和停步，产品如何交接或揭示，灯光与布料怎样响应。运动要保持几何秩序，不用旋转破坏方向。
+
+提示中交代人物身份、服装、产品、主轴、材质、宝石色光和关系动作。不要引用具体作品或创作者名称，不用“复古大片”替代构图。结果过于混乱时减少群众、镜面和运动，恢复一个主轴和一个动作。
+
+正例：摄影机沿阶梯上升，人物在轴线交点停住并递出产品，镜面只反射已存在的主体。
+反例：镜头无理由翻转，反射复制主体，或华丽灯光遮住产品和人物脸部。

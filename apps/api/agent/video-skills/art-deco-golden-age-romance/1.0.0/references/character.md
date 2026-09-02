@@ -1,1 +1,6 @@
-Shape wardrobe, pose, and expression around geometric opulence and jewel-tone contrast. Use romantic decadence to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+角色通过姿态和关系动作承载 romantic decadence，而不是只穿华丽服装。锁定人物身份、发型、妆容、服装廓形、珠宝和重心；说明进入、停步、递交、回望或转身的动作。舞台化姿态要保持关节、手部和视线可读。
+
+保持人物与几何轴线、服装颜色和光源连续。多人场面明确谁是主角、谁在看谁、谁触发动作。结果拥挤时减少群众和饰件，先恢复主角轮廓。
+
+正例：人物沿中央轴线进入，停在光线交汇处，与另一人物完成一个清楚的递交动作。
+反例：服装、发型和脸部在镜头间改变，或所有人物同时摆出无目的的舞台姿态。
