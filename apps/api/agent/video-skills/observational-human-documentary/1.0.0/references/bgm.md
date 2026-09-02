@@ -1,1 +1,5 @@
-Shape an adaptable instrumental arc around respectful observation and environmental context. Let texture and energy support authentic action without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.
+# 音乐指导
+
+先让环境声建立人物工作的节奏，再用低存在感音乐支持段落转换。音乐不应告诉观众该同情、崇拜或评判谁，也不应盖住人物声音和工作细节。
+
+在停顿、转折和完成处留出空间，避免连续煽情和过度戏剧化的高潮。
