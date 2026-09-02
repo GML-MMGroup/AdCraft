@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   mediaAssetContentPath,
   mediaAssetCanvasPreviewRenditionPath,
+  mediaAssetCanvasPreviewSrcSet,
   mediaAssetOriginalPath,
   mediaAssetPosterRenditionPath,
   mediaAssetPreviewPath,
@@ -44,6 +45,36 @@ describe("media preview paths", () => {
       version_id: "version-1",
       preview_url: "/api/v2/assets/asset-1/renditions/preview-640.webp",
     })).toBe("/api/v2/assets/asset-1/renditions/preview-640.webp?v=version-1");
+  });
+
+  it("provides size-negotiated candidates for first-party canvas previews", () => {
+    expect(mediaAssetCanvasPreviewSrcSet({
+      asset_id: "asset-1",
+      version_id: "version-1",
+      preview_url: "/api/v2/assets/asset-1/preview?v=version-1",
+    })).toBe(
+      "/api/v2/assets/asset-1/preview?v=version-1&size=320 320w, "
+      + "/api/v2/assets/asset-1/preview?v=version-1&size=640 640w",
+    );
+  });
+
+  it("does not invent srcset variants for opaque legacy renditions", () => {
+    expect(mediaAssetCanvasPreviewSrcSet({
+      asset_id: "asset-1",
+      version_id: "version-1",
+      preview_url: "/api/v2/assets/asset-1/renditions/preview-640.webp",
+    })).toBe("");
+  });
+
+  it("supports responsive candidates for version-pinned video posters", () => {
+    expect(mediaAssetCanvasPreviewSrcSet({
+      asset_id: "asset-video",
+      version_id: "version-3",
+      poster_url: "/api/v2/assets/asset-video/poster?v=version-3",
+    })).toBe(
+      "/api/v2/assets/asset-video/poster?v=version-3&size=320 320w, "
+      + "/api/v2/assets/asset-video/poster?v=version-3&size=640 640w",
+    );
   });
 
   it("does not invent a version when the backend has not supplied one", () => {

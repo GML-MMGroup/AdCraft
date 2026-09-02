@@ -735,6 +735,8 @@ describe("AgentCanvasNodeCard", () => {
     const image = screen.getByRole("img", { name: "image output" });
     expect(image.getAttribute("src")).toBe("/media/image-poster.webp");
     expect(image.getAttribute("loading")).toBe("lazy");
+    expect(image.getAttribute("width")).toBe("1280");
+    expect(image.getAttribute("height")).toBe("720");
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(image.classList.contains("agent-canvas-node__media--contain")).toBe(true);
     expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(false);
@@ -742,7 +744,9 @@ describe("AgentCanvasNodeCard", () => {
     imageView.unmount();
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
     expect(screen.queryByLabelText("video output")).toBeNull();
-    expect(screen.getByRole("img", { name: "video output" })).toBeTruthy();
+    const videoPoster = screen.getByRole("img", { name: "video output" });
+    expect(videoPoster.getAttribute("width")).toBe("1280");
+    expect(videoPoster.getAttribute("height")).toBe("720");
   });
 
   it("does not mount a video element just to capture a node thumbnail", () => {

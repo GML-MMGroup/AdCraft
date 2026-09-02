@@ -26,6 +26,7 @@ import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
 import {
   mediaAssetCanvasPreviewRenditionPath,
+  mediaAssetCanvasPreviewSrcSet,
 } from "../../../workflow/mediaPreview.ts";
 import {
   agentCanvasNodeSize,
@@ -107,6 +108,9 @@ function MediaSurface({
   const mediaUrl = asset && node.node_type === "image"
     ? mediaAssetCanvasPreviewRenditionPath(asset)
     : "";
+  const mediaSrcSet = asset && node.node_type === "image"
+    ? mediaAssetCanvasPreviewSrcSet(asset)
+    : undefined;
   if (node.node_type === "video" && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
@@ -143,7 +147,10 @@ function MediaSurface({
     <CanvasMediaPreview
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
+      srcSet={mediaSrcSet || undefined}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
+      width={asset?.width ?? undefined}
+      height={asset?.height ?? undefined}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {

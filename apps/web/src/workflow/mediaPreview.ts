@@ -64,11 +64,26 @@ export function mediaAssetPreviewRenditionPath(asset?: MediaAssetLike | null) {
 
 export function mediaAssetCanvasPreviewRenditionPath(asset?: MediaAssetLike | null) {
   return withMediaVersion(firstMediaPath(
+    canvasPreviewCandidate(asset?.poster_path),
+    canvasPreviewCandidate(asset?.poster_url),
     canvasPreviewCandidate(asset?.thumbnail_path),
     canvasPreviewCandidate(asset?.thumbnail_url),
     canvasPreviewCandidate(asset?.preview_path),
     canvasPreviewCandidate(asset?.preview_url),
   ), asset);
+}
+
+/**
+ * Return responsive, version-pinned candidates for the canvas rendition.
+ * Only the first-party preview/poster routes support size negotiation; legacy
+ * or opaque rendition URLs intentionally return no srcset.
+ */
+export function mediaAssetCanvasPreviewSrcSet(asset?: MediaAssetLike | null) {
+  const source = mediaAssetCanvasPreviewRenditionPath(asset);
+  if (!source || !isResizableCanvasRenditionPath(source)) return "";
+  const small = withMediaRenditionSize(source, 320);
+  const large = withMediaRenditionSize(source, 640);
+  return `${small} 320w, ${large} 640w`;
 }
 
 export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {
@@ -155,6 +170,15 @@ function canvasPreviewCandidate(path?: string | null) {
 function isOriginalContentPath(path: string) {
   const normalized = path.split(/[?#]/, 1)[0];
   return /\/api\/v2\/assets\/[^/]+\/content$/i.test(normalized);
+}
+
+function isResizableCanvasRenditionPath(path: string) {
+  return /^\/api\/v2\/assets\/[^/]+\/(preview|poster)(?:\?|$)/i.test(path);
+}
+
+function withMediaRenditionSize(path: string, size: 320 | 640) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}size=${size}`;
 }
 
 function stringValue(value: unknown) {
