@@ -1,1 +1,5 @@
-Shape an adaptable instrumental arc around drawn overlays and travel observation. Let texture and energy support location rhythm without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.
+# 音乐指导
+
+先让环境声和旅行者的行动建立 location rhythm，再用简洁音乐连接地点。音乐可以在抵达时打开、探索时增加层次、停留时留白、离开时回收一个动机；不要盖住真实地点与人物声音。
+
+让音色呼应纸张、脚步、交通或手绘笔触，但不把每个地点写成不同曲风。
