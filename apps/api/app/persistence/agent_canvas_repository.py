@@ -542,56 +542,15 @@ class AgentCanvasWorkflowRepository:
         """Insert one node and its copied inputs as one authoring revision."""
 
         node = normalize_queued_node(node, bindings=bindings)
-        now = node.updated_at.isoformat()
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    current_revision = _require_workflow_revision(
-                        connection, node.workflow_id, expected_revision
-                    )
-                    connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
-                    for binding in bindings:
-                        if (
-                            binding.workflow_id != node.workflow_id
-                            or binding.target_node_id != node.node_id
-                        ):
-                            raise _invalid_binding_batch_error()
-                        if isinstance(binding.source, CanvasBindingSourceNodeV2):
-                            _require_node(
-                                connection,
-                                binding.workflow_id,
-                                binding.source.node_id,
-                            )
-                        connection.execute(
-                            insert(AgentCanvasBindingRow).values(**_binding_values(binding))
-                        )
-                    self._prompt_dispatch.ensure_for_node_in_transaction(
+                    self.add_node_with_bindings_in_transaction(
                         connection,
                         node,
-                        bindings=bindings,
-                        now=node.updated_at,
-                    )
-                    _advance_workflow_revision(
-                        connection,
-                        workflow_id=node.workflow_id,
-                        current_revision=current_revision,
-                        updated_at=now,
-                    )
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=node.workflow_id,
-                            node_id=node.node_id,
-                            event_type="canvas_node_created",
-                            created_at=now,
-                            payload={
-                                "node_type": node.node_type,
-                                "creative_role": node.creative_role,
-                                "copied_binding_ids": [binding.binding_id for binding in bindings],
-                                "revision": current_revision + 1,
-                            },
-                        ),
+                        bindings,
+                        expected_revision=expected_revision,
                     )
                     connection.commit()
                 except BaseException:
@@ -604,6 +563,61 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def add_node_with_bindings_in_transaction(
+        self,
+        connection: Connection,
+        node: CanvasNodeV2,
+        bindings: tuple[CanvasBindingV2, ...],
+        *,
+        expected_revision: int,
+    ) -> int:
+        """Insert one node and its inputs inside a caller-owned transaction."""
+
+        node = normalize_queued_node(node, bindings=bindings)
+        current_revision = _require_workflow_revision(
+            connection,
+            node.workflow_id,
+            expected_revision,
+        )
+        connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+        for binding in bindings:
+            if (
+                binding.workflow_id != node.workflow_id
+                or binding.target_node_id != node.node_id
+            ):
+                raise _invalid_binding_batch_error()
+            if isinstance(binding.source, CanvasBindingSourceNodeV2):
+                _require_node(connection, binding.workflow_id, binding.source.node_id)
+            connection.execute(insert(AgentCanvasBindingRow).values(**_binding_values(binding)))
+        self._prompt_dispatch.ensure_for_node_in_transaction(
+            connection,
+            node,
+            bindings=bindings,
+            now=node.updated_at,
+        )
+        _advance_workflow_revision(
+            connection,
+            workflow_id=node.workflow_id,
+            current_revision=current_revision,
+            updated_at=node.updated_at.isoformat(),
+        )
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=node.workflow_id,
+                node_id=node.node_id,
+                event_type="canvas_node_created",
+                created_at=node.updated_at.isoformat(),
+                payload={
+                    "node_type": node.node_type,
+                    "creative_role": node.creative_role,
+                    "copied_binding_ids": [binding.binding_id for binding in bindings],
+                    "revision": current_revision + 1,
+                },
+            ),
+        )
+        return current_revision + 1
 
     def upsert_guided_editing(
         self,
