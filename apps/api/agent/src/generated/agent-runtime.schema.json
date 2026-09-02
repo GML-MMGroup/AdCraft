@@ -8031,6 +8031,17 @@
           "title": "Hard Controls",
           "type": "array"
         },
+        "identity_safety_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentitySafetyDecisionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "included_directive_ids": {
           "default": [],
           "items": {
@@ -22789,6 +22800,17 @@
           "maxItems": 16,
           "title": "Directives To Add",
           "type": "array"
+        },
+        "identity_safety_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentitySafetyDecisionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "RequirementLedgerPatchRequestV1",
@@ -22895,6 +22917,17 @@
           "maxItems": 16,
           "title": "Hard Controls",
           "type": "array"
+        },
+        "identity_safety_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentitySafetyDecisionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "revision_id": {
           "maxLength": 160,
@@ -23157,6 +23190,17 @@
           "maxItems": 16,
           "title": "Hard Controls",
           "type": "array"
+        },
+        "identity_safety_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdentitySafetyDecisionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "schema_version": {
           "const": "1",
