@@ -293,6 +293,8 @@ class ProgressiveStoryboardReadyService:
             source_grid=source_grid,
             confirmation=confirmation,
             members=members,
+            fanout=preflight.fanout_plan,
+            existing_nodes=workflow.nodes,
         )
         agent_run_id = f"storyboard-fanout:{preflight.fanout_plan.fanout_plan_id}"
         event_time = datetime.now(timezone.utc).isoformat()
@@ -1355,11 +1357,18 @@ def _published_plan_content(
     source_grid: CanvasNodeV2,
     confirmation: GuidedMediaConfirmationV1,
     members: tuple[tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]], ...],
+    fanout: StoryboardFanoutPlanV1,
+    existing_nodes: tuple[CanvasNodeV2, ...],
 ) -> StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3:
+    nodes_by_id = {node.node_id: node for node in existing_nodes}
+    nodes_by_id.update({node.node_id: node for node, _bindings in members})
+    planned = tuple(
+        nodes_by_id[item.node_id] for item in fanout.nodes if item.node_id in nodes_by_id
+    )
     if isinstance(content, StoryboardProductionPlanContentV3):
         existing = {(item.sequence_id, item.node_role) for item in content.planned_nodes}
         planned_nodes = list(content.planned_nodes)
-        for node, _bindings in members:
+        for node in planned:
             sequence_id = str(node.metadata["source_sequence_id"])
             node_role = "storyboard_grid" if node.node_type == "image" else "video_segment"
             if (sequence_id, node_role) in existing:
@@ -1394,7 +1403,7 @@ def _published_plan_content(
 
     existing = {(item.sequence_id, item.node_role) for item in content.node_records}
     records = list(content.node_records)
-    for node, _bindings in members:
+    for node in planned:
         sequence_id = str(node.metadata["source_sequence_id"])
         node_role = "storyboard_grid" if node.node_type == "image" else "video_segment"
         if (sequence_id, node_role) in existing:
