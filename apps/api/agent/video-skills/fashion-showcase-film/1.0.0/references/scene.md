@@ -1,1 +1,6 @@
-Construct spaces that express silhouette through layout and fabric motion through light, color, and material. Use editorial posing to direct attention toward the advertised subject while preserving the stated location and product context.
+秀场场景用地面线、背景层、灯光方向和观众视线建立展示秩序；生活场景用门口、街道、室内或工作空间说明服装如何进入真实语境。两类场景之间保留廓形、光色、步伐或声音作为转换锚点。
+
+环境不能吞没服装细节。检查地面接触、阴影、反射、风向和可行走路径。生活场景中的道具只在帮助说明穿着功能或人物状态时出现，不凭空增加与品牌无关的装饰。
+
+正例：秀场的侧光沿衣摆延续到城市街角，人物步伐不变，环境扩大后服装仍是视觉中心。
+反例：切换场景时同时换灯光、服装和人物姿态，或用舞台烟雾遮住面料。

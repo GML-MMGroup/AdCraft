@@ -1,8 +1,23 @@
 ---
-name: Fashion Showcase Film
-description: An advertising treatment built around silhouette, fabric motion, editorial posing, and runway-to-lifestyle framing.
+name: 时装廓形展示片
+description: 以服装廓形、面料运动、编辑式姿态和秀场到生活场景的转换呈现时装价值。
 ---
 
-Use silhouette, fabric motion, editorial posing, and runway-to-lifestyle framing as the style's creative grammar. Establish silhouette as the primary visual idea, reinforce it through fabric motion, and let editorial posing shape the progression toward runway-to-lifestyle framing.
+把 silhouette、fabric motion、editorial posing、runway-to-lifestyle framing 作为时装展示的四个创作支点。先让观众读懂服装的外轮廓和穿着关系，再用面料如何响应动作、光线和空间证明质感，最后把秀场的控制力转译到真实生活语境。时装不是人物的装饰背景，人物姿态和场景都应服务于服装。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 廓形与人物
+
+建立服装身份清单：肩线、领口、腰线、长度、层次、开合、饰件、鞋履和关键配色。人物的体态、重心、步幅、手臂和视线要让廓形可读。姿态可以编辑化，但不能扭曲身体或遮挡服装结构。角色参考图锁定身份、发型、妆容和服装事实。
+
+面料运动要符合重量、垂坠、弹性、透明度和摩擦。让转身、行走、停顿、抬手或风的作用产生可观察的褶皱和回弹，而不是让衣料像烟雾一样无重力飘动。
+
+## 画面与转换
+
+秀场段落强调轴线、步伐、灯光和观看关系；生活段落强调人与空间、服装功能和真实动作。runway-to-lifestyle framing 的转换应保留一个廓形、动作、色彩或光线锚点。镜头可以由远及近，但每次靠近都要证明剪裁、织物或穿着体验。
+
+## 约束与纠偏
+
+保留品牌和用户指定的服装事实，不把未确认的品牌标识、图案或配饰加入画面。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供时装创作判断。结果偏离时先修正廓形、面料行为和人物身份，再调整氛围。
+
+正例：先用全身构图读懂廓形，模特转身带动面料，镜头沿同一动作进入细节，随后在生活场景中展示穿着关系。
+反例：用强风和旋转遮住剪裁，或每个镜头更换服装、发型和人物比例。
