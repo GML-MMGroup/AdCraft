@@ -1,30 +1,34 @@
 {
   "skill_id": "designer-toy-ip-film",
   "version": "1.0.0",
-  "display_name": "Designer Toy IP Film",
-  "description": "An advertising treatment built around collectible silhouette, signature accessories, material charm, and world-building hooks.",
+  "display_name": "潮玩角色世界广告",
+  "description": "以可收藏轮廓、标志性配件、材质魅力和世界构建钩子组织具有角色识别度的商业动画。",
+  "content_locale": "zh-CN",
   "category": "animation-illustration",
   "tags": [
-    "animation",
-    "illustration",
-    "motion"
+    "潮玩角色",
+    "原创世界",
+    "商业动画"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "角色品牌",
+    "产品动画",
+    "原创IP展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Designer Toy IP Film creative treatment."
+    "kind": "image",
+    "summary": "潮玩角色世界广告视觉预览。",
+    "media_url": "/api/v2/video-skills/designer-toy-ip-film/preview?v=1.0.0"
   },
   "display_order": 310,
   "files": {
-    "SKILL.md": "d112cc0e3d307fc5e727723a0d6463d2d215f9139b86cc91237a980614aababc",
-    "references/character.md": "5b3fb39198eb780786f60dbab8bb4490bc9eab2f0f7f5c3ed0a8d123135e20c4",
-    "references/scene.md": "f0e695180adb344034171a2886249483dd09b78e4ee2b4a78dd0ebec405b2c8f",
-    "references/storyboard.md": "9b3a7867edb5e6f637bce4f80fb1bbaddc20cc836e35c37ceaad2e476f2446e4",
-    "references/video.md": "83e8c9af1b4efd5a669a3545421b1c94434c632835a0198b3eb26f63f595ecc7",
-    "references/quick_media.md": "d1f062385ab8a79347a7981244c2b619b0eda4c67db1a97c9016daaaa89b2502"
+    "SKILL.md": "260342533d827306707b79305b21ec8f1516ba39a3ae602a96c6cd796564fe23",
+    "references/character.md": "50a736e518c2d985d7b1484708a8b7eb477234a476b48025b5a79233eb9cb7e0",
+    "references/scene.md": "a9dc48f43cdb5e647631d4f3cce5095d3e513551d878273e20622f39e0df9689",
+    "references/storyboard.md": "2876aaa8e1e3779b3b0568a3218e7c9226def79697db30313a53d48e4af1f3b8",
+    "references/video.md": "5228a7e7781dd29e489afb82817f2f8efc29ebc7bc4d370df021a78423ef8cb5",
+    "references/quick_media.md": "041bce9006a802bc8569e72e42a7effd72fecc56611657129ad5ac428c6930f2",
+    "previews/preview.webp": "abe9523f17518fae9b54e8fcd0268946b49af1142b2ff6256bd6f87ec5d98447"
   },
   "role_guidance": {
     "character": "references/character.md",

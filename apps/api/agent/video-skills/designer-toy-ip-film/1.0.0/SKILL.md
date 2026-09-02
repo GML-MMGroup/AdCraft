@@ -1,8 +1,21 @@
 ---
-name: Designer Toy IP Film
-description: An advertising treatment built around collectible silhouette, signature accessories, material charm, and world-building hooks.
+name: 潮玩角色世界广告
+description: 以可收藏轮廓、标志性配件、材质魅力和世界构建钩子组织具有角色识别度的商业动画。
 ---
 
-Use collectible silhouette, signature accessories, material charm, and world-building hooks as the style's creative grammar. Establish collectible silhouette as the primary visual idea, reinforce it through signature accessories, and let material charm shape the progression toward world-building hooks.
+把 collectible silhouette、signature accessories、material charm、world-building hooks 作为原创潮玩广告的四个创作支点。角色首先要能被一眼识别，其次才进入世界和情节；可爱、怪趣或酷感都应落实到轮廓、配件、材质和动作，而不是只依赖形容词。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 角色与材质
+
+先建立轮廓、头身关系、主色、配件、表情范围和可动部位清单。collectible silhouette 要在远景、侧面和剪影中仍可辨认。signature accessories 不只是装饰，它们可以成为动作工具、身份线索或产品功能的入口。material charm 通过软胶、毛绒、透明件、金属件、纸盒或磨砂表面的重量、反光和触感体现。
+
+## 世界与叙事
+
+用 world-building hooks 只打开足够支撑本次广告的世界：一个规则、一个地点、一个关系或一个待解决的小问题。角色的进入、发现、协作和收束要让产品或品牌价值自然落地。不要为背景添加大量无法继续使用的设定。
+
+## 连续性与纠偏
+
+跨镜头保持轮廓、配件数量、材质、眼睛位置、关节和色彩。参考图优先锁定角色和商品事实，结果偏离时先恢复轮廓与配件，再减少群体、特效和背景变化。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供角色与动画判断。
+
+正例：角色用标志性配件打开一扇符合世界规则的门，材质回弹和轮廓动作共同展示产品。
+反例：每个镜头更换配件、头身比例和材质，只剩一个无法辨认的可爱形象。
