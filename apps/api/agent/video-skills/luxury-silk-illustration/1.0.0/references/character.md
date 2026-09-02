@@ -1,1 +1,6 @@
-Shape wardrobe, pose, and expression around flowing ornamental line and silk material behavior. Use refined color fields to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+角色的手势、姿态和服装是丝绸运动的受力来源。锁定人物身份、服装结构、手部位置和视线，说明布料从哪里被拿起、拉开、披覆或放下。姿态要给 flowing ornamental line 留出清楚路径，不能让身体变成模糊的装饰块。
+
+保持人物和服装颜色、比例、接触点连续。平面化人物可以简化体积，但关节和手部动作仍需可读。结果偏离时先恢复人物轮廓和布料受力，再调整图形风格。
+
+正例：人物转身带动肩部丝巾，布料沿同一方向形成装饰线，动作结束后自然垂落。
+反例：丝巾没有牵引点却自行飞舞，或人物脸、服装和手部在转场中不断变化。

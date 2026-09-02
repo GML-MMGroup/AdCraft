@@ -1,8 +1,23 @@
 ---
-name: Luxury Silk Illustration
-description: An advertising treatment built around flowing ornamental line, silk material behavior, refined color fields, and tactile elegance.
+name: 流光丝绸插画广告
+description: 以流动装饰线、丝绸材质行为、精炼色场和触觉优雅构建兼具平面秩序与材质感的影像。
 ---
 
-Use flowing ornamental line, silk material behavior, refined color fields, and tactile elegance as the style's creative grammar. Establish flowing ornamental line as the primary visual idea, reinforce it through silk material behavior, and let refined color fields shape the progression toward tactile elegance.
+把 flowing ornamental line、silk material behavior、refined color fields、tactile elegance 作为这套插画广告的四个创作支点。画面可以具有平面化、装饰性和抽象空间，但丝绸的折叠、摩擦、重量、光泽和触感必须仍然可理解。优雅来自线条、色场和材质之间的秩序，不靠堆叠金色或复杂纹样。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 线条与色场
+
+先确定一条主导的 flowing ornamental line：可以沿布料褶皱、人物动作、产品轮廓、植物形态或空间边缘展开。线条要引导视线并连接镜头，不要让每个装饰元素各自争夺中心。refined color fields 用少量主色、过渡色和留白建立层次，颜色变化应服务于叙事和材质。
+
+丝绸要有重量和回弹。折叠处形成连续的明暗，边缘可柔软但不能消失，受力点和悬垂方向要前后一致。风、手部或产品接触是材质变化的理由；没有动因时保持安静。
+
+## 触觉与连续性
+
+用手指划过、布面展开、边缘滑落、包裹产品或随人物移动等动作传递 tactile elegance。平面插画和立体材质可以共存，但要明确哪些元素是图形层、哪些元素是可触摸的实体。跨镜头保持主线、色场、布料纹理、人物身份和产品轮廓。
+
+## 约束与纠偏
+
+保留用户指定的产品、人物、服装和品牌事实，不复制具体品牌或创作者的独特标识。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供视觉判断。结果混乱时先减少纹样和颜色，再恢复线条、受力和材质。
+
+正例：一条布料褶皱形成装饰线，带出产品轮廓，色场缓慢交替，手部触碰让丝绸产生真实折叠。
+反例：把丝绸做成无重量的烟雾，线条无方向，颜色和纹样在每个镜头任意替换。

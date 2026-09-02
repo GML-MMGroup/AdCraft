@@ -1,1 +1,6 @@
-Construct spaces that express flowing ornamental line through layout and silk material behavior through light, color, and material. Use refined color fields to direct attention toward the advertised subject while preserving the stated location and product context.
+场景以 refined color fields 和空间留白托住丝绸。明确背景是平面色场、室内、自然环境还是抽象舞台，安排地面、光源、阴影和丝绸的悬垂方向。装饰线可以沿墙面、台面、窗框或产品轮廓延展，但要有构图动机。
+
+保持色场、主光和空间层次连续。纯背景镜头不要无故加入人物或道具；场景转换用相同色彩、线条方向或布料动作桥接。避免过多纹样让主体失去可读性。
+
+正例：低干扰色场提供留白，侧光沿丝绸褶皱移动，布料线条把视线带向产品。
+反例：背景每镜都换成新纹样和新光源，丝绸与空间没有接触或阴影依据。

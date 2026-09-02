@@ -1,29 +1,33 @@
 {
   "skill_id": "luxury-silk-illustration",
   "version": "1.0.0",
-  "display_name": "Luxury Silk Illustration",
-  "description": "An advertising treatment built around flowing ornamental line, silk material behavior, refined color fields, and tactile elegance.",
+  "display_name": "流光丝绸插画广告",
+  "description": "以流动装饰线、丝绸材质行为、精炼色场和触觉优雅构建兼具平面秩序与材质感的影像。",
+  "content_locale": "zh-CN",
   "category": "luxury-fashion",
   "tags": [
-    "luxury",
-    "editorial",
-    "material"
+    "丝绸质感",
+    "装饰插画",
+    "材质叙事"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "时尚广告",
+    "美妆与饰品",
+    "艺术化产品展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Luxury Silk Illustration creative treatment."
+    "kind": "image",
+    "summary": "流光丝绸插画广告视觉预览。",
+    "media_url": "/api/v2/video-skills/luxury-silk-illustration/preview?v=1.0.0"
   },
   "display_order": 130,
   "files": {
-    "SKILL.md": "59fa10614ce7f2464b7a6081356378421c679543898851ac9029b46381764145",
-    "references/product.md": "a3bbf42ec0f9ce7446dc090390ec457b791b58169d08219294ea8e19f616d291",
-    "references/character.md": "f56aa3a76aa0771c9c614e7a5941a9582dde6cba2ec15c482260c6ac8b7cf836",
-    "references/scene.md": "cf8a4f942988b38c43773b991234bd15b58e5867b6bebc18c7d2ae139a7b0e4b",
-    "references/video.md": "4a719833cf298937773382e46b561daa9f05d286974646fd0a43a8fc5f84568c"
+    "SKILL.md": "28e3b927509871682c74972a56b9957bba3834271932f06836703e976633847c",
+    "references/product.md": "4a85eaca42583ca64aa7a504e6a91588ace22eb84886cf15eb836befddf67859",
+    "references/character.md": "25838e17e426de28baf1f4aaf244fccab60baf30a8bbbee7864e046c4e42eabc",
+    "references/scene.md": "c33b32be4ce8883b308895aafe93d73abfc5f74b20bc263022393a79fed7db33",
+    "references/video.md": "463da43efed756112ab83bbdf24b0c4a36a7fbf6a1579f362b2ea6fa6448b95b",
+    "previews/preview.webp": "e1c3d9d5474cc47871e65048ed8dc54ac9523fa1168849ebd45fa13ede4eb4d9"
   },
   "role_guidance": {
     "product": "references/product.md",

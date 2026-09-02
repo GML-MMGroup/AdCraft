@@ -1,1 +1,6 @@
-Direct camera and subject motion through flowing ornamental line and silk material behavior, using refined color fields for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把丝绸写成有重量的连续运动：说明起始折叠、牵引点、展开方向、褶皱如何传播、光泽如何移动以及动作何时回落。摄影机沿 flowing ornamental line 推进或停留，但不让运动覆盖产品和人物身份。
+
+提示中交代产品轮廓、人物手势、布料材质、色场、光源和接触关系。参考图锁定已知事实；不要用“仙气”“奢华”替代折叠、摩擦和反射。结果像烟雾或塑料时，减少风和复杂旋转，恢复边缘、受力与重量。
+
+正例：手部从画面边缘拉开丝绸，褶皱按顺序展开，镜头沿高光移动，结尾露出产品全貌。
+反例：布料瞬间复制、穿模或失去纹理，镜头只剩装饰线而没有主体。
