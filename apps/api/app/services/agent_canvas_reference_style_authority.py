@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
+from app.schemas.agent_canvas_reference_conditioning import ReferenceConditioningPlanV1
 from app.schemas.agent_canvas_reference_style import (
     ReferencePromptProvenanceV1,
     ReferenceStyleAuthorityPolicyV1,
@@ -126,15 +127,35 @@ class ReferenceAwareAssetPromptRenderer:
         policy: ReferenceStyleAuthorityPolicyV1,
         *,
         explicit_controls: Mapping[str, Any] | None = None,
+        conditioning_plan: ReferenceConditioningPlanV1 | None = None,
     ) -> str:
         parts = [prompt.strip()]
-        parts.append(
-            "Selected reference image is authoritative for protected visual dimensions: "
-            + ", ".join(policy.protected_dimensions)
-            + "."
-        )
         controls = explicit_controls or {}
         raw_overrides = controls.get("visual_overrides", {})
+        if conditioning_plan is not None:
+            parts.append(
+                "Reference conditioning ("
+                + conditioning_plan.reference_label
+                + "): use this as the primary "
+                + conditioning_plan.target_role.replace("_", " ")
+                + " identity/style reference."
+            )
+            parts.append(
+                "Preserve protected dimensions: "
+                + ", ".join(conditioning_plan.protected_dimensions)
+                + "."
+            )
+            parts.append(
+                "Allowed changes: "
+                + ", ".join(conditioning_plan.allowed_change_dimensions)
+                + "."
+            )
+        else:
+            parts.append(
+                "Selected reference image is authoritative for protected visual dimensions: "
+                + ", ".join(policy.protected_dimensions)
+                + "."
+            )
         if isinstance(raw_overrides, Mapping):
             values = [
                 f"{key}={raw_overrides[key]}"
@@ -143,6 +164,8 @@ class ReferenceAwareAssetPromptRenderer:
             ]
             if values:
                 parts.append("Explicit visual overrides: " + "; ".join(values) + ".")
+        if conditioning_plan is not None:
+            parts.append("Do not substitute an unrelated subject or environment.")
         return "\n\n".join(part for part in parts if part)
 
 

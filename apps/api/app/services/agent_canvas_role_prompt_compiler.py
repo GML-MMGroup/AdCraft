@@ -52,6 +52,7 @@ from app.services.agent_canvas_reference_style_authority import (
     ReferenceAwareAssetPromptRenderer,
     ReferenceStyleAuthorityPolicyResolver,
 )
+from app.services.agent_canvas_reference_conditioning import ReferenceConditioningPlanResolver
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingAuthoringProvenanceV2,
     WorldSettingCoreV2,
@@ -144,12 +145,14 @@ class AgentCanvasRolePromptCompiler:
         prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
+        conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
         if style_authority is not None:
             prompt = ReferenceAwareAssetPromptRenderer().render(
                 prompt,
                 context.style_projection,
                 style_authority,
                 explicit_controls=context.explicit_controls,
+                conditioning_plan=conditioning_plan,
             )
         elif context.style_projection:
             _validate_role_prompt_text(context.role_variant, context.style_projection)
@@ -203,6 +206,11 @@ class AgentCanvasRolePromptCompiler:
             structured = {
                 **structured,
                 "reference_style_policy": style_authority.model_dump(mode="json"),
+            }
+        if conditioning_plan is not None:
+            structured = {
+                **structured,
+                "reference_conditioning_plan": conditioning_plan.model_dump(mode="json"),
             }
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
@@ -286,6 +294,9 @@ class AgentCanvasRolePromptCompiler:
             reference_purposes=references,
             role_reference_policy_version=(
                 role_policy.policy_version if role_policy is not None else None
+            ),
+            reference_conditioning_plan=(
+                conditioning_plan.model_dump(mode="json") if conditioning_plan is not None else None
             ),
             assertion_evidence=assertion_evidence,
             compaction_policy_version=recipe.compaction_policy.policy_version,

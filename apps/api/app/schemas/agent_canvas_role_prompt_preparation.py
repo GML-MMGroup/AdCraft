@@ -473,6 +473,7 @@ class CompiledNodePromptV2(_RolePromptModel):
     parameters: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
     reference_purposes: tuple[str, ...] = Field(default=(), max_length=32)
     role_reference_policy_version: str | None = Field(default=None, max_length=64)
+    reference_conditioning_plan: dict[str, JsonValue] | None = None
     assertion_evidence: PromptAssertionEvidenceV1
     compaction_policy_version: str = Field(min_length=1, max_length=32)
     compaction_policy_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
