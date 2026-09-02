@@ -15,6 +15,33 @@ class _ReferenceConditioningModel(BaseModel):
 
 ReferenceConditioningRoleV1 = Literal["character_main", "scene_board"]
 ReferenceConditioningControlLevelV1 = Literal["native", "provider_instruction"]
+ReferenceConditioningProtectedDimensionV1 = Literal[
+    "identity",
+    "face_and_hair",
+    "silhouette_and_proportions",
+    "wardrobe",
+    "accessories",
+    "medium",
+    "linework",
+    "palette",
+    "shading",
+    "texture",
+    "shape_language",
+    "environment_identity",
+    "spatial_layout",
+    "architecture",
+    "materials",
+    "lighting",
+    "atmosphere",
+]
+ReferenceConditioningAllowedDimensionV1 = Literal[
+    "view",
+    "pose",
+    "camera",
+    "framing",
+    "background",
+    "content",
+]
 
 
 class ReferenceConditioningPlanV1(_ReferenceConditioningModel):
@@ -29,9 +56,15 @@ class ReferenceConditioningPlanV1(_ReferenceConditioningModel):
     reference_purpose: Literal["identity_guidance", "environment_guidance"]
     reference_label: Literal["Image 1"] = "Image 1"
     reference_position: Literal[1] = 1
-    protected_dimensions: tuple[str, ...] = Field(min_length=1, max_length=16)
-    allowed_change_dimensions: tuple[str, ...] = Field(min_length=1, max_length=8)
-    explicit_override_dimensions: tuple[str, ...] = Field(default=(), max_length=16)
+    protected_dimensions: tuple[ReferenceConditioningProtectedDimensionV1, ...] = Field(
+        min_length=1, max_length=16
+    )
+    allowed_change_dimensions: tuple[ReferenceConditioningAllowedDimensionV1, ...] = Field(
+        min_length=1, max_length=8
+    )
+    explicit_override_dimensions: tuple[ReferenceConditioningProtectedDimensionV1, ...] = Field(
+        default=(), max_length=16
+    )
     reference_control_level: ReferenceConditioningControlLevelV1
     provenance: ReferencePromptProvenanceV1
     provenance_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
