@@ -113,7 +113,9 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toContain("stroke-dasharray: 8 6");
     expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
     expect(canvasCss).toContain("vector-effect: non-scaling-stroke");
-    expect(canvasCss).toContain("stroke: rgb(229 231 238 / 86%)");
+    expect(canvasCss).toContain("stroke: rgb(133 133 133 / 72%)");
+    expect(canvasCss).toContain("stroke: rgb(168 168 168 / 82%)");
+    expect(canvasCss).toContain("stroke: rgb(208 208 208 / 92%)");
     expect(canvasCss).toMatch(/\.agent-canvas-board \.react-flow__edge-path \{[\s\S]*?filter: none;/);
     expect(canvasCss).not.toMatch(/\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path,[\s\S]*?filter: drop-shadow/);
     expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");

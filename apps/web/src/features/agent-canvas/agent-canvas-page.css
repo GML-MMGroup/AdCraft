@@ -72,7 +72,7 @@
 
 .agent-canvas-board .react-flow__edge-path {
   vector-effect: non-scaling-stroke;
-  stroke: rgb(229 231 238 / 86%);
+  stroke: rgb(133 133 133 / 72%);
   stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -84,12 +84,12 @@
 }
 
 .agent-canvas-board .react-flow__edge:hover .react-flow__edge-path {
-  stroke: rgb(247 248 251 / 78%);
+  stroke: rgb(168 168 168 / 82%);
 }
 
 .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
 .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
-  stroke: rgb(255 255 255 / 96%);
+  stroke: rgb(208 208 208 / 92%);
   stroke-width: 2;
   stroke-dasharray: 8 6;
   filter: none;
