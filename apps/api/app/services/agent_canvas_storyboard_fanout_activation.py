@@ -218,7 +218,7 @@ class StoryboardFanoutActivationService:
             item.control: item.value for item in controls if item.control != "duration_seconds"
         }
         if node_role == "video_segment":
-            decision = getattr(requirement_revision.ledger, "identity_safety_decision", None)
+            decision = getattr(requirement_revision, "identity_safety_decision", None)
             if decision is not None:
                 requirement_facts["identity_safety_decision"] = decision.model_dump(mode="json")
         excerpts = ()
