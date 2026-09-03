@@ -247,6 +247,18 @@ class ModelParameterMatrixV1(BaseModel):
     descriptors: tuple[ModelParameterDescriptorV1, ...] = Field(max_length=64)
     legal_combinations: tuple[dict[str, object], ...] = Field(default_factory=tuple, max_length=256)
 
+    @model_validator(mode="after")
+    def validate_matrix_references(self) -> "ModelParameterMatrixV1":
+        descriptor_names = {descriptor.name for descriptor in self.descriptors}
+        if len(descriptor_names) != len(self.descriptors):
+            raise ValueError("parameter_descriptor_duplicate")
+        if any(
+            set(combination).difference(descriptor_names)
+            for combination in self.legal_combinations
+        ):
+            raise ValueError("parameter_combination_unknown")
+        return self
+
 
 class ReferenceInputModeV1(BaseModel):
     """Semantic reference input mode owned by the selected adapter profile."""
@@ -287,6 +299,15 @@ class ProviderAdapterProfileV1(BaseModel):
     conformance_status: ProviderConformanceStatusV1 = "unverified"
     adapter_revision: str = Field(min_length=1, max_length=80)
     capability_revision: str = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_parameter_schema_identity(self) -> "ProviderAdapterProfileV1":
+        if (
+            self.parameter_matrix is not None
+            and self.parameter_matrix.schema_id != self.parameter_schema_id
+        ):
+            raise ValueError("parameter_schema_mismatch")
+        return self
 
 
 class ProviderModelConformanceSummaryV1(BaseModel):
