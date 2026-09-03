@@ -14,6 +14,7 @@ from app.persistence.project_repository import ProjectRepository
 from app.schemas.v2_asset_library import AssetVersionMetadataV2
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2
 from app.schemas.workflow_v2_projects import ProjectCatalogRecord, ProjectCoverSourceV2
+from app.services.project_cover_renditions import ProjectCoverRenditionPrewarmer
 
 
 _SOURCE_PRIORITY: dict[ProjectCoverSourceV2, int] = {
@@ -93,12 +94,14 @@ class ProjectCoverAuthorityService:
         projects: ProjectRepository,
         assets: V2AssetLibraryRepository,
         workflows: AgentCanvasWorkflowRepository,
+        prewarmer: ProjectCoverRenditionPrewarmer | None = None,
     ) -> None:
         if projects.database is not workflows.database:
             raise ValueError("Project cover repositories must share one V2Database.")
         self._projects = projects
         self._assets = assets
         self._workflows = workflows
+        self._prewarmer = prewarmer
 
     def consider_published_version(self, version: AssetVersionMetadataV2) -> bool:
         """Converge one Project on the best currently published automatic cover."""
@@ -120,6 +123,8 @@ class ProjectCoverAuthorityService:
             version_id=project.cover_version_id,
         )
         if current is not None and selected.rank >= current.rank:
+            if selected.version_id == current.version_id:
+                self._prewarm(_version_by_id(versions, current.version_id))
             return False
         if (
             project.cover_state == "ready"
@@ -144,6 +149,7 @@ class ProjectCoverAuthorityService:
             if error.code == "project_state_conflict":
                 return False
             raise
+        self._prewarm(_version_by_id(versions, selected.version_id))
         return True
 
     def consider_product_main(self, version: AssetVersionMetadataV2) -> bool:
@@ -193,6 +199,12 @@ class ProjectCoverAuthorityService:
                     changes=changes,
                 )
                 updated += 1
+                if decision.version_id is not None:
+                    disposition = self._prewarm(_version_by_id(
+                        self._assets.list_versions_for_workflow(project.workflow_id),
+                        decision.version_id,
+                    ))
+                    decision = decision.model_copy(update={"rendition_prewarm": disposition})
             except V2PersistenceError as error:
                 if error.code != "project_state_conflict":
                     raise
@@ -237,6 +249,14 @@ class ProjectCoverAuthorityService:
                     break
                 cursor = page.next_cursor
         return tuple(items)
+
+    def _prewarm(self, version: AssetVersionMetadataV2 | None) -> str:
+        if self._prewarmer is None or version is None:
+            return "not_configured"
+        try:
+            return self._prewarmer.ensure(version)
+        except V2PersistenceError:
+            return "failed"
 
     def _decide(self, project: ProjectCatalogRecord) -> ProjectCoverBackfillDecision:
         if project.cover_source == "manual":
@@ -491,3 +511,9 @@ def _latest_versions_by_asset(
         ):
             latest[version.asset_id] = version
     return tuple(latest[asset_id] for asset_id in sorted(latest))
+
+
+def _version_by_id(
+    versions: Iterable[AssetVersionMetadataV2], version_id: str
+) -> AssetVersionMetadataV2 | None:
+    return next((version for version in versions if version.version_id == version_id), None)

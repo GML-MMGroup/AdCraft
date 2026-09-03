@@ -232,6 +232,7 @@ from app.services.agent_canvas_assets import (
     deterministic_media_facts_probe,
 )
 from app.services.project_cover_authority import ProjectCoverAuthorityService
+from app.services.project_cover_renditions import ProjectCoverRenditionPrewarmer
 from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
 from app.services.agent_canvas_guided_reference import GuidedReferenceSourceService
 from app.services.agent_canvas_guided_reference_candidates import (
@@ -638,10 +639,15 @@ def create_agent_canvas_runtime(
     )
     document_repository = AgentCanvasDocumentRepository(database)
     asset_repository = V2AssetLibraryRepository(database)
+    cover_renditions = V2AssetRenditionService(
+        settings.media_data_dir,
+        ffmpeg_path=settings.ffmpeg_path,
+    )
     project_cover_authority = ProjectCoverAuthorityService(
         project_repository,
         asset_repository,
         workflow_repository,
+        ProjectCoverRenditionPrewarmer(settings.media_data_dir, cover_renditions),
     )
     asset_service = AgentCanvasAssetService(
         settings.media_data_dir,
@@ -652,11 +658,8 @@ def create_agent_canvas_runtime(
             if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
             else None
         ),
-        rendition_service=V2AssetRenditionService(
-            settings.media_data_dir,
-            ffmpeg_path=settings.ffmpeg_path,
-        ),
-        on_version_published=project_cover_authority.consider_product_main,
+        rendition_service=cover_renditions,
+        on_version_published=project_cover_authority.consider_published_version,
     )
     guided_product_inputs = GuidedProductInputCommitService(
         assets=asset_service,
