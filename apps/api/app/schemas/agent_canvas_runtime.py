@@ -16,6 +16,7 @@ from app.schemas.agent_canvas import (
     RoleContractVersionV2,
 )
 from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_execution_mode import (
     CanvasExecutionModeV2,
     CanvasParameterSourceV2,
@@ -118,6 +119,7 @@ class NodeRunIntentSnapshotV2(_RuntimeModel):
     role_contract_version: RoleContractVersionV2
     summary_prompt: str | None = Field(default=None, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
+    prompt_presentation: EditablePromptProjectionV1 | None = None
     structured_content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     model_selection_mode: Literal["default", "explicit"]
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)

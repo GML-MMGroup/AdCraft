@@ -150,6 +150,7 @@ class AgentCanvasProviderPromptCompiler:
                 "node_prompt_empty",
                 "A media Node requires a saved generation prompt before provider preparation.",
             )
+        _validate_editable_prompt_authority(node)
         if role_contract.semantic_role != node.semantic_role:
             raise _error(
                 "provider_prompt_contract_failed",
@@ -739,6 +740,23 @@ def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
     ).hexdigest()
+
+
+def _validate_editable_prompt_authority(node: CanvasNodeV2) -> None:
+    projection = node.prompt_presentation
+    if projection is None:
+        return
+    prompt = str(node.generation_prompt or "")
+    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
+    if (
+        projection.text != prompt
+        or projection.revision != node.revision
+        or projection.prompt_digest != expected_digest
+    ):
+        raise _error(
+            "prompt_revision_conflict",
+            "The editable prompt projection does not match the frozen Node revision.",
+        )
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

@@ -95,7 +95,6 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     title: str = Field(min_length=1)
     summary_prompt: str | None = None
     generation_prompt: str | None = None
-    prompt_presentation: EditablePromptProjectionV1 | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     model_selection_mode: ModelSelectionModeV1 = "default"
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)
@@ -222,6 +221,7 @@ class CanvasNodeV2(_AgentCanvasModel):
     execution_mode: CanvasNodeExecutionModeV2 = "generative"
     summary_prompt: str | None = None
     generation_prompt: str | None = None
+    prompt_presentation: EditablePromptProjectionV1 | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     model_selection_mode: ModelSelectionModeV1 = "default"
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)

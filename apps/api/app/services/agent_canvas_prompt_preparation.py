@@ -149,11 +149,7 @@ class NodePromptPreparationService:
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
-            editable_text = (
-                role_context.user_prompt
-                or compiled_prompt.editable_prompt
-                or compiled_prompt.prompt
-            ).strip()
+            editable_text = compiled_prompt.prompt
             prompt_presentation = EditablePromptProjectionV1(
                 text=editable_text,
                 locale=role_context.response_locale,
@@ -168,7 +164,7 @@ class NodePromptPreparationService:
                 ),
                 revision=working.revision + 1,
                 brief_digest=compiled_prompt.brief_digest,
-                prompt_digest=sha256(editable_text.encode("utf-8")).hexdigest(),
+                prompt_digest=f"sha256:{sha256(editable_text.encode('utf-8')).hexdigest()}",
             )
             if role_context.role_variant == "world_view":
                 provenance = dict(structured_content.get("authoring_provenance", {}))

@@ -196,6 +196,11 @@ class AgentCanvasRunIntentSnapshotService:
                 "role_contract_version": frozen_node.role_contract_version,
                 "summary_prompt": frozen_node.summary_prompt,
                 "generation_prompt": frozen_node.generation_prompt,
+                "prompt_presentation": (
+                    frozen_node.prompt_presentation.model_dump(mode="json")
+                    if frozen_node.prompt_presentation is not None
+                    else None
+                ),
                 "structured_content_digest": structured_content_digest,
                 "model_selection_mode": frozen_node.model_selection_mode,
                 "model_ref": frozen_node.model_ref,
@@ -321,6 +326,7 @@ class AgentCanvasRunIntentSnapshotService:
             role_contract_version=node.role_contract_version,
             summary_prompt=node.summary_prompt,
             generation_prompt=node.generation_prompt,
+            prompt_presentation=node.prompt_presentation,
             structured_content_digest=_digest(node.structured_content),
             model_selection_mode=node.model_selection_mode,
             model_ref=node.model_ref,

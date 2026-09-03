@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
+from typing import Literal
 from uuid import uuid4
 
 from app.persistence.agent_canvas_repository import (
@@ -21,6 +22,7 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_editing import default_editing_content
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.model_selection import ModelSelectionService
@@ -84,6 +86,16 @@ class AgentCanvasNodeService:
             created_at=now,
             updated_at=now,
         )
+        if normalized_generation_prompt is not None:
+            node = node.model_copy(
+                update={
+                    "prompt_presentation": _editable_prompt_projection(
+                        normalized_generation_prompt,
+                        source="user_edited",
+                        revision=1,
+                    )
+                }
+            )
         bindings = (
             _copy_incoming_bindings(
                 self._repository.get_workflow(workflow_id),
@@ -148,9 +160,19 @@ class AgentCanvasNodeService:
                 )
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
-        if "generation_prompt" in changes and not source_only_product:
+        if "generation_prompt" in changes:
             normalized_prompt = normalize_manual_generation_prompt(request.generation_prompt)
             changes["generation_prompt"] = normalized_prompt
+            changes["prompt_presentation"] = (
+                _editable_prompt_projection(
+                    normalized_prompt,
+                    source="user_edited",
+                    revision=current.revision + 1,
+                    prior=current.prompt_presentation,
+                )
+                if normalized_prompt is not None
+                else None
+            )
         if (
             current.status == "draft"
             and _has_managed_prompt_preparation(current)
@@ -294,6 +316,23 @@ def _queued_prompt_preparation(
         prompt_digest=None,
         error=None,
         updated_at=now,
+    )
+
+
+def _editable_prompt_projection(
+    text: str,
+    *,
+    source: Literal["agent_authored", "deterministic_projection", "user_edited"],
+    revision: int,
+    prior: EditablePromptProjectionV1 | None = None,
+) -> EditablePromptProjectionV1:
+    return EditablePromptProjectionV1(
+        text=text,
+        locale=prior.locale if prior is not None else "und",
+        source=source,
+        revision=revision,
+        brief_digest=prior.brief_digest if prior is not None else None,
+        prompt_digest=f"sha256:{sha256(text.encode('utf-8')).hexdigest()}",
     )
 
 

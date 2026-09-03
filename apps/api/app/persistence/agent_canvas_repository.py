@@ -2649,6 +2649,8 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
     metadata = dict(node.metadata)
     if node.prompt_presentation is not None:
         metadata["editable_prompt_projection"] = node.prompt_presentation.model_dump(mode="json")
+    else:
+        metadata.pop("editable_prompt_projection", None)
     return {
         "node_id": node.node_id,
         "workflow_id": node.workflow_id,
