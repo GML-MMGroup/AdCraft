@@ -487,7 +487,13 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if member is None:
                 return False
-            if _frozen_node_matches_plan(member[0], plan_document_id, plan_revision):
+            if AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
+                connection,
+                prompt_metadata_json=member[0],
+                workflow_id=workflow_id,
+                node_id=node_id,
+                plan_document_id=plan_document_id,
+            ):
                 return True
             return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
                 connection,
@@ -522,7 +528,13 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if member is None:
                 return False
-            if _frozen_node_matches_plan(member[0], plan_document_id, plan_revision):
+            if AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
+                connection,
+                prompt_metadata_json=member[0],
+                workflow_id=workflow_id,
+                node_id=node_id,
+                plan_document_id=plan_document_id,
+            ):
                 return True
             return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
                 connection,
@@ -549,6 +561,51 @@ class AgentCanvasEditingActionReconciliationRepository:
             source_action_id=source,
             plan_document_id=plan_document_id,
             plan_revision=plan_revision,
+        )
+
+    @staticmethod
+    def _frozen_node_matches_current_node_in_transaction(
+        connection,
+        *,
+        prompt_metadata_json: object,
+        workflow_id: str,
+        node_id: str,
+        plan_document_id: str,
+    ) -> bool:
+        frozen_node = _frozen_node_from_prompt_metadata(prompt_metadata_json)
+        if frozen_node is None:
+            return False
+        row = (
+            connection.execute(
+                select(
+                    AgentCanvasNodeRow.revision,
+                    AgentCanvasNodeRow.metadata_json,
+                ).where(
+                    AgentCanvasNodeRow.workflow_id == workflow_id,
+                    AgentCanvasNodeRow.node_id == node_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return False
+        try:
+            metadata = json.loads(str(row["metadata_json"]))
+        except (TypeError, ValueError):
+            return False
+        frozen_metadata = frozen_node.get("metadata")
+        if not isinstance(frozen_metadata, dict):
+            return False
+        frozen_revision = frozen_node.get("revision")
+        return bool(
+            frozen_node.get("workflow_id") == workflow_id
+            and frozen_node.get("node_id") == node_id
+            and isinstance(frozen_revision, int)
+            and not isinstance(frozen_revision, bool)
+            and frozen_revision == int(row["revision"])
+            and frozen_metadata.get("source_agent_document_id") == plan_document_id
+            and metadata.get("source_agent_document_id") == plan_document_id
         )
 
     @staticmethod
@@ -734,29 +791,16 @@ def _automatic_owner_source(source_action_id: str, node_id: str) -> tuple[str, s
     return None
 
 
-def _frozen_node_matches_plan(
+def _frozen_node_from_prompt_metadata(
     prompt_metadata_json: object,
-    plan_document_id: str,
-    plan_revision: int,
-) -> bool:
+) -> dict[str, object] | None:
     if prompt_metadata_json is None:
-        return False
+        return None
     try:
         prompt_metadata = json.loads(str(prompt_metadata_json))
     except (TypeError, ValueError):
-        return False
+        return None
     frozen_node = prompt_metadata.get("frozen_node")
     if not isinstance(frozen_node, dict):
-        return False
-    metadata = frozen_node.get("metadata")
-    if not isinstance(metadata, dict):
-        return False
-    source_revision = metadata.get("source_plan_revision")
-    if source_revision is None:
-        source_revision = metadata.get("source_agent_document_revision")
-    return bool(
-        metadata.get("source_agent_document_id") == plan_document_id
-        and isinstance(source_revision, int)
-        and not isinstance(source_revision, bool)
-        and source_revision == plan_revision
-    )
+        return None
+    return frozen_node
