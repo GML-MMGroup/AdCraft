@@ -8390,6 +8390,19 @@
           "title": "Explicit Inclusions",
           "type": "array"
         },
+        "identity_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identity Projection Digest"
+        },
         "negative_constraints": {
           "default": [],
           "items": {
@@ -8398,6 +8411,61 @@
           "maxItems": 64,
           "title": "Negative Constraints",
           "type": "array"
+        },
+        "occurrence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Id"
+        },
+        "parent_asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Asset Version Id"
+        },
+        "parent_source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Source Node Id"
+        },
+        "parent_source_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Source Node Revision"
         },
         "reference_rendering_mode": {
           "const": "detailed_semi_realistic_illustration",
@@ -8514,6 +8582,121 @@
       "title": "CharacterExpertAgentContext",
       "type": "object"
     },
+    "CharacterIdentityAuthorityProjectionV1": {
+      "additionalProperties": false,
+      "description": "Frozen identity authority projected from one Character Main occurrence.",
+      "properties": {
+        "accessories": {
+          "maxLength": 1024,
+          "title": "Accessories",
+          "type": "string"
+        },
+        "face_and_hair": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Face And Hair",
+          "type": "string"
+        },
+        "gender_presentation": {
+          "default": "unspecified",
+          "enum": [
+            "androgynous",
+            "feminine",
+            "masculine",
+            "unspecified"
+          ],
+          "title": "Gender Presentation",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "occurrence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Occurrence Id",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "rendering_mode": {
+          "const": "detailed_semi_realistic_commercial_illustration",
+          "default": "detailed_semi_realistic_commercial_illustration",
+          "title": "Rendering Mode",
+          "type": "string"
+        },
+        "silhouette_and_proportions": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Silhouette And Proportions",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Id"
+        },
+        "source_asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Version Id"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "wardrobe": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Wardrobe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accessories",
+        "face_and_hair",
+        "identity",
+        "occurrence_id",
+        "projection_digest",
+        "silhouette_and_proportions",
+        "source_node_id",
+        "source_node_revision",
+        "wardrobe"
+      ],
+      "title": "CharacterIdentityAuthorityProjectionV1",
+      "type": "object"
+    },
     "CharacterMainRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
@@ -8533,6 +8716,17 @@
           "maxLength": 2048,
           "minLength": 1,
           "title": "Face And Hair",
+          "type": "string"
+        },
+        "gender_presentation": {
+          "default": "unspecified",
+          "enum": [
+            "androgynous",
+            "feminine",
+            "masculine",
+            "unspecified"
+          ],
+          "title": "Gender Presentation",
           "type": "string"
         },
         "identity": {
@@ -8846,6 +9040,17 @@
           "maxLength": 2048,
           "minLength": 1,
           "title": "Face And Hair",
+          "type": "string"
+        },
+        "gender_presentation": {
+          "default": "unspecified",
+          "enum": [
+            "androgynous",
+            "feminine",
+            "masculine",
+            "unspecified"
+          ],
+          "title": "Gender Presentation",
           "type": "string"
         },
         "identity": {
@@ -17683,6 +17888,19 @@
           "default": null,
           "title": "Brief Digest"
         },
+        "character_identity_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Identity Projection Digest"
+        },
         "character_phase": {
           "anyOf": [
             {
@@ -17907,6 +18125,19 @@
           ],
           "default": null,
           "title": "Role Variant"
+        },
+        "scene_environment_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene Environment Projection Digest"
         },
         "status": {
           "enum": [
@@ -20265,6 +20496,19 @@
           "title": "Assertion Ids",
           "type": "array"
         },
+        "character_identity_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Identity Projection Digest"
+        },
         "document_revisions": {
           "additionalProperties": {
             "type": "integer"
@@ -20316,6 +20560,19 @@
           "minLength": 1,
           "title": "Recipe Version",
           "type": "string"
+        },
+        "scene_environment_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene Environment Projection Digest"
         },
         "schema_version": {
           "const": "1",
@@ -24150,6 +24407,17 @@
           "title": "Bound Text Controls",
           "type": "array"
         },
+        "character_identity_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharacterIdentityAuthorityProjectionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "character_phase": {
           "anyOf": [
             {
@@ -24318,6 +24586,17 @@
           ],
           "title": "Role Variant",
           "type": "string"
+        },
+        "scene_environment_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SceneEnvironmentProjectionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "selected_direction": {
           "anyOf": [
@@ -24655,6 +24934,15 @@
     "SceneBoardRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "action_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Action References",
+          "type": "array"
+        },
         "atmosphere": {
           "maxLength": 2048,
           "minLength": 1,
@@ -24667,11 +24955,26 @@
           "title": "Editable Prompt",
           "type": "string"
         },
+        "entity_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Entity References",
+          "type": "array"
+        },
         "environment_identity": {
           "maxLength": 4096,
           "minLength": 1,
           "title": "Environment Identity",
           "type": "string"
+        },
+        "environment_only": {
+          "const": true,
+          "default": true,
+          "title": "Environment Only",
+          "type": "boolean"
         },
         "lighting": {
           "maxLength": 2048,
@@ -24881,6 +25184,19 @@
     "SceneDesignBoardContentV2": {
       "additionalProperties": false,
       "properties": {
+        "environment_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment Projection Digest"
+        },
         "environment_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -24962,6 +25278,137 @@
         "time_of_day"
       ],
       "title": "SceneDesignBoardContentV2",
+      "type": "object"
+    },
+    "SceneEnvironmentProjectionV1": {
+      "additionalProperties": false,
+      "description": "Frozen environment authority with no entity or narrative action references.",
+      "properties": {
+        "action_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Action References",
+          "type": "array"
+        },
+        "atmosphere": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Atmosphere",
+          "type": "string"
+        },
+        "entity_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Entity References",
+          "type": "array"
+        },
+        "environment_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Environment Identity",
+          "type": "string"
+        },
+        "environment_only": {
+          "const": true,
+          "default": true,
+          "title": "Environment Only",
+          "type": "boolean"
+        },
+        "lighting": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "spatial_logic": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Logic",
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "$ref": "#/$defs/SceneEnvironmentViewV1"
+          },
+          "maxItems": 9,
+          "minItems": 1,
+          "title": "Views",
+          "type": "array"
+        }
+      },
+      "required": [
+        "atmosphere",
+        "environment_identity",
+        "lighting",
+        "materials",
+        "projection_digest",
+        "source_node_id",
+        "source_node_revision",
+        "spatial_logic",
+        "views"
+      ],
+      "title": "SceneEnvironmentProjectionV1",
+      "type": "object"
+    },
+    "SceneEnvironmentViewV1": {
+      "additionalProperties": false,
+      "description": "One bounded, typed environment-only Scene view.",
+      "properties": {
+        "allowed_environment_elements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Allowed Environment Elements",
+          "type": "array"
+        },
+        "spatial_details": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Details",
+          "type": "string"
+        },
+        "view_or_zone": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "View Or Zone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "spatial_details",
+        "view_or_zone"
+      ],
+      "title": "SceneEnvironmentViewV1",
       "type": "object"
     },
     "SceneExpertAgentContext": {
