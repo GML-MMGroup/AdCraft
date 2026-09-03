@@ -19,6 +19,7 @@ from app.persistence.models import (
     ProviderModelRow,
     ProviderModelSyncRunRow,
 )
+from app.schemas.provider_models import ModelParameterMatrixV1, ProviderAdapterProfileV1
 
 
 _DEFAULT_KEYS = frozenset({"agent", "text", "image", "video", "audio"})
@@ -603,6 +604,20 @@ def _normalized_model(provider_id: str, model: Mapping[str, Any]) -> dict[str, A
     capability_metadata = model.get("capability_metadata", {})
     if not isinstance(capability_metadata, Mapping):
         raise ValueError("provider_model_metadata_invalid")
+    adapter_profile = capability_metadata.get("adapter_profile")
+    if adapter_profile is not None:
+        try:
+            parsed_profile = ProviderAdapterProfileV1.model_validate(adapter_profile)
+        except Exception as error:
+            raise ValueError("provider_model_adapter_profile_invalid") from error
+        if parsed_profile.model_ref != model_ref or parsed_profile.capability != capability:
+            raise ValueError("provider_model_adapter_profile_invalid")
+    parameter_matrix = capability_metadata.get("parameter_matrix")
+    if parameter_matrix is not None:
+        try:
+            ModelParameterMatrixV1.model_validate(parameter_matrix)
+        except Exception as error:
+            raise ValueError("provider_model_parameter_matrix_invalid") from error
     return {
         "model_ref": model_ref,
         "provider_id": provider_id,
