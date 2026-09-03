@@ -15,6 +15,8 @@ apps/web/coverage/
 !/docs/deployment-without-docker_zh.md
 !/docs/deployment-with-docker-agent.md
 !/docs/deployment-with-docker-agent_zh.md
+!/docs/deployment-without-docker-agent.md
+!/docs/deployment-without-docker-agent_zh.md
 
 # Frontend local docs, tests, and agent workspace files
 apps/web/.codex/
