@@ -492,6 +492,7 @@ class AgentCanvasEditingActionReconciliationRepository:
                 workflow_id=workflow_id,
                 node_id=node_id,
                 plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
             )
         if owner_kind == "post_ready_effect":
             member = connection.execute(
@@ -523,6 +524,7 @@ class AgentCanvasEditingActionReconciliationRepository:
                 workflow_id=workflow_id,
                 node_id=node_id,
                 plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
             )
         if owner_kind != "automatic_run":
             return False
@@ -551,6 +553,7 @@ class AgentCanvasEditingActionReconciliationRepository:
         workflow_id: str,
         node_id: str,
         plan_document_id: str,
+        plan_revision: int,
     ) -> bool:
         frozen_node = _frozen_node_from_prompt_metadata(prompt_metadata_json)
         if frozen_node is None:
@@ -578,7 +581,7 @@ class AgentCanvasEditingActionReconciliationRepository:
         if not isinstance(frozen_metadata, dict):
             return False
         frozen_revision = frozen_node.get("revision")
-        return bool(
+        current_node_matches = bool(
             frozen_node.get("workflow_id") == workflow_id
             and frozen_node.get("node_id") == node_id
             and isinstance(frozen_revision, int)
@@ -587,6 +590,82 @@ class AgentCanvasEditingActionReconciliationRepository:
             and frozen_metadata.get("source_agent_document_id") == plan_document_id
             and metadata.get("source_agent_document_id") == plan_document_id
         )
+        if not current_node_matches:
+            return False
+        source_revision = frozen_metadata.get("source_plan_revision")
+        if source_revision is None:
+            source_revision = frozen_metadata.get("source_agent_document_revision")
+        if (
+            isinstance(source_revision, int)
+            and not isinstance(source_revision, bool)
+            and source_revision == plan_revision
+        ):
+            return True
+        return AgentCanvasEditingActionReconciliationRepository._node_has_derived_plan_lineage_in_transaction(
+            connection,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            plan_document_id=plan_document_id,
+            plan_revision=plan_revision,
+        )
+
+    @staticmethod
+    def _node_has_derived_plan_lineage_in_transaction(
+        connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        fanout_payloads = connection.execute(
+            select(AgentCanvasGuidedProductionReceiptRow.payload_json).where(
+                AgentCanvasGuidedProductionReceiptRow.workflow_id == workflow_id,
+                AgentCanvasGuidedProductionReceiptRow.receipt_type == "storyboard_fanout",
+            )
+        ).scalars()
+        for payload_json in fanout_payloads:
+            try:
+                fanout = StoryboardFanoutPlanV1.model_validate_json(str(payload_json))
+            except ValueError:
+                continue
+            if (
+                fanout.plan_document_id == plan_document_id
+                and fanout.plan_revision == plan_revision
+                and any(item.node_id == node_id for item in fanout.nodes)
+            ):
+                return True
+        dispatch_rows = (
+            connection.execute(
+                select(
+                    AgentCanvasPromptPreparationOutboxRow.context_json,
+                    AgentCanvasPromptPreparationOutboxRow.document_revisions_json,
+                ).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        for dispatch_row in dispatch_rows:
+            try:
+                revisions = json.loads(str(dispatch_row["document_revisions_json"]))
+                context = StageAuthoringContextV1.model_validate_json(
+                    str(dispatch_row["context_json"])
+                )
+            except (TypeError, ValueError):
+                continue
+            if revisions.get("storyboard_production_plan") != plan_revision:
+                continue
+            if any(
+                excerpt.document_id == plan_document_id
+                and excerpt.document_kind == "storyboard_production_plan"
+                and excerpt.revision == plan_revision
+                for excerpt in context.working_document_excerpts
+            ):
+                return True
+        return False
 
     def _automatic_source_matches_plan_in_transaction(
         connection,
