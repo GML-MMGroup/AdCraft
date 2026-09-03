@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from app.core.config import Settings
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRecord, ProviderModelRepository
 from app.schemas.agent_capabilities import AgentCapabilityV1
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1, AgentName
+from app.schemas.provider_models import ProviderAdapterProfileV1
 from app.services.agent_model_execution_policy import (
     AgentModelExecutionPolicyError,
     resolve_agent_model_execution_policy,
@@ -50,8 +53,15 @@ class AgentCredentialSnapshot:
     supports_streaming: bool
     supports_streamed_tool_calls: bool
     supports_reasoning_controls: bool
+    adapter_id: str
+    transport_kind: str
+    capability_revision: str
+    adapter_revision: str
     execution_policy: AgentModelExecutionPolicyV1
     api_key: str = field(repr=False)
+    gateway_id: str | None = None
+    model_alias: str | None = None
+    projection_digest: str | None = None
 
 
 class V2AgentCredentialBroker:
@@ -110,6 +120,7 @@ class V2AgentCredentialBroker:
                 "The selected provider text credential is not configured.",
             )
         metadata = record.capability_metadata
+        adapter_profile = _agent_adapter_profile(record)
         try:
             execution_policy = resolve_agent_model_execution_policy(
                 model_ref=record.model_ref,
@@ -132,8 +143,27 @@ class V2AgentCredentialBroker:
             supports_streaming=_metadata_flag(metadata, "supports_streaming"),
             supports_streamed_tool_calls=_metadata_flag(metadata, "supports_streamed_tool_calls"),
             supports_reasoning_controls=_metadata_flag(metadata, "supports_reasoning_controls"),
+            adapter_id=adapter_profile.adapter_id,
+            transport_kind=adapter_profile.transport_kind,
+            capability_revision=adapter_profile.capability_revision,
+            adapter_revision=adapter_profile.adapter_revision,
             execution_policy=execution_policy,
             api_key=api_key,
+            gateway_id=(
+                adapter_profile.gateway_profile.gateway_id
+                if adapter_profile.gateway_profile is not None
+                else None
+            ),
+            model_alias=(
+                adapter_profile.gateway_profile.model_alias
+                if adapter_profile.gateway_profile is not None
+                else None
+            ),
+            projection_digest=(
+                adapter_profile.gateway_profile.projection_digest
+                if adapter_profile.gateway_profile is not None
+                else None
+            ),
         )
 
     def _authorize(
@@ -225,3 +255,53 @@ class V2AgentCredentialBroker:
 
 def _metadata_flag(metadata: dict[str, object], key: str) -> bool:
     return bool(metadata.get(key))
+
+
+def _agent_adapter_profile(record: ProviderModelRecord) -> ProviderAdapterProfileV1:
+    raw_profile = record.capability_metadata.get("adapter_profile")
+    if raw_profile is None:
+        return ProviderAdapterProfileV1(
+            model_ref=record.model_ref,
+            adapter_id="pi-openai-compatible-v1",
+            transport_kind="pi_native_openai_compatible",
+            capability="text",
+            request_mode="agent_structured",
+            accepted_input_modes=("text_only",),
+            reference_policy={
+                "modes": [{"mode": "text_only", "max_references": 0}],
+                "max_images": 0,
+            },
+            parameter_schema_id="agent-text-v1",
+            result_protocol="structured_agent_result",
+            supports_remote_task_lookup=False,
+            supports_provider_idempotency=False,
+            release_tier="default",
+            conformance_status="compatible",
+            adapter_revision="pi-openai-compatible-v1",
+            capability_revision=f"catalog-{record.catalog_revision}",
+        )
+    try:
+        profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+    except ValidationError as error:
+        raise AgentCredentialError(
+            "agent_model_incompatible",
+            "The selected Agent transport profile is invalid.",
+        ) from error
+    if profile.model_ref != record.model_ref or profile.capability != "text":
+        raise AgentCredentialError(
+            "agent_model_incompatible",
+            "The selected Agent transport profile does not match the frozen model.",
+        )
+    if profile.transport_kind.startswith("litellm_") and (
+        profile.conformance_status != "certified" or profile.gateway_profile is None
+    ):
+        raise AgentCredentialError(
+            "agent_model_incompatible",
+            "The selected LiteLLM route is not certified for Agent execution.",
+        )
+    if profile.transport_kind not in {"pi_native_openai_compatible", "litellm_chat"}:
+        raise AgentCredentialError(
+            "agent_model_incompatible",
+            "The selected transport cannot execute Agent text operations.",
+        )
+    return profile
