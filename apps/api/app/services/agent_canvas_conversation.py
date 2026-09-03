@@ -849,7 +849,11 @@ class PiVideoAgentGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
-                **_workflow_context_audit(context),
+                **_workflow_context_audit(
+                    context,
+                    operation=operation_definition.operation,
+                    skill_id=operation_definition.internal_skill_id,
+                ),
                 **(
                     {
                         "model_result_contract_name": contract.__name__,
@@ -948,19 +952,38 @@ def _context_duration_seconds(context: BaseModel) -> float | None:
     return float(value)
 
 
-def _workflow_context_audit(context: BaseModel) -> dict[str, object]:
+def _workflow_context_audit(
+    context: BaseModel,
+    *,
+    operation: str,
+    skill_id: str | None,
+) -> dict[str, object]:
     """Return bounded identity-only diagnostics for an authoritative capsule."""
 
     capsule = getattr(context, "workflow_context", None)
     if not isinstance(capsule, WorkflowStateCapsuleV1):
         return {}
+    document = getattr(context, "document_excerpt", None)
+    document_audit: dict[str, object] = {}
+    if isinstance(document, AgentDocumentContextExcerptV2):
+        document_audit = {
+            "conversation_query_kind": "document_explanation",
+            "document_id": document.document_id,
+            "document_kind": document.document_kind,
+            "document_revision": document.revision,
+            "document_digest": document.content_digest,
+            "document_selector": document.selector,
+        }
     return {
         "workflow_context": {
+            "operation": operation,
+            "skill_id": skill_id,
             "projection_digest": capsule.projection_digest,
             "capsule_bytes": len(capsule.model_dump_json().encode("utf-8")),
             "workflow_revision": capsule.workflow_revision,
             "guidance_session_revision": capsule.guidance_session_revision,
             "truncation": capsule.truncation.model_dump(mode="json"),
+            **document_audit,
         }
     }
 
