@@ -271,6 +271,9 @@ class ProviderModelSummaryV2(ProviderModelSummaryV1):
     reference_policy: ReferenceInputPolicyV1 | None = None
 
 
+ProviderCredentialCapabilityStatusV1.model_rebuild()
+
+
 class ProviderModelListResponseV1(BaseModel):
     items: tuple[ProviderModelSummaryV1, ...]
 
