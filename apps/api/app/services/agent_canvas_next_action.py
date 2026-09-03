@@ -69,6 +69,7 @@ from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
 from app.services.agent_canvas_editing_action_outcomes import (
+    EditingActionOutcomeResolution,
     GuidedEditingActionOutcomeResolver,
 )
 from app.services.model_selection import ModelSelectionService
@@ -260,12 +261,6 @@ class DurableNextActionExecutionService:
                         lease_guard()
                 self._journey.require_current_awaiting(envelope.workflow_id)
             if journey_action.action == "prepare_editing":
-                if self._editing_preparer is None:
-                    raise V2PersistenceError(
-                        "editing_preparation_unavailable",
-                        "Editing preparation is unavailable.",
-                        stage="next_action_execution",
-                    )
                 reserved_editing_action = session.journey.active_action
                 if reserved_editing_action is None:
                     raise V2PersistenceError(
@@ -273,8 +268,15 @@ class DurableNextActionExecutionService:
                         "Editing preparation has no reserved Journey action.",
                         stage="next_action_execution",
                     )
+                editing_preparer = self._editing_preparer
                 try:
-                    preparation_result = self._editing_preparer(envelope.workflow_id)
+                    if editing_preparer is None:
+                        raise V2PersistenceError(
+                            "editing_preparation_unavailable",
+                            "Editing preparation is unavailable.",
+                            stage="next_action_execution",
+                        )
+                    preparation_result = editing_preparer(envelope.workflow_id)
                     if not isinstance(preparation_result, EditingPreparationResultV2):
                         raise V2PersistenceError(
                             "guided_preparation_receipt_unavailable",
@@ -551,6 +553,34 @@ class DurableNextActionExecutionService:
             )
             return "superseded"
         resolution = self._editing_outcomes.resolve(error, current_session)
+        try:
+            self._reconcile_editing_resolution(action=action, resolution=resolution)
+        except V2PersistenceError as race:
+            if race.code not in {
+                "guided_editing_action_evidence_invalid",
+                "guided_editing_action_identity_conflict",
+                "guided_editing_action_revision_conflict",
+            }:
+                raise
+            current_session = self._conversations.get_guidance_session(workflow_id)
+            if not self._editing_action_is_current(current_session, action):
+                self._reconcile_editing_action(
+                    current_session,
+                    action=action,
+                    outcome="superseded",
+                    reason_code="editing_action_superseded",
+                )
+                return "superseded"
+            resolution = self._editing_outcomes.resolve(error, current_session)
+            self._reconcile_editing_resolution(action=action, resolution=resolution)
+        return resolution.outcome
+
+    def _reconcile_editing_resolution(
+        self,
+        *,
+        action: JourneyActionProjectionV2,
+        resolution: EditingActionOutcomeResolution,
+    ) -> None:
         self._reconcile_editing_action(
             resolution.session,
             action=action,
@@ -565,7 +595,6 @@ class DurableNextActionExecutionService:
             system_owner_node_id=resolution.system_owner_node_id,
             error_code=resolution.error_code,
         )
-        return resolution.outcome
 
     @staticmethod
     def _editing_action_is_current(
