@@ -28,6 +28,7 @@ class TrustedModelManifest:
     display_name: str
     capability: str
     capability_metadata: Mapping[str, Any]
+    adapter_profile: Mapping[str, Any] | None = None
 
     @property
     def model_ref(self) -> str:
@@ -49,6 +50,170 @@ GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
     "4:3": "2304x1728",
     "3:4": "1728x2304",
 }
+
+
+def _adapter_profile(
+    *,
+    model_ref: str,
+    adapter_id: str,
+    transport_kind: str,
+    capability: str,
+    request_mode: str,
+    accepted_input_modes: tuple[str, ...],
+    max_images: int,
+    allowed_roles: tuple[str, ...],
+    parameter_schema_id: str,
+    result_protocol: str,
+    supports_remote_task_lookup: bool,
+    supports_provider_idempotency: bool,
+    conformance_status: str,
+    adapter_revision: str,
+    capability_revision: str,
+    release_tier: str = "optional",
+) -> dict[str, Any]:
+    return {
+        "model_ref": model_ref,
+        "adapter_id": adapter_id,
+        "transport_kind": transport_kind,
+        "capability": capability,
+        "request_mode": request_mode,
+        "accepted_input_modes": list(accepted_input_modes),
+        "reference_policy": {
+            "modes": [
+                {
+                    "mode": mode,
+                    "max_references": max_images if mode != "text_only" else 0,
+                    "allowed_roles": list(allowed_roles) if mode != "text_only" else [],
+                }
+                for mode in accepted_input_modes
+            ],
+            "max_images": max_images,
+        },
+        "parameter_schema_id": parameter_schema_id,
+        "result_protocol": result_protocol,
+        "supports_remote_task_lookup": supports_remote_task_lookup,
+        "supports_provider_idempotency": supports_provider_idempotency,
+        "release_tier": release_tier,
+        "conformance_status": conformance_status,
+        "adapter_revision": adapter_revision,
+        "capability_revision": capability_revision,
+    }
+
+
+def _image_profile(
+    model_ref: str,
+    *,
+    adapter_id: str,
+    transport_kind: str,
+    conformance_status: str = "compatible",
+) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id=adapter_id,
+        transport_kind=transport_kind,
+        capability="image",
+        request_mode="image_generation",
+        accepted_input_modes=("text_only", "native_reference_slots"),
+        max_images=4,
+        allowed_roles=("product_reference", "scene_reference", "character_reference"),
+        parameter_schema_id="image-generation-v1",
+        result_protocol="image_data",
+        supports_remote_task_lookup=False,
+        supports_provider_idempotency=False,
+        conformance_status=conformance_status,
+        adapter_revision=f"{adapter_id}-v1",
+        capability_revision=f"{model_ref.replace(':', '-')}-v1",
+    )
+
+
+def _ark_video_profile(model_ref: str) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id="ark-video-native",
+        transport_kind="ark_video_native",
+        capability="video",
+        request_mode="video_generation",
+        accepted_input_modes=("text_only", "native_reference_slots"),
+        max_images=15,
+        allowed_roles=(
+            "character_turnaround",
+            "product_reference",
+            "scene_reference",
+            "storyboard",
+        ),
+        parameter_schema_id="ark-video-generation-v1",
+        result_protocol="async_file",
+        supports_remote_task_lookup=True,
+        supports_provider_idempotency=False,
+        conformance_status="compatible",
+        adapter_revision="ark-video-native-v1",
+        capability_revision=f"{model_ref.replace(':', '-')}-v1",
+        release_tier="default",
+    )
+
+
+def _minimax_video_profile(model_ref: str, provider_model_id: str) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id="minimax-video-native",
+        transport_kind="minimax_video_native",
+        capability="video",
+        request_mode="video_generation",
+        accepted_input_modes=("text_only", "text_plus_single_first_frame_image"),
+        max_images=1,
+        allowed_roles=("storyboard", "scene_reference", "character_turnaround"),
+        parameter_schema_id="minimax-hailuo-i2v-v1",
+        result_protocol="async_file",
+        supports_remote_task_lookup=True,
+        supports_provider_idempotency=True,
+        conformance_status="unverified",
+        adapter_revision="minimax-video-native-v1",
+        capability_revision=f"minimax-{provider_model_id}-i2v-v1",
+    )
+
+
+_OPENAI_IMAGE_PROFILE = _image_profile(
+    "openai:gpt-image-2",
+    adapter_id="openai-image-native",
+    transport_kind="openai_images_native",
+    conformance_status="unverified",
+)
+_MINIMAX_VIDEO_PROFILES = {
+    model_id: _minimax_video_profile(f"minimax:{model_id}", model_id)
+    for model_id in (
+        "MiniMax-Hailuo-2.3",
+        "MiniMax-Hailuo-2.3-Fast",
+        "MiniMax-Hailuo-02",
+    )
+}
+
+
+def _video_capability_metadata(
+    profile: Mapping[str, Any],
+    *,
+    duration_range_seconds: tuple[int, int] = (1, 15),
+    max_references: int = 15,
+    provider_protocol: str = "ark_video",
+) -> dict[str, Any]:
+    return {
+        "accepted_input_types": ["text", "image", "video", "audio"],
+        "max_references": max_references,
+        "reference_limits": {"image": min(max_references, 9), "video": 3, "audio": 3},
+        "supported_parameters": [
+            "aspect_ratio",
+            "resolution",
+            "duration_seconds",
+            "generate_audio",
+        ],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "duration_range_seconds": list(duration_range_seconds),
+        "supports_native_audio": True,
+        "provider_protocol": provider_protocol,
+        "supports_provider_idempotency_token": False,
+        "supports_remote_task_lookup": True,
+        "adapter_profile": dict(profile),
+    }
 
 
 _TRUSTED_MANIFESTS = (
@@ -108,6 +273,11 @@ _TRUSTED_MANIFESTS = (
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-5-0-lite-260128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
         },
     ),
     TrustedModelManifest(
@@ -138,6 +308,167 @@ _TRUSTED_MANIFESTS = (
             "provider_protocol": "ark_video",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": True,
+            "adapter_profile": _ark_video_profile("volcengine_ark:doubao-seedance-2-0-fast-260128"),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-5-0-250128",
+        display_name="Doubao Seedream 5.0 Pro",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-5-0-250128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-4-5-251128",
+        display_name="Doubao Seedream 4.5",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-4-5-251128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-4-0-250828",
+        display_name="Doubao Seedream 4.0",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-4-0-250828",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-260128",
+        display_name="Doubao Seedance 2.0",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-mini-260128",
+        display_name="Doubao Seedance 2.0 Mini",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-5-260128",
+        display_name="Doubao Seedance 2.5",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="openai",
+        provider_model_id="gpt-image-2",
+        display_name="GPT Image 2",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": [
+                "size",
+                "quality",
+                "background",
+                "output_format",
+                "moderation",
+            ],
+            "provider_protocol": "openai_images",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": dict(_OPENAI_IMAGE_PROFILE),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-2.3",
+        display_name="MiniMax Hailuo 2.3",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-2.3"]),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-2.3-Fast",
+        display_name="MiniMax Hailuo 2.3 Fast",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-2.3-Fast"]),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-02",
+        display_name="MiniMax Hailuo 02",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-02"]),
         },
     ),
     TrustedModelManifest(
@@ -288,7 +619,14 @@ class ProviderModelCatalogService:
         self._repository = repository
         configured_adapters = adapters or tuple(
             StaticProviderCatalogAdapter(provider_id)
-            for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake")
+            for provider_id in (
+                "siliconflow",
+                "volcengine_ark",
+                "tianpuyue",
+                "openai",
+                "minimax",
+                "fake",
+            )
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
         self._capability_available = capability_available or self._repository_capability_available
@@ -561,12 +899,15 @@ def _trusted_projection(
     available: bool,
     unavailable_reason: str | None = None,
 ) -> dict[str, Any]:
+    capability_metadata = dict(manifest.capability_metadata)
+    if manifest.adapter_profile is not None:
+        capability_metadata["adapter_profile"] = dict(manifest.adapter_profile)
     return {
         "model_ref": manifest.model_ref,
         "provider_model_id": manifest.provider_model_id,
         "display_name": manifest.display_name,
         "capability": manifest.capability,
-        "capability_metadata": dict(manifest.capability_metadata),
+        "capability_metadata": capability_metadata,
         "source": "built_in",
         "availability": "available" if available else "unavailable",
         "unavailable_reason": (
