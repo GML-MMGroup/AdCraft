@@ -613,9 +613,14 @@ class NodePromptPreparationService:
                 source_asset_version_id=parent.asset_version_id,
             )
         elif node.creative_role == "character":
+            asset_version_id = None
+            if node.output_asset_id is not None and self._asset_resolver is not None:
+                asset_version_id = self._asset_resolver(node.output_asset_id).version_id
             character_projection = character_identity_projection_from_node(
                 node,
                 occurrence_id=str(node.metadata.get("occurrence_id")),
+                source_asset_id=node.output_asset_id,
+                source_asset_version_id=asset_version_id,
             )
         elif node.creative_role == "scene":
             scene_projection = scene_environment_projection_from_node(node)
