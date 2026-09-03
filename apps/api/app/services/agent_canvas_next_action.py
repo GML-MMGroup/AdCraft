@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Protocol
 
 from pydantic import ValidationError
@@ -23,6 +24,12 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.agent_canvas_decision_bundle_repository import (
     AgentCanvasDecisionBundleRepository,
 )
+from app.persistence.agent_canvas_editing_action_reconciliation_repository import (
+    AgentCanvasEditingActionReconciliationRepository,
+)
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
@@ -34,7 +41,16 @@ from app.schemas.agent_canvas_capabilities import (
     ValidatedNextActionV1,
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
-from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
+from app.schemas.agent_canvas_editing import EditingPreparationResultV2
+from app.schemas.agent_canvas_production_closure import (
+    EditingActionReconciliationOutcomeV1,
+    EditingActionSystemOwnerKindV1,
+    GuidedEditingActionReconciliationCommandV1,
+)
+from app.schemas.agent_canvas_creative_session import (
+    GuidanceCompletionProjectionV2,
+    GuidedSessionStateV2,
+)
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
@@ -49,6 +65,9 @@ from app.services.agent_canvas_next_action_context import (
 )
 from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
+)
+from app.services.agent_canvas_editing_action_outcomes import (
+    GuidedEditingActionOutcomeResolver,
 )
 from app.services.model_selection import ModelSelectionService
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
@@ -134,6 +153,15 @@ class DurableNextActionExecutionService:
         self._gateway = gateway
         self._journey = GuidedProductionJourneyService(conversations)
         self._editing_preparer = editing_preparer
+        self._editing_receipts = AgentCanvasProductionClosureRepository(workflows.database)
+        self._editing_reconciliation = AgentCanvasEditingActionReconciliationRepository(
+            workflows.database,
+            conversations.events,
+        )
+        self._editing_outcomes = GuidedEditingActionOutcomeResolver(
+            workflows=workflows,
+            conversations=conversations,
+        )
         self._materialization_resumer = materialization_resumer
 
     def set_materialization_resumer(
@@ -208,6 +236,7 @@ class DurableNextActionExecutionService:
             "complete",
         }:
             lease_guard()
+            editing_outcome: EditingActionReconciliationOutcomeV1 | None = None
             if journey_action.action == "wait_for_user":
                 if session.journey.stage == "character" and session.awaiting is None:
                     admitted = self._journey.ensure_character_decision_authority(
@@ -226,8 +255,49 @@ class DurableNextActionExecutionService:
                         "Editing preparation is unavailable.",
                         stage="next_action_execution",
                     )
-                self._editing_preparer(envelope.workflow_id)
-                lease_guard()
+                try:
+                    preparation_result = self._editing_preparer(envelope.workflow_id)
+                    lease_guard()
+                    if not isinstance(preparation_result, EditingPreparationResultV2):
+                        raise V2PersistenceError(
+                            "guided_preparation_receipt_unavailable",
+                            "Editing preparation did not return persisted receipt authority.",
+                            stage="next_action_execution",
+                        )
+                    preparation = self._editing_receipts.find_preparation_for_editing(
+                        envelope.workflow_id,
+                        preparation_result.editing_node_id,
+                    )
+                    if preparation is None:
+                        raise V2PersistenceError(
+                            "guided_preparation_receipt_unavailable",
+                            "Editing preparation receipt authority is unavailable.",
+                            stage="next_action_execution",
+                        )
+                    self._reconcile_editing_action(
+                        session,
+                        outcome="prepared",
+                        reason_code="editing_prepared",
+                        evidence_ids=(preparation.receipt_id,),
+                        preparation_receipt_id=preparation.receipt_id,
+                    )
+                    editing_outcome = "prepared"
+                except V2PersistenceError as error:
+                    resolution = self._editing_outcomes.resolve(error, session)
+                    self._reconcile_editing_action(
+                        resolution.session,
+                        outcome=resolution.outcome,
+                        reason_code=resolution.reason_code,
+                        evidence_ids=resolution.evidence_ids,
+                        awaiting_id=resolution.awaiting_id,
+                        awaiting_kind=resolution.awaiting_kind,
+                        system_owner_kind=resolution.system_owner_kind,
+                        system_owner_id=resolution.system_owner_id,
+                        error_code=resolution.error_code,
+                    )
+                    editing_outcome = resolution.outcome
+                    if editing_outcome == "failed":
+                        raise
             if journey_action.action == "complete":
                 self._conversations.complete_guidance_session(
                     session.session_id,
@@ -244,6 +314,12 @@ class DurableNextActionExecutionService:
                     action="reply",
                     message=(
                         "The production journey is ready for Editing preparation."
+                        if journey_action.action == "prepare_editing"
+                        and editing_outcome == "prepared"
+                        else "Background media work will resume Editing when it settles."
+                        if journey_action.action == "prepare_editing"
+                        and editing_outcome == "system_deferred"
+                        else "Run the required Draft media before Editing can continue."
                         if journey_action.action == "prepare_editing"
                         else "Run the current Drafts before continuing guided production."
                     ),
@@ -423,6 +499,54 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    def _reconcile_editing_action(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        outcome: EditingActionReconciliationOutcomeV1,
+        reason_code: str,
+        evidence_ids: tuple[str, ...] = (),
+        preparation_receipt_id: str | None = None,
+        awaiting_id: str | None = None,
+        awaiting_kind: str | None = None,
+        system_owner_kind: EditingActionSystemOwnerKindV1 | None = None,
+        system_owner_id: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        action = session.journey.active_action
+        if action is None or action.turn_id is None:
+            raise V2PersistenceError(
+                "guided_editing_action_identity_conflict",
+                "Editing preparation has no reserved Journey action.",
+                stage="next_action_execution",
+            )
+        self._editing_reconciliation.reconcile(
+            GuidedEditingActionReconciliationCommandV1.model_validate(
+                {
+                    "logical_identity": (
+                        f"{session.workflow_id}:{session.session_id}:"
+                        f"{action.action_id}:{action.stage_revision}"
+                    ),
+                    "workflow_id": session.workflow_id,
+                    "session_id": session.session_id,
+                    "action_id": action.action_id,
+                    "action_turn_id": action.turn_id,
+                    "action_stage_revision": action.stage_revision,
+                    "expected_session_revision": session.revision,
+                    "outcome": outcome,
+                    "reason_code": reason_code,
+                    "evidence_ids": evidence_ids,
+                    "preparation_receipt_id": preparation_receipt_id,
+                    "awaiting_id": awaiting_id,
+                    "awaiting_kind": awaiting_kind,
+                    "system_owner_kind": system_owner_kind,
+                    "system_owner_id": system_owner_id,
+                    "error_code": error_code,
+                    "reconciled_at": datetime.now(timezone.utc),
+                }
+            )
+        )
 
     def requeue_superseded_capability(
         self,
