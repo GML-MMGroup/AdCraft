@@ -2608,8 +2608,7 @@ class AgentConversationService:
         )
         next_action = (
             action_context(
-                "Perform the current journey action "
-                f"{session.journey.active_action.action_kind}."
+                f"Perform the current journey action {session.journey.active_action.action_kind}."
             )
             if session.journey.active_action is not None
             else None
