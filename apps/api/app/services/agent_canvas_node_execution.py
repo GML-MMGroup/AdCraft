@@ -499,6 +499,12 @@ class MediaNodeExecutor:
                 delivered_references=delivered_references,
                 optional_input_omissions=optional_input_omissions,
             )
+        if getattr(context.model_resolution, "transport_kind", "") == "minimax_video_native":
+            return replace(
+                context,
+                delivered_references=delivered_references,
+                optional_input_omissions=optional_input_omissions,
+            )
         delivered_media = tuple(
             SeedanceDeliveredMediaInputV1(
                 binding_id=reference.binding_id or f"asset_{reference.asset_id}",
