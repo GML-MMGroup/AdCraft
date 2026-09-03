@@ -225,6 +225,7 @@ class ProviderAdapterProfileV1(BaseModel):
     accepted_input_modes: tuple[str, ...] = Field(min_length=1, max_length=16)
     reference_policy: ReferenceInputPolicyV1
     parameter_schema_id: str = Field(min_length=1, max_length=120)
+    parameter_matrix: ModelParameterMatrixV1 | None = None
     result_protocol: str = Field(min_length=1, max_length=120)
     supports_remote_task_lookup: bool
     supports_provider_idempotency: bool

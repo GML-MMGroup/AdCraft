@@ -70,8 +70,9 @@ def _adapter_profile(
     adapter_revision: str,
     capability_revision: str,
     release_tier: str = "optional",
+    parameter_matrix: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    profile: dict[str, Any] = {
         "model_ref": model_ref,
         "adapter_id": adapter_id,
         "transport_kind": transport_kind,
@@ -98,6 +99,23 @@ def _adapter_profile(
         "adapter_revision": adapter_revision,
         "capability_revision": capability_revision,
     }
+    if parameter_matrix is not None:
+        profile["parameter_matrix"] = dict(parameter_matrix)
+    return profile
+
+
+def _parameter_matrix(
+    *,
+    schema_id: str,
+    descriptors: tuple[Mapping[str, Any], ...],
+    legal_combinations: tuple[Mapping[str, Any], ...] = (),
+) -> dict[str, Any]:
+    return {
+        "schema_id": schema_id,
+        "revision": f"{schema_id}-v1",
+        "descriptors": [dict(descriptor) for descriptor in descriptors],
+        "legal_combinations": [dict(combination) for combination in legal_combinations],
+    }
 
 
 def _image_profile(
@@ -106,6 +124,7 @@ def _image_profile(
     adapter_id: str,
     transport_kind: str,
     conformance_status: str = "compatible",
+    parameter_matrix: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return _adapter_profile(
         model_ref=model_ref,
@@ -123,6 +142,7 @@ def _image_profile(
         conformance_status=conformance_status,
         adapter_revision=f"{adapter_id}-v1",
         capability_revision=f"{model_ref.replace(':', '-')}-v1",
+        parameter_matrix=parameter_matrix,
     )
 
 
@@ -149,6 +169,29 @@ def _ark_video_profile(model_ref: str) -> dict[str, Any]:
         adapter_revision="ark-video-native-v1",
         capability_revision=f"{model_ref.replace(':', '-')}-v1",
         release_tier="default",
+        parameter_matrix=_parameter_matrix(
+            schema_id="ark-video-generation-v1",
+            descriptors=(
+                {
+                    "name": "duration_seconds",
+                    "value_type": "integer",
+                    "minimum": 1,
+                    "maximum": 15,
+                    "default": 5,
+                },
+                {
+                    "name": "resolution",
+                    "value_type": "enum",
+                    "allowed_values": ("480p", "720p", "1080p"),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": ("16:9", "9:16", "1:1"),
+                },
+                {"name": "generate_audio", "value_type": "boolean", "default": False},
+            ),
+        ),
     )
 
 
@@ -169,6 +212,34 @@ def _minimax_video_profile(model_ref: str, provider_model_id: str) -> dict[str, 
         conformance_status="unverified",
         adapter_revision="minimax-video-native-v1",
         capability_revision=f"minimax-{provider_model_id}-i2v-v1",
+        parameter_matrix=_parameter_matrix(
+            schema_id="minimax-hailuo-i2v-v1",
+            descriptors=(
+                {
+                    "name": "duration",
+                    "value_type": "integer",
+                    "minimum": 6,
+                    "maximum": 10,
+                },
+                {
+                    "name": "resolution",
+                    "value_type": "enum",
+                    "allowed_values": ("768P", "1080P"),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": ("16:9", "9:16", "1:1"),
+                },
+                {"name": "generate_audio", "value_type": "boolean"},
+            ),
+            legal_combinations=(
+                {"duration": 6, "resolution": "768P"},
+                {"duration": 6, "resolution": "1080P"},
+                {"duration": 10, "resolution": "768P"},
+                {"duration": 10, "resolution": "1080P"},
+            ),
+        ),
     )
 
 
@@ -177,6 +248,31 @@ _OPENAI_IMAGE_PROFILE = _image_profile(
     adapter_id="openai-image-native",
     transport_kind="openai_images_native",
     conformance_status="unverified",
+    parameter_matrix=_parameter_matrix(
+        schema_id="openai-gpt-image-2-v1",
+        descriptors=(
+            {
+                "name": "size",
+                "value_type": "enum",
+                "allowed_values": ("1024x1024", "1536x1024", "1024x1536", "auto"),
+            },
+            {
+                "name": "quality",
+                "value_type": "enum",
+                "allowed_values": ("low", "medium", "high", "auto"),
+            },
+            {
+                "name": "background",
+                "value_type": "enum",
+                "allowed_values": ("transparent", "opaque", "auto"),
+            },
+            {
+                "name": "output_format",
+                "value_type": "enum",
+                "allowed_values": ("png", "jpeg", "webp"),
+            },
+        ),
+    ),
 )
 _MINIMAX_VIDEO_PROFILES = {
     model_id: _minimax_video_profile(f"minimax:{model_id}", model_id)

@@ -247,6 +247,10 @@ def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
         if key in profile:
             fields[key] = profile[key]
     descriptors = profile.get("parameter_descriptors")
+    matrix = profile.get("parameter_matrix")
+    if isinstance(matrix, dict):
+        fields.setdefault("parameter_schema_id", matrix.get("schema_id"))
+        descriptors = matrix.get("descriptors")
     if isinstance(descriptors, list):
         fields["parameter_descriptors"] = tuple(descriptors)
     return fields
