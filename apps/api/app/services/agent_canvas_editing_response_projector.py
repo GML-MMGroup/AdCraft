@@ -43,6 +43,23 @@ class EditingResponseProjector:
                     raise _projection_error(node, error) from error
                 self._project_node(node, content)
 
+    def validate_content_payload(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        node_type: str,
+        structured_content: dict[str, object],
+    ) -> None:
+        """Validate an Editing request payload before its mutation commits."""
+
+        if node_type != "editing":
+            return
+        try:
+            EditingNodeContentV2.model_validate(structured_content)
+        except (TypeError, ValueError) as error:
+            raise _projection_error_values(workflow_id, node_id, error) from error
+
     def _project_node(
         self,
         node: CanvasNodeV2,
@@ -58,10 +75,22 @@ class EditingResponseProjector:
 
 
 def _projection_error(node: CanvasNodeV2, error: BaseException) -> V2PersistenceError:
+    return _projection_error_values(node.workflow_id, node.node_id, error)
+
+
+def _projection_error_values(
+    workflow_id: str,
+    node_id: str,
+    error: BaseException,
+) -> V2PersistenceError:
     reason_code = getattr(error, "code", None) or type(error).__name__
     return V2PersistenceError(
         "editing_manifest_projection_invalid",
         "Canonical Editing response projection is invalid.",
         stage="agent_canvas_editing_response_projector",
-        details={"workflow_id": node.workflow_id, "node_id": node.node_id, "reason_code": reason_code},
+        details={
+            "workflow_id": workflow_id,
+            "node_id": node_id,
+            "reason_code": reason_code,
+        },
     )

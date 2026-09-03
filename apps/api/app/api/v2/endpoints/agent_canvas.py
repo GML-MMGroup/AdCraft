@@ -2071,8 +2071,12 @@ def create_node(
 ) -> CanvasMutationResponseV2:
     expected = _expected_revision(if_match, workflow_id)
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
+        runtime.editing_responses.validate_content_payload(
+            workflow_id=workflow_id,
+            node_id="pending",
+            node_type=request.node_type,
+            structured_content=request.structured_content,
         )
         runtime.ad_media_validation.validate(
             node_type=request.node_type,
@@ -2250,9 +2254,7 @@ def patch_node(
 ) -> CanvasMutationResponseV2:
     try:
         current = runtime.workflows.get_node(workflow_id, node_id)
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         expected_revision = _expected_revision(if_match, workflow_id)
         if current.node_type == "editing" and request.structured_content is not None:
             raw_manifest = request.structured_content.get("manifest", request.structured_content)
@@ -2369,9 +2371,7 @@ def delete_node(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         workflow = runtime.nodes.delete(
             workflow_id,
             node_id,
@@ -2400,8 +2400,12 @@ def create_connected_node(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
+        runtime.editing_responses.validate_content_payload(
+            workflow_id=workflow_id,
+            node_id="pending",
+            node_type=request.node.node_type,
+            structured_content=request.node.structured_content,
         )
         created = runtime.connected_authoring.create_connected_node(
             workflow_id,
@@ -2434,9 +2438,7 @@ def patch_binding(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         mutation = runtime.bindings.patch(
             workflow_id,
             binding_id,
@@ -2474,9 +2476,7 @@ def create_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         binding = runtime.bindings.create(
             workflow_id,
             request,
@@ -2502,9 +2502,7 @@ def delete_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
-        runtime.editing_responses.validate_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         workflow = runtime.bindings.delete(
             workflow_id,
             binding_id,
