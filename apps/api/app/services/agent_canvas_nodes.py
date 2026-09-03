@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 from uuid import uuid4
@@ -33,9 +34,11 @@ class AgentCanvasNodeService:
         repository: AgentCanvasWorkflowRepository,
         *,
         model_selection: ModelSelectionService | None = None,
+        candidate_validator: Callable[[AgentCanvasWorkflowV2], None] | None = None,
     ) -> None:
         self._repository = repository
         self._model_selection = model_selection
+        self._candidate_validator = candidate_validator
 
     def create(
         self,
@@ -45,6 +48,7 @@ class AgentCanvasNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         now = datetime.now(timezone.utc)
+        workflow = self._repository.get_workflow(workflow_id)
         normalized_generation_prompt = normalize_manual_generation_prompt(request.generation_prompt)
         source = (
             self._repository.get_node(workflow_id, request.clone_inputs_from_node_id)
@@ -95,6 +99,15 @@ class AgentCanvasNodeService:
             node = node.model_copy(
                 update={"model_summary": self._model_selection.summary_for(node.model_ref)}
             )
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                workflow.model_copy(
+                    update={
+                        "nodes": (*workflow.nodes, node),
+                        "bindings": (*workflow.bindings, *bindings),
+                    }
+                )
+            )
         self._repository.add_node_with_bindings(
             node,
             bindings,
@@ -111,6 +124,7 @@ class AgentCanvasNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
+        workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
         now = datetime.now(timezone.utc)
         source_only_product = (
@@ -177,6 +191,16 @@ class AgentCanvasNodeService:
             updated = updated.model_copy(
                 update={"model_summary": self._model_selection.summary_for(updated.model_ref)}
             )
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                workflow.model_copy(
+                    update={
+                        "nodes": tuple(
+                            updated if item.node_id == node_id else item for item in workflow.nodes
+                        )
+                    }
+                )
+            )
         self._repository.update_node(updated, expected_revision=expected_revision)
         return self._repository.get_node(workflow_id, node_id)
 
@@ -187,6 +211,21 @@ class AgentCanvasNodeService:
         *,
         expected_revision: int,
     ) -> AgentCanvasWorkflowV2:
+        workflow = self._repository.get_workflow(workflow_id)
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                workflow.model_copy(
+                    update={
+                        "nodes": tuple(item for item in workflow.nodes if item.node_id != node_id),
+                        "bindings": tuple(
+                            binding
+                            for binding in workflow.bindings
+                            if getattr(binding.source, "source_node_id", None) != node_id
+                            and binding.target_node_id != node_id
+                        ),
+                    }
+                )
+            )
         return self._repository.delete_node(
             workflow_id,
             node_id,

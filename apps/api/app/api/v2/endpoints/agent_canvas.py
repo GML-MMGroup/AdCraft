@@ -765,6 +765,8 @@ def create_agent_canvas_runtime(
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
+    editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
+    editing_responses = EditingResponseProjector(editing_nodes)
     binding_service = AgentCanvasBindingService(
         workflow_repository,
         document_repository,
@@ -778,6 +780,7 @@ def create_agent_canvas_runtime(
             )
         ),
         connection_policy=connection_policy,
+        candidate_validator=editing_responses.validate_workflow,
     )
     world_setting_context = WorldSettingContextResolverV2(workflow_repository)
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
@@ -1137,8 +1140,6 @@ def create_agent_canvas_runtime(
         output_preparer=output_preparer,
         result_committer=result_committer,
     )
-    editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
-    editing_responses = EditingResponseProjector(editing_nodes)
     editing_commit_service = AgentCanvasEditingExportCommitService(
         AgentCanvasEditingExportCommitRepository(
             database,
@@ -1381,6 +1382,7 @@ def create_agent_canvas_runtime(
         nodes=AgentCanvasNodeService(
             workflow_repository,
             model_selection=model_selection,
+            candidate_validator=editing_responses.validate_workflow,
         ),
         gateway=video_agent_gateway,
         video_skills=video_skills,
@@ -1728,6 +1730,7 @@ def create_agent_canvas_runtime(
                     reference_count=reference_count,
                 )
             ),
+            candidate_validator=editing_responses.validate_workflow,
         ),
         connection_policy=connection_policy,
         assets=asset_service,
@@ -2142,10 +2145,9 @@ def get_node(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> CanvasNodeV2:
     try:
-        workflow = runtime.editing_responses.project_workflow(
-            runtime.projects.get_workflow(workflow_id)
-        )
-        return _projected_node(workflow, node_id)
+        workflow = runtime.projects.get_workflow(workflow_id)
+        node = _projected_node(workflow, node_id)
+        return runtime.editing_responses.project_snapshot_node(workflow, node)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 

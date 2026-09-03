@@ -31,6 +31,11 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
     StorageAccessDescriptorV2,
 )
+from app.schemas.agent_canvas_editing import (
+    EditingBgmEntryV2,
+    EditingNodeContentV2,
+    EditingVideoEntryV2,
+)
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2
 from app.services.agent_canvas_authoring_validation import (
     BindingValidationState,
@@ -63,6 +68,7 @@ class AgentCanvasBindingService:
             Callable[[object, frozenset[str], int], object] | None
         ) = None,
         connection_policy: AgentCanvasConnectionPolicyService | None = None,
+        candidate_validator: Callable[[AgentCanvasWorkflowV2], None] | None = None,
     ) -> None:
         self._workflows = workflows
         self._documents = documents
@@ -70,6 +76,7 @@ class AgentCanvasBindingService:
         self._asset_version_resolver = asset_version_resolver
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
+        self._candidate_validator = candidate_validator
         self._reference_semantics = AgentCanvasReferenceSemanticPolicy()
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
@@ -226,6 +233,14 @@ class AgentCanvasBindingService:
             created_at=now,
             updated_at=now,
         )
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                _candidate_with_reconciled_editing(
+                    workflow,
+                    bindings=(*workflow.bindings, binding),
+                    target_node_id=binding.target_node_id,
+                )
+            )
         self._workflows.add_binding(binding, expected_revision=expected_revision)
         return binding
 
@@ -246,6 +261,16 @@ class AgentCanvasBindingService:
             )
         target = self._workflows.get_node(workflow_id, existing.target_node_id)
         validate_ready_node_input_history(status=target.status, node_type=target.node_type)
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                _candidate_with_reconciled_editing(
+                    workflow,
+                    bindings=tuple(
+                        item for item in workflow.bindings if item.binding_id != binding_id
+                    ),
+                    target_node_id=existing.target_node_id,
+                )
+            )
         return self._workflows.remove_binding(
             workflow_id,
             binding_id,
@@ -314,6 +339,17 @@ class AgentCanvasBindingService:
                 "updated_at": datetime.now(timezone.utc),
             }
         )
+        if self._candidate_validator is not None:
+            self._candidate_validator(
+                workflow.model_copy(
+                    update={
+                        "bindings": tuple(
+                            updated if item.binding_id == binding_id else item
+                            for item in workflow.bindings
+                        )
+                    }
+                )
+            )
         return self._workflows.update_binding(
             binding=updated,
             expected_revision=expected_revision,
@@ -809,6 +845,75 @@ def _media_incompatible_error() -> V2PersistenceError:
         "binding_media_incompatible",
         "Binding kind is incompatible with the source media.",
         stage="agent_canvas_binding_service",
+    )
+
+
+def _candidate_with_reconciled_editing(
+    workflow: AgentCanvasWorkflowV2,
+    *,
+    bindings: tuple[CanvasBindingV2, ...],
+    target_node_id: str,
+) -> AgentCanvasWorkflowV2:
+    """Mirror binding membership changes for the pre-commit candidate only."""
+
+    target = next(
+        (node for node in workflow.nodes if node.node_id == target_node_id),
+        None,
+    )
+    if target is None or target.node_type != "editing":
+        return workflow.model_copy(update={"bindings": bindings})
+    content = EditingNodeContentV2.model_validate(target.structured_content)
+    video_ids = [
+        binding.binding_id
+        for binding in bindings
+        if binding.target_node_id == target_node_id and binding.input_role == "video_reference"
+    ]
+    audio_ids = [
+        binding.binding_id
+        for binding in bindings
+        if binding.target_node_id == target_node_id and binding.input_role == "audio_reference"
+    ]
+    video_entries = [
+        entry
+        for entry in content.manifest.video_entries
+        if entry.binding_id is None or entry.binding_id in video_ids
+    ]
+    selected_video_bindings = {
+        entry.binding_id for entry in video_entries if entry.binding_id is not None
+    }
+    video_entries.extend(
+        EditingVideoEntryV2(binding_id=binding_id)
+        for binding_id in video_ids
+        if binding_id not in selected_video_bindings
+    )
+    bgm = content.manifest.bgm
+    if bgm is not None and bgm.binding_id is not None and bgm.binding_id not in audio_ids:
+        bgm = None
+    if bgm is None and audio_ids:
+        bgm = EditingBgmEntryV2(binding_id=audio_ids[0])
+    manifest = content.manifest.model_copy(
+        update={
+            "video_entries": tuple(video_entries),
+            "bgm": bgm,
+            "manifest_revision": content.manifest.manifest_revision + 1,
+        }
+    )
+    updated_target = target.model_copy(
+        update={
+            "structured_content": content.model_copy(
+                update={"manifest": manifest, "dirty": True}
+            ).model_dump(mode="json"),
+            "revision": target.revision + 1,
+        }
+    )
+    return workflow.model_copy(
+        update={
+            "nodes": tuple(
+                updated_target if node.node_id == target_node_id else node
+                for node in workflow.nodes
+            ),
+            "bindings": bindings,
+        }
     )
 
 

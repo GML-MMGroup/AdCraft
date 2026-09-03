@@ -36,6 +36,15 @@ class EditingResponseProjector:
             }
         )
 
+    def project_snapshot_node(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node: CanvasNodeV2,
+    ) -> CanvasNodeV2:
+        """Project one node from the same snapshot used to locate it."""
+
+        return self._project_snapshot_node(workflow, node)
+
     def validate_workflow(self, workflow: AgentCanvasWorkflowV2) -> None:
         """Validate a candidate response projection without persisting it."""
 
