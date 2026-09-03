@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -69,6 +70,27 @@ class ProjectCoverBackfillDecision(BaseModel):
     rendition_prewarm: str = "not_requested"
 
 
+class ProjectCoverReconciliationResult(BaseModel):
+    """Bounded live-publication result without exposing media or user content."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disposition: Literal[
+        "updated",
+        "current",
+        "lower_rank",
+        "manual_protected",
+        "ineligible",
+        "conflict",
+    ]
+    changed: bool = False
+    conflict: bool = False
+    source: ProjectCoverSourceV2 | None = None
+    asset_id: str | None = None
+    version_id: str | None = None
+    rendition_prewarm: str = "not_requested"
+
+
 class ProjectCoverBackfillResult(BaseModel):
     """Aggregate dry-run or apply result."""
 
@@ -103,19 +125,22 @@ class ProjectCoverAuthorityService:
         self._workflows = workflows
         self._prewarmer = prewarmer
 
-    def consider_published_version(self, version: AssetVersionMetadataV2) -> bool:
+    def consider_published_version(
+        self,
+        version: AssetVersionMetadataV2,
+    ) -> ProjectCoverReconciliationResult:
         """Converge one Project on the best currently published automatic cover."""
 
         if version.source_workflow_id is None:
-            return False
+            return ProjectCoverReconciliationResult(disposition="ineligible")
         workflow = self._workflows.get_workflow(version.source_workflow_id)
         project = self._projects.get(workflow.project_id)
         if project.cover_source == "manual":
-            return False
+            return ProjectCoverReconciliationResult(disposition="manual_protected")
         versions = self._assets.list_versions_for_workflow(workflow.workflow_id)
         selected = _select_automatic_cover(workflow, versions)
         if selected is None:
-            return False
+            return ProjectCoverReconciliationResult(disposition="ineligible")
         current = _candidate_for_identity(
             workflow,
             versions,
@@ -123,16 +148,30 @@ class ProjectCoverAuthorityService:
             version_id=project.cover_version_id,
         )
         if current is not None and selected.rank >= current.rank:
+            prewarm = "not_requested"
             if selected.version_id == current.version_id:
-                self._prewarm(_version_by_id(versions, current.version_id))
-            return False
+                prewarm = self._prewarm(_version_by_id(versions, current.version_id))
+            return ProjectCoverReconciliationResult(
+                disposition=(
+                    "current" if selected.version_id == current.version_id else "lower_rank"
+                ),
+                source=current.source,
+                asset_id=current.asset_id,
+                version_id=current.version_id,
+                rendition_prewarm=prewarm,
+            )
         if (
             project.cover_state == "ready"
             and project.cover_asset_id == selected.asset_id
             and project.cover_version_id == selected.version_id
             and project.cover_source == selected.source
         ):
-            return False
+            return ProjectCoverReconciliationResult(
+                disposition="current",
+                source=selected.source,
+                asset_id=selected.asset_id,
+                version_id=selected.version_id,
+            )
         try:
             self._projects.update(
                 project.project_id,
@@ -147,15 +186,28 @@ class ProjectCoverAuthorityService:
             )
         except V2PersistenceError as error:
             if error.code == "project_state_conflict":
-                return False
+                return ProjectCoverReconciliationResult(
+                    disposition="conflict",
+                    conflict=True,
+                    source=selected.source,
+                    asset_id=selected.asset_id,
+                    version_id=selected.version_id,
+                )
             raise
-        self._prewarm(_version_by_id(versions, selected.version_id))
-        return True
+        prewarm = self._prewarm(_version_by_id(versions, selected.version_id))
+        return ProjectCoverReconciliationResult(
+            disposition="updated",
+            changed=True,
+            source=selected.source,
+            asset_id=selected.asset_id,
+            version_id=selected.version_id,
+            rendition_prewarm=prewarm,
+        )
 
     def consider_product_main(self, version: AssetVersionMetadataV2) -> bool:
         """Compatibility wrapper for the former Product-only callback."""
 
-        return self.consider_published_version(version)
+        return self.consider_published_version(version).changed
 
     def backfill(
         self,
