@@ -313,6 +313,9 @@ class CompactRequirementPatchV3(_CapabilityModel):
 class ConversationQueryV1(_CapabilityModel):
     query_kind: Literal["workflow_status", "document_explanation"]
     document_kind: Literal["anchor_registry", "storyboard_production_plan"] | None = None
+    requested_document_kinds: tuple[
+        Literal["anchor_registry", "storyboard_production_plan"], ...
+    ] = Field(default=(), max_length=2)
     sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
     anchor_aliases: tuple[str, ...] = Field(default=(), max_length=16)
 
@@ -323,10 +326,24 @@ class ConversationQueryV1(_CapabilityModel):
         if self.query_kind == "workflow_status":
             if (
                 self.document_kind is not None
+                or self.requested_document_kinds
                 or self.sequence_id is not None
                 or self.anchor_aliases
             ):
                 raise ValueError("Workflow status query cannot carry a document selector.")
+            return self
+        if self.requested_document_kinds:
+            if self.requested_document_kinds != (
+                "anchor_registry",
+                "storyboard_production_plan",
+            ):
+                raise ValueError("Document selection requires the canonical two-document pair.")
+            if (
+                self.document_kind is not None
+                or self.sequence_id is not None
+                or self.anchor_aliases
+            ):
+                raise ValueError("Document selection cannot carry a document selector.")
             return self
         if self.document_kind is None:
             raise ValueError("Document explanation requires a document kind.")
