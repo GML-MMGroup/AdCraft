@@ -111,6 +111,12 @@ def safe_prompt_assertion_metadata(
         "prompt_assertion_assertion_ids": list(evidence.assertion_ids),
         "prompt_assertion_evidence_digest": evidence.evidence_digest,
         "prompt_assertion_block_digest": evidence.assertion_block_digest,
+        "prompt_character_identity_projection_digest": (
+            evidence.character_identity_projection_digest
+        ),
+        "prompt_scene_environment_projection_digest": (
+            evidence.scene_environment_projection_digest
+        ),
     }
 
 
