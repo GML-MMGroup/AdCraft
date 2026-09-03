@@ -275,6 +275,11 @@ _OPENAI_IMAGE_PROFILE = _image_profile(
                 "value_type": "enum",
                 "allowed_values": ("png", "jpeg", "webp"),
             },
+            {
+                "name": "moderation",
+                "value_type": "enum",
+                "allowed_values": ("low", "auto"),
+            },
         ),
     ),
 )
