@@ -16,6 +16,7 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import AgentCanvasGuidedProductionReceiptRow
 from app.schemas.agent_canvas_production_closure import (
+    GuidedEditingActionReconciliationReceiptV1,
     GuidedEditingPreparationReceiptV1,
     GuidedFinalCompletionReceiptV1,
     GuidedMediaConfirmationV1,
@@ -27,12 +28,14 @@ ReceiptType = Literal[
     "storyboard_fanout",
     "media_confirmation",
     "editing_preparation",
+    "editing_action_reconciliation",
     "final_completion",
 ]
 ReceiptModel = (
     StoryboardFanoutPlanV1
     | GuidedMediaConfirmationV1
     | GuidedEditingPreparationReceiptV1
+    | GuidedEditingActionReconciliationReceiptV1
     | GuidedFinalCompletionReceiptV1
 )
 ReceiptT = TypeVar("ReceiptT", bound=BaseModel)
@@ -41,6 +44,7 @@ _MODEL_BY_TYPE: dict[ReceiptType, type[BaseModel]] = {
     "storyboard_fanout": StoryboardFanoutPlanV1,
     "media_confirmation": GuidedMediaConfirmationV1,
     "editing_preparation": GuidedEditingPreparationReceiptV1,
+    "editing_action_reconciliation": GuidedEditingActionReconciliationReceiptV1,
     "final_completion": GuidedFinalCompletionReceiptV1,
 }
 
@@ -171,6 +175,39 @@ class AgentCanvasProductionClosureRepository:
         self, receipt: GuidedFinalCompletionReceiptV1
     ) -> GuidedFinalCompletionReceiptV1:
         return self._save("final_completion", receipt)
+
+    def save_action_reconciliation_in_transaction(
+        self,
+        connection: Connection,
+        receipt: GuidedEditingActionReconciliationReceiptV1,
+    ) -> GuidedEditingActionReconciliationReceiptV1:
+        return self._save_in_transaction(
+            connection,
+            "editing_action_reconciliation",
+            receipt,
+        )
+
+    def find_action_reconciliation(
+        self,
+        logical_identity: str,
+    ) -> GuidedEditingActionReconciliationReceiptV1 | None:
+        try:
+            with self._database.session_factory() as session:
+                row = session.scalar(
+                    select(AgentCanvasGuidedProductionReceiptRow).where(
+                        AgentCanvasGuidedProductionReceiptRow.receipt_type
+                        == "editing_action_reconciliation",
+                        AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+                    )
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "guided_production_receipt_persistence_failed",
+                "Guided production receipt storage is unavailable.",
+            ) from error
+        if row is None:
+            return None
+        return GuidedEditingActionReconciliationReceiptV1.model_validate_json(row.payload_json)
 
     def get_completion(self, receipt_id: str) -> GuidedFinalCompletionReceiptV1:
         return self._get("final_completion", receipt_id, GuidedFinalCompletionReceiptV1)
@@ -381,7 +418,13 @@ def _receipt_id(model: BaseModel) -> str:
 
 
 def _created_at(model: BaseModel) -> str:
-    for field in ("confirmed_at", "committed_at", "completed_at", "created_at"):
+    for field in (
+        "confirmed_at",
+        "committed_at",
+        "completed_at",
+        "reconciled_at",
+        "created_at",
+    ):
         value = getattr(model, field, None)
         if value is not None:
             return value.isoformat()

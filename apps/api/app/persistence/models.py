@@ -2474,7 +2474,7 @@ class AgentCanvasGuidedProductionReceiptRow(Base):
     __table_args__ = (
         CheckConstraint(
             "receipt_type IN ('storyboard_fanout','media_confirmation',"
-            "'editing_preparation','final_completion')",
+            "'editing_preparation','editing_action_reconciliation','final_completion')",
             name="ck_agent_canvas_guided_production_receipt_type",
         ),
         UniqueConstraint(
