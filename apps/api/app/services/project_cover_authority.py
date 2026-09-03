@@ -12,7 +12,42 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.project_repository import ProjectRepository
 from app.schemas.v2_asset_library import AssetVersionMetadataV2
-from app.schemas.workflow_v2_projects import ProjectCatalogRecord
+from app.schemas.agent_canvas import AgentCanvasWorkflowV2
+from app.schemas.workflow_v2_projects import ProjectCatalogRecord, ProjectCoverSourceV2
+
+
+_SOURCE_PRIORITY: dict[ProjectCoverSourceV2, int] = {
+    "product_main": 0,
+    "scene_main": 1,
+    "character_main": 2,
+    "storyboard_grid": 3,
+    "video_poster": 4,
+    "manual": -1,
+    "migrated": 5,
+}
+
+
+class ProjectCoverCandidate(BaseModel):
+    """One immutable automatic cover candidate with a total deterministic rank."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asset_id: str
+    version_id: str
+    source: ProjectCoverSourceV2
+    source_priority: int
+    business_index: int
+    workflow_node_index: int
+
+    @property
+    def rank(self) -> tuple[int, int, int, str, str]:
+        return (
+            self.source_priority,
+            self.business_index,
+            self.workflow_node_index,
+            self.asset_id,
+            self.version_id,
+        )
 
 
 class ProjectCoverBackfillDecision(BaseModel):
@@ -60,28 +95,43 @@ class ProjectCoverAuthorityService:
         self._assets = assets
         self._workflows = workflows
 
-    def consider_product_main(self, version: AssetVersionMetadataV2) -> bool:
-        """Set automatic authority for one newly ready Product Main version."""
+    def consider_published_version(self, version: AssetVersionMetadataV2) -> bool:
+        """Converge one Project on the best currently published automatic cover."""
 
-        if (
-            not _eligible_media(version)
-            or version.source_workflow_id is None
-            or _semantic_role(version, {}) not in {"product_main", "product_main_image"}
-        ):
+        if version.source_workflow_id is None:
             return False
         workflow = self._workflows.get_workflow(version.source_workflow_id)
         project = self._projects.get(workflow.project_id)
-        if project.cover_state not in {"unresolved", "none", "broken"}:
+        if project.cover_source == "manual":
+            return False
+        versions = self._assets.list_versions_for_workflow(workflow.workflow_id)
+        selected = _select_automatic_cover(workflow, versions)
+        if selected is None:
+            return False
+        current = _candidate_for_identity(
+            workflow,
+            versions,
+            asset_id=project.cover_asset_id,
+            version_id=project.cover_version_id,
+        )
+        if current is not None and selected.rank >= current.rank:
+            return False
+        if (
+            project.cover_state == "ready"
+            and project.cover_asset_id == selected.asset_id
+            and project.cover_version_id == selected.version_id
+            and project.cover_source == selected.source
+        ):
             return False
         try:
             self._projects.update(
                 project.project_id,
                 expected_version=project.project_version,
                 changes={
-                    "cover_asset_id": version.asset_id,
-                    "cover_version_id": version.version_id,
+                    "cover_asset_id": selected.asset_id,
+                    "cover_version_id": selected.version_id,
                     "cover_state": "ready",
-                    "cover_source": "product_main",
+                    "cover_source": selected.source,
                     "cover_updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -90,6 +140,11 @@ class ProjectCoverAuthorityService:
                 return False
             raise
         return True
+
+    def consider_product_main(self, version: AssetVersionMetadataV2) -> bool:
+        """Compatibility wrapper for the former Product-only callback."""
+
+        return self.consider_published_version(version)
 
     def backfill(
         self,
@@ -240,8 +295,104 @@ def _ready_decision(
     )
 
 
+def _select_automatic_cover(
+    workflow: AgentCanvasWorkflowV2,
+    versions: Iterable[AssetVersionMetadataV2],
+) -> ProjectCoverCandidate | None:
+    """Select one cover from canonical metadata without reading mutable external state."""
+
+    candidates = tuple(
+        candidate
+        for version in versions
+        if (candidate := _candidate_for_version(workflow, version)) is not None
+    )
+    return min(candidates, key=lambda item: item.rank, default=None)
+
+
+def _candidate_for_identity(
+    workflow: AgentCanvasWorkflowV2,
+    versions: Iterable[AssetVersionMetadataV2],
+    *,
+    asset_id: str | None,
+    version_id: str | None,
+) -> ProjectCoverCandidate | None:
+    if asset_id is None or version_id is None:
+        return None
+    for version in versions:
+        if version.asset_id == asset_id and version.version_id == version_id:
+            return _candidate_for_version(workflow, version)
+    return None
+
+
+def _candidate_for_version(
+    workflow: AgentCanvasWorkflowV2,
+    version: AssetVersionMetadataV2,
+) -> ProjectCoverCandidate | None:
+    if version.status != "ready" or version.source_workflow_id != workflow.workflow_id:
+        return None
+    node_indexes: dict[str, int] = {}
+    node_roles: dict[str, str] = {}
+    for index, node in enumerate(workflow.nodes):
+        node_indexes[node.node_id] = index
+        if node.output_asset_id is not None:
+            node_indexes[node.output_asset_id] = index
+        role = _node_cover_role(node)
+        if role is not None:
+            node_roles[node.node_id] = role
+            if node.output_asset_id is not None:
+                node_roles[node.output_asset_id] = role
+    role = _canonical_cover_source(_semantic_role(version, node_roles))
+    if role is None:
+        return None
+    if role == "video_poster":
+        if not version.mime_type.startswith("video/"):
+            return None
+    elif not version.mime_type.startswith("image/"):
+        return None
+    business_key = "occurrence_index" if role == "character_main" else "sequence_index"
+    business_index = version.metadata.get(business_key, 0)
+    if not isinstance(business_index, int) or isinstance(business_index, bool) or business_index < 0:
+        return None
+    workflow_node_index = node_indexes.get(version.source_node_id or "")
+    if workflow_node_index is None:
+        workflow_node_index = version.metadata.get("workflow_node_index", 0)
+    if (
+        not isinstance(workflow_node_index, int)
+        or isinstance(workflow_node_index, bool)
+        or workflow_node_index < 0
+    ):
+        return None
+    return ProjectCoverCandidate(
+        asset_id=version.asset_id,
+        version_id=version.version_id,
+        source=role,
+        source_priority=_SOURCE_PRIORITY[role],
+        business_index=business_index,
+        workflow_node_index=workflow_node_index,
+    )
+
+
+def _canonical_cover_source(role: str | None) -> ProjectCoverSourceV2 | None:
+    aliases: dict[str, ProjectCoverSourceV2] = {
+        "product_main": "product_main",
+        "product_main_image": "product_main",
+        "scene_main": "scene_main",
+        "scene_main_image": "scene_main",
+        "character_main": "character_main",
+        "character_main_image": "character_main",
+        "storyboard_grid": "storyboard_grid",
+        "storyboard_sequence": "storyboard_grid",
+        "video": "video_poster",
+        "video_segment": "video_poster",
+        "video_poster": "video_poster",
+    }
+    return aliases.get(role or "")
+
+
 def _eligible_media(version: AssetVersionMetadataV2) -> bool:
-    return version.status == "ready" and version.mime_type.startswith("image/")
+    return version.status == "ready" and (
+        version.mime_type.startswith("image/") or version.mime_type.startswith("video/")
+    )
 
 
 def _semantic_role(
@@ -270,6 +421,25 @@ def _node_product_role(node) -> str | None:
         and node.metadata["provenance"].get("kind") == "direct_upload"
     ):
         return "product_main"
+    return None
+
+
+def _node_cover_role(node) -> str | None:
+    role = _node_product_role(node)
+    if role is not None:
+        return role
+    recipe = node.metadata.get("prompt_recipe_id")
+    recipes = {
+        "adcraft.agent_canvas.scene_main": "scene_main",
+        "adcraft.agent_canvas.character_main": "character_main",
+        "adcraft.agent_canvas.storyboard_grid": "storyboard_grid",
+        "adcraft.agent_canvas.video_segment": "video_poster",
+    }
+    if isinstance(recipe, str) and recipe in recipes:
+        return recipes[recipe]
+    semantic_role = node.metadata.get("creative_role") or node.semantic_role
+    if isinstance(semantic_role, str):
+        return semantic_role
     return None
 
 
