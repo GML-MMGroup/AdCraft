@@ -8,6 +8,8 @@ import json
 from typing import Any, Mapping, Protocol
 
 from app.schemas.provider_models import (
+    ModelParameterDescriptorV1,
+    ModelParameterMatrixV1,
     ProviderAdapterProfileV1,
     ReferenceInputModeV1,
     ReferenceInputPolicyV1,
@@ -251,7 +253,7 @@ class ProviderNativeAdapter:
         raise NotImplementedError
 
     def _validate_parameters(self, parameters: Mapping[str, object]) -> tuple[str, ...]:
-        return ()
+        return _validate_parameter_matrix(self.active_profile.parameter_matrix, parameters)
 
     def _validate_references(
         self,
@@ -303,6 +305,37 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
             max_images=4,
         ),
         parameter_schema_id="openai-gpt-image-2-v1",
+        parameter_matrix=ModelParameterMatrixV1(
+            schema_id="openai-gpt-image-2-v1",
+            revision="openai-gpt-image-2-v1",
+            descriptors=(
+                ModelParameterDescriptorV1(
+                    name="size",
+                    value_type="enum",
+                    allowed_values=("1024x1024", "1536x1024", "1024x1536", "auto"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="quality",
+                    value_type="enum",
+                    allowed_values=("low", "medium", "high", "auto"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="background",
+                    value_type="enum",
+                    allowed_values=("transparent", "opaque", "auto"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="output_format",
+                    value_type="enum",
+                    allowed_values=("png", "jpeg", "webp"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="moderation",
+                    value_type="enum",
+                    allowed_values=("low", "auto"),
+                ),
+            ),
+        ),
         result_protocol="image_data",
         supports_remote_task_lookup=False,
         supports_provider_idempotency=False,
@@ -333,9 +366,7 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
         return payload
 
     def _validate_parameters(self, parameters: Mapping[str, object]) -> tuple[str, ...]:
-        allowed = {"size", "quality", "background", "output_format", "moderation"}
-        unknown = set(parameters).difference(allowed)
-        return ("model_parameter_incompatible",) if unknown else ()
+        return super()._validate_parameters(parameters)
 
     def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
         transport = self._require_transport()
@@ -413,6 +444,35 @@ class MiniMaxVideoAdapter(ProviderNativeAdapter):
             max_images=1,
         ),
         parameter_schema_id="minimax-hailuo-i2v-v1",
+        parameter_matrix=ModelParameterMatrixV1(
+            schema_id="minimax-hailuo-i2v-v1",
+            revision="minimax-hailuo-i2v-v1",
+            descriptors=(
+                ModelParameterDescriptorV1(
+                    name="duration",
+                    value_type="integer",
+                    minimum=6,
+                    maximum=10,
+                ),
+                ModelParameterDescriptorV1(
+                    name="resolution",
+                    value_type="enum",
+                    allowed_values=("768P", "1080P"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="aspect_ratio",
+                    value_type="enum",
+                    allowed_values=("16:9", "9:16", "1:1"),
+                ),
+                ModelParameterDescriptorV1(name="generate_audio", value_type="boolean"),
+            ),
+            legal_combinations=(
+                {"duration": 6, "resolution": "768P"},
+                {"duration": 6, "resolution": "1080P"},
+                {"duration": 10, "resolution": "768P"},
+                {"duration": 10, "resolution": "1080P"},
+            ),
+        ),
         result_protocol="async_file",
         supports_remote_task_lookup=True,
         supports_provider_idempotency=True,
@@ -451,17 +511,7 @@ class MiniMaxVideoAdapter(ProviderNativeAdapter):
         return payload
 
     def _validate_parameters(self, parameters: Mapping[str, object]) -> tuple[str, ...]:
-        allowed = {"duration", "resolution", "aspect_ratio", "generate_audio"}
-        unknown = set(parameters).difference(allowed)
-        if unknown:
-            return ("model_parameter_incompatible",)
-        duration = parameters.get("duration")
-        if duration is not None and duration not in {6, 10}:
-            return ("model_parameter_incompatible",)
-        resolution = parameters.get("resolution")
-        if resolution is not None and resolution not in {"768P", "1080P"}:
-            return ("model_parameter_incompatible",)
-        return ()
+        return super()._validate_parameters(parameters)
 
     def normalize(self, artifact: ProviderArtifact) -> ProviderResult:
         result = super().normalize(artifact)
@@ -540,6 +590,62 @@ def _required_string(source: Mapping[str, object], *keys: str) -> str:
         if isinstance(value, str) and value.strip():
             return value
     raise ValueError("provider_response_contract_invalid")
+
+
+def _validate_parameter_matrix(
+    matrix: ModelParameterMatrixV1 | None,
+    parameters: Mapping[str, object],
+) -> tuple[str, ...]:
+    if matrix is None:
+        return ()
+    descriptors = {descriptor.name: descriptor for descriptor in matrix.descriptors}
+    if set(parameters).difference(descriptors):
+        return ("model_parameter_incompatible",)
+    if any(
+        descriptor.required and descriptor.name not in parameters
+        for descriptor in matrix.descriptors
+    ):
+        return ("model_parameter_incompatible",)
+    if any(
+        not _parameter_value_matches(descriptors[name], value)
+        for name, value in parameters.items()
+    ):
+        return ("model_parameter_incompatible",)
+    constrained_keys = {key for combination in matrix.legal_combinations for key in combination}
+    constrained_parameters = {
+        key: value for key, value in parameters.items() if key in constrained_keys
+    }
+    if constrained_parameters and not any(
+        all(combination.get(key) == value for key, value in constrained_parameters.items())
+        for combination in matrix.legal_combinations
+    ):
+        return ("model_parameter_incompatible",)
+    return ()
+
+
+def _parameter_value_matches(
+    descriptor: ModelParameterDescriptorV1,
+    value: object,
+) -> bool:
+    if descriptor.value_type == "integer" and (
+        not isinstance(value, int) or isinstance(value, bool)
+    ):
+        return False
+    if descriptor.value_type == "number" and (
+        not isinstance(value, (int, float)) or isinstance(value, bool)
+    ):
+        return False
+    if descriptor.value_type in {"string", "enum"} and not isinstance(value, str):
+        return False
+    if descriptor.value_type == "boolean" and not isinstance(value, bool):
+        return False
+    if descriptor.allowed_values and value not in descriptor.allowed_values:
+        return False
+    if descriptor.minimum is not None and value < descriptor.minimum:
+        return False
+    if descriptor.maximum is not None and value > descriptor.maximum:
+        return False
+    return True
 
 
 def _bounded_response(
