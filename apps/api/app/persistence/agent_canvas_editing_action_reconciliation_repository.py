@@ -16,7 +16,15 @@ from app.persistence.agent_canvas_production_closure_repository import (
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.persistence.models import AgentCanvasGuidanceSessionRow
+from app.persistence.models import (
+    AgentCanvasAutomaticRunCommandRow,
+    AgentCanvasExecutionMemberRow,
+    AgentCanvasGuidanceAwaitingRow,
+    AgentCanvasGuidanceSessionRow,
+    AgentCanvasGuidedMediaResumeDeliveryRow,
+    AgentCanvasGuidedProductionReceiptRow,
+    AgentCanvasPostReadyEffectRow,
+)
 from app.schemas.agent_canvas_production_closure import (
     GuidedEditingActionReconciliationCommandV1,
     GuidedEditingActionReconciliationReceiptV1,
@@ -60,7 +68,23 @@ class AgentCanvasEditingActionReconciliationRepository:
                             "Guided Editing action authority was not found.",
                         )
                     session = guidance_session_from_row(connection, row)
+                    if command.outcome == "superseded":
+                        if self._is_current_action(command, session):
+                            raise _error(
+                                "guided_editing_action_identity_conflict",
+                                "A current Guided Editing action cannot be superseded.",
+                            )
+                        receipt = self._persist_receipt_and_event(
+                            connection,
+                            command=command,
+                            resulting_session_revision=session.revision,
+                            stage=session.journey.stage,
+                            stage_revision=session.journey.stage_revision,
+                        )
+                        connection.commit()
+                        return receipt
                     self._require_current_action(command, session)
+                    self._require_outcome_evidence(connection, command)
                     next_revision = command.expected_session_revision + 1
                     next_journey = session.journey.model_copy(
                         update={
@@ -86,36 +110,12 @@ class AgentCanvasEditingActionReconciliationRepository:
                             "guided_editing_action_revision_conflict",
                             "Guided Editing action changed before reconciliation.",
                         )
-                    receipt = GuidedEditingActionReconciliationReceiptV1(
-                        **command.model_dump(),
-                        receipt_id=_receipt_id(command.logical_identity),
+                    receipt = self._persist_receipt_and_event(
+                        connection,
+                        command=command,
                         resulting_session_revision=next_revision,
-                    )
-                    self._receipts.save_action_reconciliation_in_transaction(
-                        connection,
-                        receipt,
-                    )
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=command.workflow_id,
-                            turn_id=command.action_turn_id,
-                            action_id=command.action_id,
-                            event_type="guided_editing_action_reconciled",
-                            transition_key=(
-                                f"guided-editing-action-reconciliation:{command.logical_identity}"
-                            ),
-                            created_at=command.reconciled_at.isoformat(),
-                            payload={
-                                "session_id": command.session_id,
-                                "session_revision": next_revision,
-                                "stage": session.journey.stage,
-                                "stage_revision": session.journey.stage_revision,
-                                "outcome": command.outcome,
-                                "reason_code": command.reason_code,
-                                "evidence_ids": list(command.evidence_ids),
-                            },
-                        ),
+                        stage=session.journey.stage,
+                        stage_revision=session.journey.stage_revision,
                     )
                     connection.commit()
                     return receipt
@@ -140,26 +140,135 @@ class AgentCanvasEditingActionReconciliationRepository:
             ) from error
 
     @staticmethod
-    def _require_current_action(command, session) -> None:
+    def _is_current_action(command, session) -> bool:
+        action = session.journey.active_action
+        return bool(
+            session.revision == command.expected_session_revision
+            and session.journey.stage == "editing"
+            and action is not None
+            and action.action_id == command.action_id
+            and action.turn_id == command.action_turn_id
+            and action.stage_revision == command.action_stage_revision
+            and action.action_kind == "prepare_editing"
+            and action.status == "reserved"
+        )
+
+    @classmethod
+    def _require_current_action(cls, command, session) -> None:
         if session.revision != command.expected_session_revision:
             raise _error(
                 "guided_editing_action_revision_conflict",
                 "Guided Editing action changed before reconciliation.",
             )
-        action = session.journey.active_action
-        if (
-            session.journey.stage != "editing"
-            or action is None
-            or action.action_id != command.action_id
-            or action.turn_id != command.action_turn_id
-            or action.stage_revision != command.action_stage_revision
-            or action.action_kind != "prepare_editing"
-            or action.status != "reserved"
-        ):
+        if not cls._is_current_action(command, session):
             raise _error(
                 "guided_editing_action_identity_conflict",
                 "Guided Editing action identity changed before reconciliation.",
             )
+
+    @staticmethod
+    def _require_outcome_evidence(connection, command) -> None:
+        if command.outcome == "prepared":
+            receipt_id = connection.execute(
+                select(AgentCanvasGuidedProductionReceiptRow.receipt_id).where(
+                    AgentCanvasGuidedProductionReceiptRow.receipt_type == "editing_preparation",
+                    AgentCanvasGuidedProductionReceiptRow.receipt_id
+                    == command.preparation_receipt_id,
+                    AgentCanvasGuidedProductionReceiptRow.workflow_id == command.workflow_id,
+                )
+            ).scalar_one_or_none()
+            if receipt_id is None or str(receipt_id) not in command.evidence_ids:
+                raise _evidence_error()
+            return
+        if command.outcome == "waiting_user":
+            awaiting_id = connection.execute(
+                select(AgentCanvasGuidanceAwaitingRow.awaiting_id).where(
+                    AgentCanvasGuidanceAwaitingRow.awaiting_id == command.awaiting_id,
+                    AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id,
+                    AgentCanvasGuidanceAwaitingRow.session_id == command.session_id,
+                    AgentCanvasGuidanceAwaitingRow.kind == command.awaiting_kind,
+                    AgentCanvasGuidanceAwaitingRow.stage == "editing",
+                    AgentCanvasGuidanceAwaitingRow.stage_revision == command.action_stage_revision,
+                    AgentCanvasGuidanceAwaitingRow.requires_user_action.is_(True),
+                )
+            ).scalar_one_or_none()
+            if awaiting_id is None or str(awaiting_id) not in command.evidence_ids:
+                raise _evidence_error()
+            return
+        if command.outcome != "system_deferred":
+            return
+        table, identity_column, state_column, active_states = {
+            "execution_member": (
+                AgentCanvasExecutionMemberRow,
+                AgentCanvasExecutionMemberRow.member_id,
+                AgentCanvasExecutionMemberRow.state,
+                ("queued", "waiting", "running"),
+            ),
+            "automatic_run": (
+                AgentCanvasAutomaticRunCommandRow,
+                AgentCanvasAutomaticRunCommandRow.command_id,
+                AgentCanvasAutomaticRunCommandRow.state,
+                ("pending", "claimed"),
+            ),
+            "post_ready_effect": (
+                AgentCanvasPostReadyEffectRow,
+                AgentCanvasPostReadyEffectRow.effect_id,
+                AgentCanvasPostReadyEffectRow.status,
+                ("queued", "running"),
+            ),
+            "guided_media_resume": (
+                AgentCanvasGuidedMediaResumeDeliveryRow,
+                AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id,
+                AgentCanvasGuidedMediaResumeDeliveryRow.status,
+                ("queued", "running"),
+            ),
+        }[command.system_owner_kind]
+        owner_id = connection.execute(
+            select(identity_column).where(
+                identity_column == command.system_owner_id,
+                table.workflow_id == command.workflow_id,
+                state_column.in_(active_states),
+            )
+        ).scalar_one_or_none()
+        if owner_id is None or str(owner_id) not in command.evidence_ids:
+            raise _evidence_error()
+
+    def _persist_receipt_and_event(
+        self,
+        connection,
+        *,
+        command,
+        resulting_session_revision: int,
+        stage: str,
+        stage_revision: int,
+    ) -> GuidedEditingActionReconciliationReceiptV1:
+        receipt = GuidedEditingActionReconciliationReceiptV1(
+            **command.model_dump(),
+            receipt_id=_receipt_id(command.logical_identity),
+            resulting_session_revision=resulting_session_revision,
+        )
+        self._receipts.save_action_reconciliation_in_transaction(connection, receipt)
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=command.workflow_id,
+                turn_id=command.action_turn_id,
+                action_id=command.action_id,
+                event_type="guided_editing_action_reconciled",
+                transition_key=(f"guided-editing-action-reconciliation:{command.logical_identity}"),
+                created_at=command.reconciled_at.isoformat(),
+                payload={
+                    "session_id": command.session_id,
+                    "session_revision": resulting_session_revision,
+                    "stage": stage,
+                    "stage_revision": stage_revision,
+                    "outcome": command.outcome,
+                    "reason_code": command.reason_code,
+                    "evidence_ids": list(command.evidence_ids),
+                },
+            ),
+        )
+        return receipt
 
     @staticmethod
     def _require_replay_match(command, receipt) -> None:
@@ -190,3 +299,10 @@ def _receipt_id(logical_identity: str) -> str:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="editing_action_reconciliation")
+
+
+def _evidence_error() -> V2PersistenceError:
+    return _error(
+        "guided_editing_action_evidence_invalid",
+        "Guided Editing action outcome evidence is not current authority.",
+    )
