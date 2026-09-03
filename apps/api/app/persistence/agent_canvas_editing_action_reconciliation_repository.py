@@ -272,9 +272,10 @@ class AgentCanvasEditingActionReconciliationRepository:
 
     @staticmethod
     def _require_replay_match(command, receipt) -> None:
-        expected = command.model_dump(mode="json")
+        expected = command.model_dump(mode="json", exclude={"reconciled_at"})
         actual = receipt.model_dump(
-            mode="json", exclude={"receipt_id", "resulting_session_revision"}
+            mode="json",
+            exclude={"receipt_id", "resulting_session_revision", "reconciled_at"},
         )
         if actual != expected:
             raise _error(
