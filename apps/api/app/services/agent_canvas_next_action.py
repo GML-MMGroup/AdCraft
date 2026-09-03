@@ -282,33 +282,42 @@ class DurableNextActionExecutionService:
                             stage="next_action_execution",
                         )
                 except V2PersistenceError as error:
-                    resolution = self._editing_outcomes.resolve(error, session)
-                    self._reconcile_editing_action(
-                        resolution.session,
-                        outcome=resolution.outcome,
-                        reason_code=resolution.reason_code,
-                        evidence_ids=resolution.evidence_ids,
-                        awaiting_id=resolution.awaiting_id,
-                        awaiting_kind=resolution.awaiting_kind,
-                        system_owner_kind=resolution.system_owner_kind,
-                        system_owner_id=resolution.system_owner_id,
-                        system_owner_node_id=resolution.system_owner_node_id,
-                        error_code=resolution.error_code,
-                    )
-                    editing_outcome = resolution.outcome
+                    current_session = self._conversations.get_guidance_session(envelope.workflow_id)
+                    if not self._editing_action_is_current(
+                        current_session,
+                        reserved_editing_action,
+                    ):
+                        self._reconcile_editing_action(
+                            current_session,
+                            action=reserved_editing_action,
+                            outcome="superseded",
+                            reason_code="editing_action_superseded",
+                        )
+                        editing_outcome = "superseded"
+                    else:
+                        resolution = self._editing_outcomes.resolve(error, current_session)
+                        self._reconcile_editing_action(
+                            resolution.session,
+                            action=reserved_editing_action,
+                            outcome=resolution.outcome,
+                            reason_code=resolution.reason_code,
+                            evidence_ids=resolution.evidence_ids,
+                            awaiting_id=resolution.awaiting_id,
+                            awaiting_kind=resolution.awaiting_kind,
+                            system_owner_kind=resolution.system_owner_kind,
+                            system_owner_id=resolution.system_owner_id,
+                            system_owner_node_id=resolution.system_owner_node_id,
+                            error_code=resolution.error_code,
+                        )
+                        editing_outcome = resolution.outcome
                     if editing_outcome == "failed":
                         raise
                 else:
                     lease_guard()
                     current_session = self._conversations.get_guidance_session(envelope.workflow_id)
-                    current_action = current_session.journey.active_action
-                    action_is_current = (
-                        current_action is not None
-                        and current_action.action_id == reserved_editing_action.action_id
-                        and current_action.turn_id == reserved_editing_action.turn_id
-                        and current_action.stage_revision == reserved_editing_action.stage_revision
-                        and current_action.action_kind == reserved_editing_action.action_kind
-                        and current_action.status == reserved_editing_action.status
+                    action_is_current = self._editing_action_is_current(
+                        current_session,
+                        reserved_editing_action,
                     )
                     self._reconcile_editing_action(
                         current_session,
@@ -524,6 +533,22 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    @staticmethod
+    def _editing_action_is_current(
+        session: GuidedSessionStateV2,
+        action: JourneyActionProjectionV2,
+    ) -> bool:
+        current = session.journey.active_action
+        return bool(
+            session.journey.stage == "editing"
+            and current is not None
+            and current.action_id == action.action_id
+            and current.turn_id == action.turn_id
+            and current.stage_revision == action.stage_revision
+            and current.action_kind == action.action_kind
+            and current.status == action.status
+        )
 
     def _reconcile_editing_action(
         self,
