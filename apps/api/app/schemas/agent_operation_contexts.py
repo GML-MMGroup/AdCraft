@@ -13,6 +13,8 @@ from app.schemas.agent_canvas_creative_session import (
     ResolvedImageTargetV2,
     StyleGuidanceContextV2,
 )
+from app.schemas.agent_canvas_capabilities import NextActionContextV1
+from app.schemas.language import BCP47Tag
 
 
 _MAX_CONTEXT_TEXT = 65_536
@@ -246,6 +248,13 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
         max_length=32,
     )
     workflow_summary: str = Field(default="", max_length=16_384)
+    workflow_revision: int | None = Field(default=None, ge=0)
+    response_locale: BCP47Tag = "und"
+    journey_stage: str | None = Field(default=None, max_length=80)
+    journey_status: str | None = Field(default=None, max_length=80)
+    awaiting_action: NextActionContextV1 | None = None
+    next_action: NextActionContextV1 | None = None
+    source_revision: int | None = Field(default=None, ge=0)
 
 
 class ConversationSummaryAgentContext(_PlanningContextModel):

@@ -12,6 +12,7 @@ from app.schemas.agent_canvas_reference_conditioning import ReferenceConditionin
 from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
+from app.schemas.language import BCP47Tag
 
 
 RolePromptVariantV2 = Literal[
@@ -61,6 +62,21 @@ VideoRepresentationModeV2 = Literal["illustrated", "illustration_to_live_action"
 
 class _RolePromptModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class EditablePromptProjectionV1(_RolePromptModel):
+    """The revision-bound editable prompt view exposed by a prepared Node."""
+
+    text: str = Field(min_length=1, max_length=32_768)
+    locale: BCP47Tag
+    source: Literal["agent_authored", "deterministic_projection", "user_edited"]
+    revision: int = Field(ge=1)
+    brief_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    prompt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class _RoleBriefModel(_RolePromptModel):
+    editable_prompt: str | None = Field(default=None, max_length=32_768)
 
 
 class RoleBindingSnapshotV2(_RolePromptModel):
@@ -314,7 +330,7 @@ class NodePromptPreparationV2(_RolePromptModel):
         return self
 
 
-class WorldViewRoleBriefV2(_RolePromptModel):
+class WorldViewRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["world_view"] = "world_view"
     premise: str = Field(min_length=1, max_length=4_096)
     era_and_place: str = Field(min_length=1, max_length=2_048)
@@ -322,7 +338,7 @@ class WorldViewRoleBriefV2(_RolePromptModel):
     visual_continuity: tuple[str, ...] = Field(min_length=1, max_length=16)
 
 
-class ProductMainRoleBriefV2(_RolePromptModel):
+class ProductMainRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["product_main"] = "product_main"
     identity: str = Field(min_length=1, max_length=4_096)
     geometry: str = Field(min_length=1, max_length=2_048)
@@ -336,7 +352,7 @@ class ProductMultiviewRoleBriefV2(ProductMainRoleBriefV2):
     views: tuple[str, ...] = Field(min_length=5, max_length=8)
 
 
-class PropRoleBriefV2(_RolePromptModel):
+class PropRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["prop"] = "prop"
     identity: str = Field(min_length=1, max_length=4_096)
     form: str = Field(min_length=1, max_length=2_048)
@@ -344,7 +360,7 @@ class PropRoleBriefV2(_RolePromptModel):
     palette: str = Field(min_length=1, max_length=1_024)
 
 
-class CharacterMainRoleBriefV2(_RolePromptModel):
+class CharacterMainRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["character_main"] = "character_main"
     identity: str = Field(min_length=1, max_length=4_096)
     face_and_hair: str = Field(min_length=1, max_length=2_048)
@@ -367,7 +383,7 @@ class CharacterTurnaroundRoleBriefV2(CharacterMainRoleBriefV2):
         return self
 
 
-class SceneBoardRoleBriefV2(_RolePromptModel):
+class SceneBoardRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["scene_board"] = "scene_board"
     environment_identity: str = Field(min_length=1, max_length=4_096)
     spatial_logic: str = Field(min_length=1, max_length=4_096)
@@ -377,7 +393,7 @@ class SceneBoardRoleBriefV2(_RolePromptModel):
     views: tuple[str, ...] = Field(min_length=9, max_length=9)
 
 
-class ScriptRoleBriefV2(_RolePromptModel):
+class ScriptRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["script"] = "script"
     narrative: str = Field(min_length=1, max_length=16_384)
     timing: str = Field(min_length=1, max_length=2_048)
@@ -385,14 +401,14 @@ class ScriptRoleBriefV2(_RolePromptModel):
     voiceover: str = Field(default="", max_length=8_192)
 
 
-class StoryboardGridRoleBriefV2(_RolePromptModel):
+class StoryboardGridRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["storyboard_grid"] = "storyboard_grid"
     sequence_summary: str = Field(min_length=1, max_length=8_192)
     beats: tuple[str, ...] = Field(min_length=9, max_length=9)
     visual_language: str = Field(min_length=1, max_length=4_096)
 
 
-class VideoSegmentRoleBriefV2(_RolePromptModel):
+class VideoSegmentRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["video_segment"] = "video_segment"
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=15)
@@ -404,7 +420,7 @@ class VideoSegmentRoleBriefV2(_RolePromptModel):
     target_style: str = Field(min_length=1, max_length=4_096)
 
 
-class BgmRoleBriefV2(_RolePromptModel):
+class BgmRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["bgm"] = "bgm"
     music_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
@@ -414,7 +430,7 @@ class BgmRoleBriefV2(_RolePromptModel):
     mood: str = Field(min_length=1, max_length=1_024)
 
 
-class FreeMediaRoleBriefV2(_RolePromptModel):
+class FreeMediaRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["free_text", "free_image", "free_video", "free_audio"]
     prompt: str = Field(min_length=1, max_length=16_384)
 
