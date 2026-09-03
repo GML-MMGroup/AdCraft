@@ -1,7 +1,7 @@
 """Add Editing action reconciliation receipt authority.
 
-Revision ID: 20260903_01
-Revises: 20260831_01
+Revision ID: 20260903_02
+Revises: 20260903_01
 """
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 
 
-revision = "20260903_01"
-down_revision = "20260831_01"
+revision = "20260903_02"
+down_revision = "20260903_01"
 branch_labels = None
 depends_on = None
 
