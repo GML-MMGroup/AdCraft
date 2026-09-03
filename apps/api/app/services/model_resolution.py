@@ -11,6 +11,7 @@ from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_runtime import ResolvedModelExecutionV2
 from app.schemas.provider_models import ProviderAdapterProfileV1
 from app.services.model_selection import ModelSelectionService
+from app.services.provider_adapter_registry import ProviderAdapterRegistry
 
 
 class ModelResolutionService:
@@ -22,10 +23,12 @@ class ModelResolutionService:
         repository: ProviderModelRepository,
         *,
         allow_fake: bool,
+        adapter_registry: ProviderAdapterRegistry | None = None,
     ) -> None:
         self._selection = selection
         self._repository = repository
         self._allow_fake = allow_fake
+        self._adapter_registry = adapter_registry
 
     def resolve(self, node: CanvasNodeV2) -> ResolvedModelExecutionV2:
         return self.resolve_selection(
@@ -74,6 +77,15 @@ class ModelResolutionService:
                     credential_capability=selected.capability,
                 )
         adapter_profile = _profile_for_selection(selected)
+        if self._adapter_registry is not None and "adapter_profile" in selected.capability_metadata:
+            try:
+                self._adapter_registry.resolve(selected.model_ref, selected.capability)
+            except ValueError as error:
+                raise _error(
+                    str(error),
+                    selected.provider_id,
+                    model_ref=selected.model_ref,
+                ) from error
         requested_parameter_fingerprint = _parameter_fingerprint(parameters or {})
         return ResolvedModelExecutionV2(
             model_ref=selected.model_ref,

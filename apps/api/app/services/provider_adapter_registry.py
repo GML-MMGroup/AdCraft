@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -85,3 +86,39 @@ class ProviderAdapterRegistry:
             if key in seen:
                 raise ValueError("provider_adapter_registry_conflict")
             seen.add(key)
+
+
+def build_trusted_provider_adapter_registry(
+    models: Iterable[ProviderModelRecord],
+) -> ProviderAdapterRegistry:
+    """Build the executable adapter registry from the current catalog snapshot."""
+
+    registry = ProviderAdapterRegistry()
+    for record in models:
+        raw_profile = record.capability_metadata.get("adapter_profile")
+        if raw_profile is None:
+            continue
+        try:
+            profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+        except Exception as error:
+            raise ValueError("provider_adapter_profile_invalid") from error
+        adapter = _adapter_for_profile(profile)
+        registry.register_catalog_model(record, adapter)
+    registry.validate_profiles(registry.profiles())
+    return registry
+
+
+def _adapter_for_profile(profile: ProviderAdapterProfileV1) -> ProviderAdapter:
+    from app.services.provider_native_adapters import (
+        ArkMediaAdapter,
+        MiniMaxVideoAdapter,
+        OpenAIImageAdapter,
+    )
+
+    if profile.transport_kind == "openai_images_native":
+        return OpenAIImageAdapter()
+    if profile.transport_kind == "minimax_video_native":
+        return MiniMaxVideoAdapter(provider_model_id=profile.provider_model_id)
+    if profile.transport_kind in {"ark_image_native", "ark_video_native"}:
+        return ArkMediaAdapter(profile)
+    raise ValueError("provider_adapter_profile_invalid")

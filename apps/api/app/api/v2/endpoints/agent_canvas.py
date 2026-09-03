@@ -414,6 +414,7 @@ from app.services.agent_canvas_variations import AgentCanvasVariationService
 from app.services.agent_canvas_editing_output_reuse import EditingExportOutputReuseService
 from app.services.model_selection import ModelSelectionService
 from app.services.model_resolution import ModelResolutionService
+from app.services.provider_adapter_registry import build_trusted_provider_adapter_registry
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.durable_pi_run import DurablePiRunService
@@ -606,10 +607,14 @@ def create_agent_canvas_runtime(
     )
     model_catalog = ProviderModelCatalogService(model_repository)
     model_selection = ModelSelectionService(model_catalog)
+    adapter_registry = build_trusted_provider_adapter_registry(
+        model_catalog.list_models(include_unavailable=True)
+    )
     model_resolution = ModelResolutionService(
         model_selection,
         model_repository,
         allow_fake=(settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"),
+        adapter_registry=adapter_registry,
     )
     project_repository = ProjectRepository(database)
     event_repository = EventRepository(database)
