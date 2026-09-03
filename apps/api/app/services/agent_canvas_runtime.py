@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
@@ -32,6 +34,7 @@ from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     NodeExecutionLeaseV2,
     NodeRuntimeV2,
+    ResolvedModelExecutionV2,
     ResolvedModelExecutionV1,
 )
 from app.schemas.agent_canvas_prompt_assertion import (
@@ -738,7 +741,10 @@ class DynamicCanvasScheduler:
         )
         stored_resolution = prompt_metadata.get("model_resolution")
         if isinstance(stored_resolution, dict):
-            resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
+            try:
+                resolution = ResolvedModelExecutionV2.model_validate(stored_resolution)
+            except ValidationError:
+                resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
         elif self._model_resolution is not None and node.node_type != "editing":
             resolution = self._model_resolution.resolve(node)
             prompt_metadata["model_resolution"] = resolution.model_dump(mode="json")

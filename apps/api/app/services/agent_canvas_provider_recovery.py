@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 
+from pydantic import ValidationError
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_runtime_repository import (
@@ -17,6 +19,7 @@ from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
+    ResolvedModelExecutionV2,
     ResolvedModelExecutionV1,
     EffectiveMediaParameterSnapshotV2,
 )
@@ -215,11 +218,12 @@ class ProviderTaskRecoveryService:
             if item.node_id == task.node_id
         )
         stored_resolution = current.result_descriptor.get("model_resolution")
-        resolution = (
-            ResolvedModelExecutionV1.model_validate(stored_resolution)
-            if isinstance(stored_resolution, dict)
-            else None
-        )
+        resolution = None
+        if isinstance(stored_resolution, dict):
+            try:
+                resolution = ResolvedModelExecutionV2.model_validate(stored_resolution)
+            except ValidationError:
+                resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
         effective_parameters = member.effective_parameters
         snapshot_id = (
             member.parameter_compilation_snapshot_id
