@@ -2566,16 +2566,10 @@ class AgentConversationService:
                 ),
                 None,
             )
-        journey_capability = (
-            session.journey.active_action.capability_id
-            if session.journey.active_action is not None
-            else None
-        )
         policy = self._capability_policy.evaluate(
             assemble_capability_policy_context(
                 workflow=workflow,
                 session=session,
-                journey_capability=journey_capability,
                 open_proposal_capabilities=tuple(
                     proposal.capability_id
                     for proposal in self._conversations.list_open_proposals(turn.workflow_id)
@@ -2614,7 +2608,8 @@ class AgentConversationService:
         )
         next_action = (
             action_context(
-                f"Perform the current journey action {session.journey.active_action.action}."
+                "Perform the current journey action "
+                f"{session.journey.active_action.action_kind}."
             )
             if session.journey.active_action is not None
             else None
