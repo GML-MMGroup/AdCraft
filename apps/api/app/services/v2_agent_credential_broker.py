@@ -240,6 +240,25 @@ class V2AgentCredentialBroker:
                 "Agent operations require a text-capable model.",
             )
         metadata = record.capability_metadata
+        raw_profile = metadata.get("adapter_profile")
+        if raw_profile is not None:
+            try:
+                profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+            except ValidationError as error:
+                raise AgentCredentialError(
+                    "agent_model_incompatible",
+                    "The selected Agent transport profile is invalid.",
+                ) from error
+            if profile.conformance_status == "revoked":
+                raise AgentCredentialError(
+                    "model_conformance_revoked",
+                    "The selected Agent model conformance is revoked.",
+                )
+            if profile.conformance_status == "unverified":
+                raise AgentCredentialError(
+                    "model_conformance_required",
+                    "The selected Agent model requires conformance evidence.",
+                )
         structured_transport = metadata.get("structured_transport")
         if (
             not _metadata_flag(metadata, "agent_compatible")
