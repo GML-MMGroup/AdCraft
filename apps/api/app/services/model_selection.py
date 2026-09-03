@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from app.persistence.errors import V2PersistenceError
 from app.persistence.provider_model_repository import ProviderModelRecord
 from app.schemas.agent_canvas import CanvasModelSummaryV2, CanvasNodeV2
+from app.schemas.provider_models import ProviderAdapterProfileV1
 from app.services.automatic_model_routing import (
     AutomaticModelRoutingService,
     validate_audio_model_parameters,
@@ -86,6 +87,7 @@ class ModelSelectionService:
             parameters=parameters or {},
         )
         self._validate_node_capability(node_type, selected)
+        self._validate_declared_parameters(selected, parameters or {})
         if node_type == "audio":
             validate_audio_model_parameters(selected, parameters or {})
         return SelectedModelV1.from_record(selected)
@@ -185,6 +187,105 @@ class ModelSelectionService:
                 "Script Nodes require an Agent-compatible text model.",
                 model_ref=record.model_ref,
             )
+
+    @staticmethod
+    def _validate_declared_parameters(
+        record: ProviderModelRecord,
+        parameters: Mapping[str, object],
+    ) -> None:
+        raw_profile = record.capability_metadata.get("adapter_profile")
+        if raw_profile is None:
+            return
+        try:
+            profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+        except Exception as error:
+            raise _model_error(
+                "model_parameter_incompatible",
+                "The selected model parameter profile is invalid.",
+                model_ref=record.model_ref,
+            ) from error
+        matrix = profile.parameter_matrix
+        if matrix is None:
+            return
+        descriptors = {descriptor.name: descriptor for descriptor in matrix.descriptors}
+        unknown = sorted(set(parameters).difference(descriptors))
+        if unknown:
+            raise _model_error(
+                "model_parameter_incompatible",
+                "The selected model does not support the requested parameters.",
+                model_ref=record.model_ref,
+                unsupported_parameters=unknown,
+                parameter_schema_id=matrix.schema_id,
+            )
+        missing = sorted(
+            descriptor.name
+            for descriptor in matrix.descriptors
+            if descriptor.required and descriptor.name not in parameters
+        )
+        if missing:
+            raise _model_error(
+                "model_parameter_incompatible",
+                "Required model parameters are missing.",
+                model_ref=record.model_ref,
+                missing_parameters=missing,
+                parameter_schema_id=matrix.schema_id,
+            )
+        for name, value in parameters.items():
+            descriptor = descriptors[name]
+            if not _parameter_value_matches(descriptor, value):
+                raise _model_error(
+                    "model_parameter_incompatible",
+                    "A requested model parameter is outside the selected matrix.",
+                    model_ref=record.model_ref,
+                    parameter=name,
+                    parameter_schema_id=matrix.schema_id,
+                    allowed_values=list(descriptor.allowed_values),
+                    minimum=descriptor.minimum,
+                    maximum=descriptor.maximum,
+                )
+        constrained_keys = {
+            key
+            for combination in matrix.legal_combinations
+            for key in combination
+        }
+        constrained_parameters = {
+            key: value for key, value in parameters.items() if key in constrained_keys
+        }
+        if constrained_parameters and not any(
+            all(combination.get(key) == value for key, value in constrained_parameters.items())
+            for combination in matrix.legal_combinations
+        ):
+            raise _model_error(
+                "model_parameter_incompatible",
+                "The requested model parameter combination is not declared.",
+                model_ref=record.model_ref,
+                parameter_schema_id=matrix.schema_id,
+                requested_parameters=sorted(constrained_parameters),
+            )
+
+
+def _parameter_value_matches(descriptor: object, value: object) -> bool:
+    value_type = getattr(descriptor, "value_type")
+    if value_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+        return False
+    if value_type == "number" and (
+        not isinstance(value, (int, float)) or isinstance(value, bool)
+    ):
+        return False
+    if value_type in {"string", "enum"} and not isinstance(value, str):
+        return False
+    if value_type == "boolean" and not isinstance(value, bool):
+        return False
+    allowed_values = getattr(descriptor, "allowed_values")
+    if allowed_values and value not in allowed_values:
+        return False
+    minimum = getattr(descriptor, "minimum")
+    maximum = getattr(descriptor, "maximum")
+    if minimum is not None and value < minimum:
+        return False
+    if maximum is not None and value > maximum:
+        return False
+    return True
 
 
 def _model_error(code: str, message: str, **details: object) -> V2PersistenceError:
