@@ -142,7 +142,17 @@ class AgentCanvasRolePromptCompiler:
             recipe,
             brief_digest=brief_digest,
         )
-        prompt, negative = _render(concrete_brief)
+        editable_prompt = concrete_brief.editable_prompt
+        if editable_prompt is not None:
+            prompt = editable_prompt.strip()
+            if not prompt:
+                raise _error(
+                    "node_prompt_brief_invalid",
+                    "Editable prompt must not be blank.",
+                )
+            _, negative = _render(concrete_brief)
+        else:
+            prompt, negative = _render(concrete_brief)
         _validate_role_prompt_text(context.role_variant, prompt)
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
         conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
