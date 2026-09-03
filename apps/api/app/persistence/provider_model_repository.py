@@ -515,6 +515,8 @@ class ProviderModelRepository:
                 if row is None:
                     raise ValueError("provider_model_conformance_not_found")
                 current = _conformance_from_row(row)
+                if current.provider_id == "fake" and status == "certified":
+                    raise ValueError("provider_model_conformance_certification_forbidden")
                 summary = dict(safe_summary)
                 if current.completed_at is not None:
                     if current.status != status or current.safe_summary != summary:
