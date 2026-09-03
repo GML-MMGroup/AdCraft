@@ -52,12 +52,14 @@ class NativeProviderRequest:
 @dataclass(frozen=True, slots=True)
 class ProviderSubmission:
     provider_task_id: str
+    request_fingerprint: str
     raw: Mapping[str, object]
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderStatus:
     provider_task_id: str
+    request_fingerprint: str
     state: str
     raw: Mapping[str, object]
 
@@ -66,14 +68,20 @@ class ProviderStatus:
 class ProviderArtifact:
     media_type: str
     value: str
+    provider_task_id: str
+    request_fingerprint: str
     raw: Mapping[str, object]
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderResult:
+    provider_id: str
+    adapter_id: str
     media_type: str
     value: str
-    provider_task_id: str | None
+    provider_task_id: str
+    request_fingerprint: str
+    publication_input: Mapping[str, object]
     raw: Mapping[str, object]
 
 
@@ -96,38 +104,44 @@ class ProviderNativeAdapter:
         self._transport = transport
 
     def capability_profile(self) -> ProviderAdapterProfileV1:
+        return self.active_profile
+
+    @property
+    def active_profile(self) -> ProviderAdapterProfileV1:
         return self.profile
 
     def validate(
         self, request: CanonicalProviderRequest, capability: str
     ) -> AdapterValidationResult:
+        profile = self.active_profile
         errors: list[str] = []
-        if capability != self.profile.capability or request.capability != self.profile.capability:
+        if capability != profile.capability or request.capability != profile.capability:
             errors.append("provider_capability_mismatch")
-        if request.model_ref != self.profile.model_ref:
+        if request.model_ref != profile.model_ref:
             errors.append("provider_model_reference_mismatch")
         if not request.prompt.strip():
             errors.append("provider_prompt_empty")
-        if len(request.references) > self.profile.reference_policy.max_images:
+        if len(request.references) > profile.reference_policy.max_images:
             errors.append("reference_count_exceeded")
         errors.extend(self._validate_parameters(request.parameters))
         errors.extend(self._validate_references(request.references))
         return AdapterValidationResult(accepted=not errors, errors=tuple(errors))
 
     def compile(self, request: CanonicalProviderRequest, resolution: Any) -> NativeProviderRequest:
-        validation = self.validate(request, self.profile.capability)
+        profile = self.active_profile
+        validation = self.validate(request, profile.capability)
         if not validation.accepted:
             raise ValueError(validation.errors[0])
-        _assert_frozen_resolution(resolution, self.profile)
+        _assert_frozen_resolution(resolution, profile)
         payload = self._compile_payload(request)
         request_fingerprint = _fingerprint(
             {
-                "model_ref": self.profile.model_ref,
+                "model_ref": profile.model_ref,
                 "provider_model_id": request.provider_model_id,
-                "adapter_id": self.profile.adapter_id,
-                "transport_kind": self.profile.transport_kind,
-                "adapter_revision": self.profile.adapter_revision,
-                "capability_revision": self.profile.capability_revision,
+                "adapter_id": profile.adapter_id,
+                "transport_kind": profile.transport_kind,
+                "adapter_revision": profile.adapter_revision,
+                "capability_revision": profile.capability_revision,
                 "payload": payload,
                 "references": [reference.reference_id for reference in request.references],
             }
@@ -136,13 +150,15 @@ class ProviderNativeAdapter:
             payload=payload,
             request_fingerprint=request_fingerprint,
             audit={
-                "model_ref": self.profile.model_ref,
+                "provider_id": profile.model_ref.split(":", 1)[0],
+                "model_ref": profile.model_ref,
                 "provider_model_id": request.provider_model_id,
-                "adapter_id": self.profile.adapter_id,
-                "transport_kind": self.profile.transport_kind,
-                "adapter_revision": self.profile.adapter_revision,
-                "capability_revision": self.profile.capability_revision,
+                "adapter_id": profile.adapter_id,
+                "transport_kind": profile.transport_kind,
+                "adapter_revision": profile.adapter_revision,
+                "capability_revision": profile.capability_revision,
                 "reference_ids": tuple(reference.reference_id for reference in request.references),
+                "parameters": dict(request.parameters),
                 "request_fingerprint": request_fingerprint,
             },
         )
@@ -151,7 +167,11 @@ class ProviderNativeAdapter:
         transport = self._require_transport()
         response = transport.submit(request.payload)
         task_id = _required_string(response, "task_id", "provider_task_id")
-        return ProviderSubmission(provider_task_id=task_id, raw=dict(response))
+        return ProviderSubmission(
+            provider_task_id=task_id,
+            request_fingerprint=str(request.audit["request_fingerprint"]),
+            raw=dict(response),
+        )
 
     def poll(self, submission: ProviderSubmission) -> ProviderStatus:
         transport = self._require_transport()
@@ -159,6 +179,7 @@ class ProviderNativeAdapter:
         state = _required_string(response, "status", "state")
         return ProviderStatus(
             provider_task_id=submission.provider_task_id,
+            request_fingerprint=submission.request_fingerprint,
             state=state,
             raw=dict(response),
         )
@@ -171,6 +192,8 @@ class ProviderNativeAdapter:
         return ProviderArtifact(
             media_type=self._media_type,
             value=artifact_value,
+            provider_task_id=status.provider_task_id,
+            request_fingerprint=status.request_fingerprint,
             raw=dict(response),
         )
 
@@ -178,18 +201,28 @@ class ProviderNativeAdapter:
         if not artifact.value.strip():
             raise ValueError("provider_result_contract_invalid")
         return ProviderResult(
+            provider_id=self.active_profile.model_ref.split(":", 1)[0],
+            adapter_id=self.active_profile.adapter_id,
             media_type=artifact.media_type,
             value=artifact.value,
-            provider_task_id=None,
+            provider_task_id=artifact.provider_task_id,
+            request_fingerprint=artifact.request_fingerprint,
+            publication_input={
+                "media_type": artifact.media_type,
+                "value": artifact.value,
+            },
             raw=artifact.raw,
         )
 
     def request_fingerprint(self, request: CanonicalProviderRequest) -> str:
-        return self.compile(request, _resolution_for_profile(self.profile)).request_fingerprint
+        return self.compile(
+            request,
+            _resolution_for_profile(self.active_profile),
+        ).request_fingerprint
 
     @property
     def _media_type(self) -> str:
-        return "image" if self.profile.capability == "image" else "video"
+        return "image" if self.active_profile.capability == "image" else "video"
 
     def _require_transport(self) -> NativeProviderTransport:
         if self._transport is None:
@@ -206,11 +239,25 @@ class ProviderNativeAdapter:
         self,
         references: tuple[CanonicalProviderReference, ...],
     ) -> tuple[str, ...]:
+        profile = self.active_profile
         allowed_modes = {
-            mode.mode for mode in self.profile.reference_policy.modes if mode.max_references > 0
+            mode.mode for mode in profile.reference_policy.modes if mode.max_references > 0
         }
-        if references and not allowed_modes.intersection(self.profile.accepted_input_modes):
+        if references and not allowed_modes.intersection(profile.accepted_input_modes):
             return ("reference_input_mode_unsupported",)
+        allowed_roles = {
+            role
+            for mode in profile.reference_policy.modes
+            if mode.mode in allowed_modes
+            for role in mode.allowed_roles
+        }
+        if any(reference.role not in allowed_roles for reference in references):
+            return ("reference_input_mode_unsupported",)
+        if any(
+            reference.input_type not in {"image_url", "data_url", "provider_file_id"}
+            for reference in references
+        ):
+            return ("provider_reference_input_invalid",)
         if any(not reference.value.strip() for reference in references):
             return ("provider_reference_input_invalid",)
         return ()
@@ -270,7 +317,40 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
     def _validate_parameters(self, parameters: Mapping[str, object]) -> tuple[str, ...]:
         allowed = {"size", "quality", "background", "output_format", "moderation"}
         unknown = set(parameters).difference(allowed)
-        return ("provider_parameter_unsupported",) if unknown else ()
+        return ("model_parameter_incompatible",) if unknown else ()
+
+    def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
+        transport = self._require_transport()
+        response = dict(transport.submit(request.payload))
+        if not isinstance(response.get("data"), list):
+            raise ValueError("provider_response_contract_invalid")
+        return ProviderSubmission(
+            provider_task_id=f"sync:{request.request_fingerprint}",
+            request_fingerprint=request.request_fingerprint,
+            raw=response,
+        )
+
+    def poll(self, submission: ProviderSubmission) -> ProviderStatus:
+        return ProviderStatus(
+            provider_task_id=submission.provider_task_id,
+            request_fingerprint=submission.request_fingerprint,
+            state="completed",
+            raw=submission.raw,
+        )
+
+    def download(self, status: ProviderStatus) -> ProviderArtifact:
+        data = status.raw.get("data")
+        if not isinstance(data, list) or not data or not isinstance(data[0], Mapping):
+            raise ValueError("provider_response_contract_invalid")
+        item = data[0]
+        value = _required_string(item, "b64_json", "url")
+        return ProviderArtifact(
+            media_type="image",
+            value=value,
+            provider_task_id=status.provider_task_id,
+            request_fingerprint=status.request_fingerprint,
+            raw={"result_keys": tuple(sorted(item))},
+        )
 
 
 class MiniMaxVideoAdapter(ProviderNativeAdapter):
@@ -292,26 +372,9 @@ class MiniMaxVideoAdapter(ProviderNativeAdapter):
     def effective_profile(self) -> ProviderAdapterProfileV1:
         return self._profile_for_model or self.profile
 
-    def capability_profile(self) -> ProviderAdapterProfileV1:
+    @property
+    def active_profile(self) -> ProviderAdapterProfileV1:
         return self.effective_profile
-
-    def validate(
-        self, request: CanonicalProviderRequest, capability: str
-    ) -> AdapterValidationResult:
-        original = self.profile
-        try:
-            self.profile = self.effective_profile
-            return super().validate(request, capability)
-        finally:
-            self.profile = original
-
-    def compile(self, request: CanonicalProviderRequest, resolution: Any) -> NativeProviderRequest:
-        original = self.profile
-        try:
-            self.profile = self.effective_profile
-            return super().compile(request, resolution)
-        finally:
-            self.profile = original
 
     profile = ProviderAdapterProfileV1(
         model_ref="minimax:MiniMax-Hailuo-2.3",
@@ -373,10 +436,13 @@ class MiniMaxVideoAdapter(ProviderNativeAdapter):
         allowed = {"duration", "resolution", "aspect_ratio", "generate_audio"}
         unknown = set(parameters).difference(allowed)
         if unknown:
-            return ("provider_parameter_unsupported",)
+            return ("model_parameter_incompatible",)
         duration = parameters.get("duration")
         if duration is not None and duration not in {6, 10}:
-            return ("provider_duration_unsupported",)
+            return ("model_parameter_incompatible",)
+        resolution = parameters.get("resolution")
+        if resolution is not None and resolution not in {"768P", "1080P"}:
+            return ("model_parameter_incompatible",)
         return ()
 
     def normalize(self, artifact: ProviderArtifact) -> ProviderResult:
