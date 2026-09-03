@@ -51,6 +51,7 @@ from app.schemas.agent_canvas_creative_session import (
     GuidanceCompletionProjectionV2,
     GuidedSessionStateV2,
 )
+from app.schemas.agent_canvas_production_journey import JourneyActionProjectionV2
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
@@ -255,6 +256,13 @@ class DurableNextActionExecutionService:
                         "Editing preparation is unavailable.",
                         stage="next_action_execution",
                     )
+                reserved_editing_action = session.journey.active_action
+                if reserved_editing_action is None:
+                    raise V2PersistenceError(
+                        "guided_editing_action_identity_conflict",
+                        "Editing preparation has no reserved Journey action.",
+                        stage="next_action_execution",
+                    )
                 try:
                     preparation_result = self._editing_preparer(envelope.workflow_id)
                     if not isinstance(preparation_result, EditingPreparationResultV2):
@@ -293,14 +301,28 @@ class DurableNextActionExecutionService:
                 else:
                     lease_guard()
                     current_session = self._conversations.get_guidance_session(envelope.workflow_id)
+                    current_action = current_session.journey.active_action
+                    action_is_current = (
+                        current_action is not None
+                        and current_action.action_id == reserved_editing_action.action_id
+                        and current_action.turn_id == reserved_editing_action.turn_id
+                        and current_action.stage_revision == reserved_editing_action.stage_revision
+                        and current_action.action_kind == reserved_editing_action.action_kind
+                        and current_action.status == reserved_editing_action.status
+                    )
                     self._reconcile_editing_action(
                         current_session,
-                        outcome="prepared",
-                        reason_code="editing_prepared",
-                        evidence_ids=(preparation.receipt_id,),
-                        preparation_receipt_id=preparation.receipt_id,
+                        action=reserved_editing_action,
+                        outcome="prepared" if action_is_current else "superseded",
+                        reason_code=(
+                            "editing_prepared" if action_is_current else "editing_action_superseded"
+                        ),
+                        evidence_ids=(preparation.receipt_id,) if action_is_current else (),
+                        preparation_receipt_id=(
+                            preparation.receipt_id if action_is_current else None
+                        ),
                     )
-                    editing_outcome = "prepared"
+                    editing_outcome = "prepared" if action_is_current else "superseded"
             if journey_action.action == "complete":
                 self._conversations.complete_guidance_session(
                     session.session_id,
@@ -507,6 +529,7 @@ class DurableNextActionExecutionService:
         self,
         session: GuidedSessionStateV2,
         *,
+        action: JourneyActionProjectionV2 | None = None,
         outcome: EditingActionReconciliationOutcomeV1,
         reason_code: str,
         evidence_ids: tuple[str, ...] = (),
@@ -518,7 +541,7 @@ class DurableNextActionExecutionService:
         system_owner_node_id: str | None = None,
         error_code: str | None = None,
     ) -> None:
-        action = session.journey.active_action
+        action = action or session.journey.active_action
         if action is None or action.turn_id is None:
             raise V2PersistenceError(
                 "guided_editing_action_identity_conflict",
