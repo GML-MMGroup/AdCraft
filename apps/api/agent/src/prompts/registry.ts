@@ -125,7 +125,14 @@ function instructionForOperation(operation: string): string {
     return "Repair one stale command plan from the supplied original intent, bounded plan summary, target summaries, and conflict metadata without changing targets implicitly.";
   }
   if (operation === "workflow_conversation") {
-    return "Answer the current workflow conversation turn using only the bounded current context. Do not silently create or modify Canvas state.";
+    return [
+      "Answer the current workflow conversation turn using only the bounded current context.",
+      "Classify the visible reply with answer_kind greeting, progress, clarification, or general.",
+      "For progress, ground the answer in journey_stage, journey_status, awaiting_action, and next_action supplied by Python.",
+      "Do not invent workflow state, revisions, actions, or unavailable progress.",
+      "Leave state_reference absent; Python attaches the exact observed authority atomically after validation.",
+      "Do not silently create or modify Canvas state.",
+    ].join(" ");
   }
   if (operation === "conversation_summary") {
     return "Summarize only durable facts and unresolved objectives needed by a later turn. Exclude private reasoning and unrelated history.";
@@ -140,6 +147,8 @@ function instructionForOperation(operation: string): string {
   if (operation === "author_role_brief") {
     return [
       "Author only the typed creative brief for the current role variant.",
+      "Return one localized editable_prompt in the same structured response as the typed brief.",
+      "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
     ].join(" ");
