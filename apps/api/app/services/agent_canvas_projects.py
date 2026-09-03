@@ -205,6 +205,8 @@ class AgentCanvasProjectService:
                     preview_url=(
                         f"/api/v2/assets/{cover_version.asset_id}/preview"
                         f"?v={cover_version.version_id}&size=320"
+                        if media_type == "image"
+                        else None
                     ),
                     poster_url=(
                         f"/api/v2/assets/{cover_version.asset_id}/poster"
