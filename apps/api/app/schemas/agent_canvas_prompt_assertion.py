@@ -79,6 +79,11 @@ class PromptAssertionEvidenceV1(_PromptAssertionModel):
     @classmethod
     def build(cls, **values: object) -> "PromptAssertionEvidenceV1":
         payload = {"schema_version": "1", **values}
+        # Include newly additive nullable identity fields in the pre-validation
+        # digest so legacy callers and validated model dumps share one canonical
+        # representation.
+        payload.setdefault("character_identity_projection_digest", None)
+        payload.setdefault("scene_environment_projection_digest", None)
         return cls.model_validate({**payload, "evidence_digest": _prefixed_digest(payload)})
 
 
@@ -105,19 +110,22 @@ def safe_prompt_assertion_metadata(
 ) -> dict[str, object]:
     """Project stable prompt-policy identity without creative or source content."""
 
-    return {
+    metadata: dict[str, object] = {
         "prompt_assertion_policy_ref": evidence.policy_ref,
         "prompt_assertion_policy_digest": evidence.policy_digest,
         "prompt_assertion_assertion_ids": list(evidence.assertion_ids),
         "prompt_assertion_evidence_digest": evidence.evidence_digest,
         "prompt_assertion_block_digest": evidence.assertion_block_digest,
-        "prompt_character_identity_projection_digest": (
-            evidence.character_identity_projection_digest
-        ),
-        "prompt_scene_environment_projection_digest": (
-            evidence.scene_environment_projection_digest
-        ),
     }
+    if evidence.character_identity_projection_digest is not None:
+        metadata["prompt_character_identity_projection_digest"] = (
+            evidence.character_identity_projection_digest
+        )
+    if evidence.scene_environment_projection_digest is not None:
+        metadata["prompt_scene_environment_projection_digest"] = (
+            evidence.scene_environment_projection_digest
+        )
+    return metadata
 
 
 def safe_provider_prompt_assertion_metadata(
