@@ -24,20 +24,32 @@ class WorkflowStatusReplyRenderer:
             sections.append(f"已完成：{ready}/{total} 個節點已就緒。")
             if capsule.journey_stage is not None:
                 sections.append(f"目前階段：{capsule.journey_stage}。")
+            elif capsule.guidance_session_id is None:
+                sections.append("目前沒有進行中的引導工作階段。")
             sections.extend(self._current_zh(capsule, traditional=True))
             sections.append(f"剩餘：{remaining} 個節點尚未就緒。")
+            if total > 0 and remaining == 0:
+                sections.append("完整流程已完成。")
         elif language == "zh-CN":
             sections.append(f"已完成：{ready}/{total} 个节点已就绪。")
             if capsule.journey_stage is not None:
                 sections.append(f"当前阶段：{capsule.journey_stage}。")
+            elif capsule.guidance_session_id is None:
+                sections.append("当前没有进行中的引导会话。")
             sections.extend(self._current_zh(capsule, traditional=False))
             sections.append(f"剩余：{remaining} 个节点尚未就绪。")
+            if total > 0 and remaining == 0:
+                sections.append("完整流程已完成。")
         else:
             sections.append(f"Ready: {ready} ready nodes of {total}.")
             if capsule.journey_stage is not None:
                 sections.append(f"Current stage: {capsule.journey_stage}.")
+            elif capsule.guidance_session_id is None:
+                sections.append("No guided session is active.")
             sections.extend(self._current_en(capsule))
             sections.append(f"Remaining: {remaining} nodes ({remaining} remaining).")
+            if total > 0 and remaining == 0:
+                sections.append("The complete process is finished.")
         if capsule.next_valid_action is not None:
             label = capsule.next_valid_action.objective or capsule.next_valid_action.action_kind
             sections.append(
