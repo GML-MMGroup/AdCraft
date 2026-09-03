@@ -85,7 +85,7 @@ class EditingNodeService:
         if node.node_type != "editing":
             raise _error("node_type_mismatch", "Node is not an Editing node.")
         content = EditingNodeContentV2.model_validate(node.structured_content)
-        manifest = self._canonical_manifest(
+        manifest = self._response_manifest(
             workflow,
             node_id,
             content.manifest,
@@ -94,7 +94,7 @@ class EditingNodeService:
         return content.model_copy(
             update={
                 "manifest": manifest,
-                "preview": self._build_preview(workflow, node_id, manifest),
+                "preview": self._preview_from_manifest(workflow, manifest),
             }
         )
 
@@ -168,6 +168,13 @@ class EditingNodeService:
             manifest or current_manifest,
             current_manifest=current_manifest,
         )
+        return self._preview_from_manifest(workflow, selected)
+
+    def _preview_from_manifest(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        selected: EditingManifestV2,
+    ) -> EditingPreviewV2:
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {item.node_id: item for item in workflow.nodes}
         clips: list[EditingPreviewClipV2] = []
@@ -239,6 +246,29 @@ class EditingNodeService:
             ),
             warnings=tuple(warnings),
         )
+
+    def _response_manifest(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+        manifest: EditingManifestV2,
+        *,
+        current_manifest: EditingManifestV2 | None = None,
+    ) -> EditingManifestV2:
+        try:
+            return self._canonical_manifest(
+                workflow,
+                node_id,
+                manifest,
+                current_manifest=current_manifest,
+            )
+        except V2PersistenceError as error:
+            if (
+                error.code != "editing_timeline_duration_invalid"
+                or manifest.timeline_duration_seconds is not None
+            ):
+                raise
+            return manifest
 
     def _canonical_manifest(
         self,
