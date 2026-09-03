@@ -45,6 +45,5 @@ def downgrade() -> None:
         )
         batch.create_check_constraint(
             "ck_projects_cover_source",
-            "cover_source IS NULL OR cover_source IN "
-            "('manual','product_main','migrated')",
+            "cover_source IS NULL OR cover_source IN ('manual','product_main','migrated')",
         )
