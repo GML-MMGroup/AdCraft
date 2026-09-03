@@ -204,11 +204,11 @@ class AgentCanvasProjectService:
                     media_type=media_type,
                     preview_url=(
                         f"/api/v2/assets/{cover_version.asset_id}/preview"
-                        f"?v={cover_version.version_id}"
+                        f"?v={cover_version.version_id}&size=320"
                     ),
                     poster_url=(
                         f"/api/v2/assets/{cover_version.asset_id}/poster"
-                        f"?v={cover_version.version_id}"
+                        f"?v={cover_version.version_id}&size=320"
                         if media_type == "video"
                         else None
                     ),
