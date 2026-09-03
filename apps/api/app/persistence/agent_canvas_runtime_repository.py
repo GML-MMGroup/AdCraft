@@ -1617,9 +1617,7 @@ def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
 
 
 def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
-    frozen_model_resolution_json = cast(
-        str | None, row.get("frozen_model_resolution_json")
-    )
+    frozen_model_resolution_json = cast(str | None, row.get("frozen_model_resolution_json"))
     return ProviderSubmissionIntentV2(
         intent_id=str(row["intent_id"]),
         logical_operation_key=str(row["logical_operation_key"]),
