@@ -275,6 +275,7 @@ class WorkflowActionSummaryV1(_WorkflowContextModel):
     turn_status: str | None = Field(default=None, min_length=1, max_length=80)
     continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
     continuation_status: str | None = Field(default=None, min_length=1, max_length=80)
+    error_code: str | None = Field(default=None, min_length=1, max_length=160)
     leaf_error_code: str | None = Field(default=None, min_length=1, max_length=160)
     awaiting_id: str | None = Field(default=None, min_length=1, max_length=160)
     blocker_class: Literal[
@@ -305,7 +306,7 @@ class WorkflowDocumentReferenceV1(_WorkflowContextModel):
     document_id: str = Field(min_length=1, max_length=160)
     document_kind: Literal["anchor_registry", "storyboard_production_plan"]
     revision: int = Field(ge=1)
-    content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    content_digest: str = Field(pattern=r"^(sha256:)?[a-f0-9]{64}$")
 
 
 class WorkflowContextTruncationV1(_WorkflowContextModel):
