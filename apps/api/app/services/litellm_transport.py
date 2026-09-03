@@ -110,7 +110,6 @@ class LiteLLMTransportAdapter:
         )
         if route is None or not _route_matches(
             profile,
-            gateway_profile,
             route,
             contract_digest,
             projection=self._projection,
@@ -158,7 +157,6 @@ class LiteLLMTransportAdapter:
 
 def _route_matches(
     profile: ProviderAdapterProfileV1,
-    gateway_profile: object,
     route: LiteLLMRouteV1,
     contract_digest: str,
     *,
@@ -169,6 +167,7 @@ def _route_matches(
         and route.provider_model_id == profile.model_ref.split(":", 1)[-1]
         and route.contract_digest == contract_digest
         and profile.gateway_profile.gateway_id == projection.gateway_id
+        and profile.gateway_profile.endpoint == projection.endpoint
         and profile.gateway_profile.projection_digest == projection.projection_digest
     )
 
