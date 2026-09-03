@@ -20,7 +20,10 @@ import {
   type StructuredCompletionResponse,
 } from "./pi-structured-transport.js";
 import type { AgentCredentialSnapshot } from "./python-internal-client.js";
-import type { AgentProviderConformanceBudgetPlanV1 } from "./generated/agent-runtime.js";
+import type {
+  AgentProviderConformanceBudgetPlanV1,
+  ProviderConformanceTargetV1,
+} from "./generated/agent-runtime.js";
 import type { PreparedStructuredModelInput } from "./structured-model-input.js";
 
 export type ConformanceCaseId =
@@ -98,6 +101,13 @@ export interface ConformanceReportV3 {
   readonly operation: string;
   readonly provider: string;
   readonly model_ref: string;
+  readonly provider_model_id: string;
+  readonly adapter_id: string;
+  readonly transport_kind: ProviderConformanceTargetV1["transport_kind"];
+  readonly capability: ProviderConformanceTargetV1["capability"];
+  readonly adapter_revision: string;
+  readonly capability_revision: string;
+  readonly contract_digest: string;
   readonly candidate_structured_transport?:
     AgentCredentialSnapshot["execution_policy"]["structured_transport"];
   readonly started_at: string;
@@ -129,6 +139,7 @@ export interface ConformanceRunOptions {
   readonly run_id: string;
   readonly operation: "decide_turn_intent";
   readonly model_ref: string;
+  readonly target: ProviderConformanceTargetV1;
   readonly output_directory: string;
   readonly budget_plan: AgentProviderConformanceBudgetPlanV1;
   readonly diagnostic_budget_digest: string;
@@ -546,6 +557,13 @@ export async function runProviderConformance(
     operation: options.operation,
     provider: dependencies.prepared.credential.provider,
     model_ref: options.model_ref,
+    provider_model_id: options.target.provider_model_id,
+    adapter_id: options.target.adapter_id,
+    transport_kind: options.target.transport_kind,
+    capability: options.target.capability,
+    adapter_revision: options.target.adapter_revision,
+    capability_revision: options.target.capability_revision,
+    contract_digest: options.target.contract_digest,
     candidate_structured_transport:
       dependencies.prepared.credential.execution_policy.structured_transport,
     started_at: startedAt.toISOString(),
@@ -579,6 +597,13 @@ export function projectConformanceEvidence(value: unknown): ConformanceReportV3 
     operation: report.operation,
     provider: report.provider,
     model_ref: report.model_ref,
+    provider_model_id: report.provider_model_id,
+    adapter_id: report.adapter_id,
+    transport_kind: report.transport_kind,
+    capability: report.capability,
+    adapter_revision: report.adapter_revision,
+    capability_revision: report.capability_revision,
+    contract_digest: report.contract_digest,
     ...(report.candidate_structured_transport
       ? { candidate_structured_transport: report.candidate_structured_transport }
       : {}),
@@ -901,6 +926,10 @@ function renderMarkdown(report: ConformanceReportV3): string {
     "",
     `Diagnostic budget: \`${report.diagnostic_budget_digest}\``,
     "",
+    `Target: \`${report.provider_model_id}\` / \`${report.adapter_id}\` / \`${report.transport_kind}\``,
+    `Target revisions: \`${report.adapter_revision}\` / \`${report.capability_revision}\``,
+    `Contract digest: \`${report.contract_digest}\``,
+    "",
     ...(report.candidate_structured_transport
       ? [`Candidate transport: \`${report.candidate_structured_transport}\``, ""]
       : []),
@@ -1142,6 +1171,17 @@ function isOperatorErrorCode(value: unknown): value is string {
 }
 
 function assertReportInvariants(report: ConformanceReportV3): void {
+  if (
+    !report.provider_model_id ||
+    !report.adapter_id ||
+    !report.transport_kind ||
+    !report.capability ||
+    !report.adapter_revision ||
+    !report.capability_revision ||
+    !/^[a-f0-9]{64}$/.test(report.contract_digest)
+  ) {
+    throw new Error("conformance_report_invalid");
+  }
   const blocked =
     report.schema_version === 3 &&
     report.status === "blocked" &&
