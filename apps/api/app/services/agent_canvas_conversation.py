@@ -211,9 +211,7 @@ def _workflow_conversation_summary(workflow: AgentCanvasWorkflowV2) -> str:
     status_counts: dict[str, int] = {}
     for node in workflow.nodes:
         status_counts[node.status] = status_counts.get(node.status, 0) + 1
-    counts = ", ".join(
-        f"{status}={count}" for status, count in sorted(status_counts.items())
-    )
+    counts = ", ".join(f"{status}={count}" for status, count in sorted(status_counts.items()))
     return f"Canvas nodes: {len(workflow.nodes)} ({counts or 'none'})."
 
 
@@ -2489,8 +2487,7 @@ class AgentConversationService:
         )
         next_action = (
             action_context(
-                "Perform the current journey action "
-                f"{session.journey.active_action.action}."
+                f"Perform the current journey action {session.journey.active_action.action}."
             )
             if session.journey.active_action is not None
             else None
