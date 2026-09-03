@@ -42,6 +42,7 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_editing import EditingPreparationResultV2
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_production_closure import (
     EditingActionReconciliationOutcomeV1,
     EditingActionSystemOwnerKindV1,
@@ -302,6 +303,7 @@ class DurableNextActionExecutionService:
                             outcome=resolution.outcome,
                             reason_code=resolution.reason_code,
                             evidence_ids=resolution.evidence_ids,
+                            awaiting=resolution.awaiting,
                             awaiting_id=resolution.awaiting_id,
                             awaiting_kind=resolution.awaiting_kind,
                             system_owner_kind=resolution.system_owner_kind,
@@ -559,6 +561,7 @@ class DurableNextActionExecutionService:
         reason_code: str,
         evidence_ids: tuple[str, ...] = (),
         preparation_receipt_id: str | None = None,
+        awaiting: GuidanceAwaitingV2 | None = None,
         awaiting_id: str | None = None,
         awaiting_kind: str | None = None,
         system_owner_kind: EditingActionSystemOwnerKindV1 | None = None,
@@ -590,6 +593,7 @@ class DurableNextActionExecutionService:
                     "reason_code": reason_code,
                     "evidence_ids": evidence_ids,
                     "preparation_receipt_id": preparation_receipt_id,
+                    "awaiting": awaiting,
                     "awaiting_id": awaiting_id,
                     "awaiting_kind": awaiting_kind,
                     "system_owner_kind": system_owner_kind,

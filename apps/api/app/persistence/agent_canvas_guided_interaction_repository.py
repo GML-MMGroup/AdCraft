@@ -1753,22 +1753,7 @@ class AgentCanvasGuidedInteractionRepository:
                         "guidance_revision_conflict",
                         "Guidance checkpoint changed before entering the wait.",
                     )
-                connection.execute(
-                    insert(AgentCanvasGuidanceAwaitingRow).values(
-                        awaiting_id=awaiting.awaiting_id,
-                        workflow_id=awaiting.workflow_id,
-                        session_id=awaiting.session_id,
-                        checkpoint_id=awaiting.checkpoint_id,
-                        kind=awaiting.kind,
-                        requires_user_action=awaiting.requires_user_action,
-                        resume_policy=awaiting.resume_policy,
-                        interaction_id=None,
-                        node_ids_json=_dump(list(awaiting.node_ids)),
-                        stage=awaiting.stage,
-                        stage_revision=awaiting.stage_revision,
-                        created_at=awaiting.created_at.isoformat(),
-                    )
-                )
+                insert_guidance_awaiting_in_transaction(connection, self._events, awaiting)
                 connection.execute(
                     update(AgentCanvasGuidanceSessionRow)
                     .where(
@@ -1782,24 +1767,6 @@ class AgentCanvasGuidedInteractionRepository:
                         revision=expected_session_revision + 1,
                         updated_at=awaiting.created_at.isoformat(),
                     )
-                )
-                self._events.append_in_transaction(
-                    connection,
-                    V2EventInsert(
-                        workflow_id=awaiting.workflow_id,
-                        event_type="guidance_awaiting_entered",
-                        transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:entered",
-                        created_at=awaiting.created_at.isoformat(),
-                        payload={
-                            "awaiting_id": awaiting.awaiting_id,
-                            "session_id": awaiting.session_id,
-                            "checkpoint_id": awaiting.checkpoint_id,
-                            "kind": awaiting.kind,
-                            "resume_policy": awaiting.resume_policy,
-                            "interaction_id": None,
-                            "node_ids": list(awaiting.node_ids),
-                        },
-                    ),
                 )
                 connection.commit()
             except BaseException:
@@ -2538,6 +2505,57 @@ def _insert_interaction_and_awaiting_in_transaction(
             stage_revision=awaiting.stage_revision,
             created_at=awaiting.created_at.isoformat(),
         )
+    )
+
+
+def insert_guidance_awaiting_in_transaction(
+    connection,
+    events: EventRepository,
+    awaiting: GuidanceAwaitingV2,
+) -> None:
+    """Insert one non-interaction Guidance wait in an owning transaction."""
+
+    existing = _awaiting_for_workflow(connection, awaiting.workflow_id)
+    if existing is not None:
+        if existing == awaiting:
+            return
+        raise _error(
+            "guidance_awaiting_conflict",
+            "Another Guidance wait is current for this Workflow.",
+        )
+    connection.execute(
+        insert(AgentCanvasGuidanceAwaitingRow).values(
+            awaiting_id=awaiting.awaiting_id,
+            workflow_id=awaiting.workflow_id,
+            session_id=awaiting.session_id,
+            checkpoint_id=awaiting.checkpoint_id,
+            kind=awaiting.kind,
+            requires_user_action=awaiting.requires_user_action,
+            resume_policy=awaiting.resume_policy,
+            interaction_id=None,
+            node_ids_json=_dump(list(awaiting.node_ids)),
+            stage=awaiting.stage,
+            stage_revision=awaiting.stage_revision,
+            created_at=awaiting.created_at.isoformat(),
+        )
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=awaiting.workflow_id,
+            event_type="guidance_awaiting_entered",
+            transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:entered",
+            created_at=awaiting.created_at.isoformat(),
+            payload={
+                "awaiting_id": awaiting.awaiting_id,
+                "session_id": awaiting.session_id,
+                "checkpoint_id": awaiting.checkpoint_id,
+                "kind": awaiting.kind,
+                "resume_policy": awaiting.resume_policy,
+                "interaction_id": None,
+                "node_ids": list(awaiting.node_ids),
+            },
+        ),
     )
 
 

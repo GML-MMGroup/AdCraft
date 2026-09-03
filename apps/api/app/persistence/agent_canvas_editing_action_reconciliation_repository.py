@@ -11,6 +11,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.agent_canvas_conversation_repository import (
     guidance_session_from_row,
 )
+from app.persistence.agent_canvas_guided_interaction_repository import (
+    insert_guidance_awaiting_in_transaction,
+)
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
@@ -94,6 +97,13 @@ class AgentCanvasEditingActionReconciliationRepository:
                         connection.commit()
                         return receipt
                     self._require_current_action(command, session)
+                    if command.outcome == "waiting_user":
+                        assert command.awaiting is not None
+                        insert_guidance_awaiting_in_transaction(
+                            connection,
+                            self._events,
+                            command.awaiting,
+                        )
                     self._require_outcome_evidence(connection, command)
                     next_revision = command.expected_session_revision + 1
                     next_journey = session.journey.model_copy(

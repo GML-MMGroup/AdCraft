@@ -15,9 +15,6 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
-from app.persistence.agent_canvas_guided_interaction_repository import (
-    AgentCanvasGuidedInteractionRepository,
-)
 from app.persistence.agent_canvas_guided_media_resume_repository import (
     AgentCanvasGuidedMediaResumeRepository,
 )
@@ -36,7 +33,6 @@ from app.schemas.agent_canvas_production_closure import (
     EditingActionReconciliationOutcomeV1,
     EditingActionSystemOwnerKindV1,
 )
-from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 
 
 @dataclass(frozen=True)
@@ -47,6 +43,7 @@ class EditingActionOutcomeResolution:
     evidence_ids: tuple[str, ...] = ()
     awaiting_id: str | None = None
     awaiting_kind: str | None = None
+    awaiting: GuidanceAwaitingV2 | None = None
     system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
     system_owner_id: str | None = None
     system_owner_node_id: str | None = None
@@ -72,10 +69,6 @@ class GuidedEditingActionOutcomeResolver:
         self._media_resume = AgentCanvasGuidedMediaResumeRepository(database, events)
         self._receipts = AgentCanvasProductionClosureRepository(database)
         self._settings = AgentCanvasExecutionSettingsRepository(database, events)
-        self._awaiting = GuidanceAwaitingService(
-            AgentCanvasGuidedInteractionRepository(database, events),
-            conversations,
-        )
 
     def resolve(
         self,
@@ -94,6 +87,7 @@ class GuidedEditingActionOutcomeResolver:
                 evidence_ids=(current.awaiting.awaiting_id, *current.awaiting.node_ids),
                 awaiting_id=current.awaiting.awaiting_id,
                 awaiting_kind=current.awaiting.kind,
+                awaiting=current.awaiting,
             )
         session = current
         blockers = _blockers(error)
@@ -206,20 +200,14 @@ class GuidedEditingActionOutcomeResolver:
             stage_revision=action.stage_revision,
             created_at=datetime.now(timezone.utc),
         )
-        persisted = self._awaiting.enter_manual_node_run(
-            awaiting,
-            expected_session_revision=session.revision,
-            next_action_requires_ready_media=True,
-            user_requested_pause=False,
-        )
-        current = self._conversations.get_guidance_session(session.workflow_id)
         return EditingActionOutcomeResolution(
-            session=current,
+            session=session,
             outcome="waiting_user",
             reason_code="editing_requires_manual_node_run",
-            evidence_ids=(persisted.awaiting_id, *node_ids),
-            awaiting_id=persisted.awaiting_id,
+            evidence_ids=(awaiting.awaiting_id, *node_ids),
+            awaiting_id=awaiting.awaiting_id,
             awaiting_kind="manual_node_run",
+            awaiting=awaiting,
         )
 
     @staticmethod

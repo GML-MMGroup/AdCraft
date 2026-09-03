@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
+
 
 MediaRoleV1 = Literal["image", "video", "audio"]
 ConfirmationActorV1 = Literal["user", "agent"]
@@ -190,6 +192,7 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
     reason_code: str = Field(min_length=1, max_length=120)
     evidence_ids: tuple[str, ...] = Field(default=(), max_length=16)
     preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    awaiting: GuidanceAwaitingV2 | None = None
     awaiting_id: str | None = Field(default=None, max_length=160)
     awaiting_kind: Literal["media_review", "manual_node_run"] | None = None
     system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
@@ -201,7 +204,11 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
     @model_validator(mode="after")
     def validate_outcome_evidence(self) -> "GuidedEditingActionReconciliationCommandV1":
         has_preparation = self.preparation_receipt_id is not None
-        has_wait = self.awaiting_id is not None or self.awaiting_kind is not None
+        has_wait = (
+            self.awaiting is not None
+            or self.awaiting_id is not None
+            or self.awaiting_kind is not None
+        )
         has_system_owner = any(
             value is not None
             for value in (
@@ -218,6 +225,13 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
             if (
                 self.awaiting_id is None
                 or self.awaiting_kind is None
+                or self.awaiting is None
+                or self.awaiting.awaiting_id != self.awaiting_id
+                or self.awaiting.kind != self.awaiting_kind
+                or self.awaiting.workflow_id != self.workflow_id
+                or self.awaiting.session_id != self.session_id
+                or self.awaiting.stage != "editing"
+                or self.awaiting.stage_revision != self.action_stage_revision
                 or has_preparation
                 or has_system_owner
                 or has_error
