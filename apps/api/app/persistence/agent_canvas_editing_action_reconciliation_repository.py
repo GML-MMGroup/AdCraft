@@ -17,19 +17,23 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasAutomaticRunCommandRow,
     AgentCanvasExecutionMemberRow,
+    AgentCanvasExecutionSettingsRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidedMediaResumeDeliveryRow,
     AgentCanvasGuidedProductionReceiptRow,
     AgentCanvasPostReadyEffectRow,
+    AgentWorkingDocumentRow,
 )
 from app.schemas.agent_canvas_production_closure import (
+    GuidedEditingPreparationReceiptV1,
     GuidedMediaConfirmationV1,
     GuidedEditingActionReconciliationCommandV1,
     GuidedEditingActionReconciliationReceiptV1,
@@ -189,16 +193,31 @@ class AgentCanvasEditingActionReconciliationRepository:
     @staticmethod
     def _require_outcome_evidence(connection, command) -> None:
         if command.outcome == "prepared":
-            receipt_id = connection.execute(
-                select(AgentCanvasGuidedProductionReceiptRow.receipt_id).where(
+            receipt_row = connection.execute(
+                select(
+                    AgentCanvasGuidedProductionReceiptRow.receipt_id,
+                    AgentCanvasGuidedProductionReceiptRow.payload_json,
+                ).where(
                     AgentCanvasGuidedProductionReceiptRow.receipt_type == "editing_preparation",
                     AgentCanvasGuidedProductionReceiptRow.receipt_id
                     == command.preparation_receipt_id,
                     AgentCanvasGuidedProductionReceiptRow.workflow_id == command.workflow_id,
                 )
-            ).scalar_one_or_none()
-            if receipt_id is None or str(receipt_id) not in command.evidence_ids:
+            ).one_or_none()
+            if receipt_row is None or str(receipt_row[0]) not in command.evidence_ids:
                 raise _evidence_error()
+            preparation = GuidedEditingPreparationReceiptV1.model_validate_json(
+                str(receipt_row[1])
+            )
+            if (
+                preparation.plan_document_id != command.plan_document_id
+                or preparation.plan_revision != command.plan_revision
+            ):
+                raise _evidence_error()
+            AgentCanvasEditingActionReconciliationRepository._require_current_plan(
+                connection,
+                command,
+            )
             return
         if command.outcome == "waiting_user":
             awaiting_id = connection.execute(
@@ -217,12 +236,25 @@ class AgentCanvasEditingActionReconciliationRepository:
             return
         if command.outcome != "system_deferred":
             return
-        table, identity_column, state_column, node_column, active_states = {
+        AgentCanvasEditingActionReconciliationRepository._require_current_plan(
+            connection,
+            command,
+            node_id=command.system_owner_node_id,
+        )
+        mode = connection.execute(
+            select(AgentCanvasExecutionSettingsRow.media_execution_mode).where(
+                AgentCanvasExecutionSettingsRow.workflow_id == command.workflow_id
+            )
+        ).scalar_one_or_none()
+        if mode is None or str(mode) != command.media_execution_mode:
+            raise _evidence_error()
+        table, identity_column, state_column, node_column, generation_column, active_states = {
             "execution_member": (
                 AgentCanvasExecutionMemberRow,
                 AgentCanvasExecutionMemberRow.member_id,
                 AgentCanvasExecutionMemberRow.state,
                 AgentCanvasExecutionMemberRow.node_id,
+                AgentCanvasExecutionMemberRow.attempt_no,
                 ("queued", "waiting", "running"),
             ),
             "automatic_run": (
@@ -230,6 +262,7 @@ class AgentCanvasEditingActionReconciliationRepository:
                 AgentCanvasAutomaticRunCommandRow.command_id,
                 AgentCanvasAutomaticRunCommandRow.state,
                 AgentCanvasAutomaticRunCommandRow.node_id,
+                AgentCanvasAutomaticRunCommandRow.lease_generation,
                 ("pending", "claimed"),
             ),
             "post_ready_effect": (
@@ -237,6 +270,7 @@ class AgentCanvasEditingActionReconciliationRepository:
                 AgentCanvasPostReadyEffectRow.effect_id,
                 AgentCanvasPostReadyEffectRow.status,
                 AgentCanvasPostReadyEffectRow.node_id,
+                AgentCanvasPostReadyEffectRow.lease_generation,
                 ("queued", "running"),
             ),
             "guided_media_resume": (
@@ -244,10 +278,11 @@ class AgentCanvasEditingActionReconciliationRepository:
                 AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id,
                 AgentCanvasGuidedMediaResumeDeliveryRow.status,
                 None,
+                AgentCanvasGuidedMediaResumeDeliveryRow.lease_generation,
                 ("queued", "running"),
             ),
         }[command.system_owner_kind]
-        columns = [identity_column]
+        columns = [identity_column, generation_column]
         if node_column is not None:
             columns.append(node_column)
         owner = connection.execute(
@@ -257,10 +292,14 @@ class AgentCanvasEditingActionReconciliationRepository:
                 state_column.in_(active_states),
             )
         ).one_or_none()
-        if owner is None or str(owner[0]) not in command.evidence_ids:
+        if (
+            owner is None
+            or str(owner[0]) not in command.evidence_ids
+            or int(owner[1]) != command.system_owner_generation
+        ):
             raise _evidence_error()
         if node_column is not None:
-            if str(owner[1]) != command.system_owner_node_id:
+            if str(owner[2]) != command.system_owner_node_id:
                 raise _evidence_error()
             return
         confirmation_id = connection.execute(
@@ -279,6 +318,32 @@ class AgentCanvasEditingActionReconciliationRepository:
             raise _evidence_error()
         confirmation = GuidedMediaConfirmationV1.model_validate(json.loads(str(payload_json)))
         if confirmation.node_id != command.system_owner_node_id:
+            raise _evidence_error()
+
+    @staticmethod
+    def _require_current_plan(connection, command, *, node_id: str | None = None) -> None:
+        row = (
+            connection.execute(
+                select(AgentWorkingDocumentRow).where(
+                    AgentWorkingDocumentRow.document_id == command.plan_document_id,
+                    AgentWorkingDocumentRow.workflow_id == command.workflow_id,
+                    AgentWorkingDocumentRow.guidance_session_id == command.session_id,
+                    AgentWorkingDocumentRow.document_kind == "storyboard_production_plan",
+                    AgentWorkingDocumentRow.revision == command.plan_revision,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None or str(row["document_id"]) not in command.evidence_ids:
+            raise _evidence_error()
+        document = AgentWorkingDocumentRepository.validate_document_row(row)
+        if node_id is None:
+            return
+        planned_nodes = getattr(document.content, "planned_nodes", None)
+        if planned_nodes is None:
+            planned_nodes = getattr(document.content, "node_records", ())
+        if not any(item.node_id == node_id for item in planned_nodes):
             raise _evidence_error()
 
     def _persist_receipt_and_event(

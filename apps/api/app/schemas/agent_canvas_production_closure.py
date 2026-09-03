@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
+from app.schemas.agent_canvas_execution_settings import MediaExecutionModeV2
 
 
 MediaRoleV1 = Literal["image", "video", "audio"]
@@ -192,18 +193,23 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
     reason_code: str = Field(min_length=1, max_length=120)
     evidence_ids: tuple[str, ...] = Field(default=(), max_length=16)
     preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    plan_document_id: str | None = Field(default=None, max_length=160)
+    plan_revision: int | None = Field(default=None, ge=1)
+    media_execution_mode: MediaExecutionModeV2 | None = None
     awaiting: GuidanceAwaitingV2 | None = None
     awaiting_id: str | None = Field(default=None, max_length=160)
     awaiting_kind: Literal["media_review", "manual_node_run"] | None = None
     system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
     system_owner_id: str | None = Field(default=None, max_length=160)
     system_owner_node_id: str | None = Field(default=None, max_length=160)
+    system_owner_generation: int | None = Field(default=None, ge=0)
     error_code: str | None = Field(default=None, max_length=120)
     reconciled_at: datetime
 
     @model_validator(mode="after")
     def validate_outcome_evidence(self) -> "GuidedEditingActionReconciliationCommandV1":
         has_preparation = self.preparation_receipt_id is not None
+        has_plan = self.plan_document_id is not None or self.plan_revision is not None
         has_wait = (
             self.awaiting is not None
             or self.awaiting_id is not None
@@ -215,12 +221,22 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
                 self.system_owner_kind,
                 self.system_owner_id,
                 self.system_owner_node_id,
+                self.system_owner_generation,
             )
         )
+        has_execution_mode = self.media_execution_mode is not None
         has_error = self.error_code is not None
         if self.outcome == "prepared":
-            if not has_preparation or has_wait or has_system_owner or has_error:
-                raise ValueError("prepared requires only a preparation receipt")
+            if (
+                not has_preparation
+                or self.plan_document_id is None
+                or self.plan_revision is None
+                or has_wait
+                or has_system_owner
+                or has_execution_mode
+                or has_error
+            ):
+                raise ValueError("prepared requires a preparation receipt and current Plan")
         elif self.outcome == "waiting_user":
             if (
                 self.awaiting_id is None
@@ -233,7 +249,9 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
                 or self.awaiting.stage != "editing"
                 or self.awaiting.stage_revision != self.action_stage_revision
                 or has_preparation
+                or has_plan
                 or has_system_owner
+                or has_execution_mode
                 or has_error
             ):
                 raise ValueError("waiting_user requires only typed awaiting authority")
@@ -242,15 +260,33 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
                 self.system_owner_kind is None
                 or self.system_owner_id is None
                 or self.system_owner_node_id is None
+                or self.system_owner_generation is None
+                or self.plan_document_id is None
+                or self.plan_revision is None
+                or self.media_execution_mode is None
                 or has_preparation
                 or has_wait
                 or has_error
             ):
                 raise ValueError("system_deferred requires only exact system ownership")
         elif self.outcome == "failed":
-            if not has_error or has_preparation or has_wait or has_system_owner:
+            if (
+                not has_error
+                or has_preparation
+                or has_plan
+                or has_wait
+                or has_system_owner
+                or has_execution_mode
+            ):
                 raise ValueError("failed requires only a stable error code")
-        elif has_preparation or has_wait or has_system_owner or has_error:
+        elif (
+            has_preparation
+            or has_plan
+            or has_wait
+            or has_system_owner
+            or has_execution_mode
+            or has_error
+        ):
             raise ValueError("superseded cannot claim current outcome authority")
         return self
 

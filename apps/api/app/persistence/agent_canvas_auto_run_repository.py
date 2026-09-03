@@ -146,6 +146,20 @@ class AgentCanvasAutomaticRunRepository:
             raise _unavailable_error() from error
         return _command(row) if row is not None else None
 
+    def get_lease_generation(self, command_id: str) -> int | None:
+        """Return the current private claim generation for one command."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                generation = connection.execute(
+                    select(AgentCanvasAutomaticRunCommandRow.lease_generation).where(
+                        AgentCanvasAutomaticRunCommandRow.command_id == command_id
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return int(generation) if generation is not None else None
+
     def list_for_workflow(self, workflow_id: str) -> tuple[AutomaticRunCommandV2, ...]:
         try:
             with self._database.engine.connect() as connection:

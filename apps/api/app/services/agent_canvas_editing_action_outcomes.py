@@ -33,6 +33,7 @@ from app.schemas.agent_canvas_production_closure import (
     EditingActionReconciliationOutcomeV1,
     EditingActionSystemOwnerKindV1,
 )
+from app.schemas.agent_canvas_execution_settings import MediaExecutionModeV2
 
 
 @dataclass(frozen=True)
@@ -41,12 +42,16 @@ class EditingActionOutcomeResolution:
     outcome: EditingActionReconciliationOutcomeV1
     reason_code: str
     evidence_ids: tuple[str, ...] = ()
+    plan_document_id: str | None = None
+    plan_revision: int | None = None
+    media_execution_mode: MediaExecutionModeV2 | None = None
     awaiting_id: str | None = None
     awaiting_kind: str | None = None
     awaiting: GuidanceAwaitingV2 | None = None
     system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
     system_owner_id: str | None = None
     system_owner_node_id: str | None = None
+    system_owner_generation: int | None = None
     error_code: str | None = None
 
 
@@ -137,17 +142,29 @@ class GuidedEditingActionOutcomeResolver:
                 error_code="guided_editing_automatic_work_orphaned",
             )
         if owners:
-            owner_kind, owner_id, owner_node_id = sorted(
+            plan_authority = _plan_authority(error)
+            if plan_authority is None:
+                return self._failed(error, session, specific[0] if specific else None)
+            owner_kind, owner_id, owner_node_id, owner_generation = sorted(
                 owners, key=lambda item: (_OWNER_ORDER[item[0]], item[1])
             )[0]
+            settings = self._settings.get_or_create_manual(
+                session.workflow_id,
+                now=datetime.now(timezone.utc),
+            )
+            plan_document_id, plan_revision = plan_authority
             return EditingActionOutcomeResolution(
                 session=session,
                 outcome="system_deferred",
                 reason_code="editing_work_owned",
-                evidence_ids=(owner_id, owner_node_id),
+                evidence_ids=(owner_id, owner_node_id, plan_document_id),
+                plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
+                media_execution_mode=settings.media_execution_mode,
                 system_owner_kind=owner_kind,
                 system_owner_id=owner_id,
                 system_owner_node_id=owner_node_id,
+                system_owner_generation=owner_generation,
             )
         return self._failed(error, session, specific[0] if specific else None)
 
@@ -155,22 +172,29 @@ class GuidedEditingActionOutcomeResolver:
         self,
         workflow_id: str,
         node_id: str,
-    ) -> tuple[EditingActionSystemOwnerKindV1, str, str] | None:
+    ) -> tuple[EditingActionSystemOwnerKindV1, str, str, int] | None:
         for member in self._runtime.list_latest_members_for_workflow(workflow_id):
             if member.node_id == node_id and member.state in {"queued", "waiting", "running"}:
-                return "execution_member", member.member_id, node_id
+                return "execution_member", member.member_id, node_id, member.attempt_no
         for command in self._automatic.list_for_workflow(workflow_id):
             if command.node_id == node_id and command.state in {"pending", "claimed"}:
-                return "automatic_run", command.command_id, node_id
+                generation = self._automatic.get_lease_generation(command.command_id)
+                if generation is not None:
+                    return "automatic_run", command.command_id, node_id, generation
         for effect in self._post_ready.list_for_workflow(workflow_id):
             if effect.node_id == node_id and effect.status in {"queued", "running"}:
-                return "post_ready_effect", effect.effect_id, node_id
+                return "post_ready_effect", effect.effect_id, node_id, effect.lease_generation
         for delivery in self._media_resume.list_for_workflow(workflow_id):
             if delivery.status not in {"queued", "running"}:
                 continue
             confirmation = self._receipts.get_confirmation(delivery.confirmation_id)
             if confirmation.node_id == node_id:
-                return "guided_media_resume", delivery.delivery_id, node_id
+                return (
+                    "guided_media_resume",
+                    delivery.delivery_id,
+                    node_id,
+                    delivery.lease_generation,
+                )
         return None
 
     def _enter_manual_wait(
@@ -244,6 +268,20 @@ def _blockers(error: V2PersistenceError) -> tuple[dict[str, object], ...]:
     if not isinstance(value, list):
         return ()
     return tuple(item for item in value if isinstance(item, dict))
+
+
+def _plan_authority(error: V2PersistenceError) -> tuple[str, int] | None:
+    document_id = error.details.get("plan_document_id")
+    revision = error.details.get("plan_revision")
+    if (
+        not isinstance(document_id, str)
+        or not document_id
+        or not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 1
+    ):
+        return None
+    return document_id, revision
 
 
 def _ordered(blockers: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:

@@ -328,10 +328,18 @@ class DurableNextActionExecutionService:
                         reason_code=(
                             "editing_prepared" if action_is_current else "editing_action_superseded"
                         ),
-                        evidence_ids=(preparation.receipt_id,) if action_is_current else (),
+                        evidence_ids=(
+                            (preparation.receipt_id, preparation.plan_document_id)
+                            if action_is_current
+                            else ()
+                        ),
                         preparation_receipt_id=(
                             preparation.receipt_id if action_is_current else None
                         ),
+                        plan_document_id=(
+                            preparation.plan_document_id if action_is_current else None
+                        ),
+                        plan_revision=preparation.plan_revision if action_is_current else None,
                     )
                     editing_outcome = "prepared" if action_is_current else "superseded"
             if journey_action.action == "complete":
@@ -587,12 +595,16 @@ class DurableNextActionExecutionService:
             outcome=resolution.outcome,
             reason_code=resolution.reason_code,
             evidence_ids=resolution.evidence_ids,
+            plan_document_id=resolution.plan_document_id,
+            plan_revision=resolution.plan_revision,
+            media_execution_mode=resolution.media_execution_mode,
             awaiting=resolution.awaiting,
             awaiting_id=resolution.awaiting_id,
             awaiting_kind=resolution.awaiting_kind,
             system_owner_kind=resolution.system_owner_kind,
             system_owner_id=resolution.system_owner_id,
             system_owner_node_id=resolution.system_owner_node_id,
+            system_owner_generation=resolution.system_owner_generation,
             error_code=resolution.error_code,
         )
 
@@ -621,12 +633,16 @@ class DurableNextActionExecutionService:
         reason_code: str,
         evidence_ids: tuple[str, ...] = (),
         preparation_receipt_id: str | None = None,
+        plan_document_id: str | None = None,
+        plan_revision: int | None = None,
+        media_execution_mode: str | None = None,
         awaiting: GuidanceAwaitingV2 | None = None,
         awaiting_id: str | None = None,
         awaiting_kind: str | None = None,
         system_owner_kind: EditingActionSystemOwnerKindV1 | None = None,
         system_owner_id: str | None = None,
         system_owner_node_id: str | None = None,
+        system_owner_generation: int | None = None,
         error_code: str | None = None,
     ) -> None:
         action = action or session.journey.active_action
@@ -653,12 +669,16 @@ class DurableNextActionExecutionService:
                     "reason_code": reason_code,
                     "evidence_ids": evidence_ids,
                     "preparation_receipt_id": preparation_receipt_id,
+                    "plan_document_id": plan_document_id,
+                    "plan_revision": plan_revision,
+                    "media_execution_mode": media_execution_mode,
                     "awaiting": awaiting,
                     "awaiting_id": awaiting_id,
                     "awaiting_kind": awaiting_kind,
                     "system_owner_kind": system_owner_kind,
                     "system_owner_id": system_owner_id,
                     "system_owner_node_id": system_owner_node_id,
+                    "system_owner_generation": system_owner_generation,
                     "error_code": error_code,
                     "reconciled_at": datetime.now(timezone.utc),
                 }
