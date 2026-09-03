@@ -258,6 +258,7 @@ from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
 )
 from app.services.agent_canvas_editing import EditingInputResolver, EditingNodeService
+from app.services.agent_canvas_editing_response_projector import EditingResponseProjector
 from app.services.agent_canvas_editing_export import EditingExportService
 from app.services.agent_canvas_editing_commit import AgentCanvasEditingExportCommitService
 from app.services.agent_canvas_ad_media import (
@@ -487,6 +488,7 @@ class AgentCanvasRuntime:
     post_ready_effects: AgentCanvasPostReadyEffectWorker
     post_ready_checkpoints: AgentCanvasPostReadyCheckpointService
     editing_nodes: EditingNodeService
+    editing_responses: EditingResponseProjector
     editing_exports: EditingExportService
     editing_output_reuse: EditingExportOutputReuseService
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -1136,6 +1138,7 @@ def create_agent_canvas_runtime(
         result_committer=result_committer,
     )
     editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
+    editing_responses = EditingResponseProjector(editing_nodes)
     editing_commit_service = AgentCanvasEditingExportCommitService(
         AgentCanvasEditingExportCommitRepository(
             database,
@@ -1760,6 +1763,7 @@ def create_agent_canvas_runtime(
         post_ready_effects=post_ready_effects,
         post_ready_checkpoints=post_ready_checkpoints,
         editing_nodes=editing_nodes,
+        editing_responses=editing_responses,
         editing_exports=editing_exports,
         editing_output_reuse=editing_output_reuse,
         editing_export_repository=editing_export_repository,
@@ -1916,7 +1920,9 @@ def get_workflow(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> AgentCanvasWorkflowV2:
     try:
-        workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2065,6 +2071,9 @@ def create_node(
 ) -> CanvasMutationResponseV2:
     expected = _expected_revision(if_match, workflow_id)
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         runtime.ad_media_validation.validate(
             node_type=request.node_type,
             semantic_role=request.semantic_role,
@@ -2081,6 +2090,8 @@ def create_node(
             expected_revision=expected,
         )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
+        node = _projected_node(workflow, node.node_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2128,15 +2139,7 @@ def get_node(
 ) -> CanvasNodeV2:
     try:
         node = runtime.workflows.get_node(workflow_id, node_id)
-        if node.node_type == "editing":
-            return node.model_copy(
-                update={
-                    "structured_content": runtime.editing_nodes.content(
-                        workflow_id, node_id
-                    ).model_dump(mode="json")
-                }
-            )
-        return node
+        return runtime.editing_responses.project_node(node)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -2247,6 +2250,9 @@ def patch_node(
 ) -> CanvasMutationResponseV2:
     try:
         current = runtime.workflows.get_node(workflow_id, node_id)
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         expected_revision = _expected_revision(if_match, workflow_id)
         if current.node_type == "editing" and request.structured_content is not None:
             raw_manifest = request.structured_content.get("manifest", request.structured_content)
@@ -2281,6 +2287,8 @@ def patch_node(
                 expected_revision=expected_revision,
             )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
+        node = _projected_node(workflow, node.node_id)
     except ValueError as error:
         raise _http_error(
             "editing_manifest_invalid",
@@ -2361,11 +2369,15 @@ def delete_node(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         workflow = runtime.nodes.delete(
             workflow_id,
             node_id,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2388,11 +2400,17 @@ def create_connected_node(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         created = runtime.connected_authoring.create_connected_node(
             workflow_id,
             request,
             expected_revision=_expected_revision(if_match, workflow_id),
             idempotency_key=idempotency_key,
+        )
+        created = created.model_copy(
+            update={"node": runtime.editing_responses.project_node(created.node)}
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
@@ -2416,6 +2434,9 @@ def patch_binding(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         mutation = runtime.bindings.patch(
             workflow_id,
             binding_id,
@@ -2453,12 +2474,16 @@ def create_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         binding = runtime.bindings.create(
             workflow_id,
             request,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2477,11 +2502,15 @@ def delete_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
         workflow = runtime.bindings.delete(
             workflow_id,
             binding_id,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -3927,6 +3956,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_export_not_ready": 409,
         "editing_export_asset_unreadable": 409,
         "editing_export_import_conflict": 409,
+        "editing_manifest_projection_invalid": 500,
         "source_only_node_not_runnable": 409,
         "target_not_found": 404,
         "target_type_not_supported": 422,
@@ -4121,6 +4151,10 @@ def _http_error(
         status_code=status_code,
         detail={"code": code, "message": message, "details": details or {}},
     )
+
+
+def _projected_node(workflow: AgentCanvasWorkflowV2, node_id: str) -> CanvasNodeV2:
+    return next(node for node in workflow.nodes if node.node_id == node_id)
 
 
 def _provider_download_mime_type(media_type: str, path: Path | str) -> str:
