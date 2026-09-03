@@ -58,9 +58,14 @@ class ProjectCoverBackfillDecision(BaseModel):
     project_id: str
     workflow_id: str
     outcome: str
+    source: ProjectCoverSourceV2 | None = None
     asset_id: str | None = None
     version_id: str | None = None
     candidate_count: int = 0
+    reason: str
+    changed: bool = False
+    conflict: bool = False
+    rendition_prewarm: str = "not_requested"
 
 
 class ProjectCoverBackfillResult(BaseModel):
@@ -160,8 +165,8 @@ class ProjectCoverAuthorityService:
         conflicts = 0
         for project in projects:
             decision = self._decide(project)
-            decisions.append(decision)
-            if not apply or decision.outcome not in {"ready", "none"}:
+            if not apply or not decision.changed:
+                decisions.append(decision)
                 continue
             now = datetime.now(timezone.utc).isoformat()
             changes: dict[str, object]
@@ -170,7 +175,7 @@ class ProjectCoverAuthorityService:
                     "cover_asset_id": decision.asset_id,
                     "cover_version_id": decision.version_id,
                     "cover_state": "ready",
-                    "cover_source": "migrated",
+                    "cover_source": decision.source,
                     "cover_updated_at": now,
                 }
             else:
@@ -178,7 +183,7 @@ class ProjectCoverAuthorityService:
                     "cover_asset_id": None,
                     "cover_version_id": None,
                     "cover_state": "none",
-                    "cover_source": "migrated",
+                    "cover_source": None,
                     "cover_updated_at": now,
                 }
             try:
@@ -192,6 +197,10 @@ class ProjectCoverAuthorityService:
                 if error.code != "project_state_conflict":
                     raise
                 conflicts += 1
+                decision = decision.model_copy(
+                    update={"changed": False, "conflict": True, "reason": "project_cas_conflict"}
+                )
+            decisions.append(decision)
 
         return ProjectCoverBackfillResult(
             mode="apply" if apply else "dry-run",
@@ -230,11 +239,12 @@ class ProjectCoverAuthorityService:
         return tuple(items)
 
     def _decide(self, project: ProjectCatalogRecord) -> ProjectCoverBackfillDecision:
-        if project.cover_state in {"ready", "none"}:
+        if project.cover_source == "manual":
             return ProjectCoverBackfillDecision(
                 project_id=project.project_id,
                 workflow_id=project.workflow_id,
                 outcome="skipped",
+                reason="manual_protected",
             )
 
         versions = tuple(
@@ -242,41 +252,66 @@ class ProjectCoverAuthorityService:
             for version in self._assets.list_versions_for_workflow(project.workflow_id)
             if _eligible_media(version)
         )
-        if project.cover_asset_id is not None:
-            existing = _latest_versions_by_asset(
-                version for version in versions if version.asset_id == project.cover_asset_id
-            )
-            if len(existing) == 1:
-                version = existing[0]
-                return _ready_decision(project, version, candidate_count=1)
-
         workflow = self._workflows.get_workflow(project.workflow_id)
-        node_roles: dict[str, str] = {}
-        for node in workflow.nodes:
-            role = _node_product_role(node)
-            if role is not None:
-                node_roles[node.node_id] = role
-                if node.output_asset_id is not None:
-                    node_roles[node.output_asset_id] = role
-        candidates = _latest_versions_by_asset(
-            version
+        candidates = tuple(
+            candidate
             for version in versions
-            if _semantic_role(version, node_roles) in {"product_main", "product_main_image"}
+            if (candidate := _candidate_for_version(workflow, version)) is not None
         )
-        if not candidates:
-            return ProjectCoverBackfillDecision(
-                project_id=project.project_id,
-                workflow_id=project.workflow_id,
-                outcome="none" if not versions else "unresolved",
+        selected = min(candidates, key=lambda item: item.rank, default=None)
+        if selected is None:
+            outcome = "none" if not versions else "unresolved"
+            changed = outcome == "none" and (
+                project.cover_state != "none"
+                or project.cover_source is not None
+                or project.cover_asset_id is not None
+                or project.cover_version_id is not None
             )
-        if len(candidates) > 1:
             return ProjectCoverBackfillDecision(
                 project_id=project.project_id,
                 workflow_id=project.workflow_id,
-                outcome="ambiguous",
+                outcome=outcome,
+                candidate_count=0,
+                reason="no_candidate" if not versions else "unclassified_evidence",
+                changed=changed,
+            )
+        current = _candidate_for_identity(
+            workflow,
+            versions,
+            asset_id=project.cover_asset_id,
+            version_id=project.cover_version_id,
+        )
+        if (
+            current is not None
+            and selected.rank >= current.rank
+            and project.cover_state == "ready"
+            and project.cover_source == current.source
+        ):
+            return ProjectCoverBackfillDecision(
+                project_id=project.project_id,
+                workflow_id=project.workflow_id,
+                outcome="skipped",
+                source=current.source,
+                asset_id=current.asset_id,
+                version_id=current.version_id,
                 candidate_count=len(candidates),
+                reason="automatic_cover_current",
             )
-        return _ready_decision(project, candidates[0], candidate_count=1)
+        return ProjectCoverBackfillDecision(
+            project_id=project.project_id,
+            workflow_id=project.workflow_id,
+            outcome="ready",
+            source=selected.source,
+            asset_id=selected.asset_id,
+            version_id=selected.version_id,
+            candidate_count=len(candidates),
+            reason=(
+                "migrated_source_normalized"
+                if current is not None and project.cover_source == "migrated"
+                else "better_automatic_candidate"
+            ),
+            changed=True,
+        )
 
 
 def _ready_decision(
@@ -292,6 +327,7 @@ def _ready_decision(
         asset_id=version.asset_id,
         version_id=version.version_id,
         candidate_count=candidate_count,
+        reason="legacy_exact_identity",
     )
 
 
