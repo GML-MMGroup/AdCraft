@@ -27,6 +27,7 @@ from app.persistence.agent_canvas_production_closure_repository import (
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_production_closure import (
@@ -115,17 +116,28 @@ class GuidedEditingActionOutcomeResolver:
         if hard is not None:
             return self._failed(error, session, hard)
 
+        plan_authority = _plan_authority(error)
+        action = session.journey.active_action
+        owner_by_node = {
+            str(blocker["node_id"]): self._owner(
+                session.workflow_id,
+                nodes[str(blocker["node_id"])],
+                plan_authority=plan_authority,
+                action_id=action.action_id if action is not None else None,
+            )
+            for blocker in _ordered(specific)
+        }
         owners = tuple(
             owner
             for blocker in _ordered(specific)
-            if (owner := self._owner(session.workflow_id, str(blocker["node_id"]))) is not None
+            if (owner := owner_by_node[str(blocker["node_id"])]) is not None
         )
         unowned_drafts = tuple(
             str(blocker["node_id"])
             for blocker in _ordered(specific)
             if blocker.get("kind") in {"not_ready", "nonterminal_work"}
             and nodes[str(blocker["node_id"])].status == "draft"
-            and self._owner(session.workflow_id, str(blocker["node_id"])) is None
+            and owner_by_node[str(blocker["node_id"])] is None
         )
         if unowned_drafts:
             settings = self._settings.get_or_create_manual(
@@ -142,7 +154,6 @@ class GuidedEditingActionOutcomeResolver:
                 error_code="guided_editing_automatic_work_orphaned",
             )
         if owners:
-            plan_authority = _plan_authority(error)
             if plan_authority is None:
                 return self._failed(error, session, specific[0] if specific else None)
             owner_kind, owner_id, owner_node_id, owner_generation = sorted(
@@ -171,13 +182,23 @@ class GuidedEditingActionOutcomeResolver:
     def _owner(
         self,
         workflow_id: str,
-        node_id: str,
+        node: CanvasNodeV2,
+        *,
+        plan_authority: tuple[str, int] | None,
+        action_id: str | None,
     ) -> tuple[EditingActionSystemOwnerKindV1, str, str, int] | None:
+        if plan_authority is None or not _node_matches_plan(node, plan_authority):
+            return None
+        node_id = node.node_id
         for member in self._runtime.list_latest_members_for_workflow(workflow_id):
             if member.node_id == node_id and member.state in {"queued", "waiting", "running"}:
                 return "execution_member", member.member_id, node_id, member.attempt_no
         for command in self._automatic.list_for_workflow(workflow_id):
-            if command.node_id == node_id and command.state in {"pending", "claimed"}:
+            if (
+                command.node_id == node_id
+                and command.state in {"pending", "claimed"}
+                and command.source_action_id == action_id
+            ):
                 generation = self._automatic.get_lease_generation(command.command_id)
                 if generation is not None:
                     return "automatic_run", command.command_id, node_id, generation
@@ -188,7 +209,11 @@ class GuidedEditingActionOutcomeResolver:
             if delivery.status not in {"queued", "running"}:
                 continue
             confirmation = self._receipts.get_confirmation(delivery.confirmation_id)
-            if confirmation.node_id == node_id:
+            if (
+                confirmation.node_id == node_id
+                and confirmation.plan_document_id == plan_authority[0]
+                and confirmation.plan_revision == plan_authority[1]
+            ):
                 return (
                     "guided_media_resume",
                     delivery.delivery_id,
@@ -282,6 +307,20 @@ def _plan_authority(error: V2PersistenceError) -> tuple[str, int] | None:
     ):
         return None
     return document_id, revision
+
+
+def _node_matches_plan(node: CanvasNodeV2, plan_authority: tuple[str, int]) -> bool:
+    document_id, revision = plan_authority
+    source_document_id = node.metadata.get("source_agent_document_id")
+    source_revision = node.metadata.get("source_plan_revision")
+    if source_revision is None:
+        source_revision = node.metadata.get("source_agent_document_revision")
+    return bool(
+        source_document_id == document_id
+        and isinstance(source_revision, int)
+        and not isinstance(source_revision, bool)
+        and source_revision == revision
+    )
 
 
 def _ordered(blockers: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:

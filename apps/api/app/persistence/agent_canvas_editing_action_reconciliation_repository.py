@@ -29,6 +29,7 @@ from app.persistence.models import (
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidedMediaResumeDeliveryRow,
     AgentCanvasGuidedProductionReceiptRow,
+    AgentCanvasNodeRow,
     AgentCanvasPostReadyEffectRow,
     AgentWorkingDocumentRow,
 )
@@ -354,6 +355,28 @@ class AgentCanvasEditingActionReconciliationRepository:
         if planned_nodes is None:
             planned_nodes = getattr(document.content, "node_records", ())
         if not any(item.node_id == node_id for item in planned_nodes):
+            raise _evidence_error()
+        metadata_json = connection.execute(
+            select(AgentCanvasNodeRow.metadata_json).where(
+                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                AgentCanvasNodeRow.node_id == node_id,
+            )
+        ).scalar_one_or_none()
+        if metadata_json is None:
+            raise _evidence_error()
+        try:
+            metadata = json.loads(str(metadata_json))
+        except (TypeError, ValueError):
+            raise _evidence_error() from None
+        source_revision = metadata.get("source_plan_revision")
+        if source_revision is None:
+            source_revision = metadata.get("source_agent_document_revision")
+        if (
+            metadata.get("source_agent_document_id") != command.plan_document_id
+            or not isinstance(source_revision, int)
+            or isinstance(source_revision, bool)
+            or source_revision != command.plan_revision
+        ):
             raise _evidence_error()
 
     def _persist_receipt_and_event(
