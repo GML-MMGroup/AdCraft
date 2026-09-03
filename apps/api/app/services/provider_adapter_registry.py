@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.persistence.provider_model_repository import ProviderModelRecord
 from app.schemas.provider_models import ProviderAdapterProfileV1
 
 
@@ -43,6 +44,24 @@ class ProviderAdapterRegistry:
         if key in self._claims:
             raise ValueError("provider_adapter_registry_conflict")
         self._claims[key] = ResolvedProviderAdapter(profile=profile, adapter=adapter)
+
+    def register_catalog_model(
+        self,
+        record: ProviderModelRecord,
+        adapter: ProviderAdapter,
+    ) -> None:
+        """Register only a selectable built-in catalog claim."""
+
+        if record.source != "built_in" or record.availability != "available":
+            raise ValueError("model_adapter_unavailable")
+        raw_profile = record.capability_metadata.get("adapter_profile")
+        try:
+            profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+        except Exception as error:
+            raise ValueError("provider_adapter_profile_invalid") from error
+        if profile.model_ref != record.model_ref or profile.capability != record.capability:
+            raise ValueError("provider_adapter_profile_invalid")
+        self.register(profile, adapter)
 
     def resolve(self, model_ref: str, capability: str) -> ResolvedProviderAdapter:
         resolved = self._claims.get((model_ref, capability))
