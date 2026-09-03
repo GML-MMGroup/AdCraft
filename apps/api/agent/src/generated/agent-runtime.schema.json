@@ -2520,13 +2520,17 @@
           "default": "2",
           "title": "Schema Version",
           "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/ProviderConformanceTargetV1"
         }
       },
       "required": [
         "budget_plan",
         "evidence_destination_id",
         "frozen_agent_request",
-        "frozen_agent_request_digest"
+        "frozen_agent_request_digest",
+        "target"
       ],
       "title": "AgentProviderConformanceInputV2",
       "type": "object"
@@ -22174,6 +22178,92 @@
         "transport_kind"
       ],
       "title": "ProviderAdapterProfileV1",
+      "type": "object"
+    },
+    "ProviderConformanceTargetV1": {
+      "additionalProperties": false,
+      "description": "Exact provider identity frozen into one conformance diagnostic.",
+      "properties": {
+        "adapter_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "capability": {
+          "enum": [
+            "agent",
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "contract_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "provider_model_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Provider Model Id",
+          "type": "string"
+        },
+        "transport_kind": {
+          "enum": [
+            "ark_image_native",
+            "ark_video_native",
+            "fake",
+            "litellm_chat",
+            "litellm_openai_image",
+            "minimax_video_native",
+            "openai_images_native",
+            "pi_native_openai_compatible",
+            "tianpuyue_audio_native"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_revision",
+        "capability",
+        "capability_revision",
+        "contract_digest",
+        "model_ref",
+        "operation",
+        "provider_model_id",
+        "transport_kind"
+      ],
+      "title": "ProviderConformanceTargetV1",
       "type": "object"
     },
     "ProviderModelConformanceSummaryV1": {
