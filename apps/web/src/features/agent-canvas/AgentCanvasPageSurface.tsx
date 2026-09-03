@@ -10,7 +10,18 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
@@ -184,10 +195,18 @@ export function AgentCanvasPage() {
     asset: ProjectAssetSummaryV2;
     title: string;
   } | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    menuPosition: CanvasPositionV2;
-    canvasPosition: CanvasPositionV2;
-  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<(
+    | {
+      kind: "canvas";
+      menuPosition: CanvasPositionV2;
+      canvasPosition: CanvasPositionV2;
+    }
+    | {
+      kind: "node";
+      menuPosition: CanvasPositionV2;
+      nodeId: string;
+    }
+  ) | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
   const [connectedNodeMenu, setConnectedNodeMenu] = useState<{
@@ -719,6 +738,29 @@ export function AgentCanvasPage() {
       .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The node could not be deleted."));
   }, [deleteNode, recoverDeletedCanvasState]);
 
+  const deleteContextNode = useCallback((nodeId: string) => {
+    const node = flowNodesRef.current.find((candidate) => candidate.id === nodeId);
+    setContextMenu(null);
+    if (node) deleteNodes([node]);
+  }, [deleteNodes]);
+
+  const openNodeContextMenu = useCallback((
+    event: ReactMouseEvent,
+    node: AgentCanvasFlowNode,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearEdgeSelection();
+    setSelectedNodeId(node.id);
+    setAddMenuOpen(false);
+    setConnectedNodeMenu(null);
+    setContextMenu({
+      kind: "node",
+      menuPosition: { x: event.clientX, y: event.clientY },
+      nodeId: node.id,
+    });
+  }, [clearEdgeSelection, setSelectedNodeId]);
+
   const cancelCurrentRun = useCallback(async () => {
     setSurfaceError(null);
     try {
@@ -972,7 +1014,7 @@ export function AgentCanvasPage() {
     setSelectedNodeId(null);
     setAddMenuOpen(false);
     setConnectedNodeMenu(null);
-    setContextMenu({ menuPosition, canvasPosition });
+    setContextMenu({ kind: "canvas", menuPosition, canvasPosition });
   }, [clearEdgeSelection, setSelectedNodeId]);
 
   if (!session.state.workspaceHydrated) {
@@ -1046,6 +1088,9 @@ export function AgentCanvasPage() {
             clearEdgeSelection();
             setSelectedNodeId(node.id);
             focusCanvasNode(node.id);
+          }}
+          onNodeContextMenu={(event, node) => {
+            openNodeContextMenu(event, node);
           }}
           onNodeDragStart={(_event, node, draggedNodes) => {
             interruptReveal();
@@ -1278,13 +1323,22 @@ export function AgentCanvasPage() {
         />
 
         {contextMenu ? (
-          <AgentCanvasContextMenu
-            menuPosition={contextMenu.menuPosition}
-            canvasPosition={contextMenu.canvasPosition}
-            onCreateNode={(nodeType, position) => void createNode(nodeType, position)}
-            onClose={() => setContextMenu(null)}
-            onRelocate={openCanvasContextMenu}
-          />
+          contextMenu.kind === "node" ? (
+            <AgentCanvasContextMenu
+              menuPosition={contextMenu.menuPosition}
+              onDeleteNode={() => deleteContextNode(contextMenu.nodeId)}
+              onClose={() => setContextMenu(null)}
+              onRelocate={openCanvasContextMenu}
+            />
+          ) : (
+            <AgentCanvasContextMenu
+              menuPosition={contextMenu.menuPosition}
+              canvasPosition={contextMenu.canvasPosition}
+              onCreateNode={(nodeType, position) => void createNode(nodeType, position)}
+              onClose={() => setContextMenu(null)}
+              onRelocate={openCanvasContextMenu}
+            />
+          )
         ) : null}
 
         {connectedNodeMenu && connectedMenuAnchor && connectionPolicy ? (

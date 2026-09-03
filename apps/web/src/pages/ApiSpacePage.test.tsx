@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ProviderModelSummaryV1 } from "../api/providerRegistry.ts";
+import { ModelDefaultsPanel } from "./api-space/ModelDefaultsPanel.tsx";
 import { ApiSpacePage } from "./ApiSpacePage.tsx";
 
 const fixture = vi.hoisted(() => ({
@@ -37,6 +39,8 @@ const providers = [
 
 const glm = model("siliconflow:zai-org/GLM-5.2", "SiliconFlow", "GLM-5.2", "text");
 const arkText = model("volcengine_ark:doubao-seed-2-0-mini-260428", "Volcengine Ark", "Doubao Seed 2.0 Mini", "text");
+const arkImage = model("volcengine_ark:doubao-seedream-4-0", "Volcengine Ark", "Doubao Seedream 4.0", "image");
+const deterministicImage = model("fake:deterministic-image", "fake", "Deterministic fake", "image");
 const tianpuyueAudio = model("tianpuyue:TemPolor-i3", "Tianpuyue", "TemPolor i3", "audio");
 const tianpuyueLongAudio = model("tianpuyue:TemPolor-i3.5", "Tianpuyue", "TemPolor i3.5", "audio");
 
@@ -50,8 +54,9 @@ describe("ApiSpacePage provider registry", () => {
     });
     fixture.api.listProviderModels.mockImplementation((query: { provider?: string; purpose?: string }) => {
       if (query.provider === "siliconflow") return Promise.resolve({ items: [glm] });
-      if (query.provider === "volcengine_ark") return Promise.resolve({ items: [arkText] });
+      if (query.provider === "volcengine_ark") return Promise.resolve({ items: [arkText, arkImage] });
       if (query.purpose === "agent" || query.purpose === "text") return Promise.resolve({ items: [glm, arkText] });
+      if (query.purpose === "image") return Promise.resolve({ items: [arkImage, deterministicImage] });
       if (query.purpose === "audio" || query.provider === "tianpuyue") return Promise.resolve({ items: [tianpuyueAudio, tianpuyueLongAudio] });
       return Promise.resolve({ items: [] });
     });
@@ -170,6 +175,41 @@ describe("ApiSpacePage provider registry", () => {
     }));
   });
 
+  it("excludes fake provider models from production default selectors", async () => {
+    render(<ApiSpacePage />);
+
+    const imageSelect = await screen.findByLabelText("Image default model");
+    await waitFor(() => expect(within(imageSelect).getByText("Doubao Seedream 4.0 · volcengine_ark")).toBeTruthy());
+    expect(within(imageSelect).queryByText("Deterministic fake · fake")).toBeNull();
+  });
+
+  it("does not expose a persisted fake default as an unavailable option", async () => {
+    render(
+      <ModelDefaultsPanel
+        defaults={{
+          defaults: { image: deterministicImage.model_ref },
+          modes: {},
+          revisions: { image: 1 },
+        }}
+        modelsByPurpose={{
+          agent: [],
+          text: [],
+          image: [arkImage, deterministicImage],
+          video: [],
+          audio: [],
+        }}
+        loading={false}
+        pending={false}
+        notice={null}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const imageSelect = screen.getByLabelText("Image default model");
+    expect((imageSelect as HTMLSelectElement).value).toBe("");
+    expect(within(imageSelect).queryByText(`${deterministicImage.model_ref} (unavailable)`)).toBeNull();
+  });
+
   it("shows the backend-provided Audio routing mode beside its preferred model", async () => {
     render(<ApiSpacePage />);
 
@@ -223,7 +263,12 @@ function provider(provider_id: string, display_name: string, capabilities: strin
   };
 }
 
-function model(model_ref: string, provider: string, display_name: string, capability: string) {
+function model(
+  model_ref: string,
+  provider: string,
+  display_name: string,
+  capability: ProviderModelSummaryV1["capability"],
+): ProviderModelSummaryV1 {
   return {
     model_ref,
     provider_id: provider.toLocaleLowerCase().replaceAll(" ", "_"),
