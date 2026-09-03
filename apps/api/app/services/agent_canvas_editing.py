@@ -85,6 +85,11 @@ class EditingNodeService:
         if node.node_type != "editing":
             raise _error("node_type_mismatch", "Node is not an Editing node.")
         content = EditingNodeContentV2.model_validate(node.structured_content)
+        self._validate_manifest_bindings_from_snapshot(
+            workflow,
+            node_id,
+            content.manifest,
+        )
         manifest = self._response_manifest(
             workflow,
             node_id,
@@ -108,7 +113,7 @@ class EditingNodeService:
     ) -> CanvasNodeV2:
         node = self._require_editing_node(workflow_id, node_id)
         workflow = self._workflows.get_workflow(workflow_id)
-        self._validate_manifest_bindings(workflow_id, node_id, manifest)
+        self._validate_manifest_bindings_from_snapshot(workflow, node_id, manifest)
         current = EditingNodeContentV2.model_validate(node.structured_content)
         updated_manifest = self._canonical_manifest(
             workflow,
@@ -304,13 +309,12 @@ class EditingNodeService:
                 durations[entry.source_key] = asset.duration_seconds
         return durations
 
-    def _validate_manifest_bindings(
+    def _validate_manifest_bindings_from_snapshot(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
     ) -> None:
-        workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         for entry in manifest.video_entries:
@@ -329,7 +333,7 @@ class EditingNodeService:
                     )
                 continue
             asset = _required_asset(self._asset_resolver, entry.asset_id)
-            _validate_project_asset(workflow_id, workflow.project_id, asset, "video")
+            _validate_project_asset(workflow.workflow_id, workflow.project_id, asset, "video")
         if manifest.bgm is None:
             return
         if manifest.bgm.binding_id is not None:
@@ -347,7 +351,7 @@ class EditingNodeService:
                 )
             return
         asset = _required_asset(self._asset_resolver, manifest.bgm.asset_id)
-        _validate_project_asset(workflow_id, workflow.project_id, asset, "audio")
+        _validate_project_asset(workflow.workflow_id, workflow.project_id, asset, "audio")
 
     def _require_editing_node(self, workflow_id: str, node_id: str) -> CanvasNodeV2:
         node = self._workflows.get_node(workflow_id, node_id)
