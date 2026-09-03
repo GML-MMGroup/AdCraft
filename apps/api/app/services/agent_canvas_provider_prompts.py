@@ -213,6 +213,29 @@ class AgentCanvasProviderPromptCompiler:
                     "node_prompt_assertion_contract_invalid",
                     "Prompt assertion evidence does not match provider input authority.",
                 )
+            if preparation.role_variant == "character_turnaround":
+                projection_digest = preparation.character_identity_projection_digest
+                if (
+                    projection_digest is None
+                    or evidence.character_identity_projection_digest != projection_digest
+                    or node.structured_content.get("identity_projection_digest") != projection_digest
+                ):
+                    raise _error(
+                        "character_parent_identity_projection_invalid",
+                        "Character Turnaround projection evidence is missing or stale.",
+                    )
+            if preparation.role_variant == "scene_board":
+                projection_digest = preparation.scene_environment_projection_digest
+                if (
+                    projection_digest is None
+                    or evidence.scene_environment_projection_digest != projection_digest
+                    or node.structured_content.get("environment_projection_digest")
+                    != projection_digest
+                ):
+                    raise _error(
+                        "scene_environment_projection_invalid",
+                        "Scene environment projection evidence is missing or stale.",
+                    )
         if creative_direction_projection is not None:
             CreativeDirectionService().validate_role_projection(
                 _STYLE_ROLE_BY_SEMANTIC_ROLE[node.semantic_role],

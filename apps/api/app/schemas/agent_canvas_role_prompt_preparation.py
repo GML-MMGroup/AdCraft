@@ -364,10 +364,10 @@ class RolePromptPreparationContextV2(_RolePromptModel):
             self.occurrence_id is not None or self.character_phase is not None
         ):
             raise ValueError("Non-Character prompt context cannot carry Character identity.")
-        if self.role_variant == "character_turnaround":
+        if self.role_variant in {"character_main", "character_turnaround"}:
             projection = self.character_identity_projection
             if projection is not None and projection.occurrence_id != self.occurrence_id:
-                raise ValueError("Character Turnaround projection occurrence does not match context.")
+                raise ValueError("Character projection occurrence does not match context.")
             if self.scene_environment_projection is not None:
                 raise ValueError("Character context cannot carry Scene environment projection.")
         elif self.role_variant == "scene_board":

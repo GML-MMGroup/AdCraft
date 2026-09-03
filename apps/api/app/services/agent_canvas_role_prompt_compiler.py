@@ -401,6 +401,14 @@ def _semantic_projections(
                     )
             return projection, None
         return None, None
+    if isinstance(brief, CharacterMainRoleBriefV2):
+        projection = context.character_identity_projection
+        if projection is not None and projection.occurrence_id != context.occurrence_id:
+            raise _error(
+                "character_parent_identity_projection_invalid",
+                "Character Main projection occurrence is stale.",
+            )
+        return projection, None
     if isinstance(brief, SceneBoardRoleBriefV2):
         projection = context.scene_environment_projection
         if projection is None:

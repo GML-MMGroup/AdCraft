@@ -612,6 +612,11 @@ class NodePromptPreparationService:
                 source_asset_id=parent.asset_id,
                 source_asset_version_id=parent.asset_version_id,
             )
+        elif node.creative_role == "character":
+            character_projection = character_identity_projection_from_node(
+                node,
+                occurrence_id=str(node.metadata.get("occurrence_id")),
+            )
         elif node.creative_role == "scene":
             scene_projection = scene_environment_projection_from_node(node)
         controls = {
