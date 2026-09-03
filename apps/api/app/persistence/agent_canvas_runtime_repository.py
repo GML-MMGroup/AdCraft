@@ -1103,7 +1103,10 @@ class AgentCanvasRuntimeRepository:
                 )
                 if existing is not None:
                     stored = _submission_intent(existing)
-                    if stored.request_digest != intent.request_digest:
+                    if (
+                        stored.request_digest != intent.request_digest
+                        or stored.frozen_model_resolution != intent.frozen_model_resolution
+                    ):
                         raise _error(
                             "provider_submission_intent_conflict",
                             "Provider submission intent content is immutable.",
@@ -1136,7 +1139,10 @@ class AgentCanvasRuntimeRepository:
                 ) from reread_error
             if raced is not None:
                 stored = _submission_intent(raced)
-                if stored.request_digest != intent.request_digest:
+                if (
+                    stored.request_digest != intent.request_digest
+                    or stored.frozen_model_resolution != intent.frozen_model_resolution
+                ):
                     raise _error(
                         "provider_submission_intent_conflict",
                         "Provider submission intent content is immutable.",
