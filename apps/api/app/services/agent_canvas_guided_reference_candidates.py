@@ -127,13 +127,13 @@ def _cursor_offset(cursor: str | None) -> int:
         offset = int(cursor)
     except ValueError as error:
         raise V2PersistenceError(
-            "reference_candidates_unavailable",
+            "reference_candidate_cursor_invalid",
             "Reference candidate cursor is invalid.",
             stage="guided_reference_candidates",
         ) from error
     if offset < 0 or offset > 10_000:
         raise V2PersistenceError(
-            "reference_candidates_unavailable",
+            "reference_candidate_cursor_invalid",
             "Reference candidate cursor is invalid.",
             stage="guided_reference_candidates",
         )
