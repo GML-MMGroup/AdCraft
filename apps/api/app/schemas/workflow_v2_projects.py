@@ -9,7 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ProjectStatusV2 = Literal["active", "archived", "trashed"]
 ProjectCoverStateV2 = Literal["ready", "unresolved", "none", "broken"]
-ProjectCoverSourceV2 = Literal["manual", "product_main", "migrated"]
+ProjectCoverSourceV2 = Literal[
+    "manual",
+    "product_main",
+    "scene_main",
+    "character_main",
+    "storyboard_grid",
+    "video_poster",
+    "migrated",
+]
 
 
 class ProjectCoverV2(BaseModel):
@@ -36,7 +44,7 @@ class ProjectCreate(BaseModel):
     is_favorite: bool = False
     cover_asset_id: str | None = None
     cover_version_id: str | None = None
-    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_state: ProjectCoverStateV2 = "none"
     cover_source: ProjectCoverSourceV2 | None = None
     cover_updated_at: str | None = None
     created_at: str = Field(min_length=1)

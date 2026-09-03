@@ -76,7 +76,9 @@ class ProjectRow(Base):
             name="ck_projects_cover_state",
         ),
         CheckConstraint(
-            "cover_source IS NULL OR cover_source IN ('manual','product_main','migrated')",
+            "cover_source IS NULL OR cover_source IN "
+            "('manual','product_main','scene_main','character_main',"
+            "'storyboard_grid','video_poster','migrated')",
             name="ck_projects_cover_source",
         ),
     )
@@ -88,7 +90,7 @@ class ProjectRow(Base):
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cover_asset_id: Mapped[str | None] = mapped_column(Text)
     cover_version_id: Mapped[str | None] = mapped_column(Text)
-    cover_state: Mapped[str] = mapped_column(Text, nullable=False, default="unresolved")
+    cover_state: Mapped[str] = mapped_column(Text, nullable=False, default="none")
     cover_source: Mapped[str | None] = mapped_column(Text)
     cover_updated_at: Mapped[str | None] = mapped_column(Text)
     project_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
