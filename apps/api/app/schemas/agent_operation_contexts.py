@@ -13,8 +13,8 @@ from app.schemas.agent_canvas_creative_session import (
     ResolvedImageTargetV2,
     StyleGuidanceContextV2,
 )
-from app.schemas.agent_canvas_capabilities import NextActionContextV1
 from app.schemas.language import BCP47Tag
+from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 
 
 _MAX_CONTEXT_TEXT = 65_536
@@ -237,6 +237,124 @@ class QuickMediaAgentContext(_PlanningContextModel):
     )
 
 
+class _WorkflowContextModel(_PlanningContextModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class WorkflowWorkItemSummaryV1(_WorkflowContextModel):
+    node_id: str = Field(min_length=1, max_length=160)
+    node_type: Literal["text", "script", "image", "video", "audio", "editing"]
+    title: str = Field(min_length=1, max_length=256)
+    node_revision: int = Field(ge=1)
+    node_status: Literal["draft", "working", "ready", "failed"]
+    execution_id: str | None = Field(default=None, min_length=1, max_length=160)
+    execution_state: str | None = Field(default=None, min_length=1, max_length=80)
+    prompt_preparation_state: str | None = Field(default=None, min_length=1, max_length=80)
+    output_available: bool = False
+    failure_code: str | None = Field(default=None, min_length=1, max_length=160)
+
+
+class WorkflowActionSummaryV1(_WorkflowContextModel):
+    action_id: str = Field(min_length=1, max_length=160)
+    action_kind: str = Field(min_length=1, max_length=80)
+    stage: str = Field(min_length=1, max_length=80)
+    stage_revision: int = Field(ge=1)
+    status: str = Field(min_length=1, max_length=80)
+    objective: str = Field(default="", max_length=2_048)
+    ownership_status: Literal["owned", "awaiting", "orphaned", "inconsistent"]
+    owner_kind: Literal[
+        "continuation",
+        "runtime_execution",
+        "post_ready_effect",
+        "guided_media_resume",
+        "typed_awaiting",
+    ] | None = None
+    owner_id: str | None = Field(default=None, min_length=1, max_length=160)
+    owner_state: str | None = Field(default=None, min_length=1, max_length=80)
+    turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    turn_status: str | None = Field(default=None, min_length=1, max_length=80)
+    continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    continuation_status: str | None = Field(default=None, min_length=1, max_length=80)
+    leaf_error_code: str | None = Field(default=None, min_length=1, max_length=160)
+    awaiting_id: str | None = Field(default=None, min_length=1, max_length=160)
+    blocker_class: Literal[
+        "unrecoverable",
+        "user_action_required",
+        "automatic_work_in_progress",
+    ] | None = None
+
+    @model_validator(mode="after")
+    def validate_ownership(self) -> "WorkflowActionSummaryV1":
+        has_owner = self.owner_kind is not None or self.owner_id is not None
+        if self.ownership_status == "owned":
+            if self.owner_kind is None or self.owner_id is None:
+                raise ValueError("Owned action requires an exact owner kind and owner identity.")
+            if self.owner_kind == "typed_awaiting":
+                raise ValueError("Owned automatic action cannot use typed_awaiting as its owner.")
+        elif self.ownership_status == "awaiting":
+            if self.owner_kind != "typed_awaiting" or self.owner_id is None:
+                raise ValueError("Awaiting action requires a typed_awaiting owner identity.")
+            if self.awaiting_id is None:
+                raise ValueError("Awaiting action requires its typed awaiting identity.")
+        elif has_owner:
+            raise ValueError("Orphaned or inconsistent action cannot claim an owner.")
+        return self
+
+
+class WorkflowDocumentReferenceV1(_WorkflowContextModel):
+    document_id: str = Field(min_length=1, max_length=160)
+    document_kind: Literal["anchor_registry", "storyboard_production_plan"]
+    revision: int = Field(ge=1)
+    content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class WorkflowContextTruncationV1(_WorkflowContextModel):
+    omitted_active_work: int = Field(default=0, ge=0)
+    omitted_blockers: int = Field(default=0, ge=0)
+    omitted_documents: int = Field(default=0, ge=0)
+
+
+class WorkflowStateCapsuleV1(_WorkflowContextModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    response_locale: BCP47Tag = "und"
+    guidance_session_id: str | None = Field(default=None, min_length=1, max_length=160)
+    guidance_session_revision: int | None = Field(default=None, ge=1)
+    journey_stage: str | None = Field(default=None, min_length=1, max_length=80)
+    journey_status: str | None = Field(default=None, min_length=1, max_length=80)
+    requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
+    requirement_revision_no: int | None = Field(default=None, ge=1)
+    requirement_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    node_status_counts: dict[
+        Literal["draft", "working", "ready", "failed"], int
+    ] = Field(default_factory=dict)
+    active_work: tuple[WorkflowWorkItemSummaryV1, ...] = Field(default=(), max_length=64)
+    blockers: tuple[WorkflowActionSummaryV1, ...] = Field(default=(), max_length=32)
+    current_action: WorkflowActionSummaryV1 | None = None
+    awaiting_action: WorkflowActionSummaryV1 | None = None
+    next_valid_action: WorkflowActionSummaryV1 | None = None
+    documents: tuple[WorkflowDocumentReferenceV1, ...] = Field(default=(), max_length=2)
+    projection_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    truncation: WorkflowContextTruncationV1 = Field(default_factory=WorkflowContextTruncationV1)
+
+    @model_validator(mode="after")
+    def validate_capsule(self) -> "WorkflowStateCapsuleV1":
+        if len(self.model_dump_json().encode("utf-8")) > 8_192:
+            raise ValueError("Workflow state capsule exceeds the 8 KiB limit.")
+        if self.awaiting_action is not None and self.awaiting_action.ownership_status != "awaiting":
+            raise ValueError("Awaiting action projection must have awaiting ownership.")
+        if self.next_valid_action is not None and self.current_action is not None:
+            if self.current_action.ownership_status in {"orphaned", "inconsistent"}:
+                raise ValueError("Unsafe current action suppresses the next valid action.")
+        document_kinds = tuple(item.document_kind for item in self.documents)
+        if len(document_kinds) != len(set(document_kinds)):
+            raise ValueError("Workflow document references must have unique kinds.")
+        return self
+
+
+from app.schemas.agent_canvas_capabilities import NextActionContextV1
+
+
 class WorkflowConversationAgentContext(_PlanningContextModel):
     context_kind: Literal["workflow_conversation"]
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
@@ -255,6 +373,8 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     awaiting_action: NextActionContextV1 | None = None
     next_action: NextActionContextV1 | None = None
     source_revision: int | None = Field(default=None, ge=0)
+    workflow_context: WorkflowStateCapsuleV1 | None = None
+    document_excerpt: AgentDocumentContextExcerptV2 | None = None
 
 
 class ConversationSummaryAgentContext(_PlanningContextModel):

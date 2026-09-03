@@ -310,6 +310,30 @@ class CompactRequirementPatchV3(_CapabilityModel):
         return self
 
 
+class ConversationQueryV1(_CapabilityModel):
+    query_kind: Literal["workflow_status", "document_explanation"]
+    document_kind: Literal["anchor_registry", "storyboard_production_plan"] | None = None
+    sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    anchor_aliases: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "ConversationQueryV1":
+        if len(self.anchor_aliases) != len(set(self.anchor_aliases)):
+            raise ValueError("Conversation query anchor aliases must be unique.")
+        if self.query_kind == "workflow_status":
+            if self.document_kind is not None or self.sequence_id is not None or self.anchor_aliases:
+                raise ValueError("Workflow status query cannot carry a document selector.")
+            return self
+        if self.document_kind is None:
+            raise ValueError("Document explanation requires a document kind.")
+        if self.document_kind == "anchor_registry":
+            if self.sequence_id is not None:
+                raise ValueError("Anchor Registry query cannot carry a sequence selector.")
+        elif self.anchor_aliases:
+            raise ValueError("Storyboard plan query cannot carry anchor aliases.")
+        return self
+
+
 class CompactTurnIntentDecisionV3(_CapabilityModel):
     mode: Literal[
         "ordinary_conversation",
@@ -339,10 +363,13 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
             "a language, return that language rather than inheriting und."
         ),
     )
+    conversation_query: ConversationQueryV1 | None = None
 
     @model_validator(mode="after")
     def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
         if self.mode != "ordinary_conversation":
+            if self.conversation_query is not None:
+                raise ValueError("conversation_query is valid only for ordinary_conversation.")
             if self.assistant_message is None or not self.assistant_message.strip():
                 raise ValueError("authoring intent requires a non-empty assistant_message.")
             return self
@@ -370,12 +397,15 @@ class TurnIntentDecisionV2(_CapabilityModel):
     assistant_message: str | None = Field(default=None, max_length=4_000)
     requirement_patch: RequirementPatchV1 | None = None
     response_locale: BCP47Tag = "und"
+    conversation_query: ConversationQueryV1 | None = None
 
     @model_validator(mode="after")
     def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV2":
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
         if len(element_kinds) != len(set(element_kinds)):
             raise ValueError("Explicit element decisions must use unique element kinds.")
+        if self.mode != "ordinary_conversation" and self.conversation_query is not None:
+            raise ValueError("conversation_query is valid only for ordinary_conversation.")
         return self
 
 
@@ -442,6 +472,7 @@ def expand_compact_turn_intent(
         assistant_message=compact.assistant_message,
         requirement_patch=requirement_patch,
         response_locale=compact.response_locale or current_response_locale or "und",
+        conversation_query=compact.conversation_query,
     )
 
 
@@ -461,6 +492,7 @@ class TurnIntentContextV2(_CapabilityModel):
         default=(), max_length=32
     )
     current_response_locale: BCP47Tag = "und"
+    workflow_context: "WorkflowStateCapsuleV1 | None" = None
 
 
 class AskUserNextActionCommandV1(_CapabilityModel):
@@ -1062,3 +1094,11 @@ CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
     "bgm_direction": GuidedProposalAuthoringResultV4,
     "quick_media": ProposalCardResultV2,
 }
+
+
+from app.schemas.agent_operation_contexts import WorkflowStateCapsuleV1
+
+
+TurnIntentContextV2.model_rebuild(
+    _types_namespace={"WorkflowStateCapsuleV1": WorkflowStateCapsuleV1}
+)
