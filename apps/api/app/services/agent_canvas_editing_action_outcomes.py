@@ -18,8 +18,14 @@ from app.persistence.agent_canvas_execution_settings_repository import (
 from app.persistence.agent_canvas_guided_interaction_repository import (
     AgentCanvasGuidedInteractionRepository,
 )
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    AgentCanvasGuidedMediaResumeRepository,
+)
 from app.persistence.agent_canvas_post_ready_repository import (
     AgentCanvasPostReadyEffectRepository,
+)
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
@@ -62,6 +68,8 @@ class GuidedEditingActionOutcomeResolver:
         self._runtime = AgentCanvasRuntimeRepository(database, events)
         self._automatic = AgentCanvasAutomaticRunRepository(database, events)
         self._post_ready = AgentCanvasPostReadyEffectRepository(database, events)
+        self._media_resume = AgentCanvasGuidedMediaResumeRepository(database, events)
+        self._receipts = AgentCanvasProductionClosureRepository(database)
         self._settings = AgentCanvasExecutionSettingsRepository(database, events)
         self._awaiting = GuidanceAwaitingService(
             AgentCanvasGuidedInteractionRepository(database, events),
@@ -161,6 +169,12 @@ class GuidedEditingActionOutcomeResolver:
         for effect in self._post_ready.list_for_workflow(workflow_id):
             if effect.node_id == node_id and effect.status in {"queued", "running"}:
                 return "post_ready_effect", effect.effect_id
+        for delivery in self._media_resume.list_for_workflow(workflow_id):
+            if delivery.status not in {"queued", "running"}:
+                continue
+            confirmation = self._receipts.get_confirmation(delivery.confirmation_id)
+            if confirmation.node_id == node_id:
+                return "guided_media_resume", delivery.delivery_id
         return None
 
     def _enter_manual_wait(

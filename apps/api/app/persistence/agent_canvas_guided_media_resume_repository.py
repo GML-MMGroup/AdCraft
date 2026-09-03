@@ -175,6 +175,30 @@ class AgentCanvasGuidedMediaResumeRepository:
             )
         return _delivery(row)
 
+    def list_for_workflow(
+        self,
+        workflow_id: str,
+    ) -> tuple[GuidedMediaConfirmationResumeDeliveryV1, ...]:
+        """Return durable resume deliveries in stable creation order."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasGuidedMediaResumeDeliveryRow)
+                        .where(AgentCanvasGuidedMediaResumeDeliveryRow.workflow_id == workflow_id)
+                        .order_by(
+                            AgentCanvasGuidedMediaResumeDeliveryRow.created_at.asc(),
+                            AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _unavailable() from error
+        return tuple(_delivery(row) for row in rows)
+
     def get_for_submission(
         self,
         submission_id: str,
