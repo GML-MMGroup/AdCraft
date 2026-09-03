@@ -5541,6 +5541,19 @@
           "title": "Duration Seconds",
           "type": "number"
         },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "energy_curve": {
           "maxLength": 2048,
           "minLength": 1,
@@ -6009,6 +6022,17 @@
         },
         "prompt_preparation": {
           "$ref": "#/$defs/NodePromptPreparationV1"
+        },
+        "prompt_presentation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EditablePromptProjectionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "revision": {
           "minimum": 1,
@@ -8505,6 +8529,19 @@
           "title": "Accessories",
           "type": "string"
         },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "face_and_hair": {
           "maxLength": 2048,
           "minLength": 1,
@@ -8810,6 +8847,19 @@
           "maxLength": 1024,
           "title": "Accessories",
           "type": "string"
+        },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
         },
         "face_and_hair": {
           "maxLength": 2048,
@@ -9695,6 +9745,19 @@
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Context Digest",
           "type": "string"
+        },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
         },
         "negative_prompt": {
           "default": "",
@@ -11412,6 +11475,65 @@
       "title": "DurationSecondsControlV1",
       "type": "object"
     },
+    "EditablePromptProjectionV1": {
+      "additionalProperties": false,
+      "description": "The revision-bound editable prompt view exposed by a prepared Node.",
+      "properties": {
+        "brief_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Digest"
+        },
+        "locale": {
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Locale",
+          "type": "string"
+        },
+        "prompt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "agent_authored",
+            "deterministic_projection",
+            "user_edited"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "locale",
+        "prompt_digest",
+        "revision",
+        "source",
+        "text"
+      ],
+      "title": "EditablePromptProjectionV1",
+      "type": "object"
+    },
     "EditableRequirementDirectiveV1": {
       "additionalProperties": false,
       "properties": {
@@ -12098,6 +12220,19 @@
     "FreeMediaRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "prompt": {
           "maxLength": 16384,
           "minLength": 1,
@@ -19443,6 +19578,19 @@
     "ProductMainRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "geometry": {
           "maxLength": 2048,
           "minLength": 1,
@@ -19527,6 +19675,19 @@
     "ProductMultiviewRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "geometry": {
           "maxLength": 2048,
           "minLength": 1,
@@ -20647,6 +20808,19 @@
     "PropRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "form": {
           "maxLength": 2048,
           "minLength": 1,
@@ -24529,6 +24703,19 @@
           "title": "Atmosphere",
           "type": "string"
         },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "environment_identity": {
           "maxLength": 4096,
           "minLength": 1,
@@ -25128,6 +25315,19 @@
           "maxLength": 8192,
           "title": "Dialogue",
           "type": "string"
+        },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
         },
         "narrative": {
           "maxLength": 16384,
@@ -26371,6 +26571,19 @@
           "minItems": 9,
           "title": "Beats",
           "type": "array"
+        },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
         },
         "role_variant": {
           "const": "storyboard_grid",
@@ -30316,6 +30529,19 @@
           "title": "Duration Seconds",
           "type": "number"
         },
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "role_variant": {
           "const": "video_segment",
           "default": "video_segment",
@@ -30389,6 +30615,17 @@
     "WorkflowConversationAgentContext": {
       "additionalProperties": false,
       "properties": {
+        "awaiting_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextActionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "context_kind": {
           "const": "workflow_conversation",
           "title": "Context Kind",
@@ -30406,6 +30643,43 @@
           "title": "Conversation Summary",
           "type": "string"
         },
+        "journey_stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Stage"
+        },
+        "journey_status": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Status"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextActionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "recent_messages": {
           "default": [],
           "items": {
@@ -30414,6 +30688,26 @@
           "maxItems": 32,
           "title": "Recent Messages",
           "type": "array"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision"
         },
         "user_input": {
           "maxLength": 65536,
@@ -30426,6 +30720,19 @@
           "minLength": 1,
           "title": "Workflow Id",
           "type": "string"
+        },
+        "workflow_revision": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Revision"
         },
         "workflow_summary": {
           "default": "",
@@ -30443,9 +30750,111 @@
       "title": "WorkflowConversationAgentContext",
       "type": "object"
     },
+    "WorkflowConversationAnswerContextV1": {
+      "additionalProperties": false,
+      "description": "Revision-bound workflow state observed before a conversation reply.",
+      "properties": {
+        "awaiting_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextActionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "journey_stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Stage"
+        },
+        "journey_status": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Status"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NextActionContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "response_locale": {
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 0,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "response_locale",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "WorkflowConversationAnswerContextV1",
+      "type": "object"
+    },
     "WorkflowConversationReply": {
       "additionalProperties": false,
       "properties": {
+        "answer_kind": {
+          "default": "general",
+          "enum": [
+            "clarification",
+            "general",
+            "greeting",
+            "progress"
+          ],
+          "title": "Answer Kind",
+          "type": "string"
+        },
         "clarification_required": {
           "default": false,
           "title": "Clarification Required",
@@ -30456,6 +30865,17 @@
           "minLength": 1,
           "title": "Message",
           "type": "string"
+        },
+        "state_reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowConversationAnswerContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -30898,6 +31318,19 @@
     "WorldViewRoleBriefV2": {
       "additionalProperties": false,
       "properties": {
+        "editable_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editable Prompt"
+        },
         "era_and_place": {
           "maxLength": 2048,
           "minLength": 1,
