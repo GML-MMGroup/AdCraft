@@ -7,8 +7,16 @@ apps/web/dist/
 apps/web/.vite/
 apps/web/coverage/
 
+# Project documentation allowlist; generated and local docs remain ignored
+/docs/*
+!/docs/deployment-with-docker.md
+!/docs/deployment-with-docker_zh.md
+!/docs/deployment-without-docker.md
+!/docs/deployment-without-docker_zh.md
+!/docs/deployment-with-docker-agent.md
+!/docs/deployment-with-docker-agent_zh.md
+
 # Frontend local docs, tests, and agent workspace files
-/docs/
 apps/web/.codex/
 apps/web/docs/
 apps/web/frontend
