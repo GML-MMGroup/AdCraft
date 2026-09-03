@@ -995,6 +995,39 @@ class ProviderModelSyncRunRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class ProviderModelConformanceRunRow(Base):
+    """Secret-safe conformance evidence for one frozen model operation."""
+
+    __tablename__ = "provider_model_conformance_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('unverified', 'compatible', 'certified', 'revoked')",
+            name="ck_provider_model_conformance_status",
+        ),
+        CheckConstraint("revision > 0", name="ck_provider_model_conformance_revision"),
+        Index(
+            "ix_provider_model_conformance_model_operation",
+            "model_ref",
+            "operation",
+            "started_at",
+        ),
+    )
+
+    conformance_run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    model_ref: Mapped[str] = mapped_column(ForeignKey("provider_models.model_ref"), nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    adapter_id: Mapped[str] = mapped_column(Text, nullable=False)
+    transport_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    adapter_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    contract_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="unverified")
+    safe_summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    started_at: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentCanvasDocumentRow(Base):
     """Typed Text or Script document attached to one canvas node."""
 

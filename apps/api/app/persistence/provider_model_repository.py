@@ -15,6 +15,7 @@ from app.persistence.database import V2Database
 from app.persistence.models import (
     ModelDefaultRow,
     ProviderConnectionRow,
+    ProviderModelConformanceRunRow,
     ProviderModelRow,
     ProviderModelSyncRunRow,
 )
@@ -74,6 +75,25 @@ class ProviderModelSyncRunRecord:
     summary: dict[str, Any]
     error_code: str | None
     created_at: str
+
+
+@dataclass(frozen=True)
+class ProviderModelConformanceRunRecord:
+    conformance_run_id: str
+    model_ref: str
+    provider_id: str
+    provider_model_id: str
+    operation: str
+    adapter_id: str
+    transport_kind: str
+    adapter_revision: str
+    capability_revision: str
+    contract_digest: str
+    status: str
+    safe_summary: dict[str, Any]
+    revision: int
+    started_at: str
+    completed_at: str | None
 
 
 class ProviderModelRepository:
@@ -381,6 +401,175 @@ class ProviderModelRepository:
             raise RuntimeError("provider_model_persistence_failed") from error
         return _sync_run_from_row(row)
 
+    def record_conformance_start(
+        self,
+        *,
+        conformance_run_id: str,
+        model_ref: str,
+        operation: str,
+        adapter_id: str,
+        transport_kind: str,
+        adapter_revision: str,
+        capability_revision: str,
+        contract_digest: str,
+        started_at: str,
+    ) -> ProviderModelConformanceRunRecord:
+        _validate_conformance_strings(
+            conformance_run_id,
+            model_ref,
+            operation,
+            adapter_id,
+            transport_kind,
+            adapter_revision,
+            capability_revision,
+            contract_digest,
+            started_at,
+        )
+        try:
+            with self._database.engine.begin() as connection:
+                existing = connection.execute(
+                    _conformance_select().where(
+                        ProviderModelConformanceRunRow.conformance_run_id
+                        == conformance_run_id
+                    )
+                ).mappings().one_or_none()
+                if existing is not None:
+                    record = _conformance_from_row(existing)
+                    if not _same_conformance_identity(
+                        record,
+                        model_ref=model_ref,
+                        operation=operation,
+                        adapter_id=adapter_id,
+                        transport_kind=transport_kind,
+                        adapter_revision=adapter_revision,
+                        capability_revision=capability_revision,
+                        contract_digest=contract_digest,
+                    ):
+                        raise ValueError("provider_model_conformance_conflict")
+                    return record
+                model = connection.execute(
+                    select(
+                        ProviderModelRow.provider_id,
+                        ProviderModelRow.provider_model_id,
+                        ProviderModelRow.capability_metadata_json,
+                    ).where(ProviderModelRow.model_ref == model_ref)
+                ).mappings().one_or_none()
+                if model is None or not _profile_matches(
+                    model,
+                    model_ref=model_ref,
+                    adapter_id=adapter_id,
+                    transport_kind=transport_kind,
+                    adapter_revision=adapter_revision,
+                    capability_revision=capability_revision,
+                ):
+                    raise ValueError("provider_model_conformance_identity_invalid")
+                connection.execute(
+                    insert(ProviderModelConformanceRunRow).values(
+                        conformance_run_id=conformance_run_id,
+                        model_ref=model_ref,
+                        operation=operation,
+                        adapter_id=adapter_id,
+                        transport_kind=transport_kind,
+                        adapter_revision=adapter_revision,
+                        capability_revision=capability_revision,
+                        contract_digest=contract_digest,
+                        status="unverified",
+                        safe_summary_json="{}",
+                        revision=1,
+                        started_at=started_at,
+                        completed_at=None,
+                    )
+                )
+                row = connection.execute(
+                    _conformance_select().where(
+                        ProviderModelConformanceRunRow.conformance_run_id
+                        == conformance_run_id
+                    )
+                ).mappings().one()
+        except ValueError:
+            raise
+        except SQLAlchemyError as error:
+            raise RuntimeError("provider_model_persistence_failed") from error
+        return _conformance_from_row(row)
+
+    def record_conformance_result(
+        self,
+        *,
+        conformance_run_id: str,
+        status: str,
+        safe_summary: Mapping[str, Any],
+        completed_at: str,
+    ) -> ProviderModelConformanceRunRecord:
+        if status not in {"unverified", "compatible", "certified", "revoked"}:
+            raise ValueError("provider_model_conformance_status_invalid")
+        _assert_no_secret_values(safe_summary)
+        try:
+            with self._database.engine.begin() as connection:
+                row = connection.execute(
+                    _conformance_select().where(
+                        ProviderModelConformanceRunRow.conformance_run_id
+                        == conformance_run_id
+                    )
+                ).mappings().one_or_none()
+                if row is None:
+                    raise ValueError("provider_model_conformance_not_found")
+                current = _conformance_from_row(row)
+                summary = dict(safe_summary)
+                if current.completed_at is not None:
+                    if current.status != status or current.safe_summary != summary:
+                        raise ValueError("provider_model_conformance_conflict")
+                    return current
+                connection.execute(
+                    update(ProviderModelConformanceRunRow)
+                    .where(
+                        ProviderModelConformanceRunRow.conformance_run_id
+                        == conformance_run_id,
+                        ProviderModelConformanceRunRow.revision == current.revision,
+                        ProviderModelConformanceRunRow.completed_at.is_(None),
+                    )
+                    .values(
+                        status=status,
+                        safe_summary_json=_json_dump(summary),
+                        completed_at=completed_at,
+                        revision=current.revision + 1,
+                    )
+                )
+                updated = connection.execute(
+                    _conformance_select().where(
+                        ProviderModelConformanceRunRow.conformance_run_id
+                        == conformance_run_id
+                    )
+                ).mappings().one()
+        except ValueError:
+            raise
+        except SQLAlchemyError as error:
+            raise RuntimeError("provider_model_persistence_failed") from error
+        return _conformance_from_row(updated)
+
+    def current_conformance(
+        self,
+        *,
+        model_ref: str,
+        operation: str,
+    ) -> ProviderModelConformanceRunRecord | None:
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    _conformance_select()
+                    .where(
+                        ProviderModelConformanceRunRow.model_ref == model_ref,
+                        ProviderModelConformanceRunRow.operation == operation,
+                    )
+                    .order_by(
+                        ProviderModelConformanceRunRow.started_at.desc(),
+                        ProviderModelConformanceRunRow.conformance_run_id.desc(),
+                    )
+                    .limit(1)
+                ).mappings().one_or_none()
+        except SQLAlchemyError as error:
+            raise RuntimeError("provider_model_persistence_failed") from error
+        return _conformance_from_row(row) if row is not None else None
+
 
 def _ensure_connection(connection: Any, provider_id: str, updated_at: str) -> None:
     exists = connection.execute(
@@ -520,6 +709,29 @@ def _sync_run_select():
     )
 
 
+def _conformance_select():
+    return select(
+        ProviderModelConformanceRunRow.conformance_run_id,
+        ProviderModelConformanceRunRow.model_ref,
+        ProviderModelRow.provider_id,
+        ProviderModelRow.provider_model_id,
+        ProviderModelConformanceRunRow.operation,
+        ProviderModelConformanceRunRow.adapter_id,
+        ProviderModelConformanceRunRow.transport_kind,
+        ProviderModelConformanceRunRow.adapter_revision,
+        ProviderModelConformanceRunRow.capability_revision,
+        ProviderModelConformanceRunRow.contract_digest,
+        ProviderModelConformanceRunRow.status,
+        ProviderModelConformanceRunRow.safe_summary_json,
+        ProviderModelConformanceRunRow.revision,
+        ProviderModelConformanceRunRow.started_at,
+        ProviderModelConformanceRunRow.completed_at,
+    ).join(
+        ProviderModelRow,
+        ProviderModelRow.model_ref == ProviderModelConformanceRunRow.model_ref,
+    )
+
+
 def _connection_from_row(row: RowMapping) -> ProviderConnectionRecord:
     return ProviderConnectionRecord(
         provider_id=str(row["provider_id"]),
@@ -568,4 +780,77 @@ def _sync_run_from_row(row: RowMapping) -> ProviderModelSyncRunRecord:
         summary=dict(json.loads(str(row["summary_json"]))),
         error_code=_optional_string(row["error_code"]),
         created_at=str(row["created_at"]),
+    )
+
+
+def _conformance_from_row(row: RowMapping) -> ProviderModelConformanceRunRecord:
+    return ProviderModelConformanceRunRecord(
+        conformance_run_id=str(row["conformance_run_id"]),
+        model_ref=str(row["model_ref"]),
+        provider_id=str(row["provider_id"]),
+        provider_model_id=str(row["provider_model_id"]),
+        operation=str(row["operation"]),
+        adapter_id=str(row["adapter_id"]),
+        transport_kind=str(row["transport_kind"]),
+        adapter_revision=str(row["adapter_revision"]),
+        capability_revision=str(row["capability_revision"]),
+        contract_digest=str(row["contract_digest"]),
+        status=str(row["status"]),
+        safe_summary=dict(json.loads(str(row["safe_summary_json"]))),
+        revision=int(row["revision"]),
+        started_at=str(row["started_at"]),
+        completed_at=_optional_string(row["completed_at"]),
+    )
+
+
+def _validate_conformance_strings(*values: str) -> None:
+    if any(not isinstance(value, str) or not value.strip() for value in values):
+        raise ValueError("provider_model_conformance_identity_invalid")
+
+
+def _profile_matches(
+    row: RowMapping,
+    *,
+    model_ref: str,
+    adapter_id: str,
+    transport_kind: str,
+    adapter_revision: str,
+    capability_revision: str,
+) -> bool:
+    try:
+        metadata = json.loads(str(row["capability_metadata_json"]))
+        profile = metadata["adapter_profile"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(profile, Mapping) and all(
+        profile.get(key) == value
+        for key, value in (
+            ("model_ref", model_ref),
+            ("adapter_id", adapter_id),
+            ("transport_kind", transport_kind),
+            ("adapter_revision", adapter_revision),
+            ("capability_revision", capability_revision),
+        )
+    )
+
+
+def _same_conformance_identity(
+    record: ProviderModelConformanceRunRecord,
+    *,
+    model_ref: str,
+    operation: str,
+    adapter_id: str,
+    transport_kind: str,
+    adapter_revision: str,
+    capability_revision: str,
+    contract_digest: str,
+) -> bool:
+    return (
+        record.model_ref == model_ref
+        and record.operation == operation
+        and record.adapter_id == adapter_id
+        and record.transport_kind == transport_kind
+        and record.adapter_revision == adapter_revision
+        and record.capability_revision == capability_revision
+        and record.contract_digest == contract_digest
     )
