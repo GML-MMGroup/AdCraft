@@ -24,6 +24,10 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_working_document_repository import (
+    AgentWorkingDocumentRepository,
+)
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
 )
@@ -98,6 +102,7 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
     WorkflowConversationAgentContext,
+    WorkflowStateCapsuleV1,
 )
 from app.schemas.v2_agent_conversations import (
     WorkflowConversationAnswerContextV1,
@@ -171,6 +176,8 @@ from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPol
 from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
+from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.conversation_query_documents import ConversationQueryDocumentResolver
 from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -1367,6 +1374,18 @@ class AgentConversationService:
             workflows=workflows,
             conversations=conversations,
         )
+        self._conversation_documents = ConversationQueryDocumentResolver(
+            workflows=workflows,
+            working_documents=AgentWorkingDocumentService(
+                workflows=workflows,
+                documents=AgentWorkingDocumentRepository(
+                    workflows.database,
+                    EventRepository(workflows.database),
+                ),
+                assets=V2AssetLibraryRepository(workflows.database),
+                conversations=conversations,
+            ),
+        )
         self._workflow_status_reply = WorkflowStatusReplyRenderer()
 
     def submit_message(
@@ -2405,7 +2424,7 @@ class AgentConversationService:
         turn: ChatTurnV2,
         intent: TurnIntentDecisionV2,
         *,
-        workflow_context,
+        workflow_context: WorkflowStateCapsuleV1,
     ) -> WorkflowConversationReply:
         context, state_reference = self._conversation_answer_context(
             turn,
@@ -2435,10 +2454,44 @@ class AgentConversationService:
                 answer_kind="progress",
                 state_reference=state_reference,
             )
+        document_excerpt = None
+        if (
+            intent.conversation_query is not None
+            and intent.conversation_query.query_kind == "document_explanation"
+        ):
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                workflow_context = current_context
+            document_excerpt = self._conversation_documents.resolve(
+                workflow_context,
+                intent.conversation_query,
+            )
+            context, state_reference = self._conversation_answer_context(
+                turn,
+                response_locale=intent.response_locale,
+                workflow_context=workflow_context,
+                document_excerpt=document_excerpt,
+            )
         reply = self._gateway.answer_workflow_conversation(
             context,
             turn_id=turn.turn_id,
         )
+        if document_excerpt is not None:
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                raise V2PersistenceError(
+                    "agent_workflow_context_stale",
+                    "Workflow context changed while the document explanation was prepared.",
+                    stage="workflow_conversation",
+                )
         if reply.answer_kind != "progress":
             return reply.model_copy(update={"state_reference": state_reference})
         if state_reference is None:
@@ -2475,7 +2528,8 @@ class AgentConversationService:
         turn: ChatTurnV2,
         *,
         response_locale: str,
-        workflow_context,
+        workflow_context: WorkflowStateCapsuleV1,
+        document_excerpt: AgentDocumentContextExcerptV2 | None = None,
     ) -> tuple[WorkflowConversationAgentContext, WorkflowConversationAnswerContextV1 | None]:
         workflow = self._workflows.get_workflow(turn.workflow_id)
         session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
@@ -2490,6 +2544,7 @@ class AgentConversationService:
                     workflow_summary=_workflow_conversation_summary(workflow),
                     response_locale=response_locale,
                     workflow_context=workflow_context,
+                    document_excerpt=document_excerpt,
                 ),
                 None,
             )
@@ -2571,6 +2626,7 @@ class AgentConversationService:
                 next_action=next_action,
                 source_revision=session.revision,
                 workflow_context=workflow_context,
+                document_excerpt=document_excerpt,
             ),
             state_reference,
         )
