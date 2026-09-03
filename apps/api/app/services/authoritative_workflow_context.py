@@ -17,6 +17,9 @@ from app.persistence.agent_canvas_guidance_authority_repository import (
 from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
     AgentCanvasPromptPreparationDispatchRepository,
 )
+from app.persistence.agent_canvas_editing_action_reconciliation_repository import (
+    AgentCanvasEditingActionReconciliationRepository,
+)
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -57,6 +60,10 @@ class AuthoritativeWorkflowContextProjector:
         self._runtime = AgentCanvasRuntimeRepository(database, events)
         self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
         self._documents = AgentWorkingDocumentRepository(database, events)
+        self._editing_reconciliation = AgentCanvasEditingActionReconciliationRepository(
+            database,
+            events,
+        )
         self._guidance = GuidanceAdvanceAuthoritySnapshotRepository(
             AgentCanvasRequirementRepository(database)
         )
@@ -103,7 +110,13 @@ class AuthoritativeWorkflowContextProjector:
                 if node.status != "ready"
             ]
             work.sort(key=lambda item: (_WORK_PRIORITY[item.node_status], item.node_id))
-            current_action = self._current_action(snapshot)
+            documents = self._document_references(workflow_id)
+            current_action = self._current_action(
+                snapshot,
+                members=members,
+                documents=documents,
+                workflow_id=workflow_id,
+            )
             blockers = [
                 WorkflowActionSummaryV1(
                     action_id=f"node-blocker:{node.node_id}:{node.revision}",
@@ -129,7 +142,6 @@ class AuthoritativeWorkflowContextProjector:
             }:
                 blockers.append(current_action)
             blockers.sort(key=_blocker_sort_key)
-            documents = self._document_references(workflow_id)
             locale = snapshot.session.response_locale if snapshot.session is not None else response_locale
             return self._bounded_capsule(
                 workflow_id=workflow_id,
@@ -170,8 +182,14 @@ class AuthoritativeWorkflowContextProjector:
                 current[document.kind] = reference
         return tuple(current[kind] for kind in sorted(current))
 
-    @staticmethod
-    def _current_action(snapshot) -> WorkflowActionSummaryV1 | None:
+    def _current_action(
+        self,
+        snapshot,
+        *,
+        members,
+        documents: tuple[WorkflowDocumentReferenceV1, ...],
+        workflow_id: str,
+    ) -> WorkflowActionSummaryV1 | None:
         session = snapshot.session
         if session is None or session.journey.active_action is None:
             return None
@@ -244,6 +262,21 @@ class AuthoritativeWorkflowContextProjector:
                 continuation_status=leaf.continuation_status,
                 blocker_class="automatic_work_in_progress",
             )
+        exact_member = self._current_plan_execution_member(
+            workflow_id=workflow_id,
+            action_kind=action.action_kind,
+            members=members,
+            documents=documents,
+        )
+        if exact_member is not None:
+            return WorkflowActionSummaryV1(
+                **base,
+                ownership_status="owned",
+                owner_kind="runtime_execution",
+                owner_id=exact_member.member_id,
+                owner_state=exact_member.state,
+                blocker_class="automatic_work_in_progress",
+            )
         return WorkflowActionSummaryV1(
             **base,
             ownership_status="orphaned",
@@ -258,6 +291,43 @@ class AuthoritativeWorkflowContextProjector:
             ),
             blocker_class="unrecoverable",
         )
+
+    def _current_plan_execution_member(
+        self,
+        *,
+        workflow_id: str,
+        action_kind: str,
+        members,
+        documents: tuple[WorkflowDocumentReferenceV1, ...],
+    ):
+        if action_kind != "prepare_editing":
+            return None
+        plan = next(
+            (
+                item
+                for item in documents
+                if item.document_kind == "storyboard_production_plan"
+            ),
+            None,
+        )
+        if plan is None:
+            return None
+        for member in sorted(
+            members.values(),
+            key=lambda item: (item.node_id, item.execution_id, item.member_id),
+        ):
+            if member.state not in {"queued", "waiting", "running"}:
+                continue
+            if self._editing_reconciliation.owner_matches_plan(
+                workflow_id=workflow_id,
+                node_id=member.node_id,
+                owner_kind="execution_member",
+                owner_id=member.member_id,
+                plan_document_id=plan.document_id,
+                plan_revision=plan.revision,
+            ):
+                return member
+        return None
 
     @staticmethod
     def _bounded_capsule(
