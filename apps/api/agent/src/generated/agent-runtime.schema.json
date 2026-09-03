@@ -13954,6 +13954,17 @@
           "title": "Action Turn Id",
           "type": "string"
         },
+        "awaiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceAwaitingV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "awaiting_id": {
           "anyOf": [
             {
@@ -14016,6 +14027,22 @@
           "title": "Logical Identity",
           "type": "string"
         },
+        "media_execution_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "automatic",
+                "manual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Execution Mode"
+        },
         "outcome": {
           "enum": [
             "failed",
@@ -14026,6 +14053,32 @@
           ],
           "title": "Outcome",
           "type": "string"
+        },
+        "plan_document_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Document Id"
+        },
+        "plan_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Revision"
         },
         "preparation_receipt_id": {
           "anyOf": [
@@ -14056,6 +14109,19 @@
           "minLength": 1,
           "title": "Session Id",
           "type": "string"
+        },
+        "system_owner_generation": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Generation"
         },
         "system_owner_id": {
           "anyOf": [
@@ -14143,6 +14209,17 @@
           "title": "Action Turn Id",
           "type": "string"
         },
+        "awaiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceAwaitingV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "awaiting_id": {
           "anyOf": [
             {
@@ -14205,6 +14282,22 @@
           "title": "Logical Identity",
           "type": "string"
         },
+        "media_execution_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "automatic",
+                "manual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Execution Mode"
+        },
         "outcome": {
           "enum": [
             "failed",
@@ -14215,6 +14308,32 @@
           ],
           "title": "Outcome",
           "type": "string"
+        },
+        "plan_document_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Document Id"
+        },
+        "plan_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Revision"
         },
         "preparation_receipt_id": {
           "anyOf": [
@@ -14256,6 +14375,19 @@
           "minLength": 1,
           "title": "Session Id",
           "type": "string"
+        },
+        "system_owner_generation": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Generation"
         },
         "system_owner_id": {
           "anyOf": [
