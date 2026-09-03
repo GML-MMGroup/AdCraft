@@ -849,6 +849,7 @@ class PiVideoAgentGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
+                **_workflow_context_audit(context),
                 **(
                     {
                         "model_result_contract_name": contract.__name__,
@@ -945,6 +946,23 @@ def _context_duration_seconds(context: BaseModel) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def _workflow_context_audit(context: BaseModel) -> dict[str, object]:
+    """Return bounded identity-only diagnostics for an authoritative capsule."""
+
+    capsule = getattr(context, "workflow_context", None)
+    if not isinstance(capsule, WorkflowStateCapsuleV1):
+        return {}
+    return {
+        "workflow_context": {
+            "projection_digest": capsule.projection_digest,
+            "capsule_bytes": len(capsule.model_dump_json().encode("utf-8")),
+            "workflow_revision": capsule.workflow_revision,
+            "guidance_session_revision": capsule.guidance_session_revision,
+            "truncation": capsule.truncation.model_dump(mode="json"),
+        }
+    }
 
 
 def _deterministic_capability_result(
