@@ -5542,17 +5542,10 @@
           "type": "number"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "energy_curve": {
           "maxLength": 2048,
@@ -5593,6 +5586,7 @@
       },
       "required": [
         "duration_seconds",
+        "editable_prompt",
         "energy_curve",
         "instrumentation",
         "mood",
@@ -8530,17 +8524,10 @@
           "type": "string"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "face_and_hair": {
           "maxLength": 2048,
@@ -8580,6 +8567,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "face_and_hair",
         "identity",
         "silhouette_and_proportions",
@@ -8849,17 +8837,10 @@
           "type": "string"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "face_and_hair": {
           "maxLength": 2048,
@@ -8916,6 +8897,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "face_and_hair",
         "identity",
         "silhouette_and_proportions",
@@ -12221,17 +12203,10 @@
       "additionalProperties": false,
       "properties": {
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "prompt": {
           "maxLength": 16384,
@@ -12251,6 +12226,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "prompt",
         "role_variant"
       ],
@@ -19579,17 +19555,10 @@
       "additionalProperties": false,
       "properties": {
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "geometry": {
           "maxLength": 2048,
@@ -19629,6 +19598,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "geometry",
         "identity",
         "marks",
@@ -19676,17 +19646,10 @@
       "additionalProperties": false,
       "properties": {
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "geometry": {
           "maxLength": 2048,
@@ -19735,6 +19698,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "geometry",
         "identity",
         "marks",
@@ -20809,17 +20773,10 @@
       "additionalProperties": false,
       "properties": {
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "form": {
           "maxLength": 2048,
@@ -20853,6 +20810,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "form",
         "identity",
         "materials",
@@ -24704,17 +24662,10 @@
           "type": "string"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "environment_identity": {
           "maxLength": 4096,
@@ -24758,6 +24709,7 @@
       },
       "required": [
         "atmosphere",
+        "editable_prompt",
         "environment_identity",
         "lighting",
         "materials",
@@ -25317,17 +25269,10 @@
           "type": "string"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "narrative": {
           "maxLength": 16384,
@@ -25355,6 +25300,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "narrative",
         "timing"
       ],
@@ -26573,17 +26519,10 @@
           "type": "array"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "role_variant": {
           "const": "storyboard_grid",
@@ -26606,6 +26545,7 @@
       },
       "required": [
         "beats",
+        "editable_prompt",
         "sequence_summary",
         "visual_language"
       ],
@@ -30530,17 +30470,10 @@
           "type": "number"
         },
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "role_variant": {
           "const": "video_segment",
@@ -30570,6 +30503,7 @@
       "required": [
         "action",
         "duration_seconds",
+        "editable_prompt",
         "segment_summary",
         "target_style"
       ],
@@ -31319,17 +31253,10 @@
       "additionalProperties": false,
       "properties": {
         "editable_prompt": {
-          "anyOf": [
-            {
-              "maxLength": 32768,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editable Prompt"
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Editable Prompt",
+          "type": "string"
         },
         "era_and_place": {
           "maxLength": 2048,
@@ -31369,6 +31296,7 @@
         }
       },
       "required": [
+        "editable_prompt",
         "era_and_place",
         "premise",
         "visual_continuity",

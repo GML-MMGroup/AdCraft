@@ -112,29 +112,29 @@ export type EditablePromptProjectionV1 = { readonly "text": string; readonly "lo
 
 export type RoleCreativeBriefV2 = WorldViewRoleBriefV2 | ProductMainRoleBriefV2 | ProductMultiviewRoleBriefV2 | PropRoleBriefV2 | CharacterMainRoleBriefV2 | CharacterTurnaroundRoleBriefV2 | SceneBoardRoleBriefV2 | ScriptRoleBriefV2 | StoryboardGridRoleBriefV2 | VideoSegmentRoleBriefV2 | BgmRoleBriefV2 | FreeMediaRoleBriefV2;
 
-export type WorldViewRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "world_view"; readonly "premise": string; readonly "era_and_place": string; readonly "world_rules": ReadonlyArray<string>; readonly "visual_continuity": ReadonlyArray<string> };
+export type WorldViewRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "world_view"; readonly "premise": string; readonly "era_and_place": string; readonly "world_rules": ReadonlyArray<string>; readonly "visual_continuity": ReadonlyArray<string> };
 
-export type ProductMainRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "product_main"; readonly "identity": string; readonly "geometry": string; readonly "materials": string; readonly "marks": string; readonly "palette": string };
+export type ProductMainRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "product_main"; readonly "identity": string; readonly "geometry": string; readonly "materials": string; readonly "marks": string; readonly "palette": string };
 
-export type ProductMultiviewRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "product_multiview"; readonly "identity": string; readonly "geometry": string; readonly "materials": string; readonly "marks": string; readonly "palette": string; readonly "views": ReadonlyArray<string> };
+export type ProductMultiviewRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "product_multiview"; readonly "identity": string; readonly "geometry": string; readonly "materials": string; readonly "marks": string; readonly "palette": string; readonly "views": ReadonlyArray<string> };
 
-export type PropRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "prop"; readonly "identity": string; readonly "form": string; readonly "materials": string; readonly "palette": string };
+export type PropRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "prop"; readonly "identity": string; readonly "form": string; readonly "materials": string; readonly "palette": string };
 
-export type CharacterMainRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "character_main"; readonly "identity": string; readonly "face_and_hair": string; readonly "silhouette_and_proportions": string; readonly "wardrobe": string; readonly "accessories"?: string; readonly "rendering_mode"?: "detailed_semi_realistic_commercial_illustration" };
+export type CharacterMainRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "character_main"; readonly "identity": string; readonly "face_and_hair": string; readonly "silhouette_and_proportions": string; readonly "wardrobe": string; readonly "accessories"?: string; readonly "rendering_mode"?: "detailed_semi_realistic_commercial_illustration" };
 
-export type CharacterTurnaroundRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "character_turnaround"; readonly "identity": string; readonly "face_and_hair": string; readonly "silhouette_and_proportions": string; readonly "wardrobe": string; readonly "accessories"?: string; readonly "rendering_mode"?: "detailed_semi_realistic_commercial_illustration"; readonly "views"?: ReadonlyArray<"back" | "front" | "side"> };
+export type CharacterTurnaroundRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "character_turnaround"; readonly "identity": string; readonly "face_and_hair": string; readonly "silhouette_and_proportions": string; readonly "wardrobe": string; readonly "accessories"?: string; readonly "rendering_mode"?: "detailed_semi_realistic_commercial_illustration"; readonly "views"?: ReadonlyArray<"back" | "front" | "side"> };
 
-export type SceneBoardRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "scene_board"; readonly "environment_identity": string; readonly "spatial_logic": string; readonly "lighting": string; readonly "materials": string; readonly "atmosphere": string; readonly "views": ReadonlyArray<string> };
+export type SceneBoardRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "scene_board"; readonly "environment_identity": string; readonly "spatial_logic": string; readonly "lighting": string; readonly "materials": string; readonly "atmosphere": string; readonly "views": ReadonlyArray<string> };
 
-export type ScriptRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "script"; readonly "narrative": string; readonly "timing": string; readonly "dialogue"?: string; readonly "voiceover"?: string };
+export type ScriptRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "script"; readonly "narrative": string; readonly "timing": string; readonly "dialogue"?: string; readonly "voiceover"?: string };
 
-export type StoryboardGridRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "storyboard_grid"; readonly "sequence_summary": string; readonly "beats": ReadonlyArray<string>; readonly "visual_language": string };
+export type StoryboardGridRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "storyboard_grid"; readonly "sequence_summary": string; readonly "beats": ReadonlyArray<string>; readonly "visual_language": string };
 
-export type VideoSegmentRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "video_segment"; readonly "segment_summary": string; readonly "duration_seconds": number; readonly "action": string; readonly "dialogue"?: string; readonly "voiceover"?: string; readonly "ambience"?: string; readonly "action_effects"?: string; readonly "target_style": string };
+export type VideoSegmentRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "video_segment"; readonly "segment_summary": string; readonly "duration_seconds": number; readonly "action": string; readonly "dialogue"?: string; readonly "voiceover"?: string; readonly "ambience"?: string; readonly "action_effects"?: string; readonly "target_style": string };
 
-export type BgmRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant"?: "bgm"; readonly "music_summary": string; readonly "duration_seconds": number; readonly "pace": string; readonly "energy_curve": string; readonly "instrumentation": string; readonly "mood": string };
+export type BgmRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant"?: "bgm"; readonly "music_summary": string; readonly "duration_seconds": number; readonly "pace": string; readonly "energy_curve": string; readonly "instrumentation": string; readonly "mood": string };
 
-export type FreeMediaRoleBriefV2 = { readonly "editable_prompt"?: string | null; readonly "role_variant": "free_audio" | "free_image" | "free_text" | "free_video"; readonly "prompt": string };
+export type FreeMediaRoleBriefV2 = { readonly "editable_prompt": string; readonly "role_variant": "free_audio" | "free_image" | "free_text" | "free_video"; readonly "prompt": string };
 
 export type ResolvedNodeParameterV2 = { readonly "name": string; readonly "value": unknown; readonly "source_kind": "bound_text" | "explicit_user" | "installation_default" | "node_parameter" | "storyboard_plan" | "style_advice"; readonly "source_id": string; readonly "source_revision"?: number | null };
 
