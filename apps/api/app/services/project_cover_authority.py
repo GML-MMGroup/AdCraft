@@ -334,7 +334,8 @@ class ProjectCoverAuthorityService:
         )
         selected = min(candidates, key=lambda item: item.rank, default=None)
         if selected is None:
-            outcome = "none" if not versions else "unresolved"
+            ambiguous = _has_ambiguous_cover_evidence(workflow, versions)
+            outcome = "ambiguous" if ambiguous else ("none" if not versions else "unresolved")
             changed = outcome == "none" and (
                 project.cover_state != "none"
                 or project.cover_source is not None
@@ -346,7 +347,11 @@ class ProjectCoverAuthorityService:
                 workflow_id=project.workflow_id,
                 outcome=outcome,
                 candidate_count=0,
-                reason="no_candidate" if not versions else "unclassified_evidence",
+                reason=(
+                    "contradictory_ordering_evidence"
+                    if ambiguous
+                    else ("no_candidate" if not versions else "unclassified_evidence")
+                ),
                 changed=changed,
             )
         current = _candidate_for_identity(
@@ -468,6 +473,8 @@ def _candidate_for_version(
     output_asset_id = getattr(node, "output_asset_id", None)
     if output_asset_id is not None and output_asset_id != version.asset_id:
         return None
+    if role in {"character_main", "storyboard_grid", "video_poster"} and node is None:
+        return None
     if role == "video_poster":
         if not version.mime_type.startswith("video/"):
             return None
@@ -499,6 +506,38 @@ def _candidate_for_version(
         business_index=business_index,
         workflow_node_index=workflow_node_index,
     )
+
+
+def _has_ambiguous_cover_evidence(
+    workflow: AgentCanvasWorkflowV2,
+    versions: Iterable[AssetVersionMetadataV2],
+) -> bool:
+    node_roles: dict[str, str] = {}
+    nodes_by_identity: dict[str, object] = {}
+    for node in workflow.nodes:
+        nodes_by_identity[node.node_id] = node
+        if node.output_asset_id is not None:
+            nodes_by_identity[node.output_asset_id] = node
+        role = _node_cover_role(node)
+        if role is not None:
+            node_roles[node.node_id] = role
+            if node.output_asset_id is not None:
+                node_roles[node.output_asset_id] = role
+    for version in versions:
+        if version.status != "ready" or version.source_workflow_id != workflow.workflow_id:
+            continue
+        node = nodes_by_identity.get(version.source_node_id or "")
+        if node is None:
+            node = nodes_by_identity.get(version.asset_id)
+        role = _resolved_cover_source(version, node_roles)
+        if role not in {"character_main", "storyboard_grid", "video_poster"}:
+            continue
+        if node is None:
+            return True
+        key = "occurrence_index" if role == "character_main" else "sequence_index"
+        if _consistent_index(version, node, key) is None:
+            return True
+    return False
 
 
 def _canonical_cover_source(role: str | None) -> ProjectCoverSourceV2 | None:
