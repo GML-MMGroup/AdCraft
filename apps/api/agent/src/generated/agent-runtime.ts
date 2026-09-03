@@ -390,7 +390,7 @@ export type CompactCharacterOccurrencePatchV3 = { readonly "occurrence_index": n
 
 export type CompactRequirementPatchV3 = { readonly "controls_to_set"?: CompactRequirementControlsV2; readonly "directives_to_add"?: ReadonlyArray<CompactRequirementDirectivePatchV3>; readonly "character_occurrences_to_set"?: ReadonlyArray<CompactCharacterOccurrencePatchV3> | null };
 
-export type ConversationQueryV1 = { readonly "query_kind": "document_explanation" | "workflow_status"; readonly "document_kind"?: "anchor_registry" | "storyboard_production_plan" | null; readonly "sequence_id"?: string | null; readonly "anchor_aliases"?: ReadonlyArray<string> };
+export type ConversationQueryV1 = { readonly "query_kind": "document_explanation" | "workflow_status"; readonly "document_kind"?: "anchor_registry" | "storyboard_production_plan" | null; readonly "requested_document_kinds"?: ReadonlyArray<"anchor_registry" | "storyboard_production_plan">; readonly "sequence_id"?: string | null; readonly "anchor_aliases"?: ReadonlyArray<string> };
 
 export type CompactTurnIntentDecisionV3 = { readonly "mode": "guided_production" | "ordinary_conversation" | "quick_media" | "targeted_authoring"; readonly "objective": string; readonly "requested_capability"?: "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting" | null; readonly "explicit_elements"?: CompactExplicitElementsV3; readonly "assistant_message"?: string | null; readonly "requirement_patch"?: CompactRequirementPatchV3 | null; readonly "response_locale"?: string | null; readonly "conversation_query"?: ConversationQueryV1 | null };
 

@@ -10166,6 +10166,19 @@
           "title": "Query Kind",
           "type": "string"
         },
+        "requested_document_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "anchor_registry",
+              "storyboard_production_plan"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Requested Document Kinds",
+          "type": "array"
+        },
         "sequence_id": {
           "anyOf": [
             {
