@@ -87,6 +87,7 @@ class ModelResolutionService:
             capability_metadata=selected.capability_metadata,
             adapter_id=adapter_profile["adapter_id"],
             transport_kind=adapter_profile["transport_kind"],
+            conformance_status=adapter_profile["conformance_status"],
             capability_revision=adapter_profile["capability_revision"],
             adapter_revision=adapter_profile["adapter_revision"],
             requested_parameter_fingerprint=requested_parameter_fingerprint,
@@ -128,6 +129,7 @@ def _profile_for_selection(selected: object) -> dict[str, str]:
         return {
             "adapter_id": profile.adapter_id,
             "transport_kind": profile.transport_kind,
+            "conformance_status": profile.conformance_status,
             "capability_revision": profile.capability_revision,
             "adapter_revision": profile.adapter_revision,
         }
@@ -140,6 +142,7 @@ def _profile_for_selection(selected: object) -> dict[str, str]:
                 "fake" if provider_id == "fake" else "pi_native_openai_compatible",
             )
         ),
+        "conformance_status": "compatible",
         "capability_revision": str(
             metadata.get("capability_revision", f"catalog-{selected.catalog_revision}")
         ),

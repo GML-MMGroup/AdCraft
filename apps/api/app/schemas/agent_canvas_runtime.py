@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_execution_mode import (
     CanvasParameterSourceV2,
     CanvasSemanticExtractionModeV2,
 )
+from app.schemas.provider_models import ProviderConformanceStatusV1
 
 
 CanvasRunScopeV2 = Literal["all_drafts", "selected_nodes"]
@@ -280,6 +281,7 @@ class ResolvedModelExecutionV2(ResolvedModelExecutionV1):
 
     adapter_id: str = Field(min_length=1, max_length=120)
     transport_kind: str = Field(min_length=1, max_length=80)
+    conformance_status: ProviderConformanceStatusV1 = "compatible"
     capability_revision: str = Field(min_length=1, max_length=80)
     adapter_revision: str = Field(min_length=1, max_length=80)
     requested_parameter_fingerprint: str = Field(min_length=8, max_length=128)
