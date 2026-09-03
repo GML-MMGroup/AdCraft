@@ -2142,8 +2142,10 @@ def get_node(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> CanvasNodeV2:
     try:
-        node = runtime.workflows.get_node(workflow_id, node_id)
-        return runtime.editing_responses.project_node(node)
+        workflow = runtime.editing_responses.project_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
+        return _projected_node(workflow, node_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -4152,7 +4154,14 @@ def _http_error(
 
 
 def _projected_node(workflow: AgentCanvasWorkflowV2, node_id: str) -> CanvasNodeV2:
-    return next(node for node in workflow.nodes if node.node_id == node_id)
+    node = next((node for node in workflow.nodes if node.node_id == node_id), None)
+    if node is None:
+        raise V2PersistenceError(
+            "node_not_found",
+            "Node was not found.",
+            stage="agent_canvas_editing_response_projector",
+        )
+    return node
 
 
 def _provider_download_mime_type(media_type: str, path: Path | str) -> str:

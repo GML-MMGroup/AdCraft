@@ -29,7 +29,11 @@ class EditingResponseProjector:
         """Return a workflow with every Editing node canonically projected."""
 
         return workflow.model_copy(
-            update={"nodes": tuple(self.project_node(node) for node in workflow.nodes)}
+            update={
+                "nodes": tuple(
+                    self._project_snapshot_node(workflow, node) for node in workflow.nodes
+                )
+            }
         )
 
     def validate_workflow(self, workflow: AgentCanvasWorkflowV2) -> None:
@@ -37,11 +41,7 @@ class EditingResponseProjector:
 
         for node in workflow.nodes:
             if node.node_type == "editing":
-                try:
-                    content = self._editing_nodes.content_from_snapshot(workflow, node.node_id)
-                except (V2PersistenceError, TypeError, ValueError) as error:
-                    raise _projection_error(node, error) from error
-                self._project_node(node, content)
+                self._project_snapshot_node(workflow, node)
 
     def validate_content_payload(
         self,
@@ -72,6 +72,19 @@ class EditingResponseProjector:
             return CanvasNodeV2.model_validate(projected.model_dump(mode="python"))
         except (AttributeError, TypeError, ValueError) as error:
             raise _projection_error(node, error) from error
+
+    def _project_snapshot_node(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node: CanvasNodeV2,
+    ) -> CanvasNodeV2:
+        if node.node_type != "editing":
+            return node
+        try:
+            content = self._editing_nodes.content_from_snapshot(workflow, node.node_id)
+        except (V2PersistenceError, TypeError, ValueError) as error:
+            raise _projection_error(node, error) from error
+        return self._project_node(node, content)
 
 
 def _projection_error(node: CanvasNodeV2, error: BaseException) -> V2PersistenceError:
