@@ -851,6 +851,7 @@ def create_agent_canvas_runtime(
     provider_executor = provider_executor_override or V2ProviderExecutor(
         settings=settings,
         data_dir=settings.media_data_dir,
+        adapter_registry=adapter_registry,
     )
     dispatcher = build_default_node_dispatcher(
         settings,
