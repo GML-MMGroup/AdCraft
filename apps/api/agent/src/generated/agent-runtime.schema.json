@@ -13934,6 +13934,371 @@
       "title": "GuidedCustomAnswerV1",
       "type": "object"
     },
+    "GuidedEditingActionReconciliationCommandV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "action_stage_revision": {
+          "minimum": 1,
+          "title": "Action Stage Revision",
+          "type": "integer"
+        },
+        "action_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Turn Id",
+          "type": "string"
+        },
+        "awaiting_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Awaiting Id"
+        },
+        "awaiting_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "manual_node_run",
+                "media_review"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Awaiting Kind"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "failed",
+            "prepared",
+            "superseded",
+            "system_deferred",
+            "waiting_user"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "preparation_receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preparation Receipt Id"
+        },
+        "reason_code": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "reconciled_at": {
+          "format": "date-time",
+          "title": "Reconciled At",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "system_owner_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Id"
+        },
+        "system_owner_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "automatic_run",
+                "execution_member",
+                "guided_media_resume",
+                "post_ready_effect"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Kind"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_id",
+        "action_stage_revision",
+        "action_turn_id",
+        "expected_session_revision",
+        "logical_identity",
+        "outcome",
+        "reason_code",
+        "reconciled_at",
+        "session_id",
+        "workflow_id"
+      ],
+      "title": "GuidedEditingActionReconciliationCommandV1",
+      "type": "object"
+    },
+    "GuidedEditingActionReconciliationReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "action_stage_revision": {
+          "minimum": 1,
+          "title": "Action Stage Revision",
+          "type": "integer"
+        },
+        "action_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Turn Id",
+          "type": "string"
+        },
+        "awaiting_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Awaiting Id"
+        },
+        "awaiting_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "manual_node_run",
+                "media_review"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Awaiting Kind"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "failed",
+            "prepared",
+            "superseded",
+            "system_deferred",
+            "waiting_user"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "preparation_receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preparation Receipt Id"
+        },
+        "reason_code": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "receipt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "reconciled_at": {
+          "format": "date-time",
+          "title": "Reconciled At",
+          "type": "string"
+        },
+        "resulting_session_revision": {
+          "minimum": 1,
+          "title": "Resulting Session Revision",
+          "type": "integer"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "system_owner_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Id"
+        },
+        "system_owner_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "automatic_run",
+                "execution_member",
+                "guided_media_resume",
+                "post_ready_effect"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Kind"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_id",
+        "action_stage_revision",
+        "action_turn_id",
+        "expected_session_revision",
+        "logical_identity",
+        "outcome",
+        "reason_code",
+        "receipt_id",
+        "reconciled_at",
+        "resulting_session_revision",
+        "session_id",
+        "workflow_id"
+      ],
+      "title": "GuidedEditingActionReconciliationReceiptV1",
+      "type": "object"
+    },
     "GuidedEditingPreparationReceiptV1": {
       "additionalProperties": false,
       "properties": {
