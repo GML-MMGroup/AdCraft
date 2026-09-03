@@ -95,6 +95,8 @@ def build_trusted_provider_adapter_registry(
 
     registry = ProviderAdapterRegistry()
     for record in models:
+        if record.source != "built_in" or record.availability != "available":
+            continue
         raw_profile = record.capability_metadata.get("adapter_profile")
         if raw_profile is None:
             continue
@@ -102,13 +104,17 @@ def build_trusted_provider_adapter_registry(
             profile = ProviderAdapterProfileV1.model_validate(raw_profile)
         except Exception as error:
             raise ValueError("provider_adapter_profile_invalid") from error
-        adapter = _adapter_for_profile(profile)
+        adapter = _adapter_for_profile(profile, provider_model_id=record.provider_model_id)
         registry.register_catalog_model(record, adapter)
     registry.validate_profiles(registry.profiles())
     return registry
 
 
-def _adapter_for_profile(profile: ProviderAdapterProfileV1) -> ProviderAdapter:
+def _adapter_for_profile(
+    profile: ProviderAdapterProfileV1,
+    *,
+    provider_model_id: str,
+) -> ProviderAdapter:
     from app.services.provider_native_adapters import (
         ArkMediaAdapter,
         MiniMaxVideoAdapter,
@@ -118,7 +124,7 @@ def _adapter_for_profile(profile: ProviderAdapterProfileV1) -> ProviderAdapter:
     if profile.transport_kind == "openai_images_native":
         return OpenAIImageAdapter()
     if profile.transport_kind == "minimax_video_native":
-        return MiniMaxVideoAdapter(provider_model_id=profile.provider_model_id)
+        return MiniMaxVideoAdapter(provider_model_id=provider_model_id)
     if profile.transport_kind in {"ark_image_native", "ark_video_native"}:
         return ArkMediaAdapter(profile)
     raise ValueError("provider_adapter_profile_invalid")
