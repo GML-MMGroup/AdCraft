@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from hashlib import sha256
 
 from sqlalchemy import select, update
@@ -26,6 +27,7 @@ from app.persistence.models import (
     AgentCanvasPostReadyEffectRow,
 )
 from app.schemas.agent_canvas_production_closure import (
+    GuidedMediaConfirmationV1,
     GuidedEditingActionReconciliationCommandV1,
     GuidedEditingActionReconciliationReceiptV1,
 )
@@ -53,6 +55,14 @@ class AgentCanvasEditingActionReconciliationRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
+                    replay = self._receipts.find_action_reconciliation_in_transaction(
+                        connection,
+                        command.logical_identity,
+                    )
+                    if replay is not None:
+                        self._require_replay_match(command, replay)
+                        connection.commit()
+                        return replay
                     row = (
                         connection.execute(
                             select(AgentCanvasGuidanceSessionRow).where(
@@ -197,40 +207,68 @@ class AgentCanvasEditingActionReconciliationRepository:
             return
         if command.outcome != "system_deferred":
             return
-        table, identity_column, state_column, active_states = {
+        table, identity_column, state_column, node_column, active_states = {
             "execution_member": (
                 AgentCanvasExecutionMemberRow,
                 AgentCanvasExecutionMemberRow.member_id,
                 AgentCanvasExecutionMemberRow.state,
+                AgentCanvasExecutionMemberRow.node_id,
                 ("queued", "waiting", "running"),
             ),
             "automatic_run": (
                 AgentCanvasAutomaticRunCommandRow,
                 AgentCanvasAutomaticRunCommandRow.command_id,
                 AgentCanvasAutomaticRunCommandRow.state,
+                AgentCanvasAutomaticRunCommandRow.node_id,
                 ("pending", "claimed"),
             ),
             "post_ready_effect": (
                 AgentCanvasPostReadyEffectRow,
                 AgentCanvasPostReadyEffectRow.effect_id,
                 AgentCanvasPostReadyEffectRow.status,
+                AgentCanvasPostReadyEffectRow.node_id,
                 ("queued", "running"),
             ),
             "guided_media_resume": (
                 AgentCanvasGuidedMediaResumeDeliveryRow,
                 AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id,
                 AgentCanvasGuidedMediaResumeDeliveryRow.status,
+                None,
                 ("queued", "running"),
             ),
         }[command.system_owner_kind]
-        owner_id = connection.execute(
-            select(identity_column).where(
+        columns = [identity_column]
+        if node_column is not None:
+            columns.append(node_column)
+        owner = connection.execute(
+            select(*columns).where(
                 identity_column == command.system_owner_id,
                 table.workflow_id == command.workflow_id,
                 state_column.in_(active_states),
             )
+        ).one_or_none()
+        if owner is None or str(owner[0]) not in command.evidence_ids:
+            raise _evidence_error()
+        if node_column is not None:
+            if str(owner[1]) != command.system_owner_node_id:
+                raise _evidence_error()
+            return
+        confirmation_id = connection.execute(
+            select(AgentCanvasGuidedMediaResumeDeliveryRow.confirmation_id).where(
+                AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id == command.system_owner_id
+            )
+        ).scalar_one()
+        payload_json = connection.execute(
+            select(AgentCanvasGuidedProductionReceiptRow.payload_json).where(
+                AgentCanvasGuidedProductionReceiptRow.receipt_type == "media_confirmation",
+                AgentCanvasGuidedProductionReceiptRow.receipt_id == confirmation_id,
+                AgentCanvasGuidedProductionReceiptRow.workflow_id == command.workflow_id,
+            )
         ).scalar_one_or_none()
-        if owner_id is None or str(owner_id) not in command.evidence_ids:
+        if payload_json is None:
+            raise _evidence_error()
+        confirmation = GuidedMediaConfirmationV1.model_validate(json.loads(str(payload_json)))
+        if confirmation.node_id != command.system_owner_node_id:
             raise _evidence_error()
 
     def _persist_receipt_and_event(

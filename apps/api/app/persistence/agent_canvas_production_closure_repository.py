@@ -209,6 +209,22 @@ class AgentCanvasProductionClosureRepository:
             return None
         return GuidedEditingActionReconciliationReceiptV1.model_validate_json(row.payload_json)
 
+    @staticmethod
+    def find_action_reconciliation_in_transaction(
+        connection: Connection,
+        logical_identity: str,
+    ) -> GuidedEditingActionReconciliationReceiptV1 | None:
+        payload_json = connection.execute(
+            select(AgentCanvasGuidedProductionReceiptRow.payload_json).where(
+                AgentCanvasGuidedProductionReceiptRow.receipt_type
+                == "editing_action_reconciliation",
+                AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+            )
+        ).scalar_one_or_none()
+        if payload_json is None:
+            return None
+        return GuidedEditingActionReconciliationReceiptV1.model_validate_json(payload_json)
+
     def get_completion(self, receipt_id: str) -> GuidedFinalCompletionReceiptV1:
         return self._get("final_completion", receipt_id, GuidedFinalCompletionReceiptV1)
 

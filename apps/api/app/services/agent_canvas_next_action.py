@@ -293,6 +293,7 @@ class DurableNextActionExecutionService:
                         awaiting_kind=resolution.awaiting_kind,
                         system_owner_kind=resolution.system_owner_kind,
                         system_owner_id=resolution.system_owner_id,
+                        system_owner_node_id=resolution.system_owner_node_id,
                         error_code=resolution.error_code,
                     )
                     editing_outcome = resolution.outcome
@@ -512,6 +513,7 @@ class DurableNextActionExecutionService:
         awaiting_kind: str | None = None,
         system_owner_kind: EditingActionSystemOwnerKindV1 | None = None,
         system_owner_id: str | None = None,
+        system_owner_node_id: str | None = None,
         error_code: str | None = None,
     ) -> None:
         action = session.journey.active_action
@@ -542,6 +544,7 @@ class DurableNextActionExecutionService:
                     "awaiting_kind": awaiting_kind,
                     "system_owner_kind": system_owner_kind,
                     "system_owner_id": system_owner_id,
+                    "system_owner_node_id": system_owner_node_id,
                     "error_code": error_code,
                     "reconciled_at": datetime.now(timezone.utc),
                 }

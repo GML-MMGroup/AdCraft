@@ -194,6 +194,7 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
     awaiting_kind: Literal["media_review", "manual_node_run"] | None = None
     system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
     system_owner_id: str | None = Field(default=None, max_length=160)
+    system_owner_node_id: str | None = Field(default=None, max_length=160)
     error_code: str | None = Field(default=None, max_length=120)
     reconciled_at: datetime
 
@@ -201,7 +202,14 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
     def validate_outcome_evidence(self) -> "GuidedEditingActionReconciliationCommandV1":
         has_preparation = self.preparation_receipt_id is not None
         has_wait = self.awaiting_id is not None or self.awaiting_kind is not None
-        has_system_owner = self.system_owner_kind is not None or self.system_owner_id is not None
+        has_system_owner = any(
+            value is not None
+            for value in (
+                self.system_owner_kind,
+                self.system_owner_id,
+                self.system_owner_node_id,
+            )
+        )
         has_error = self.error_code is not None
         if self.outcome == "prepared":
             if not has_preparation or has_wait or has_system_owner or has_error:
@@ -219,6 +227,7 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
             if (
                 self.system_owner_kind is None
                 or self.system_owner_id is None
+                or self.system_owner_node_id is None
                 or has_preparation
                 or has_wait
                 or has_error
@@ -232,9 +241,7 @@ class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
         return self
 
 
-class GuidedEditingActionReconciliationReceiptV1(
-    GuidedEditingActionReconciliationCommandV1
-):
+class GuidedEditingActionReconciliationReceiptV1(GuidedEditingActionReconciliationCommandV1):
     receipt_id: str = Field(min_length=1, max_length=160)
     resulting_session_revision: int = Field(ge=1)
 
