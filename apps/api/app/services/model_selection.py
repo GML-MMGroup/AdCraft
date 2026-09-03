@@ -87,6 +87,7 @@ class ModelSelectionService:
             parameters=parameters or {},
         )
         self._validate_node_capability(node_type, selected)
+        self._validate_adapter_conformance(selected)
         self._validate_declared_parameters(selected, parameters or {})
         if node_type == "audio":
             validate_audio_model_parameters(selected, parameters or {})
@@ -185,6 +186,32 @@ class ModelSelectionService:
             raise _model_error(
                 "agent_model_incompatible",
                 "Script Nodes require an Agent-compatible text model.",
+                model_ref=record.model_ref,
+            )
+
+    @staticmethod
+    def _validate_adapter_conformance(record: ProviderModelRecord) -> None:
+        raw_profile = record.capability_metadata.get("adapter_profile")
+        if raw_profile is None:
+            return
+        try:
+            profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+        except Exception as error:
+            raise _model_error(
+                "model_adapter_unavailable",
+                "The selected model adapter profile is invalid.",
+                model_ref=record.model_ref,
+            ) from error
+        if profile.conformance_status == "revoked":
+            raise _model_error(
+                "model_conformance_revoked",
+                "The selected model adapter conformance is revoked.",
+                model_ref=record.model_ref,
+            )
+        if profile.conformance_status == "unverified":
+            raise _model_error(
+                "model_conformance_required",
+                "The selected model adapter requires conformance evidence.",
                 model_ref=record.model_ref,
             )
 
