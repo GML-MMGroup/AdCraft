@@ -81,6 +81,14 @@ class CharacterDesignAssetContentV2(DesignAssetContentV2):
     reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
         "detailed_semi_realistic_illustration"
     )
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    parent_source_node_id: str | None = Field(default=None, min_length=1, max_length=160)
+    parent_source_node_revision: int | None = Field(default=None, ge=1)
+    parent_asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
+    identity_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
 
 
 class SceneBoardPanelV2(_AdMediaModel):
@@ -102,6 +110,10 @@ class SceneDesignBoardContentV2(_AdMediaModel):
     explicit_entity_reference_ids: tuple[str, ...] = Field(default=(), max_length=32)
     exclude_unreferenced_entities: Literal[True] = True
     no_narrative_progression: Literal[True] = True
+    environment_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
 
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "SceneDesignBoardContentV2":

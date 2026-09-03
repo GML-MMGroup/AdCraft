@@ -14,6 +14,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_role_prompt_preparation import (
+    CharacterIdentityAuthorityProjectionV1,
     ResolvedNodeParameterV2,
     RoleBoundTextControlV2,
     RoleBindingSnapshotV2,
@@ -21,6 +22,8 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleParameterSourceKindV2,
     RolePromptPreparationContextV2,
     RolePromptVariantV2,
+    SceneEnvironmentProjectionV1,
+    SceneEnvironmentViewV1,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
@@ -139,6 +142,8 @@ class RolePromptContextProjector:
         installation_parameters: dict[str, JsonValue] | None = None,
         world_view_projection: str | None = None,
         context_blocks: tuple[RolePromptContextBlockV2, ...] = (),
+        character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
+        scene_environment_projection: SceneEnvironmentProjectionV1 | None = None,
     ) -> RolePromptPreparationContextV2:
         if stage_context.workflow_id != node.workflow_id:
             raise _error(
@@ -247,6 +252,8 @@ class RolePromptContextProjector:
             requirement_revision_no=requirement_revision_no,
             occurrence_id=occurrence_id,
             character_phase=character_phase,
+            character_identity_projection=character_identity_projection,
+            scene_environment_projection=scene_environment_projection,
             requirement_facts=_role_requirement_facts(
                 stage_context.requirement_facts,
                 role_variant,
@@ -451,6 +458,103 @@ def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:
     ):
         return None
     return prompt
+
+
+def character_identity_projection_from_node(
+    node: CanvasNodeV2,
+    *,
+    occurrence_id: str | None = None,
+    source_asset_id: str | None = None,
+    source_asset_version_id: str | None = None,
+) -> CharacterIdentityAuthorityProjectionV1:
+    """Project only explicit structured Character Main authority."""
+
+    content = node.structured_content
+    identity = _required_text(content.get("subject_identity")) or _required_text(node.summary_prompt)
+    summary = _required_text(content.get("design_summary")) or identity
+    if not identity:
+        raise _error(
+            "character_parent_identity_projection_invalid",
+            "Character Main has no typed identity authority.",
+        )
+    gender = content.get("gender_presentation", "unspecified")
+    if gender not in {"masculine", "feminine", "androgynous", "unspecified"}:
+        raise _error(
+            "character_parent_identity_projection_invalid",
+            "Character Main gender facet is not a supported typed value.",
+        )
+    return CharacterIdentityAuthorityProjectionV1.build(
+        source_node_id=node.node_id,
+        source_node_revision=node.revision,
+        source_asset_id=(source_asset_id if source_asset_version_id is not None else None),
+        source_asset_version_id=source_asset_version_id,
+        occurrence_id=occurrence_id or str(node.metadata.get("occurrence_id") or "unknown"),
+        identity=identity,
+        face_and_hair=_required_text(content.get("face_and_hair")) or summary,
+        silhouette_and_proportions=(
+            _required_text(content.get("silhouette_and_proportions")) or summary
+        ),
+        wardrobe=_required_text(content.get("wardrobe")) or summary,
+        accessories=_required_text(content.get("accessories")) or "",
+        gender_presentation=gender,
+    )
+
+
+def scene_environment_projection_from_node(
+    node: CanvasNodeV2,
+) -> SceneEnvironmentProjectionV1:
+    """Project typed environment fields without parsing narrative text."""
+
+    content = node.structured_content
+    identity = _required_text(content.get("scene_identity")) or _required_text(node.summary_prompt)
+    summary = _required_text(content.get("environment_summary")) or identity
+    if not identity or not summary:
+        raise _error(
+            "scene_environment_projection_invalid",
+            "Scene source lacks typed environment authority.",
+        )
+    panels = content.get("panels")
+    views: list[SceneEnvironmentViewV1] = []
+    if isinstance(panels, list):
+        for panel in panels:
+            if not isinstance(panel, dict):
+                continue
+            zone = _required_text(panel.get("view_or_zone"))
+            details = _required_text(panel.get("spatial_description"))
+            if zone and details:
+                views.append(
+                    SceneEnvironmentViewV1(
+                        view_or_zone=zone,
+                        spatial_details=details,
+                        allowed_environment_elements=(),
+                    )
+                )
+    if not views:
+        views = [
+            SceneEnvironmentViewV1(
+                view_or_zone=f"Environment view {index}",
+                spatial_details=summary,
+                allowed_environment_elements=(),
+            )
+            for index in range(1, 10)
+        ]
+    return SceneEnvironmentProjectionV1.build(
+        source_node_id=node.node_id,
+        source_node_revision=node.revision,
+        environment_identity=identity,
+        spatial_logic=summary,
+        lighting=_required_text(content.get("lighting")) or "Accepted environment lighting.",
+        materials=_required_text(content.get("materials")) or "Accepted environment materials.",
+        atmosphere=summary,
+        views=tuple(views[:9]),
+        entity_references=tuple(str(item) for item in content.get("explicit_entity_reference_ids", ())),
+        action_references=tuple(str(item) for item in content.get("action_references", ())),
+        environment_only=content.get("no_narrative_progression") is not False,
+    )
+
+
+def _required_text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _validate_parameter(

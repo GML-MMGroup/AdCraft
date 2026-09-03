@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     BgmRoleBriefV2,
     CharacterMainRoleBriefV2,
     CharacterTurnaroundRoleBriefV2,
+    CharacterIdentityAuthorityProjectionV1,
     CompiledNodePromptV2,
     FreeMediaRoleBriefV2,
     ProductMainRoleBriefV2,
@@ -34,6 +35,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefMemberV2,
     RolePromptPreparationContextV2,
     SceneBoardRoleBriefV2,
+    SceneEnvironmentProjectionV1,
     ScriptRoleBriefV2,
     StoryboardGridRoleBriefV2,
     VideoSegmentRoleBriefV2,
@@ -143,6 +145,15 @@ class AgentCanvasRolePromptCompiler:
             recipe,
             brief_digest=brief_digest,
         )
+        character_projection, scene_projection = _semantic_projections(
+            concrete_brief,
+            context,
+        )
+        rendered_prompt, negative = _render(
+            concrete_brief,
+            character_projection=character_projection,
+            scene_projection=scene_projection,
+        )
         editable_prompt = (
             editable_prompt_override
             if editable_prompt_override is not None
@@ -155,9 +166,8 @@ class AgentCanvasRolePromptCompiler:
                     "node_prompt_brief_invalid",
                     "Editable prompt must not be blank.",
                 )
-            _, negative = _render(concrete_brief)
         else:
-            prompt, negative = _render(concrete_brief)
+            prompt = rendered_prompt
         _validate_role_prompt_text(context.role_variant, prompt)
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
         conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
@@ -294,6 +304,14 @@ class AgentCanvasRolePromptCompiler:
             source_snapshots=source_snapshots_from_context(context),
             document_revisions=context.document_revisions,
             sequence_id=sequence_id,
+            character_identity_projection_digest=(
+                character_projection.projection_digest
+                if character_projection is not None
+                else None
+            ),
+            scene_environment_projection_digest=(
+                scene_projection.projection_digest if scene_projection is not None else None
+            ),
             engine_owned_fields_digest=policy.engine_owned_fields_digest,
         )
         return CompiledNodePromptV2(
@@ -340,7 +358,94 @@ class AgentCanvasRolePromptCompiler:
                 )
 
 
-def _render(brief: RoleCreativeBriefMemberV2) -> tuple[str, str]:
+def _semantic_projections(
+    brief: RoleCreativeBriefMemberV2,
+    context: RolePromptPreparationContextV2,
+) -> tuple[CharacterIdentityAuthorityProjectionV1 | None, SceneEnvironmentProjectionV1 | None]:
+    if isinstance(brief, CharacterTurnaroundRoleBriefV2):
+        projection = context.character_identity_projection
+        if projection is not None:
+            if not context.bindings:
+                raise _error(
+                    "character_parent_identity_projection_invalid",
+                    "Character Turnaround requires a current Main Binding.",
+                )
+            parent = context.bindings[0]
+            if (
+                parent.source_node_id != projection.source_node_id
+                or parent.source_node_revision != projection.source_node_revision
+                or parent.asset_id != projection.source_asset_id
+                or parent.asset_version_id != projection.source_asset_version_id
+                or parent.occurrence_id != projection.occurrence_id
+                or parent.character_phase != "main"
+            ):
+                raise _error(
+                    "character_parent_identity_projection_invalid",
+                    "Character Main projection is stale or not the exact bound occurrence.",
+                )
+            protected = {
+                "identity": projection.identity,
+                "face_and_hair": projection.face_and_hair,
+                "silhouette_and_proportions": projection.silhouette_and_proportions,
+                "wardrobe": projection.wardrobe,
+                "accessories": projection.accessories,
+                "rendering_mode": projection.rendering_mode,
+                "gender_presentation": projection.gender_presentation,
+            }
+            for name, expected in protected.items():
+                actual = getattr(brief, name)
+                if actual not in {"", "unspecified"} and actual != expected:
+                    raise _error(
+                        "character_turnaround_identity_conflict",
+                        "Turnaround identity differs from the bound Character Main authority.",
+                    )
+            return projection, None
+        return None, None
+    if isinstance(brief, SceneBoardRoleBriefV2):
+        projection = context.scene_environment_projection
+        if projection is None:
+            from app.schemas.agent_canvas_role_prompt_preparation import SceneEnvironmentViewV1
+
+            projection = SceneEnvironmentProjectionV1.build(
+                source_node_id=context.node_id,
+                source_node_revision=context.node_revision,
+                environment_identity=brief.environment_identity,
+                spatial_logic=brief.spatial_logic,
+                lighting=brief.lighting,
+                materials=brief.materials,
+                atmosphere=brief.atmosphere,
+                views=tuple(
+                    SceneEnvironmentViewV1(
+                        view_or_zone=view,
+                        spatial_details=brief.spatial_logic,
+                        allowed_environment_elements=(),
+                    )
+                    for view in brief.views
+                ),
+                entity_references=brief.entity_references,
+                action_references=brief.action_references,
+                environment_only=brief.environment_only,
+            )
+        if projection.entity_references or projection.action_references:
+            raise _error(
+                "scene_environment_projection_invalid",
+                "Scene preparation requires an environment-only projection.",
+            )
+        if projection.source_node_revision != context.node_revision and context.node_id == projection.source_node_id:
+            raise _error(
+                "node_prompt_context_stale",
+                "Scene environment projection revision is stale.",
+            )
+        return None, projection
+    return None, None
+
+
+def _render(
+    brief: RoleCreativeBriefMemberV2,
+    *,
+    character_projection: CharacterIdentityAuthorityProjectionV1 | None = None,
+    scene_projection: SceneEnvironmentProjectionV1 | None = None,
+) -> tuple[str, str]:
     if isinstance(brief, WorldViewRoleBriefV2):
         return (
             f"World premise: {brief.premise} Era and place: {brief.era_and_place}. "
@@ -373,13 +478,21 @@ def _render(brief: RoleCreativeBriefMemberV2) -> tuple[str, str]:
             "No people, products, active scene, unrelated objects, text, labels, or board layout.",
         )
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
+        identity = character_projection.identity if character_projection else brief.identity
+        face_and_hair = character_projection.face_and_hair if character_projection else brief.face_and_hair
+        silhouette = (
+            character_projection.silhouette_and_proportions
+            if character_projection
+            else brief.silhouette_and_proportions
+        )
+        wardrobe = character_projection.wardrobe if character_projection else brief.wardrobe
+        accessories = character_projection.accessories if character_projection else brief.accessories
         return (
             "Use the exact bound Character Main as identity authority. Create the same detailed "
             "non-photorealistic semi-realistic commercial illustration in front, side, and back "
             "full-body views on a clean neutral background. Preserve all distinguishing details. "
-            f"Identity: {brief.identity}. Face and hair: {brief.face_and_hair}. Proportions: "
-            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
-            f"{brief.accessories}.",
+            f"Identity: {identity}. Face and hair: {face_and_hair}. Proportions: "
+            f"{silhouette}. Wardrobe: {wardrobe}. Accessories: {accessories}.",
             "No photorealistic human, identity drift, labels, captions, annotation text, product, "
             "prop, active scene, unrelated reference, second person, or alternate wardrobe.",
         )
@@ -395,11 +508,21 @@ def _render(brief: RoleCreativeBriefMemberV2) -> tuple[str, str]:
             "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
+        environment_identity = scene_projection.environment_identity if scene_projection else brief.environment_identity
+        spatial_logic = scene_projection.spatial_logic if scene_projection else brief.spatial_logic
+        lighting = scene_projection.lighting if scene_projection else brief.lighting
+        materials = scene_projection.materials if scene_projection else brief.materials
+        atmosphere = scene_projection.atmosphere if scene_projection else brief.atmosphere
+        views = (
+            tuple(item.view_or_zone for item in scene_projection.views)
+            if scene_projection
+            else brief.views
+        )
         return (
             "Create one text-free 3x3 environment board of the same coherent environment. "
-            f"Identity: {brief.environment_identity}. Spatial logic: {brief.spatial_logic}. "
-            f"Lighting: {brief.lighting}. Materials: {brief.materials}. Atmosphere: "
-            f"{brief.atmosphere}. Views: {'; '.join(brief.views)}.",
+            f"Identity: {environment_identity}. Spatial logic: {spatial_logic}. "
+            f"Lighting: {lighting}. Materials: {materials}. Atmosphere: "
+            f"{atmosphere}. Views: {'; '.join(views)}.",
             "No active character, product, prop interaction, narrative action, plot progression, "
             "captions, labels, panel numbers, or unrelated environment.",
         )
@@ -492,20 +615,36 @@ def _structured_content(
             negative_constraints=("people", "products", "active scene", "text"),
         ).model_dump(mode="json")
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
+        projection = context.character_identity_projection
         return CharacterDesignAssetContentV2(
-            subject_identity=brief.identity,
+            subject_identity=projection.identity if projection is not None else brief.identity,
             design_summary="; ".join(
                 (
-                    brief.face_and_hair,
-                    brief.silhouette_and_proportions,
-                    brief.wardrobe,
-                    brief.accessories,
+                    projection.face_and_hair if projection is not None else brief.face_and_hair,
+                    (
+                        projection.silhouette_and_proportions
+                        if projection is not None
+                        else brief.silhouette_and_proportions
+                    ),
+                    projection.wardrobe if projection is not None else brief.wardrobe,
+                    projection.accessories if projection is not None else brief.accessories,
                 )
             ),
             style=style,
             explicit_inclusions=brief.views,
             negative_constraints=("photorealistic human", "text", "identity drift"),
             character_asset_kind="turnaround",
+            occurrence_id=context.occurrence_id,
+            parent_source_node_id=(projection.source_node_id if projection is not None else None),
+            parent_source_node_revision=(
+                projection.source_node_revision if projection is not None else None
+            ),
+            parent_asset_version_id=(
+                projection.source_asset_version_id if projection is not None else None
+            ),
+            identity_projection_digest=(
+                projection.projection_digest if projection is not None else None
+            ),
         ).model_dump(mode="json")
     if isinstance(brief, CharacterMainRoleBriefV2):
         return CharacterDesignAssetContentV2(
@@ -523,24 +662,36 @@ def _structured_content(
             character_asset_kind="identity_master",
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):
+        projection = context.scene_environment_projection
+        environment_identity = projection.environment_identity if projection else brief.environment_identity
+        spatial_logic = projection.spatial_logic if projection else brief.spatial_logic
+        lighting = projection.lighting if projection else brief.lighting
+        materials = projection.materials if projection else brief.materials
+        atmosphere = projection.atmosphere if projection else brief.atmosphere
+        scene_views = projection.views if projection else None
         panels = tuple(
             SceneBoardPanelV2(
                 panel_index=index,
-                view_or_zone=view,
-                spatial_description=f"{brief.spatial_logic} View: {view}.",
-                lighting_material_detail=f"{brief.lighting} {brief.materials}",
+                view_or_zone=(view.view_or_zone if scene_views else view),
+                spatial_description=(
+                    view.spatial_details if scene_views else f"{spatial_logic} View: {view}."
+                ),
+                lighting_material_detail=f"{lighting} {materials}",
             )
-            for index, view in enumerate(brief.views, start=1)
+            for index, view in enumerate(scene_views or brief.views, start=1)
         )
         return SceneDesignBoardContentV2(
-            scene_identity=brief.environment_identity,
-            environment_summary=f"{brief.spatial_logic} {brief.atmosphere}",
+            scene_identity=environment_identity,
+            environment_summary=f"{spatial_logic} {atmosphere}",
             layout="Nine distinct views of one coherent environment.",
-            lighting=brief.lighting,
-            materials=brief.materials,
+            lighting=lighting,
+            materials=materials,
             time_of_day="Use the accepted scene time of day.",
             style=style,
             panels=panels,
+            environment_projection_digest=(
+                projection.projection_digest if projection is not None else None
+            ),
         ).model_dump(mode="json")
     if isinstance(brief, ScriptRoleBriefV2):
         return {

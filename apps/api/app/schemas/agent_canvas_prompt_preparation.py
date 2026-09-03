@@ -54,6 +54,14 @@ class NodePromptPreparationV1(BaseModel):
     requirement_revision_no: int | None = Field(default=None, ge=1)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     binding_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
+    character_identity_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    scene_environment_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     style_projection_digest: str | None = Field(
         default=None,
         pattern=r"^sha256:[a-f0-9]{64}$",

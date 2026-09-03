@@ -33,6 +33,8 @@ from app.services.agent_canvas_role_prompt_context import (
     ROLE_PARAMETER_CONTROL_NAMES,
     RolePromptContextProjector,
     RolePromptParameterResolver,
+    character_identity_projection_from_node,
+    scene_environment_projection_from_node,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
@@ -205,6 +207,16 @@ class NodePromptPreparationService:
                         "prompt_recipe_version": recipe.recipe_version,
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
+                        "prompt_character_identity_projection_digest": (
+                            role_context.character_identity_projection.projection_digest
+                            if role_context.character_identity_projection is not None
+                            else None
+                        ),
+                        "prompt_scene_environment_projection_digest": (
+                            role_context.scene_environment_projection.projection_digest
+                            if role_context.scene_environment_projection is not None
+                            else None
+                        ),
                         "role_reference_policy_version": (
                             compiled_prompt.role_reference_policy_version
                         ),
@@ -280,6 +292,16 @@ class NodePromptPreparationService:
                         character_phase=role_context.character_phase,
                         document_revisions=role_context.document_revisions,
                         binding_digest=compiled_prompt.reference_bundle_digest,
+                        character_identity_projection_digest=(
+                            role_context.character_identity_projection.projection_digest
+                            if role_context.character_identity_projection is not None
+                            else None
+                        ),
+                        scene_environment_projection_digest=(
+                            role_context.scene_environment_projection.projection_digest
+                            if role_context.scene_environment_projection is not None
+                            else None
+                        ),
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
                         parameter_origins=compiled_prompt.parameters,
@@ -557,6 +579,41 @@ class NodePromptPreparationService:
             else context.session_revision
         )
         bindings = self._binding_snapshots(node)
+        character_projection = None
+        scene_projection = None
+        if node.creative_role == "character" and node.metadata.get("character_phase") == "turnaround":
+            workflow = self._workflows.get_workflow(node.workflow_id)
+            nodes = {item.node_id: item for item in workflow.nodes}
+            parents = tuple(
+                item
+                for item in bindings
+                if item.reference_purpose == "character_main_identity"
+                and item.source_node_id is not None
+                and item.occurrence_id == node.metadata.get("occurrence_id")
+                and item.character_phase == "main"
+            )
+            if len(parents) != 1:
+                raise V2PersistenceError(
+                    "character_parent_identity_projection_invalid",
+                    "Character Turnaround requires one exact same-occurrence Main authority.",
+                    stage="node_prompt_preparation",
+                )
+            parent = parents[0]
+            source = nodes.get(parent.source_node_id)
+            if source is None:
+                raise V2PersistenceError(
+                    "character_parent_identity_projection_invalid",
+                    "Character Main authority is unavailable.",
+                    stage="node_prompt_preparation",
+                )
+            character_projection = character_identity_projection_from_node(
+                source,
+                occurrence_id=str(node.metadata.get("occurrence_id")),
+                source_asset_id=parent.asset_id,
+                source_asset_version_id=parent.asset_version_id,
+            )
+        elif node.creative_role == "scene":
+            scene_projection = scene_environment_projection_from_node(node)
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -592,6 +649,8 @@ class NodePromptPreparationService:
             if node.metadata.get("source_sequence_id")
             else {},
             world_view_projection=self._world_view_projection(node),
+            character_identity_projection=character_projection,
+            scene_environment_projection=scene_projection,
         )
 
     def _world_view_projection(self, node: CanvasNodeV2) -> str | None:

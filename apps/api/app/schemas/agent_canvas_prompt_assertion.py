@@ -63,6 +63,8 @@ class PromptAssertionEvidenceV1(_PromptAssertionModel):
     source_snapshots: tuple[PromptAssertionSourceSnapshotV1, ...] = Field(default=(), max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_identity_projection_digest: str | None = Field(default=None, pattern=_SHA256)
+    scene_environment_projection_digest: str | None = Field(default=None, pattern=_SHA256)
     engine_owned_fields_digest: str = Field(pattern=_SHA256)
     evidence_digest: str = Field(pattern=_SHA256)
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from hashlib import sha256
+import json
 from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
@@ -58,6 +60,7 @@ RolePromptContextDispositionV2 = Literal[
 ]
 RolePromptCompactionOutcomeV2 = Literal["preserved", "compacted"]
 VideoRepresentationModeV2 = Literal["illustrated", "illustration_to_live_action"]
+CharacterGenderPresentationV1 = Literal["masculine", "feminine", "androgynous", "unspecified"]
 
 
 class _RolePromptModel(BaseModel):
@@ -204,6 +207,93 @@ class RolePromptCompactionDecisionV2(_RolePromptModel):
     ]
 
 
+def _projection_digest(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=lambda item: item.model_dump(mode="json"),
+    )
+    return f"sha256:{sha256(payload.encode('utf-8')).hexdigest()}"
+
+
+class CharacterIdentityAuthorityProjectionV1(_RolePromptModel):
+    """Frozen identity authority projected from one Character Main occurrence."""
+
+    source_node_id: str = Field(min_length=1, max_length=160)
+    source_node_revision: int = Field(ge=1)
+    source_asset_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    identity: str = Field(min_length=1, max_length=4_096)
+    face_and_hair: str = Field(min_length=1, max_length=2_048)
+    silhouette_and_proportions: str = Field(min_length=1, max_length=2_048)
+    wardrobe: str = Field(min_length=1, max_length=2_048)
+    accessories: str = Field(max_length=1_024)
+    rendering_mode: Literal["detailed_semi_realistic_commercial_illustration"] = (
+        "detailed_semi_realistic_commercial_illustration"
+    )
+    gender_presentation: CharacterGenderPresentationV1 = "unspecified"
+    projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+    @classmethod
+    def build(cls, **values: object) -> "CharacterIdentityAuthorityProjectionV1":
+        payload = dict(values)
+        payload.pop("projection_digest", None)
+        payload.setdefault("gender_presentation", "unspecified")
+        payload.setdefault("rendering_mode", "detailed_semi_realistic_commercial_illustration")
+        return cls.model_validate({**payload, "projection_digest": _projection_digest(payload)})
+
+    @model_validator(mode="after")
+    def validate_projection_digest(self) -> "CharacterIdentityAuthorityProjectionV1":
+        payload = self.model_dump(mode="json", exclude={"projection_digest"})
+        if self.projection_digest != _projection_digest(payload):
+            raise ValueError("Character identity projection digest does not match its payload.")
+        if (self.source_asset_id is None) != (self.source_asset_version_id is None):
+            raise ValueError("Character identity Asset and version identities must match.")
+        return self
+
+
+class SceneEnvironmentViewV1(_RolePromptModel):
+    """One bounded, typed environment-only Scene view."""
+
+    view_or_zone: str = Field(min_length=1, max_length=1_024)
+    spatial_details: str = Field(min_length=1, max_length=4_096)
+    allowed_environment_elements: tuple[str, ...] = Field(default=(), max_length=32)
+
+
+class SceneEnvironmentProjectionV1(_RolePromptModel):
+    """Frozen environment authority with no entity or narrative action references."""
+
+    source_node_id: str = Field(min_length=1, max_length=160)
+    source_node_revision: int = Field(ge=1)
+    environment_identity: str = Field(min_length=1, max_length=4_096)
+    spatial_logic: str = Field(min_length=1, max_length=4_096)
+    lighting: str = Field(min_length=1, max_length=2_048)
+    materials: str = Field(min_length=1, max_length=2_048)
+    atmosphere: str = Field(min_length=1, max_length=2_048)
+    views: tuple[SceneEnvironmentViewV1, ...] = Field(min_length=1, max_length=9)
+    entity_references: tuple[str, ...] = Field(default=(), max_length=32)
+    action_references: tuple[str, ...] = Field(default=(), max_length=32)
+    environment_only: Literal[True] = True
+    projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+    @classmethod
+    def build(cls, **values: object) -> "SceneEnvironmentProjectionV1":
+        payload = dict(values)
+        payload.pop("projection_digest", None)
+        payload.setdefault("environment_only", True)
+        return cls.model_validate({**payload, "projection_digest": _projection_digest(payload)})
+
+    @model_validator(mode="after")
+    def validate_projection(self) -> "SceneEnvironmentProjectionV1":
+        payload = self.model_dump(mode="json", exclude={"projection_digest"})
+        if self.projection_digest != _projection_digest(payload):
+            raise ValueError("Scene environment projection digest does not match its payload.")
+        return self
+
+
 class RolePromptPreparationContextV2(_RolePromptModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
@@ -213,6 +303,8 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     requirement_revision_no: int = Field(ge=1)
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: CharacterAuthoringPhaseV1 | None = None
+    character_identity_projection: CharacterIdentityAuthorityProjectionV1 | None = None
+    scene_environment_projection: SceneEnvironmentProjectionV1 | None = None
     requirement_facts: dict[str, JsonValue] = Field(default_factory=dict, max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     selected_direction: str | None = Field(default=None, max_length=8_192)
@@ -272,6 +364,17 @@ class RolePromptPreparationContextV2(_RolePromptModel):
             self.occurrence_id is not None or self.character_phase is not None
         ):
             raise ValueError("Non-Character prompt context cannot carry Character identity.")
+        if self.role_variant == "character_turnaround":
+            projection = self.character_identity_projection
+            if projection is not None and projection.occurrence_id != self.occurrence_id:
+                raise ValueError("Character Turnaround projection occurrence does not match context.")
+            if self.scene_environment_projection is not None:
+                raise ValueError("Character context cannot carry Scene environment projection.")
+        elif self.role_variant == "scene_board":
+            if self.character_identity_projection is not None:
+                raise ValueError("Scene context cannot carry Character identity projection.")
+        elif self.character_identity_projection is not None or self.scene_environment_projection is not None:
+            raise ValueError("Role context carries a projection for an unrelated role.")
         if self.role_variant == "video_segment":
             character_bindings = tuple(
                 item for item in self.bindings if item.source_role == "character"
@@ -388,6 +491,7 @@ class CharacterMainRoleBriefV2(_RoleBriefModel):
     silhouette_and_proportions: str = Field(min_length=1, max_length=2_048)
     wardrobe: str = Field(min_length=1, max_length=2_048)
     accessories: str = Field(default="", max_length=1_024)
+    gender_presentation: CharacterGenderPresentationV1 = "unspecified"
     rendering_mode: Literal["detailed_semi_realistic_commercial_illustration"] = (
         "detailed_semi_realistic_commercial_illustration"
     )
@@ -412,6 +516,9 @@ class SceneBoardRoleBriefV2(_RoleBriefModel):
     materials: str = Field(min_length=1, max_length=2_048)
     atmosphere: str = Field(min_length=1, max_length=2_048)
     views: tuple[str, ...] = Field(min_length=9, max_length=9)
+    entity_references: tuple[str, ...] = Field(default=(), max_length=32)
+    action_references: tuple[str, ...] = Field(default=(), max_length=32)
+    environment_only: Literal[True] = True
 
 
 class ScriptRoleBriefV2(_RoleBriefModel):
