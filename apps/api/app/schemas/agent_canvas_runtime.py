@@ -275,6 +275,17 @@ class ResolvedModelExecutionV1(_RuntimeModel):
         return self
 
 
+class ResolvedModelExecutionV2(ResolvedModelExecutionV1):
+    """Frozen provider-neutral execution identity for adapter-aware attempts."""
+
+    adapter_id: str = Field(min_length=1, max_length=120)
+    transport_kind: str = Field(min_length=1, max_length=80)
+    capability_revision: str = Field(min_length=1, max_length=80)
+    adapter_revision: str = Field(min_length=1, max_length=80)
+    requested_parameter_fingerprint: str = Field(min_length=8, max_length=128)
+    effective_parameter_fingerprint: str = Field(min_length=8, max_length=128)
+
+
 ProviderReferenceMediaTypeV1 = Literal["text", "image", "video", "audio"]
 ProviderReferenceInstructionTransportV1 = Literal[
     "native_slot",
