@@ -17043,6 +17043,146 @@
       "type": "object"
     },
     "JsonValue": {},
+    "LiteLLMGatewayProfileV1": {
+      "additionalProperties": false,
+      "description": "Frozen, secret-free identity for one LiteLLM gateway route.",
+      "properties": {
+        "endpoint": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "gateway_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Gateway Id",
+          "type": "string"
+        },
+        "model_alias": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Alias",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "gateway_id",
+        "model_alias",
+        "projection_digest"
+      ],
+      "title": "LiteLLMGatewayProfileV1",
+      "type": "object"
+    },
+    "LiteLLMGatewayProjectionV1": {
+      "additionalProperties": false,
+      "description": "Generated local gateway configuration without credentials or prompts.",
+      "properties": {
+        "endpoint": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "gateway_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Gateway Id",
+          "type": "string"
+        },
+        "projection_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "$ref": "#/$defs/LiteLLMRouteV1"
+          },
+          "maxItems": 256,
+          "title": "Routes",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "gateway_id",
+        "projection_digest",
+        "routes"
+      ],
+      "title": "LiteLLMGatewayProjectionV1",
+      "type": "object"
+    },
+    "LiteLLMRouteV1": {
+      "additionalProperties": false,
+      "description": "One operation-scoped alias in a generated LiteLLM projection.",
+      "properties": {
+        "adapter_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "contract_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "model_alias": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Alias",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "provider_model_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Provider Model Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_revision",
+        "capability_revision",
+        "contract_digest",
+        "model_alias",
+        "model_ref",
+        "operation",
+        "provider_model_id"
+      ],
+      "title": "LiteLLMRouteV1",
+      "type": "object"
+    },
     "ManualAspectRatioControlPatchV1": {
       "additionalProperties": false,
       "properties": {
@@ -21933,6 +22073,17 @@
           ],
           "title": "Conformance Status",
           "type": "string"
+        },
+        "gateway_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LiteLLMGatewayProfileV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "model_ref": {
           "maxLength": 320,
