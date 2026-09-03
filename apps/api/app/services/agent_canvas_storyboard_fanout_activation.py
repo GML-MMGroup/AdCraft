@@ -129,18 +129,21 @@ class StoryboardFanoutActivationService:
         """Publish Run authority for newly prompt-ready planned media."""
 
         workflow = self._workflows.get_workflow(workflow_id)
-        # Recovery callbacks can reach this service without the endpoint
-        # wrapper. Keep the automatic admission authority Storyboard-only so
-        # a ready Character/Scene/Product node cannot be mistaken for the
-        # current Storyboard dependency wave.
-        nodes_by_id = {node.node_id: node for node in workflow.nodes}
-        if any(
-            nodes_by_id.get(node_id) is None
-            or nodes_by_id[node_id].creative_role
-            not in {"storyboard_sequence", "storyboard_video"}
-            for node_id in node_ids
-        ):
-            return StoryboardFanoutActivationResult(node_ids, None, ())
+        execution_settings = self._execution_settings(workflow_id)
+        if execution_settings.media_execution_mode == "automatic":
+            # Recovery callbacks can reach this service without the endpoint
+            # wrapper. Keep automatic admission Storyboard-only so a ready
+            # Character/Scene/Product node cannot be mistaken for the current
+            # Storyboard dependency wave. Manual mode remains unchanged for
+            # existing non-Storyboard callers such as BGM.
+            nodes_by_id = {node.node_id: node for node in workflow.nodes}
+            if any(
+                nodes_by_id.get(node_id) is None
+                or nodes_by_id[node_id].creative_role
+                not in {"storyboard_sequence", "storyboard_video"}
+                for node_id in node_ids
+            ):
+                return StoryboardFanoutActivationResult(node_ids, None, ())
         next_node_id = self._next_runnable_node_id(workflow, node_ids)
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
