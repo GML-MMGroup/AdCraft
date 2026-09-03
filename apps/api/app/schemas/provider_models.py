@@ -38,6 +38,42 @@ ReferenceInputModeNameV1 = Literal[
 ]
 
 
+class LiteLLMGatewayProfileV1(BaseModel):
+    """Frozen, secret-free identity for one LiteLLM gateway route."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    gateway_id: str = Field(min_length=1, max_length=120)
+    model_alias: str = Field(min_length=1, max_length=160)
+    projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class LiteLLMRouteV1(BaseModel):
+    """One operation-scoped alias in a generated LiteLLM projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_ref: str = Field(min_length=3, max_length=320)
+    provider_model_id: str = Field(min_length=1, max_length=240)
+    model_alias: str = Field(min_length=1, max_length=160)
+    operation: str = Field(min_length=1, max_length=120)
+    contract_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    adapter_revision: str = Field(min_length=1, max_length=80)
+    capability_revision: str = Field(min_length=1, max_length=80)
+
+
+class LiteLLMGatewayProjectionV1(BaseModel):
+    """Generated local gateway configuration without credentials or prompts."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1"] = "1"
+    gateway_id: str = Field(min_length=1, max_length=120)
+    endpoint: str = Field(min_length=1, max_length=320)
+    routes: tuple[LiteLLMRouteV1, ...] = Field(max_length=256)
+    projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
 def _normalize_secret(value: object) -> object:
     if value is None:
         return None
@@ -224,6 +260,7 @@ class ProviderAdapterProfileV1(BaseModel):
     request_mode: str = Field(min_length=1, max_length=80)
     accepted_input_modes: tuple[str, ...] = Field(min_length=1, max_length=16)
     reference_policy: ReferenceInputPolicyV1
+    gateway_profile: LiteLLMGatewayProfileV1 | None = None
     parameter_schema_id: str = Field(min_length=1, max_length=120)
     parameter_matrix: ModelParameterMatrixV1 | None = None
     result_protocol: str = Field(min_length=1, max_length=120)
