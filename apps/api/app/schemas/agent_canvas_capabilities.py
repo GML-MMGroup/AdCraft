@@ -344,9 +344,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
     def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
         if self.mode != "ordinary_conversation":
             if self.assistant_message is None or not self.assistant_message.strip():
-                raise ValueError(
-                    "authoring intent requires a non-empty assistant_message."
-                )
+                raise ValueError("authoring intent requires a non-empty assistant_message.")
             return self
         has_explicit_elements = bool(self.explicit_elements.model_dump(exclude_none=True))
         has_requirement_patch = self.requirement_patch is not None and bool(
