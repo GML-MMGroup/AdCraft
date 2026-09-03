@@ -196,6 +196,7 @@ class ParentDerivedMaterializationCoordinator:
             selection_reason="Continue the accepted identity as its derived reference.",
             capability_id=parent.capability_id,
             occurrence_id=parent.occurrence_id,
+            occurrence_index=parent.occurrence_index,
             character_phase=("turnaround" if parent.capability_id == "character_design" else None),
             requirement_revision_id=(
                 requirement_revision_id

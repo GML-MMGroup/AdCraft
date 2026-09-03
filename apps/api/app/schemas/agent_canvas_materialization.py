@@ -111,6 +111,7 @@ class CapabilityMaterializationEnvelopeV1(_MaterializationModel):
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_index: int | None = Field(default=None, ge=1, le=32)
     character_phase: CharacterAuthoringPhaseV1 | None = None
     requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
     requirement_revision_no: int | None = Field(default=None, ge=1)
@@ -173,6 +174,7 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     selection_reason: str | None = Field(default=None, max_length=2_048)
     capability_id: CapabilityIdV1
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_index: int | None = Field(default=None, ge=1, le=32)
     character_phase: CharacterAuthoringPhaseV1 | None = None
     requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
     requirement_revision_no: int | None = Field(default=None, ge=1)

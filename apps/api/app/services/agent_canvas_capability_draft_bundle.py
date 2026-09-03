@@ -56,10 +56,12 @@ _PROVENANCE_KEYS = {
     "normalization_mode",
     "normalization_warnings",
     "character_pair_id",
+    "occurrence_index",
     "product_pair_id",
     "character_asset_kind",
     "source_agent_document_id",
     "source_sequence_id",
+    "sequence_index",
 }
 
 
@@ -376,6 +378,11 @@ def _normalized_character_bundle(
         "normalization_mode": normalization.mode,
         "normalization_warnings": list(normalization.warnings),
         "character_pair_id": pair_id,
+        **(
+            {"occurrence_index": envelope.occurrence_index}
+            if envelope.occurrence_index is not None
+            else {}
+        ),
     }
     main_content = result.structured_content.model_copy(
         update={"character_asset_kind": "identity_master"}

@@ -1502,6 +1502,7 @@ class CapabilityMaterializationPublicationService:
                         **normalization.parameters,
                         "source_agent_document_id": document_id,
                         "source_sequence_id": sequence_id,
+                        "sequence_index": sequence.order,
                     },
                 }
             ),

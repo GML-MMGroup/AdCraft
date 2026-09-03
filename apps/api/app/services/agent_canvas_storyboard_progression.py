@@ -1104,6 +1104,7 @@ class ProgressiveStoryboardReadyService:
             metadata={
                 "source_agent_document_id": plan_document_id,
                 "source_sequence_id": sequence_id,
+                "sequence_index": grid.metadata.get("sequence_index"),
                 "source_plan_revision": plan_revision,
                 "source_sequence_window": {
                     "start_seconds": sequence_start_seconds,
@@ -1732,6 +1733,7 @@ def _grid_node(
         parameters={},
         metadata={
             "source_sequence_id": sequence.sequence_id,
+            "sequence_index": order,
             "source_plan_revision": plan_revision,
             "source_sequence_start_seconds": sequence.start_seconds,
             "source_sequence_end_seconds": sequence.end_seconds,

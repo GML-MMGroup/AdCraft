@@ -434,6 +434,7 @@ class _ProposalSelectionSubmissionService:
             else "standalone"
         )
         occurrence_id = None
+        occurrence_index = None
         character_phase = None
         requirement_revision_id = None
         requirement_revision_no = None
@@ -500,6 +501,7 @@ class _ProposalSelectionSubmissionService:
                     "Guidance state changed before Character materialization.",
                 )
             occurrence_id = persisted_target.occurrence_id
+            occurrence_index = persisted_target.occurrence_index
             character_phase = persisted_target.character_phase
             requirement_revision_id = persisted_target.requirement_revision_id
             requirement_revision_no = persisted_target.requirement_revision_no
@@ -585,6 +587,7 @@ class _ProposalSelectionSubmissionService:
                 "selection_reason": selection_reason,
                 "capability_id": proposal.capability_id,
                 "occurrence_id": occurrence_id,
+                "occurrence_index": occurrence_index,
                 "character_phase": character_phase,
                 "requirement_revision_id": requirement_revision_id,
                 "requirement_revision_no": requirement_revision_no,
