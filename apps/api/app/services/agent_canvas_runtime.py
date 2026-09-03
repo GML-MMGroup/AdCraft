@@ -1975,6 +1975,12 @@ def _skip_message(reason: str) -> str:
         "node_prompt_preparation_incomplete": "Node prompt preparation is not ready.",
         "node_prompt_assertion_evidence_missing": "Current prompt assertion evidence is required.",
         "node_prompt_assertion_contract_invalid": "Prompt assertion evidence does not match current authority.",
+        "character_parent_identity_projection_invalid": (
+            "Character identity projection does not match the current parent authority."
+        ),
+        "scene_environment_projection_invalid": (
+            "Scene environment projection does not match the current scene authority."
+        ),
     }[reason]
 
 
