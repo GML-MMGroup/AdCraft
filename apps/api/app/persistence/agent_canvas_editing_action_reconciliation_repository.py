@@ -323,7 +323,11 @@ class AgentCanvasEditingActionReconciliationRepository:
         if payload_json is None:
             raise _evidence_error()
         confirmation = GuidedMediaConfirmationV1.model_validate(json.loads(str(payload_json)))
-        if confirmation.node_id != command.system_owner_node_id:
+        if (
+            confirmation.node_id != command.system_owner_node_id
+            or confirmation.plan_document_id != command.plan_document_id
+            or confirmation.plan_revision != command.plan_revision
+        ):
             raise _evidence_error()
 
     @staticmethod
