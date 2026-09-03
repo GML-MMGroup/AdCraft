@@ -200,10 +200,12 @@ class ProjectCoverAuthorityService:
                 )
                 updated += 1
                 if decision.version_id is not None:
-                    disposition = self._prewarm(_version_by_id(
-                        self._assets.list_versions_for_workflow(project.workflow_id),
-                        decision.version_id,
-                    ))
+                    disposition = self._prewarm(
+                        _version_by_id(
+                            self._assets.list_versions_for_workflow(project.workflow_id),
+                            decision.version_id,
+                        )
+                    )
                     decision = decision.model_copy(update={"rendition_prewarm": disposition})
             except V2PersistenceError as error:
                 if error.code != "project_state_conflict":
@@ -388,30 +390,49 @@ def _candidate_for_version(
         return None
     node_indexes: dict[str, int] = {}
     node_roles: dict[str, str] = {}
+    nodes_by_identity: dict[str, object] = {}
     for index, node in enumerate(workflow.nodes):
         node_indexes[node.node_id] = index
+        nodes_by_identity[node.node_id] = node
         if node.output_asset_id is not None:
             node_indexes[node.output_asset_id] = index
+            nodes_by_identity[node.output_asset_id] = node
         role = _node_cover_role(node)
         if role is not None:
             node_roles[node.node_id] = role
             if node.output_asset_id is not None:
                 node_roles[node.output_asset_id] = role
-    role = _canonical_cover_source(_semantic_role(version, node_roles))
+    node = nodes_by_identity.get(version.source_node_id or "")
+    if node is None:
+        node = nodes_by_identity.get(version.asset_id)
+    if version.source_node_id is not None and node is None:
+        return None
+    role = _resolved_cover_source(version, node_roles)
     if role is None:
+        return None
+    node_role = _canonical_cover_source(node_roles.get(version.source_node_id or ""))
+    if node_role is not None and node_role != role:
+        return None
+    output_asset_id = getattr(node, "output_asset_id", None)
+    if output_asset_id is not None and output_asset_id != version.asset_id:
         return None
     if role == "video_poster":
         if not version.mime_type.startswith("video/"):
             return None
     elif not version.mime_type.startswith("image/"):
         return None
-    business_key = "occurrence_index" if role == "character_main" else "sequence_index"
-    business_index = version.metadata.get(business_key, 0)
-    if not isinstance(business_index, int) or isinstance(business_index, bool) or business_index < 0:
-        return None
+    business_index = 0
+    if role == "character_main":
+        business_index = _consistent_index(version, node, "occurrence_index")
+        if business_index is None:
+            return None
+    elif role in {"storyboard_grid", "video_poster"}:
+        business_index = _consistent_index(version, node, "sequence_index")
+        if business_index is None:
+            return None
     workflow_node_index = node_indexes.get(version.source_node_id or "")
     if workflow_node_index is None:
-        workflow_node_index = version.metadata.get("workflow_node_index", 0)
+        workflow_node_index = version.metadata.get("workflow_node_index", len(workflow.nodes))
     if (
         not isinstance(workflow_node_index, int)
         or isinstance(workflow_node_index, bool)
@@ -434,15 +455,58 @@ def _canonical_cover_source(role: str | None) -> ProjectCoverSourceV2 | None:
         "product_main_image": "product_main",
         "scene_main": "scene_main",
         "scene_main_image": "scene_main",
+        "scene_board": "scene_main",
         "character_main": "character_main",
         "character_main_image": "character_main",
         "storyboard_grid": "storyboard_grid",
-        "storyboard_sequence": "storyboard_grid",
-        "video": "video_poster",
         "video_segment": "video_poster",
         "video_poster": "video_poster",
     }
     return aliases.get(role or "")
+
+
+def _resolved_cover_source(
+    version: AssetVersionMetadataV2,
+    node_roles: dict[str, str],
+) -> ProjectCoverSourceV2 | None:
+    version_role = _semantic_role(version)
+    specific_version_role = _canonical_cover_source(version_role)
+    node_role = _canonical_cover_source(
+        node_roles.get(version.source_node_id or "") or node_roles.get(version.asset_id)
+    )
+    if specific_version_role is not None:
+        if node_role is not None and node_role != specific_version_role:
+            return None
+        return specific_version_role
+    generic_roles: dict[str, ProjectCoverSourceV2] = {
+        "product": "product_main",
+        "scene": "scene_main",
+        "character": "character_main",
+        "storyboard_sequence": "storyboard_grid",
+        "storyboard_video": "video_poster",
+    }
+    if version_role is not None and generic_roles.get(version_role) != node_role:
+        return None
+    return node_role
+
+
+def _consistent_index(
+    version: AssetVersionMetadataV2,
+    node: object | None,
+    key: str,
+) -> int | None:
+    values = [version.metadata.get(key)]
+    node_metadata = getattr(node, "metadata", None)
+    if isinstance(node_metadata, dict):
+        values.append(node_metadata.get(key))
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    if any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in present):
+        return None
+    if len(set(present)) != 1:
+        return None
+    return present[0]
 
 
 def _eligible_media(version: AssetVersionMetadataV2) -> bool:
@@ -453,15 +517,12 @@ def _eligible_media(version: AssetVersionMetadataV2) -> bool:
 
 def _semantic_role(
     version: AssetVersionMetadataV2,
-    node_roles: dict[str, str],
 ) -> str | None:
     for key in ("source_semantic_role", "semantic_role", "semantic_type"):
         role = version.metadata.get(key)
         if isinstance(role, str) and role.strip():
             return role.strip()
-    if version.source_node_id is not None and version.source_node_id in node_roles:
-        return node_roles[version.source_node_id]
-    return node_roles.get(version.asset_id)
+    return None
 
 
 def _node_product_role(node) -> str | None:
@@ -481,22 +542,36 @@ def _node_product_role(node) -> str | None:
 
 
 def _node_cover_role(node) -> str | None:
-    role = _node_product_role(node)
-    if role is not None:
-        return role
+    roles: set[str] = set()
+    product_role = _node_product_role(node)
+    if product_role is not None:
+        roles.add(product_role)
     recipe = node.metadata.get("prompt_recipe_id")
     recipes = {
-        "adcraft.agent_canvas.scene_main": "scene_main",
+        "adcraft.agent_canvas.product_main": "product_main",
+        "adcraft.agent_canvas.scene_board": "scene_main",
         "adcraft.agent_canvas.character_main": "character_main",
         "adcraft.agent_canvas.storyboard_grid": "storyboard_grid",
         "adcraft.agent_canvas.video_segment": "video_poster",
     }
     if isinstance(recipe, str) and recipe in recipes:
-        return recipes[recipe]
-    semantic_role = node.metadata.get("creative_role") or node.semantic_role
-    if isinstance(semantic_role, str):
-        return semantic_role
-    return None
+        roles.add(recipes[recipe])
+    structured_content = getattr(node, "structured_content", {})
+    creative_role = getattr(node, "creative_role", getattr(node, "semantic_role", None))
+    if creative_role == "product" and structured_content.get("asset_kind") == "main":
+        roles.add("product_main")
+    if (
+        creative_role == "character"
+        and structured_content.get("character_asset_kind") == "identity_master"
+    ):
+        roles.add("character_main")
+    if creative_role == "scene":
+        roles.add("scene_main")
+    if creative_role == "storyboard_sequence":
+        roles.add("storyboard_grid")
+    if creative_role == "storyboard_video":
+        roles.add("video_poster")
+    return next(iter(roles)) if len(roles) == 1 else None
 
 
 def _latest_versions_by_asset(
