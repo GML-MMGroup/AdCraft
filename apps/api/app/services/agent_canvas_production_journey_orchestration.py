@@ -163,6 +163,18 @@ class GuidedProductionJourneyService:
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
         self._require_stage_duration(workflow_id, session.journey.stage)
+        active_action = session.journey.active_action
+        if (
+            session.journey.stage == "editing"
+            and active_action is not None
+            and active_action.action_kind == "prepare_editing"
+            and active_action.status == "reserved"
+        ):
+            return session, JourneyPolicyResultV2(
+                action="prepare_editing",
+                expected_stage_revision=active_action.stage_revision,
+                requires_model_call=False,
+            )
         if session.journey.stage == "product" and session.awaiting is None:
             entered = self._ensure_product_source_stage_entry(
                 session,
