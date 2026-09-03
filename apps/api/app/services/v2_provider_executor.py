@@ -1,4 +1,5 @@
 from collections.abc import Callable, Mapping
+import base64
 from dataclasses import replace
 import hashlib
 from http.client import IncompleteRead, RemoteDisconnected
@@ -50,6 +51,14 @@ from app.services.v2_provider_reference_input_delivery import (
     V2DeliveredReferenceSet,
     V2ProviderReferenceInputDeliveryService,
 )
+from app.services.provider_adapter_registry import ProviderAdapterRegistry
+from app.services.provider_native_adapters import (
+    CanonicalProviderReference,
+    CanonicalProviderRequest,
+    ProviderNativeAdapter,
+    ProviderResult,
+    ProviderSubmission,
+)
 from app.services.v2_provider_references import (
     V2ReferenceAdaptation,
     adapt_provider_references,
@@ -84,6 +93,28 @@ from app.tools.volcengine_image_generations import V2ProviderRequestContractErro
 
 
 ProviderFactory = Callable[[Settings], MediaProvider]
+
+_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset({"openai_images_native", "minimax_video_native"})
+_NATIVE_PROVIDER_ERROR_CODES = frozenset(
+    {
+        "model_adapter_unavailable",
+        "model_conformance_required",
+        "model_conformance_revoked",
+        "provider_adapter_profile_invalid",
+        "provider_payload_resolution_mismatch",
+        "provider_prompt_empty",
+        "provider_capability_mismatch",
+        "provider_model_reference_mismatch",
+        "model_parameter_incompatible",
+        "reference_count_exceeded",
+        "reference_input_mode_unsupported",
+        "provider_reference_input_invalid",
+        "provider_transport_unavailable",
+        "provider_response_contract_invalid",
+        "provider_result_contract_invalid",
+        "provider_task_not_pollable",
+    }
+)
 
 V2_IMAGE_SLOT_TYPES = {
     "product_main_image",
@@ -397,11 +428,13 @@ class V2ProviderExecutor:
         settings: Settings | None = None,
         data_dir: Path | None = None,
         provider_factory: ProviderFactory | None = None,
+        adapter_registry: ProviderAdapterRegistry | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._data_dir = data_dir or self._settings.media_data_dir
         self._uses_default_provider_factory = provider_factory is None
         self._provider_factory = provider_factory or build_media_provider
+        self._adapter_registry = adapter_registry
         self._provider: MediaProvider | None = None
         self._asset_store = V2AssetStoreService(self._data_dir)
         self._reference_delivery = V2ProviderReferenceInputDeliveryService(
@@ -771,6 +804,15 @@ class V2ProviderExecutor:
         media_type: WorkflowMediaTypeV2,
         provider_payload: dict[str, Any],
     ) -> V2ProviderResult:
+        if self._settings.media_mode.strip().lower() == "real":
+            native_result = self._execute_native_minimal(
+                workflow_id=workflow_id,
+                slot_type=slot_type,
+                media_type=media_type,
+                provider_payload=provider_payload,
+            )
+            if native_result is not None:
+                return native_result
         missing_message = (
             self._missing_real_config(media_type)
             if self._settings.media_mode.strip().lower() == "real"
@@ -1139,6 +1181,14 @@ class V2ProviderExecutor:
         """Poll one node-native provider task without item or slot state."""
 
         try:
+            native_result = self._poll_native_minimal(
+                media_type=media_type,
+                remote_task_id=remote_task_id,
+                provider_payload=provider_payload,
+                result_descriptor=result_descriptor,
+            )
+            if native_result is not None:
+                return native_result
             if media_type == "audio":
                 asset = self._retrieve_bgm_audio_task_for_payload(
                     remote_task_id=remote_task_id,
@@ -1233,6 +1283,220 @@ class V2ProviderExecutor:
             provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
             metadata={"waiting_reason": "provider_task_still_running"},
         )
+
+    def _execute_native_minimal(
+        self,
+        *,
+        workflow_id: str,
+        slot_type: str,
+        media_type: WorkflowMediaTypeV2,
+        provider_payload: dict[str, Any],
+    ) -> V2ProviderResult | None:
+        del workflow_id
+        adapter, resolution_error = self._native_adapter_for_payload(
+            provider_payload,
+            media_type=media_type,
+        )
+        if adapter is None:
+            if resolution_error is None:
+                return None
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code=resolution_error,
+            )
+        reference_asset_ids = _native_reference_asset_ids(provider_payload)
+        try:
+            request = _native_request_from_payload(
+                adapter,
+                provider_payload,
+                media_type=media_type,
+            )
+            compiled = adapter.compile(
+                request,
+                _native_resolution_from_payload(provider_payload),
+            )
+            submission = adapter.submit(compiled)
+            if adapter.active_profile.supports_remote_task_lookup:
+                return _native_waiting_result(
+                    media_type=media_type,
+                    provider_payload=provider_payload,
+                    provider_model_id=request.provider_model_id,
+                    submission=submission,
+                    audit=compiled.audit,
+                    reference_asset_ids=reference_asset_ids,
+                )
+            status = adapter.poll(submission)
+            if status.state.strip().lower() in {"failed", "error", "cancelled"}:
+                return _native_provider_failure(
+                    media_type=media_type,
+                    provider_payload=provider_payload,
+                    provider_model_id=request.provider_model_id,
+                    error_code="provider_generation_failed",
+                    audit=compiled.audit,
+                    reference_asset_ids=reference_asset_ids,
+                )
+            artifact = adapter.download(status)
+            normalized = adapter.normalize(artifact)
+            return _native_completed_result(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                provider_model_id=request.provider_model_id,
+                result=normalized,
+                audit=compiled.audit,
+                reference_asset_ids=reference_asset_ids,
+                slot_type=slot_type,
+            )
+        except ValueError as error:
+            error_code = str(error)
+            if error_code not in _NATIVE_PROVIDER_ERROR_CODES:
+                error_code = "provider_generation_failed"
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code=error_code,
+                reference_asset_ids=reference_asset_ids,
+            )
+        except Exception as error:  # noqa: BLE001 - native transport failures become results.
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_generation_failed",
+                error_message=_bounded_provider_error_message(str(error), ()),
+                reference_asset_ids=reference_asset_ids,
+            )
+
+    def _poll_native_minimal(
+        self,
+        *,
+        media_type: WorkflowMediaTypeV2,
+        remote_task_id: str,
+        provider_payload: dict[str, Any],
+        result_descriptor: dict[str, Any],
+    ) -> V2ProviderResult | None:
+        adapter, resolution_error = self._native_adapter_for_payload(
+            provider_payload,
+            media_type=media_type,
+        )
+        if adapter is None:
+            if resolution_error is None:
+                return None
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code=resolution_error,
+            )
+        if not adapter.active_profile.supports_remote_task_lookup:
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_task_not_pollable",
+            )
+        audit = result_descriptor.get("native_adapter_audit")
+        if not isinstance(audit, dict):
+            audit = provider_payload.get("native_adapter_audit")
+        if not isinstance(audit, dict):
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_payload_resolution_mismatch",
+            )
+        request_fingerprint = audit.get("request_fingerprint")
+        if not isinstance(request_fingerprint, str) or not request_fingerprint:
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_payload_resolution_mismatch",
+            )
+        try:
+            submission = ProviderSubmission(
+                provider_task_id=remote_task_id,
+                request_fingerprint=request_fingerprint,
+                raw={},
+            )
+            status = adapter.poll(submission)
+            normalized_state = status.state.strip().lower()
+            if normalized_state not in {"completed", "succeeded", "success"}:
+                if normalized_state in {"failed", "error", "cancelled"}:
+                    return _native_provider_failure(
+                        media_type=media_type,
+                        provider_payload=provider_payload,
+                        error_code="provider_generation_failed",
+                        audit=audit,
+                        reference_asset_ids=_native_reference_asset_ids(provider_payload),
+                    )
+                return _native_waiting_result(
+                    media_type=media_type,
+                    provider_payload=provider_payload,
+                    provider_model_id=_native_provider_model_id(provider_payload),
+                    submission=submission,
+                    audit=audit,
+                    reference_asset_ids=_native_reference_asset_ids(provider_payload),
+                )
+            artifact = adapter.download(status)
+            normalized = adapter.normalize(artifact)
+            return _native_completed_result(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                provider_model_id=_native_provider_model_id(provider_payload),
+                result=normalized,
+                audit=audit,
+                reference_asset_ids=_native_reference_asset_ids(provider_payload),
+                slot_type=str(provider_payload.get("semantic_role") or ""),
+            )
+        except ValueError as error:
+            error_code = str(error)
+            if error_code not in _NATIVE_PROVIDER_ERROR_CODES:
+                error_code = "provider_generation_failed"
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code=error_code,
+                audit=audit,
+                reference_asset_ids=_native_reference_asset_ids(provider_payload),
+            )
+        except Exception as error:  # noqa: BLE001 - native polling failures become results.
+            return _native_provider_failure(
+                media_type=media_type,
+                provider_payload=provider_payload,
+                error_code="provider_generation_failed",
+                error_message=_bounded_provider_error_message(str(error), ()),
+                audit=audit,
+                reference_asset_ids=_native_reference_asset_ids(provider_payload),
+            )
+
+    def _native_adapter_for_payload(
+        self,
+        provider_payload: Mapping[str, Any],
+        *,
+        media_type: WorkflowMediaTypeV2,
+    ) -> tuple[ProviderNativeAdapter | None, str | None]:
+        transport_kind = str(provider_payload.get("transport_kind") or "").strip()
+        if transport_kind not in _NATIVE_MEDIA_TRANSPORT_KINDS:
+            return None, None
+        model_ref = str(provider_payload.get("model_ref") or "").strip()
+        if not model_ref or self._adapter_registry is None:
+            return None, "model_adapter_unavailable"
+        try:
+            resolved = self._adapter_registry.resolve(model_ref, media_type)
+        except ValueError as error:
+            return None, str(error)
+        profile = resolved.profile
+        for field, expected in (
+            ("model_ref", model_ref),
+            ("provider_model_id", _native_provider_model_id(provider_payload)),
+            ("adapter_id", profile.adapter_id),
+            ("transport_kind", profile.transport_kind),
+            ("capability_revision", profile.capability_revision),
+            ("adapter_revision", profile.adapter_revision),
+        ):
+            if provider_payload.get(field) != expected:
+                return None, "provider_payload_resolution_mismatch"
+        if profile.capability != media_type:
+            return None, "provider_payload_resolution_mismatch"
+        if not isinstance(resolved.adapter, ProviderNativeAdapter):
+            return None, "provider_adapter_profile_invalid"
+        return resolved.adapter, None
 
     def _provider_prompt_isolation_failure(
         self,
@@ -2249,6 +2513,214 @@ def _result_from_provider_output(
         provider_model=output.get("model") or selected.get("model"),
         provider_payload=provider_payload,
         reference_asset_ids=reference_asset_ids,
+    )
+
+
+def _native_resolution_from_payload(provider_payload: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        field: str(provider_payload.get(field) or "")
+        for field in (
+            "model_ref",
+            "adapter_id",
+            "transport_kind",
+            "adapter_revision",
+            "capability_revision",
+        )
+    }
+
+
+def _native_provider_model_id(provider_payload: Mapping[str, Any]) -> str:
+    value = provider_payload.get("provider_model_id") or provider_payload.get("model_id")
+    return str(value or "").strip()
+
+
+def _native_reference_asset_ids(provider_payload: Mapping[str, Any]) -> list[str]:
+    return [
+        str(item).strip()
+        for item in provider_payload.get("reference_asset_ids", [])
+        if str(item).strip()
+    ]
+
+
+def _native_request_from_payload(
+    adapter: ProviderNativeAdapter,
+    provider_payload: Mapping[str, Any],
+    *,
+    media_type: WorkflowMediaTypeV2,
+) -> CanonicalProviderRequest:
+    del media_type
+    raw_references = provider_payload.get("reference_assets", [])
+    references: list[CanonicalProviderReference] = []
+    if isinstance(raw_references, list):
+        for raw_reference in raw_references:
+            if not isinstance(raw_reference, Mapping):
+                references.append(
+                    CanonicalProviderReference(
+                        reference_id="",
+                        role="",
+                        input_type="",
+                        value="",
+                    )
+                )
+                continue
+            input_type = str(
+                raw_reference.get("provider_input_type")
+                or raw_reference.get("model_input_type")
+                or ""
+            )
+            if input_type == "provider_uploaded_url":
+                input_type = "image_url"
+            references.append(
+                CanonicalProviderReference(
+                    reference_id=str(raw_reference.get("asset_id") or "").strip(),
+                    role=str(
+                        raw_reference.get("role")
+                        or raw_reference.get("source_semantic_role")
+                        or raw_reference.get("input_role")
+                        or raw_reference.get("semantic_type")
+                        or ""
+                    ).strip(),
+                    input_type=input_type,
+                    value=str(
+                        raw_reference.get("provider_input_value")
+                        or raw_reference.get("model_input_value")
+                        or ""
+                    ),
+                )
+            )
+    profile = adapter.active_profile
+    parameters: dict[str, object] = {}
+    if profile.parameter_matrix is not None:
+        for descriptor in profile.parameter_matrix.descriptors:
+            if descriptor.name in provider_payload:
+                parameters[descriptor.name] = provider_payload[descriptor.name]
+            elif descriptor.name == "duration" and "duration_seconds" in provider_payload:
+                parameters[descriptor.name] = provider_payload["duration_seconds"]
+    return CanonicalProviderRequest(
+        model_ref=str(provider_payload.get("model_ref") or "").strip(),
+        provider_model_id=_native_provider_model_id(provider_payload),
+        capability=profile.capability,
+        prompt=str(provider_payload.get("provider_prompt") or provider_payload.get("prompt") or ""),
+        parameters=parameters,
+        references=tuple(references),
+    )
+
+
+def _native_waiting_result(
+    *,
+    media_type: WorkflowMediaTypeV2,
+    provider_payload: Mapping[str, Any],
+    provider_model_id: str,
+    submission: ProviderSubmission,
+    audit: Mapping[str, object],
+    reference_asset_ids: list[str],
+) -> V2ProviderResult:
+    snapshot = _native_payload_snapshot(provider_payload, audit)
+    return V2ProviderResult(
+        status="waiting",
+        media_type=media_type,
+        remote_task_id=submission.provider_task_id,
+        provider=str(audit.get("provider_id") or ""),
+        provider_model=provider_model_id,
+        provider_payload_snapshot=snapshot,
+        reference_asset_ids=reference_asset_ids,
+        metadata=_native_result_metadata(audit, submission.provider_task_id),
+    )
+
+
+def _native_completed_result(
+    *,
+    media_type: WorkflowMediaTypeV2,
+    provider_payload: Mapping[str, Any],
+    provider_model_id: str,
+    result: ProviderResult,
+    audit: Mapping[str, object],
+    reference_asset_ids: list[str],
+    slot_type: str,
+) -> V2ProviderResult:
+    del slot_type
+    content = _decode_native_result_value(result.value)
+    metadata = _native_result_metadata(audit, result.provider_task_id)
+    if content is None:
+        return V2ProviderResult(
+            status="failed",
+            media_type=media_type,
+            remote_task_id=result.provider_task_id,
+            provider=result.provider_id,
+            provider_model=provider_model_id,
+            provider_payload_snapshot=_native_payload_snapshot(provider_payload, audit),
+            reference_asset_ids=reference_asset_ids,
+            error_code="provider_output_missing",
+            error_message="Native provider result did not include publishable media bytes.",
+            metadata=metadata,
+        )
+    return V2ProviderResult(
+        status="completed",
+        media_type=media_type,
+        asset_bytes=content,
+        remote_task_id=result.provider_task_id,
+        provider=result.provider_id,
+        provider_model=provider_model_id,
+        provider_payload_snapshot=_native_payload_snapshot(provider_payload, audit),
+        reference_asset_ids=reference_asset_ids,
+        metadata=metadata,
+    )
+
+
+def _native_payload_snapshot(
+    provider_payload: Mapping[str, Any],
+    audit: Mapping[str, object],
+) -> dict[str, Any]:
+    return sanitize_context_for_llm_text(
+        {
+            **dict(provider_payload),
+            "native_adapter_audit": dict(audit),
+        }
+    )
+
+
+def _native_result_metadata(audit: Mapping[str, object], provider_task_id: str) -> dict[str, Any]:
+    return {
+        "native_adapter_audit": sanitize_context_for_llm_text(dict(audit)),
+        "native_provider_task_id": provider_task_id,
+        "native_request_fingerprint": audit.get("request_fingerprint"),
+    }
+
+
+def _decode_native_result_value(value: str) -> bytes | None:
+    normalized = value.strip()
+    if normalized.startswith("data:") and ";base64," in normalized:
+        normalized = normalized.split(";base64,", 1)[1]
+    try:
+        decoded = base64.b64decode(normalized, validate=True)
+    except (ValueError, TypeError):
+        return None
+    return decoded or None
+
+
+def _native_provider_failure(
+    *,
+    media_type: WorkflowMediaTypeV2,
+    provider_payload: Mapping[str, Any],
+    error_code: str,
+    provider_model_id: str | None = None,
+    error_message: str | None = None,
+    audit: Mapping[str, object] | None = None,
+    reference_asset_ids: list[str] | None = None,
+) -> V2ProviderResult:
+    safe_audit = dict(audit or {})
+    return V2ProviderResult(
+        status="failed",
+        media_type=media_type,
+        provider=str(provider_payload.get("provider_id") or "") or None,
+        provider_model=provider_model_id or _native_provider_model_id(provider_payload) or None,
+        provider_payload_snapshot=_native_payload_snapshot(provider_payload, safe_audit),
+        reference_asset_ids=reference_asset_ids or _native_reference_asset_ids(provider_payload),
+        error_code=error_code,
+        error_message=error_message or error_code,
+        metadata=(
+            _native_result_metadata(safe_audit, "") if safe_audit else {"stage": "native_adapter"}
+        ),
     )
 
 

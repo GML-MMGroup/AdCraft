@@ -568,7 +568,11 @@ class MediaNodeExecutor:
                 "model_resolution_missing",
                 "Media execution requires a frozen model resolution.",
             )
-        if media_type == "video":
+        if media_type == "video" and getattr(
+            context.model_resolution, "transport_kind", ""
+        ) not in {
+            "minimax_video_native",
+        }:
             return self._execute_seedance_video(self.prepare(context))
         effective_parameters = (
             context.effective_parameters.effective
