@@ -904,6 +904,15 @@ class ProviderModelCatalogService:
             manifest = trusted.get(provider_model_id)
             if manifest is None:
                 continue
+            if manifest.model_ref in _RETIRED_MODEL_REFS:
+                models.append(
+                    {
+                        **_trusted_projection(manifest, available=False),
+                        "availability": "deprecated",
+                        "unavailable_reason": "model_retired",
+                    }
+                )
+                continue
             models.append(
                 _trusted_projection(
                     manifest,
