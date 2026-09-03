@@ -373,7 +373,10 @@ class RolePromptPreparationContextV2(_RolePromptModel):
         elif self.role_variant == "scene_board":
             if self.character_identity_projection is not None:
                 raise ValueError("Scene context cannot carry Character identity projection.")
-        elif self.character_identity_projection is not None or self.scene_environment_projection is not None:
+        elif (
+            self.character_identity_projection is not None
+            or self.scene_environment_projection is not None
+        ):
             raise ValueError("Role context carries a projection for an unrelated role.")
         if self.role_variant == "video_segment":
             character_bindings = tuple(

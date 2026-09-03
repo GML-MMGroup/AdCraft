@@ -305,9 +305,7 @@ class AgentCanvasRolePromptCompiler:
             document_revisions=context.document_revisions,
             sequence_id=sequence_id,
             character_identity_projection_digest=(
-                character_projection.projection_digest
-                if character_projection is not None
-                else None
+                character_projection.projection_digest if character_projection is not None else None
             ),
             scene_environment_projection_digest=(
                 scene_projection.projection_digest if scene_projection is not None else None
@@ -439,7 +437,10 @@ def _semantic_projections(
                 "scene_environment_projection_invalid",
                 "Scene preparation requires an environment-only projection.",
             )
-        if projection.source_node_revision != context.node_revision and context.node_id == projection.source_node_id:
+        if (
+            projection.source_node_revision != context.node_revision
+            and context.node_id == projection.source_node_id
+        ):
             raise _error(
                 "node_prompt_context_stale",
                 "Scene environment projection revision is stale.",
@@ -487,14 +488,18 @@ def _render(
         )
     if isinstance(brief, CharacterTurnaroundRoleBriefV2):
         identity = character_projection.identity if character_projection else brief.identity
-        face_and_hair = character_projection.face_and_hair if character_projection else brief.face_and_hair
+        face_and_hair = (
+            character_projection.face_and_hair if character_projection else brief.face_and_hair
+        )
         silhouette = (
             character_projection.silhouette_and_proportions
             if character_projection
             else brief.silhouette_and_proportions
         )
         wardrobe = character_projection.wardrobe if character_projection else brief.wardrobe
-        accessories = character_projection.accessories if character_projection else brief.accessories
+        accessories = (
+            character_projection.accessories if character_projection else brief.accessories
+        )
         return (
             "Use the exact bound Character Main as identity authority. Create the same detailed "
             "non-photorealistic semi-realistic commercial illustration in front, side, and back "
@@ -516,7 +521,11 @@ def _render(
             "text, labels, annotation, captions, or board layout.",
         )
     if isinstance(brief, SceneBoardRoleBriefV2):
-        environment_identity = scene_projection.environment_identity if scene_projection else brief.environment_identity
+        environment_identity = (
+            scene_projection.environment_identity
+            if scene_projection
+            else brief.environment_identity
+        )
         spatial_logic = scene_projection.spatial_logic if scene_projection else brief.spatial_logic
         lighting = scene_projection.lighting if scene_projection else brief.lighting
         materials = scene_projection.materials if scene_projection else brief.materials
@@ -671,7 +680,9 @@ def _structured_content(
         ).model_dump(mode="json")
     if isinstance(brief, SceneBoardRoleBriefV2):
         projection = context.scene_environment_projection
-        environment_identity = projection.environment_identity if projection else brief.environment_identity
+        environment_identity = (
+            projection.environment_identity if projection else brief.environment_identity
+        )
         spatial_logic = projection.spatial_logic if projection else brief.spatial_logic
         lighting = projection.lighting if projection else brief.lighting
         materials = projection.materials if projection else brief.materials

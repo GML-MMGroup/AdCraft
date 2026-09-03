@@ -218,7 +218,8 @@ class AgentCanvasProviderPromptCompiler:
                 if (
                     projection_digest is None
                     or evidence.character_identity_projection_digest != projection_digest
-                    or node.structured_content.get("identity_projection_digest") != projection_digest
+                    or node.structured_content.get("identity_projection_digest")
+                    != projection_digest
                 ):
                     raise _error(
                         "character_parent_identity_projection_invalid",

@@ -470,7 +470,9 @@ def character_identity_projection_from_node(
     """Project only explicit structured Character Main authority."""
 
     content = node.structured_content
-    identity = _required_text(content.get("subject_identity")) or _required_text(node.summary_prompt)
+    identity = _required_text(content.get("subject_identity")) or _required_text(
+        node.summary_prompt
+    )
     summary = _required_text(content.get("design_summary")) or identity
     if not identity:
         raise _error(
@@ -547,7 +549,9 @@ def scene_environment_projection_from_node(
         materials=_required_text(content.get("materials")) or "Accepted environment materials.",
         atmosphere=summary,
         views=tuple(views[:9]),
-        entity_references=tuple(str(item) for item in content.get("explicit_entity_reference_ids", ())),
+        entity_references=tuple(
+            str(item) for item in content.get("explicit_entity_reference_ids", ())
+        ),
         action_references=tuple(str(item) for item in content.get("action_references", ())),
         environment_only=content.get("no_narrative_progression") is not False,
     )

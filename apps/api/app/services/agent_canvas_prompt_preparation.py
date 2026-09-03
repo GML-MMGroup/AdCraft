@@ -581,7 +581,10 @@ class NodePromptPreparationService:
         bindings = self._binding_snapshots(node)
         character_projection = None
         scene_projection = None
-        if node.creative_role == "character" and node.metadata.get("character_phase") == "turnaround":
+        if (
+            node.creative_role == "character"
+            and node.metadata.get("character_phase") == "turnaround"
+        ):
             workflow = self._workflows.get_workflow(node.workflow_id)
             nodes = {item.node_id: item for item in workflow.nodes}
             parents = tuple(
