@@ -64,6 +64,53 @@ class WorkflowStatusReplyRenderer:
             )
         return " ".join(section for section in sections if section)
 
+    def render_document_selection(
+        self,
+        capsule: WorkflowStateCapsuleV1,
+        requested_document_kinds: tuple[str, ...],
+    ) -> str:
+        """Identify current documents while keeping excerpt selection user-owned."""
+
+        locale = self._locale_resolver.resolve(capsule.response_locale)
+        language = "zh-TW" if locale == "zh-TW" else "zh-CN" if locale.startswith("zh") else "en"
+        references = {item.document_kind: item for item in capsule.documents}
+        labels = {
+            "en": {
+                "anchor_registry": "Anchor Registry",
+                "storyboard_production_plan": "Storyboard Production Plan",
+            },
+            "zh-CN": {
+                "anchor_registry": "锚点注册表",
+                "storyboard_production_plan": "分镜制作计划",
+            },
+            "zh-TW": {
+                "anchor_registry": "錨點註冊表",
+                "storyboard_production_plan": "分鏡製作計畫",
+            },
+        }[language]
+        items: list[str] = []
+        for kind in requested_document_kinds:
+            label = labels[kind]
+            reference = references.get(kind)
+            if reference is None:
+                unavailable = (
+                    "not available"
+                    if language == "en"
+                    else "当前不可用"
+                    if language == "zh-CN"
+                    else "目前不可用"
+                )
+                items.append(f"{label} ({unavailable})")
+            else:
+                revision = "revision" if language == "en" else "版本"
+                items.append(f"{label} ({reference.document_id}, {revision} {reference.revision})")
+        joined = ", ".join(items)
+        if language == "zh-CN":
+            return f"当前文档：{joined}。请选择一个文档进行说明。"
+        if language == "zh-TW":
+            return f"目前文件：{joined}。請選擇一個文件進行說明。"
+        return f"Current documents: {joined}. Choose one document to explain."
+
     @staticmethod
     def _current_en(capsule: WorkflowStateCapsuleV1) -> tuple[str, ...]:
         action = capsule.current_action

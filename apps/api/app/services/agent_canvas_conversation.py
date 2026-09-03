@@ -2484,6 +2484,20 @@ class AgentConversationService:
             )
             if current_context.projection_digest != workflow_context.projection_digest:
                 workflow_context = current_context
+            if intent.conversation_query.requested_document_kinds:
+                _, state_reference = self._conversation_answer_context(
+                    turn,
+                    response_locale=intent.response_locale,
+                    workflow_context=workflow_context,
+                )
+                return WorkflowConversationReply(
+                    message=self._workflow_status_reply.render_document_selection(
+                        workflow_context,
+                        intent.conversation_query.requested_document_kinds,
+                    ),
+                    answer_kind="clarification",
+                    state_reference=state_reference,
+                )
             document_excerpt = self._conversation_documents.resolve(
                 workflow_context,
                 intent.conversation_query,
