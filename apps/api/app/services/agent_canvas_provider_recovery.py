@@ -217,6 +217,11 @@ class ProviderTaskRecoveryService:
             for item in self._runtime.list_members(task.execution_id)
             if item.node_id == task.node_id
         )
+        intent_resolution = None
+        if task.submission_intent_id is not None:
+            intent_resolution = self._runtime.get_submission_intent(
+                task.submission_intent_id
+            ).frozen_model_resolution
         stored_resolution = current.result_descriptor.get("model_resolution")
         resolution = None
         if isinstance(stored_resolution, dict):
@@ -224,6 +229,14 @@ class ProviderTaskRecoveryService:
                 resolution = ResolvedModelExecutionV2.model_validate(stored_resolution)
             except ValidationError:
                 resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
+        if intent_resolution is not None:
+            if resolution is not None and resolution != intent_resolution:
+                raise V2PersistenceError(
+                    "provider_model_resolution_conflict",
+                    "Provider recovery identity does not match the frozen submission intent.",
+                    stage="provider_recovery",
+                )
+            resolution = intent_resolution
         effective_parameters = member.effective_parameters
         snapshot_id = (
             member.parameter_compilation_snapshot_id
