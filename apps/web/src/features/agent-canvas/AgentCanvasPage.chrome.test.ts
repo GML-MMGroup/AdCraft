@@ -61,6 +61,19 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onRelocate={openCanvasContextMenu}");
   });
 
+  it("opens the shared context menu for a node and routes deletion through canonical recovery", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("onNodeContextMenu={(event, node) => {");
+    expect(source).toContain("openNodeContextMenu(event, node)");
+    expect(source).toContain("const deleteContextNode = useCallback");
+    expect(source).toContain("deleteNodes([node])");
+    expect(source).toContain("onDeleteNode={() => deleteContextNode(contextMenu.nodeId)}");
+  });
+
   it("fills the Workflow viewport below the topbar without a shell inset", () => {
     const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
     const canvasCss = readFileSync(

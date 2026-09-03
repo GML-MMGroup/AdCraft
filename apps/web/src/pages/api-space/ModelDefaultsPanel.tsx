@@ -81,21 +81,26 @@ export function ModelDefaultsPanel({
       </p>
       <div className="api-space-default-grid">
         {MODEL_DEFAULT_PURPOSES.map((purpose) => {
-          const options = modelsByPurpose[purpose];
+          const allOptions = modelsByPurpose[purpose];
+          const options = allOptions.filter((model) => model.provider_id !== "fake");
           const selected = modelDraft[purpose] ?? "";
-          const selectedMissing = Boolean(selected) && !options.some((model) => model.model_ref === selected);
+          const selectedIsTestOnly = selected.startsWith("fake:")
+            || allOptions.some((model) => model.model_ref === selected && model.provider_id === "fake");
+          const visibleSelected = selectedIsTestOnly ? "" : selected;
+          const selectedMissing = Boolean(visibleSelected)
+            && !options.some((model) => model.model_ref === visibleSelected);
           return (
             <div className="api-space-default-field" key={purpose}>
               <label htmlFor={`default-model-${purpose}`}>{defaultLabel(purpose)}</label>
               <select
                 id={`default-model-${purpose}`}
                 aria-label={`${defaultLabel(purpose)} default model`}
-                value={selected}
+                value={visibleSelected}
                 disabled={disabled}
                 onChange={(event) => updateModel(purpose, event.currentTarget.value)}
               >
                 <option value="">No default selected</option>
-                {selectedMissing ? <option value={selected}>{selected} (unavailable)</option> : null}
+                {selectedMissing ? <option value={visibleSelected}>{visibleSelected} (unavailable)</option> : null}
                 {options.map((model) => (
                   <option key={model.model_ref} value={model.model_ref}>
                     {model.display_name} · {model.provider_id}

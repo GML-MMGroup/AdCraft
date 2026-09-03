@@ -6,6 +6,25 @@ import { AgentCanvasContextMenu } from "./AgentCanvasContextMenu.tsx";
 afterEach(() => cleanup());
 
 describe("AgentCanvasContextMenu", () => {
+  it("shows one shared-style Delete node action for a node context menu", () => {
+    const onDeleteNode = vi.fn();
+
+    render(
+      <AgentCanvasContextMenu
+        menuPosition={{ x: 240, y: 180 }}
+        onDeleteNode={onDeleteNode}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const deleteAction = screen.getByRole("menuitem", { name: "Delete node" });
+    expect(deleteAction.className).toBe("agent-canvas-context-menu__action");
+    expect(screen.queryByRole("menuitem", { name: "Add node" })).toBeNull();
+
+    fireEvent.click(deleteAction);
+    expect(onDeleteNode).toHaveBeenCalledOnce();
+  });
+
   it("opens the shared node picker from Add node and creates at the context position", () => {
     const onCreateNode = vi.fn();
 
