@@ -246,6 +246,14 @@ class AgentCanvasEditingActionReconciliationRepository:
         ).scalar_one_or_none()
         if mode is None or str(mode) != command.media_execution_mode:
             raise _evidence_error()
+        if command.system_owner_kind == "automatic_run":
+            source_action_id = connection.execute(
+                select(AgentCanvasAutomaticRunCommandRow.source_action_id).where(
+                    AgentCanvasAutomaticRunCommandRow.command_id == command.system_owner_id
+                )
+            ).scalar_one_or_none()
+            if source_action_id is None or str(source_action_id) != command.action_id:
+                raise _evidence_error()
         table, identity_column, state_column, node_column, generation_column, active_states = {
             "execution_member": (
                 AgentCanvasExecutionMemberRow,
