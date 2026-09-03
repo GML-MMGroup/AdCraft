@@ -42,9 +42,14 @@ class ProviderModelBootstrapService:
             dotenv_store=DotenvCredentialStore(
                 PROJECT_ROOT,
                 allowed_fields={
-                    binding.dotenv_field
+                    field
                     for provider_id in registry.provider_ids
                     for binding in registry.get(provider_id).bindings.values()
+                    for field in (
+                        binding.dotenv_field,
+                        binding.endpoint_dotenv_field,
+                    )
+                    if field is not None
                 },
             ),
             metadata_repository=self._repository,
@@ -53,7 +58,14 @@ class ProviderModelBootstrapService:
         connection_service.synchronize_metadata(updated_at=now)
         catalog = ProviderModelCatalogService(self._repository)
         seeded_providers: list[str] = []
-        for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
+        for provider_id in (
+            "siliconflow",
+            "volcengine_ark",
+            "tianpuyue",
+            "openai",
+            "minimax",
+            "fake",
+        ):
             had_models = bool(self._repository.list_models(provider_id=provider_id))
             catalog.reconcile_trusted_models(provider_id, now=now)
             if not had_models:

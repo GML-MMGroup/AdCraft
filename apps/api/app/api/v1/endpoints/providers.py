@@ -117,6 +117,7 @@ def update_provider_credentials(
         result = service.update(
             provider_id,
             api_keys=payload.secret_values(),
+            base_urls=payload.base_urls,
             clear_capabilities=payload.clear_capabilities,
         )
         return ProviderCredentialUpdateResponseV1(
@@ -279,6 +280,7 @@ def _response(snapshot: ProviderConnectionSnapshot) -> ProviderConnectionStatusV
                 fingerprint=status.fingerprint,
                 source=status.source,
                 test_capability=status.test_capability,
+                endpoint=status.endpoint,
             )
             for capability, status in snapshot.credentials.items()
         },

@@ -93,6 +93,10 @@ class Settings:
     llm_base_url: str | None = None
     siliconflow_api_key: str | None = None
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    openai_api_key: str | None = None
+    openai_base_url: str | None = None
+    minimax_api_key: str | None = None
+    minimax_base_url: str | None = None
     llm_transient_retry_delay_seconds: float = 2.0
     llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
     llm_team_model: str = "doubao-seed-2-0-mini-260428"
@@ -235,6 +239,10 @@ class Settings:
                 "SILICONFLOW_BASE_URL",
                 cls.siliconflow_base_url,
             ),
+            openai_api_key=os.getenv("OPENAI_API_KEY") or None,
+            openai_base_url=os.getenv("OPENAI_BASE_URL") or None,
+            minimax_api_key=os.getenv("MINIMAX_API_KEY") or None,
+            minimax_base_url=os.getenv("MINIMAX_BASE_URL") or None,
             llm_transient_retry_delay_seconds=_read_float(
                 "LLM_TRANSIENT_RETRY_DELAY_SECONDS",
                 cls.llm_transient_retry_delay_seconds,

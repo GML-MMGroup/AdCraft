@@ -194,9 +194,14 @@ def _provider_connection_service(
         dotenv_store=DotenvCredentialStore(
             PROJECT_ROOT,
             allowed_fields={
-                binding.dotenv_field
+                field
                 for provider_id in registry.provider_ids
                 for binding in registry.get(provider_id).bindings.values()
+                for field in (
+                    binding.dotenv_field,
+                    binding.endpoint_dotenv_field,
+                )
+                if field is not None
             },
         ),
         metadata_repository=repository,
