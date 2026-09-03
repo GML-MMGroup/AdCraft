@@ -1617,6 +1617,24 @@
           "title": "Reasoning Control",
           "type": "string"
         },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "minimal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
+        },
         "reasoning_mode": {
           "enum": [
             "deep",
@@ -4178,6 +4196,24 @@
           ],
           "title": "Reasoning Control",
           "type": "string"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "minimal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
         },
         "reasoning_mode": {
           "enum": [

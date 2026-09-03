@@ -445,6 +445,7 @@ function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
     thinking_format: attempt.thinking_format,
     reasoning_control: attempt.reasoning_control,
     reasoning_mode: attempt.reasoning_mode,
+    reasoning_effort: attempt.reasoning_effort,
     enable_thinking: attempt.enable_thinking,
     thinking_budget_tokens: attempt.thinking_budget_tokens,
     deadline_seconds: attempt.deadline_seconds,

@@ -167,6 +167,7 @@ const REASONING_CONTROLS = new Set([
   "reasoning_effort",
   "none",
 ]);
+const REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
 const STRUCTURED_TRANSPORTS = new Set([
   "streamed_tool_call",
   "non_streaming_tool_call",
@@ -194,6 +195,7 @@ function isExecutionPolicy(
     typeof policy.reasoning_control !== "string" ||
     !REASONING_CONTROLS.has(policy.reasoning_control) ||
     (policy.reasoning_mode !== "low" && policy.reasoning_mode !== "deep") ||
+    !isReasoningEffort(policy.reasoning_effort) ||
     typeof policy.enable_thinking !== "boolean" ||
     !isThinkingBudget(policy.thinking_budget_tokens) ||
     typeof policy.structured_transport !== "string" ||
@@ -232,10 +234,23 @@ function isExecutionPolicy(
     return false;
   }
   if (
-    (policy.reasoning_mode === "low" &&
-      (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
-    (policy.reasoning_mode === "deep" &&
-      (!policy.enable_thinking || policy.thinking_budget_tokens === null))
+    (policy.reasoning_control === "enable_thinking" &&
+      ((policy.reasoning_mode === "low" &&
+        (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
+        (policy.reasoning_mode === "deep" &&
+          (!policy.enable_thinking || policy.thinking_budget_tokens === null)))) ||
+    (policy.reasoning_control !== "enable_thinking" &&
+      (policy.enable_thinking || policy.thinking_budget_tokens !== null))
+  ) {
+    return false;
+  }
+  if (
+    (policy.reasoning_control === "reasoning_effort" &&
+      (policy.reasoning_effort == null ||
+        policy.enable_thinking ||
+        policy.thinking_budget_tokens !== null)) ||
+    (policy.reasoning_control !== "reasoning_effort" &&
+      policy.reasoning_effort != null)
   ) {
     return false;
   }
@@ -268,6 +283,12 @@ function isBoundedAttempt(value: unknown): value is number {
 
 function isThinkingBudget(value: unknown): value is number | null {
   return value === null || isPositiveInteger(value);
+}
+
+function isReasoningEffort(
+  value: unknown,
+): value is "minimal" | "low" | "medium" | "high" | null | undefined {
+  return value == null || (typeof value === "string" && REASONING_EFFORTS.has(value));
 }
 
 async function boundedJson(response: Response): Promise<Record<string, unknown>> {

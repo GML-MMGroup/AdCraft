@@ -24,8 +24,9 @@ interface StructuredCompletionRequestBase {
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
   readonly max_tokens: number;
-  readonly enable_thinking: boolean;
+  readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
+  readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 }
 
 export interface NonStreamingStructuredCompletionRequest
@@ -692,21 +693,40 @@ function repairPayload(
       input.credential.execution_policy.structured_transport ===
       "streaming_json_object",
     max_tokens: input.credential.execution_policy.max_output_tokens,
-    enable_thinking: false,
+    ...repairReasoningPayload(input.credential.execution_policy),
     response_format: { type: "json_object" },
   };
 }
 
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
-  readonly enable_thinking: boolean;
+  readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
+  readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
+  if (policy.reasoning_control === "reasoning_effort") {
+    if (policy.reasoning_effort == null) {
+      throw new Error("agent_model_capability_mismatch");
+    }
+    return { reasoning_effort: policy.reasoning_effort };
+  }
   return {
     enable_thinking: policy.enable_thinking,
     ...(typeof policy.thinking_budget_tokens === "number"
       ? { thinking_budget: policy.thinking_budget_tokens }
       : {}),
   };
+}
+
+function repairReasoningPayload(
+  policy: AgentCredentialSnapshot["execution_policy"],
+): {
+  readonly enable_thinking?: boolean;
+  readonly reasoning_effort?: "minimal";
+} {
+  if (policy.reasoning_control === "reasoning_effort") {
+    return { reasoning_effort: "minimal" };
+  }
+  return { enable_thinking: false };
 }
 
 function isJsonObjectTransport(transport: string): boolean {
@@ -798,6 +818,8 @@ function auditForAttempt(
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
     reasoning_mode: input.credential.execution_policy.reasoning_mode,
+    reasoning_effort:
+      input.credential.execution_policy.reasoning_effort ?? null,
     enable_thinking: input.credential.execution_policy.enable_thinking,
     thinking_budget_tokens:
       input.credential.execution_policy.thinking_budget_tokens ?? null,
@@ -1030,6 +1052,8 @@ function failureMetadata(
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
     reasoning_mode: input.credential.execution_policy.reasoning_mode,
+    reasoning_effort:
+      input.credential.execution_policy.reasoning_effort ?? null,
     enable_thinking: input.credential.execution_policy.enable_thinking,
     thinking_budget_tokens:
       input.credential.execution_policy.thinking_budget_tokens ?? null,
