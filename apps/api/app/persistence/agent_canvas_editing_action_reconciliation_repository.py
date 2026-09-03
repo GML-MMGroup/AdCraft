@@ -83,6 +83,46 @@ class AgentCanvasEditingActionReconciliationRepository:
                 "Guided Editing action reconciliation storage is unavailable.",
             ) from error
 
+    def node_belongs_to_plan(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        """Verify exact current Plan membership without guessing revision offsets."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentWorkingDocumentRow).where(
+                            AgentWorkingDocumentRow.document_id == plan_document_id,
+                            AgentWorkingDocumentRow.workflow_id == workflow_id,
+                            AgentWorkingDocumentRow.document_kind == "storyboard_production_plan",
+                            AgentWorkingDocumentRow.revision == plan_revision,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                return bool(
+                    row is not None
+                    and self._node_belongs_to_plan_in_transaction(
+                        connection,
+                        row=row,
+                        workflow_id=workflow_id,
+                        node_id=node_id,
+                        plan_document_id=plan_document_id,
+                    )
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "guided_editing_action_reconciliation_unavailable",
+                "Guided Editing action reconciliation storage is unavailable.",
+            ) from error
+
     def reconcile(
         self,
         command: GuidedEditingActionReconciliationCommandV1,
@@ -383,36 +423,45 @@ class AgentCanvasEditingActionReconciliationRepository:
         )
         if row is None or str(row["document_id"]) not in command.evidence_ids:
             raise _evidence_error()
-        document = AgentWorkingDocumentRepository.validate_document_row(row)
         if node_id is None:
             return
+        if not AgentCanvasEditingActionReconciliationRepository._node_belongs_to_plan_in_transaction(
+            connection,
+            row=row,
+            workflow_id=command.workflow_id,
+            node_id=node_id,
+            plan_document_id=command.plan_document_id,
+        ):
+            raise _evidence_error()
+
+    @staticmethod
+    def _node_belongs_to_plan_in_transaction(
+        connection,
+        *,
+        row,
+        workflow_id: str,
+        node_id: str,
+        plan_document_id: str,
+    ) -> bool:
+        document = AgentWorkingDocumentRepository.validate_document_row(row)
         planned_nodes = getattr(document.content, "planned_nodes", None)
         if planned_nodes is None:
             planned_nodes = getattr(document.content, "node_records", ())
         if not any(item.node_id == node_id for item in planned_nodes):
-            raise _evidence_error()
+            return False
         metadata_json = connection.execute(
             select(AgentCanvasNodeRow.metadata_json).where(
-                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                AgentCanvasNodeRow.workflow_id == workflow_id,
                 AgentCanvasNodeRow.node_id == node_id,
             )
         ).scalar_one_or_none()
         if metadata_json is None:
-            raise _evidence_error()
+            return False
         try:
             metadata = json.loads(str(metadata_json))
         except (TypeError, ValueError):
-            raise _evidence_error() from None
-        source_revision = metadata.get("source_plan_revision")
-        if source_revision is None:
-            source_revision = metadata.get("source_agent_document_revision")
-        if (
-            metadata.get("source_agent_document_id") != command.plan_document_id
-            or not isinstance(source_revision, int)
-            or isinstance(source_revision, bool)
-            or source_revision != command.plan_revision
-        ):
-            raise _evidence_error()
+            return False
+        return metadata.get("source_agent_document_id") == plan_document_id
 
     @staticmethod
     def _owner_matches_plan_in_transaction(
@@ -426,21 +475,34 @@ class AgentCanvasEditingActionReconciliationRepository:
         plan_revision: int,
     ) -> bool:
         if owner_kind == "execution_member":
-            prompt_metadata_json = connection.execute(
-                select(AgentCanvasExecutionMemberRow.prompt_metadata_json).where(
+            member = connection.execute(
+                select(
+                    AgentCanvasExecutionMemberRow.prompt_metadata_json,
+                    AgentCanvasExecutionMemberRow.execution_id,
+                ).where(
                     AgentCanvasExecutionMemberRow.member_id == owner_id,
                     AgentCanvasExecutionMemberRow.workflow_id == workflow_id,
                     AgentCanvasExecutionMemberRow.node_id == node_id,
                 )
-            ).scalar_one_or_none()
-            return _frozen_node_matches_plan(
-                prompt_metadata_json,
-                plan_document_id,
-                plan_revision,
+            ).one_or_none()
+            if member is None:
+                return False
+            if _frozen_node_matches_plan(member[0], plan_document_id, plan_revision):
+                return True
+            return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
+                connection,
+                workflow_id=workflow_id,
+                node_id=node_id,
+                execution_id=str(member[1]),
+                plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
             )
         if owner_kind == "post_ready_effect":
-            prompt_metadata_json = connection.execute(
-                select(AgentCanvasExecutionMemberRow.prompt_metadata_json)
+            member = connection.execute(
+                select(
+                    AgentCanvasExecutionMemberRow.prompt_metadata_json,
+                    AgentCanvasExecutionMemberRow.execution_id,
+                )
                 .select_from(AgentCanvasPostReadyEffectRow)
                 .join(
                     AgentCanvasExecutionResultCommitRow,
@@ -457,11 +519,18 @@ class AgentCanvasEditingActionReconciliationRepository:
                     AgentCanvasPostReadyEffectRow.workflow_id == workflow_id,
                     AgentCanvasPostReadyEffectRow.node_id == node_id,
                 )
-            ).scalar_one_or_none()
-            return _frozen_node_matches_plan(
-                prompt_metadata_json,
-                plan_document_id,
-                plan_revision,
+            ).one_or_none()
+            if member is None:
+                return False
+            if _frozen_node_matches_plan(member[0], plan_document_id, plan_revision):
+                return True
+            return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
+                connection,
+                workflow_id=workflow_id,
+                node_id=node_id,
+                execution_id=str(member[1]),
+                plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
             )
         if owner_kind != "automatic_run":
             return False
@@ -473,7 +542,55 @@ class AgentCanvasEditingActionReconciliationRepository:
             )
         ).scalar_one_or_none()
         source = str(source_action_id) if source_action_id is not None else ""
-        identity = _automatic_owner_source(source, node_id)
+        return AgentCanvasEditingActionReconciliationRepository._automatic_source_matches_plan_in_transaction(
+            connection,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            source_action_id=source,
+            plan_document_id=plan_document_id,
+            plan_revision=plan_revision,
+        )
+
+    @staticmethod
+    def _execution_source_matches_plan_in_transaction(
+        connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        execution_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        sources = connection.execute(
+            select(AgentCanvasAutomaticRunCommandRow.source_action_id).where(
+                AgentCanvasAutomaticRunCommandRow.workflow_id == workflow_id,
+                AgentCanvasAutomaticRunCommandRow.node_id == node_id,
+                AgentCanvasAutomaticRunCommandRow.execution_id == execution_id,
+            )
+        ).scalars()
+        return any(
+            AgentCanvasEditingActionReconciliationRepository._automatic_source_matches_plan_in_transaction(
+                connection,
+                workflow_id=workflow_id,
+                node_id=node_id,
+                source_action_id=str(source),
+                plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
+            )
+            for source in sources
+        )
+
+    @staticmethod
+    def _automatic_source_matches_plan_in_transaction(
+        connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        source_action_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        identity = _automatic_owner_source(source_action_id, node_id)
         if identity is None:
             return False
         source_kind, source_id = identity

@@ -188,7 +188,12 @@ class GuidedEditingActionOutcomeResolver:
         *,
         plan_authority: tuple[str, int] | None,
     ) -> tuple[EditingActionSystemOwnerKindV1, str, str, int] | None:
-        if plan_authority is None or not _node_matches_plan(node, plan_authority):
+        if plan_authority is None or not self._reconciliation.node_belongs_to_plan(
+            workflow_id=workflow_id,
+            node_id=node.node_id,
+            plan_document_id=plan_authority[0],
+            plan_revision=plan_authority[1],
+        ):
             return None
         node_id = node.node_id
         for member in self._runtime.list_latest_members_for_workflow(workflow_id):
@@ -337,20 +342,6 @@ def _plan_authority(error: V2PersistenceError) -> tuple[str, int] | None:
     ):
         return None
     return document_id, revision
-
-
-def _node_matches_plan(node: CanvasNodeV2, plan_authority: tuple[str, int]) -> bool:
-    document_id, revision = plan_authority
-    source_document_id = node.metadata.get("source_agent_document_id")
-    source_revision = node.metadata.get("source_plan_revision")
-    if source_revision is None:
-        source_revision = node.metadata.get("source_agent_document_revision")
-    return bool(
-        source_document_id == document_id
-        and isinstance(source_revision, int)
-        and not isinstance(source_revision, bool)
-        and source_revision == revision
-    )
 
 
 def _ordered(blockers: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
