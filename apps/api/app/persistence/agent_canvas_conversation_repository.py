@@ -2389,6 +2389,7 @@ class AgentCanvasConversationRepository:
         turn_id: str,
         *,
         assistant_message: str | None = None,
+        assistant_metadata: Mapping[str, object] | None = None,
         guided_actions: tuple[GuidanceSessionActionV2, ...] = (),
     ) -> ChatTurnV2:
         now = _now()
@@ -2525,6 +2526,7 @@ class AgentCanvasConversationRepository:
                         events=self._events,
                         turn=turn,
                         assistant_message=assistant_message,
+                        assistant_metadata=assistant_metadata,
                         now=now,
                     )
                     connection.commit()
@@ -5276,6 +5278,7 @@ def _complete_turn_in_transaction(
     events: EventRepository,
     turn: RowMapping,
     assistant_message: str | None,
+    assistant_metadata: Mapping[str, object] | None = None,
     now: str,
 ) -> None:
     if assistant_message:
@@ -5284,6 +5287,7 @@ def _complete_turn_in_transaction(
             events=events,
             turn=turn,
             assistant_message=assistant_message,
+            metadata=assistant_metadata,
             now=now,
         )
     _complete_turn_state_in_transaction(

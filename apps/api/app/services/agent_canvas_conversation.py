@@ -34,6 +34,7 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
 )
@@ -96,6 +97,11 @@ from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
+    WorkflowConversationAgentContext,
+)
+from app.schemas.v2_agent_conversations import (
+    WorkflowConversationAnswerContextV1,
+    WorkflowConversationReply,
 )
 from app.schemas.agent_runtime import (
     AgentActionEnvelopeV2,
@@ -184,6 +190,33 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 logger = logging.getLogger(__name__)
 
 
+def _answer_context_from_agent_context(
+    context: WorkflowConversationAgentContext,
+) -> WorkflowConversationAnswerContextV1 | None:
+    if context.workflow_revision is None:
+        return None
+    return WorkflowConversationAnswerContextV1(
+        workflow_id=context.workflow_id,
+        workflow_revision=context.workflow_revision,
+        response_locale=context.response_locale,
+        journey_stage=context.journey_stage,
+        journey_status=context.journey_status,
+        awaiting_action=context.awaiting_action,
+        next_action=context.next_action,
+        source_revision=context.source_revision,
+    )
+
+
+def _workflow_conversation_summary(workflow: AgentCanvasWorkflowV2) -> str:
+    status_counts: dict[str, int] = {}
+    for node in workflow.nodes:
+        status_counts[node.status] = status_counts.get(node.status, 0) + 1
+    counts = ", ".join(
+        f"{status}={count}" for status, count in sorted(status_counts.items())
+    )
+    return f"Canvas nodes: {len(workflow.nodes)} ({counts or 'none'})."
+
+
 @dataclass(frozen=True, slots=True)
 class PiStructuredRunResult:
     """One validated terminal structured result with private audit identity."""
@@ -213,6 +246,13 @@ class VideoAgentGateway(Protocol):
         *,
         request_identity: str,
     ) -> RoleCreativeBriefV2: ...
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply: ...
 
     def plan_storyboard_sequence_outline(
         self,
@@ -326,6 +366,22 @@ class DeterministicVideoAgentGateway:
                 or context.selected_direction
                 or "Current creative direction.",
             }
+        )
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply:
+        del turn_id
+        return WorkflowConversationReply(
+            message=(
+                "I can answer questions about the current workflow without changing "
+                "its authoring state."
+            ),
+            answer_kind="general",
+            state_reference=_answer_context_from_agent_context(context),
         )
 
     def plan_storyboard_sequence_outline(
@@ -543,6 +599,26 @@ class PiVideoAgentGateway:
                 stage="agent_canvas_conversation",
             )
         return brief
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply:
+        completed = self._run_structured(
+            operation="workflow_conversation",
+            context=context,
+            contract=WorkflowConversationReply,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "conversation_id": context.conversation_id,
+                "turn_id": turn_id,
+                "agent_name": "video_agent",
+                "operation": "workflow_conversation",
+            },
+        )
+        return WorkflowConversationReply.model_validate(completed.value)
 
     def plan_storyboard_sequence_outline(
         self,
@@ -1608,10 +1684,19 @@ class AgentConversationService:
                 response_locale=intent.response_locale,
             )
         if intent.mode == "ordinary_conversation":
+            reply = self._answer_workflow_conversation(turn, intent)
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
-                intent.assistant_message or "Your request is recorded for this canvas.",
+                reply.message,
+                assistant_metadata={
+                    "answer_kind": reply.answer_kind,
+                    "state_reference": (
+                        reply.state_reference.model_dump(mode="json")
+                        if reply.state_reference is not None
+                        else None
+                    ),
+                },
             )
         session = existing_session
         if session is None:
@@ -2276,15 +2361,160 @@ class AgentConversationService:
         turn_id: str,
         workflow_id: str,
         assistant_message: str | None,
+        *,
+        assistant_metadata: Mapping[str, object] | None = None,
     ) -> ChatTurnV2:
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         return self._conversations.complete_turn(
             turn_id,
             assistant_message=assistant_message,
+            assistant_metadata=assistant_metadata,
             guided_actions=self._session_actions.project(
                 session,
                 creating_turn_id=turn_id,
             ),
+        )
+
+    def _answer_workflow_conversation(
+        self,
+        turn: ChatTurnV2,
+        intent: TurnIntentDecisionV2,
+    ) -> WorkflowConversationReply:
+        context, state_reference = self._conversation_answer_context(
+            turn,
+            response_locale=intent.response_locale,
+        )
+        reply = self._gateway.answer_workflow_conversation(
+            context,
+            turn_id=turn.turn_id,
+        )
+        if reply.answer_kind != "progress":
+            return reply.model_copy(update={"state_reference": state_reference})
+        if state_reference is None:
+            return WorkflowConversationReply(
+                message=(
+                    "Current guided progress is unavailable. Refresh the workflow before "
+                    "choosing a next action."
+                ),
+                answer_kind="progress",
+                state_reference=None,
+            )
+        _, current_reference = self._conversation_answer_context(
+            turn,
+            response_locale=intent.response_locale,
+        )
+        if current_reference != state_reference:
+            return WorkflowConversationReply(
+                message=(
+                    "Workflow state changed while this answer was prepared. Refresh the "
+                    "current guidance state before continuing."
+                ),
+                answer_kind="progress",
+                state_reference=current_reference,
+            )
+        return reply.model_copy(update={"state_reference": state_reference})
+
+    def _conversation_answer_context(
+        self,
+        turn: ChatTurnV2,
+        *,
+        response_locale: str,
+    ) -> tuple[WorkflowConversationAgentContext, WorkflowConversationAnswerContextV1 | None]:
+        workflow = self._workflows.get_workflow(turn.workflow_id)
+        session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
+        if session is None:
+            return (
+                WorkflowConversationAgentContext(
+                    context_kind="workflow_conversation",
+                    user_input=str(turn.request.get("text") or ""),
+                    workflow_id=turn.workflow_id,
+                    conversation_id=turn.conversation_id,
+                    workflow_revision=workflow.revision,
+                    workflow_summary=_workflow_conversation_summary(workflow),
+                    response_locale=response_locale,
+                ),
+                None,
+            )
+        journey_capability = (
+            session.journey.active_action.capability_id
+            if session.journey.active_action is not None
+            else None
+        )
+        policy = self._capability_policy.evaluate(
+            assemble_capability_policy_context(
+                workflow=workflow,
+                session=session,
+                journey_capability=journey_capability,
+                open_proposal_capabilities=tuple(
+                    proposal.capability_id
+                    for proposal in self._conversations.list_open_proposals(turn.workflow_id)
+                ),
+                active_materialization_capabilities=tuple(
+                    dict.fromkeys(
+                        (
+                            *self._continuation_outbox.list_nonterminal_capability_ids(
+                                turn.workflow_id
+                            ),
+                            *self._conversations.list_active_materialization_capability_ids(
+                                turn.workflow_id
+                            ),
+                        )
+                    )
+                ),
+            )
+        )
+
+        def action_context(objective: str) -> NextActionContextV1:
+            return NextActionContextV1(
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                session_revision=session.revision,
+                objective=objective,
+                policy=policy,
+                response_locale=session.response_locale,
+            )
+
+        awaiting_action = (
+            action_context(
+                f"Await {session.awaiting.kind} through {session.awaiting.resume_policy}."
+            )
+            if session.awaiting is not None
+            else None
+        )
+        next_action = (
+            action_context(
+                "Perform the current journey action "
+                f"{session.journey.active_action.action}."
+            )
+            if session.journey.active_action is not None
+            else None
+        )
+        state_reference = WorkflowConversationAnswerContextV1(
+            workflow_id=turn.workflow_id,
+            workflow_revision=workflow.revision,
+            response_locale=session.response_locale,
+            journey_stage=session.journey.stage,
+            journey_status=session.journey.stage_status,
+            awaiting_action=awaiting_action,
+            next_action=next_action,
+            source_revision=session.revision,
+        )
+        return (
+            WorkflowConversationAgentContext(
+                context_kind="workflow_conversation",
+                user_input=str(turn.request.get("text") or ""),
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                workflow_revision=workflow.revision,
+                workflow_summary=_workflow_conversation_summary(workflow),
+                response_locale=session.response_locale,
+                journey_stage=session.journey.stage,
+                journey_status=session.journey.stage_status,
+                awaiting_action=awaiting_action,
+                next_action=next_action,
+                source_revision=session.revision,
+            ),
+            state_reference,
         )
 
     def get_turn(self, turn_id: str) -> ChatTurnV2:
