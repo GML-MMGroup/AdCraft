@@ -159,6 +159,9 @@ def _presentation_identity(entry: ChatTimelineEntryV2) -> tuple[str, int]:
         proposal_id = _bounded_identity(metadata.get("proposal_id"))
         if proposal_id is not None:
             return f"proposal:{proposal_id}", _positive_int(metadata.get("proposal_revision"))
+    acknowledgement_turn_id = _acknowledgement_turn_id(entry)
+    if acknowledgement_turn_id is not None:
+        return f"acknowledgement:{acknowledgement_turn_id}", 1
     stored_key = metadata.get("presentation_key")
     if (
         isinstance(stored_key, str)
@@ -167,6 +170,14 @@ def _presentation_identity(entry: ChatTimelineEntryV2) -> tuple[str, int]:
     ):
         return stored_key, _positive_int(metadata.get("presentation_revision"))
     return f"entry:{entry.entry_id}", 1
+
+
+def _acknowledgement_turn_id(entry: ChatTimelineEntryV2) -> str | None:
+    if entry.entry_type == "action_receipt" and entry.action_receipt is not None:
+        return _bounded_identity(entry.action_receipt.action_id)
+    if entry.entry_type == "message" and entry.speaker == "adcraft_video_agent":
+        return _bounded_identity(entry.metadata.get("turn_id"))
+    return None
 
 
 def _bounded_identity(value: object) -> str | None:
