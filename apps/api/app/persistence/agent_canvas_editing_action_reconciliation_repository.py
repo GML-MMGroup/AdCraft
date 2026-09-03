@@ -24,6 +24,7 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasAutomaticRunCommandRow,
     AgentCanvasExecutionMemberRow,
+    AgentCanvasExecutionResultCommitRow,
     AgentCanvasExecutionSettingsRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
@@ -31,6 +32,7 @@ from app.persistence.models import (
     AgentCanvasGuidedProductionReceiptRow,
     AgentCanvasNodeRow,
     AgentCanvasPostReadyEffectRow,
+    AgentCanvasPromptPreparationOutboxRow,
     AgentWorkingDocumentRow,
 )
 from app.schemas.agent_canvas_production_closure import (
@@ -38,7 +40,9 @@ from app.schemas.agent_canvas_production_closure import (
     GuidedMediaConfirmationV1,
     GuidedEditingActionReconciliationCommandV1,
     GuidedEditingActionReconciliationReceiptV1,
+    StoryboardFanoutPlanV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -49,6 +53,35 @@ class AgentCanvasEditingActionReconciliationRepository:
         self._database = database
         self._events = events
         self._receipts = AgentCanvasProductionClosureRepository(database)
+
+    def owner_matches_plan(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        owner_kind: str,
+        owner_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        """Verify one system owner's immutable Storyboard Plan lineage."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                return self._owner_matches_plan_in_transaction(
+                    connection,
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind=owner_kind,
+                    owner_id=owner_id,
+                    plan_document_id=plan_document_id,
+                    plan_revision=plan_revision,
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "guided_editing_action_reconciliation_unavailable",
+                "Guided Editing action reconciliation storage is unavailable.",
+            ) from error
 
     def reconcile(
         self,
@@ -247,14 +280,6 @@ class AgentCanvasEditingActionReconciliationRepository:
         ).scalar_one_or_none()
         if mode is None or str(mode) != command.media_execution_mode:
             raise _evidence_error()
-        if command.system_owner_kind == "automatic_run":
-            source_action_id = connection.execute(
-                select(AgentCanvasAutomaticRunCommandRow.source_action_id).where(
-                    AgentCanvasAutomaticRunCommandRow.command_id == command.system_owner_id
-                )
-            ).scalar_one_or_none()
-            if source_action_id is None or str(source_action_id) != command.action_id:
-                raise _evidence_error()
         table, identity_column, state_column, node_column, generation_column, active_states = {
             "execution_member": (
                 AgentCanvasExecutionMemberRow,
@@ -307,6 +332,16 @@ class AgentCanvasEditingActionReconciliationRepository:
             raise _evidence_error()
         if node_column is not None:
             if str(owner[2]) != command.system_owner_node_id:
+                raise _evidence_error()
+            if not AgentCanvasEditingActionReconciliationRepository._owner_matches_plan_in_transaction(
+                connection,
+                workflow_id=command.workflow_id,
+                node_id=command.system_owner_node_id,
+                owner_kind=command.system_owner_kind,
+                owner_id=command.system_owner_id,
+                plan_document_id=command.plan_document_id,
+                plan_revision=command.plan_revision,
+            ):
                 raise _evidence_error()
             return
         confirmation_id = connection.execute(
@@ -378,6 +413,119 @@ class AgentCanvasEditingActionReconciliationRepository:
             or source_revision != command.plan_revision
         ):
             raise _evidence_error()
+
+    @staticmethod
+    def _owner_matches_plan_in_transaction(
+        connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        owner_kind: str,
+        owner_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+    ) -> bool:
+        if owner_kind == "execution_member":
+            prompt_metadata_json = connection.execute(
+                select(AgentCanvasExecutionMemberRow.prompt_metadata_json).where(
+                    AgentCanvasExecutionMemberRow.member_id == owner_id,
+                    AgentCanvasExecutionMemberRow.workflow_id == workflow_id,
+                    AgentCanvasExecutionMemberRow.node_id == node_id,
+                )
+            ).scalar_one_or_none()
+            return _frozen_node_matches_plan(
+                prompt_metadata_json,
+                plan_document_id,
+                plan_revision,
+            )
+        if owner_kind == "post_ready_effect":
+            prompt_metadata_json = connection.execute(
+                select(AgentCanvasExecutionMemberRow.prompt_metadata_json)
+                .select_from(AgentCanvasPostReadyEffectRow)
+                .join(
+                    AgentCanvasExecutionResultCommitRow,
+                    AgentCanvasExecutionResultCommitRow.commit_id
+                    == AgentCanvasPostReadyEffectRow.source_commit_id,
+                )
+                .join(
+                    AgentCanvasExecutionMemberRow,
+                    AgentCanvasExecutionMemberRow.member_id
+                    == AgentCanvasExecutionResultCommitRow.member_id,
+                )
+                .where(
+                    AgentCanvasPostReadyEffectRow.effect_id == owner_id,
+                    AgentCanvasPostReadyEffectRow.workflow_id == workflow_id,
+                    AgentCanvasPostReadyEffectRow.node_id == node_id,
+                )
+            ).scalar_one_or_none()
+            return _frozen_node_matches_plan(
+                prompt_metadata_json,
+                plan_document_id,
+                plan_revision,
+            )
+        if owner_kind != "automatic_run":
+            return False
+        source_action_id = connection.execute(
+            select(AgentCanvasAutomaticRunCommandRow.source_action_id).where(
+                AgentCanvasAutomaticRunCommandRow.command_id == owner_id,
+                AgentCanvasAutomaticRunCommandRow.workflow_id == workflow_id,
+                AgentCanvasAutomaticRunCommandRow.node_id == node_id,
+            )
+        ).scalar_one_or_none()
+        source = str(source_action_id) if source_action_id is not None else ""
+        identity = _automatic_owner_source(source, node_id)
+        if identity is None:
+            return False
+        source_kind, source_id = identity
+        if source_kind == "storyboard_fanout":
+            payload_json = connection.execute(
+                select(AgentCanvasGuidedProductionReceiptRow.payload_json).where(
+                    AgentCanvasGuidedProductionReceiptRow.receipt_id == source_id,
+                    AgentCanvasGuidedProductionReceiptRow.receipt_type == "storyboard_fanout",
+                    AgentCanvasGuidedProductionReceiptRow.workflow_id == workflow_id,
+                )
+            ).scalar_one_or_none()
+            if payload_json is None:
+                return False
+            try:
+                fanout = StoryboardFanoutPlanV1.model_validate_json(str(payload_json))
+            except ValueError:
+                return False
+            return bool(
+                fanout.plan_document_id == plan_document_id
+                and fanout.plan_revision == plan_revision
+                and any(item.node_id == node_id for item in fanout.nodes)
+            )
+        dispatch_row = (
+            connection.execute(
+                select(
+                    AgentCanvasPromptPreparationOutboxRow.context_json,
+                    AgentCanvasPromptPreparationOutboxRow.document_revisions_json,
+                ).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                    AgentCanvasPromptPreparationOutboxRow.operation_id == source_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if dispatch_row is None:
+            return False
+        try:
+            revisions = json.loads(str(dispatch_row["document_revisions_json"]))
+            context = StageAuthoringContextV1.model_validate_json(str(dispatch_row["context_json"]))
+        except (TypeError, ValueError):
+            return False
+        return bool(
+            revisions.get("storyboard_production_plan") == plan_revision
+            and any(
+                excerpt.document_id == plan_document_id
+                and excerpt.document_kind == "storyboard_production_plan"
+                and excerpt.revision == plan_revision
+                for excerpt in context.working_document_excerpts
+            )
+        )
 
     def _persist_receipt_and_event(
         self,
@@ -452,4 +600,46 @@ def _evidence_error() -> V2PersistenceError:
     return _error(
         "guided_editing_action_evidence_invalid",
         "Guided Editing action outcome evidence is not current authority.",
+    )
+
+
+def _automatic_owner_source(source_action_id: str, node_id: str) -> tuple[str, str] | None:
+    suffix = f":{node_id}"
+    if not source_action_id.endswith(suffix):
+        return None
+    for prefix, source_kind in (
+        ("storyboard-fanout:", "storyboard_fanout"),
+        ("planned-media:", "prompt_preparation"),
+    ):
+        if source_action_id.startswith(prefix):
+            source_id = source_action_id[len(prefix) : -len(suffix)]
+            return (source_kind, source_id) if source_id else None
+    return None
+
+
+def _frozen_node_matches_plan(
+    prompt_metadata_json: object,
+    plan_document_id: str,
+    plan_revision: int,
+) -> bool:
+    if prompt_metadata_json is None:
+        return False
+    try:
+        prompt_metadata = json.loads(str(prompt_metadata_json))
+    except (TypeError, ValueError):
+        return False
+    frozen_node = prompt_metadata.get("frozen_node")
+    if not isinstance(frozen_node, dict):
+        return False
+    metadata = frozen_node.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    source_revision = metadata.get("source_plan_revision")
+    if source_revision is None:
+        source_revision = metadata.get("source_agent_document_revision")
+    return bool(
+        metadata.get("source_agent_document_id") == plan_document_id
+        and isinstance(source_revision, int)
+        and not isinstance(source_revision, bool)
+        and source_revision == plan_revision
     )

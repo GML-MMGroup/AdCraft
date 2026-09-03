@@ -15,6 +15,9 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_execution_settings_repository import (
     AgentCanvasExecutionSettingsRepository,
 )
+from app.persistence.agent_canvas_editing_action_reconciliation_repository import (
+    AgentCanvasEditingActionReconciliationRepository,
+)
 from app.persistence.agent_canvas_guided_media_resume_repository import (
     AgentCanvasGuidedMediaResumeRepository,
 )
@@ -75,6 +78,7 @@ class GuidedEditingActionOutcomeResolver:
         self._media_resume = AgentCanvasGuidedMediaResumeRepository(database, events)
         self._receipts = AgentCanvasProductionClosureRepository(database)
         self._settings = AgentCanvasExecutionSettingsRepository(database, events)
+        self._reconciliation = AgentCanvasEditingActionReconciliationRepository(database, events)
 
     def resolve(
         self,
@@ -117,13 +121,11 @@ class GuidedEditingActionOutcomeResolver:
             return self._failed(error, session, hard)
 
         plan_authority = _plan_authority(error)
-        action = session.journey.active_action
         owner_by_node = {
             str(blocker["node_id"]): self._owner(
                 session.workflow_id,
                 nodes[str(blocker["node_id"])],
                 plan_authority=plan_authority,
-                action_id=action.action_id if action is not None else None,
             )
             for blocker in _ordered(specific)
         }
@@ -185,25 +187,53 @@ class GuidedEditingActionOutcomeResolver:
         node: CanvasNodeV2,
         *,
         plan_authority: tuple[str, int] | None,
-        action_id: str | None,
     ) -> tuple[EditingActionSystemOwnerKindV1, str, str, int] | None:
         if plan_authority is None or not _node_matches_plan(node, plan_authority):
             return None
         node_id = node.node_id
         for member in self._runtime.list_latest_members_for_workflow(workflow_id):
-            if member.node_id == node_id and member.state in {"queued", "waiting", "running"}:
+            if (
+                member.node_id == node_id
+                and member.state in {"queued", "waiting", "running"}
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="execution_member",
+                    owner_id=member.member_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
+            ):
                 return "execution_member", member.member_id, node_id, member.attempt_no
         for command in self._automatic.list_for_workflow(workflow_id):
             if (
                 command.node_id == node_id
                 and command.state in {"pending", "claimed"}
-                and command.source_action_id == action_id
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="automatic_run",
+                    owner_id=command.command_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
             ):
                 generation = self._automatic.get_lease_generation(command.command_id)
                 if generation is not None:
                     return "automatic_run", command.command_id, node_id, generation
         for effect in self._post_ready.list_for_workflow(workflow_id):
-            if effect.node_id == node_id and effect.status in {"queued", "running"}:
+            if (
+                effect.node_id == node_id
+                and effect.status in {"queued", "running"}
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="post_ready_effect",
+                    owner_id=effect.effect_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
+            ):
                 return "post_ready_effect", effect.effect_id, node_id, effect.lease_generation
         for delivery in self._media_resume.list_for_workflow(workflow_id):
             if delivery.status not in {"queued", "running"}:
