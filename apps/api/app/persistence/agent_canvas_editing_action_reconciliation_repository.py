@@ -206,9 +206,7 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if receipt_row is None or str(receipt_row[0]) not in command.evidence_ids:
                 raise _evidence_error()
-            preparation = GuidedEditingPreparationReceiptV1.model_validate_json(
-                str(receipt_row[1])
-            )
+            preparation = GuidedEditingPreparationReceiptV1.model_validate_json(str(receipt_row[1]))
             if (
                 preparation.plan_document_id != command.plan_document_id
                 or preparation.plan_revision != command.plan_revision
