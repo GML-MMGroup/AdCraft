@@ -354,6 +354,10 @@ _TRUSTED_MANIFESTS = (
         capability="text",
         capability_metadata={
             "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": ("volcengine-ark-doubao-seed-2-0-mini-260428-agent-v1"),
             "provider_protocol": "openai_compatible",
             "accepted_input_types": ["text"],
             "supports_structured_output": True,
