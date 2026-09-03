@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+import json
 from typing import Protocol
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from pydantic import ValidationError
 
@@ -29,6 +33,9 @@ class AgentCapabilityLookup(Protocol):
 
 class AgentModelLookup(Protocol):
     def get_model(self, model_ref: str) -> ProviderModelRecord: ...
+
+
+GatewayHealthProbe = Callable[[ProviderAdapterProfileV1, str], Mapping[str, object]]
 
 
 class AgentCredentialError(RuntimeError):
@@ -74,11 +81,13 @@ class V2AgentCredentialBroker:
         capabilities: AgentCapabilityLookup | None = None,
         model_repository: AgentModelLookup | None = None,
         credential_registry: ProviderCredentialRegistry | None = None,
+        gateway_health_probe: GatewayHealthProbe | None = None,
     ) -> None:
         self._settings = settings
         self._capabilities = capabilities or V2AgentCapabilityContractService()
         self._model_repository = model_repository
         self._credential_registry = credential_registry or ProviderCredentialRegistry()
+        self._gateway_health_probe = gateway_health_probe or self._probe_litellm_gateway
 
     def snapshot(
         self,
@@ -104,6 +113,10 @@ class V2AgentCredentialBroker:
             )
         record = self._record(model_ref)
         self._validate_model(record)
+        metadata = record.capability_metadata
+        adapter_profile = _agent_adapter_profile(record)
+        if adapter_profile.transport_kind == "litellm_chat":
+            self._validate_litellm_gateway(adapter_profile, operation=operation)
         try:
             provider_definition = self._credential_registry.get(record.provider_id)
             binding = provider_definition.binding_for_capability("text")
@@ -119,8 +132,6 @@ class V2AgentCredentialBroker:
                 "provider_credentials_missing",
                 "The selected provider text credential is not configured.",
             )
-        metadata = record.capability_metadata
-        adapter_profile = _agent_adapter_profile(record)
         base_url = (
             adapter_profile.gateway_profile.endpoint
             if adapter_profile.transport_kind == "litellm_chat"
@@ -171,6 +182,99 @@ class V2AgentCredentialBroker:
                 else None
             ),
         )
+
+    def _validate_litellm_gateway(
+        self,
+        profile: ProviderAdapterProfileV1,
+        *,
+        operation: str,
+    ) -> None:
+        try:
+            health = self._gateway_health_probe(profile, operation)
+        except AgentCredentialError:
+            raise
+        except Exception as error:
+            raise AgentCredentialError(
+                "provider_gateway_unavailable",
+                "The configured LiteLLM gateway is unavailable.",
+            ) from error
+        if health.get("status") != "ready":
+            raise AgentCredentialError(
+                "provider_gateway_unavailable",
+                "The configured LiteLLM gateway is unavailable.",
+            )
+        gateway_profile = profile.gateway_profile
+        if gateway_profile is None:
+            raise AgentCredentialError(
+                "agent_model_incompatible",
+                "The selected LiteLLM route has no gateway profile.",
+            )
+        if (
+            health.get("gateway_id") not in {None, gateway_profile.gateway_id}
+            or health.get("projection_digest") != gateway_profile.projection_digest
+        ):
+            raise AgentCredentialError(
+                "provider_gateway_config_stale",
+                "The LiteLLM gateway projection is stale.",
+            )
+        aliases = health.get("aliases")
+        if (
+            not isinstance(aliases, Mapping)
+            or aliases.get(gateway_profile.model_alias) != profile.model_ref
+        ):
+            raise AgentCredentialError(
+                "provider_gateway_config_stale",
+                "The LiteLLM gateway model alias is stale.",
+            )
+        operations = health.get("operations")
+        if operations is not None and (
+            not isinstance(operations, (list, tuple, set)) or operation not in operations
+        ):
+            raise AgentCredentialError(
+                "provider_gateway_config_stale",
+                "The LiteLLM gateway operation contract is stale.",
+            )
+
+    def _probe_litellm_gateway(
+        self,
+        profile: ProviderAdapterProfileV1,
+        _operation: str,
+    ) -> Mapping[str, object]:
+        gateway_profile = profile.gateway_profile
+        if gateway_profile is None:
+            raise AgentCredentialError(
+                "agent_model_incompatible",
+                "The selected LiteLLM route has no gateway profile.",
+            )
+        request = Request(
+            f"{gateway_profile.endpoint.rstrip('/')}/health",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        try:
+            with urlopen(
+                request,
+                timeout=self._settings.agent_runtime_connect_timeout_seconds,
+            ) as response:
+                raw = response.read(65_536)
+        except (OSError, URLError) as error:
+            raise AgentCredentialError(
+                "provider_gateway_unavailable",
+                "The configured LiteLLM gateway is unavailable.",
+            ) from error
+        try:
+            health = json.loads(raw)
+        except (TypeError, ValueError) as error:
+            raise AgentCredentialError(
+                "provider_gateway_unavailable",
+                "The configured LiteLLM gateway returned an invalid health response.",
+            ) from error
+        if not isinstance(health, Mapping):
+            raise AgentCredentialError(
+                "provider_gateway_unavailable",
+                "The configured LiteLLM gateway returned an invalid health response.",
+            )
+        return health
 
     def _authorize(
         self,
