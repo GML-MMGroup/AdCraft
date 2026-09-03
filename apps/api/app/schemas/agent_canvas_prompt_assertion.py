@@ -11,6 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _SHA256 = r"^sha256:[a-f0-9]{64}$"
 _HEX_SHA256 = r"^[a-f0-9]{64}$"
+_ADDITIVE_PROJECTION_DIGEST_FIELDS = frozenset(
+    {
+        "character_identity_projection_digest",
+        "scene_environment_projection_digest",
+    }
+)
 
 
 class _PromptAssertionModel(BaseModel):
@@ -72,9 +78,13 @@ class PromptAssertionEvidenceV1(_PromptAssertionModel):
     def validate_canonical_identity(self) -> "PromptAssertionEvidenceV1":
         if len(self.assertion_ids) != len(set(self.assertion_ids)):
             raise ValueError("Prompt assertion IDs must be unique.")
-        if self.evidence_digest != prompt_assertion_evidence_digest(self):
-            raise ValueError("Prompt assertion evidence digest does not match its payload.")
-        return self
+        if self.evidence_digest == prompt_assertion_evidence_digest(self):
+            return self
+        if _is_legacy_projection_digest_payload(self) and (
+            self.evidence_digest == _legacy_prompt_assertion_evidence_digest(self)
+        ):
+            return self
+        raise ValueError("Prompt assertion evidence digest does not match its payload.")
 
     @classmethod
     def build(cls, **values: object) -> "PromptAssertionEvidenceV1":
@@ -103,6 +113,23 @@ class ProviderPromptAssertionEvidenceV1(_PromptAssertionModel):
 
 def prompt_assertion_evidence_digest(evidence: PromptAssertionEvidenceV1) -> str:
     return _prefixed_digest(evidence.model_dump(mode="json", exclude={"evidence_digest"}))
+
+
+def _is_legacy_projection_digest_payload(evidence: PromptAssertionEvidenceV1) -> bool:
+    return (
+        evidence.character_identity_projection_digest is None
+        and evidence.scene_environment_projection_digest is None
+        and _ADDITIVE_PROJECTION_DIGEST_FIELDS.isdisjoint(evidence.model_fields_set)
+    )
+
+
+def _legacy_prompt_assertion_evidence_digest(evidence: PromptAssertionEvidenceV1) -> str:
+    return _prefixed_digest(
+        evidence.model_dump(
+            mode="json",
+            exclude={"evidence_digest", *_ADDITIVE_PROJECTION_DIGEST_FIELDS},
+        )
+    )
 
 
 def safe_prompt_assertion_metadata(
