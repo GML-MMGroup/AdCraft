@@ -36,7 +36,6 @@ from app.schemas.agent_operation_contexts import (
 from app.schemas.language import BCP47Tag
 
 
-_ACTIVE_MEMBER_STATES = frozenset({"queued", "waiting", "running"})
 _WORK_PRIORITY = {"failed": 0, "working": 1, "draft": 2, "ready": 3}
 
 
@@ -104,7 +103,7 @@ class AuthoritativeWorkflowContextProjector:
                 if node.status != "ready"
             ]
             work.sort(key=lambda item: (_WORK_PRIORITY[item.node_status], item.node_id))
-            current_action = self._current_action(snapshot, members)
+            current_action = self._current_action(snapshot)
             blockers = [
                 WorkflowActionSummaryV1(
                     action_id=f"node-blocker:{node.node_id}:{node.revision}",
@@ -172,7 +171,7 @@ class AuthoritativeWorkflowContextProjector:
         return tuple(current[kind] for kind in sorted(current))
 
     @staticmethod
-    def _current_action(snapshot, members) -> WorkflowActionSummaryV1 | None:
+    def _current_action(snapshot) -> WorkflowActionSummaryV1 | None:
         session = snapshot.session
         if session is None or session.journey.active_action is None:
             return None
@@ -243,20 +242,6 @@ class AuthoritativeWorkflowContextProjector:
                 turn_status=leaf.leaf_status,
                 continuation_id=leaf.continuation_id,
                 continuation_status=leaf.continuation_status,
-                blocker_class="automatic_work_in_progress",
-            )
-        active_members = sorted(
-            (member for member in members.values() if member.state in _ACTIVE_MEMBER_STATES),
-            key=lambda member: (member.node_id, member.execution_id),
-        )
-        if active_members:
-            member = active_members[0]
-            return WorkflowActionSummaryV1(
-                **base,
-                ownership_status="owned",
-                owner_kind="runtime_execution",
-                owner_id=member.execution_id,
-                owner_state=member.state,
                 blocker_class="automatic_work_in_progress",
             )
         return WorkflowActionSummaryV1(
