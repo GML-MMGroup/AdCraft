@@ -45,6 +45,19 @@ def deterministic_role_brief(
             "materials": "Preserve the accepted prop materials.",
             "palette": "Preserve the accepted prop palette.",
         }
+    elif variant == "character_turnaround" and context.character_identity_projection is not None:
+        projection = context.character_identity_projection
+        value = {
+            "role_variant": variant,
+            "identity": projection.identity,
+            "face_and_hair": projection.face_and_hair,
+            "silhouette_and_proportions": projection.silhouette_and_proportions,
+            "wardrobe": projection.wardrobe,
+            "accessories": projection.accessories,
+            "gender_presentation": projection.gender_presentation,
+            "rendering_mode": projection.rendering_mode,
+            "views": ["front", "side", "back"],
+        }
     elif variant in {"character_main", "character_turnaround"}:
         value = {
             "role_variant": variant,
