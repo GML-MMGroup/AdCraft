@@ -148,7 +148,7 @@ class LiteLLMTransportAdapter:
             response = self._gateway.complete(dict(request.payload))
         except Exception as error:
             raise ValueError("provider_gateway_unavailable") from error
-        if not isinstance(response, Mapping):
+        if not isinstance(response, Mapping) or _contains_forbidden_transport(response):
             raise ValueError("provider_response_contract_invalid")
         if len(_canonical_bytes(response)) > self._maximum_payload_bytes:
             raise ValueError("provider_response_contract_invalid")
