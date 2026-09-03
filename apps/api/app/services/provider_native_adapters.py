@@ -607,8 +607,7 @@ def _validate_parameter_matrix(
     ):
         return ("model_parameter_incompatible",)
     if any(
-        not _parameter_value_matches(descriptors[name], value)
-        for name, value in parameters.items()
+        not _parameter_value_matches(descriptors[name], value) for name, value in parameters.items()
     ):
         return ("model_parameter_incompatible",)
     constrained_keys = {key for combination in matrix.legal_combinations for key in combination}
@@ -678,7 +677,9 @@ def _bounded_openai_image_response(response: Mapping[str, object]) -> dict[str, 
         raise ValueError("provider_response_contract_invalid")
     bounded_data: list[dict[str, str]] = []
     for item in data:
-        if not isinstance(item, Mapping) or set(item).difference({"b64_json", "url", "revised_prompt"}):
+        if not isinstance(item, Mapping) or set(item).difference(
+            {"b64_json", "url", "revised_prompt"}
+        ):
             raise ValueError("provider_response_contract_invalid")
         bounded_item = {
             str(key): value

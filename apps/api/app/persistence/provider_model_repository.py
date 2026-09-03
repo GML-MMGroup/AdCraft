@@ -428,12 +428,15 @@ class ProviderModelRepository:
         )
         try:
             with self._database.engine.begin() as connection:
-                existing = connection.execute(
-                    _conformance_select().where(
-                        ProviderModelConformanceRunRow.conformance_run_id
-                        == conformance_run_id
+                existing = (
+                    connection.execute(
+                        _conformance_select().where(
+                            ProviderModelConformanceRunRow.conformance_run_id == conformance_run_id
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if existing is not None:
                     record = _conformance_from_row(existing)
                     if not _same_conformance_identity(
@@ -448,13 +451,17 @@ class ProviderModelRepository:
                     ):
                         raise ValueError("provider_model_conformance_conflict")
                     return record
-                model = connection.execute(
-                    select(
-                        ProviderModelRow.provider_id,
-                        ProviderModelRow.provider_model_id,
-                        ProviderModelRow.capability_metadata_json,
-                    ).where(ProviderModelRow.model_ref == model_ref)
-                ).mappings().one_or_none()
+                model = (
+                    connection.execute(
+                        select(
+                            ProviderModelRow.provider_id,
+                            ProviderModelRow.provider_model_id,
+                            ProviderModelRow.capability_metadata_json,
+                        ).where(ProviderModelRow.model_ref == model_ref)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 if model is None or not _profile_matches(
                     model,
                     model_ref=model_ref,
@@ -481,12 +488,15 @@ class ProviderModelRepository:
                         completed_at=None,
                     )
                 )
-                row = connection.execute(
-                    _conformance_select().where(
-                        ProviderModelConformanceRunRow.conformance_run_id
-                        == conformance_run_id
+                row = (
+                    connection.execute(
+                        _conformance_select().where(
+                            ProviderModelConformanceRunRow.conformance_run_id == conformance_run_id
+                        )
                     )
-                ).mappings().one()
+                    .mappings()
+                    .one()
+                )
         except ValueError:
             raise
         except SQLAlchemyError as error:
@@ -506,12 +516,15 @@ class ProviderModelRepository:
         _assert_no_secret_values(safe_summary)
         try:
             with self._database.engine.begin() as connection:
-                row = connection.execute(
-                    _conformance_select().where(
-                        ProviderModelConformanceRunRow.conformance_run_id
-                        == conformance_run_id
+                row = (
+                    connection.execute(
+                        _conformance_select().where(
+                            ProviderModelConformanceRunRow.conformance_run_id == conformance_run_id
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if row is None:
                     raise ValueError("provider_model_conformance_not_found")
                 current = _conformance_from_row(row)
@@ -525,8 +538,7 @@ class ProviderModelRepository:
                 connection.execute(
                     update(ProviderModelConformanceRunRow)
                     .where(
-                        ProviderModelConformanceRunRow.conformance_run_id
-                        == conformance_run_id,
+                        ProviderModelConformanceRunRow.conformance_run_id == conformance_run_id,
                         ProviderModelConformanceRunRow.revision == current.revision,
                         ProviderModelConformanceRunRow.completed_at.is_(None),
                     )
@@ -537,12 +549,15 @@ class ProviderModelRepository:
                         revision=current.revision + 1,
                     )
                 )
-                updated = connection.execute(
-                    _conformance_select().where(
-                        ProviderModelConformanceRunRow.conformance_run_id
-                        == conformance_run_id
+                updated = (
+                    connection.execute(
+                        _conformance_select().where(
+                            ProviderModelConformanceRunRow.conformance_run_id == conformance_run_id
+                        )
                     )
-                ).mappings().one()
+                    .mappings()
+                    .one()
+                )
         except ValueError:
             raise
         except SQLAlchemyError as error:
@@ -557,18 +572,22 @@ class ProviderModelRepository:
     ) -> ProviderModelConformanceRunRecord | None:
         try:
             with self._database.engine.connect() as connection:
-                row = connection.execute(
-                    _conformance_select()
-                    .where(
-                        ProviderModelConformanceRunRow.model_ref == model_ref,
-                        ProviderModelConformanceRunRow.operation == operation,
+                row = (
+                    connection.execute(
+                        _conformance_select()
+                        .where(
+                            ProviderModelConformanceRunRow.model_ref == model_ref,
+                            ProviderModelConformanceRunRow.operation == operation,
+                        )
+                        .order_by(
+                            ProviderModelConformanceRunRow.started_at.desc(),
+                            ProviderModelConformanceRunRow.conformance_run_id.desc(),
+                        )
+                        .limit(1)
                     )
-                    .order_by(
-                        ProviderModelConformanceRunRow.started_at.desc(),
-                        ProviderModelConformanceRunRow.conformance_run_id.desc(),
-                    )
-                    .limit(1)
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise RuntimeError("provider_model_persistence_failed") from error
         return _conformance_from_row(row) if row is not None else None

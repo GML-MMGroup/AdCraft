@@ -253,8 +253,7 @@ class ModelParameterMatrixV1(BaseModel):
         if len(descriptor_names) != len(self.descriptors):
             raise ValueError("parameter_descriptor_duplicate")
         if any(
-            set(combination).difference(descriptor_names)
-            for combination in self.legal_combinations
+            set(combination).difference(descriptor_names) for combination in self.legal_combinations
         ):
             raise ValueError("parameter_combination_unknown")
         return self

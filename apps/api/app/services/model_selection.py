@@ -243,11 +243,7 @@ class ModelSelectionService:
                     minimum=descriptor.minimum,
                     maximum=descriptor.maximum,
                 )
-        constrained_keys = {
-            key
-            for combination in matrix.legal_combinations
-            for key in combination
-        }
+        constrained_keys = {key for combination in matrix.legal_combinations for key in combination}
         constrained_parameters = {
             key: value for key, value in parameters.items() if key in constrained_keys
         }
@@ -268,9 +264,7 @@ def _parameter_value_matches(descriptor: object, value: object) -> bool:
     value_type = getattr(descriptor, "value_type")
     if value_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
         return False
-    if value_type == "number" and (
-        not isinstance(value, (int, float)) or isinstance(value, bool)
-    ):
+    if value_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
         return False
     if value_type in {"string", "enum"} and not isinstance(value, str):
         return False
