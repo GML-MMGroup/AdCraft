@@ -14088,6 +14088,19 @@
           "default": null,
           "title": "System Owner Kind"
         },
+        "system_owner_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Node Id"
+        },
         "workflow_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -14274,6 +14287,19 @@
           ],
           "default": null,
           "title": "System Owner Kind"
+        },
+        "system_owner_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Owner Node Id"
         },
         "workflow_id": {
           "maxLength": 160,
