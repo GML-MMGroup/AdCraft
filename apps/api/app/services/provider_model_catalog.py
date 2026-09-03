@@ -11,6 +11,7 @@ from app.persistence.provider_model_repository import (
     ProviderModelRecord,
     ProviderModelRepository,
 )
+from app.schemas.provider_models import ProviderAdapterProfileV1
 
 
 class ProviderCatalogAdapter(Protocol):
@@ -894,7 +895,11 @@ class ProviderModelCatalogService:
         )
         models = tuple(self._with_current_credential_availability(model) for model in models)
         if not include_unavailable:
-            models = tuple(model for model in models if model.availability == "available")
+            models = tuple(
+                model
+                for model in models
+                if model.availability == "available" and _is_execution_conformant(model)
+            )
         if node_type == "script" or purpose == "agent":
             models = tuple(
                 model for model in models if bool(model.capability_metadata.get("agent_compatible"))
@@ -978,6 +983,17 @@ class ProviderModelCatalogService:
             availability=availability,
             unavailable_reason=unavailable_reason,
         )
+
+
+def _is_execution_conformant(model: ProviderModelRecord) -> bool:
+    raw_profile = model.capability_metadata.get("adapter_profile")
+    if raw_profile is None:
+        return True
+    try:
+        profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+    except Exception:
+        return False
+    return profile.conformance_status in {"compatible", "certified"}
 
 
 def _required_capability(
