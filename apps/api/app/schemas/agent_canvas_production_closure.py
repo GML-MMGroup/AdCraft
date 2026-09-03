@@ -163,6 +163,82 @@ class GuidedEditingPreparationReceiptV1(_ClosureModel):
     committed_at: datetime
 
 
+EditingActionReconciliationOutcomeV1 = Literal[
+    "prepared",
+    "waiting_user",
+    "system_deferred",
+    "failed",
+    "superseded",
+]
+EditingActionSystemOwnerKindV1 = Literal[
+    "execution_member",
+    "automatic_run",
+    "post_ready_effect",
+    "guided_media_resume",
+]
+
+
+class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
+    logical_identity: str = Field(min_length=1, max_length=640)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    action_id: str = Field(min_length=1, max_length=160)
+    action_turn_id: str = Field(min_length=1, max_length=160)
+    action_stage_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    outcome: EditingActionReconciliationOutcomeV1
+    reason_code: str = Field(min_length=1, max_length=120)
+    evidence_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    awaiting_id: str | None = Field(default=None, max_length=160)
+    awaiting_kind: Literal["media_review", "manual_node_run"] | None = None
+    system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
+    system_owner_id: str | None = Field(default=None, max_length=160)
+    error_code: str | None = Field(default=None, max_length=120)
+    reconciled_at: datetime
+
+    @model_validator(mode="after")
+    def validate_outcome_evidence(self) -> "GuidedEditingActionReconciliationCommandV1":
+        has_preparation = self.preparation_receipt_id is not None
+        has_wait = self.awaiting_id is not None or self.awaiting_kind is not None
+        has_system_owner = self.system_owner_kind is not None or self.system_owner_id is not None
+        has_error = self.error_code is not None
+        if self.outcome == "prepared":
+            if not has_preparation or has_wait or has_system_owner or has_error:
+                raise ValueError("prepared requires only a preparation receipt")
+        elif self.outcome == "waiting_user":
+            if (
+                self.awaiting_id is None
+                or self.awaiting_kind is None
+                or has_preparation
+                or has_system_owner
+                or has_error
+            ):
+                raise ValueError("waiting_user requires only typed awaiting authority")
+        elif self.outcome == "system_deferred":
+            if (
+                self.system_owner_kind is None
+                or self.system_owner_id is None
+                or has_preparation
+                or has_wait
+                or has_error
+            ):
+                raise ValueError("system_deferred requires only exact system ownership")
+        elif self.outcome == "failed":
+            if not has_error or has_preparation or has_wait or has_system_owner:
+                raise ValueError("failed requires only a stable error code")
+        elif has_preparation or has_wait or has_system_owner or has_error:
+            raise ValueError("superseded cannot claim current outcome authority")
+        return self
+
+
+class GuidedEditingActionReconciliationReceiptV1(
+    GuidedEditingActionReconciliationCommandV1
+):
+    receipt_id: str = Field(min_length=1, max_length=160)
+    resulting_session_revision: int = Field(ge=1)
+
+
 class GuidedFinalCompletionReceiptV1(_ClosureModel):
     receipt_id: str = Field(min_length=1, max_length=160)
     logical_identity: str = Field(min_length=1, max_length=640)
