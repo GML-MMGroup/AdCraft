@@ -257,7 +257,6 @@ class DurableNextActionExecutionService:
                     )
                 try:
                     preparation_result = self._editing_preparer(envelope.workflow_id)
-                    lease_guard()
                     if not isinstance(preparation_result, EditingPreparationResultV2):
                         raise V2PersistenceError(
                             "guided_preparation_receipt_unavailable",
@@ -274,14 +273,6 @@ class DurableNextActionExecutionService:
                             "Editing preparation receipt authority is unavailable.",
                             stage="next_action_execution",
                         )
-                    self._reconcile_editing_action(
-                        session,
-                        outcome="prepared",
-                        reason_code="editing_prepared",
-                        evidence_ids=(preparation.receipt_id,),
-                        preparation_receipt_id=preparation.receipt_id,
-                    )
-                    editing_outcome = "prepared"
                 except V2PersistenceError as error:
                     resolution = self._editing_outcomes.resolve(error, session)
                     self._reconcile_editing_action(
@@ -299,6 +290,17 @@ class DurableNextActionExecutionService:
                     editing_outcome = resolution.outcome
                     if editing_outcome == "failed":
                         raise
+                else:
+                    lease_guard()
+                    current_session = self._conversations.get_guidance_session(envelope.workflow_id)
+                    self._reconcile_editing_action(
+                        current_session,
+                        outcome="prepared",
+                        reason_code="editing_prepared",
+                        evidence_ids=(preparation.receipt_id,),
+                        preparation_receipt_id=preparation.receipt_id,
+                    )
+                    editing_outcome = "prepared"
             if journey_action.action == "complete":
                 self._conversations.complete_guidance_session(
                     session.session_id,
