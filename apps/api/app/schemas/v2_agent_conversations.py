@@ -193,7 +193,19 @@ class WorkflowConversationAnswerContextV1(_StrictModel):
     source_revision: int | None = Field(default=None, ge=0)
 
 
+def _require_conversation_answer_kind(schema: dict[str, Any]) -> None:
+    required = schema.setdefault("required", [])
+    if "answer_kind" not in required:
+        required.append("answer_kind")
+
+
 class WorkflowConversationReply(_StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra=_require_conversation_answer_kind,
+    )
+
     message: str = Field(min_length=1, max_length=4_000)
     clarification_required: bool = False
     answer_kind: Literal["greeting", "progress", "clarification", "general"] = "general"

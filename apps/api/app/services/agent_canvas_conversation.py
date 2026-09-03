@@ -618,6 +618,12 @@ class PiVideoAgentGateway:
                 "operation": "workflow_conversation",
             },
         )
+        if "answer_kind" not in completed.value:
+            raise V2PersistenceError(
+                "agent_structured_output_invalid",
+                "Workflow conversation reply must include answer_kind.",
+                stage="agent_canvas_conversation",
+            )
         return WorkflowConversationReply.model_validate(completed.value)
 
     def plan_storyboard_sequence_outline(
