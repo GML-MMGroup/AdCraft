@@ -9811,6 +9811,17 @@
           "default": null,
           "title": "Assistant Message"
         },
+        "conversation_query": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationQueryV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "explicit_elements": {
           "$ref": "#/$defs/CompactExplicitElementsV3"
         },
@@ -10117,6 +10128,63 @@
         "style_projection_digest"
       ],
       "title": "CompiledNodePromptV2",
+      "type": "object"
+    },
+    "ConversationQueryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_aliases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Anchor Aliases",
+          "type": "array"
+        },
+        "document_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "anchor_registry",
+                "storyboard_production_plan"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Kind"
+        },
+        "query_kind": {
+          "enum": [
+            "document_explanation",
+            "workflow_status"
+          ],
+          "title": "Query Kind",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        }
+      },
+      "required": [
+        "query_kind"
+      ],
+      "title": "ConversationQueryV1",
       "type": "object"
     },
     "ConversationSummaryAgentContext": {
@@ -29868,6 +29936,17 @@
           "title": "User Input",
           "type": "string"
         },
+        "workflow_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowStateCapsuleV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "workflow_id": {
           "maxLength": 160,
           "minLength": 1,
@@ -29908,6 +29987,17 @@
           ],
           "default": null,
           "title": "Assistant Message"
+        },
+        "conversation_query": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationQueryV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "explicit_elements": {
           "default": [],
@@ -32414,6 +32504,253 @@
       "title": "VisualStyleContractV2",
       "type": "object"
     },
+    "WorkflowActionSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "action_kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Action Kind",
+          "type": "string"
+        },
+        "awaiting_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Awaiting Id"
+        },
+        "blocker_class": {
+          "anyOf": [
+            {
+              "enum": [
+                "automatic_work_in_progress",
+                "unrecoverable",
+                "user_action_required"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocker Class"
+        },
+        "continuation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuation Id"
+        },
+        "continuation_status": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuation Status"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "leaf_error_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Leaf Error Code"
+        },
+        "objective": {
+          "default": "",
+          "maxLength": 2048,
+          "title": "Objective",
+          "type": "string"
+        },
+        "owner_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Id"
+        },
+        "owner_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "continuation",
+                "guided_media_resume",
+                "post_ready_effect",
+                "runtime_execution",
+                "typed_awaiting"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Kind"
+        },
+        "owner_state": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner State"
+        },
+        "ownership_status": {
+          "enum": [
+            "awaiting",
+            "inconsistent",
+            "orphaned",
+            "owned"
+          ],
+          "title": "Ownership Status",
+          "type": "string"
+        },
+        "stage": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "status": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "turn_status": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Status"
+        }
+      },
+      "required": [
+        "action_id",
+        "action_kind",
+        "ownership_status",
+        "stage",
+        "stage_revision",
+        "status"
+      ],
+      "title": "WorkflowActionSummaryV1",
+      "type": "object"
+    },
+    "WorkflowContextTruncationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "omitted_active_work": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Omitted Active Work",
+          "type": "integer"
+        },
+        "omitted_blockers": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Omitted Blockers",
+          "type": "integer"
+        },
+        "omitted_documents": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Omitted Documents",
+          "type": "integer"
+        }
+      },
+      "title": "WorkflowContextTruncationV1",
+      "type": "object"
+    },
     "WorkflowConversationAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -32444,6 +32781,17 @@
           "maxLength": 16384,
           "title": "Conversation Summary",
           "type": "string"
+        },
+        "document_excerpt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentDocumentContextExcerptV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "journey_stage": {
           "anyOf": [
@@ -32516,6 +32864,17 @@
           "minLength": 1,
           "title": "User Input",
           "type": "string"
+        },
+        "workflow_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowStateCapsuleV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "workflow_id": {
           "maxLength": 160,
@@ -32685,6 +33044,365 @@
         "message"
       ],
       "title": "WorkflowConversationReply",
+      "type": "object"
+    },
+    "WorkflowDocumentReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_kind": {
+          "enum": [
+            "anchor_registry",
+            "storyboard_production_plan"
+          ],
+          "title": "Document Kind",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "content_digest",
+        "document_id",
+        "document_kind",
+        "revision"
+      ],
+      "title": "WorkflowDocumentReferenceV1",
+      "type": "object"
+    },
+    "WorkflowStateCapsuleV1": {
+      "additionalProperties": false,
+      "properties": {
+        "active_work": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WorkflowWorkItemSummaryV1"
+          },
+          "maxItems": 64,
+          "title": "Active Work",
+          "type": "array"
+        },
+        "awaiting_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowActionSummaryV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blockers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WorkflowActionSummaryV1"
+          },
+          "maxItems": 32,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "current_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowActionSummaryV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "documents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WorkflowDocumentReferenceV1"
+          },
+          "maxItems": 2,
+          "title": "Documents",
+          "type": "array"
+        },
+        "guidance_session_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guidance Session Id"
+        },
+        "guidance_session_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guidance Session Revision"
+        },
+        "journey_stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Stage"
+        },
+        "journey_status": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Status"
+        },
+        "next_valid_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowActionSummaryV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "node_status_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "enum": [
+              "draft",
+              "failed",
+              "ready",
+              "working"
+            ]
+          },
+          "title": "Node Status Counts",
+          "type": "object"
+        },
+        "projection_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Projection Digest",
+          "type": "string"
+        },
+        "requirement_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Digest"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "truncation": {
+          "$ref": "#/$defs/WorkflowContextTruncationV1"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "projection_digest",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "WorkflowStateCapsuleV1",
+      "type": "object"
+    },
+    "WorkflowWorkItemSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "execution_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Id"
+        },
+        "execution_state": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution State"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "node_status": {
+          "enum": [
+            "draft",
+            "failed",
+            "ready",
+            "working"
+          ],
+          "title": "Node Status",
+          "type": "string"
+        },
+        "node_type": {
+          "enum": [
+            "audio",
+            "editing",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Node Type",
+          "type": "string"
+        },
+        "output_available": {
+          "default": false,
+          "title": "Output Available",
+          "type": "boolean"
+        },
+        "prompt_preparation_state": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Preparation State"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_revision",
+        "node_status",
+        "node_type",
+        "title"
+      ],
+      "title": "WorkflowWorkItemSummaryV1",
       "type": "object"
     },
     "WorldSettingAuthoringProvenanceV2": {
