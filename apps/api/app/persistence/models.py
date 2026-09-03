@@ -2289,6 +2289,7 @@ class AgentCanvasProviderSubmissionIntentRow(Base):
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
     supports_idempotency_token: Mapped[bool] = mapped_column(Boolean, nullable=False)
     supports_remote_task_lookup: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    frozen_model_resolution_json: Mapped[str | None] = mapped_column(Text)
     provider_idempotency_token: Mapped[str | None] = mapped_column(Text)
     remote_task_id: Mapped[str | None] = mapped_column(Text)
     provider_task_id: Mapped[str | None] = mapped_column(Text)

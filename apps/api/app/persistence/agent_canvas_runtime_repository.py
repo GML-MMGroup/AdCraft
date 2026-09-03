@@ -36,6 +36,7 @@ from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     NodeRunIntentSnapshotV2,
     NodeExecutionLeaseV2,
+    ResolvedModelExecutionV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.agent_canvas_video_parameters import VideoParameterCompilationSnapshotV2
@@ -1087,7 +1088,7 @@ class AgentCanvasRuntimeRepository:
         self,
         intent: ProviderSubmissionIntentV2,
     ) -> ProviderSubmissionIntentV2:
-        values = intent.model_dump(mode="json")
+        values = _submission_intent_values(intent)
         try:
             with self._database.engine.begin() as connection:
                 existing = (
@@ -1208,7 +1209,7 @@ class AgentCanvasRuntimeRepository:
         *,
         expected_state: str,
     ) -> ProviderSubmissionIntentV2:
-        values = intent.model_dump(mode="json")
+        values = _submission_intent_values(intent)
         values.pop("intent_id")
         try:
             with self._database.engine.begin() as connection:
@@ -1610,6 +1611,9 @@ def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
 
 
 def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
+    frozen_model_resolution_json = cast(
+        str | None, row.get("frozen_model_resolution_json")
+    )
     return ProviderSubmissionIntentV2(
         intent_id=str(row["intent_id"]),
         logical_operation_key=str(row["logical_operation_key"]),
@@ -1623,6 +1627,11 @@ def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
         attempt_no=int(row["attempt_no"]),
         supports_idempotency_token=bool(row["supports_idempotency_token"]),
         supports_remote_task_lookup=bool(row["supports_remote_task_lookup"]),
+        frozen_model_resolution=(
+            ResolvedModelExecutionV2.model_validate_json(frozen_model_resolution_json)
+            if frozen_model_resolution_json
+            else None
+        ),
         provider_idempotency_token=cast(str | None, row["provider_idempotency_token"]),
         remote_task_id=cast(str | None, row["remote_task_id"]),
         provider_task_id=cast(str | None, row["provider_task_id"]),
@@ -1630,6 +1639,17 @@ def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _submission_intent_values(intent: ProviderSubmissionIntentV2) -> dict[str, object]:
+    values = intent.model_dump(mode="json")
+    frozen_model_resolution = values.pop("frozen_model_resolution")
+    values["frozen_model_resolution_json"] = (
+        json.dumps(frozen_model_resolution, sort_keys=True)
+        if frozen_model_resolution is not None
+        else None
+    )
+    return values
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

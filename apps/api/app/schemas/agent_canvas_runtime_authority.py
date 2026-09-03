@@ -12,6 +12,7 @@ from app.schemas.agent_canvas_runtime import (
     CanvasExecutionRecordV2,
     CanvasRunScopeV2,
     NodeRunBindingSnapshotV2,
+    ResolvedModelExecutionV2,
 )
 from app.schemas.agent_canvas_execution_mode import (
     CanvasExecutionModeV2,
@@ -86,6 +87,7 @@ class ProviderSubmissionIntentV2(_AuthorityModel):
     attempt_no: int = Field(ge=1)
     supports_idempotency_token: bool
     supports_remote_task_lookup: bool
+    frozen_model_resolution: ResolvedModelExecutionV2 | None = None
     provider_idempotency_token: str | None = Field(default=None, max_length=320)
     remote_task_id: str | None = Field(default=None, max_length=320)
     provider_task_id: str | None = Field(default=None, max_length=160)
