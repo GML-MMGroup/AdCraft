@@ -7441,6 +7441,20 @@
           "default": null,
           "title": "Occurrence Id"
         },
+        "occurrence_index": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Index"
+        },
         "operation_kind": {
           "default": "standalone",
           "enum": [
@@ -22154,6 +22168,20 @@
           ],
           "default": null,
           "title": "Occurrence Id"
+        },
+        "occurrence_index": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurrence Index"
         },
         "operation_kind": {
           "default": "standalone",
