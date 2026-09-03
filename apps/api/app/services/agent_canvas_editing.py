@@ -10,6 +10,7 @@ from pathlib import Path
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
     CanvasNodeV2,
@@ -65,10 +66,27 @@ class EditingNodeService:
         self._asset_resolver = asset_resolver
 
     def content(self, workflow_id: str, node_id: str) -> EditingNodeContentV2:
-        node = self._require_editing_node(workflow_id, node_id)
+        workflow = self._workflows.get_workflow(workflow_id)
+        return self.content_from_snapshot(workflow, node_id)
+
+    def content_from_snapshot(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+    ) -> EditingNodeContentV2:
+        """Build canonical content from an authoring snapshot without persisting it."""
+
+        node = next(
+            (item for item in workflow.nodes if item.node_id == node_id),
+            None,
+        )
+        if node is None:
+            raise _error("node_not_found", "Node was not found.")
+        if node.node_type != "editing":
+            raise _error("node_type_mismatch", "Node is not an Editing node.")
         content = EditingNodeContentV2.model_validate(node.structured_content)
         manifest = self._canonical_manifest(
-            workflow_id,
+            workflow,
             node_id,
             content.manifest,
             current_manifest=content.manifest,
@@ -76,7 +94,7 @@ class EditingNodeService:
         return content.model_copy(
             update={
                 "manifest": manifest,
-                "preview": self.build_preview(workflow_id, node_id, manifest),
+                "preview": self._build_preview(workflow, node_id, manifest),
             }
         )
 
@@ -89,10 +107,11 @@ class EditingNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         node = self._require_editing_node(workflow_id, node_id)
+        workflow = self._workflows.get_workflow(workflow_id)
         self._validate_manifest_bindings(workflow_id, node_id, manifest)
         current = EditingNodeContentV2.model_validate(node.structured_content)
         updated_manifest = self._canonical_manifest(
-            workflow_id,
+            workflow,
             node_id,
             manifest,
             current_manifest=current.manifest,
@@ -105,7 +124,7 @@ class EditingNodeService:
             update={
                 "manifest": updated_manifest,
                 "dirty": True,
-                "preview": self.build_preview(workflow_id, node_id, updated_manifest),
+                "preview": self._build_preview(workflow, node_id, updated_manifest),
                 "active_export": None,
             }
         )
@@ -125,15 +144,30 @@ class EditingNodeService:
         node_id: str,
         manifest: EditingManifestV2 | None = None,
     ) -> EditingPreviewV2:
-        node = self._require_editing_node(workflow_id, node_id)
+        workflow = self._workflows.get_workflow(workflow_id)
+        return self._build_preview(workflow, node_id, manifest)
+
+    def _build_preview(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+        manifest: EditingManifestV2 | None = None,
+    ) -> EditingPreviewV2:
+        node = next(
+            (item for item in workflow.nodes if item.node_id == node_id),
+            None,
+        )
+        if node is None:
+            raise _error("node_not_found", "Node was not found.")
+        if node.node_type != "editing":
+            raise _error("node_type_mismatch", "Node is not an Editing node.")
         current_manifest = EditingNodeContentV2.model_validate(node.structured_content).manifest
         selected = self._canonical_manifest(
-            workflow_id,
+            workflow,
             node_id,
             manifest or current_manifest,
             current_manifest=current_manifest,
         )
-        workflow = self._workflows.get_workflow(workflow_id)
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {item.node_id: item for item in workflow.nodes}
         clips: list[EditingPreviewClipV2] = []
@@ -208,7 +242,7 @@ class EditingNodeService:
 
     def _canonical_manifest(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
         *,
@@ -217,16 +251,15 @@ class EditingNodeService:
         return normalize_manifest(
             manifest,
             current_manifest=current_manifest,
-            source_durations=self._source_durations(workflow_id, node_id, manifest),
+            source_durations=self._source_durations(workflow, node_id, manifest),
         )
 
     def _source_durations(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
     ) -> dict[tuple[str, str], float]:
-        workflow = self._workflows.get_workflow(workflow_id)
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {node.node_id: node for node in workflow.nodes}
         durations: dict[tuple[str, str], float] = {}
