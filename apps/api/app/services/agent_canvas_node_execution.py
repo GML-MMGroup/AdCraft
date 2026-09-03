@@ -31,6 +31,7 @@ from app.schemas.agent_canvas_ad_media import (
 from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     ResolvedModelExecutionV1,
+    ResolvedModelExecutionV2,
 )
 from app.schemas.workflow_v2 import V2ProviderResult
 from app.schemas.seedance_inputs import (
@@ -605,6 +606,7 @@ class MediaNodeExecutor:
                 "provider_model_id": context.model_resolution.provider_model_id,
             }
         )
+        provider_payload.update(_frozen_adapter_identity_payload(context.model_resolution))
         if prepared.delivered_references:
             provider_payload["reference_assets"] = [
                 reference.provider_asset() for reference in prepared.delivered_references
@@ -819,6 +821,24 @@ def _require_bgm_duration(parameters: dict[str, object]) -> None:
             "model_parameter_unsupported",
             "BGM execution requires a positive integer duration_seconds.",
         )
+
+
+def _frozen_adapter_identity_payload(
+    resolution: ResolvedModelExecutionV1,
+) -> dict[str, object]:
+    """Expose only adapter identity already frozen in the V2 resolution."""
+
+    if not isinstance(resolution, ResolvedModelExecutionV2):
+        return {}
+    return {
+        "adapter_id": resolution.adapter_id,
+        "transport_kind": resolution.transport_kind,
+        "conformance_status": resolution.conformance_status,
+        "capability_revision": resolution.capability_revision,
+        "adapter_revision": resolution.adapter_revision,
+        "requested_parameter_fingerprint": resolution.requested_parameter_fingerprint,
+        "effective_parameter_fingerprint": resolution.effective_parameter_fingerprint,
+    }
 
 
 def _generated_media_identity(media_type: str, content: bytes) -> tuple[str, str]:
