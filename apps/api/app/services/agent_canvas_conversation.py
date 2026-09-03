@@ -168,6 +168,10 @@ from app.services.agent_canvas_requirements import (
     character_occurrences_for_authoring,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.authoritative_workflow_context import (
+    AuthoritativeWorkflowContextProjector,
+)
+from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -1359,6 +1363,11 @@ class AgentConversationService:
             workflows.database,
             EventRepository(workflows.database),
         )
+        self._workflow_context = AuthoritativeWorkflowContextProjector(
+            workflows=workflows,
+            conversations=conversations,
+        )
+        self._workflow_status_reply = WorkflowStatusReplyRenderer()
 
     def submit_message(
         self,
@@ -1629,6 +1638,13 @@ class AgentConversationService:
             str(item) for item in turn.request.get("mentioned_image_asset_ids") or ()
         )
         requirements = self._requirements.get_current_revision(turn.workflow_id)
+        workflow_context = self._workflow_context.project(
+            turn.workflow_id,
+            conversation_id=turn.conversation_id,
+            response_locale=(
+                existing_session.response_locale if existing_session is not None else "und"
+            ),
+        )
         intent = self._turn_intents.decide(
             TurnIntentContextV2(
                 workflow_id=workflow.workflow_id,
@@ -1649,6 +1665,7 @@ class AgentConversationService:
                 current_response_locale=(
                     existing_session.response_locale if existing_session is not None else "und"
                 ),
+                workflow_context=workflow_context,
             ),
             turn_id=turn_id,
         )
@@ -1688,7 +1705,11 @@ class AgentConversationService:
                 response_locale=intent.response_locale,
             )
         if intent.mode == "ordinary_conversation":
-            reply = self._answer_workflow_conversation(turn, intent)
+            reply = self._answer_workflow_conversation(
+                turn,
+                intent,
+                workflow_context=workflow_context,
+            )
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
@@ -2383,11 +2404,37 @@ class AgentConversationService:
         self,
         turn: ChatTurnV2,
         intent: TurnIntentDecisionV2,
+        *,
+        workflow_context,
     ) -> WorkflowConversationReply:
         context, state_reference = self._conversation_answer_context(
             turn,
             response_locale=intent.response_locale,
+            workflow_context=workflow_context,
         )
+        if (
+            intent.conversation_query is not None
+            and intent.conversation_query.query_kind == "workflow_status"
+        ):
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                context, state_reference = self._conversation_answer_context(
+                    turn,
+                    response_locale=intent.response_locale,
+                    workflow_context=current_context,
+                )
+            else:
+                current_context = workflow_context
+            del context
+            return WorkflowConversationReply(
+                message=self._workflow_status_reply.render(current_context),
+                answer_kind="progress",
+                state_reference=state_reference,
+            )
         reply = self._gateway.answer_workflow_conversation(
             context,
             turn_id=turn.turn_id,
@@ -2406,6 +2453,11 @@ class AgentConversationService:
         _, current_reference = self._conversation_answer_context(
             turn,
             response_locale=intent.response_locale,
+            workflow_context=self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            ),
         )
         if current_reference != state_reference:
             return WorkflowConversationReply(
@@ -2423,6 +2475,7 @@ class AgentConversationService:
         turn: ChatTurnV2,
         *,
         response_locale: str,
+        workflow_context,
     ) -> tuple[WorkflowConversationAgentContext, WorkflowConversationAnswerContextV1 | None]:
         workflow = self._workflows.get_workflow(turn.workflow_id)
         session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
@@ -2436,6 +2489,7 @@ class AgentConversationService:
                     workflow_revision=workflow.revision,
                     workflow_summary=_workflow_conversation_summary(workflow),
                     response_locale=response_locale,
+                    workflow_context=workflow_context,
                 ),
                 None,
             )
@@ -2516,6 +2570,7 @@ class AgentConversationService:
                 awaiting_action=awaiting_action,
                 next_action=next_action,
                 source_revision=session.revision,
+                workflow_context=workflow_context,
             ),
             state_reference,
         )
