@@ -253,6 +253,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "none",
     ]
     reasoning_mode: Literal["low", "deep"]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     enable_thinking: bool
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     structured_transport: Literal[
@@ -280,6 +281,13 @@ class AgentModelExecutionPolicyV1(_StrictModel):
 
     @model_validator(mode="after")
     def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if self.reasoning_control == "reasoning_effort":
+            if self.reasoning_effort is None or self.enable_thinking:
+                raise ValueError("Reasoning-effort policy cannot use legacy thinking fields.")
+            if self.thinking_budget_tokens is not None:
+                raise ValueError("Reasoning-effort policy cannot use a thinking budget.")
+        elif self.reasoning_effort is not None:
+            raise ValueError("Reasoning effort is only valid for its matching control.")
         if (
             self.primary_timeout_seconds
             + self.recovery_timeout_seconds
@@ -351,6 +359,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "none",
     ]
     reasoning_mode: Literal["low", "deep"]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     enable_thinking: bool
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     deadline_seconds: int = Field(ge=1, le=900)
