@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_materialization import CapabilityMaterializationCo
 from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardSegmentAuthoringContextV2
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
+from app.schemas.provider_models import ProviderConformanceTargetV1
 
 
 AgentName = Literal["video_agent"]
@@ -466,6 +467,7 @@ class AgentProviderConformanceInputV2(_StrictModel):
     schema_version: Literal["2"] = "2"
     frozen_agent_request: AgentRunRequest
     frozen_agent_request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    target: ProviderConformanceTargetV1
     budget_plan: AgentProviderConformanceBudgetPlanV1
     evidence_destination_id: str = Field(min_length=1, max_length=160)
 
@@ -475,6 +477,14 @@ class AgentProviderConformanceInputV2(_StrictModel):
             self.frozen_agent_request
         ):
             raise ValueError("Frozen Agent request digest does not match the request.")
+        request = self.frozen_agent_request
+        if (
+            self.target.model_ref != request.model_ref
+            or self.target.operation != request.operation
+            or self.target.contract_digest != request.contract_digest
+            or self.target.capability != "text"
+        ):
+            raise ValueError("conformance_target_mismatch")
 
         from app.services.agent_provider_conformance_budget import (
             AgentProviderConformanceBudgetError,

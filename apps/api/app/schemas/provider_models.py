@@ -328,6 +328,29 @@ class ProviderModelConformanceSummaryV1(BaseModel):
     duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
 
 
+class ProviderConformanceTargetV1(BaseModel):
+    """Exact provider identity frozen into one conformance diagnostic."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_ref: str = Field(min_length=3, max_length=320)
+    provider_model_id: str = Field(min_length=1, max_length=240)
+    adapter_id: str = Field(min_length=1, max_length=120)
+    transport_kind: ProviderTransportKindV1
+    capability: ModelCapabilityV1
+    operation: str = Field(min_length=1, max_length=120)
+    adapter_revision: str = Field(min_length=1, max_length=80)
+    capability_revision: str = Field(min_length=1, max_length=80)
+    contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def validate_model_identity(self) -> "ProviderConformanceTargetV1":
+        _provider_id, separator, provider_model_id = self.model_ref.partition(":")
+        if not separator or provider_model_id != self.provider_model_id:
+            raise ValueError("provider_conformance_model_identity_mismatch")
+        return self
+
+
 class ProviderModelSummaryV2(ProviderModelSummaryV1):
     """Additive catalog response with trusted adapter/capability metadata."""
 

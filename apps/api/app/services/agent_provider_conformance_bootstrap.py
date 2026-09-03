@@ -19,6 +19,7 @@ from app.schemas.agent_runtime import (
     AgentRunRequest,
     canonical_agent_run_request_digest,
 )
+from app.schemas.provider_models import ProviderConformanceTargetV1
 from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_provider_conformance_budget import (
     canonical_agent_provider_conformance_budget_digest,
@@ -61,7 +62,17 @@ class AgentProviderConformanceBootstrapService:
         self._lease_owner_factory = lease_owner_factory or _new_lease_owner_id
         self._budget_deriver = budget_deriver
 
-    def start(self, *, model_ref: str) -> AgentProviderConformanceRunHandle:
+    def start(
+        self,
+        *,
+        model_ref: str,
+        adapter_id: str | None = None,
+        transport_kind: str | None = None,
+        capability: str = "text",
+        adapter_revision: str | None = None,
+        capability_revision: str = "catalog-1",
+        contract_digest: str | None = None,
+    ) -> AgentProviderConformanceRunHandle:
         timestamp = self._now()
         run_id = self._run_id_factory()
         suffix = _diagnostic_suffix(run_id)
@@ -92,6 +103,31 @@ class AgentProviderConformanceBootstrapService:
                 "model_ref": model_ref,
             },
         )
+        target = ProviderConformanceTargetV1(
+            model_ref=model_ref,
+            provider_model_id=_provider_model_id(model_ref),
+            adapter_id=adapter_id or "pi-openai-compatible-v1",
+            transport_kind=transport_kind or "pi_native_openai_compatible",
+            capability=capability,
+            operation=frozen_request.operation,
+            adapter_revision=adapter_revision or adapter_id or "pi-openai-compatible-v1",
+            capability_revision=capability_revision,
+            contract_digest=contract_digest or frozen_request.contract_digest,
+        )
+        frozen_request = frozen_request.model_copy(
+            update={
+                "audit_metadata": {
+                    **frozen_request.audit_metadata,
+                    "provider_model_id": target.provider_model_id,
+                    "adapter_id": target.adapter_id,
+                    "transport_kind": target.transport_kind,
+                    "capability": target.capability,
+                    "adapter_revision": target.adapter_revision,
+                    "capability_revision": target.capability_revision,
+                    "contract_digest": target.contract_digest,
+                }
+            }
+        )
         budget_plan = self._budget_deriver(frozen_request)
         audit_metadata = {
             **frozen_request.audit_metadata,
@@ -116,6 +152,7 @@ class AgentProviderConformanceBootstrapService:
             input_envelope=AgentProviderConformanceInputV2(
                 frozen_agent_request=frozen_request,
                 frozen_agent_request_digest=canonical_agent_run_request_digest(frozen_request),
+                target=target,
                 budget_plan=budget_plan,
                 evidence_destination_id=run_id,
             ),
@@ -160,3 +197,10 @@ def _diagnostic_suffix(run_id: str) -> str:
     if not suffix.replace("_", "").isalnum():
         raise ValueError("conformance_durable_run_unavailable")
     return suffix
+
+
+def _provider_model_id(model_ref: str) -> str:
+    _provider_id, separator, provider_model_id = model_ref.partition(":")
+    if not separator or not provider_model_id:
+        raise ValueError("provider_conformance_model_identity_mismatch")
+    return provider_model_id
