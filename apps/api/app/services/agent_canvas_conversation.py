@@ -318,7 +318,15 @@ class DeterministicVideoAgentGateway:
         request_identity: str,
     ) -> RoleCreativeBriefV2:
         del request_identity
-        return deterministic_role_brief(context)
+        brief = deterministic_role_brief(context)
+        return RoleCreativeBriefV2.model_validate(
+            {
+                **brief.root.model_dump(mode="json"),
+                "editable_prompt": context.user_prompt
+                or context.selected_direction
+                or "Current creative direction.",
+            }
+        )
 
     def plan_storyboard_sequence_outline(
         self,
@@ -527,7 +535,14 @@ class PiVideoAgentGateway:
                 "role_variant": context.role_variant,
             },
         )
-        return RoleCreativeBriefV2.model_validate(completed.value)
+        brief = RoleCreativeBriefV2.model_validate(completed.value)
+        if not brief.root.editable_prompt or not brief.root.editable_prompt.strip():
+            raise V2PersistenceError(
+                "agent_structured_output_invalid",
+                "Role brief must include a non-blank editable_prompt.",
+                stage="agent_canvas_conversation",
+            )
+        return brief
 
     def plan_storyboard_sequence_outline(
         self,

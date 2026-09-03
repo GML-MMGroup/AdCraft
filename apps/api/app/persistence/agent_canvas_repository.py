@@ -57,6 +57,7 @@ from app.schemas.agent_canvas import (
     CanvasVariationDraftV2,
     ResolvedTextInputSnapshotV2,
 )
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
@@ -2645,6 +2646,9 @@ def _reconcile_editing_manifest_for_binding(
 
 
 def _node_values(node: CanvasNodeV2) -> dict[str, object]:
+    metadata = dict(node.metadata)
+    if node.prompt_presentation is not None:
+        metadata["editable_prompt_projection"] = node.prompt_presentation.model_dump(mode="json")
     return {
         "node_id": node.node_id,
         "workflow_id": node.workflow_id,
@@ -2660,7 +2664,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "model_selection_mode": node.model_selection_mode,
         "model_ref": node.model_ref,
         "parameters_json": _json_dump(node.parameters),
-        "metadata_json": _json_dump(node.metadata),
+        "metadata_json": _json_dump(metadata),
         "parameter_provenance_json": _json_dump(
             {
                 field: provenance.model_dump(mode="json")
@@ -3033,6 +3037,8 @@ def _node_from_row(
     model_summary: CanvasModelSummaryV2 | None = None,
 ) -> CanvasNodeV2:
     error_json = row["error_json"]
+    metadata = cast(dict[str, JsonValue], json.loads(str(row["metadata_json"])))
+    prompt_presentation = _prompt_presentation_from_metadata(metadata)
     return CanvasNodeV2(
         node_id=str(row["node_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -3051,7 +3057,8 @@ def _node_from_row(
         model_ref=cast(str | None, row["model_ref"]),
         model_summary=model_summary,
         parameters=cast(dict[str, JsonValue], json.loads(str(row["parameters_json"]))),
-        metadata=cast(dict[str, JsonValue], json.loads(str(row["metadata_json"]))),
+        metadata=metadata,
+        prompt_presentation=prompt_presentation,
         parameter_provenance=_parameter_provenance_from_row(row),
         prompt_context_snapshot_id=cast(str | None, row["prompt_context_snapshot_id"]),
         output_asset_id=cast(str | None, row["output_asset_id"]),
@@ -3072,6 +3079,18 @@ def _node_from_row(
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _prompt_presentation_from_metadata(
+    metadata: dict[str, JsonValue],
+) -> EditablePromptProjectionV1 | None:
+    value = metadata.get("editable_prompt_projection")
+    if not isinstance(value, dict):
+        return None
+    try:
+        return EditablePromptProjectionV1.model_validate(value)
+    except ValueError as error:
+        raise _unavailable_error() from error
 
 
 def _parameter_provenance_from_row(

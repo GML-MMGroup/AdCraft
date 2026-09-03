@@ -119,6 +119,7 @@ class AgentCanvasRolePromptCompiler:
         context: RolePromptPreparationContextV2,
         *,
         parameters: tuple[ResolvedNodeParameterV2, ...] = (),
+        editable_prompt_override: str | None = None,
     ) -> CompiledNodePromptV2:
         concrete_brief = brief.root if isinstance(brief, RoleCreativeBriefV2) else brief
         if concrete_brief.role_variant != context.role_variant:
@@ -142,7 +143,11 @@ class AgentCanvasRolePromptCompiler:
             recipe,
             brief_digest=brief_digest,
         )
-        editable_prompt = concrete_brief.editable_prompt
+        editable_prompt = (
+            editable_prompt_override
+            if editable_prompt_override is not None
+            else concrete_brief.editable_prompt
+        )
         if editable_prompt is not None:
             prompt = editable_prompt.strip()
             if not prompt:
@@ -302,6 +307,7 @@ class AgentCanvasRolePromptCompiler:
             brief_digest=brief_digest,
             prompt_digest=prompt_digest,
             prompt=prompt,
+            editable_prompt=editable_prompt,
             negative_prompt=negative,
             structured_content=structured,
             parameters=parameters,

@@ -485,6 +485,7 @@ class CompiledNodePromptV2(_RolePromptModel):
     brief_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     prompt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     prompt: str = Field(min_length=1, max_length=32_768)
+    editable_prompt: str | None = Field(default=None, max_length=32_768)
     negative_prompt: str = Field(default="", max_length=16_384)
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     parameters: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)

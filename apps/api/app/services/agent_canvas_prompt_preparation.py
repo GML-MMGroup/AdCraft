@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     safe_prompt_assertion_metadata,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import (
+    EditablePromptProjectionV1,
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
     RoleCreativeBriefV2,
@@ -132,6 +133,7 @@ class NodePromptPreparationService:
                         role_context,
                         self._recipes.resolve(role_context.role_variant),
                     ),
+                    editable_prompt_override=role_context.user_prompt,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
@@ -143,9 +145,31 @@ class NodePromptPreparationService:
                         role_context,
                         self._recipes.resolve(role_context.role_variant),
                     ),
+                    editable_prompt_override=role_context.user_prompt,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
+            editable_text = (
+                role_context.user_prompt
+                or compiled_prompt.editable_prompt
+                or compiled_prompt.prompt
+            ).strip()
+            prompt_presentation = EditablePromptProjectionV1(
+                text=editable_text,
+                locale=role_context.response_locale,
+                source=(
+                    "user_edited"
+                    if role_context.user_prompt is not None
+                    else (
+                        "agent_authored"
+                        if compiled_prompt.editable_prompt is not None
+                        else "deterministic_projection"
+                    )
+                ),
+                revision=working.revision + 1,
+                brief_digest=compiled_prompt.brief_digest,
+                prompt_digest=sha256(editable_text.encode("utf-8")).hexdigest(),
+            )
             if role_context.role_variant == "world_view":
                 provenance = dict(structured_content.get("authoring_provenance", {}))
                 provenance.update(
@@ -169,6 +193,7 @@ class NodePromptPreparationService:
             ready = working.model_copy(
                 update={
                     "generation_prompt": prompt,
+                    "prompt_presentation": prompt_presentation,
                     "structured_content": structured_content,
                     "status": "ready" if working.node_type == "text" else working.status,
                     "metadata": {

@@ -17,6 +17,7 @@ from pydantic import (
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_world_setting import WorldSettingResolvedInputV2
 
@@ -94,6 +95,7 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     title: str = Field(min_length=1)
     summary_prompt: str | None = None
     generation_prompt: str | None = None
+    prompt_presentation: EditablePromptProjectionV1 | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     model_selection_mode: ModelSelectionModeV1 = "default"
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)
