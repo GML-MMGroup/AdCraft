@@ -17603,6 +17603,131 @@
       "title": "MaterializeStoryboardSegmentPatchV2",
       "type": "object"
     },
+    "ModelParameterDescriptorV1": {
+      "additionalProperties": false,
+      "description": "Declarative model parameter metadata; it contains no executable policy.",
+      "properties": {
+        "allowed_values": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Allowed Values",
+          "type": "array"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "value_type": {
+          "enum": [
+            "boolean",
+            "enum",
+            "integer",
+            "number",
+            "string"
+          ],
+          "title": "Value Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value_type"
+      ],
+      "title": "ModelParameterDescriptorV1",
+      "type": "object"
+    },
+    "ModelParameterMatrixV1": {
+      "additionalProperties": false,
+      "description": "A bounded, versioned declaration of representable parameter combinations.",
+      "properties": {
+        "descriptors": {
+          "items": {
+            "$ref": "#/$defs/ModelParameterDescriptorV1"
+          },
+          "maxItems": 64,
+          "title": "Descriptors",
+          "type": "array"
+        },
+        "legal_combinations": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 256,
+          "title": "Legal Combinations",
+          "type": "array"
+        },
+        "revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "schema_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Schema Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "descriptors",
+        "revision",
+        "schema_id"
+      ],
+      "title": "ModelParameterMatrixV1",
+      "type": "object"
+    },
     "NextActionCommandV1": {
       "description": "Compatibility wrapper around the exact action-specific command union.",
       "discriminator": {
@@ -21756,6 +21881,441 @@
       "title": "ProposedDraftReferenceV2",
       "type": "object"
     },
+    "ProviderAdapterProfileV1": {
+      "additionalProperties": false,
+      "description": "One trusted adapter claim for one exact model/capability revision.",
+      "properties": {
+        "accepted_input_modes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Accepted Input Modes",
+          "type": "array"
+        },
+        "adapter_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "capability": {
+          "enum": [
+            "agent",
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "conformance_status": {
+          "default": "unverified",
+          "enum": [
+            "certified",
+            "compatible",
+            "revoked",
+            "unverified"
+          ],
+          "title": "Conformance Status",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "parameter_matrix": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelParameterMatrixV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parameter_schema_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Parameter Schema Id",
+          "type": "string"
+        },
+        "reference_policy": {
+          "$ref": "#/$defs/ReferenceInputPolicyV1"
+        },
+        "release_tier": {
+          "default": "optional",
+          "enum": [
+            "compatible",
+            "default",
+            "experimental",
+            "optional"
+          ],
+          "title": "Release Tier",
+          "type": "string"
+        },
+        "request_mode": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Request Mode",
+          "type": "string"
+        },
+        "result_protocol": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Result Protocol",
+          "type": "string"
+        },
+        "supports_provider_idempotency": {
+          "title": "Supports Provider Idempotency",
+          "type": "boolean"
+        },
+        "supports_remote_task_lookup": {
+          "title": "Supports Remote Task Lookup",
+          "type": "boolean"
+        },
+        "transport_kind": {
+          "enum": [
+            "ark_image_native",
+            "ark_video_native",
+            "fake",
+            "litellm_chat",
+            "litellm_openai_image",
+            "minimax_video_native",
+            "openai_images_native",
+            "pi_native_openai_compatible",
+            "tianpuyue_audio_native"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted_input_modes",
+        "adapter_id",
+        "adapter_revision",
+        "capability",
+        "capability_revision",
+        "model_ref",
+        "parameter_schema_id",
+        "reference_policy",
+        "request_mode",
+        "result_protocol",
+        "supports_provider_idempotency",
+        "supports_remote_task_lookup",
+        "transport_kind"
+      ],
+      "title": "ProviderAdapterProfileV1",
+      "type": "object"
+    },
+    "ProviderModelConformanceSummaryV1": {
+      "additionalProperties": false,
+      "description": "Secret-free conformance evidence for one frozen model operation.",
+      "properties": {
+        "adapter_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "contract_digest": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "maximum": 86400000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "provider_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_model_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Provider Model Id",
+          "type": "string"
+        },
+        "safe_summary": {
+          "additionalProperties": true,
+          "title": "Safe Summary",
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "certified",
+            "compatible",
+            "revoked",
+            "unverified"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "transport_kind": {
+          "enum": [
+            "ark_image_native",
+            "ark_video_native",
+            "fake",
+            "litellm_chat",
+            "litellm_openai_image",
+            "minimax_video_native",
+            "openai_images_native",
+            "pi_native_openai_compatible",
+            "tianpuyue_audio_native"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_revision",
+        "capability_revision",
+        "contract_digest",
+        "model_ref",
+        "operation",
+        "provider_id",
+        "provider_model_id",
+        "status",
+        "transport_kind"
+      ],
+      "title": "ProviderModelConformanceSummaryV1",
+      "type": "object"
+    },
+    "ProviderModelSummaryV2": {
+      "additionalProperties": false,
+      "description": "Additive catalog response with trusted adapter/capability metadata.",
+      "properties": {
+        "accepted_input_modes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Accepted Input Modes",
+          "type": "array"
+        },
+        "adapter_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adapter Id"
+        },
+        "availability": {
+          "enum": [
+            "available",
+            "deprecated",
+            "unauthorized",
+            "unavailable",
+            "unsupported"
+          ],
+          "title": "Availability",
+          "type": "string"
+        },
+        "capability": {
+          "enum": [
+            "agent",
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "capability_metadata": {
+          "additionalProperties": true,
+          "title": "Capability Metadata",
+          "type": "object"
+        },
+        "catalog_revision": {
+          "title": "Catalog Revision",
+          "type": "integer"
+        },
+        "conformance_status": {
+          "default": "unverified",
+          "enum": [
+            "certified",
+            "compatible",
+            "revoked",
+            "unverified"
+          ],
+          "title": "Conformance Status",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "model_ref": {
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "parameter_descriptors": {
+          "items": {
+            "$ref": "#/$defs/ModelParameterDescriptorV1"
+          },
+          "maxItems": 64,
+          "title": "Parameter Descriptors",
+          "type": "array"
+        },
+        "parameter_schema_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameter Schema Id"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_model_id": {
+          "title": "Provider Model Id",
+          "type": "string"
+        },
+        "reference_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceInputPolicyV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "release_tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "compatible",
+                "default",
+                "experimental",
+                "optional"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Tier"
+        },
+        "transport_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "ark_image_native",
+                "ark_video_native",
+                "fake",
+                "litellm_chat",
+                "litellm_openai_image",
+                "minimax_video_native",
+                "openai_images_native",
+                "pi_native_openai_compatible",
+                "tianpuyue_audio_native"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transport Kind"
+        },
+        "unavailable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailable Reason"
+        }
+      },
+      "required": [
+        "availability",
+        "capability",
+        "catalog_revision",
+        "display_name",
+        "model_ref",
+        "provider_id",
+        "provider_model_id"
+      ],
+      "title": "ProviderModelSummaryV2",
+      "type": "object"
+    },
     "ProviderPromptAssertionEvidenceV1": {
       "additionalProperties": false,
       "properties": {
@@ -22208,6 +22768,67 @@
         "target_role"
       ],
       "title": "ReferenceConditioningPlanV1",
+      "type": "object"
+    },
+    "ReferenceInputModeV1": {
+      "additionalProperties": false,
+      "description": "Semantic reference input mode owned by the selected adapter profile.",
+      "properties": {
+        "allowed_roles": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Allowed Roles",
+          "type": "array"
+        },
+        "max_references": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Max References",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "native_reference_slots",
+            "provider_only_instructions",
+            "text_only",
+            "text_plus_single_first_frame_image"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_references",
+        "mode"
+      ],
+      "title": "ReferenceInputModeV1",
+      "type": "object"
+    },
+    "ReferenceInputPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "max_images": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "modes": {
+          "items": {
+            "$ref": "#/$defs/ReferenceInputModeV1"
+          },
+          "maxItems": 16,
+          "title": "Modes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "max_images",
+        "modes"
+      ],
+      "title": "ReferenceInputPolicyV1",
       "type": "object"
     },
     "ReferencePromptProvenanceV1": {
