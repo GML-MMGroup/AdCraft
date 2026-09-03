@@ -30813,6 +30813,7 @@
         }
       },
       "required": [
+        "answer_kind",
         "message"
       ],
       "title": "WorkflowConversationReply",

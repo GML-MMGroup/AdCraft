@@ -754,7 +754,7 @@ export type ProposalRevisionContextV2 = { readonly "source_proposal_id": string;
 
 export type WorkflowConversationAnswerContextV1 = { readonly "workflow_id": string; readonly "workflow_revision": number; readonly "response_locale": string; readonly "journey_stage"?: string | null; readonly "journey_status"?: string | null; readonly "awaiting_action"?: NextActionContextV1 | null; readonly "next_action"?: NextActionContextV1 | null; readonly "source_revision"?: number | null };
 
-export type WorkflowConversationReply = { readonly "message": string; readonly "clarification_required"?: boolean; readonly "answer_kind"?: "clarification" | "general" | "greeting" | "progress"; readonly "state_reference"?: WorkflowConversationAnswerContextV1 | null };
+export type WorkflowConversationReply = { readonly "message": string; readonly "clarification_required"?: boolean; readonly "answer_kind": "clarification" | "general" | "greeting" | "progress"; readonly "state_reference"?: WorkflowConversationAnswerContextV1 | null };
 
 export type ConversationSummaryResult = { readonly "summary": string };
 
