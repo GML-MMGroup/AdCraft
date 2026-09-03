@@ -146,7 +146,11 @@ def _image_profile(
     )
 
 
-def _ark_video_profile(model_ref: str) -> dict[str, Any]:
+def _ark_video_profile(
+    model_ref: str,
+    *,
+    release_tier: str = "optional",
+) -> dict[str, Any]:
     return _adapter_profile(
         model_ref=model_ref,
         adapter_id="ark-video-native",
@@ -168,7 +172,7 @@ def _ark_video_profile(model_ref: str) -> dict[str, Any]:
         conformance_status="compatible",
         adapter_revision="ark-video-native-v1",
         capability_revision=f"{model_ref.replace(':', '-')}-v1",
-        release_tier="default",
+        release_tier=release_tier,
         parameter_matrix=_parameter_matrix(
             schema_id="ark-video-generation-v1",
             descriptors=(
@@ -404,7 +408,10 @@ _TRUSTED_MANIFESTS = (
             "provider_protocol": "ark_video",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": True,
-            "adapter_profile": _ark_video_profile("volcengine_ark:doubao-seedance-2-0-fast-260128"),
+            "adapter_profile": _ark_video_profile(
+                "volcengine_ark:doubao-seedance-2-0-fast-260128",
+                release_tier="default",
+            ),
         },
     ),
     TrustedModelManifest(
