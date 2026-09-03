@@ -135,7 +135,11 @@ def _image_profile(
         accepted_input_modes=("text_only", "native_reference_slots"),
         max_images=4,
         allowed_roles=("product_reference", "scene_reference", "character_reference"),
-        parameter_schema_id="image-generation-v1",
+        parameter_schema_id=(
+            str(parameter_matrix["schema_id"])
+            if parameter_matrix is not None
+            else "image-generation-v1"
+        ),
         result_protocol="image_data",
         supports_remote_task_lookup=False,
         supports_provider_idempotency=False,
