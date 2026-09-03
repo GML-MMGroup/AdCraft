@@ -373,6 +373,30 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
+        provider_model_id="doubao-seed-2-1-pro-260628",
+        display_name="Doubao Seed 2.1 Pro",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": "volcengine-ark-doubao-seed-2-1-pro-260628-agent-v1",
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": False,
+            "supports_streaming": False,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "thinking_format": "none",
+            "reasoning_control": "reasoning_effort",
+            "structured_transport": "non_streaming_json_object",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
         provider_model_id="doubao-seedream-5-0-lite-260128",
         display_name="Doubao Seedream 5.0 Lite",
         capability="image",
@@ -708,6 +732,8 @@ _TRUSTED_MANIFESTS = (
     ),
 )
 
+_RETIRED_MODEL_REFS = frozenset({"volcengine_ark:doubao-seed-2-0-mini-260428"})
+
 
 class StaticProviderCatalogAdapter:
     """Default deterministic adapter used until a provider implements discovery."""
@@ -848,6 +874,15 @@ class ProviderModelCatalogService:
                         "source": "discovered",
                         "availability": "unsupported",
                         "unavailable_reason": "model_not_supported",
+                    }
+                )
+                continue
+            if manifest.model_ref in _RETIRED_MODEL_REFS:
+                models.append(
+                    {
+                        **_trusted_projection(manifest, available=False),
+                        "availability": "deprecated",
+                        "unavailable_reason": "model_retired",
                     }
                 )
                 continue
