@@ -162,7 +162,9 @@ class AgentCanvasNodeService:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
         if "generation_prompt" in changes:
             normalized_prompt = normalize_manual_generation_prompt(request.generation_prompt)
-            changes["generation_prompt"] = normalized_prompt
+            changes["generation_prompt"] = (
+                "" if normalized_prompt is None and source_only_product else normalized_prompt
+            )
             changes["prompt_presentation"] = (
                 _editable_prompt_projection(
                     normalized_prompt,
