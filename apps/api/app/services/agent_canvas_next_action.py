@@ -187,7 +187,16 @@ class DurableNextActionExecutionService:
                 stage="next_action_execution",
             )
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        if session.revision != envelope.expected_session_revision:
+        reserved_replay = (
+            session.journey.stage == "editing"
+            and session.journey.active_action is not None
+            and session.journey.active_action.action_id
+            == f"journey-action:{envelope.next_action_turn_id}"
+            and session.journey.active_action.turn_id == envelope.next_action_turn_id
+            and session.journey.active_action.action_kind == "prepare_editing"
+            and session.journey.active_action.status == "reserved"
+        )
+        if session.revision != envelope.expected_session_revision and not reserved_replay:
             raise V2PersistenceError(
                 "guidance_revision_conflict",
                 "Guidance state changed before Next Action execution.",
@@ -283,37 +292,26 @@ class DurableNextActionExecutionService:
                             stage="next_action_execution",
                         )
                 except V2PersistenceError as error:
-                    current_session = self._conversations.get_guidance_session(envelope.workflow_id)
-                    if not self._editing_action_is_current(
-                        current_session,
-                        reserved_editing_action,
-                    ):
-                        self._reconcile_editing_action(
-                            current_session,
-                            action=reserved_editing_action,
-                            outcome="superseded",
-                            reason_code="editing_action_superseded",
-                        )
-                        editing_outcome = "superseded"
-                    else:
-                        resolution = self._editing_outcomes.resolve(error, current_session)
-                        self._reconcile_editing_action(
-                            resolution.session,
-                            action=reserved_editing_action,
-                            outcome=resolution.outcome,
-                            reason_code=resolution.reason_code,
-                            evidence_ids=resolution.evidence_ids,
-                            awaiting=resolution.awaiting,
-                            awaiting_id=resolution.awaiting_id,
-                            awaiting_kind=resolution.awaiting_kind,
-                            system_owner_kind=resolution.system_owner_kind,
-                            system_owner_id=resolution.system_owner_id,
-                            system_owner_node_id=resolution.system_owner_node_id,
-                            error_code=resolution.error_code,
-                        )
-                        editing_outcome = resolution.outcome
+                    editing_outcome = self._reconcile_editing_failure(
+                        error,
+                        workflow_id=envelope.workflow_id,
+                        action=reserved_editing_action,
+                    )
                     if editing_outcome == "failed":
                         raise
+                except Exception as unexpected:
+                    error = V2PersistenceError(
+                        "guided_editing_preparation_unexpected",
+                        "Editing preparation failed before terminal reconciliation.",
+                        stage="next_action_execution",
+                    )
+                    editing_outcome = self._reconcile_editing_failure(
+                        error,
+                        workflow_id=envelope.workflow_id,
+                        action=reserved_editing_action,
+                    )
+                    if editing_outcome == "failed":
+                        raise error from unexpected
                 else:
                     lease_guard()
                     current_session = self._conversations.get_guidance_session(envelope.workflow_id)
@@ -535,6 +533,39 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    def _reconcile_editing_failure(
+        self,
+        error: V2PersistenceError,
+        *,
+        workflow_id: str,
+        action: JourneyActionProjectionV2,
+    ) -> EditingActionReconciliationOutcomeV1:
+        current_session = self._conversations.get_guidance_session(workflow_id)
+        if not self._editing_action_is_current(current_session, action):
+            self._reconcile_editing_action(
+                current_session,
+                action=action,
+                outcome="superseded",
+                reason_code="editing_action_superseded",
+            )
+            return "superseded"
+        resolution = self._editing_outcomes.resolve(error, current_session)
+        self._reconcile_editing_action(
+            resolution.session,
+            action=action,
+            outcome=resolution.outcome,
+            reason_code=resolution.reason_code,
+            evidence_ids=resolution.evidence_ids,
+            awaiting=resolution.awaiting,
+            awaiting_id=resolution.awaiting_id,
+            awaiting_kind=resolution.awaiting_kind,
+            system_owner_kind=resolution.system_owner_kind,
+            system_owner_id=resolution.system_owner_id,
+            system_owner_node_id=resolution.system_owner_node_id,
+            error_code=resolution.error_code,
+        )
+        return resolution.outcome
 
     @staticmethod
     def _editing_action_is_current(
