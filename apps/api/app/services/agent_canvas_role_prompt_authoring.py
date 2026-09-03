@@ -105,4 +105,7 @@ def deterministic_role_brief(
         }
     else:
         value = {"role_variant": variant, "prompt": summary}
+    value["editable_prompt"] = (
+        context.user_prompt or context.selected_direction or summary
+    ).strip()
     return RoleCreativeBriefV2.model_validate(value)

@@ -75,7 +75,28 @@ class EditablePromptProjectionV1(_RolePromptModel):
     prompt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
+def _require_editable_prompt_in_schema(schema: dict[str, Any]) -> None:
+    properties = schema.get("properties")
+    if not isinstance(properties, dict) or "editable_prompt" not in properties:
+        return
+    properties["editable_prompt"] = {
+        "title": "Editable Prompt",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32_768,
+    }
+    required = schema.setdefault("required", [])
+    if "editable_prompt" not in required:
+        required.append("editable_prompt")
+
+
 class _RoleBriefModel(_RolePromptModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra=_require_editable_prompt_in_schema,
+    )
+
     editable_prompt: str | None = Field(default=None, max_length=32_768)
 
 
@@ -464,6 +485,12 @@ class RoleCreativeBriefV2(RootModel[RoleCreativeBriefMemberV2]):
     @property
     def role_variant(self) -> RolePromptVariantV2:
         return self.root.role_variant
+
+    @model_validator(mode="after")
+    def require_editable_prompt(self) -> RoleCreativeBriefV2:
+        if not self.root.editable_prompt or not self.root.editable_prompt.strip():
+            raise ValueError("Role brief must include a non-blank editable_prompt.")
+        return self
 
 
 class ResolvedNodeParameterV2(_RolePromptModel):
