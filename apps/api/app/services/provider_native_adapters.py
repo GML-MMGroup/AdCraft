@@ -165,7 +165,10 @@ class ProviderNativeAdapter:
 
     def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
         transport = self._require_transport()
-        response = transport.submit(request.payload)
+        response = _bounded_response(
+            transport.submit(request.payload),
+            allowed_keys={"task_id", "provider_task_id", "request_id"},
+        )
         task_id = _required_string(response, "task_id", "provider_task_id")
         return ProviderSubmission(
             provider_task_id=task_id,
@@ -175,7 +178,19 @@ class ProviderNativeAdapter:
 
     def poll(self, submission: ProviderSubmission) -> ProviderStatus:
         transport = self._require_transport()
-        response = transport.poll(submission.provider_task_id)
+        response = _bounded_response(
+            transport.poll(submission.provider_task_id),
+            allowed_keys={
+                "status",
+                "state",
+                "file_id",
+                "download_url",
+                "url",
+                "request_id",
+                "error_code",
+                "message",
+            },
+        )
         state = _required_string(response, "status", "state")
         return ProviderStatus(
             provider_task_id=submission.provider_task_id,
@@ -187,7 +202,10 @@ class ProviderNativeAdapter:
     def download(self, status: ProviderStatus) -> ProviderArtifact:
         transport = self._require_transport()
         value = _required_string(status.raw, "file_id", "download_url", "url")
-        response = transport.download(value)
+        response = _bounded_response(
+            transport.download(value),
+            allowed_keys={"value", "file_id", "download_url", "url", "mime_type", "media_type"},
+        )
         artifact_value = _required_string(response, "value", "file_id", "download_url", "url")
         return ProviderArtifact(
             media_type=self._media_type,
@@ -321,7 +339,7 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
 
     def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
         transport = self._require_transport()
-        response = dict(transport.submit(request.payload))
+        response = _bounded_openai_image_response(transport.submit(request.payload))
         if not isinstance(response.get("data"), list):
             raise ValueError("provider_response_contract_invalid")
         return ProviderSubmission(
@@ -522,6 +540,49 @@ def _required_string(source: Mapping[str, object], *keys: str) -> str:
         if isinstance(value, str) and value.strip():
             return value
     raise ValueError("provider_response_contract_invalid")
+
+
+def _bounded_response(
+    response: Mapping[str, object],
+    *,
+    allowed_keys: set[str],
+) -> dict[str, object]:
+    if not isinstance(response, Mapping) or set(response).difference(allowed_keys):
+        raise ValueError("provider_response_contract_invalid")
+    bounded: dict[str, object] = {}
+    for key, value in response.items():
+        if isinstance(value, str):
+            if len(value) > 4_096:
+                raise ValueError("provider_response_contract_invalid")
+            bounded[key] = value
+        elif value is None or isinstance(value, (bool, int, float)):
+            bounded[key] = value
+        else:
+            raise ValueError("provider_response_contract_invalid")
+    if len(json.dumps(bounded, ensure_ascii=False, separators=(",", ":"))) > 65_536:
+        raise ValueError("provider_response_contract_invalid")
+    return bounded
+
+
+def _bounded_openai_image_response(response: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(response, Mapping) or set(response).difference({"data"}):
+        raise ValueError("provider_response_contract_invalid")
+    data = response.get("data")
+    if not isinstance(data, list) or not data or len(data) > 4:
+        raise ValueError("provider_response_contract_invalid")
+    bounded_data: list[dict[str, str]] = []
+    for item in data:
+        if not isinstance(item, Mapping) or set(item).difference({"b64_json", "url", "revised_prompt"}):
+            raise ValueError("provider_response_contract_invalid")
+        bounded_item = {
+            str(key): value
+            for key, value in item.items()
+            if isinstance(value, str) and len(value) <= 4_096
+        }
+        if len(bounded_item) != len(item) or not bounded_item:
+            raise ValueError("provider_response_contract_invalid")
+        bounded_data.append(bounded_item)
+    return {"data": bounded_data}
 
 
 def _fingerprint(value: Mapping[str, object]) -> str:
