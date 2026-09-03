@@ -478,7 +478,6 @@ class AgentCanvasEditingActionReconciliationRepository:
             member = connection.execute(
                 select(
                     AgentCanvasExecutionMemberRow.prompt_metadata_json,
-                    AgentCanvasExecutionMemberRow.execution_id,
                 ).where(
                     AgentCanvasExecutionMemberRow.member_id == owner_id,
                     AgentCanvasExecutionMemberRow.workflow_id == workflow_id,
@@ -487,27 +486,17 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if member is None:
                 return False
-            if AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
+            return AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
                 connection,
                 prompt_metadata_json=member[0],
                 workflow_id=workflow_id,
                 node_id=node_id,
                 plan_document_id=plan_document_id,
-            ):
-                return True
-            return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
-                connection,
-                workflow_id=workflow_id,
-                node_id=node_id,
-                execution_id=str(member[1]),
-                plan_document_id=plan_document_id,
-                plan_revision=plan_revision,
             )
         if owner_kind == "post_ready_effect":
             member = connection.execute(
                 select(
                     AgentCanvasExecutionMemberRow.prompt_metadata_json,
-                    AgentCanvasExecutionMemberRow.execution_id,
                 )
                 .select_from(AgentCanvasPostReadyEffectRow)
                 .join(
@@ -528,21 +517,12 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if member is None:
                 return False
-            if AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
+            return AgentCanvasEditingActionReconciliationRepository._frozen_node_matches_current_node_in_transaction(
                 connection,
                 prompt_metadata_json=member[0],
                 workflow_id=workflow_id,
                 node_id=node_id,
                 plan_document_id=plan_document_id,
-            ):
-                return True
-            return AgentCanvasEditingActionReconciliationRepository._execution_source_matches_plan_in_transaction(
-                connection,
-                workflow_id=workflow_id,
-                node_id=node_id,
-                execution_id=str(member[1]),
-                plan_document_id=plan_document_id,
-                plan_revision=plan_revision,
             )
         if owner_kind != "automatic_run":
             return False
@@ -608,36 +588,6 @@ class AgentCanvasEditingActionReconciliationRepository:
             and metadata.get("source_agent_document_id") == plan_document_id
         )
 
-    @staticmethod
-    def _execution_source_matches_plan_in_transaction(
-        connection,
-        *,
-        workflow_id: str,
-        node_id: str,
-        execution_id: str,
-        plan_document_id: str,
-        plan_revision: int,
-    ) -> bool:
-        sources = connection.execute(
-            select(AgentCanvasAutomaticRunCommandRow.source_action_id).where(
-                AgentCanvasAutomaticRunCommandRow.workflow_id == workflow_id,
-                AgentCanvasAutomaticRunCommandRow.node_id == node_id,
-                AgentCanvasAutomaticRunCommandRow.execution_id == execution_id,
-            )
-        ).scalars()
-        return any(
-            AgentCanvasEditingActionReconciliationRepository._automatic_source_matches_plan_in_transaction(
-                connection,
-                workflow_id=workflow_id,
-                node_id=node_id,
-                source_action_id=str(source),
-                plan_document_id=plan_document_id,
-                plan_revision=plan_revision,
-            )
-            for source in sources
-        )
-
-    @staticmethod
     def _automatic_source_matches_plan_in_transaction(
         connection,
         *,
