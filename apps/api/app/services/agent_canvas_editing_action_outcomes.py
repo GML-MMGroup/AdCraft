@@ -73,6 +73,20 @@ class GuidedEditingActionOutcomeResolver:
         error: V2PersistenceError,
         session: GuidedSessionStateV2,
     ) -> EditingActionOutcomeResolution:
+        current = self._conversations.get_guidance_session(session.workflow_id)
+        if current.awaiting is not None and current.awaiting.kind in {
+            "media_review",
+            "manual_node_run",
+        }:
+            return EditingActionOutcomeResolution(
+                session=current,
+                outcome="waiting_user",
+                reason_code=f"editing_requires_{current.awaiting.kind}",
+                evidence_ids=(current.awaiting.awaiting_id, *current.awaiting.node_ids),
+                awaiting_id=current.awaiting.awaiting_id,
+                awaiting_kind=current.awaiting.kind,
+            )
+        session = current
         blockers = _blockers(error)
         workflow = self._workflows.get_workflow(session.workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
