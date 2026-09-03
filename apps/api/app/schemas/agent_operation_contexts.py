@@ -262,13 +262,16 @@ class WorkflowActionSummaryV1(_WorkflowContextModel):
     status: str = Field(min_length=1, max_length=80)
     objective: str = Field(default="", max_length=2_048)
     ownership_status: Literal["owned", "awaiting", "orphaned", "inconsistent"]
-    owner_kind: Literal[
-        "continuation",
-        "runtime_execution",
-        "post_ready_effect",
-        "guided_media_resume",
-        "typed_awaiting",
-    ] | None = None
+    owner_kind: (
+        Literal[
+            "continuation",
+            "runtime_execution",
+            "post_ready_effect",
+            "guided_media_resume",
+            "typed_awaiting",
+        ]
+        | None
+    ) = None
     owner_id: str | None = Field(default=None, min_length=1, max_length=160)
     owner_state: str | None = Field(default=None, min_length=1, max_length=80)
     turn_id: str | None = Field(default=None, min_length=1, max_length=160)
@@ -278,11 +281,14 @@ class WorkflowActionSummaryV1(_WorkflowContextModel):
     error_code: str | None = Field(default=None, min_length=1, max_length=160)
     leaf_error_code: str | None = Field(default=None, min_length=1, max_length=160)
     awaiting_id: str | None = Field(default=None, min_length=1, max_length=160)
-    blocker_class: Literal[
-        "unrecoverable",
-        "user_action_required",
-        "automatic_work_in_progress",
-    ] | None = None
+    blocker_class: (
+        Literal[
+            "unrecoverable",
+            "user_action_required",
+            "automatic_work_in_progress",
+        ]
+        | None
+    ) = None
 
     @model_validator(mode="after")
     def validate_ownership(self) -> "WorkflowActionSummaryV1":
@@ -326,9 +332,9 @@ class WorkflowStateCapsuleV1(_WorkflowContextModel):
     requirement_revision_id: str | None = Field(default=None, min_length=1, max_length=160)
     requirement_revision_no: int | None = Field(default=None, ge=1)
     requirement_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    node_status_counts: dict[
-        Literal["draft", "working", "ready", "failed"], int
-    ] = Field(default_factory=dict)
+    node_status_counts: dict[Literal["draft", "working", "ready", "failed"], int] = Field(
+        default_factory=dict
+    )
     active_work: tuple[WorkflowWorkItemSummaryV1, ...] = Field(default=(), max_length=64)
     blockers: tuple[WorkflowActionSummaryV1, ...] = Field(default=(), max_length=32)
     current_action: WorkflowActionSummaryV1 | None = None
@@ -353,7 +359,7 @@ class WorkflowStateCapsuleV1(_WorkflowContextModel):
         return self
 
 
-from app.schemas.agent_canvas_capabilities import NextActionContextV1
+from app.schemas.agent_canvas_capabilities import NextActionContextV1  # noqa: E402
 
 
 class WorkflowConversationAgentContext(_PlanningContextModel):

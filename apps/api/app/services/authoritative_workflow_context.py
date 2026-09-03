@@ -29,6 +29,7 @@ from app.persistence.agent_working_document_repository import AgentWorkingDocume
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas_guidance import GuidanceAdvanceAuthoritySnapshotV1
+from app.schemas.agent_canvas_runtime import CanvasExecutionMembershipV2
 from app.schemas.agent_operation_contexts import (
     WorkflowActionSummaryV1,
     WorkflowContextTruncationV1,
@@ -85,8 +86,7 @@ class AuthoritativeWorkflowContextProjector:
                 for item in self._runtime.list_latest_members_for_workflow(workflow_id)
             }
             dispatches = {
-                item.node_id: item
-                for item in self._prompt_dispatch.list_for_workflow(workflow_id)
+                item.node_id: item for item in self._prompt_dispatch.list_for_workflow(workflow_id)
             }
             status_counts = Counter(node.status for node in workflow.nodes)
             work = [
@@ -96,8 +96,12 @@ class AuthoritativeWorkflowContextProjector:
                     title=node.title,
                     node_revision=node.revision,
                     node_status=node.status,
-                    execution_id=(members[node.node_id].execution_id if node.node_id in members else None),
-                    execution_state=(members[node.node_id].state if node.node_id in members else None),
+                    execution_id=(
+                        members[node.node_id].execution_id if node.node_id in members else None
+                    ),
+                    execution_state=(
+                        members[node.node_id].state if node.node_id in members else None
+                    ),
                     prompt_preparation_state=(
                         dispatches[node.node_id].status
                         if node.node_id in dispatches
@@ -121,7 +125,11 @@ class AuthoritativeWorkflowContextProjector:
                 WorkflowActionSummaryV1(
                     action_id=f"node-blocker:{node.node_id}:{node.revision}",
                     action_kind="node_failure",
-                    stage=(snapshot.session.journey.stage if snapshot.session is not None else "workflow"),
+                    stage=(
+                        snapshot.session.journey.stage
+                        if snapshot.session is not None
+                        else "workflow"
+                    ),
                     stage_revision=(
                         snapshot.session.journey.stage_revision
                         if snapshot.session is not None
@@ -142,7 +150,11 @@ class AuthoritativeWorkflowContextProjector:
             }:
                 blockers.append(current_action)
             blockers.sort(key=_blocker_sort_key)
-            locale = snapshot.session.response_locale if snapshot.session is not None else response_locale
+            locale = (
+                snapshot.session.response_locale
+                if snapshot.session is not None
+                else response_locale
+            )
             return self._bounded_capsule(
                 workflow_id=workflow_id,
                 workflow_revision=workflow.revision,
@@ -184,9 +196,9 @@ class AuthoritativeWorkflowContextProjector:
 
     def _current_action(
         self,
-        snapshot,
+        snapshot: GuidanceAdvanceAuthoritySnapshotV1,
         *,
-        members,
+        members: dict[str, CanvasExecutionMembershipV2],
         documents: tuple[WorkflowDocumentReferenceV1, ...],
         workflow_id: str,
     ) -> WorkflowActionSummaryV1 | None:
@@ -297,17 +309,13 @@ class AuthoritativeWorkflowContextProjector:
         *,
         workflow_id: str,
         action_kind: str,
-        members,
+        members: dict[str, CanvasExecutionMembershipV2],
         documents: tuple[WorkflowDocumentReferenceV1, ...],
-    ):
+    ) -> CanvasExecutionMembershipV2 | None:
         if action_kind != "prepare_editing":
             return None
         plan = next(
-            (
-                item
-                for item in documents
-                if item.document_kind == "storyboard_production_plan"
-            ),
+            (item for item in documents if item.document_kind == "storyboard_production_plan"),
             None,
         )
         if plan is None:
@@ -379,8 +387,7 @@ class AuthoritativeWorkflowContextProjector:
                 "current_action": current_action,
                 "awaiting_action": (
                     current_action
-                    if current_action is not None
-                    and current_action.ownership_status == "awaiting"
+                    if current_action is not None and current_action.ownership_status == "awaiting"
                     else None
                 ),
                 "next_valid_action": None,

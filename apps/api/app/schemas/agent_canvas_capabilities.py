@@ -321,7 +321,11 @@ class ConversationQueryV1(_CapabilityModel):
         if len(self.anchor_aliases) != len(set(self.anchor_aliases)):
             raise ValueError("Conversation query anchor aliases must be unique.")
         if self.query_kind == "workflow_status":
-            if self.document_kind is not None or self.sequence_id is not None or self.anchor_aliases:
+            if (
+                self.document_kind is not None
+                or self.sequence_id is not None
+                or self.anchor_aliases
+            ):
                 raise ValueError("Workflow status query cannot carry a document selector.")
             return self
         if self.document_kind is None:
@@ -1096,7 +1100,7 @@ CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
 }
 
 
-from app.schemas.agent_operation_contexts import WorkflowStateCapsuleV1
+from app.schemas.agent_operation_contexts import WorkflowStateCapsuleV1  # noqa: E402
 
 
 TurnIntentContextV2.model_rebuild(

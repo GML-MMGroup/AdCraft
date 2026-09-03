@@ -38,11 +38,7 @@ class ConversationQueryDocumentResolver:
                 "The Workflow for the requested document was not found.",
             )
         reference = next(
-            (
-                item
-                for item in capsule.documents
-                if item.document_kind == query.document_kind
-            ),
+            (item for item in capsule.documents if item.document_kind == query.document_kind),
             None,
         )
         if reference is None:

@@ -53,7 +53,13 @@ class WorkflowStatusReplyRenderer:
         if capsule.next_valid_action is not None:
             label = capsule.next_valid_action.objective or capsule.next_valid_action.action_kind
             sections.append(
-                ("下一步：" if language == "zh-CN" else "下一步：" if language == "zh-TW" else "Next: ")
+                (
+                    "下一步："
+                    if language == "zh-CN"
+                    else "下一步："
+                    if language == "zh-TW"
+                    else "Next: "
+                )
                 + label
             )
         return " ".join(section for section in sections if section)
