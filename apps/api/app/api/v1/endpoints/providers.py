@@ -26,8 +26,8 @@ from app.schemas.provider_models import (
     ProviderListResponseV1,
     ModelDefaultsPatchRequestV1,
     ModelDefaultsResponseV1,
-    ProviderModelListResponseV1,
-    ProviderModelSummaryV1,
+    ProviderModelListResponseV2,
+    ProviderModelSummaryV2,
     ProviderModelSyncResponseV1,
 )
 from app.schemas.provider_settings import (
@@ -196,7 +196,7 @@ def sync_provider_models(
     )
 
 
-@router.get("/models", response_model=ProviderModelListResponseV1)
+@router.get("/models", response_model=ProviderModelListResponseV2)
 def list_models(
     provider: str | None = None,
     capability: str | None = None,
@@ -204,10 +204,10 @@ def list_models(
     purpose: str | None = None,
     include_unavailable: bool = False,
     service: ProviderModelCatalogService = Depends(get_provider_model_catalog_service),
-) -> ProviderModelListResponseV1:
-    return ProviderModelListResponseV1(
+) -> ProviderModelListResponseV2:
+    return ProviderModelListResponseV2(
         items=tuple(
-            ProviderModelSummaryV1(
+            ProviderModelSummaryV2(
                 model_ref=model.model_ref,
                 provider_id=model.provider_id,
                 provider_model_id=model.provider_model_id,
@@ -217,6 +217,7 @@ def list_models(
                 availability=model.availability,
                 unavailable_reason=model.unavailable_reason,
                 catalog_revision=model.catalog_revision,
+                **_adapter_response_fields(model.capability_metadata),
             )
             for model in service.list_models(
                 provider_id=provider,
@@ -227,6 +228,28 @@ def list_models(
             )
         )
     )
+
+
+def _adapter_response_fields(metadata: dict[str, object]) -> dict[str, object]:
+    profile = metadata.get("adapter_profile")
+    if not isinstance(profile, dict):
+        return {}
+    fields: dict[str, object] = {}
+    for key in (
+        "adapter_id",
+        "transport_kind",
+        "release_tier",
+        "conformance_status",
+        "accepted_input_modes",
+        "parameter_schema_id",
+        "reference_policy",
+    ):
+        if key in profile:
+            fields[key] = profile[key]
+    descriptors = profile.get("parameter_descriptors")
+    if isinstance(descriptors, list):
+        fields["parameter_descriptors"] = tuple(descriptors)
+    return fields
 
 
 @router.get("/model-defaults", response_model=ModelDefaultsResponseV1)

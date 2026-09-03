@@ -278,6 +278,12 @@ class ProviderModelListResponseV1(BaseModel):
     items: tuple[ProviderModelSummaryV1, ...]
 
 
+class ProviderModelListResponseV2(BaseModel):
+    """Additive model catalog response with trusted adapter metadata."""
+
+    items: tuple[ProviderModelSummaryV2, ...]
+
+
 class ModelDefaultsResponseV1(BaseModel):
     defaults: dict[ModelDefaultKeyV1, str]
     modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1]
