@@ -134,10 +134,10 @@ export class PiModelAdapter implements AgentModelAdapter {
     }
     const thinkingFormat = thinkingFormatForCredential(credential);
     const model: Model<"openai-completions"> = {
-      id: credential.model_id,
-      name: credential.model_id,
+      id: modelIdForCredential(credential),
+      name: modelIdForCredential(credential),
       api: "openai-completions",
-      provider: credential.provider,
+      provider: providerForCredential(credential),
       baseUrl: credential.base_url,
       reasoning: credential.execution_policy.thinking_format !== "none",
       input: ["text"],
@@ -245,6 +245,18 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
   }
 
+}
+
+export function modelIdForCredential(credential: AgentCredentialSnapshot): string {
+  if (credential.transport_kind === "litellm_chat") {
+    if (!credential.model_alias) throw new Error("agent_protocol_mismatch");
+    return credential.model_alias;
+  }
+  return credential.model_id;
+}
+
+export function providerForCredential(credential: AgentCredentialSnapshot): string {
+  return credential.transport_kind === "litellm_chat" ? "litellm" : credential.provider;
 }
 
 export function isNonStreamingStructuredTransport(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
@@ -44,8 +45,24 @@ class LiteLLMGatewayProfileV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     gateway_id: str = Field(min_length=1, max_length=120)
+    endpoint: str = Field(min_length=1, max_length=320)
     model_alias: str = Field(min_length=1, max_length=160)
     projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_loopback_endpoint(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("LiteLLM gateway endpoint must be an approved loopback URL.")
+        return value.rstrip("/")
 
 
 class LiteLLMRouteV1(BaseModel):

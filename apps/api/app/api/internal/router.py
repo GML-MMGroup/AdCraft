@@ -110,6 +110,13 @@ def get_agent_runtime_config(
         "supports_streaming": snapshot.supports_streaming,
         "supports_streamed_tool_calls": snapshot.supports_streamed_tool_calls,
         "supports_reasoning_controls": snapshot.supports_reasoning_controls,
+        "adapter_id": snapshot.adapter_id,
+        "transport_kind": snapshot.transport_kind,
+        "capability_revision": snapshot.capability_revision,
+        "adapter_revision": snapshot.adapter_revision,
+        "gateway_id": snapshot.gateway_id,
+        "model_alias": snapshot.model_alias,
+        "projection_digest": snapshot.projection_digest,
         "execution_policy": snapshot.execution_policy.model_dump(mode="json"),
         "api_key": snapshot.api_key,
     }

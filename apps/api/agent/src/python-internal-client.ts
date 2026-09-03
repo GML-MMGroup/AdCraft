@@ -17,6 +17,13 @@ export interface AgentCredentialSnapshot {
   readonly supports_streaming: boolean;
   readonly supports_streamed_tool_calls: boolean;
   readonly supports_reasoning_controls: boolean;
+  readonly adapter_id?: string;
+  readonly transport_kind?: "pi_native_openai_compatible" | "litellm_chat";
+  readonly capability_revision?: string;
+  readonly adapter_revision?: string;
+  readonly gateway_id?: string | null;
+  readonly model_alias?: string | null;
+  readonly projection_digest?: string | null;
   readonly execution_policy: AgentModelExecutionPolicyV1;
   readonly api_key: string;
 }
@@ -77,6 +84,7 @@ export class PythonInternalClient {
       typeof payload.supports_streaming !== "boolean" ||
       typeof payload.supports_streamed_tool_calls !== "boolean" ||
       typeof payload.supports_reasoning_controls !== "boolean" ||
+      !isTransportIdentity(payload) ||
       !isExecutionPolicy(
         payload.execution_policy,
         operation,
@@ -111,6 +119,39 @@ export class PythonInternalClient {
     }
     return payload as unknown as AgentToolResult;
   }
+}
+
+function isTransportIdentity(payload: Record<string, unknown>): boolean {
+  if (
+    payload.transport_kind === undefined &&
+    payload.adapter_id === undefined &&
+    payload.capability_revision === undefined &&
+    payload.adapter_revision === undefined
+  ) {
+    return true;
+  }
+  if (
+    typeof payload.adapter_id !== "string" ||
+    typeof payload.capability_revision !== "string" ||
+    typeof payload.adapter_revision !== "string" ||
+    (payload.transport_kind !== "pi_native_openai_compatible" &&
+      payload.transport_kind !== "litellm_chat")
+  ) {
+    return false;
+  }
+  if (payload.transport_kind === "litellm_chat") {
+    return (
+      typeof payload.gateway_id === "string" &&
+      typeof payload.model_alias === "string" &&
+      typeof payload.projection_digest === "string" &&
+      /^sha256:[a-f0-9]{64}$/.test(payload.projection_digest)
+    );
+  }
+  return (
+    (payload.gateway_id === null || payload.gateway_id === undefined) &&
+    (payload.model_alias === null || payload.model_alias === undefined) &&
+    (payload.projection_digest === null || payload.projection_digest === undefined)
+  );
 }
 
 const OPERATION_CLASSES = new Set([

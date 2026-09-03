@@ -113,14 +113,20 @@ class V2AgentCredentialBroker:
                 "The selected provider text credential is not configured.",
             ) from error
         api_key = str(getattr(self._settings, binding.settings_field, "") or "")
-        base_url = str(getattr(self._settings, binding.endpoint_field, "") or "")
-        if not api_key or not base_url:
+        provider_base_url = str(getattr(self._settings, binding.endpoint_field, "") or "")
+        if not api_key or not provider_base_url:
             raise AgentCredentialError(
                 "provider_credentials_missing",
                 "The selected provider text credential is not configured.",
             )
         metadata = record.capability_metadata
         adapter_profile = _agent_adapter_profile(record)
+        base_url = (
+            adapter_profile.gateway_profile.endpoint
+            if adapter_profile.transport_kind == "litellm_chat"
+            and adapter_profile.gateway_profile is not None
+            else provider_base_url
+        )
         try:
             execution_policy = resolve_agent_model_execution_policy(
                 model_ref=record.model_ref,
