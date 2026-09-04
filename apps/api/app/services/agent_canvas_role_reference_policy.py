@@ -414,12 +414,22 @@ class AgentCanvasRoleReferencePolicyService:
             return False
         omission = omissions[0]
         parent_snapshot = node.metadata.get("derived_parent_snapshot")
+        expected_source_role = (
+            "product"
+            if node.creative_role == "product"
+            and node.structured_content.get("asset_kind") == "multi_view"
+            else "character"
+            if node.creative_role == "character"
+            and node.structured_content.get("character_asset_kind") == "turnaround"
+            else None
+        )
         return bool(
-            omission.source_node_id
+            expected_source_role
+            and omission.source_node_id
             and omission.binding_id == prepared.get("binding_id")
             and omission.source_node_id == prepared.get("source_node_id")
             and prepared.get("source_node_revision") is not None
-            and prepared.get("source_role") in {"product", "character"}
+            and prepared.get("source_role") == expected_source_role
             and prepared.get("asset_id") is None
             and prepared.get("asset_version_id") is None
             and prepared.get("display_order") == 0

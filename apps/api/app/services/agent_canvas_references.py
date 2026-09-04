@@ -69,6 +69,12 @@ class AdReferenceBundleResolver:
             else None
         )
         omitted_by_binding = {item.binding_id: item for item in omitted_inputs}
+        if len(omitted_by_binding) != len(omitted_inputs):
+            raise _error(
+                "role_reference_bundle_invalid",
+                "Frozen reference omissions contain duplicate Binding identities.",
+            )
+        consumed_omission_ids: set[str] = set()
         omitted_bindings: list[tuple[CanvasBindingV2, CanvasNodeV2]] = []
         references: list[ResolvedAdReferenceV2] = []
         binding_kinds: dict[str, list[ResolvedAdReferenceV2]] = {}
@@ -96,16 +102,14 @@ class AdReferenceBundleResolver:
                     else None
                 )
                 if omission is not None:
-                    if (
-                        omission.reason_code != "omitted_no_output"
-                        or source is None
-                        or omission.source_node_id != source.node_id
-                    ):
+                    if source is None or omission.source_node_id != source.node_id:
                         raise _error(
                             "role_reference_bundle_invalid",
                             "Frozen reference omission does not match its Binding authority.",
                         )
-                    omitted_bindings.append((binding, source))
+                    consumed_omission_ids.add(binding.binding_id)
+                    if omission.reason_code == "omitted_no_output":
+                        omitted_bindings.append((binding, source))
                 continue
             if frozen_input is not None:
                 asset_id = frozen_input.asset_id
@@ -221,6 +225,11 @@ class AdReferenceBundleResolver:
             )
             references.append(resolved)
             binding_kinds.setdefault(binding.binding_kind, []).append(resolved)
+        if consumed_omission_ids != set(omitted_by_binding):
+            raise _error(
+                "role_reference_bundle_invalid",
+                "Frozen reference omission is not owned by the target Node.",
+            )
         if len(references) > self._max_references:
             raise _error(
                 "reference_cardinality_exceeded",
