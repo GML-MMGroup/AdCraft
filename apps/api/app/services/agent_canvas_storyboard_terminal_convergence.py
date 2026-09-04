@@ -11,6 +11,10 @@ from app.schemas.agent_canvas_storyboard_terminal_convergence import (
     StoryboardTerminalConvergenceCommandV1,
     StoryboardTerminalConvergenceOutcomeV1,
 )
+from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationOutcomeV1,
+    MaterializationPlanV1,
+)
 
 
 class AgentCanvasStoryboardTerminalConvergenceService:
@@ -25,3 +29,14 @@ class AgentCanvasStoryboardTerminalConvergenceService:
     ) -> StoryboardTerminalConvergenceOutcomeV1:
         return self._repository.reconcile(command)
 
+    def reconcile_commit(
+        self,
+        plan: MaterializationPlanV1,
+        outcome: MaterializationOutcomeV1,
+    ) -> StoryboardTerminalConvergenceOutcomeV1 | None:
+        command = self._repository.command_for_commit(
+            plan,
+            outcome,
+            terminal_cause="commit",
+        )
+        return self.reconcile(command) if command is not None else None

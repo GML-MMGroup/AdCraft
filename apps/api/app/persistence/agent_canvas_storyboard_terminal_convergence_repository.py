@@ -23,7 +23,10 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
     WorkflowEventRow,
 )
-from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
+from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationOutcomeV1,
+    MaterializationPlanV1,
+)
 from app.schemas.agent_canvas_storyboard_terminal_convergence import (
     StoryboardTerminalConvergenceCommandV1,
     StoryboardTerminalConvergenceOutcomeV1,
@@ -37,6 +40,75 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
     def __init__(self, database: V2Database, events: EventRepository) -> None:
         self._database = database
         self._events = events
+
+    def command_for_commit(
+        self,
+        plan: MaterializationPlanV1,
+        outcome: MaterializationOutcomeV1,
+        *,
+        terminal_cause: str,
+    ) -> StoryboardTerminalConvergenceCommandV1 | None:
+        """Build an exact convergence command from the committed state."""
+
+        with self._database.engine.connect() as connection:
+            proposal = connection.execute(
+                select(AgentCanvasConceptProposalRow).where(
+                    AgentCanvasConceptProposalRow.proposal_id == plan.proposal_id,
+                    AgentCanvasConceptProposalRow.workflow_id == plan.workflow_id,
+                )
+            ).mappings().one_or_none()
+            if proposal is None or str(proposal["proposal_kind"]) != "storyboard":
+                return None
+            turn = connection.execute(
+                select(AgentCanvasChatTurnRow).where(
+                    AgentCanvasChatTurnRow.turn_id == plan.action_turn_id
+                )
+            ).mappings().one_or_none()
+            session = connection.execute(
+                select(AgentCanvasGuidanceSessionRow).where(
+                    AgentCanvasGuidanceSessionRow.workflow_id == plan.workflow_id
+                )
+            ).mappings().one_or_none()
+            workflow_revision = connection.execute(
+                select(AgentCanvasWorkflowRow.revision).where(
+                    AgentCanvasWorkflowRow.workflow_id == plan.workflow_id
+                )
+            ).scalar_one_or_none()
+            if turn is None or session is None or workflow_revision is None:
+                raise _stale("storyboard_terminal_authority_stale")
+            guided_submission = json.loads(str(turn["request_json"])).get(
+                "guided_submission"
+            )
+            if not isinstance(guided_submission, dict):
+                raise _stale("storyboard_terminal_interaction_stale")
+            interaction_id = str(guided_submission.get("interaction_id") or "")
+            interaction = connection.execute(
+                select(AgentCanvasGuidedInteractionRow).where(
+                    AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                    AgentCanvasGuidedInteractionRow.workflow_id == plan.workflow_id,
+                )
+            ).mappings().one_or_none()
+            if interaction is None:
+                raise _stale("storyboard_terminal_interaction_stale")
+            content = json.loads(str(interaction["content_json"]))
+        if outcome.receipt_id is None:
+            raise _conflict("storyboard_materialization_receipt_conflict")
+        return StoryboardTerminalConvergenceCommandV1(
+            workflow_id=plan.workflow_id,
+            stage=content["stage"],
+            stage_revision=int(content["stage_revision"]),
+            proposal_id=plan.proposal_id,
+            interaction_id=interaction_id,
+            parent_turn_id=plan.action_turn_id,
+            materialization_id=plan.materialization_id,
+            materialization_receipt_id=outcome.receipt_id,
+            materialization_digest=plan.payload_digest,
+            expected_workflow_revision=int(workflow_revision),
+            expected_proposal_revision=int(proposal["proposal_revision"]),
+            expected_interaction_revision=int(interaction["revision"]),
+            expected_session_revision=int(session["revision"]),
+            terminal_cause=terminal_cause,
+        )
 
     def reconcile(
         self,
@@ -349,7 +421,7 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
             resulting_interaction_revision=command.expected_interaction_revision,
             resulting_session_revision=command.expected_session_revision,
             changed=recorded_changed,
-            replayed=event_preexisted,
+            replayed=event_preexisted and not changed,
         )
 
 

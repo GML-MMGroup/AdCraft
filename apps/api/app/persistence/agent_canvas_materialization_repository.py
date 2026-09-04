@@ -175,6 +175,14 @@ class AgentCanvasMaterializationRepository:
         self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
         self._fault_injector = fault_injector
 
+    @property
+    def database(self) -> V2Database:
+        return self._database
+
+    @property
+    def events(self) -> EventRepository:
+        return self._events
+
     def storyboard_identity_exists(self, identity_digest: str) -> bool:
         """Return whether one canonical Storyboard selection claim is persisted.
 
