@@ -14,6 +14,7 @@ from app.persistence.agent_canvas_result_publication_repository import (
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas_runtime import NodeExecutionLeaseV2
 from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitCommandV2,
     CanvasResultPublicationIntentV1,
@@ -82,6 +83,7 @@ class AgentCanvasResultPublicationRecoveryService:
         *,
         now: datetime,
     ) -> RecoveryDisposition:
+        lease = None
         member = next(
             (
                 item
@@ -187,7 +189,7 @@ class AgentCanvasResultPublicationRecoveryService:
                 "video_native_audio_missing",
             }:
                 return self._abandon(intent, error.code, now=now)
-            return self._defer(intent, error.code, now=now)
+            return self._defer(intent, error.code, now=now, lease=lease)
 
     def _defer(
         self,
@@ -195,12 +197,14 @@ class AgentCanvasResultPublicationRecoveryService:
         error_code: str,
         *,
         now: datetime,
+        lease: NodeExecutionLeaseV2 | None = None,
     ) -> RecoveryDisposition:
         if intent.attempt_count >= 15 or now >= intent.recovery_deadline:
             return self._abandon(
                 intent,
                 "node_result_publication_recovery_exhausted",
                 now=now,
+                lease=lease,
             )
         delay = min(2 ** min(intent.attempt_count, 5), 30)
         next_attempt = min(now + timedelta(seconds=delay), intent.recovery_deadline)
@@ -219,14 +223,16 @@ class AgentCanvasResultPublicationRecoveryService:
         error_code: str,
         *,
         now: datetime,
+        lease: NodeExecutionLeaseV2 | None = None,
     ) -> RecoveryDisposition:
-        lease = self._runtime.claim_lease(
-            intent.execution_id,
-            intent.node_id,
-            owner_id=self._owner_id,
-            now=now,
-            ttl=timedelta(seconds=60),
-        )
+        if lease is None:
+            lease = self._runtime.claim_lease(
+                intent.execution_id,
+                intent.node_id,
+                owner_id=self._owner_id,
+                now=now,
+                ttl=timedelta(seconds=60),
+            )
         if lease is None:
             if now < intent.recovery_deadline and intent.attempt_count < 15:
                 return self._defer(intent, "execution_lease_unavailable", now=now)
