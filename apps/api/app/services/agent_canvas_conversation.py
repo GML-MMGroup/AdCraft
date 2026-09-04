@@ -51,17 +51,22 @@ from app.schemas.agent_canvas_conversation import (
     ProposalActionRequestV2,
 )
 from app.schemas.agent_canvas_capabilities import (
+    AgentCapabilitiesOrdinaryIntentV1,
+    AgentIdentityOrdinaryIntentV1,
     CAPABILITY_RESULT_CONTRACTS,
     CapabilityCommandEnvelopeV2,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
     CompactTurnIntentDecisionV3,
+    DocumentExplanationOrdinaryIntentV1,
+    FreeformReplyOrdinaryIntentV1,
     GuidanceSourceActionV1,
     NextActionCommandV1,
     NextActionContextV1,
     PlannedCapabilityReferenceV1,
     TurnIntentContextV2,
     TurnIntentDecisionV2,
+    WorkflowStatusOrdinaryIntentV1,
     expand_compact_turn_intent,
 )
 from app.schemas.agent_canvas_decision_bundles import (
@@ -178,6 +183,9 @@ from app.services.authoritative_workflow_context import (
     AuthoritativeWorkflowContextProjector,
 )
 from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.agent_product_information_reply import (
+    AgentProductInformationReplyRenderer,
+)
 from app.services.conversation_query_documents import ConversationQueryDocumentResolver
 from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
@@ -314,7 +322,12 @@ class DeterministicVideoAgentGateway:
         return TurnIntentDecisionV2(
             mode="ordinary_conversation",
             objective=context.user_input,
-            assistant_message=f"Your request is recorded for this canvas: {context.user_input}",
+            ordinary_intent={
+                "intent_kind": "freeform_reply",
+                "assistant_message": (
+                    f"Your request is recorded for this canvas: {context.user_input}"
+                ),
+            },
         )
 
     def choose_next_action(
@@ -1443,6 +1456,7 @@ class AgentConversationService:
             ),
         )
         self._workflow_status_reply = WorkflowStatusReplyRenderer()
+        self._product_information_reply = AgentProductInformationReplyRenderer()
 
     def submit_message(
         self,
@@ -1780,6 +1794,13 @@ class AgentConversationService:
                 response_locale=intent.response_locale,
             )
         if intent.mode == "ordinary_conversation":
+            ordinary_intent = intent.ordinary_intent
+            if ordinary_intent is None:
+                raise V2PersistenceError(
+                    "turn_intent_contract_invalid",
+                    "Ordinary conversation requires one validated intent subtype.",
+                    stage="agent_conversation_service",
+                )
             reply = self._answer_workflow_conversation(
                 turn,
                 intent,
@@ -1791,6 +1812,7 @@ class AgentConversationService:
                 reply.message,
                 assistant_metadata={
                     "answer_kind": reply.answer_kind,
+                    "ordinary_intent_kind": ordinary_intent.intent_kind,
                     "state_reference": (
                         reply.state_reference.model_dump(mode="json")
                         if reply.state_reference is not None
@@ -2481,15 +2503,29 @@ class AgentConversationService:
         *,
         workflow_context: WorkflowStateCapsuleV1,
     ) -> WorkflowConversationReply:
+        ordinary_intent = intent.ordinary_intent
+        if ordinary_intent is None:
+            raise V2PersistenceError(
+                "turn_intent_contract_invalid",
+                "Ordinary conversation requires one validated intent subtype.",
+                stage="workflow_conversation",
+            )
+        route = ordinary_intent.root
         context, state_reference = self._conversation_answer_context(
             turn,
             response_locale=intent.response_locale,
             workflow_context=workflow_context,
         )
-        if (
-            intent.conversation_query is not None
-            and intent.conversation_query.query_kind == "workflow_status"
-        ):
+        if isinstance(route, (AgentIdentityOrdinaryIntentV1, AgentCapabilitiesOrdinaryIntentV1)):
+            return WorkflowConversationReply(
+                message=self._product_information_reply.render(
+                    route.intent_kind,
+                    response_locale=intent.response_locale,
+                ),
+                answer_kind="general",
+                state_reference=state_reference,
+            )
+        if isinstance(route, WorkflowStatusOrdinaryIntentV1):
             current_context = self._workflow_context.project(
                 turn.workflow_id,
                 conversation_id=turn.conversation_id,
@@ -2510,10 +2546,7 @@ class AgentConversationService:
                 state_reference=state_reference,
             )
         document_excerpt = None
-        if (
-            intent.conversation_query is not None
-            and intent.conversation_query.query_kind == "document_explanation"
-        ):
+        if isinstance(route, DocumentExplanationOrdinaryIntentV1):
             current_context = self._workflow_context.project(
                 turn.workflow_id,
                 conversation_id=turn.conversation_id,
@@ -2521,7 +2554,7 @@ class AgentConversationService:
             )
             if current_context.projection_digest != workflow_context.projection_digest:
                 workflow_context = current_context
-            if intent.conversation_query.requested_document_kinds:
+            if route.requested_document_kinds:
                 _, state_reference = self._conversation_answer_context(
                     turn,
                     response_locale=intent.response_locale,
@@ -2530,20 +2563,28 @@ class AgentConversationService:
                 return WorkflowConversationReply(
                     message=self._workflow_status_reply.render_document_selection(
                         workflow_context,
-                        intent.conversation_query.requested_document_kinds,
+                        route.requested_document_kinds,
                     ),
                     answer_kind="clarification",
                     state_reference=state_reference,
                 )
             document_excerpt = self._conversation_documents.resolve(
                 workflow_context,
-                intent.conversation_query,
+                route.to_legacy_query(),
             )
             context, state_reference = self._conversation_answer_context(
                 turn,
                 response_locale=intent.response_locale,
                 workflow_context=workflow_context,
                 document_excerpt=document_excerpt,
+            )
+        if not isinstance(
+            route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1)
+        ):
+            raise V2PersistenceError(
+                "turn_intent_contract_invalid",
+                "Ordinary conversation intent subtype is not supported.",
+                stage="workflow_conversation",
             )
         reply = self._gateway.answer_workflow_conversation(
             context,
