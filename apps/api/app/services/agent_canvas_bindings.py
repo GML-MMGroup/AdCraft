@@ -510,25 +510,18 @@ class AgentCanvasBindingService:
             source_structured_content: dict[str, object] = {}
             if isinstance(binding.source, CanvasBindingSourceNodeV2):
                 source = self._workflows.get_node(workflow_id, binding.source.node_id)
-                if source.status != "ready" or source.output_asset_id is None:
-                    if binding.required:
-                        raise V2PersistenceError(
-                            "binding_source_not_ready",
-                            "A required media binding source is not ready.",
-                            stage="agent_canvas_binding_service",
-                        )
+                if source.output_asset_id is None or source.output_asset_version_id is None:
                     optional_omissions.append(
                         {
                             "binding_id": binding.binding_id,
                             "source_node_id": source.node_id,
-                            "reason": "binding_source_not_ready",
+                            "reason": "omitted_no_output",
                         }
                     )
                     continue
-                source_version_id = source.metadata.get("source_version_id")
                 asset = self.resolve_asset_version(
                     source.output_asset_id,
-                    str(source_version_id) if isinstance(source_version_id, str) else None,
+                    source.output_asset_version_id,
                 )
                 source_kind = "node_output"
                 source_node_id = source.node_id
@@ -710,25 +703,19 @@ class AgentCanvasBindingService:
             source_structured_content: dict[str, object] = {}
             if binding.source_kind == "node_output":
                 source = self._workflows.get_node(workflow_id, binding.source_id)
-                if source.status != "ready" or source.output_asset_id is None:
-                    if binding.required:
-                        raise V2PersistenceError(
-                            "binding_source_not_ready",
-                            "A required media binding source is not ready.",
-                            stage="agent_canvas_binding_service",
-                        )
+                version_id = binding.source_asset_version_id
+                if source.output_asset_id is None or version_id is None:
                     optional_omissions.append(
                         {
                             "binding_id": binding.binding_id,
                             "source_node_id": source.node_id,
-                            "reason": "binding_source_not_ready",
+                            "reason": "omitted_no_output",
                         }
                     )
                     continue
-                source_version_id = source.metadata.get("source_version_id")
                 asset = self.resolve_asset_version(
                     source.output_asset_id,
-                    str(source_version_id) if isinstance(source_version_id, str) else None,
+                    version_id,
                 )
                 source_node_id = source.node_id
                 source_semantic_role = source.semantic_role
