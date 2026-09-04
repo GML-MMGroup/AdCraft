@@ -129,6 +129,99 @@ class PreparedNodeResultV2(_AuthorityModel):
     post_ready_effects: tuple[PreparedPostReadyEffectV2, ...] = ()
 
 
+class CanvasResultPublicationIntentV1(_AuthorityModel):
+    """Durable handoff between verified local media and terminal publication."""
+
+    intent_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    execution_id: str = Field(min_length=1, max_length=160)
+    member_id: str = Field(min_length=1, max_length=160)
+    node_id: str = Field(min_length=1, max_length=160)
+    logical_result_key: str = Field(min_length=1, max_length=320)
+    payload_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_snapshot_id: str = Field(min_length=1, max_length=160)
+    source_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_storage_key: str = Field(min_length=1, max_length=1024)
+    expected_object_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    planned_result: PreparedNodeResultV2
+    prepared_result: PreparedNodeResultV2 | None = None
+    state: Literal["preparing", "prepared", "committed", "abandoned"]
+    attempt_count: int = Field(ge=0, le=16)
+    next_attempt_at: datetime
+    recovery_deadline: datetime
+    last_error_code: str | None = Field(default=None, min_length=1, max_length=160)
+    committed_receipt_id: str | None = Field(default=None, min_length=1, max_length=160)
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_publication_identity(self) -> "CanvasResultPublicationIntentV1":
+        if self.expected_storage_key.startswith(("/", "file:", "data:")):
+            raise ValueError("Publication storage key must be a managed relative key.")
+        if ".." in self.expected_storage_key.split("/"):
+            raise ValueError("Publication storage key must not escape managed storage.")
+        if self.recovery_deadline < self.created_at:
+            raise ValueError("Publication recovery deadline must follow intent creation.")
+        if self.next_attempt_at > self.recovery_deadline:
+            raise ValueError("Publication retry cannot be scheduled after its deadline.")
+        self._validate_result(self.planned_result, require_measured=False)
+        if self.state in {"prepared", "committed"} and self.prepared_result is None:
+            raise ValueError("Prepared publication state requires a prepared result.")
+        if self.state == "preparing" and self.prepared_result is not None:
+            raise ValueError("Preparing publication state cannot claim a prepared result.")
+        if self.prepared_result is not None:
+            self._validate_result(self.prepared_result, require_measured=True)
+        if self.state == "committed" and self.committed_receipt_id is None:
+            raise ValueError("Committed publication state requires a receipt identity.")
+        if self.state != "committed" and self.committed_receipt_id is not None:
+            raise ValueError("Only committed publication state may identify a receipt.")
+        _reject_unsafe_publication_values(self.planned_result.model_dump(mode="python"))
+        if self.prepared_result is not None:
+            _reject_unsafe_publication_values(self.prepared_result.model_dump(mode="python"))
+        return self
+
+    def _validate_result(
+        self,
+        result: PreparedNodeResultV2,
+        *,
+        require_measured: bool,
+    ) -> None:
+        if (
+            result.logical_result_key != self.logical_result_key
+            or result.payload_digest != self.payload_digest
+            or result.prepared_object is None
+            or result.prepared_object.storage_key != self.expected_storage_key
+            or result.prepared_object.sha256 != self.expected_object_sha256
+        ):
+            raise ValueError("Publication result identity must match its durable intent.")
+        if require_measured and not result.prepared_object.media_facts:
+            raise ValueError("Prepared publication result requires measured media facts.")
+
+
+def _reject_unsafe_publication_values(value: object, *, key: str | None = None) -> None:
+    sensitive_keys = {
+        "api_key",
+        "authorization",
+        "credential",
+        "credentials",
+        "password",
+        "secret",
+        "token",
+    }
+    if key is not None and key.lower() in sensitive_keys:
+        raise ValueError("Publication intent cannot persist credentials or secrets.")
+    if isinstance(value, dict):
+        for nested_key, nested_value in value.items():
+            _reject_unsafe_publication_values(nested_value, key=str(nested_key))
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _reject_unsafe_publication_values(item)
+        return
+    if isinstance(value, str) and value.startswith(("/", "file:", "data:")):
+        raise ValueError("Publication intent cannot persist local paths or raw data URLs.")
+
+
 class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     execution_id: str = Field(min_length=1, max_length=160)
