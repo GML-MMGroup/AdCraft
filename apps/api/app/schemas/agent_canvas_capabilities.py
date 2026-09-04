@@ -416,7 +416,9 @@ class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV
     """One mutually exclusive ordinary-conversation route."""
 
     @property
-    def intent_kind(self) -> Literal[
+    def intent_kind(
+        self,
+    ) -> Literal[
         "freeform_reply",
         "agent_identity",
         "agent_capabilities",
@@ -460,6 +462,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
             "a language, return that language rather than inheriting und."
         ),
     )
+
     @model_validator(mode="after")
     def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
         if self.mode != "ordinary_conversation":
@@ -497,6 +500,7 @@ class TurnIntentDecisionV2(_CapabilityModel):
     ordinary_intent: OrdinaryConversationIntentV1 | None = None
     requirement_patch: RequirementPatchV1 | None = None
     response_locale: BCP47Tag = "und"
+
     @model_validator(mode="after")
     def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV2":
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
@@ -510,7 +514,11 @@ class TurnIntentDecisionV2(_CapabilityModel):
             raise ValueError("ordinary_conversation requires exactly one ordinary_intent.")
         if self.assistant_message is not None:
             raise ValueError("ordinary assistant_message belongs only inside freeform_reply.")
-        if self.requested_capability or self.explicit_elements or self.requirement_patch is not None:
+        if (
+            self.requested_capability
+            or self.explicit_elements
+            or self.requirement_patch is not None
+        ):
             raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
         return self
 
