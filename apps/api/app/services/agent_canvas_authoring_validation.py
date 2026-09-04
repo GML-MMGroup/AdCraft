@@ -33,22 +33,6 @@ def validate_node_patch(
     current: Mapping[str, object],
     changes: Mapping[str, object],
 ) -> str:
-    immutable_fields = {
-        "generation_prompt",
-        "model_selection_mode",
-        "model_ref",
-        "parameters",
-        "structured_content",
-    }
-    if status == "ready" and node_type in {"image", "video", "audio", "editing"}:
-        if any(
-            field in changes and changes[field] != current.get(field) for field in immutable_fields
-        ):
-            raise V2PersistenceError(
-                "ready_node_immutable",
-                "Create a sibling variation to change generated media.",
-                stage="agent_canvas_authoring_validation",
-            )
     if node_type not in {"text", "script"}:
         return status
     content = changes.get("structured_content", current.get("structured_content", {}))
@@ -56,12 +40,7 @@ def validate_node_patch(
 
 
 def validate_ready_node_input_history(*, status: str, node_type: str) -> None:
-    if status == "ready" and node_type in {"image", "video", "audio"}:
-        raise V2PersistenceError(
-            "ready_node_inputs_immutable",
-            "Create a sibling variation to change generated media inputs.",
-            stage="agent_canvas_authoring_validation",
-        )
+    """Compatibility no-op while Binding authoring migrates to future-run inputs."""
 
 
 def validate_node_binding(
