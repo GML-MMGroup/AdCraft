@@ -617,6 +617,23 @@ class AgentCanvasBindingService:
             )
         return asset
 
+    def resolve_bound_asset_version(
+        self,
+        workflow_id: str,
+        asset_id: str,
+        version_id: str,
+    ) -> ProjectAssetSummaryV2:
+        """Resolve one exact Binding asset through canonical Workflow authority."""
+
+        asset = self._resolve_required_asset_version(asset_id, version_id)
+        if asset.workflow_id is not None and asset.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "binding_source_workflow_mismatch",
+                "Binding source asset belongs to another Workflow.",
+                stage="agent_canvas_binding_service",
+            )
+        return asset
+
     def _resolve_direct_asset(
         self,
         source: CanvasBindingSourceImageAssetV2,
