@@ -1668,6 +1668,7 @@
           "enum": [
             "json_object",
             "non_streaming_json_object",
+            "non_streaming_json_schema",
             "non_streaming_tool_call",
             "streamed_tool_call",
             "streaming_json_object"
@@ -1700,6 +1701,7 @@
         "thinking_format": {
           "enum": [
             "none",
+            "openai",
             "qwen",
             "zai"
           ],
@@ -4307,6 +4309,7 @@
           "enum": [
             "json_object",
             "non_streaming_json_object",
+            "non_streaming_json_schema",
             "non_streaming_tool_call",
             "streamed_tool_call",
             "streaming_json_object"
@@ -4340,6 +4343,7 @@
         "thinking_format": {
           "enum": [
             "none",
+            "openai",
             "qwen",
             "zai"
           ],
