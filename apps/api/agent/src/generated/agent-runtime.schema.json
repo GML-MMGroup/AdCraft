@@ -1559,6 +1559,11 @@
           "title": "Enable Thinking",
           "type": "boolean"
         },
+        "json_object_fallback_certified": {
+          "default": false,
+          "title": "Json Object Fallback Certified",
+          "type": "boolean"
+        },
         "max_model_submissions": {
           "enum": [
             1,
@@ -4029,12 +4034,20 @@
       "properties": {
         "attempt_stage": {
           "enum": [
+            "capability_fallback",
             "initial",
             "structured_repair",
             "transport_retry"
           ],
           "title": "Attempt Stage",
           "type": "string"
+        },
+        "capability_fallback_count": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Capability Fallback Count",
+          "type": "integer"
         },
         "deadline_seconds": {
           "maximum": 900,
