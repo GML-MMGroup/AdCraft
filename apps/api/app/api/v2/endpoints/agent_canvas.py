@@ -285,10 +285,16 @@ from app.persistence.agent_canvas_post_ready_checkpoint_repository import (
 from app.persistence.agent_canvas_result_commit_repository import (
     AgentCanvasResultCommitRepository,
 )
+from app.persistence.agent_canvas_result_publication_repository import (
+    AgentCanvasResultPublicationIntentRepository,
+)
 from app.services.agent_canvas_execution_result_commit import (
     AgentCanvasExecutionResultCommitService,
 )
 from app.services.agent_canvas_output_preparation import AgentCanvasOutputPreparationService
+from app.services.agent_canvas_result_publication_recovery import (
+    AgentCanvasResultPublicationRecoveryService,
+)
 from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEffectWorker
 from app.services.agent_canvas_post_ready_checkpoint import (
     AgentCanvasPostReadyCheckpointService,
@@ -990,13 +996,29 @@ def create_agent_canvas_runtime(
             )
         ),
     )
-    output_preparer = AgentCanvasOutputPreparationService(asset_service)
+    publication_intents = AgentCanvasResultPublicationIntentRepository(
+        database,
+        event_repository,
+    )
+    output_preparer = AgentCanvasOutputPreparationService(
+        asset_service,
+        publication_intents=publication_intents,
+    )
     result_commit_repository = AgentCanvasResultCommitRepository(
         database,
         asset_repository,
         event_repository,
+        publication_intents=publication_intents,
     )
     result_committer = AgentCanvasExecutionResultCommitService(result_commit_repository)
+    publication_recovery = AgentCanvasResultPublicationRecoveryService(
+        publication_intents,
+        asset_service,
+        runtime_repository,
+        workflow_repository,
+        result_committer,
+        owner_id=f"agent-canvas-result-publication:{uuid4().hex}",
+    )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -1043,6 +1065,7 @@ def create_agent_canvas_runtime(
         total_limit=settings.v2_max_parallel_generation_jobs,
         output_preparer=output_preparer,
         result_committer=result_committer,
+        publication_recovery=publication_recovery,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
         prompt_preparation=prompt_preparation_service,
     )
@@ -1162,7 +1185,7 @@ def create_agent_canvas_runtime(
         on_batch_reconciled=lambda execution_ids: [
             scheduler.resume(execution_id) for execution_id in execution_ids
         ],
-        output_preparer=output_preparer,
+        output_preparer=AgentCanvasOutputPreparationService(asset_service),
         result_committer=result_committer,
     )
     editing_commit_service = AgentCanvasEditingExportCommitService(
