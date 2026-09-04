@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.core.config import Settings
 from app.persistence.provider_model_repository import ProviderModelRecord
 from app.schemas.provider_models import ProviderAdapterProfileV1
 
@@ -90,6 +91,8 @@ class ProviderAdapterRegistry:
 
 def build_trusted_provider_adapter_registry(
     models: Iterable[ProviderModelRecord],
+    *,
+    settings: Settings | None = None,
 ) -> ProviderAdapterRegistry:
     """Build the executable adapter registry from the current catalog snapshot."""
 
@@ -104,7 +107,11 @@ def build_trusted_provider_adapter_registry(
             profile = ProviderAdapterProfileV1.model_validate(raw_profile)
         except Exception as error:
             raise ValueError("provider_adapter_profile_invalid") from error
-        adapter = _adapter_for_profile(profile, provider_model_id=record.provider_model_id)
+        adapter = _adapter_for_profile(
+            profile,
+            provider_model_id=record.provider_model_id,
+            settings=settings,
+        )
         registry.register_catalog_model(record, adapter)
     registry.validate_profiles(registry.profiles())
     return registry
@@ -114,15 +121,19 @@ def _adapter_for_profile(
     profile: ProviderAdapterProfileV1,
     *,
     provider_model_id: str,
+    settings: Settings | None,
 ) -> ProviderAdapter:
     from app.services.provider_native_adapters import (
         ArkMediaAdapter,
         MiniMaxVideoAdapter,
         OpenRouterImageAdapter,
+        OpenRouterImageTransport,
     )
 
     if profile.transport_kind == "openrouter_images_native":
-        return OpenRouterImageAdapter()
+        return OpenRouterImageAdapter(
+            transport=OpenRouterImageTransport(settings) if settings is not None else None
+        )
     if profile.transport_kind == "minimax_video_native":
         return MiniMaxVideoAdapter(provider_model_id=provider_model_id)
     if profile.transport_kind in {"ark_image_native", "ark_video_native"}:

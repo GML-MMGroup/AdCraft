@@ -609,7 +609,8 @@ def create_agent_canvas_runtime(
     model_catalog = ProviderModelCatalogService(model_repository)
     model_selection = ModelSelectionService(model_catalog)
     adapter_registry = build_trusted_provider_adapter_registry(
-        model_catalog.list_models(include_unavailable=True)
+        model_catalog.list_models(include_unavailable=True),
+        settings=settings,
     )
     model_resolution = ModelResolutionService(
         model_selection,

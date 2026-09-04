@@ -94,15 +94,15 @@ from app.tools.volcengine_image_generations import V2ProviderRequestContractErro
 
 ProviderFactory = Callable[[Settings], MediaProvider]
 
-_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset(
-    {"openrouter_images_native", "minimax_video_native"}
-)
+_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset({"openrouter_images_native", "minimax_video_native"})
 _NATIVE_PROVIDER_ERROR_CODES = frozenset(
     {
         "model_adapter_unavailable",
         "model_conformance_required",
         "model_conformance_revoked",
         "provider_adapter_profile_invalid",
+        "provider_base_url_invalid",
+        "provider_configuration_missing",
         "provider_payload_resolution_mismatch",
         "openrouter_routing_contract_invalid",
         "provider_prompt_empty",
@@ -114,6 +114,7 @@ _NATIVE_PROVIDER_ERROR_CODES = frozenset(
         "provider_reference_input_invalid",
         "provider_transport_unavailable",
         "provider_response_contract_invalid",
+        "provider_request_failed",
         "provider_result_contract_invalid",
         "provider_task_not_pollable",
     }

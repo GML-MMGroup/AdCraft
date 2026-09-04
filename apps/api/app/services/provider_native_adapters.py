@@ -10,6 +10,7 @@ import json
 from typing import Any, Mapping, Protocol
 from urllib.parse import urlsplit
 
+from app.core.config import Settings
 from app.schemas.provider_models import (
     ModelParameterDescriptorV1,
     ModelParameterMatrixV1,
@@ -18,6 +19,7 @@ from app.schemas.provider_models import (
     ReferenceInputPolicyV1,
 )
 from app.services.openrouter_policy import build_openrouter_routing_policy
+from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +287,53 @@ class ProviderNativeAdapter:
         if any(not reference.value.strip() for reference in references):
             return ("provider_reference_input_invalid",)
         return ()
+
+
+class OpenRouterImageTransport:
+    """Bounded synchronous transport for OpenRouter's dedicated image endpoint."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        http_transport: ProviderHttpTransport | None = None,
+    ) -> None:
+        self._api_key = (settings.openrouter_api_key or "").strip()
+        self._base_url = settings.openrouter_image_base_url.rstrip("/")
+        self._http = http_transport or UrllibProviderHttpTransport()
+
+    def submit(self, payload: Mapping[str, object]) -> Mapping[str, object]:
+        if not self._api_key:
+            raise ValueError("provider_configuration_missing")
+        if self._base_url != "https://openrouter.ai/api/v1":
+            raise ValueError("provider_base_url_invalid")
+        response = self._http.post_json(
+            url=f"{self._base_url}/images",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            payload=dict(payload),
+            timeout_seconds=120.0,
+            max_response_bytes=28_000_000,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise ValueError("provider_request_failed")
+        try:
+            parsed = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("provider_response_contract_invalid") from error
+        if not isinstance(parsed, Mapping):
+            raise ValueError("provider_response_contract_invalid")
+        return parsed
+
+    def poll(self, provider_task_id: str) -> Mapping[str, object]:
+        del provider_task_id
+        raise ValueError("provider_task_not_pollable")
+
+    def download(self, value: str) -> Mapping[str, object]:
+        del value
+        raise ValueError("provider_task_not_pollable")
 
 
 class OpenRouterImageAdapter(ProviderNativeAdapter):
