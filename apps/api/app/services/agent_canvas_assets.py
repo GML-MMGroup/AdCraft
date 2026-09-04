@@ -614,7 +614,7 @@ class AgentCanvasAssetService:
                 "Content-Length": str(len(body)),
                 "Cache-Control": "private, max-age=31536000, immutable",
                 "ETag": f'"{asset_id}:{version_id}:{kind}'
-                + (f':{max_dimension}' if max_dimension is not None else '')
+                + (f":{max_dimension}" if max_dimension is not None else "")
                 + '"',
             },
         )
@@ -775,10 +775,7 @@ def _asset_summary(
     rendition_url = None
     if version.status == "ready" and media_type in {"image", "video"}:
         rendition_kind = "preview" if media_type == "image" else "poster"
-        rendition_url = (
-            f"/api/v2/assets/{version.asset_id}/{rendition_kind}"
-            f"?v={version.version_id}"
-        )
+        rendition_url = f"/api/v2/assets/{version.asset_id}/{rendition_kind}?v={version.version_id}"
     return ProjectAssetSummaryV2(
         asset_id=version.asset_id,
         version_id=version.version_id,

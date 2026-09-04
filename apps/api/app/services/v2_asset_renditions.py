@@ -61,7 +61,9 @@ class V2AssetRenditionService:
                 stage="v2_asset_rendition_service",
             )
         extension = "jpg"
-        target_name = f"{kind}-{max_dimension}.jpg" if max_dimension is not None else f"{kind}.{extension}"
+        target_name = (
+            f"{kind}-{max_dimension}.jpg" if max_dimension is not None else f"{kind}.{extension}"
+        )
         target = validate_v2_data_path(
             self._data_dir,
             self._data_dir / "v2" / "renditions" / asset_id / version_id / target_name,
