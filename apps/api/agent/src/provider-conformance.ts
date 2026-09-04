@@ -139,7 +139,7 @@ export interface ConformanceReportV3 {
 
 export interface ConformanceRunOptions {
   readonly run_id: string;
-  readonly operation: "decide_turn_intent";
+  readonly operation: string;
   readonly model_ref: string;
   readonly target: ProviderConformanceTargetV1;
   readonly output_directory: string;

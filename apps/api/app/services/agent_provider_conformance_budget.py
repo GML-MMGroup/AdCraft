@@ -29,8 +29,6 @@ def canonical_agent_provider_conformance_budget_digest(
 def derive_agent_provider_conformance_budget(
     request: AgentRunRequest,
 ) -> AgentProviderConformanceBudgetPlanV1:
-    if request.operation != "decide_turn_intent":
-        raise AgentProviderConformanceBudgetError("conformance_budget_invalid")
     primary_seconds = request.policy.primary_timeout_seconds
     if primary_seconds is None or not 1 <= primary_seconds <= 900:
         raise AgentProviderConformanceBudgetError("conformance_budget_invalid")
