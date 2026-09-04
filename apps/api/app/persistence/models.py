@@ -2275,6 +2275,63 @@ class AgentCanvasProviderSubmissionIntentRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasResultPublicationIntentRow(Base):
+    """Recoverable local-result handoff preceding terminal publication."""
+
+    __tablename__ = "agent_canvas_result_publication_intents"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('preparing','prepared','committed','abandoned')",
+            name="ck_agent_canvas_result_publication_intents_state",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND attempt_count <= 16",
+            name="ck_agent_canvas_result_publication_intents_attempt",
+        ),
+        UniqueConstraint(
+            "logical_result_key",
+            name="uq_agent_canvas_result_publication_intents_result_key",
+        ),
+        UniqueConstraint(
+            "execution_id",
+            "member_id",
+            name="uq_agent_canvas_result_publication_intents_member",
+        ),
+        Index(
+            "ix_agent_canvas_result_publication_intents_due",
+            "state",
+            "next_attempt_at",
+            "recovery_deadline",
+        ),
+    )
+
+    intent_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_members.member_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    logical_result_key: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snapshot_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snapshot_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_object_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    planned_result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    prepared_result_json: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[str] = mapped_column(Text, nullable=False)
+    recovery_deadline: Mapped[str] = mapped_column(Text, nullable=False)
+    last_error_code: Mapped[str | None] = mapped_column(Text)
+    committed_receipt_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AgentCanvasExecutionResultCommitRow(Base):
     """Immutable receipt for the sole terminal result transaction."""
 
