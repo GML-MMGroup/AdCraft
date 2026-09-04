@@ -880,6 +880,12 @@ class DynamicCanvasScheduler:
                             "parameter_provenance": compiled.parameter_provenance,
                         }
                     )
+                    prompt_authority_node = _parameter_snapshot_prompt_authority(
+                        node,
+                        parameter_compilation_snapshot,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                    )
                     observed_revision = current_node.revision
                 effective_parameters = EffectiveMediaParameterSnapshotV2(
                     requested=parameter_compilation_snapshot.requested_parameters,
