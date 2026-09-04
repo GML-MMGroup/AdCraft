@@ -804,9 +804,16 @@ def _validate_editable_prompt_authority(node: CanvasNodeV2) -> None:
         return
     prompt = str(node.generation_prompt or "")
     expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
+    review_revision = node.metadata.get("guided_review_node_revision")
+    revision_matches = projection.revision == node.revision or (
+        isinstance(review_revision, int)
+        and not isinstance(review_revision, bool)
+        and review_revision == node.revision
+        and projection.revision + 1 == node.revision
+    )
     if (
         projection.text != prompt
-        or projection.revision != node.revision
+        or not revision_matches
         or projection.prompt_digest != expected_digest
     ):
         raise _error(
