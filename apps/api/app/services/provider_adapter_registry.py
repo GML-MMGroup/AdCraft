@@ -118,11 +118,11 @@ def _adapter_for_profile(
     from app.services.provider_native_adapters import (
         ArkMediaAdapter,
         MiniMaxVideoAdapter,
-        OpenAIImageAdapter,
+        OpenRouterImageAdapter,
     )
 
-    if profile.transport_kind == "openai_images_native":
-        return OpenAIImageAdapter()
+    if profile.transport_kind == "openrouter_images_native":
+        return OpenRouterImageAdapter()
     if profile.transport_kind == "minimax_video_native":
         return MiniMaxVideoAdapter(provider_model_id=provider_model_id)
     if profile.transport_kind in {"ark_image_native", "ark_video_native"}:

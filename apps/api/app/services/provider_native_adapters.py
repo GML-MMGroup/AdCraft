@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 from dataclasses import dataclass
 import hashlib
 import json
 from typing import Any, Mapping, Protocol
+from urllib.parse import urlsplit
 
 from app.schemas.provider_models import (
     ModelParameterDescriptorV1,
@@ -14,6 +17,7 @@ from app.schemas.provider_models import (
     ReferenceInputModeV1,
     ReferenceInputPolicyV1,
 )
+from app.services.openrouter_policy import build_openrouter_routing_policy
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,13 +287,13 @@ class ProviderNativeAdapter:
         return ()
 
 
-class OpenAIImageAdapter(ProviderNativeAdapter):
-    """Project the canonical image request into the OpenAI Images API shape."""
+class OpenRouterImageAdapter(ProviderNativeAdapter):
+    """Project one canonical image request into the fixed OpenRouter route."""
 
     profile = ProviderAdapterProfileV1(
-        model_ref="openai:gpt-image-2",
-        adapter_id="openai-image-native",
-        transport_kind="openai_images_native",
+        model_ref="openrouter:openai/gpt-image-2",
+        adapter_id="openrouter-image-native",
+        transport_kind="openrouter_images_native",
         capability="image",
         request_mode="image_generation",
         accepted_input_modes=("text_only", "native_reference_slots"),
@@ -304,10 +308,10 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
             ),
             max_images=4,
         ),
-        parameter_schema_id="openai-gpt-image-2-v1",
+        parameter_schema_id="openrouter-gpt-image-2-v1",
         parameter_matrix=ModelParameterMatrixV1(
-            schema_id="openai-gpt-image-2-v1",
-            revision="openai-gpt-image-2-v1",
+            schema_id="openrouter-gpt-image-2-v1",
+            revision="openrouter-gpt-image-2-v1-v1",
             descriptors=(
                 ModelParameterDescriptorV1(
                     name="size",
@@ -330,9 +334,20 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
                     allowed_values=("png", "jpeg", "webp"),
                 ),
                 ModelParameterDescriptorV1(
-                    name="moderation",
+                    name="output_compression",
+                    value_type="integer",
+                    minimum=0,
+                    maximum=100,
+                ),
+                ModelParameterDescriptorV1(
+                    name="resolution",
                     value_type="enum",
-                    allowed_values=("low", "auto"),
+                    allowed_values=("1K", "2K", "4K"),
+                ),
+                ModelParameterDescriptorV1(
+                    name="aspect_ratio",
+                    value_type="enum",
+                    allowed_values=("1:1", "16:9", "9:16", "4:3", "3:4"),
                 ),
             ),
         ),
@@ -341,18 +356,74 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
         supports_provider_idempotency=False,
         release_tier="optional",
         conformance_status="unverified",
-        adapter_revision="openai-image-native-v1",
-        capability_revision="openai-gpt-image-2-v1",
+        adapter_revision="openrouter-image-native-v1",
+        capability_revision="openrouter-openai/gpt-image-2-v1",
     )
+    routing_policy = build_openrouter_routing_policy(
+        model_ref=profile.model_ref,
+        adapter_revision=profile.adapter_revision,
+        capability_revision=profile.capability_revision,
+        operation_contract="openrouter-gpt-image-2-v1",
+    )
+
+    def compile(self, request: CanonicalProviderRequest, resolution: Any) -> NativeProviderRequest:
+        validation = self.validate(request, self.profile.capability)
+        if not validation.accepted:
+            raise ValueError(validation.errors[0])
+        _assert_frozen_resolution(resolution, self.profile)
+        routing_id = _resolution_value(resolution, "openrouter_routing_policy_id")
+        routing_digest = _resolution_value(resolution, "openrouter_routing_policy_digest")
+        if (
+            routing_id != self.routing_policy.routing_policy_id
+            or routing_digest != self.routing_policy.routing_policy_digest
+        ):
+            raise ValueError("openrouter_routing_contract_invalid")
+        payload = self._compile_payload(request)
+        audit = {
+            "provider_id": "openrouter",
+            "model_ref": self.profile.model_ref,
+            "provider_model_id": request.provider_model_id,
+            "adapter_id": self.profile.adapter_id,
+            "transport_kind": self.profile.transport_kind,
+            "adapter_revision": self.profile.adapter_revision,
+            "capability_revision": self.profile.capability_revision,
+            "credential_revision": _resolution_value(resolution, "credential_revision"),
+            "reference_ids": tuple(reference.reference_id for reference in request.references),
+            "parameters": dict(request.parameters),
+            "openrouter_routing_policy_id": routing_id,
+            "openrouter_routing_policy_digest": routing_digest,
+        }
+        request_fingerprint = _fingerprint({**audit, "payload": payload})
+        return NativeProviderRequest(
+            payload=payload,
+            request_fingerprint=request_fingerprint,
+            audit={**audit, "request_fingerprint": request_fingerprint},
+        )
+
+    def request_fingerprint(self, request: CanonicalProviderRequest) -> str:
+        return self.compile(
+            request,
+            {
+                **_resolution_for_profile(self.profile),
+                "openrouter_routing_policy_id": self.routing_policy.routing_policy_id,
+                "openrouter_routing_policy_digest": self.routing_policy.routing_policy_digest,
+            },
+        ).request_fingerprint
 
     def _compile_payload(self, request: CanonicalProviderRequest) -> Mapping[str, object]:
         payload: dict[str, object] = {
             "model": request.provider_model_id,
             "prompt": request.prompt,
+            "n": 1,
+            "provider": {
+                "only": list(self.routing_policy.provider_only),
+                "require_parameters": self.routing_policy.require_parameters,
+                "allow_fallbacks": self.routing_policy.allow_fallbacks,
+            },
         }
         payload.update(request.parameters)
         if request.references:
-            payload["image"] = [
+            payload["input_references"] = [
                 {
                     "type": "input_image",
                     "role": reference.role,
@@ -366,13 +437,38 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
         return payload
 
     def _validate_parameters(self, parameters: Mapping[str, object]) -> tuple[str, ...]:
-        return super()._validate_parameters(parameters)
+        errors = super()._validate_parameters(parameters)
+        if errors:
+            return errors
+        if "size" in parameters and ({"resolution", "aspect_ratio"} & set(parameters)):
+            return ("model_parameter_incompatible",)
+        return ()
+
+    def _validate_references(
+        self,
+        references: tuple[CanonicalProviderReference, ...],
+    ) -> tuple[str, ...]:
+        errors = super()._validate_references(references)
+        if errors:
+            return errors
+        for reference in references:
+            if reference.input_type == "image_url":
+                parsed = urlsplit(reference.value)
+                if parsed.scheme != "https" or not parsed.netloc or len(reference.value) > 8_192:
+                    return ("provider_reference_input_invalid",)
+            elif reference.input_type == "data_url":
+                if (
+                    not reference.value.startswith("data:image/")
+                    or len(reference.value) > 8_000_000
+                ):
+                    return ("provider_reference_input_invalid",)
+            else:
+                return ("provider_reference_input_invalid",)
+        return ()
 
     def submit(self, request: NativeProviderRequest) -> ProviderSubmission:
         transport = self._require_transport()
-        response = _bounded_openai_image_response(transport.submit(request.payload))
-        if not isinstance(response.get("data"), list):
-            raise ValueError("provider_response_contract_invalid")
+        response = _bounded_openrouter_image_response(transport.submit(request.payload))
         return ProviderSubmission(
             provider_task_id=f"sync:{request.request_fingerprint}",
             request_fingerprint=request.request_fingerprint,
@@ -389,16 +485,18 @@ class OpenAIImageAdapter(ProviderNativeAdapter):
 
     def download(self, status: ProviderStatus) -> ProviderArtifact:
         data = status.raw.get("data")
-        if not isinstance(data, list) or not data or not isinstance(data[0], Mapping):
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], Mapping):
             raise ValueError("provider_response_contract_invalid")
         item = data[0]
-        value = _required_string(item, "b64_json", "url")
+        value = _required_string(item, "b64_json")
+        media_type = _required_string(item, "media_type")
+        decoded = _decode_raster(value, media_type)
         return ProviderArtifact(
             media_type="image",
             value=value,
             provider_task_id=status.provider_task_id,
             request_fingerprint=status.request_fingerprint,
-            raw={"result_keys": tuple(sorted(item))},
+            raw={"media_type": media_type, "decoded_size": len(decoded)},
         )
 
 
@@ -584,6 +682,12 @@ def _resolution_for_profile(profile: ProviderAdapterProfileV1) -> dict[str, str]
     }
 
 
+def _resolution_value(resolution: Any, field: str) -> object:
+    if isinstance(resolution, Mapping):
+        return resolution.get(field)
+    return getattr(resolution, field, None)
+
+
 def _required_string(source: Mapping[str, object], *keys: str) -> str:
     for key in keys:
         value = source.get(key)
@@ -669,27 +773,50 @@ def _bounded_response(
     return bounded
 
 
-def _bounded_openai_image_response(response: Mapping[str, object]) -> dict[str, object]:
-    if not isinstance(response, Mapping) or set(response).difference({"data"}):
+def _bounded_openrouter_image_response(response: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(response, Mapping) or set(response).difference({"data", "model"}):
+        raise ValueError("provider_response_contract_invalid")
+    model = response.get("model")
+    if model is not None and model != "openai/gpt-image-2":
         raise ValueError("provider_response_contract_invalid")
     data = response.get("data")
-    if not isinstance(data, list) or not data or len(data) > 4:
+    if not isinstance(data, list) or len(data) != 1:
         raise ValueError("provider_response_contract_invalid")
-    bounded_data: list[dict[str, str]] = []
-    for item in data:
-        if not isinstance(item, Mapping) or set(item).difference(
-            {"b64_json", "url", "revised_prompt"}
-        ):
-            raise ValueError("provider_response_contract_invalid")
-        bounded_item = {
-            str(key): value
-            for key, value in item.items()
-            if isinstance(value, str) and len(value) <= 4_096
-        }
-        if len(bounded_item) != len(item) or not bounded_item:
-            raise ValueError("provider_response_contract_invalid")
-        bounded_data.append(bounded_item)
-    return {"data": bounded_data}
+    item = data[0]
+    if not isinstance(item, Mapping) or set(item) != {"b64_json", "media_type"}:
+        raise ValueError("provider_response_contract_invalid")
+    value = _required_string(item, "b64_json")
+    media_type = _required_string(item, "media_type")
+    _decode_raster(value, media_type)
+    bounded: dict[str, object] = {
+        "data": [{"b64_json": value, "media_type": media_type}],
+    }
+    if isinstance(model, str):
+        bounded["model"] = model
+    return bounded
+
+
+def _decode_raster(value: str, media_type: str) -> bytes:
+    if media_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise ValueError("provider_response_contract_invalid")
+    if len(value) > 28_000_000:
+        raise ValueError("provider_response_contract_invalid")
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("provider_response_contract_invalid") from error
+    if not decoded or len(decoded) > 20 * 1024 * 1024:
+        raise ValueError("provider_response_contract_invalid")
+    valid_signature = (media_type == "image/png" and decoded.startswith(b"\x89PNG\r\n\x1a\n")) or (
+        media_type == "image/jpeg" and decoded.startswith(b"\xff\xd8\xff")
+    )
+    if media_type == "image/webp":
+        valid_signature = (
+            len(decoded) >= 12 and decoded.startswith(b"RIFF") and decoded[8:12] == b"WEBP"
+        )
+    if not valid_signature:
+        raise ValueError("provider_response_contract_invalid")
+    return decoded
 
 
 def _fingerprint(value: Mapping[str, object]) -> str:
