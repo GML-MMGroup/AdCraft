@@ -21,6 +21,7 @@ ProviderTransportKindV1 = Literal[
     "pi_native_openai_compatible",
     "litellm_chat",
     "litellm_openai_image",
+    "openrouter_images_native",
     "openai_images_native",
     "ark_image_native",
     "ark_video_native",
@@ -89,6 +90,18 @@ class LiteLLMGatewayProjectionV1(BaseModel):
     endpoint: str = Field(min_length=1, max_length=320)
     routes: tuple[LiteLLMRouteV1, ...] = Field(max_length=256)
     projection_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class OpenRouterRoutingPolicyV1(BaseModel):
+    """Frozen exact-upstream routing policy for one OpenRouter attempt."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    routing_policy_id: str = Field(min_length=1, max_length=120)
+    routing_policy_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    require_parameters: Literal[True]
+    allow_fallbacks: Literal[False]
+    provider_only: tuple[Literal["openai"], ...] = Field(min_length=1, max_length=1)
 
 
 def _normalize_secret(value: object) -> object:
@@ -306,6 +319,28 @@ class ProviderAdapterProfileV1(BaseModel):
             and self.parameter_matrix.schema_id != self.parameter_schema_id
         ):
             raise ValueError("parameter_schema_mismatch")
+        openrouter_image_ref = "openrouter:openai/gpt-image-2"
+        official_image_ref = "openai:gpt-image-2"
+        if (
+            self.transport_kind == "openrouter_images_native"
+            and (
+                self.model_ref != openrouter_image_ref
+                or self.adapter_id != "openrouter-image-native"
+                or self.capability != "image"
+            )
+        ) or (
+            self.model_ref == openrouter_image_ref
+            and self.transport_kind != "openrouter_images_native"
+        ):
+            raise ValueError("provider_adapter_transport_identity_invalid")
+        if (
+            self.transport_kind == "openai_images_native"
+            and self.model_ref != official_image_ref
+        ) or (
+            self.model_ref == official_image_ref
+            and self.transport_kind != "openai_images_native"
+        ):
+            raise ValueError("provider_adapter_transport_identity_invalid")
         return self
 
 
