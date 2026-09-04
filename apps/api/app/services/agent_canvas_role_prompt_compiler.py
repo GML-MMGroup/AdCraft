@@ -756,7 +756,7 @@ def _structured_content(
         )
         return StoryboardGridContentV2(
             sequence_summary=brief.sequence_summary,
-            narrative_goal=brief.sequence_summary,
+            narrative_goal=context.selected_direction or brief.sequence_summary,
             style=style,
             panels=panels,
         ).model_dump(mode="json")
