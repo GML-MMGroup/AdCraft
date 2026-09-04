@@ -61,8 +61,7 @@ class AdReferenceBundleResolver:
             {
                 item.binding_id: item
                 for item in resolved_inputs
-                if isinstance(item, ResolvedMediaInputSnapshotV2)
-                and item.binding_id is not None
+                if isinstance(item, ResolvedMediaInputSnapshotV2) and item.binding_id is not None
             }
             if resolved_inputs is not None
             else None
@@ -191,9 +190,7 @@ class AdReferenceBundleResolver:
                 reference_kind=reference_kind,
                 reference_purpose=reference_purpose,
                 reference_instruction=reference_instruction,
-                storyboard_reference_purpose=binding_metadata.get(
-                    "storyboard_reference_purpose"
-                ),
+                storyboard_reference_purpose=binding_metadata.get("storyboard_reference_purpose"),
                 asset_id=asset_id,
                 asset_version_id=asset_version_id,
                 media_type=media_type,

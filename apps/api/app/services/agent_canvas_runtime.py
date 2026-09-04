@@ -2123,8 +2123,7 @@ def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, o
         _public_world_setting_input(item) for item in manifest.world_setting_inputs
     ]
     payload["omitted_optional_inputs"] = [
-        item.model_dump(mode="json", exclude_none=True)
-        for item in manifest.omitted_optional_inputs
+        item.model_dump(mode="json", exclude_none=True) for item in manifest.omitted_optional_inputs
     ]
     return payload
 

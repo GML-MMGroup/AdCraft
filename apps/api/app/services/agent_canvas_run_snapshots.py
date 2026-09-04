@@ -115,9 +115,7 @@ class AgentCanvasRunIntentSnapshotService:
                         "Direct asset bindings require an immutable asset version.",
                         stage="agent_canvas_run_snapshots",
                     )
-                asset = resolved_assets.get(
-                    (binding.source_id, binding.source_asset_version_id)
-                )
+                asset = resolved_assets.get((binding.source_id, binding.source_asset_version_id))
                 if asset is None:
                     raise V2PersistenceError(
                         "asset_version_not_found",
