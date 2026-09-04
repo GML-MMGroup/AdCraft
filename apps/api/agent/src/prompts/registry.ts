@@ -89,7 +89,12 @@ function instructionForOperation(operation: string): string {
       "quick_media is for one bounded media output through the Quick Media boundary.",
       "Missing, ambiguous, or contradictory creative details do not change guided_production; ask a focused clarification while preserving guided intent.",
       'For example, "Create an advertisement." is guided_production, while "What makes an advertisement effective?" is ordinary_conversation.',
-      "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "Return exactly one top-level mode. When and only when mode is ordinary_conversation, return ordinary_intent with exactly one ordinary intent: freeform_reply, agent_identity, agent_capabilities, workflow_status, or document_explanation.",
+      "freeform_reply alone carries assistant_message inside ordinary_intent. Do not combine freeform reply text with a deterministic ordinary query or return more than one ordinary subtype.",
+      "agent_identity and agent_capabilities select deterministic product-information replies. workflow_status selects the deterministic current Workflow summary. These intents carry no assistant_message or document selector.",
+      "document_explanation identifies one current Anchor Registry or Storyboard Production Plan plus only its typed alias or sequence selector. If the user requests both documents, omit document_kind and selectors and return requested_document_kinds exactly as [anchor_registry, storyboard_production_plan].",
+      "Non-ordinary modes omit ordinary_intent and retain the existing top-level assistant_message source-reply requirement.",
+      "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and fields allowed by the selected exclusive route.",
       "For every authoring mode that can continue automatically, return a non-empty assistant_message that acknowledges the request and confirms the next production work is starting.",
       "When deterministic policy can continue, acknowledge that production will continue and must not ask the user to choose a creative stage.",
       "The deterministic Python journey policy is the sole authority for the next stage; never encode or infer stage selection through assistant prose.",
@@ -101,7 +106,6 @@ function instructionForOperation(operation: string): string {
       "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
       "Use requirement_patch only for durable creative or output facts supported by exact current-message quotes. Never emit continue, pause, skip, defer, resume, hold, reuse-existing-Drafts, stage-ordering, execution-timing, retry, or export mechanics as Requirement directives; express transient intent through routing or objective, or leave it to the supplied typed action.",
       "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",
-      "For an ordinary-conversation question about current progress, return conversation_query with query_kind workflow_status. For a question about one current Anchor Registry or Storyboard Production Plan, return conversation_query with query_kind document_explanation and identify one document plus only its typed alias or sequence selector. If the user requests both documents, omit document_kind and selectors and return requested_document_kinds exactly as [anchor_registry, storyboard_production_plan].",
       "Do not answer the query during intent classification, request more than one document, or copy Workflow state or document content into model-owned fields; Python resolves the current authority after classification.",
     ].join(" ");
   }
