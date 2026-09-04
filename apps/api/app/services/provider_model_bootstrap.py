@@ -38,6 +38,8 @@ class ProviderModelBootstrapService:
             return self._bootstrap(now=now)
 
     def _bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
+        catalog = ProviderModelCatalogService(self._repository)
+        catalog.ensure_no_retired_defaults()
         registry = ProviderCredentialRegistry()
         connection_service = ProviderConnectionService(
             registry=registry,
@@ -58,13 +60,13 @@ class ProviderModelBootstrapService:
             settings_loader=lambda: self._settings,
         )
         connection_service.synchronize_metadata(updated_at=now)
-        catalog = ProviderModelCatalogService(self._repository)
+        catalog.reconcile_retired_models(now=now)
         seeded_providers: list[str] = []
         for provider_id in (
             "siliconflow",
             "volcengine_ark",
             "tianpuyue",
-            "openai",
+            "openrouter",
             "minimax",
             "fake",
         ):

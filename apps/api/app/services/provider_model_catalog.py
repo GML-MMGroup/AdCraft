@@ -12,6 +12,7 @@ from app.persistence.provider_model_repository import (
     ProviderModelRepository,
 )
 from app.schemas.provider_models import ProviderAdapterProfileV1
+from app.services.openrouter_policy import build_openrouter_routing_policy
 
 
 class ProviderCatalogAdapter(Protocol):
@@ -252,7 +253,7 @@ def _minimax_video_profile(model_ref: str, provider_model_id: str) -> dict[str, 
     )
 
 
-_OPENAI_IMAGE_PROFILE = _image_profile(
+_HISTORICAL_OPENAI_IMAGE_PROFILE = _image_profile(
     "openai:gpt-image-2",
     adapter_id="openai-image-native",
     transport_kind="openai_images_native",
@@ -287,6 +288,87 @@ _OPENAI_IMAGE_PROFILE = _image_profile(
             },
         ),
     ),
+)
+_OPENROUTER_IMAGE_ADAPTER_REVISION = "openrouter-image-native-v1"
+_OPENROUTER_IMAGE_CAPABILITY_REVISION = "openrouter-openai/gpt-image-2-v1"
+_OPENROUTER_IMAGE_PROFILE = _image_profile(
+    "openrouter:openai/gpt-image-2",
+    adapter_id="openrouter-image-native",
+    transport_kind="openrouter_images_native",
+    conformance_status="unverified",
+    parameter_matrix=_parameter_matrix(
+        schema_id="openrouter-gpt-image-2-v1",
+        descriptors=(
+            {
+                "name": "size",
+                "value_type": "enum",
+                "allowed_values": ["1024x1024", "1536x1024", "1024x1536", "auto"],
+            },
+            {
+                "name": "quality",
+                "value_type": "enum",
+                "allowed_values": ["low", "medium", "high", "auto"],
+            },
+            {
+                "name": "background",
+                "value_type": "enum",
+                "allowed_values": ["transparent", "opaque", "auto"],
+            },
+            {
+                "name": "output_format",
+                "value_type": "enum",
+                "allowed_values": ["png", "jpeg", "webp"],
+            },
+            {
+                "name": "output_compression",
+                "value_type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+            },
+            {
+                "name": "resolution",
+                "value_type": "enum",
+                "allowed_values": ["1K", "2K", "4K"],
+            },
+            {
+                "name": "aspect_ratio",
+                "value_type": "enum",
+                "allowed_values": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            },
+        ),
+    ),
+)
+_OPENROUTER_IMAGE_ROUTING = build_openrouter_routing_policy(
+    model_ref="openrouter:openai/gpt-image-2",
+    adapter_revision=_OPENROUTER_IMAGE_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_IMAGE_CAPABILITY_REVISION,
+    operation_contract="openrouter-gpt-image-2-v1",
+)
+
+_OPENROUTER_TEXT_ADAPTER_REVISION = "openrouter-pi-agent-v1"
+_OPENROUTER_TEXT_CAPABILITY_REVISION = "openrouter-openai-gpt-5-6-sol-agent-v1"
+_OPENROUTER_TEXT_PROFILE = _adapter_profile(
+    model_ref="openrouter:openai/gpt-5.6-sol",
+    adapter_id="openrouter-pi-agent-v1",
+    transport_kind="pi_native_openai_compatible",
+    capability="text",
+    request_mode="agent_structured",
+    accepted_input_modes=("text_only",),
+    max_images=0,
+    allowed_roles=(),
+    parameter_schema_id="openrouter-agent-text-v1",
+    result_protocol="structured_agent_result",
+    supports_remote_task_lookup=False,
+    supports_provider_idempotency=False,
+    conformance_status="unverified",
+    adapter_revision=_OPENROUTER_TEXT_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_TEXT_CAPABILITY_REVISION,
+)
+_OPENROUTER_TEXT_ROUTING = build_openrouter_routing_policy(
+    model_ref="openrouter:openai/gpt-5.6-sol",
+    adapter_revision=_OPENROUTER_TEXT_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_TEXT_CAPABILITY_REVISION,
+    operation_contract="openrouter-agent-text-v1",
 )
 _MINIMAX_VIDEO_PROFILES = {
     model_id: _minimax_video_profile(f"minimax:{model_id}", model_id)
@@ -540,8 +622,8 @@ _TRUSTED_MANIFESTS = (
         ),
     ),
     TrustedModelManifest(
-        provider_id="openai",
-        provider_model_id="gpt-image-2",
+        provider_id="openrouter",
+        provider_model_id="openai/gpt-image-2",
         display_name="GPT Image 2",
         capability="image",
         capability_metadata={
@@ -553,12 +635,42 @@ _TRUSTED_MANIFESTS = (
                 "quality",
                 "background",
                 "output_format",
-                "moderation",
+                "output_compression",
+                "resolution",
+                "aspect_ratio",
             ],
-            "provider_protocol": "openai_images",
+            "provider_protocol": "openrouter_images",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
-            "adapter_profile": dict(_OPENAI_IMAGE_PROFILE),
+            "adapter_profile": dict(_OPENROUTER_IMAGE_PROFILE),
+            "openrouter_routing": _OPENROUTER_IMAGE_ROUTING.model_dump(mode="json"),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="openrouter",
+        provider_model_id="openai/gpt-5.6-sol",
+        display_name="GPT-5.6 Sol",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "thinking_format": "openai",
+            "reasoning_control": "reasoning_effort",
+            "structured_transport": "non_streaming_json_schema",
+            "default_max_output_tokens": 8192,
+            "adapter_id": _OPENROUTER_TEXT_ADAPTER_REVISION,
+            "adapter_revision": _OPENROUTER_TEXT_ADAPTER_REVISION,
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": _OPENROUTER_TEXT_CAPABILITY_REVISION,
+            "conformance_status": "unverified",
+            "adapter_profile": dict(_OPENROUTER_TEXT_PROFILE),
+            "openrouter_routing": _OPENROUTER_TEXT_ROUTING.model_dump(mode="json"),
         },
     ),
     TrustedModelManifest(
@@ -732,7 +844,12 @@ _TRUSTED_MANIFESTS = (
     ),
 )
 
-_RETIRED_MODEL_REFS = frozenset({"volcengine_ark:doubao-seed-2-0-mini-260428"})
+_RETIRED_MODEL_REFS = frozenset(
+    {
+        "volcengine_ark:doubao-seed-2-0-mini-260428",
+        "openai:gpt-image-2",
+    }
+)
 
 
 class StaticProviderCatalogAdapter:
@@ -766,7 +883,7 @@ class ProviderModelCatalogService:
                 "siliconflow",
                 "volcengine_ark",
                 "tianpuyue",
-                "openai",
+                "openrouter",
                 "minimax",
                 "fake",
             )
@@ -775,6 +892,8 @@ class ProviderModelCatalogService:
         self._capability_available = capability_available or self._repository_capability_available
 
     def sync(self, provider_id: str, *, now: str) -> CatalogSyncResult:
+        if provider_id not in self._adapters:
+            raise ValueError("provider_not_supported")
         sync_run_id = f"sync_{uuid4().hex}"
         try:
             visible_model_ids = self._visible_model_ids(provider_id)
@@ -843,6 +962,47 @@ class ProviderModelCatalogService:
             models=changed,
             updated_at=now,
         )
+
+    def reconcile_retired_models(self, *, now: str) -> tuple[ProviderModelRecord, ...]:
+        """Preserve retired built-ins while removing them from active provider sync."""
+
+        model_ref = "openai:gpt-image-2"
+        try:
+            existing = self._repository.get_model(model_ref)
+        except ValueError:
+            existing = None
+        metadata = (
+            existing.capability_metadata
+            if existing is not None
+            else {
+                "historical": True,
+                "adapter_profile": dict(_HISTORICAL_OPENAI_IMAGE_PROFILE),
+            }
+        )
+        projected = {
+            "model_ref": model_ref,
+            "provider_model_id": "gpt-image-2",
+            "display_name": "GPT Image 2",
+            "capability": "image",
+            "capability_metadata": metadata,
+            "source": "built_in",
+            "availability": "deprecated",
+            "unavailable_reason": "provider_model_retired",
+        }
+        if not _trusted_projection_changed(existing, projected):
+            return ()
+        return self._repository.upsert_models(
+            provider_id="openai",
+            models=(projected,),
+            updated_at=now,
+        )
+
+    def ensure_no_retired_defaults(self) -> None:
+        if any(
+            default.model_ref in _RETIRED_MODEL_REFS
+            for default in self._repository.get_defaults().values()
+        ):
+            raise ValueError("retired_model_default_conflict")
 
     def _visible_model_ids(self, provider_id: str) -> set[str]:
         adapter = self._adapters.get(provider_id)
