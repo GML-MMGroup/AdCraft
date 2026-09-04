@@ -117,6 +117,11 @@ def get_agent_runtime_config(
         "gateway_id": snapshot.gateway_id,
         "model_alias": snapshot.model_alias,
         "projection_digest": snapshot.projection_digest,
+        "openrouter_routing": (
+            snapshot.openrouter_routing.model_dump(mode="json")
+            if snapshot.openrouter_routing is not None
+            else None
+        ),
         "execution_policy": snapshot.execution_policy.model_dump(mode="json"),
         "api_key": snapshot.api_key,
     }

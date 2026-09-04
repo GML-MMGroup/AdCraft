@@ -17,13 +17,14 @@ from app.persistence.provider_model_repository import ProviderModelRecord, Provi
 from app.schemas.agent_capabilities import AgentCapabilityV1
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1, AgentName
-from app.schemas.provider_models import ProviderAdapterProfileV1
+from app.schemas.provider_models import OpenRouterRoutingPolicyV1, ProviderAdapterProfileV1
 from app.services.agent_model_execution_policy import (
     AgentModelExecutionPolicyError,
     resolve_agent_model_execution_policy,
 )
 from app.services.provider_credentials import CredentialSettingsError, ProviderCredentialRegistry
 from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.openrouter_policy import build_openrouter_routing_policy
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
 
 
@@ -69,6 +70,7 @@ class AgentCredentialSnapshot:
     gateway_id: str | None = None
     model_alias: str | None = None
     projection_digest: str | None = None
+    openrouter_routing: OpenRouterRoutingPolicyV1 | None = None
 
 
 class V2AgentCredentialBroker:
@@ -115,6 +117,7 @@ class V2AgentCredentialBroker:
         self._validate_model(record)
         metadata = record.capability_metadata
         adapter_profile = _agent_adapter_profile(record)
+        openrouter_routing = _openrouter_routing_policy(record, adapter_profile)
         if adapter_profile.transport_kind == "litellm_chat":
             self._validate_litellm_gateway(adapter_profile, operation=operation)
         try:
@@ -181,6 +184,7 @@ class V2AgentCredentialBroker:
                 if adapter_profile.gateway_profile is not None
                 else None
             ),
+            openrouter_routing=openrouter_routing,
         )
 
     def _validate_litellm_gateway(
@@ -434,3 +438,36 @@ def _agent_adapter_profile(record: ProviderModelRecord) -> ProviderAdapterProfil
             "The selected transport cannot execute Agent text operations.",
         )
     return profile
+
+
+def _openrouter_routing_policy(
+    record: ProviderModelRecord,
+    profile: ProviderAdapterProfileV1,
+) -> OpenRouterRoutingPolicyV1 | None:
+    raw = record.capability_metadata.get("openrouter_routing")
+    if record.provider_id != "openrouter":
+        if raw is not None:
+            raise AgentCredentialError(
+                "openrouter_routing_contract_invalid",
+                "A non-OpenRouter Agent model cannot carry OpenRouter routing policy.",
+            )
+        return None
+    try:
+        routing = OpenRouterRoutingPolicyV1.model_validate(raw)
+    except ValidationError as error:
+        raise AgentCredentialError(
+            "openrouter_routing_contract_invalid",
+            "The selected OpenRouter Agent model has no valid frozen routing policy.",
+        ) from error
+    expected = build_openrouter_routing_policy(
+        model_ref=record.model_ref,
+        adapter_revision=profile.adapter_revision,
+        capability_revision=profile.capability_revision,
+        operation_contract="openrouter-agent-text-v1",
+    )
+    if routing != expected:
+        raise AgentCredentialError(
+            "openrouter_routing_contract_invalid",
+            "The selected OpenRouter Agent routing policy is stale.",
+        )
+    return routing

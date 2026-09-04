@@ -36,7 +36,7 @@ def resolve_agent_model_execution_policy(
     thinking_format = _enum(
         capability_metadata,
         "thinking_format",
-        {"zai", "qwen", "none"},
+        {"zai", "qwen", "openai", "none"},
     )
     reasoning_control = _enum(
         capability_metadata,
@@ -50,6 +50,7 @@ def resolve_agent_model_execution_policy(
             "streamed_tool_call",
             "non_streaming_tool_call",
             "non_streaming_json_object",
+            "non_streaming_json_schema",
             "streaming_json_object",
             "json_object",
         },

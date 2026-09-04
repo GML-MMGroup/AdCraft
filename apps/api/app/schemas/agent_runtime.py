@@ -245,7 +245,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     model_ref: str = Field(min_length=1, max_length=320)
     operation: str = Field(min_length=1, max_length=120)
     operation_class: Literal["routing", "proposal", "materialization", "long_form"]
-    thinking_format: Literal["zai", "qwen", "none"]
+    thinking_format: Literal["zai", "qwen", "openai", "none"]
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
@@ -260,6 +260,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "non_streaming_json_schema",
         "streaming_json_object",
         "json_object",
     ]
@@ -348,10 +349,11 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "non_streaming_json_schema",
         "streaming_json_object",
         "json_object",
     ]
-    thinking_format: Literal["zai", "qwen", "none"]
+    thinking_format: Literal["zai", "qwen", "openai", "none"]
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
