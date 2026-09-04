@@ -145,16 +145,40 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Execution member already has a terminal result.",
                         )
-                    asset_id, version_id = self._register_asset(connection, command)
+                    node = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                                AgentCanvasNodeRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if node is None:
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Canvas Node no longer accepts this result.",
+                        )
+                    prior_asset_id = cast(str | None, node["output_asset_id"])
+                    asset_id, version_id = self._register_asset(
+                        connection,
+                        command,
+                        stable_asset_id=prior_asset_id,
+                    )
                     self._fault("after_asset")
                     node_status = {
                         "succeeded": "ready",
-                        "failed": "failed",
-                        "cancelled": "draft",
+                        "failed": "ready" if prior_asset_id is not None else "failed",
+                        "cancelled": "ready" if prior_asset_id is not None else "draft",
                     }[command.outcome]
                     node_values: dict[str, object] = {
                         "status": node_status,
-                        "error_json": command.error.model_dump_json() if command.error else None,
+                        "error_json": (
+                            command.error.model_dump_json()
+                            if command.error and prior_asset_id is None
+                            else None
+                        ),
                         "updated_at": timestamp,
                     }
                     prepared = command.prepared_result
@@ -172,7 +196,6 @@ class AgentCanvasResultCommitRepository:
                         .where(
                             AgentCanvasNodeRow.workflow_id == command.workflow_id,
                             AgentCanvasNodeRow.node_id == command.node_id,
-                            AgentCanvasNodeRow.status != "ready",
                         )
                         .values(**node_values)
                     )
@@ -181,14 +204,15 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Canvas Node already has a terminal Ready result.",
                         )
-                    invalidate_prompt_preparations_for_source_in_transaction(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=command.workflow_id,
-                        source_node_id=command.node_id,
-                        updated_at=timestamp,
-                    )
+                    if command.outcome == "succeeded":
+                        invalidate_prompt_preparations_for_source_in_transaction(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=command.workflow_id,
+                            source_node_id=command.node_id,
+                            updated_at=timestamp,
+                        )
                     self._fault("after_node")
                     connection.execute(
                         update(AgentCanvasExecutionMemberRow)
@@ -624,7 +648,7 @@ class AgentCanvasResultCommitRepository:
         if lease is None:
             raise _error("stale_execution_lease", "Execution lease ownership was lost.")
 
-    def _register_asset(self, connection, command):
+    def _register_asset(self, connection, command, *, stable_asset_id: str | None):
         prepared = command.prepared_result
         if prepared is None or prepared.prepared_object is None:
             return None, None
@@ -633,19 +657,20 @@ class AgentCanvasResultCommitRepository:
                 "prepared_asset_identity_missing",
                 "Prepared media is missing Asset identity.",
             )
+        asset_id = stable_asset_id or prepared.asset_id
         content = prepared.prepared_object
         facts = content.media_facts
         version = self._assets.register_asset_version_in_transaction(
             connection,
             AssetRecordCreate(
-                asset_id=prepared.asset_id,
+                asset_id=asset_id,
                 media_type=content.media_type,
                 source_type=prepared.asset_source_type,
                 display_name=prepared.asset_display_name or content.filename,
             ),
             AssetVersionCreate(
                 version_id=prepared.version_id,
-                asset_id=prepared.asset_id,
+                asset_id=asset_id,
                 storage_key=content.storage_key,
                 sha256=content.sha256,
                 size_bytes=content.size_bytes,
