@@ -33,6 +33,7 @@ from app.persistence.agent_canvas_conversation_repository import (
     _creative_memory_values,
     _dump,
     _ensure_conversation,
+    _materialization_actionable_failure,
     _next_chat_sequence,
     _now,
     _require_guidance_revision,
@@ -3513,6 +3514,9 @@ def _projection(row) -> ProposalMaterializationProjectionV2:
         error = {
             "code": str(row["materialization_error_code"]),
             "message": str(row["materialization_error_message"]),
+            "actionable_failure": _materialization_actionable_failure(row).model_dump(
+                mode="json"
+            ),
         }
     return ProposalMaterializationProjectionV2(
         materialization_id=str(row["materialization_id"]),

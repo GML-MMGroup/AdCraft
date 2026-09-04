@@ -5908,6 +5908,7 @@ def _proposal(
                 ProposalMaterializationErrorV2(
                     code=str(row["materialization_error_code"]),
                     message=str(row["materialization_error_message"]),
+                    actionable_failure=_materialization_actionable_failure(row),
                 )
                 if row["materialization_error_code"] is not None
                 and row["materialization_error_message"] is not None
@@ -6068,6 +6069,7 @@ def _timeline_entry(row: RowMapping) -> ChatTimelineEntryV2:
         metadata=metadata,
         command_plan=metadata.get("command_plan"),
         action_receipt=metadata.get("action_receipt"),
+        actionable_failure=metadata.get("actionable_failure"),
         created_at=str(row["created_at"]),
     )
 
@@ -6199,6 +6201,23 @@ def _guidance_session(
         .one_or_none()
     )
     journey = parse_production_journey(str(row["journey_state_json"]))
+    actionable_failure = None
+    if row["active_proposal_id"] is not None:
+        active_proposal = (
+            connection.execute(
+                select(AgentCanvasConceptProposalRow).where(
+                    AgentCanvasConceptProposalRow.proposal_id == row["active_proposal_id"],
+                    AgentCanvasConceptProposalRow.workflow_id == row["workflow_id"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if (
+            active_proposal is not None
+            and str(active_proposal["materialization_status"]) == "failed"
+        ):
+            actionable_failure = _materialization_actionable_failure(active_proposal)
     awaiting = (
         guidance_awaiting_from_row(awaiting_row)
         if awaiting_row is not None
@@ -6262,9 +6281,26 @@ def _guidance_session(
             guided_interaction_from_row(interaction_row) if interaction_row is not None else None
         ),
         awaiting=awaiting,
+        actionable_failure=actionable_failure,
         journey=journey,
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
+    )
+
+
+def _materialization_actionable_failure(row: RowMapping) -> ActionableFailureV1:
+    if bool(row["materialization_retryable"]):
+        return ActionableFailureV1(
+            failure_class="transient",
+            retry_scope="turn",
+            user_action="retry",
+        )
+    return ActionableFailureV1(
+        failure_class="deterministic",
+        retry_scope="none",
+        user_action=(
+            "redesign" if str(row["proposal_kind"]) == "storyboard" else "revise"
+        ),
     )
 
 
