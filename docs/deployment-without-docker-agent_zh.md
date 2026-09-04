@@ -55,7 +55,7 @@ cd /path/to/AdCraft
 bash scripts/deploy-native-linux.sh
 ```
 
-启动器会输出每个阶段，以及 `uv sync` 和 `npm ci` 产生的进度。持续观察，直到它打印最终 URL 或明确错误。
+启动器会输出每个阶段，以及 `uv sync` 和 `npm ci` 产生的进度。持续观察，直到它打印最终 URL 或明确错误。API 启动恢复可能继续执行中断的视频导出，因此就绪状态最长可能持续显示 30 分钟。
 
 只有八个阶段全部完成，并且启动器打印本机 Web URL 后，本阶段才完成。
 

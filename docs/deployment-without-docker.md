@@ -39,28 +39,29 @@ Run only the section that matches your system. After it finishes, run that secti
     ffprobe -version
     ffmpeg -hide_banner -encoders | Select-String -Pattern 'libx264|libopenh264'
     ffmpeg -hide_banner -encoders | Select-String -Pattern 'aac'
+    ffmpeg -hide_banner -filters | Select-String -Pattern 'drawtext|overlay|amix'
 
-If any command is not found, reopen PowerShell once more and run the check again. Node must begin with v22. FFmpeg and ffprobe must be version 6.1–7.x, and both encoder commands must display a result.
+If any command is not found, reopen PowerShell once more and run the check again. Node must begin with v22. FFmpeg and ffprobe must be version 6.1–7.x, both encoder commands must display a result, and the filter command must include `drawtext`, `overlay`, and `amix`. The launcher selects a readable Windows subtitle font automatically.
 
 ### Ubuntu 22.04
 
-Ubuntu 22.04 ships an FFmpeg version that is too old. This section builds the fixed FFmpeg 7.1.1 release. It can take several minutes; continuous terminal output means that it is still working.
+Ubuntu 22.04 ships an FFmpeg version that is too old. This section builds the fixed FFmpeg 7.1.5 release. It can take several minutes; continuous terminal output means that it is still working.
 
 1. Open Terminal.
 2. Copy the entire block below and press Enter.
 
     sudo apt update
-    sudo apt install -y ca-certificates curl gnupg build-essential pkg-config nasm yasm libx264-dev xz-utils
+    sudo apt install -y ca-certificates curl gnupg build-essential pkg-config nasm yasm libx264-dev libfreetype6-dev libharfbuzz-dev fonts-noto-cjk xz-utils
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt install -y nodejs
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     cd /tmp
-    rm -rf ffmpeg-7.1.1 ffmpeg-7.1.1.tar.xz
-    curl -fLO https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
-    tar -xJf ffmpeg-7.1.1.tar.xz
-    cd ffmpeg-7.1.1
-    ./configure --prefix=/usr/local --enable-gpl --enable-libx264
+    rm -rf ffmpeg-7.1.5 ffmpeg-7.1.5.tar.xz
+    curl -fLO https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz
+    tar -xJf ffmpeg-7.1.5.tar.xz
+    cd ffmpeg-7.1.5
+    ./configure --prefix=/usr/local --enable-gpl --enable-libx264 --enable-libfreetype --enable-libharfbuzz
     make -j"$(nproc)"
     sudo make install
     sudo ldconfig
@@ -75,6 +76,7 @@ Ubuntu 22.04 ships an FFmpeg version that is too old. This section builds the fi
     ffprobe -version
     ffmpeg -hide_banner -encoders | grep -E 'libx264|libopenh264'
     ffmpeg -hide_banner -encoders | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)'
+    ffmpeg -hide_banner -filters | grep -E 'drawtext|overlay|amix'
 
 ### Ubuntu 24.04 or later, or Debian 13 or later
 
@@ -82,7 +84,7 @@ Ubuntu 22.04 ships an FFmpeg version that is too old. This section builds the fi
 2. Copy the entire block below and press Enter.
 
     sudo apt update
-    sudo apt install -y ca-certificates curl gnupg ffmpeg
+    sudo apt install -y ca-certificates curl gnupg ffmpeg fonts-noto-cjk
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt install -y nodejs
     curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -97,12 +99,13 @@ Ubuntu 22.04 ships an FFmpeg version that is too old. This section builds the fi
     ffprobe -version
     ffmpeg -hide_banner -encoders | grep -E 'libx264|libopenh264'
     ffmpeg -hide_banner -encoders | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)'
+    ffmpeg -hide_banner -filters | grep -E 'drawtext|overlay|amix'
 
-The Linux checks use the same rules as Windows: Node must be v22, FFmpeg and ffprobe must be 6.1–7.x, and both encoder checks must show a result. If Ubuntu 24.04 or Debian 13 actually installs an out-of-range FFmpeg version, use the Ubuntu 22.04 build steps instead.
+The Linux checks use the same rules as Windows: Node must be v22, FFmpeg and ffprobe must be 6.1–7.x, the encoder checks must show a result, and the filter check must include `drawtext`, `overlay`, and `amix`. If Ubuntu 24.04 or Debian 13 actually installs an out-of-range FFmpeg version, use the Ubuntu 22.04 build steps instead.
 
 ## Step 2: Start AdCraft with one command
 
-The first start creates missing .env files, installs backend, internal Agent Runtime, and frontend dependencies, starts all three local services, and prints the local web address. Do not close the terminal until it says Native deployment completed.
+The first start creates missing .env files, installs backend, internal Agent Runtime, and frontend dependencies, starts all three local services, and prints the local web address. Do not close the terminal until it says Native deployment completed. If AdCraft is recovering an interrupted video export, API startup can take longer; the launcher keeps showing elapsed time and waits up to 30 minutes by default.
 
 The launcher displays stages [1/8] through [8/8]. Stages 3/8 through 5/8 show dependency download and installation output. Stages 6/8 through 8/8 display a continuous spinner with elapsed seconds while each local service starts. These messages mean the program is still working.
 
@@ -185,14 +188,14 @@ Linux: from the AdCraft project root, run:
 
     cd apps/api/agent
     npm ci --progress=true
-    TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
+    TOKEN="$(cat ../../../runtime-data/native/agent-runtime-token)"
     AGENT_RUNTIME_HOST=127.0.0.1 AGENT_RUNTIME_PORT=8765 AGENT_RUNTIME_PYTHON_BASE_URL=http://127.0.0.1:8000 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" node --import tsx src/main.ts
 
 Windows PowerShell: from the AdCraft project root, run:
 
     Set-Location apps/api/agent
     npm ci --progress=true
-    $token = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
+    $token = (Get-Content ..\..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
     $env:AGENT_RUNTIME_HOST = '127.0.0.1'; $env:AGENT_RUNTIME_PORT = '8765'; $env:AGENT_RUNTIME_PYTHON_BASE_URL = 'http://127.0.0.1:8000'; $env:AGENT_RUNTIME_INTERNAL_TOKEN = $token
     node --import tsx src/main.ts
 
@@ -205,7 +208,8 @@ Linux: from the AdCraft project root, run:
     cd apps/api
     uv sync
     TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
-    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" AGENT_RUNTIME_BASE_URL=http://127.0.0.1:8765 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
+    FONT="${FINAL_COMPOSITION_SUBTITLE_FONT_PATH:-/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc}"
+    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" FINAL_COMPOSITION_SUBTITLE_FONT_PATH="$FONT" AGENT_RUNTIME_BASE_URL=http://127.0.0.1:8765 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
 Windows PowerShell: from the AdCraft project root, run:
 
@@ -214,11 +218,14 @@ Windows PowerShell: from the AdCraft project root, run:
     $env:MEDIA_DATA_DIR = Join-Path (Resolve-Path ../..) 'runtime-data\api'
     $env:FFMPEG_PATH = (Get-Command ffmpeg).Source
     $env:FFPROBE_PATH = (Get-Command ffprobe).Source
+    $fontCandidates = @($env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH, (Join-Path $env:WINDIR 'Fonts\msyh.ttc'), (Join-Path $env:WINDIR 'Fonts\msyh.ttf'), (Join-Path $env:WINDIR 'Fonts\simhei.ttf'), (Join-Path $env:WINDIR 'Fonts\arial.ttf'))
+    $env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH = $fontCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+    if (-not $env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH) { throw 'No readable subtitle font was found.' }
     $env:AGENT_RUNTIME_BASE_URL = 'http://127.0.0.1:8765'
     $env:AGENT_RUNTIME_INTERNAL_TOKEN = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
     uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
-Keep the second terminal open. Open http://127.0.0.1:8000/api/v1/health in a browser and continue only after it gives a normal response.
+Keep the second terminal open. Open http://127.0.0.1:8000/api/v2/health in a browser and continue only after it gives a normal response.
 
 ### 4. Start the web UI in the third terminal
 
@@ -260,9 +267,9 @@ The launchers stop only native processes that they started. They retain .env, ru
 | --- | --- |
 | uv, node, npm, ffmpeg, or ffprobe is missing. | Close and reopen the terminal, then run the check commands again. If it is still missing, repeat the matching system-install section. |
 | An install stage has no new output. | Wait first; package downloads depend on the network. If there is no network activity for a long time, check the network, package source, or proxy, then rerun the launcher. |
-| FFmpeg version or encoder is rejected. | Do not use 4.x, 5.x, or 8.x. On Ubuntu 22.04, follow this guide's FFmpeg 7.1.1 build steps; on other systems, check the command output. |
+| FFmpeg version or encoder is rejected. | Do not use 4.x, 5.x, or 8.x. On Ubuntu 22.04, follow this guide's FFmpeg 7.1.5 build steps; on other systems, check the command output. |
 | uv sync or npm ci fails. | Check that the network can reach the Python package index or npm registry. Do not delete uv.lock or package-lock.json. |
-| A port is in use. | Use the two ADCRAFT_NATIVE port variables above, or stop the process that owns the port. |
+| A port is in use. | Use the three ADCRAFT_NATIVE port variables above, or stop the process that owns the port. |
 | The API or web UI exits after starting. | Run the matching Recent logs command. Remove API keys and .env contents before sharing a log. |
 
-Native deployment binds both services to 127.0.0.1. Do not expose the development servers to a LAN or the internet without separately designing authentication, TLS, firewall rules, and data protection.
+Native deployment binds all three services to 127.0.0.1. Do not expose the development servers to a LAN or the internet without separately designing authentication, TLS, firewall rules, and data protection.

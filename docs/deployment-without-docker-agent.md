@@ -55,7 +55,7 @@ cd /path/to/AdCraft
 bash scripts/deploy-native-linux.sh
 ```
 
-The launcher prints each stage and the progress produced by `uv sync` and `npm ci`. Continue monitoring until it prints the final URL or a concrete error.
+The launcher prints each stage and the progress produced by `uv sync` and `npm ci`. Continue monitoring until it prints the final URL or a concrete error. API startup recovery may resume an interrupted video export, so the readiness display can remain active for up to 30 minutes.
 
 The launch step is complete only when all eight stages finish and the launcher prints a local Web URL.
 
