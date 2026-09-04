@@ -1,5 +1,56 @@
 {
   "$defs": {
+    "ActionableFailureV1": {
+      "additionalProperties": false,
+      "description": "One validated public disposition for an exact failed operation.",
+      "properties": {
+        "failure_class": {
+          "enum": [
+            "conflict",
+            "deterministic",
+            "external",
+            "stale",
+            "transient"
+          ],
+          "title": "Failure Class",
+          "type": "string"
+        },
+        "retry_scope": {
+          "enum": [
+            "execution",
+            "none",
+            "prompt_preparation",
+            "provider_delivery",
+            "turn"
+          ],
+          "title": "Retry Scope",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "user_action": {
+          "enum": [
+            "none",
+            "redesign",
+            "regenerate",
+            "retry",
+            "revise"
+          ],
+          "title": "User Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure_class",
+        "retry_scope",
+        "user_action"
+      ],
+      "title": "ActionableFailureV1",
+      "type": "object"
+    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -1665,6 +1716,17 @@
     "AgentOperationFailureV2": {
       "additionalProperties": false,
       "properties": {
+        "actionable_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionableFailureV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "attempt_stage": {
           "enum": [
             "fallback",
@@ -5767,6 +5829,17 @@
       "additionalProperties": false,
       "description": "One safe, retry-aware Canvas error projection.",
       "properties": {
+        "actionable_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionableFailureV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "code": {
           "minLength": 1,
           "title": "Code",
@@ -16292,6 +16365,17 @@
     "GuidedSessionStateV2": {
       "additionalProperties": false,
       "properties": {
+        "actionable_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionableFailureV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "active_proposal_id": {
           "anyOf": [
             {
