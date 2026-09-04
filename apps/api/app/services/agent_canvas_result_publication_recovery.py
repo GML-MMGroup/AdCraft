@@ -94,12 +94,11 @@ class AgentCanvasResultPublicationRecoveryService:
             None,
         )
         if member is None:
-            self._intents.abandon(
-                intent.intent_id,
-                error_code="node_result_publication_source_invalid",
+            return self._close_without_publication(
+                intent,
+                "node_result_publication_source_invalid",
                 now=now,
             )
-            return "abandoned"
         if member.state in {"succeeded", "failed", "cancelled"}:
             matching_receipt = next(
                 (
@@ -118,23 +117,44 @@ class AgentCanvasResultPublicationRecoveryService:
                     now=now,
                 )
                 return "committed"
-            self._intents.abandon(
-                intent.intent_id,
-                error_code="node_result_publication_terminal_conflict",
+            return self._close_without_publication(
+                intent,
+                "node_result_publication_terminal_conflict",
                 now=now,
             )
-            return "abandoned"
+        execution = self._runtime.get_execution(intent.execution_id)
+        if execution.cancel_requested or execution.status in {
+            "completed",
+            "partial_completed",
+            "failed",
+            "cancelled",
+        }:
+            return self._close_without_publication(
+                intent,
+                "node_result_publication_terminal_conflict",
+                now=now,
+            )
         if (
             member.run_intent_snapshot_id != intent.source_snapshot_id
             or member.run_intent_snapshot_digest != intent.source_snapshot_digest
         ):
             return self._abandon(intent, "node_result_publication_source_invalid", now=now)
-        node = self._workflows.get_node(intent.workflow_id, intent.node_id)
+        try:
+            self._workflows.get_node(intent.workflow_id, intent.node_id)
+        except V2PersistenceError as error:
+            if error.code != "node_not_found":
+                raise
+            return self._close_without_publication(
+                intent,
+                "node_result_publication_terminal_conflict",
+                now=now,
+            )
         provenance = intent.planned_result.asset_metadata.get("generated_asset_provenance")
         expected_revision = (
             provenance.get("node_revision") if isinstance(provenance, dict) else None
         )
-        if expected_revision != node.revision:
+        snapshot = member.run_intent_snapshot
+        if snapshot is None or expected_revision != snapshot.node_revision:
             return self._abandon(intent, "node_result_publication_source_invalid", now=now)
 
         try:
@@ -198,6 +218,17 @@ class AgentCanvasResultPublicationRecoveryService:
             }:
                 return self._abandon(intent, error.code, now=now)
             return self._defer(intent, error.code, now=now, lease=lease)
+
+    def _close_without_publication(
+        self,
+        intent: CanvasResultPublicationIntentV1,
+        error_code: str,
+        *,
+        now: datetime,
+    ) -> RecoveryDisposition:
+        self._intents.abandon(intent.intent_id, error_code=error_code, now=now)
+        self._runtime.reconcile_terminal_leases(intent.execution_id, now=now)
+        return "abandoned"
 
     def _defer(
         self,
