@@ -30,7 +30,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas import CanvasNodeV2
-from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1, CanvasNodeErrorV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
@@ -1872,6 +1872,11 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     code=error_code,
                     message=_bounded(error_message, 1_024) or "Prompt preparation failed.",
                     retryable=False,
+                    actionable_failure=ActionableFailureV1(
+                        failure_class="deterministic",
+                        retry_scope="none",
+                        user_action="revise",
+                    ),
                 ),
                 "attempt_stage": "failed",
                 "updated_at": _utc(now),

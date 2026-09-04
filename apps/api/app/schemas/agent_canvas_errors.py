@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ActionableFailureClassV1: TypeAlias = Literal[
@@ -38,6 +38,18 @@ class ActionableFailureV1(BaseModel):
     failure_class: ActionableFailureClassV1
     retry_scope: ActionableRetryScopeV1
     user_action: ActionableUserActionV1
+    retryable: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_compatibility_retryable(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        derived = value.get("user_action") == "retry" and value.get("retry_scope") != "none"
+        supplied = value.get("retryable")
+        if supplied is not None and supplied != derived:
+            raise ValueError("Retryable must be derived from the actionable disposition.")
+        return {**value, "retryable": derived}
 
     @model_validator(mode="after")
     def validate_disposition(self) -> "ActionableFailureV1":
@@ -49,14 +61,6 @@ class ActionableFailureV1(BaseModel):
         elif self.retry_scope != "none":
             raise ValueError("Non-retry actions cannot carry a retry scope.")
         return self
-
-    @computed_field
-    @property
-    def retryable(self) -> bool:
-        """Compatibility projection derived from typed authority."""
-
-        return self.user_action == "retry" and self.retry_scope != "none"
-
 
 CharacterAuthoringErrorCodeV1: TypeAlias = Literal[
     "character_occurrence_invalid",
