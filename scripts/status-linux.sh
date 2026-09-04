@@ -9,5 +9,6 @@ load_state
 select_docker || die "Docker Compose v2 不可用。"
 compose ps
 printf '[AdCraft] URL: %s\n' "$(adcraft_url)"
+printf '[AdCraft] Agent health: %s\n' "$(container_health agent)"
 printf '[AdCraft] API health: %s\n' "$(container_health api)"
 printf '[AdCraft] Web health: %s\n' "$(container_health web)"

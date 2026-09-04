@@ -34,6 +34,7 @@ services:
     environment:
       HOME: /tmp
       MEDIA_DATA_DIR: /app/data
+      FINAL_COMPOSITION_SUBTITLE_FONT_PATH: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
       LOCAL_SETTINGS_ALLOWED_ORIGINS: "http://127.0.0.1:${ADCRAFT_PORT},http://localhost:${ADCRAFT_PORT}"
       AGENT_RUNTIME_BASE_URL: http://agent:8765
       AGENT_RUNTIME_INTERNAL_TOKEN: ${ADCRAFT_AGENT_RUNTIME_TOKEN:?Run the deployment launcher to create the internal Agent token.}
@@ -49,7 +50,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v2/health', timeout=5)"
       interval: 5s
       timeout: 5s
       retries: 20
@@ -67,7 +68,7 @@ services:
       dockerfile: Dockerfile
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "127.0.0.1:${ADCRAFT_PORT:-8080}:80"
     volumes:
