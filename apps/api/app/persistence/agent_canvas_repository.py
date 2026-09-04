@@ -1409,6 +1409,8 @@ class AgentCanvasWorkflowRepository:
                 )
                 if current is None:
                     raise _node_not_found_error()
+                if str(current["status"]) == "ready" and status not in {"ready", "working"}:
+                    return _node_from_row(current)
                 changed = connection.execute(
                     update(AgentCanvasNodeRow)
                     .where(
