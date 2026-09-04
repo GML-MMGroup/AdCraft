@@ -127,7 +127,10 @@ class AgentCanvasCommandRepository:
                         "base_workflow_revision": plan.base_workflow_revision,
                         "expires_at": plan.expires_at.isoformat(),
                         "operations_json": _dump(
-                            [operation.model_dump(mode="json") for operation in plan.operations]
+                            [
+                                operation.model_dump(mode="json", exclude_unset=True)
+                                for operation in plan.operations
+                            ]
                         ),
                         "operation_fingerprint": operation_fingerprint,
                         "risk": plan.risk,
