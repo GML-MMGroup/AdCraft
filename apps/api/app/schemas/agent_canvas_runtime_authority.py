@@ -118,6 +118,7 @@ class PreparedPostReadyEffectV2(_AuthorityModel):
 class PreparedNodeResultV2(_AuthorityModel):
     logical_result_key: str = Field(min_length=1, max_length=320)
     payload_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    publication_intent_id: str | None = Field(default=None, min_length=1, max_length=160)
     structured_content: dict[str, JsonValue] | None = None
     prepared_object: PreparedContentObjectV2 | None = None
     asset_id: str | None = Field(default=None, max_length=160)
@@ -189,6 +190,7 @@ class CanvasResultPublicationIntentV1(_AuthorityModel):
         if (
             result.logical_result_key != self.logical_result_key
             or result.payload_digest != self.payload_digest
+            or result.publication_intent_id != self.intent_id
             or result.prepared_object is None
             or result.prepared_object.storage_key != self.expected_storage_key
             or result.prepared_object.sha256 != self.expected_object_sha256
@@ -231,6 +233,7 @@ class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
     lease_generation: int = Field(ge=1)
     logical_result_key: str = Field(min_length=1, max_length=320)
     payload_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    publication_intent_id: str | None = Field(default=None, min_length=1, max_length=160)
     provider_task_id: str | None = Field(default=None, max_length=160)
     outcome: Literal["succeeded", "failed", "cancelled"]
     prepared_result: PreparedNodeResultV2 | None = None
@@ -244,6 +247,7 @@ class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
         if self.prepared_result is not None and (
             self.prepared_result.logical_result_key != self.logical_result_key
             or self.prepared_result.payload_digest != self.payload_digest
+            or self.prepared_result.publication_intent_id != self.publication_intent_id
         ):
             raise ValueError("Prepared output identity must match the commit command.")
         if self.outcome != "succeeded" and self.error is None:
