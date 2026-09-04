@@ -294,6 +294,20 @@ class SceneEnvironmentProjectionV1(_RolePromptModel):
         return self
 
 
+class RolePromptViolationV1(_RolePromptModel):
+    """Safe role-contract diagnostics without matched prompt text."""
+
+    role_variant: RolePromptVariantV2
+    violation_category: Literal[
+        "cross_role_content",
+        "narrative_progression",
+        "positive_character",
+        "positive_product",
+        "positive_prop",
+    ]
+    field_path: str = Field(min_length=1, max_length=160)
+
+
 class RolePromptPreparationContextV2(_RolePromptModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
@@ -312,8 +326,13 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     response_locale: str = Field(default="und", min_length=2, max_length=35)
     internal_skill_ref: str = Field(min_length=1, max_length=320)
     style_projection: str | None = Field(default=None, max_length=8_192)
+    style_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     world_view_projection: str | None = Field(default=None, max_length=8_192)
     bindings: tuple[RoleBindingSnapshotV2, ...] = Field(default=(), max_length=32)
+    binding_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     context_blocks: tuple[RolePromptContextBlockV2, ...] = Field(default=(), max_length=64)
     world_view_block_id: str | None = Field(default=None, max_length=160)
     explicit_controls: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)

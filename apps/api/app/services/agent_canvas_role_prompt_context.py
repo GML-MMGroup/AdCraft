@@ -42,6 +42,13 @@ _GLOBAL_REQUIREMENT_FIELDS = frozenset(
         "video_representation_mode",
     }
 )
+_SCENE_GLOBAL_REQUIREMENT_FIELDS = frozenset(
+    {
+        "aspect_ratio",
+        "output_resolution",
+        "response_locale",
+    }
+)
 _ROLE_REQUIREMENT_PREFIXES: dict[RolePromptVariantV2, tuple[str, ...]] = {
     "world_view": ("world_",),
     "product_main": ("product_",),
@@ -201,23 +208,49 @@ class RolePromptContextProjector:
         selected_direction = node.summary_prompt or (
             selected.public_summary if selected is not None else None
         )
+        user_prompt = _authoring_user_prompt(node)
+        projected_bindings = bindings
+        projected_world_view = world_view_projection
+        if role_variant == "scene_board":
+            if scene_environment_projection is None:
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene prompt context requires typed environment authority.",
+                )
+            if (
+                scene_environment_projection.entity_references
+                or scene_environment_projection.action_references
+            ):
+                raise _error(
+                    "scene_environment_projection_invalid",
+                    "Scene prompt context must be environment-only.",
+                )
+            selected_direction = scene_environment_projection.environment_identity
+            projected_bindings = tuple(
+                binding
+                for binding in bindings
+                if binding.source_role not in {"character", "product", "prop"}
+            )
+            projected_world_view = None
+        projected_requirements = _role_requirement_facts(
+            stage_context.requirement_facts,
+            role_variant,
+        )
+        projected_style = _aesthetic_style_projection(
+            stage_context.style_projection,
+            role_variant=role_variant,
+        )
         response_locale = stage_context.requirement_facts.get("response_locale")
         resolved_context_blocks = context_blocks or _default_context_blocks(
             requirement_revision_id=requirement_revision_id,
             requirement_revision_no=requirement_revision_no,
-            requirement_facts=_role_requirement_facts(
-                stage_context.requirement_facts,
-                role_variant,
-            ),
+            requirement_facts=projected_requirements,
             selected_direction=selected_direction,
-            user_prompt=_authoring_user_prompt(node),
-            style_projection=_aesthetic_style_projection(
-                stage_context.style_projection,
-                role_variant=role_variant,
-            ),
-            world_view_projection=world_view_projection,
+            user_prompt=user_prompt,
+            style_projection=projected_style,
+            world_view_projection=projected_world_view,
             document_revisions=document_revisions,
-            bindings=bindings,
+            bindings=projected_bindings,
         )
         world_view_block_id = next(
             (item.block_id for item in resolved_context_blocks if item.source_kind == "world_view"),
@@ -254,21 +287,27 @@ class RolePromptContextProjector:
             character_phase=character_phase,
             character_identity_projection=character_identity_projection,
             scene_environment_projection=scene_environment_projection,
-            requirement_facts=_role_requirement_facts(
-                stage_context.requirement_facts,
-                role_variant,
-            ),
+            requirement_facts=projected_requirements,
             document_revisions=document_revisions,
             selected_direction=selected_direction,
-            user_prompt=_authoring_user_prompt(node),
+            user_prompt=user_prompt,
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
             internal_skill_ref=stage_context.internal_skill_ref,
-            style_projection=_aesthetic_style_projection(
-                stage_context.style_projection,
-                role_variant=role_variant,
+            style_projection=projected_style,
+            style_projection_digest=(
+                _prefixed_digest(projected_style or "")
+                if role_variant == "scene_board"
+                else None
             ),
-            world_view_projection=world_view_projection,
-            bindings=bindings,
+            world_view_projection=projected_world_view,
+            bindings=projected_bindings,
+            binding_digest=(
+                _prefixed_digest(
+                    [item.model_dump(mode="json") for item in projected_bindings]
+                )
+                if role_variant == "scene_board"
+                else None
+            ),
             explicit_controls=explicit_controls or {},
             bound_text_controls=bound_text_controls,
             node_parameters=node.parameters,
@@ -406,10 +445,15 @@ def _role_requirement_facts(
     role_variant: RolePromptVariantV2,
 ) -> dict[str, JsonValue]:
     prefixes = _ROLE_REQUIREMENT_PREFIXES[role_variant]
+    global_fields = (
+        _SCENE_GLOBAL_REQUIREMENT_FIELDS
+        if role_variant == "scene_board"
+        else _GLOBAL_REQUIREMENT_FIELDS
+    )
     projected = {
         key: value
         for key, value in sorted(facts.items())
-        if (key in _GLOBAL_REQUIREMENT_FIELDS or key.startswith(prefixes))
+        if (key in global_fields or key.startswith(prefixes))
         and key not in {"character_occurrences", "character_roster"}
     }
     return projected

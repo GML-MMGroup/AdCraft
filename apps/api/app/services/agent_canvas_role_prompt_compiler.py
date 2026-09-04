@@ -34,6 +34,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefV2,
     RoleCreativeBriefMemberV2,
     RolePromptPreparationContextV2,
+    RolePromptViolationV1,
     SceneBoardRoleBriefV2,
     SceneEnvironmentProjectionV1,
     ScriptRoleBriefV2,
@@ -105,6 +106,17 @@ _ROLE_PROMPT_CONFLICTS: dict[str, tuple[str, ...]] = {
         "active character",
     ),
 }
+_SCENE_CONFLICT_CATEGORIES = {
+    "character": "positive_character",
+    "characters": "positive_character",
+    "active character": "positive_character",
+    "product": "positive_product",
+    "products": "positive_product",
+    "prop": "positive_prop",
+    "props": "positive_prop",
+    "narrative action": "narrative_progression",
+    "plot progression": "narrative_progression",
+}
 
 
 class AgentCanvasRolePromptCompiler:
@@ -168,7 +180,11 @@ class AgentCanvasRolePromptCompiler:
                 )
         else:
             prompt = rendered_prompt
-        _validate_role_prompt_text(context.role_variant, prompt)
+        _validate_role_prompt_text(
+            context.role_variant,
+            prompt,
+            field_path=("editable_prompt" if editable_prompt is not None else "rendered_prompt"),
+        )
         style_authority = ReferenceStyleAuthorityPolicyResolver().resolve(context)
         conditioning_plan = ReferenceConditioningPlanResolver().resolve(context)
         if style_authority is not None:
@@ -180,7 +196,11 @@ class AgentCanvasRolePromptCompiler:
                 conditioning_plan=conditioning_plan,
             )
         elif context.style_projection:
-            _validate_role_prompt_text(context.role_variant, context.style_projection)
+            _validate_role_prompt_text(
+                context.role_variant,
+                context.style_projection,
+                field_path="style_projection",
+            )
             prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
         self._validate_required_references(recipe.reference_purposes, context)
         self._reference_policy.require_derivative_prompt_bindings(
@@ -804,7 +824,14 @@ def _digest(value: object) -> str:
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def _validate_role_prompt_text(role_variant: str, text: str) -> None:
+def role_prompt_text_violation(
+    role_variant: str,
+    text: str,
+    *,
+    field_path: str,
+) -> RolePromptViolationV1 | None:
+    """Return a safe deterministic violation without exposing matched text."""
+
     normalized = text.casefold()
     for phrase in _ROLE_PROMPT_CONFLICTS.get(role_variant, ()):
         pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])")
@@ -812,10 +839,34 @@ def _validate_role_prompt_text(role_variant: str, text: str) -> None:
             not _is_explicitly_negated(normalized, match.start())
             for match in pattern.finditer(normalized)
         ):
-            raise _error(
-                "node_prompt_role_contract_invalid",
-                "Role prompt text conflicts with the foundation isolation contract.",
+            return RolePromptViolationV1(
+                role_variant=role_variant,
+                violation_category=_SCENE_CONFLICT_CATEGORIES.get(
+                    phrase,
+                    "cross_role_content",
+                ),
+                field_path=field_path,
             )
+    return None
+
+
+def _validate_role_prompt_text(
+    role_variant: str,
+    text: str,
+    *,
+    field_path: str,
+) -> None:
+    violation = role_prompt_text_violation(
+        role_variant,
+        text,
+        field_path=field_path,
+    )
+    if violation is not None:
+        raise _error(
+            "node_prompt_role_contract_invalid",
+            "Role prompt text conflicts with the foundation isolation contract.",
+            details=violation.model_dump(mode="json"),
+        )
 
 
 _NEGATED_ROLE_CONFLICT = re.compile(
@@ -878,5 +929,15 @@ def _compaction_decisions(
     return tuple(decisions)
 
 
-def _error(code: str, message: str) -> V2PersistenceError:
-    return V2PersistenceError(code, message, stage="agent_canvas_role_prompt_compiler")
+def _error(
+    code: str,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> V2PersistenceError:
+    return V2PersistenceError(
+        code,
+        message,
+        stage="agent_canvas_role_prompt_compiler",
+        details=details,
+    )
