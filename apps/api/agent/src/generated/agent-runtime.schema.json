@@ -22955,6 +22955,33 @@
           "title": "Provider Model Id",
           "type": "string"
         },
+        "routing_policy_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Routing Policy Digest"
+        },
+        "routing_policy_id": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Routing Policy Id"
+        },
         "transport_kind": {
           "enum": [
             "ark_image_native",
@@ -23051,6 +23078,33 @@
           "minLength": 1,
           "title": "Provider Model Id",
           "type": "string"
+        },
+        "routing_policy_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Routing Policy Digest"
+        },
+        "routing_policy_id": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Routing Policy Id"
         },
         "safe_summary": {
           "additionalProperties": true,
