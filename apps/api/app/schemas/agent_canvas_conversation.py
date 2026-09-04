@@ -26,6 +26,7 @@ from app.schemas.agent_runtime import (
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_canvas_guidance import GuidanceAdvancePreconditionV1
 
 
@@ -144,6 +145,7 @@ class ChatTurnV2(_ConversationModel):
     retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     retry_attempt_no: int = Field(default=1, ge=1)
     retryable: bool = False
+    actionable_failure: ActionableFailureV1 | None = None
     operation_stage: str | None = Field(default=None, min_length=1, max_length=120)
     operation_failure: AgentOperationFailureV2 | None = None
     error_code: str | None = None
@@ -155,6 +157,11 @@ class ChatTurnV2(_ConversationModel):
     def validate_terminal_retryability(self) -> "ChatTurnV2":
         if self.status == "superseded" and self.retryable:
             raise ValueError("Superseded turns are terminal and non-retryable.")
+        if (
+            self.actionable_failure is not None
+            and self.retryable != self.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
         return self
 
 
@@ -179,6 +186,7 @@ class ChatTimelineEntryV2(_ConversationModel):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     command_plan: AgentCommandPlanV2 | None = None
     action_receipt: "AgentActionReceiptV2 | None" = None
+    actionable_failure: ActionableFailureV1 | None = None
     created_at: datetime
 
 
@@ -220,6 +228,7 @@ class ConceptOptionRecordV2(_ConversationModel):
 class ProposalMaterializationErrorV2(_ConversationModel):
     code: str = Field(min_length=1, max_length=160)
     message: str = Field(min_length=1, max_length=2_048)
+    actionable_failure: ActionableFailureV1 | None = None
 
 
 class ProposalMaterializationProjectionV2(_ConversationModel):
@@ -232,6 +241,16 @@ class ProposalMaterializationProjectionV2(_ConversationModel):
     error: ProposalMaterializationErrorV2 | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_retryable_projection(self) -> "ProposalMaterializationProjectionV2":
+        if (
+            self.error is not None
+            and self.error.actionable_failure is not None
+            and self.retryable != self.error.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
+        return self
 
 
 class _ConceptProposalBaseV2(_ConversationModel):

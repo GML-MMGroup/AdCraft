@@ -33,6 +33,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidanceAwaitingV2,
     GuidedInteractionV1,
 )
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 
 
 CreationModeV2 = Literal[
@@ -235,6 +236,7 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     )
     interaction: GuidedInteractionV1 | None = None
     awaiting: GuidanceAwaitingV2 | None = None
+    actionable_failure: ActionableFailureV1 | None = None
     journey: GuidedProductionJourneyV2
     revision: int = Field(ge=1)
     updated_at: datetime
