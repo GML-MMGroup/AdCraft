@@ -245,7 +245,11 @@ class AgentCanvasBindingService:
                     target_node_id=binding.target_node_id,
                 )
             )
-        self._workflows.add_binding(binding, expected_revision=expected_revision)
+        self._workflows.add_binding(
+            binding,
+            expected_revision=expected_revision,
+            user_authoring=True,
+        )
         return binding
 
     def delete(
@@ -277,6 +281,7 @@ class AgentCanvasBindingService:
             workflow_id,
             binding_id,
             expected_revision=expected_revision,
+            user_authoring=True,
         )
 
     def patch(
@@ -355,6 +360,7 @@ class AgentCanvasBindingService:
             expected_revision=expected_revision,
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint,
+            user_authoring=True,
         )
 
     def _binding_metadata(

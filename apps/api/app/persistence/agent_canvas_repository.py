@@ -855,6 +855,14 @@ class AgentCanvasWorkflowRepository:
                             reason="node_prompt_input_changed",
                             now=node.updated_at,
                         )
+                    elif requested_manual_prompt and current_preparation_managed:
+                        self._prompt_dispatch.supersede_for_user_authoring_in_transaction(
+                            connection,
+                            workflow_id=node.workflow_id,
+                            node_id=node.node_id,
+                            reason="explicit_node_authoring",
+                            now=node.updated_at,
+                        )
                     else:
                         self._prompt_dispatch.ensure_for_node_in_transaction(
                             connection,
@@ -1797,6 +1805,7 @@ class AgentCanvasWorkflowRepository:
         binding: CanvasBindingV2,
         *,
         expected_revision: int,
+        user_authoring: bool = False,
     ) -> AgentCanvasWorkflowV2:
         """Insert one real binding and advance the workflow revision once."""
 
@@ -1830,14 +1839,23 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
-                    _invalidate_target_prompt_preparation(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=binding.workflow_id,
-                        target_node_id=binding.target_node_id,
-                        updated_at=now,
-                    )
+                    if user_authoring:
+                        _make_target_prompt_user_owned(
+                            connection,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=binding.workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
+                    else:
+                        _invalidate_target_prompt_preparation(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=binding.workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=binding.workflow_id,
@@ -1876,6 +1894,7 @@ class AgentCanvasWorkflowRepository:
         binding_id: str,
         *,
         expected_revision: int,
+        user_authoring: bool = False,
     ) -> AgentCanvasWorkflowV2:
         """Delete one binding without deleting either source."""
 
@@ -1918,14 +1937,23 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
-                    _invalidate_target_prompt_preparation(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=workflow_id,
-                        target_node_id=binding.target_node_id,
-                        updated_at=now,
-                    )
+                    if user_authoring:
+                        _make_target_prompt_user_owned(
+                            connection,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
+                    else:
+                        _invalidate_target_prompt_preparation(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=workflow_id,
@@ -2092,6 +2120,7 @@ class AgentCanvasWorkflowRepository:
         expected_revision: int,
         idempotency_key: str,
         request_fingerprint: str,
+        user_authoring: bool = False,
     ) -> CanvasBindingMutationResponseV2:
         """Patch one binding and normalize its target inputs atomically."""
 
@@ -2148,14 +2177,23 @@ class AgentCanvasWorkflowRepository:
                         prioritized_binding_id=binding.binding_id,
                         requested_order=binding.display_order,
                     )
-                    _invalidate_target_prompt_preparation(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=binding.workflow_id,
-                        target_node_id=binding.target_node_id,
-                        updated_at=now,
-                    )
+                    if user_authoring:
+                        _make_target_prompt_user_owned(
+                            connection,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=binding.workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
+                    else:
+                        _invalidate_target_prompt_preparation(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=binding.workflow_id,
+                            target_node_id=binding.target_node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=binding.workflow_id,
@@ -2986,6 +3024,101 @@ def _invalidate_target_prompt_preparation(
             now=_parse_datetime(updated_at),
         )
     return queued_node
+
+
+def _make_target_prompt_user_owned(
+    connection: Connection,
+    *,
+    prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository,
+    workflow_id: str,
+    target_node_id: str,
+    updated_at: str,
+) -> CanvasNodeV2 | None:
+    """Make a managed visible prompt direct-ready after explicit Binding authoring."""
+
+    row = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id == target_node_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _node_not_found_error()
+    node = _node_from_row(row)
+    if node.execution_mode == "source_only" or not _has_managed_prompt_preparation(node):
+        return None
+    prompt = node.generation_prompt.strip() if node.generation_prompt else ""
+    timestamp = _parse_datetime(updated_at)
+    if prompt:
+        preparation = NodePromptPreparationV1(
+            status="ready",
+            operation_id=None,
+            attempt_no=0,
+            context_snapshot_id=None,
+            prompt_digest=sha256(prompt.encode("utf-8")).hexdigest(),
+            error=None,
+            updated_at=timestamp,
+        )
+        prior = node.prompt_presentation
+        presentation = EditablePromptProjectionV1(
+            text=prompt,
+            locale=prior.locale if prior is not None else "und",
+            source="user_edited",
+            revision=node.revision + 1,
+            brief_digest=prior.brief_digest if prior is not None else None,
+            prompt_digest=f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}",
+        )
+    else:
+        preparation = NodePromptPreparationV1.waiting_user(updated_at=timestamp)
+        presentation = None
+    metadata = {
+        key: value
+        for key, value in node.metadata.items()
+        if not key.startswith("prompt_")
+        and key not in {"prepared_reference_snapshots", "editable_prompt_projection"}
+    }
+    if presentation is not None:
+        metadata["editable_prompt_projection"] = presentation.model_dump(mode="json")
+    values = {
+        "generation_prompt": prompt or None,
+        "prompt_preparation_json": preparation.model_dump_json(),
+        "prompt_context_snapshot_id": None,
+        "metadata_json": _json_dump(metadata),
+        "revision": node.revision + 1,
+        "updated_at": updated_at,
+    }
+    changed = connection.execute(
+        update(AgentCanvasNodeRow)
+        .where(
+            AgentCanvasNodeRow.workflow_id == workflow_id,
+            AgentCanvasNodeRow.node_id == target_node_id,
+            AgentCanvasNodeRow.revision == node.revision,
+        )
+        .values(**values)
+    )
+    if changed.rowcount != 1:
+        raise _prompt_preparation_conflict()
+    prompt_dispatch.supersede_for_user_authoring_in_transaction(
+        connection,
+        workflow_id=workflow_id,
+        node_id=target_node_id,
+        reason="explicit_binding_authoring",
+        now=timestamp,
+    )
+    return node.model_copy(
+        update={
+            "generation_prompt": prompt or None,
+            "prompt_presentation": presentation,
+            "prompt_preparation": preparation,
+            "prompt_context_snapshot_id": None,
+            "revision": node.revision + 1,
+            "updated_at": timestamp,
+        }
+    )
 
 
 def _invalidate_prompt_preparations_for_source(

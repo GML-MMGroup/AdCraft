@@ -1114,6 +1114,69 @@ class AgentCanvasPromptPreparationDispatchRepository:
         )
         return result
 
+    def supersede_for_user_authoring_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        reason: str,
+        now: datetime,
+    ) -> int:
+        """Retire prior managed work when the visible prompt becomes user-owned."""
+
+        timestamp = _utc(now)
+        rows = (
+            connection.execute(
+                select(AgentCanvasPromptPreparationOutboxRow).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                    AgentCanvasPromptPreparationOutboxRow.status.in_(
+                        (*NON_TERMINAL_STATUSES, "completed", "failed")
+                    ),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        for row in rows:
+            values = {
+                "status": "superseded",
+                "lease_owner": None,
+                "lease_expires_at": None,
+                "last_error_code": "prompt_preparation_superseded",
+                "last_error_message": _bounded(reason, 1_024),
+                "supersession_reason": _bounded(reason, 1_024),
+                "updated_at": _iso(timestamp),
+                "terminal_at": _iso(timestamp),
+            }
+            changed = connection.execute(
+                update(AgentCanvasPromptPreparationOutboxRow)
+                .where(
+                    AgentCanvasPromptPreparationOutboxRow.dispatch_id == row["dispatch_id"],
+                    AgentCanvasPromptPreparationOutboxRow.status.in_(
+                        (*NON_TERMINAL_STATUSES, "completed", "failed")
+                    ),
+                )
+                .values(**values)
+            )
+            if changed.rowcount != 1:
+                raise _error(
+                    "prompt_preparation_dispatch_state_conflict",
+                    "Dispatch changed before user-authoring supersession.",
+                )
+            self._append_event(
+                connection,
+                _dispatch_from_row({**row, **values}),
+                event_type="node_prompt_preparation_superseded",
+                transition_key=(
+                    f"prompt-dispatch:{row['dispatch_id']}:"
+                    f"user-authoring-superseded:{row['lease_generation']}"
+                ),
+                created_at=timestamp,
+            )
+        return len(rows)
+
     def get_for_node_operation_in_transaction(
         self,
         connection: Connection,

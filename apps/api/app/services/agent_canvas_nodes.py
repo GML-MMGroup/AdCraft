@@ -159,15 +159,25 @@ class AgentCanvasNodeService:
                 if normalized_prompt is not None
                 else None
             )
-        if (
-            current.status == "draft"
-            and _has_managed_prompt_preparation(current)
-            and _changes_prompt_authority(changes)
-        ):
-            changes["prompt_preparation"] = _queued_prompt_preparation(
-                current.prompt_preparation,
-                now,
-            )
+        if _has_managed_prompt_preparation(current) and _changes_prompt_authority(changes):
+            visible_prompt = changes.get("generation_prompt", current.generation_prompt)
+            if isinstance(visible_prompt, str) and visible_prompt.strip():
+                normalized_visible_prompt = visible_prompt.strip()
+                changes["generation_prompt"] = normalized_visible_prompt
+                changes["prompt_preparation"] = _ready_prompt_preparation(
+                    normalized_visible_prompt,
+                    now,
+                )
+                changes["prompt_presentation"] = _editable_prompt_projection(
+                    normalized_visible_prompt,
+                    source="user_edited",
+                    revision=current.revision + 1,
+                    prior=current.prompt_presentation,
+                )
+            else:
+                changes["generation_prompt"] = None
+                changes["prompt_preparation"] = NodePromptPreparationV1.waiting_user(updated_at=now)
+                changes["prompt_presentation"] = None
         elif "generation_prompt" in changes and not source_only_product:
             if changes["generation_prompt"] is None:
                 changes["prompt_preparation"] = NodePromptPreparationV1.waiting_user(updated_at=now)
@@ -285,21 +295,6 @@ def _ready_prompt_preparation(
         attempt_no=0,
         context_snapshot_id=None,
         prompt_digest=sha256(normalized_prompt.encode("utf-8")).hexdigest(),
-        error=None,
-        updated_at=now,
-    )
-
-
-def _queued_prompt_preparation(
-    current: NodePromptPreparationV1,
-    now: datetime,
-) -> NodePromptPreparationV1:
-    return NodePromptPreparationV1(
-        status="queued",
-        operation_id=None,
-        attempt_no=current.attempt_no,
-        context_snapshot_id=None,
-        prompt_digest=None,
         error=None,
         updated_at=now,
     )
