@@ -124,7 +124,6 @@ class AgentCanvasConnectedAuthoringService:
             source=CanvasBindingSourceNodeV2(source_node_id=source.node_id),
             target_node_id=target.node_id,
             input_role=decision.input_role or "text_context",
-            required=request.binding.required,
             enabled=True,
             order=min(
                 request.binding.order if request.binding.order is not None else len(incoming),

@@ -143,7 +143,6 @@ class AgentCanvasRunIntentSnapshotService:
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
                     order=binding.order,
-                    required=binding.required,
                     source_kind=binding.source.kind,
                     source_id=(
                         binding.source.source_node_id
@@ -387,7 +386,6 @@ def _binding_snapshots(
             binding_id=binding.binding_id,
             input_role=binding.input_role,
             order=binding.order,
-            required=binding.required,
             source_kind=binding.source.kind,
             source_id=(
                 binding.source.source_node_id

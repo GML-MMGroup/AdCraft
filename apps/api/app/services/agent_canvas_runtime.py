@@ -178,7 +178,6 @@ class AgentCanvasRunService:
                                         "binding_id": binding.binding_id,
                                         "source_node_id": binding.source.source_node_id,
                                         "target_node_id": binding.target_node_id,
-                                        "required": binding.required,
                                     }
                                     for binding in unready_bindings
                                 ],
@@ -2188,7 +2187,6 @@ def _parameter_compilation_revision_is_current(
         "position",
         "error",
         "prompt_preparation",
-        "variation_draft",
     ):
         if getattr(current, field) != getattr(original, field):
             return False

@@ -218,7 +218,6 @@ class AgentCanvasBindingService:
             ),
             target_node_id=request.target_node_id,
             input_role=policy_decision.input_role or "text_context",
-            required=request.required,
             enabled=request.enabled,
             order=min(
                 request.order if request.order is not None else len(incoming),
@@ -321,7 +320,6 @@ class AgentCanvasBindingService:
         updated = existing.model_copy(
             update={
                 "input_role": policy_decision.input_role or existing.input_role,
-                "required": request.required if request.required is not None else existing.required,
                 "enabled": request.enabled if request.enabled is not None else existing.enabled,
                 "order": min(order, len(incoming) - 1),
                 "label": request.label if request.label is not None else existing.label,
@@ -430,7 +428,6 @@ class AgentCanvasBindingService:
                     source_structured_content=source.structured_content,
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
-                    required=binding.required,
                     display_order=binding.display_order,
                 )
             )
@@ -560,7 +557,6 @@ class AgentCanvasBindingService:
                     ),
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
-                    required=binding.required,
                     display_order=binding.display_order,
                 )
             )
@@ -701,7 +697,6 @@ class AgentCanvasBindingService:
                         source_structured_content=source.structured_content,
                         binding_id=binding.binding_id,
                         input_role="text_context",
-                        required=binding.required,
                         display_order=binding.order,
                     )
                 )
@@ -764,7 +759,6 @@ class AgentCanvasBindingService:
                     ),
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
-                    required=binding.required,
                     display_order=binding.order,
                 )
             )

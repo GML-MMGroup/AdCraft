@@ -1144,7 +1144,6 @@ class ProgressiveStoryboardReadyService:
                     source=CanvasBindingSourceNodeV2(source_node_id=source_node.node_id),
                     target_node_id=video.node_id,
                     input_role="image_reference",
-                    required=True,
                     order=len(identity_bindings) + 1,
                     metadata={
                         "semantic_reference_role": _video_semantic_reference_role(source_role),
@@ -1160,7 +1159,6 @@ class ProgressiveStoryboardReadyService:
                 source=CanvasBindingSourceNodeV2(source_node_id=grid.node_id),
                 target_node_id=video.node_id,
                 input_role="image_reference",
-                required=True,
                 order=0,
                 metadata={"semantic_reference_role": "storyboard_visual_reference"},
                 created_at=now,
@@ -1279,7 +1277,6 @@ def _later_grid_bindings(
             source=CanvasBindingSourceNodeV2(source_node_id=grid_one.node_id),
             target_node_id=target.node_id,
             input_role="image_reference",
-            required=True,
             order=len(bindings),
             metadata={
                 "semantic_reference_role": "style_composition_reference",

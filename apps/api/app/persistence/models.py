@@ -1101,7 +1101,6 @@ class AgentCanvasBindingRow(Base):
         Text,
         nullable=False,
     )
-    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     label: Mapped[str | None] = mapped_column(Text)

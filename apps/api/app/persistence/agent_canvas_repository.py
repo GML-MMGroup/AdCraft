@@ -34,7 +34,6 @@ from app.persistence.models import (
     AgentCanvasNodeRow,
     AgentCanvasPromptPreparationOutboxRow,
     AgentCanvasPromptContextSnapshotRow,
-    AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
 )
 from app.persistence.project_repository import ProjectRepository
@@ -54,7 +53,6 @@ from app.schemas.agent_canvas import (
     CanvasLayoutPatchResponseV2,
     CanvasLayoutPositionV2,
     CanvasModelSummaryV2,
-    CanvasVariationDraftV2,
     ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
@@ -269,15 +267,6 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .all()
                 )
-                variation_rows = (
-                    connection.execute(
-                        select(AgentCanvasVariationDraftRow).where(
-                            AgentCanvasVariationDraftRow.workflow_id == workflow_id
-                        )
-                    )
-                    .mappings()
-                    .all()
-                )
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -296,14 +285,6 @@ class AgentCanvasWorkflowRepository:
             nodes=tuple(
                 _node_from_row(
                     row,
-                    variation=next(
-                        (
-                            item
-                            for item in variation_rows
-                            if str(item["source_node_id"]) == str(row["node_id"])
-                        ),
-                        None,
-                    ),
                     model_summary=model_summaries.get(str(row["model_ref"])),
                 )
                 for row in node_rows
@@ -339,22 +320,12 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .one_or_none()
                 )
-                variation = (
-                    connection.execute(
-                        select(AgentCanvasVariationDraftRow).where(
-                            AgentCanvasVariationDraftRow.workflow_id == workflow_id,
-                            AgentCanvasVariationDraftRow.source_node_id == node_id,
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         if row is None:
             raise _node_not_found_error()
         model_summary = _load_model_summaries(self._database, (row,)).get(str(row["model_ref"]))
-        return _node_from_row(row, variation=variation, model_summary=model_summary)
+        return _node_from_row(row, model_summary=model_summary)
 
     def asset_is_referenced(self, asset_id: str) -> bool:
         """Return whether active canvas authoring points at one asset."""
@@ -2102,7 +2073,6 @@ class AgentCanvasWorkflowRepository:
                         )
                         .values(
                             input_role=binding.input_role,
-                            required=binding.required,
                             enabled=binding.enabled,
                             label=binding.label,
                             metadata_json=_json_dump(binding.metadata),
@@ -3035,7 +3005,6 @@ def _parse_datetime(value: str) -> datetime:
 def _node_from_row(
     row: RowMapping,
     *,
-    variation: RowMapping | None = None,
     model_summary: CanvasModelSummaryV2 | None = None,
 ) -> CanvasNodeV2:
     error_json = row["error_json"]
@@ -3077,7 +3046,6 @@ def _node_from_row(
         prompt_preparation=NodePromptPreparationV1.model_validate_json(
             str(row["prompt_preparation_json"])
         ),
-        variation_draft=(_variation_from_row(variation) if variation is not None else None),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
@@ -3127,24 +3095,6 @@ def _prompt_preparation_replays(current: CanvasNodeV2, requested: CanvasNodeV2) 
     )
 
 
-def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
-    return CanvasVariationDraftV2(
-        source_node_id=str(row["source_node_id"]),
-        source_node_revision=int(row["source_node_revision"]),
-        title=str(row["title"]),
-        generation_prompt=str(row["generation_prompt"]),
-        model_selection_mode=cast(str, row["model_selection_mode"]),
-        model_ref=cast(str | None, row["model_ref"]),
-        parameters=cast(
-            dict[str, JsonValue],
-            json.loads(str(row["parameters_json"])),
-        ),
-        variation_revision=int(row["variation_revision"]),
-        created_at=str(row["created_at"]),
-        updated_at=str(row["updated_at"]),
-    )
-
-
 def _load_model_summaries(
     database: V2Database,
     node_rows: tuple[RowMapping, ...] | list[RowMapping],
@@ -3191,7 +3141,6 @@ def _binding_values(binding: CanvasBindingV2) -> dict[str, object]:
         ),
         "target_node_id": binding.target_node_id,
         "input_role": binding.input_role,
-        "required": binding.required,
         "enabled": binding.enabled,
         "order_index": binding.order,
         "label": binding.label,
@@ -3268,7 +3217,6 @@ def _binding_from_row(row: RowMapping) -> CanvasBindingV2:
         source=source,
         target_node_id=str(row["target_node_id"]),
         input_role=cast(str, row["input_role"]),
-        required=bool(row["required"]),
         enabled=bool(row["enabled"]),
         order=int(row["order_index"]),
         label=cast(str | None, row["label"]),

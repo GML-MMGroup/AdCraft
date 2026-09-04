@@ -173,7 +173,6 @@ class EditingExportOutputReuseService:
                         source=CanvasBindingSourceNodeV2(source_node_id=editing_node_id),
                         target_node_id=node_id,
                         input_role="video_reference",
-                        required=True,
                         enabled=True,
                         order=0,
                         metadata={

@@ -3225,7 +3225,6 @@ def _insert_materialized_node(
                 ),
                 target_node_id=binding.target_node_id,
                 input_role=binding.input_role,
-                required=binding.required,
                 enabled=binding.enabled,
                 order_index=binding.order,
                 label=binding.label,
@@ -3352,7 +3351,6 @@ def _materialization_text_snapshots(
             source_structured_content=structured_content,
             binding_id=binding.binding_id,
             input_role="text_context",
-            required=binding.required,
             display_order=binding.display_order,
         )
         snapshots.append(snapshot.model_dump(mode="json"))

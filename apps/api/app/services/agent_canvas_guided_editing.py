@@ -589,7 +589,6 @@ def _editing_binding(
         source=CanvasBindingSourceNodeV2(source_node_id=source.node_id),
         target_node_id=editing_node_id,
         input_role=input_role,
-        required=False,
         enabled=True,
         order=order,
         metadata={

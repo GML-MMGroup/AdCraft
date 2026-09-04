@@ -83,7 +83,6 @@ class AgentCanvasResolvedInputCompiler:
                 source_node_id=item.source_node_id,
                 source_node_revision=item.source_node_revision,
                 input_role=item.input_role,
-                required=item.required,
                 display_order=item.display_order,
                 snapshot_id=text_snapshot.snapshot_id,
                 document_kind=item.document_kind,
@@ -151,7 +150,6 @@ class AgentCanvasResolvedInputCompiler:
                 source_semantic_role=item.source_semantic_role,
                 binding_metadata=item.binding_metadata,
                 source_structured_content=item.source_structured_content,
-                required=item.required,
                 display_order=item.display_order,
                 asset_id=item.asset_id,
                 asset_version_id=item.asset_version_id,
@@ -213,7 +211,6 @@ class AgentCanvasResolvedInputCompiler:
                 content_hash=item.content_digest,
                 binding_id=item.binding_id,
                 input_role=item.input_role,
-                required=item.required,
                 display_order=item.display_order,
             )
             for item in manifest.text_inputs
@@ -244,7 +241,6 @@ class AgentCanvasResolvedInputCompiler:
                     ),
                     binding_id=item.binding_id,
                     input_role=item.input_role,
-                    required=item.required,
                     display_order=item.display_order,
                 )
             )

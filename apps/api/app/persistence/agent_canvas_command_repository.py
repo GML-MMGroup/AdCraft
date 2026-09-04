@@ -850,7 +850,6 @@ class AgentCanvasCommandRepository:
                                         source_asset_version_id=binding["source_asset_version_id"],
                                         target_node_id=node_id,
                                         input_role=binding["input_role"],
-                                        required=binding["required"],
                                         enabled=binding["enabled"],
                                         order_index=binding["order_index"],
                                         label=binding["label"],
@@ -944,7 +943,6 @@ class AgentCanvasCommandRepository:
                                     source_asset_version_id=source_asset_version_id,
                                     target_node_id=target_node_id,
                                     input_role=_input_role_for_binding_kind(operation.binding_kind),
-                                    required=operation.required,
                                     enabled=True,
                                     order_index=operation.display_order,
                                     label=None,
@@ -976,8 +974,6 @@ class AgentCanvasCommandRepository:
                                     "Canvas binding was not found.",
                                 )
                             values: dict[str, object] = {"updated_at": now}
-                            if operation.required is not None:
-                                values["required"] = operation.required
                             if operation.enabled is not None:
                                 values["enabled"] = operation.enabled
                             if operation.display_order is not None:
@@ -1566,7 +1562,6 @@ class AgentCanvasCommandRepository:
                                 source_asset_version_id=binding["source_asset_version_id"],
                                 target_node_id=sibling_node_id,
                                 input_role=binding["input_role"],
-                                required=binding["required"],
                                 enabled=binding["enabled"],
                                 order_index=binding["order_index"],
                                 label=binding["label"],
@@ -1670,7 +1665,6 @@ class AgentCanvasCommandRepository:
                                 source_asset_version_id=None,
                                 target_node_id=turnaround.node_id,
                                 input_role="image_reference",
-                                required=True,
                                 enabled=True,
                                 order_index=0,
                                 label="Character identity master",

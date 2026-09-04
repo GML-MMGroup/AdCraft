@@ -373,7 +373,6 @@ class AgentCanvasGuidedReferenceRepository:
                         source=CanvasBindingSourceNodeV2(source_node_id=node_id),
                         target_node_id=content.target_node_id,
                         input_role="image_reference",
-                        required=True,
                         enabled=True,
                         order=0,
                         label="Guided reference",
