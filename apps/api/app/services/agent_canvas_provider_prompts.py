@@ -34,7 +34,10 @@ from app.services.agent_canvas_character_reference_prompt_policy import (
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
-from app.services.agent_canvas_role_prompt_compiler import role_prompt_text_violation
+from app.services.agent_canvas_role_prompt_compiler import (
+    role_prompt_failure_disposition,
+    role_prompt_text_violation,
+)
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
@@ -165,6 +168,9 @@ class AgentCanvasProviderPromptCompiler:
                 field_path="generation_prompt",
             )
             if violation is not None:
+                disposition = role_prompt_failure_disposition(
+                    user_authored=not has_managed_prompt_preparation(node)
+                )
                 raise V2PersistenceError(
                     "node_prompt_role_contract_invalid",
                     "The Scene prompt conflicts with its environment-only role contract.",
@@ -173,11 +179,8 @@ class AgentCanvasProviderPromptCompiler:
                         "role_variant": violation.role_variant,
                         "violation_category": violation.violation_category,
                         "field_path": violation.field_path,
-                        "user_action": (
-                            "retry_preparation"
-                            if has_managed_prompt_preparation(node)
-                            else "revise"
-                        ),
+                        "actionable_failure": disposition.model_dump(mode="json"),
+                        "retryable": disposition.retryable,
                     },
                 )
         if role_contract.semantic_role != node.semantic_role:

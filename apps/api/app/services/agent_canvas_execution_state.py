@@ -8,6 +8,7 @@ import ssl
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_canvas_runtime import CanvasExecutionMembershipV2
 
 
@@ -37,20 +38,40 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
     safe_details = details if isinstance(details, dict) else {}
     explicitly_retryable = transport_interrupted or bool(safe_details.get("retryable", False))
     role_error = code == "node_prompt_role_contract_invalid"
-    user_action = safe_details.get("user_action")
-    if user_action not in {"revise", "retry_preparation"}:
-        user_action = None
+    actionable_failure = _safe_actionable_failure(safe_details, code=code)
+    retryable = (
+        actionable_failure.retryable
+        if actionable_failure is not None
+        else explicitly_retryable and code in APPROVED_TRANSIENT_ERROR_CODES
+    )
     return CanvasNodeErrorV2(
         code=code,
         message=(str(error) or "Execution failed.")[:1024],
-        retryable=explicitly_retryable and code in APPROVED_TRANSIENT_ERROR_CODES,
-        user_action=user_action if role_error else None,
+        retryable=retryable,
+        actionable_failure=actionable_failure,
         role_variant=_safe_error_text(safe_details, "role_variant", 80) if role_error else None,
         violation_category=(
             _safe_error_text(safe_details, "violation_category", 80) if role_error else None
         ),
         field_path=_safe_error_text(safe_details, "field_path", 160) if role_error else None,
     )
+
+
+def _safe_actionable_failure(
+    details: dict[str, object],
+    *,
+    code: str,
+) -> ActionableFailureV1 | None:
+    raw = details.get("actionable_failure")
+    try:
+        disposition = ActionableFailureV1.model_validate(raw)
+    except (TypeError, ValueError):
+        return None
+    if disposition.retryable and (
+        code not in APPROVED_TRANSIENT_ERROR_CODES and code != "node_prompt_role_contract_invalid"
+    ):
+        return None
+    return disposition
 
 
 def _safe_error_text(details: dict[str, object], key: str, limit: int) -> str | None:

@@ -7,6 +7,7 @@ import json
 import re
 
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
@@ -848,6 +849,22 @@ def role_prompt_text_violation(
                 field_path=field_path,
             )
     return None
+
+
+def role_prompt_failure_disposition(*, user_authored: bool) -> ActionableFailureV1:
+    """Map a Scene role failure into the shared actionable-failure authority."""
+
+    if user_authored:
+        return ActionableFailureV1(
+            failure_class="deterministic",
+            retry_scope="none",
+            user_action="revise",
+        )
+    return ActionableFailureV1(
+        failure_class="external",
+        retry_scope="prompt_preparation",
+        user_action="retry",
+    )
 
 
 def _validate_role_prompt_text(

@@ -12,7 +12,7 @@ from time import monotonic
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
-from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1, CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
@@ -27,7 +27,10 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
     RoleCreativeBriefV2,
     RolePromptPreparationContextV2,
 )
-from app.services.agent_canvas_role_prompt_compiler import AgentCanvasRolePromptCompiler
+from app.services.agent_canvas_role_prompt_compiler import (
+    AgentCanvasRolePromptCompiler,
+    role_prompt_failure_disposition,
+)
 from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_role_prompt_context import (
     ROLE_PARAMETER_CONTROL_NAMES,
@@ -337,6 +340,9 @@ class NodePromptPreparationService:
         except Exception as error:
             error_code = str(getattr(error, "code", "prompt_preparation_failed"))
             error_details = _prompt_preparation_error_details(error, role_context)
+            actionable_failure = error_details.get("actionable_failure")
+            if not isinstance(actionable_failure, ActionableFailureV1):
+                actionable_failure = None
             failed_recipe = (
                 self._recipes.resolve(role_context.role_variant)
                 if role_context is not None
@@ -389,8 +395,12 @@ class NodePromptPreparationService:
                         error=CanvasNodeErrorV2(
                             code=error_code,
                             message="Node prompt preparation failed.",
-                            retryable=bool(error_details.get("retryable", False)),
-                            user_action=error_details.get("user_action"),
+                            retryable=(
+                                actionable_failure.retryable
+                                if actionable_failure is not None
+                                else bool(error_details.get("retryable", False))
+                            ),
+                            actionable_failure=actionable_failure,
                             role_variant=error_details.get("role_variant"),
                             violation_category=error_details.get("violation_category"),
                             field_path=error_details.get("field_path"),
@@ -863,13 +873,12 @@ def _prompt_preparation_error_details(
     terminal_attempt = attempts[-1] if attempts else {}
     categories = terminal_attempt.get("violation_categories", [])
     paths = terminal_attempt.get("validation_paths", [])
+    disposition = role_prompt_failure_disposition(
+        user_authored=context is not None and context.user_prompt is not None
+    )
     return {
-        "retryable": False,
-        "user_action": (
-            "revise"
-            if context is not None and context.user_prompt is not None
-            else "retry_preparation"
-        ),
+        "retryable": disposition.retryable,
+        "actionable_failure": disposition,
         "role_variant": details.get("role_variant")
         or (context.role_variant if context is not None else None),
         "violation_category": details.get("violation_category")
