@@ -337,8 +337,7 @@ class DynamicCanvasScheduler:
             missing_snapshot_node_ids = tuple(
                 member.node_id
                 for member in self._runtime.list_members(execution_id)
-                if member.state in {"queued", "waiting"}
-                and member.run_intent_snapshot is None
+                if member.state in {"queued", "waiting"} and member.run_intent_snapshot is None
             )
             if missing_snapshot_node_ids:
                 self._run_snapshots.freeze_members(
