@@ -57,6 +57,7 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
+    AgentCanvasMaterializationCommitRow,
     AgentCanvasRequirementLedgerRow,
     AgentCanvasNodeRow,
     AgentCanvasSkillRunRow,
@@ -3489,6 +3490,20 @@ class AgentCanvasConversationRepository:
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
+                committed_storyboard = connection.execute(
+                    select(AgentCanvasMaterializationCommitRow.materialization_id)
+                    .join(
+                        AgentCanvasConceptProposalRow,
+                        AgentCanvasConceptProposalRow.proposal_id
+                        == AgentCanvasMaterializationCommitRow.proposal_id,
+                    )
+                    .where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                        AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                    )
+                ).scalar_one_or_none()
+                if committed_storyboard is not None:
+                    return _turn(turn)
                 retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
                 is_typed_continuation_snapshot = retry_snapshot.get(
                     "schema_version"
