@@ -17,8 +17,13 @@ from app.persistence.agent_canvas_runtime_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2, ResolvedInputSnapshotV2
-from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
+from app.schemas.agent_canvas import (
+    CanvasNodeErrorV2,
+    CanvasNodeV2,
+    OmittedOptionalInputV2,
+    ResolvedInputSnapshotV2,
+    ResolvedNodeInputManifestV2,
+)
 from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
     CompiledProviderPromptV2,
@@ -111,6 +116,7 @@ MediaContextPreparer = Callable[
         CanvasNodeV2,
         WorldSettingContextEnvelopeV2 | None,
         tuple[ResolvedInputSnapshotV2, ...],
+        tuple[OmittedOptionalInputV2, ...],
     ],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
@@ -939,6 +945,7 @@ class DynamicCanvasScheduler:
                     node,
                     world_setting,
                     inputs,
+                    manifest.omitted_optional_inputs,
                 )
                 if compiled_prompt is not None:
                     prompt_metadata.update(

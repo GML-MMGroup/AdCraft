@@ -11,6 +11,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasNodeV2,
+    OmittedOptionalInputV2,
     ProjectAssetSummaryV2,
     ResolvedInputSnapshotV2,
     ResolvedMediaInputSnapshotV2,
@@ -51,6 +52,7 @@ class AdReferenceBundleResolver:
         role_contract: AdMediaRoleContractV2,
         *,
         resolved_inputs: tuple[ResolvedInputSnapshotV2, ...] | None = None,
+        omitted_inputs: tuple[OmittedOptionalInputV2, ...] = (),
     ) -> AdReferenceBundleV2:
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
@@ -66,6 +68,8 @@ class AdReferenceBundleResolver:
             if resolved_inputs is not None
             else None
         )
+        omitted_by_binding = {item.binding_id: item for item in omitted_inputs}
+        omitted_bindings: list[tuple[CanvasBindingV2, CanvasNodeV2]] = []
         references: list[ResolvedAdReferenceV2] = []
         binding_kinds: dict[str, list[ResolvedAdReferenceV2]] = {}
         for binding in workflow.bindings:
@@ -85,6 +89,23 @@ class AdReferenceBundleResolver:
                 else None
             )
             if frozen_media_by_binding is not None and frozen_input is None:
+                omission = omitted_by_binding.get(binding.binding_id)
+                source = (
+                    nodes.get(binding.source.source_node_id)
+                    if binding.source.kind == "node_output"
+                    else None
+                )
+                if omission is not None:
+                    if (
+                        omission.reason_code != "omitted_no_output"
+                        or source is None
+                        or omission.source_node_id != source.node_id
+                    ):
+                        raise _error(
+                            "role_reference_bundle_invalid",
+                            "Frozen reference omission does not match its Binding authority.",
+                        )
+                    omitted_bindings.append((binding, source))
                 continue
             if frozen_input is not None:
                 asset_id = frozen_input.asset_id
@@ -212,7 +233,16 @@ class AdReferenceBundleResolver:
                 if requirement.required_role is None
                 or item.source_semantic_role == requirement.required_role
             ]
-            if len(candidates) < requirement.minimum:
+            omitted_candidates = [
+                binding
+                for binding, source in omitted_bindings
+                if binding.binding_kind == requirement.binding_kind
+                and (
+                    requirement.required_role is None
+                    or source.creative_role == requirement.required_role
+                )
+            ]
+            if len(candidates) + len(omitted_candidates) < requirement.minimum:
                 raise _error(
                     "role_required_reference_missing",
                     "A required explicit role reference is missing.",
@@ -237,7 +267,8 @@ class AdReferenceBundleResolver:
                     if item.source_node_id and item.source_node_id in nodes
                     else _policy_asset_source_role(item.source_semantic_role)
                     for item in ordered
-                ),
+                )
+                + tuple(_policy_source_role(source) for _, source in omitted_bindings),
             )
             if violations:
                 raise _error(

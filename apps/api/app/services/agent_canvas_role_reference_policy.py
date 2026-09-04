@@ -9,6 +9,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasNodeV2,
+    OmittedOptionalInputV2,
     ResolvedMediaInputSnapshotV2,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
@@ -334,6 +335,7 @@ class AgentCanvasRoleReferencePolicyService:
         self,
         node: CanvasNodeV2,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+        omissions: tuple[OmittedOptionalInputV2, ...] = (),
     ) -> None:
         target_role = (
             "product_multiview"
@@ -350,36 +352,39 @@ class AgentCanvasRoleReferencePolicyService:
         policy_source_role = (
             "product_main" if target_role == "product_multiview" else "character_main"
         )
-        valid = len(inputs) == 1
+        valid = self.has_valid_derivative_no_output_omission(node, omissions)
+        if inputs:
+            valid = len(inputs) == 1 and not omissions
         if valid:
-            item = inputs[0]
-            valid = bool(
-                item.source_kind == "node_output"
-                and item.source_node_id
-                and item.source_node_revision is not None
-                and item.source_semantic_role == expected_source_role
-                and item.binding_kind == "image_reference"
-                and item.input_role == "image_reference"
-                and item.display_order == 0
-                and item.media_type == "image"
-                and item.asset_version_id
-            )
-            parent_snapshot = node.metadata.get("derived_parent_snapshot")
-            if valid and isinstance(parent_snapshot, dict):
-                valid = item.source_node_id == parent_snapshot.get("node_id")
-            prepared_snapshots = node.metadata.get("prepared_reference_snapshots")
-            if valid and isinstance(prepared_snapshots, list):
-                prepared = prepared_snapshots[0] if len(prepared_snapshots) == 1 else None
-                valid = isinstance(prepared, dict) and all(
-                    (
-                        item.binding_id == prepared.get("binding_id"),
-                        item.source_node_id == prepared.get("source_node_id"),
-                        item.source_node_revision == prepared.get("source_node_revision"),
-                        prepared.get("asset_id") in {None, item.asset_id},
-                        prepared.get("asset_version_id") in {None, item.asset_version_id},
-                        item.display_order == prepared.get("display_order"),
-                    )
+            if inputs:
+                item = inputs[0]
+                valid = bool(
+                    item.source_kind == "node_output"
+                    and item.source_node_id
+                    and item.source_node_revision is not None
+                    and item.source_semantic_role == expected_source_role
+                    and item.binding_kind == "image_reference"
+                    and item.input_role == "image_reference"
+                    and item.display_order == 0
+                    and item.media_type == "image"
+                    and item.asset_version_id
                 )
+                parent_snapshot = node.metadata.get("derived_parent_snapshot")
+                if valid and isinstance(parent_snapshot, dict):
+                    valid = item.source_node_id == parent_snapshot.get("node_id")
+                prepared_snapshots = node.metadata.get("prepared_reference_snapshots")
+                if valid and isinstance(prepared_snapshots, list):
+                    prepared = prepared_snapshots[0] if len(prepared_snapshots) == 1 else None
+                    valid = isinstance(prepared, dict) and all(
+                        (
+                            item.binding_id == prepared.get("binding_id"),
+                            item.source_node_id == prepared.get("source_node_id"),
+                            item.source_node_revision == prepared.get("source_node_revision"),
+                            prepared.get("asset_id") in {None, item.asset_id},
+                            prepared.get("asset_version_id") in {None, item.asset_version_id},
+                            item.display_order == prepared.get("display_order"),
+                        )
+                    )
         if valid:
             valid = not self.validate(target_role, (policy_source_role,))
         if not valid:
@@ -391,6 +396,38 @@ class AgentCanvasRoleReferencePolicyService:
                     "target_node_id": node.node_id,
                 },
             )
+
+    @staticmethod
+    def has_valid_derivative_no_output_omission(
+        node: CanvasNodeV2,
+        omissions: tuple[OmittedOptionalInputV2, ...],
+    ) -> bool:
+        if len(omissions) != 1 or omissions[0].reason_code != "omitted_no_output":
+            return False
+        prepared_snapshots = node.metadata.get("prepared_reference_snapshots")
+        prepared = (
+            prepared_snapshots[0]
+            if isinstance(prepared_snapshots, list) and len(prepared_snapshots) == 1
+            else None
+        )
+        if not isinstance(prepared, dict):
+            return False
+        omission = omissions[0]
+        parent_snapshot = node.metadata.get("derived_parent_snapshot")
+        return bool(
+            omission.source_node_id
+            and omission.binding_id == prepared.get("binding_id")
+            and omission.source_node_id == prepared.get("source_node_id")
+            and prepared.get("source_node_revision") is not None
+            and prepared.get("source_role") in {"product", "character"}
+            and prepared.get("asset_id") is None
+            and prepared.get("asset_version_id") is None
+            and prepared.get("display_order") == 0
+            and (
+                not isinstance(parent_snapshot, dict)
+                or omission.source_node_id == parent_snapshot.get("node_id")
+            )
+        )
 
     @staticmethod
     def _error(

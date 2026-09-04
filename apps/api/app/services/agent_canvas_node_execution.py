@@ -438,6 +438,11 @@ class MediaNodeExecutor:
         AgentCanvasRoleReferencePolicyService().require_derivative_runtime_inputs(
             context.node,
             media_inputs,
+            (
+                context.input_manifest.omitted_optional_inputs
+                if context.input_manifest is not None
+                else ()
+            ),
         )
         if context.node.node_type == "video" and context.seedance_manifest is not None:
             return context
@@ -1304,6 +1309,16 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         )
     )
     if len(candidates) != 1:
+        omissions = (
+            context.input_manifest.omitted_optional_inputs
+            if context.input_manifest is not None
+            else ()
+        )
+        if AgentCanvasRoleReferencePolicyService.has_valid_derivative_no_output_omission(
+            context.node,
+            omissions,
+        ):
+            return
         raise _error(
             "character_identity_master_binding_invalid",
             "Character Turnaround requires exactly one Ready Character Main image Binding.",
