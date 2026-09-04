@@ -382,7 +382,12 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     schema_bytes: int = Field(ge=0, le=4_194_304)
     response_bytes: int | None = Field(default=None, ge=0, le=4_194_304)
     response_activity_observed: bool
-    attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
+    attempt_stage: Literal[
+        "initial",
+        "transport_retry",
+        "capability_fallback",
+        "structured_repair",
+    ]
     started_at: datetime
     first_response_at: datetime | None = None
     last_activity_at: datetime | None = None
