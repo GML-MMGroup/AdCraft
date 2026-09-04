@@ -3475,6 +3475,7 @@ def start_canvas_run(
     request: CanvasRunRequestV2,
     background_tasks: BackgroundTasks,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CanvasRunAcceptedV2:
     if not idempotency_key:
@@ -3484,6 +3485,7 @@ def start_canvas_run(
             workflow_id,
             request,
             idempotency_key=idempotency_key,
+            expected_workflow_revision=_expected_revision(if_match, workflow_id),
         )
         if accepted.accepted_node_ids or accepted.joined_node_ids:
             background_tasks.add_task(
@@ -3990,6 +3992,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
+        "workflow_state_conflict": 409,
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,

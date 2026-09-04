@@ -138,51 +138,28 @@ class AgentCanvasRunService:
         request: CanvasRunRequestV2,
         *,
         idempotency_key: str,
+        expected_workflow_revision: int | None = None,
     ) -> CanvasRunAcceptedV2:
         workflow = self._workflows.get_workflow(workflow_id)
+        if (
+            expected_workflow_revision is not None
+            and expected_workflow_revision != workflow.revision
+        ):
+            raise _run_error(
+                "workflow_state_conflict",
+                "Workflow authoring changed before Run admission.",
+            )
         nodes = {node.node_id: node for node in workflow.nodes}
         requested = (
             tuple(nodes.values())
             if request.scope == "all_drafts"
             else tuple(self._require_node(nodes, node_id) for node_id in request.node_ids)
         )
-        requested_node_ids = {node.node_id for node in requested}
         accepted: list[str] = []
         skipped: list[CanvasRunSkippedNodeV2] = []
         for node in requested:
             reason = _skip_reason(node, request)
             if reason is None:
-                if request.scope == "selected_nodes":
-                    unready_bindings = _unready_required_bindings(
-                        workflow,
-                        node.node_id,
-                        nodes,
-                    )
-                    unready_bindings = tuple(
-                        binding
-                        for binding in unready_bindings
-                        if binding.source.source_node_id not in requested_node_ids
-                    )
-                    missing_node_ids = tuple(
-                        binding.source.source_node_id for binding in unready_bindings
-                    )
-                    if missing_node_ids:
-                        raise _run_error(
-                            "upstream_inputs_not_ready",
-                            "Required upstream inputs are not ready.",
-                            details={
-                                "missing_node_ids": list(missing_node_ids),
-                                "target_node_id": node.node_id,
-                                "bindings": [
-                                    {
-                                        "binding_id": binding.binding_id,
-                                        "source_node_id": binding.source.source_node_id,
-                                        "target_node_id": binding.target_node_id,
-                                    }
-                                    for binding in unready_bindings
-                                ],
-                            },
-                        )
                 try:
                     if self._eligibility_validator is not None:
                         self._eligibility_validator(node)
@@ -221,7 +198,11 @@ class AgentCanvasRunService:
         admission = self._runtime.start_or_join_execution(
             CanvasExecutionStartCommandV2(
                 workflow_id=workflow_id,
-                expected_workflow_revision=workflow.revision,
+                expected_workflow_revision=(
+                    workflow.revision
+                    if expected_workflow_revision is None
+                    else expected_workflow_revision
+                ),
                 scope=request.scope,
                 idempotency_key=idempotency_key,
                 request_digest=_fingerprint(request),
@@ -1948,7 +1929,7 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "source_only_node_not_runnable"
     if node.node_type == "editing":
         return "node_not_runnable"
-    if node.status == "ready":
+    if node.status == "ready" and request.scope == "all_drafts":
         return "node_already_ready"
     if node.status == "working":
         return "node_already_working"
@@ -1973,7 +1954,7 @@ def _skip_message(reason: str) -> str:
     return {
         "source_only_node_not_runnable": "Source-only nodes cannot be run.",
         "node_not_runnable": "Node type cannot be run.",
-        "node_already_ready": "Ready nodes are not rerun in place.",
+        "node_already_ready": "Ready nodes are excluded from Global Run.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
         "node_prompt_empty": "A generation prompt is required before running this node.",
