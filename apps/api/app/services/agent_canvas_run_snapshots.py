@@ -38,6 +38,12 @@ class BoundAssetVersionResolver(Protocol):
         version_id: str,
     ) -> ProjectAssetSummaryV2: ...
 
+    def resolve_bound_asset_versions(
+        self,
+        workflow_id: str,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ProjectAssetSummaryV2]: ...
+
 
 class AgentCanvasRunIntentSnapshotService:
     """Persist the accepted Node and Binding identities for each execution member."""
@@ -65,10 +71,36 @@ class AgentCanvasRunIntentSnapshotService:
         """Build immutable snapshot bodies before the admission transaction."""
 
         workflow_nodes = {node.node_id: node for node in workflow.nodes}
+        binding_snapshots_by_node = {
+            node.node_id: _binding_snapshots(workflow, node, workflow_nodes) for node in nodes
+        }
+        exact_asset_pairs = tuple(
+            dict.fromkeys(
+                (binding.source_id, binding.source_asset_version_id)
+                for snapshots in binding_snapshots_by_node.values()
+                for binding in snapshots
+                if binding.source_kind == "image_asset"
+                and binding.source_asset_version_id is not None
+            )
+        )
+        if exact_asset_pairs and self._bound_assets is None:
+            raise V2PersistenceError(
+                "run_intent_asset_resolver_unavailable",
+                "Run-bound asset resolution is unavailable.",
+                stage="agent_canvas_run_snapshots",
+            )
+        resolved_assets = (
+            self._bound_assets.resolve_bound_asset_versions(
+                workflow.workflow_id,
+                exact_asset_pairs,
+            )
+            if self._bound_assets is not None and exact_asset_pairs
+            else {}
+        )
         intents: list[CanvasExecutionMemberIntentV2] = []
         for member_order, node in enumerate(nodes):
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
-            binding_snapshots = _binding_snapshots(workflow, frozen_node, workflow_nodes)
+            binding_snapshots = binding_snapshots_by_node[node.node_id]
             mode = classify_canvas_execution_mode(
                 frozen_node,
                 has_usable_reference_only_input=_has_available_media_input(binding_snapshots),
@@ -83,17 +115,15 @@ class AgentCanvasRunIntentSnapshotService:
                         "Direct asset bindings require an immutable asset version.",
                         stage="agent_canvas_run_snapshots",
                     )
-                if self._bound_assets is None:
+                asset = resolved_assets.get(
+                    (binding.source_id, binding.source_asset_version_id)
+                )
+                if asset is None:
                     raise V2PersistenceError(
-                        "run_intent_asset_resolver_unavailable",
-                        "Run-bound asset resolution is unavailable.",
+                        "asset_version_not_found",
+                        "Asset version was not found.",
                         stage="agent_canvas_run_snapshots",
                     )
-                asset = self._bound_assets.resolve_bound_asset_version(
-                    workflow.workflow_id,
-                    binding.source_id,
-                    binding.source_asset_version_id,
-                )
                 source_asset_digests[asset.asset_id] = asset.checksum
             semantic = {
                 "workflow_id": workflow.workflow_id,

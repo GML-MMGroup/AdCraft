@@ -802,6 +802,7 @@ def create_agent_canvas_runtime(
         document_repository,
         asset_resolver=asset_service.resolve_asset,
         asset_version_resolver=asset_service.resolve_asset_version,
+        asset_version_batch_resolver=asset_service.resolve_asset_versions,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,

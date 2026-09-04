@@ -68,6 +68,13 @@ class AgentCanvasBindingService:
         *,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2],
         asset_version_resolver: Callable[[str, str], ProjectAssetSummaryV2] | None = None,
+        asset_version_batch_resolver: (
+            Callable[
+                [tuple[tuple[str, str], ...]],
+                dict[tuple[str, str], ProjectAssetSummaryV2],
+            ]
+            | None
+        ) = None,
         binding_capability_validator: (
             Callable[[object, frozenset[str], int], object] | None
         ) = None,
@@ -78,6 +85,7 @@ class AgentCanvasBindingService:
         self._documents = documents
         self._asset_resolver = asset_resolver
         self._asset_version_resolver = asset_version_resolver
+        self._asset_version_batch_resolver = asset_version_batch_resolver
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
         self._candidate_validator = candidate_validator
@@ -633,6 +641,38 @@ class AgentCanvasBindingService:
                 stage="agent_canvas_binding_service",
             )
         return asset
+
+    def resolve_bound_asset_versions(
+        self,
+        workflow_id: str,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ProjectAssetSummaryV2]:
+        """Resolve exact Binding assets in one bounded canonical lookup."""
+
+        unique_pairs = tuple(dict.fromkeys(pairs))
+        resolved = (
+            self._asset_version_batch_resolver(unique_pairs)
+            if self._asset_version_batch_resolver is not None
+            else {
+                pair: self._resolve_required_asset_version(pair[0], pair[1])
+                for pair in unique_pairs
+            }
+        )
+        for pair in unique_pairs:
+            asset = resolved.get(pair)
+            if asset is None or asset.asset_id != pair[0] or asset.version_id != pair[1]:
+                raise V2PersistenceError(
+                    "asset_version_not_found",
+                    "Asset version was not found.",
+                    stage="agent_canvas_binding_service",
+                )
+            if asset.workflow_id is not None and asset.workflow_id != workflow_id:
+                raise V2PersistenceError(
+                    "binding_source_workflow_mismatch",
+                    "Binding source asset belongs to another Workflow.",
+                    stage="agent_canvas_binding_service",
+                )
+        return resolved
 
     def _resolve_direct_asset(
         self,

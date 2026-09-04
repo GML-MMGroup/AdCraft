@@ -35,6 +35,40 @@ class AgentCanvasAssetReferenceResolver:
         media_type: str | None = None,
     ) -> ResolvedAssetVersion:
         version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
+        return self._validate_bound_asset(
+            asset_id,
+            version_id,
+            version,
+            media_type=media_type,
+        )
+
+    def resolve_bound_assets(
+        self,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ResolvedAssetVersion]:
+        """Resolve exact pairs with one bounded metadata query."""
+
+        unique_pairs = tuple(dict.fromkeys(pairs))
+        versions = self._assets.find_versions_by_id(
+            tuple(version_id for _, version_id in unique_pairs)
+        )
+        return {
+            pair: self._validate_bound_asset(
+                pair[0],
+                pair[1],
+                versions.get(pair[1]),
+            )
+            for pair in unique_pairs
+        }
+
+    def _validate_bound_asset(
+        self,
+        asset_id: str,
+        version_id: str,
+        version: AssetVersionMetadataV2 | None,
+        *,
+        media_type: str | None = None,
+    ) -> ResolvedAssetVersion:
         if version is None or version.asset_id != asset_id or version.version_id != version_id:
             raise _reference_error("canvas_asset_reference_version_required")
         if version.status != "ready":

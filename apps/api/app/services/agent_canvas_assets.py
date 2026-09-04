@@ -174,6 +174,24 @@ class AgentCanvasAssetService:
             raise
         return self._asset_summary(verified.metadata)
 
+    def resolve_asset_versions(
+        self,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ProjectAssetSummaryV2]:
+        """Resolve exact immutable pairs with one bounded metadata query."""
+
+        try:
+            verified = self._reference_resolver.resolve_bound_assets(pairs)
+        except V2PersistenceError as error:
+            if error.code == "canvas_asset_reference_version_required":
+                raise V2PersistenceError(
+                    "asset_version_not_found",
+                    "Asset version was not found.",
+                    stage="agent_canvas_asset_service",
+                ) from error
+            raise
+        return {pair: self._asset_summary(item.metadata) for pair, item in verified.items()}
+
     def resolve_target_asset(
         self,
         workflow_id: str,
