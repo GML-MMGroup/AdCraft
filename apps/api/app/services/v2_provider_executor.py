@@ -94,7 +94,9 @@ from app.tools.volcengine_image_generations import V2ProviderRequestContractErro
 
 ProviderFactory = Callable[[Settings], MediaProvider]
 
-_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset({"openai_images_native", "minimax_video_native"})
+_NATIVE_MEDIA_TRANSPORT_KINDS = frozenset(
+    {"openrouter_images_native", "minimax_video_native"}
+)
 _NATIVE_PROVIDER_ERROR_CODES = frozenset(
     {
         "model_adapter_unavailable",
@@ -102,6 +104,7 @@ _NATIVE_PROVIDER_ERROR_CODES = frozenset(
         "model_conformance_revoked",
         "provider_adapter_profile_invalid",
         "provider_payload_resolution_mismatch",
+        "openrouter_routing_contract_invalid",
         "provider_prompt_empty",
         "provider_capability_mismatch",
         "provider_model_reference_mismatch",
@@ -2525,6 +2528,9 @@ def _native_resolution_from_payload(provider_payload: Mapping[str, Any]) -> dict
             "transport_kind",
             "adapter_revision",
             "capability_revision",
+            "credential_revision",
+            "openrouter_routing_policy_id",
+            "openrouter_routing_policy_digest",
         )
     }
 
