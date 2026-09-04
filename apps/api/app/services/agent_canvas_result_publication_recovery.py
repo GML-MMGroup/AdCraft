@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_runtime import NodeExecutionLeaseV2
 from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitCommandV2,
     CanvasResultPublicationIntentV1,
+    PreparedNodeResultV2,
 )
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_execution_result_commit import (
@@ -146,7 +147,7 @@ class AgentCanvasResultPublicationRecoveryService:
                     prepared_result=prepared,
                     now=now,
                 )
-            elif recovered != prepared:
+            elif not _matches_recovered_object(recovered, prepared):
                 return self._abandon(
                     intent,
                     "node_result_publication_object_invalid",
@@ -285,3 +286,20 @@ class AgentCanvasResultPublicationRecoveryService:
         )
         self._intents.abandon(intent.intent_id, error_code=error_code, now=now)
         return "abandoned"
+
+
+def _matches_recovered_object(
+    recovered: PreparedNodeResultV2,
+    prepared: PreparedNodeResultV2,
+) -> bool:
+    """Compare object-derived fields while retaining persisted post-object effects."""
+
+    return (
+        recovered.model_copy(
+            update={
+                "provider_task_id": prepared.provider_task_id,
+                "post_ready_effects": prepared.post_ready_effects,
+            }
+        )
+        == prepared
+    )
