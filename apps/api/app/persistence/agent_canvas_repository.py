@@ -26,6 +26,9 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
+    AgentCanvasExecutionMemberRow,
+    AgentCanvasExecutionResultCommitRow,
+    AgentCanvasExecutionRow,
     AgentCanvasBindingRow,
     AgentCanvasConversationRow,
     AgentCanvasCreativeMemoryRow,
@@ -35,6 +38,7 @@ from app.persistence.models import (
     AgentCanvasPromptPreparationOutboxRow,
     AgentCanvasPromptContextSnapshotRow,
     AgentCanvasWorkflowRow,
+    AssetVersionRow,
 )
 from app.persistence.project_repository import ProjectRepository
 from app.persistence.provider_model_repository import ProviderModelRepository
@@ -48,6 +52,7 @@ from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasConnectedNodeCreateResponseV2,
     CanvasNodeErrorV2,
+    CanvasNodeLatestAttemptV2,
     CanvasNodeV2,
     CanvasPositionV2,
     CanvasLayoutPatchResponseV2,
@@ -267,6 +272,10 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .all()
                 )
+                output_versions, latest_attempts = _load_node_runtime_projections(
+                    connection,
+                    node_rows,
+                )
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -286,6 +295,8 @@ class AgentCanvasWorkflowRepository:
                 _node_from_row(
                     row,
                     model_summary=model_summaries.get(str(row["model_ref"])),
+                    output_asset_version_id=output_versions.get(str(row["node_id"])),
+                    latest_attempt=latest_attempts.get(str(row["node_id"])),
                 )
                 for row in node_rows
             ),
@@ -320,12 +331,21 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .one_or_none()
                 )
+                output_versions, latest_attempts = _load_node_runtime_projections(
+                    connection,
+                    [row] if row is not None else [],
+                )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         if row is None:
             raise _node_not_found_error()
         model_summary = _load_model_summaries(self._database, (row,)).get(str(row["model_ref"]))
-        return _node_from_row(row, model_summary=model_summary)
+        return _node_from_row(
+            row,
+            model_summary=model_summary,
+            output_asset_version_id=output_versions.get(node_id),
+            latest_attempt=latest_attempts.get(node_id),
+        )
 
     def asset_is_referenced(self, asset_id: str) -> bool:
         """Return whether active canvas authoring points at one asset."""
@@ -3006,6 +3026,8 @@ def _node_from_row(
     row: RowMapping,
     *,
     model_summary: CanvasModelSummaryV2 | None = None,
+    output_asset_version_id: str | None = None,
+    latest_attempt: CanvasNodeLatestAttemptV2 | None = None,
 ) -> CanvasNodeV2:
     error_json = row["error_json"]
     metadata = cast(dict[str, JsonValue], json.loads(str(row["metadata_json"])))
@@ -3033,6 +3055,8 @@ def _node_from_row(
         parameter_provenance=_parameter_provenance_from_row(row),
         prompt_context_snapshot_id=cast(str | None, row["prompt_context_snapshot_id"]),
         output_asset_id=cast(str | None, row["output_asset_id"]),
+        output_asset_version_id=output_asset_version_id,
+        latest_attempt=latest_attempt,
         position=CanvasPositionV2(
             x=float(row["position_x"]),
             y=float(row["position_y"]),
@@ -3117,6 +3141,120 @@ def _load_model_summaries(
         for model_ref, record in records.items()
         if model_ref in refs
     }
+
+
+def _load_node_runtime_projections(
+    connection: Connection,
+    node_rows: tuple[RowMapping, ...] | list[RowMapping],
+) -> tuple[dict[str, str], dict[str, CanvasNodeLatestAttemptV2]]:
+    node_ids = tuple(str(row["node_id"]) for row in node_rows)
+    if not node_ids:
+        return {}, {}
+
+    output_asset_ids = {
+        str(row["node_id"]): str(row["output_asset_id"])
+        for row in node_rows
+        if row["output_asset_id"] is not None
+    }
+    output_versions: dict[str, str] = {}
+    successful_rows = connection.execute(
+        select(
+            AgentCanvasExecutionResultCommitRow.node_id,
+            AgentCanvasExecutionResultCommitRow.asset_id,
+            AgentCanvasExecutionResultCommitRow.version_id,
+        )
+        .where(
+            AgentCanvasExecutionResultCommitRow.node_id.in_(node_ids),
+            AgentCanvasExecutionResultCommitRow.outcome == "succeeded",
+            AgentCanvasExecutionResultCommitRow.version_id.is_not(None),
+        )
+        .order_by(AgentCanvasExecutionResultCommitRow.committed_at.desc())
+    ).mappings()
+    for result in successful_rows:
+        node_id = str(result["node_id"])
+        if node_id in output_versions:
+            continue
+        if result["asset_id"] is None or output_asset_ids.get(node_id) != str(result["asset_id"]):
+            continue
+        output_versions[node_id] = str(result["version_id"])
+
+    unresolved_assets = {
+        node_id: asset_id
+        for node_id, asset_id in output_asset_ids.items()
+        if node_id not in output_versions
+    }
+    if unresolved_assets:
+        asset_rows = connection.execute(
+            select(
+                AssetVersionRow.asset_id,
+                AssetVersionRow.version_id,
+                AssetVersionRow.version_no,
+            )
+            .where(
+                AssetVersionRow.asset_id.in_(tuple(unresolved_assets.values())),
+                AssetVersionRow.status == "ready",
+            )
+            .order_by(AssetVersionRow.version_no.desc(), AssetVersionRow.version_id.desc())
+        ).mappings()
+        latest_by_asset: dict[str, str] = {}
+        for version in asset_rows:
+            latest_by_asset.setdefault(str(version["asset_id"]), str(version["version_id"]))
+        for node_id, asset_id in unresolved_assets.items():
+            metadata = json.loads(
+                str(
+                    next(
+                        row["metadata_json"] for row in node_rows if str(row["node_id"]) == node_id
+                    )
+                )
+            )
+            pinned = metadata.get("source_version_id")
+            if isinstance(pinned, str) and pinned:
+                output_versions[node_id] = pinned
+            elif asset_id in latest_by_asset:
+                output_versions[node_id] = latest_by_asset[asset_id]
+
+    latest_attempts: dict[str, CanvasNodeLatestAttemptV2] = {}
+    attempt_rows = connection.execute(
+        select(
+            AgentCanvasExecutionMemberRow.node_id,
+            AgentCanvasExecutionMemberRow.execution_id,
+            AgentCanvasExecutionMemberRow.member_id,
+            AgentCanvasExecutionMemberRow.run_intent_snapshot_id,
+            AgentCanvasExecutionMemberRow.state,
+            AgentCanvasExecutionMemberRow.error_json,
+            AgentCanvasExecutionMemberRow.updated_at.label("member_updated_at"),
+            AgentCanvasExecutionRow.created_at.label("execution_created_at"),
+        )
+        .join(
+            AgentCanvasExecutionRow,
+            AgentCanvasExecutionRow.execution_id == AgentCanvasExecutionMemberRow.execution_id,
+        )
+        .where(AgentCanvasExecutionMemberRow.node_id.in_(node_ids))
+        .order_by(
+            AgentCanvasExecutionMemberRow.updated_at.desc(),
+            AgentCanvasExecutionRow.created_at.desc(),
+            AgentCanvasExecutionMemberRow.member_id.desc(),
+        )
+    ).mappings()
+    for attempt in attempt_rows:
+        node_id = str(attempt["node_id"])
+        if node_id in latest_attempts:
+            continue
+        error_json = attempt["error_json"]
+        latest_attempts[node_id] = CanvasNodeLatestAttemptV2(
+            execution_id=str(attempt["execution_id"]),
+            member_id=str(attempt["member_id"]),
+            run_intent_snapshot_id=cast(str | None, attempt["run_intent_snapshot_id"]),
+            status=cast(str, attempt["state"]),
+            created_at=str(attempt["execution_created_at"]),
+            updated_at=str(attempt["member_updated_at"]),
+            error=(
+                CanvasNodeErrorV2.model_validate_json(str(error_json))
+                if error_json is not None
+                else None
+            ),
+        )
+    return output_versions, latest_attempts
 
 
 def _binding_values(binding: CanvasBindingV2) -> dict[str, object]:

@@ -213,7 +213,16 @@ class CanvasNodeLatestAttemptV2(_AgentCanvasModel):
     execution_id: str = Field(min_length=1, max_length=160)
     member_id: str = Field(min_length=1, max_length=160)
     run_intent_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
-    status: Literal["queued", "waiting", "running", "succeeded", "failed", "cancelled"]
+    status: Literal[
+        "queued",
+        "waiting",
+        "blocked",
+        "skipped_dependency",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+    ]
     created_at: datetime
     updated_at: datetime
     error: CanvasNodeErrorV2 | None = None
@@ -612,6 +621,7 @@ class ResolvedTextBindingInputV2(_AgentCanvasModel):
     @property
     def required(self) -> bool:
         return False
+
     snapshot_id: str = Field(min_length=1)
     document_kind: Literal["text", "script"]
     content_digest: str = Field(min_length=1)
