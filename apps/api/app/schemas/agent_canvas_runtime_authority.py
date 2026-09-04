@@ -234,6 +234,7 @@ class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
     logical_result_key: str = Field(min_length=1, max_length=320)
     payload_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     publication_intent_id: str | None = Field(default=None, min_length=1, max_length=160)
+    publication_recovery_attempt: int | None = Field(default=None, ge=0, le=16)
     provider_task_id: str | None = Field(default=None, max_length=160)
     outcome: Literal["succeeded", "failed", "cancelled"]
     prepared_result: PreparedNodeResultV2 | None = None
@@ -252,6 +253,8 @@ class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
             raise ValueError("Prepared output identity must match the commit command.")
         if self.outcome != "succeeded" and self.error is None:
             raise ValueError("A failed or cancelled result requires a safe error.")
+        if self.publication_recovery_attempt is not None and self.publication_intent_id is None:
+            raise ValueError("Publication recovery requires a durable intent identity.")
         return self
 
 

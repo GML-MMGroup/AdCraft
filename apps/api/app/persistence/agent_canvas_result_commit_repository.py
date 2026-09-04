@@ -767,6 +767,28 @@ class AgentCanvasResultCommitRepository:
                     payload={"asset_id": asset_id, "version_id": version_id},
                 ),
             )
+        if command.publication_recovery_attempt is not None:
+            last = self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=command.workflow_id,
+                    execution_id=command.execution_id,
+                    node_id=command.node_id,
+                    asset_id=asset_id,
+                    version_id=version_id,
+                    transition_key=f"publication:{command.publication_intent_id}:recovered",
+                    event_type="node_result_publication_recovered",
+                    created_at=command.committed_at.isoformat(),
+                    payload={
+                        "publication_intent_id": command.publication_intent_id,
+                        "node_id": command.node_id,
+                        "execution_id": command.execution_id,
+                        "attempt": command.publication_recovery_attempt,
+                        "retryable": False,
+                        "reason_code": "prepared_result_committed",
+                    },
+                ),
+            )
         last = self._events.append_in_transaction(
             connection,
             V2EventInsert(
