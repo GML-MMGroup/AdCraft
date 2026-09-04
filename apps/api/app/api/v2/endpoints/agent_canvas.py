@@ -3888,6 +3888,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guided_product_persistence_unavailable": 503,
         "guided_product_source_only_not_runnable": 409,
         "asset_not_ready": 409,
+        "asset_version_not_found": 422,
         "canvas_asset_reference_version_required": 422,
         "canvas_asset_reference_media_type_invalid": 422,
         "asset_reference_version_required": 422,
