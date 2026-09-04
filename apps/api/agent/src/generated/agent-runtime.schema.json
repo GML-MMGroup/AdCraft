@@ -433,6 +433,21 @@
       "title": "AgentAssetRefV2",
       "type": "object"
     },
+    "AgentCapabilitiesOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "intent_kind": {
+          "const": "agent_capabilities",
+          "title": "Intent Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent_kind"
+      ],
+      "title": "AgentCapabilitiesOrdinaryIntentV1",
+      "type": "object"
+    },
     "AgentCommandPlanCreateV2": {
       "additionalProperties": false,
       "properties": {
@@ -1491,6 +1506,21 @@
         "source_agent_document_selector"
       ],
       "title": "AgentDocumentProvenanceV2",
+      "type": "object"
+    },
+    "AgentIdentityOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "intent_kind": {
+          "const": "agent_identity",
+          "title": "Intent Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent_kind"
+      ],
+      "title": "AgentIdentityOrdinaryIntentV1",
       "type": "object"
     },
     "AgentModelExecutionPolicyV1": {
@@ -9851,17 +9881,6 @@
           "default": null,
           "title": "Assistant Message"
         },
-        "conversation_query": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConversationQueryV1"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "explicit_elements": {
           "$ref": "#/$defs/CompactExplicitElementsV3"
         },
@@ -9881,6 +9900,17 @@
           "minLength": 1,
           "title": "Objective",
           "type": "string"
+        },
+        "ordinary_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OrdinaryConversationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "requested_capability": {
           "anyOf": [
@@ -11551,6 +11581,73 @@
       "title": "DirectorTurnContextV2",
       "type": "object"
     },
+    "DocumentExplanationOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_aliases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Anchor Aliases",
+          "type": "array"
+        },
+        "document_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "anchor_registry",
+                "storyboard_production_plan"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Kind"
+        },
+        "intent_kind": {
+          "const": "document_explanation",
+          "title": "Intent Kind",
+          "type": "string"
+        },
+        "requested_document_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "anchor_registry",
+              "storyboard_production_plan"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Requested Document Kinds",
+          "type": "array"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        }
+      },
+      "required": [
+        "intent_kind"
+      ],
+      "title": "DocumentExplanationOrdinaryIntentV1",
+      "type": "object"
+    },
     "DraftReferenceIntentV2": {
       "additionalProperties": false,
       "properties": {
@@ -12597,6 +12694,28 @@
         "role_variant"
       ],
       "title": "FreeMediaRoleBriefV2",
+      "type": "object"
+    },
+    "FreeformReplyOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assistant_message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Assistant Message",
+          "type": "string"
+        },
+        "intent_kind": {
+          "const": "freeform_reply",
+          "title": "Intent Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assistant_message",
+        "intent_kind"
+      ],
+      "title": "FreeformReplyOrdinaryIntentV1",
       "type": "object"
     },
     "FreezeStoryboardVisualAnchorPatchV2": {
@@ -19498,6 +19617,37 @@
       ],
       "title": "OpenRouterRoutingPolicyV1",
       "type": "object"
+    },
+    "OrdinaryConversationIntentV1": {
+      "description": "One mutually exclusive ordinary-conversation route.",
+      "discriminator": {
+        "mapping": {
+          "agent_capabilities": "#/$defs/AgentCapabilitiesOrdinaryIntentV1",
+          "agent_identity": "#/$defs/AgentIdentityOrdinaryIntentV1",
+          "document_explanation": "#/$defs/DocumentExplanationOrdinaryIntentV1",
+          "freeform_reply": "#/$defs/FreeformReplyOrdinaryIntentV1",
+          "workflow_status": "#/$defs/WorkflowStatusOrdinaryIntentV1"
+        },
+        "propertyName": "intent_kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/FreeformReplyOrdinaryIntentV1"
+        },
+        {
+          "$ref": "#/$defs/AgentIdentityOrdinaryIntentV1"
+        },
+        {
+          "$ref": "#/$defs/AgentCapabilitiesOrdinaryIntentV1"
+        },
+        {
+          "$ref": "#/$defs/WorkflowStatusOrdinaryIntentV1"
+        },
+        {
+          "$ref": "#/$defs/DocumentExplanationOrdinaryIntentV1"
+        }
+      ],
+      "title": "OrdinaryConversationIntentV1"
     },
     "OutputResolutionControlPatchV1": {
       "additionalProperties": false,
@@ -30196,17 +30346,6 @@
           "default": null,
           "title": "Assistant Message"
         },
-        "conversation_query": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ConversationQueryV1"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "explicit_elements": {
           "default": [],
           "items": {
@@ -30231,6 +30370,17 @@
           "minLength": 1,
           "title": "Objective",
           "type": "string"
+        },
+        "ordinary_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OrdinaryConversationIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "requested_capability": {
           "anyOf": [
@@ -33497,6 +33647,21 @@
         "workflow_revision"
       ],
       "title": "WorkflowStateCapsuleV1",
+      "type": "object"
+    },
+    "WorkflowStatusOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "intent_kind": {
+          "const": "workflow_status",
+          "title": "Intent Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent_kind"
+      ],
+      "title": "WorkflowStatusOrdinaryIntentV1",
       "type": "object"
     },
     "WorkflowWorkItemSummaryV1": {
