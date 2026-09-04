@@ -45,6 +45,7 @@ from app.services.v2_final_composition_renderer import V2MediaProbe, V2MediaProb
 
 MediaFactsProbe = Callable[[Path, str], V2MediaProbeResult]
 AssetVersionPublishedCallback = Callable[[AssetVersionMetadataV2], object]
+PreparedObjectCallback = Callable[[PreparedNodeResultV2], object]
 
 
 @dataclass(frozen=True)
@@ -378,6 +379,8 @@ class AgentCanvasAssetService:
         source_semantic_role: str | None = None,
         publication_metadata: Mapping[str, object] | None = None,
         require_native_audio: bool = False,
+        publication_intent_id: str | None = None,
+        before_object_publish: PreparedObjectCallback | None = None,
     ) -> PreparedNodeResultV2:
         """Prepare verified bytes without publishing product Asset metadata."""
 
@@ -391,6 +394,51 @@ class AgentCanvasAssetService:
         asset_id = _stable_identifier("asset", workflow_id, node_id, fingerprint)
         version_id = f"version_{asset_id}"
         extension = _extension(filename, mime_type)
+        storage_key = self._storage.content_storage_key(checksum, extension)
+        workflow = self._workflows.get_workflow(workflow_id)
+        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        metadata = {
+            **dict(publication_metadata or {}),
+            "display_name": Path(filename).stem,
+            "source_type": source_type,
+            "source_node_id": node_id,
+            "source_execution_id": execution_id,
+            "source_semantic_role": source_semantic_role,
+            "fingerprint": fingerprint,
+            "project_id": workflow.project_id,
+            "workflow_id": workflow_id,
+            "checksum": checksum,
+            "publication_status": "prepared",
+            "publication_id": fingerprint,
+            "generated_asset_provenance": _generated_provenance(
+                dict(publication_metadata or {}),
+                workflow_id=workflow_id,
+                node_id=node_id,
+                execution_id=execution_id,
+                node_revision=(node.revision if node is not None else 1),
+            ).model_dump(mode="json"),
+        }
+        planned = PreparedNodeResultV2(
+            logical_result_key=fingerprint,
+            payload_digest=checksum,
+            publication_intent_id=publication_intent_id,
+            prepared_object=PreparedContentObjectV2(
+                storage_key=storage_key,
+                sha256=checksum,
+                size_bytes=len(content),
+                media_type=mime_type.split("/", 1)[0],
+                mime_type=mime_type,
+                filename=filename,
+                media_facts={},
+            ),
+            asset_id=asset_id,
+            version_id=version_id,
+            asset_display_name=Path(filename).stem,
+            asset_source_type=("generated" if source_type == "editing_export" else source_type),
+            asset_metadata={key: value for key, value in metadata.items() if value is not None},
+        )
+        if before_object_publish is not None:
+            before_object_publish(planned)
         staging = (
             self._data_dir
             / "v2"
@@ -408,35 +456,22 @@ class AgentCanvasAssetService:
             size_bytes=len(content),
             require_native_audio=require_native_audio,
         )
-        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
-        workflow = self._workflows.get_workflow(workflow_id)
-        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        published_storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        if published_storage_key != storage_key:
+            raise V2PersistenceError(
+                "v2_storage_key_invalid",
+                "Prepared storage identity changed during publication.",
+                stage="agent_canvas_asset_service",
+            )
         metadata = {
-            **dict(publication_metadata or {}),
-            "display_name": Path(filename).stem,
-            "source_type": source_type,
-            "source_node_id": node_id,
-            "source_execution_id": execution_id,
-            "source_semantic_role": source_semantic_role,
-            "fingerprint": fingerprint,
-            "project_id": workflow.project_id,
-            "workflow_id": workflow_id,
-            "checksum": checksum,
-            "publication_status": "prepared",
-            "publication_id": fingerprint,
+            **metadata,
             "published_media_facts": facts.model_dump(mode="json"),
             "measured_media_facts": facts.model_dump(mode="json"),
-            "generated_asset_provenance": _generated_provenance(
-                dict(publication_metadata or {}),
-                workflow_id=workflow_id,
-                node_id=node_id,
-                execution_id=execution_id,
-                node_revision=(node.revision if node is not None else 1),
-            ).model_dump(mode="json"),
         }
         return PreparedNodeResultV2(
             logical_result_key=fingerprint,
             payload_digest=checksum,
+            publication_intent_id=publication_intent_id,
             prepared_object=PreparedContentObjectV2(
                 storage_key=storage_key,
                 sha256=checksum,

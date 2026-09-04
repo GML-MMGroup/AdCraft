@@ -31,8 +31,7 @@ class StorageAdapter:
             raise _storage_error(
                 "v2_storage_content_invalid", "Storage content could not be verified."
             )
-        normalized_extension = _normalized_extension(extension)
-        storage_key = _storage_key(expected_sha256, normalized_extension)
+        storage_key = self.content_storage_key(expected_sha256, extension)
         target = self.resolve_local_path(storage_key)
         target.parent.mkdir(parents=True, exist_ok=True)
         if self.content_exists(storage_key, expected_sha256):
@@ -58,6 +57,12 @@ class StorageAdapter:
         finally:
             temporary.unlink(missing_ok=True)
         return storage_key
+
+    @staticmethod
+    def content_storage_key(sha256: str, extension: str) -> str:
+        """Return the canonical key before an object is written."""
+
+        return _storage_key(_validated_sha256(sha256), _normalized_extension(extension))
 
     def resolve_local_path(self, storage_key: str) -> Path:
         """Resolve one local object key without accepting arbitrary filesystem paths."""
