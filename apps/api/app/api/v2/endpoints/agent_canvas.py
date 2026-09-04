@@ -2486,7 +2486,7 @@ def commit_guided_product_input(
         committed = runtime.guided_product_inputs.commit(
             workflow_id,
             request,
-            expected_revision=_expected_revision(if_match, workflow_id),
+            expected_workflow_revision=_expected_revision(if_match, workflow_id),
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:
