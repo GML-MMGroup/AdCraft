@@ -1,7 +1,7 @@
 """Retire variation storage and Binding execution requiredness.
 
-Revision ID: 20260903_04
-Revises: 20260903_03
+Revision ID: 20260903_05
+Revises: 20260903_04
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260903_04"
-down_revision = "20260903_03"
+revision = "20260903_05"
+down_revision = "20260903_04"
 branch_labels = None
 depends_on = None
 
