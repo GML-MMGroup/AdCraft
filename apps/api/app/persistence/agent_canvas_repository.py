@@ -3129,6 +3129,7 @@ def _invalidate_prompt_preparations_for_source(
     workflow_id: str,
     source_node_id: str,
     updated_at: str,
+    frozen_execution_id: str | None = None,
 ) -> None:
     target_node_ids = tuple(
         connection.scalars(
@@ -3142,7 +3143,22 @@ def _invalidate_prompt_preparations_for_source(
             .distinct()
         )
     )
+    frozen_target_node_ids = (
+        set(
+            connection.scalars(
+                select(AgentCanvasExecutionMemberRow.node_id).where(
+                    AgentCanvasExecutionMemberRow.execution_id == frozen_execution_id,
+                    AgentCanvasExecutionMemberRow.node_id.in_(target_node_ids),
+                    AgentCanvasExecutionMemberRow.run_intent_snapshot_id.is_not(None),
+                )
+            )
+        )
+        if frozen_execution_id is not None and target_node_ids
+        else set()
+    )
     for target_node_id in target_node_ids:
+        if target_node_id in frozen_target_node_ids:
+            continue
         _invalidate_target_prompt_preparation(
             connection,
             events=events,
@@ -3161,6 +3177,7 @@ def invalidate_prompt_preparations_for_source_in_transaction(
     workflow_id: str,
     source_node_id: str,
     updated_at: str,
+    frozen_execution_id: str | None = None,
 ) -> None:
     """Invalidate all enabled Node-output dependents in a caller transaction."""
 
@@ -3171,6 +3188,7 @@ def invalidate_prompt_preparations_for_source_in_transaction(
         workflow_id=workflow_id,
         source_node_id=source_node_id,
         updated_at=updated_at,
+        frozen_execution_id=frozen_execution_id,
     )
 
 

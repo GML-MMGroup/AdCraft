@@ -236,6 +236,7 @@ class AgentCanvasResultCommitRepository:
                             workflow_id=command.workflow_id,
                             source_node_id=command.node_id,
                             updated_at=timestamp,
+                            frozen_execution_id=command.execution_id,
                         )
                     self._fault("after_node")
                     connection.execute(
