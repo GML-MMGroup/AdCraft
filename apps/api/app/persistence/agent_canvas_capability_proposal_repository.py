@@ -832,8 +832,7 @@ def _terminalize_suppressed_storyboard_publication(
     connection.execute(
         update(AgentCanvasContinuationOutboxRow)
         .where(
-            AgentCanvasContinuationOutboxRow.continuation_turn_id
-            == envelope.capability_turn_id,
+            AgentCanvasContinuationOutboxRow.continuation_turn_id == envelope.capability_turn_id,
             AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased")),
         )
         .values(

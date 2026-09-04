@@ -3514,9 +3514,7 @@ def _projection(row) -> ProposalMaterializationProjectionV2:
         error = {
             "code": str(row["materialization_error_code"]),
             "message": str(row["materialization_error_message"]),
-            "actionable_failure": _materialization_actionable_failure(row).model_dump(
-                mode="json"
-            ),
+            "actionable_failure": _materialization_actionable_failure(row).model_dump(mode="json"),
         }
     return ProposalMaterializationProjectionV2(
         materialization_id=str(row["materialization_id"]),

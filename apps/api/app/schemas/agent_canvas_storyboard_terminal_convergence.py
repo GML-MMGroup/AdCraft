@@ -46,4 +46,3 @@ class StoryboardTerminalConvergenceOutcomeV1(_StoryboardTerminalConvergenceModel
     resulting_session_revision: int = Field(ge=1)
     changed: bool
     replayed: bool = False
-

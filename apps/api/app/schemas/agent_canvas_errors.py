@@ -62,6 +62,7 @@ class ActionableFailureV1(BaseModel):
             raise ValueError("Non-retry actions cannot carry a retry scope.")
         return self
 
+
 CharacterAuthoringErrorCodeV1: TypeAlias = Literal[
     "character_occurrence_invalid",
     "character_occurrence_order_invalid",

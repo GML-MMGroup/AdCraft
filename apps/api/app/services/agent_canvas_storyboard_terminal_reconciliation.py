@@ -67,9 +67,7 @@ class AgentCanvasStoryboardTerminalReconciliationService:
                         return replay.model_copy(update={"replayed": True})
                     plan = self._plan_in_transaction(connection, workflow_id=workflow_id)
                     if plan.plan_digest != expected_plan_digest:
-                        raise _stale(
-                            "Storyboard reconciliation authority changed after dry-run."
-                        )
+                        raise _stale("Storyboard reconciliation authority changed after dry-run.")
                     timestamp = datetime.now(timezone.utc).isoformat()
                     self._apply_plan_in_transaction(connection, plan=plan, timestamp=timestamp)
                     receipt = StoryboardTerminalReconciliationReceiptV1(
@@ -116,9 +114,7 @@ class AgentCanvasStoryboardTerminalReconciliationService:
     ) -> StoryboardTerminalReconciliationPlanV1:
         workflow = _one(
             connection,
-            select(AgentCanvasWorkflowRow).where(
-                AgentCanvasWorkflowRow.workflow_id == workflow_id
-            ),
+            select(AgentCanvasWorkflowRow).where(AgentCanvasWorkflowRow.workflow_id == workflow_id),
             "Storyboard reconciliation Workflow was not found.",
         )
         session = _one(
@@ -285,9 +281,7 @@ class AgentCanvasStoryboardTerminalReconciliationService:
         connection.execute(
             delete(AgentCanvasGuidanceAwaitingRow).where(
                 AgentCanvasGuidanceAwaitingRow.workflow_id == plan.workflow_id,
-                AgentCanvasGuidanceAwaitingRow.interaction_id.in_(
-                    plan.duplicate_interaction_ids
-                ),
+                AgentCanvasGuidanceAwaitingRow.interaction_id.in_(plan.duplicate_interaction_ids),
             )
         )
         session = _one(
@@ -303,8 +297,7 @@ class AgentCanvasStoryboardTerminalReconciliationService:
                 update(AgentCanvasGuidanceSessionRow)
                 .where(
                     AgentCanvasGuidanceSessionRow.session_id == plan.session_id,
-                    AgentCanvasGuidanceSessionRow.revision
-                    == plan.expected_session_revision,
+                    AgentCanvasGuidanceSessionRow.revision == plan.expected_session_revision,
                 )
                 .values(
                     active_proposal_id=None,
@@ -328,9 +321,7 @@ class AgentCanvasStoryboardTerminalReconciliationService:
             if metadata.get("proposal_id") not in plan.duplicate_proposal_ids:
                 continue
             replacement = {
-                key: value
-                for key, value in metadata.items()
-                if key != "actionable_failure"
+                key: value for key, value in metadata.items() if key != "actionable_failure"
             }
             replacement.update({"availability": "superseded", "retryable": False})
             if replacement != metadata:
