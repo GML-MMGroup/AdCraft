@@ -17,6 +17,7 @@ from app.schemas.agent_runtime import (
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthorityPlanV2,
 )
+from app.services.agent_canvas_role_prompt_compiler import role_prompt_text_violation
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
     validate_agent_contract,
@@ -218,6 +219,8 @@ def _semantic_violations(
         return _storyboard_sequence_window_violations(context, value)
     if profile == "proposal_candidate_count_v1":
         return _proposal_candidate_count_violations(context, value)
+    if profile == "role_prompt_contract_v1":
+        return _role_prompt_contract_violations(context, value)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -251,6 +254,60 @@ def _semantic_violations(
                 )
             )
     return tuple(violations)
+
+
+def _role_prompt_contract_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    role_variant = context.get("role_variant")
+    prompt_authority = context.get("prompt_authority")
+    if not isinstance(role_variant, str) or prompt_authority not in {
+        "system_generated",
+        "user_authored",
+    }:
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The persisted role-prompt validation context is incomplete.",
+                field_path="validation_context",
+            ),
+        )
+    if role_variant != "scene_board" or prompt_authority == "user_authored":
+        return ()
+    projection_digest = context.get("scene_projection_digest")
+    if (
+        not isinstance(projection_digest, str)
+        or not projection_digest.startswith("sha256:")
+        or len(projection_digest) != 71
+        or any(character not in "0123456789abcdef" for character in projection_digest[7:])
+    ):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The frozen Scene projection identity is invalid.",
+                field_path="scene_projection_digest",
+            ),
+        )
+    editable_prompt = value.get("editable_prompt")
+    if not isinstance(editable_prompt, str):
+        return ()
+    violation = role_prompt_text_violation(
+        role_variant,
+        editable_prompt,
+        field_path="editable_prompt",
+    )
+    if violation is None:
+        return ()
+    return (
+        StructuredViolation(
+            code="node_prompt_role_contract_invalid",
+            message="The Scene brief conflicts with its environment-only role contract.",
+            field_path=violation.field_path,
+            expected="environment_only",
+            actual=violation.violation_category,
+        ),
+    )
 
 
 def _proposal_candidate_count_violations(

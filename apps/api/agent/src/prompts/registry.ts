@@ -154,6 +154,8 @@ function instructionForOperation(operation: string): string {
       "Return one localized editable_prompt in the same structured response as the typed brief.",
       "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      "For scene_board, author only the typed environment, lighting, materials, palette, composition, atmosphere, valid Scene references, technical constraints, and structural exclusions present in the frozen context.",
+      "For scene_board, do not add positive Character, Product, Prop, or narrative progression content; explicit structural exclusions such as no characters or props remain valid.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
     ].join(" ");
   }

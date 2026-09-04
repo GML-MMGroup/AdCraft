@@ -158,6 +158,7 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
         "RoleCreativeBriefV2",
         internal_skill_id="video_agent_role_prompt_authoring",
         display_name="Role Prompt Author",
+        validation_profile="role_prompt_contract_v1",
     ),
     _definition(
         "plan_storyboard_sequence_outline",

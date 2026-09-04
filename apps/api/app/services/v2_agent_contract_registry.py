@@ -249,7 +249,20 @@ def validate_video_agent_contract_parity(
                     "required_contract_name": "GuidedProposalAuthoringResultV4",
                 }
             )
-        if not is_proposal and definition.validation_profile is not None:
+        is_role_brief = definition.operation == "author_role_brief"
+        if is_role_brief and definition.validation_profile != "role_prompt_contract_v1":
+            errors.append(
+                {
+                    "operation": definition.operation[:160],
+                    "contract_name": definition.result_contract_name[:160],
+                    "validation_profile": str(definition.validation_profile),
+                }
+            )
+        if (
+            not is_proposal
+            and not is_role_brief
+            and definition.validation_profile is not None
+        ):
             errors.append(
                 {
                     "operation": definition.operation[:160],
