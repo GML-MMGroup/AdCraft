@@ -568,25 +568,32 @@ export function buildPrimaryStructuredCompletionRequest(
     isJsonObjectTransport(input.credential.execution_policy.structured_transport)
   ) {
     const openrouter = openrouterRequestProjection(input.credential);
-    return {
+    const common = {
       model: input.credential.model_id,
       messages: [
         {
-          role: "system",
+          role: "system" as const,
           content: [
             input.systemPrompt,
             "Return exactly one JSON object matching the supplied schema.",
             `JSON Schema: ${JSON.stringify(input.schema)}`,
           ].join("\n\n"),
         },
-        { role: "user", content: input.userPrompt },
+        { role: "user" as const, content: input.userPrompt },
       ],
-      stream:
-        input.credential.execution_policy.structured_transport ===
-        "streaming_json_object",
       max_tokens: input.credential.execution_policy.max_output_tokens,
       ...reasoningPayload(input.credential.execution_policy),
       ...openrouter,
+    };
+    if (
+      input.credential.execution_policy.structured_transport ===
+      "streaming_json_object"
+    ) {
+      return { ...common, stream: true, response_format: { type: "json_object" } };
+    }
+    return {
+      ...common,
+      stream: false,
       response_format: structuredResponseFormat(input.credential, input.schema),
     };
   }
@@ -689,7 +696,7 @@ function repairPayload(
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
-  return {
+  const common = {
     model: input.credential.model_id,
     messages: [
       {
@@ -706,12 +713,19 @@ function repairPayload(
         ].join("\n\n"),
       },
     ],
-    stream:
-      input.credential.execution_policy.structured_transport ===
-      "streaming_json_object",
     max_tokens: input.credential.execution_policy.max_output_tokens,
     ...repairReasoningPayload(input.credential.execution_policy),
     ...openrouterRequestProjection(input.credential),
+  };
+  if (
+    input.credential.execution_policy.structured_transport ===
+    "streaming_json_object"
+  ) {
+    return { ...common, stream: true, response_format: { type: "json_object" } };
+  }
+  return {
+    ...common,
+    stream: false,
     response_format: structuredResponseFormat(input.credential, input.schema),
   };
 }

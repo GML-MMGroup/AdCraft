@@ -264,7 +264,8 @@ export function isNonStreamingStructuredTransport(
 ): boolean {
   return (
     transport === "non_streaming_tool_call" ||
-    transport === "non_streaming_json_object"
+    transport === "non_streaming_json_object" ||
+    transport === "non_streaming_json_schema"
   );
 }
 
@@ -272,7 +273,7 @@ export function thinkingFormatForCredential(
   credential: AgentCredentialSnapshot,
 ): "qwen" | "zai" | undefined {
   const format = credential.execution_policy.thinking_format;
-  return format === "none" ? undefined : format;
+  return format === "qwen" || format === "zai" ? format : undefined;
 }
 
 export function modelStreamForCredential(
