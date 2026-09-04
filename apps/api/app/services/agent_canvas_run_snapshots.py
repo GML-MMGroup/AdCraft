@@ -20,12 +20,41 @@ from app.schemas.agent_canvas import (
 from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, NodeRunIntentSnapshotV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionMemberIntentV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_execution_mode import classify_canvas_execution_mode
+
+
+_BOUND_ASSET_REVISE_ERROR_CODES = frozenset(
+    {
+        "asset_version_not_found",
+        "binding_source_workflow_mismatch",
+        "canvas_asset_reference_media_type_invalid",
+        "canvas_asset_reference_version_required",
+    }
+)
+
+
+def _bound_asset_revise_error(error: V2PersistenceError) -> V2PersistenceError:
+    disposition = ActionableFailureV1(
+        failure_class="stale",
+        retry_scope="none",
+        user_action="revise",
+    )
+    return V2PersistenceError(
+        error.code,
+        str(error),
+        stage=error.stage,
+        details={
+            **error.details,
+            "actionable_failure": disposition.model_dump(mode="json"),
+            "retryable": disposition.retryable,
+        },
+    )
 
 
 class BoundAssetVersionResolver(Protocol):
@@ -89,14 +118,19 @@ class AgentCanvasRunIntentSnapshotService:
                 "Run-bound asset resolution is unavailable.",
                 stage="agent_canvas_run_snapshots",
             )
-        resolved_assets = (
-            self._bound_assets.resolve_bound_asset_versions(
-                workflow.workflow_id,
-                exact_asset_pairs,
+        try:
+            resolved_assets = (
+                self._bound_assets.resolve_bound_asset_versions(
+                    workflow.workflow_id,
+                    exact_asset_pairs,
+                )
+                if self._bound_assets is not None and exact_asset_pairs
+                else {}
             )
-            if self._bound_assets is not None and exact_asset_pairs
-            else {}
-        )
+        except V2PersistenceError as error:
+            if error.code not in _BOUND_ASSET_REVISE_ERROR_CODES:
+                raise
+            raise _bound_asset_revise_error(error) from error
         intents: list[CanvasExecutionMemberIntentV2] = []
         for member_order, node in enumerate(nodes):
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
@@ -110,17 +144,21 @@ class AgentCanvasRunIntentSnapshotService:
                 if binding.source_kind != "image_asset":
                     continue
                 if binding.source_asset_version_id is None:
-                    raise V2PersistenceError(
-                        "canvas_asset_reference_version_required",
-                        "Direct asset bindings require an immutable asset version.",
-                        stage="agent_canvas_run_snapshots",
+                    raise _bound_asset_revise_error(
+                        V2PersistenceError(
+                            "canvas_asset_reference_version_required",
+                            "Direct asset bindings require an immutable asset version.",
+                            stage="agent_canvas_run_snapshots",
+                        )
                     )
                 asset = resolved_assets.get((binding.source_id, binding.source_asset_version_id))
                 if asset is None:
-                    raise V2PersistenceError(
-                        "asset_version_not_found",
-                        "Asset version was not found.",
-                        stage="agent_canvas_run_snapshots",
+                    raise _bound_asset_revise_error(
+                        V2PersistenceError(
+                            "asset_version_not_found",
+                            "Asset version was not found.",
+                            stage="agent_canvas_run_snapshots",
+                        )
                     )
                 source_asset_digests[asset.asset_id] = asset.checksum
             semantic = {
