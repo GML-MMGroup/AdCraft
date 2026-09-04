@@ -1057,6 +1057,15 @@ class ProviderHttpResponse:
 
 
 class ProviderHttpTransport(Protocol):
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse: ...
+
     def post_json(
         self,
         *,
@@ -1082,6 +1091,21 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 class UrllibProviderHttpTransport:
     """Minimal standard-library transport with redirects disabled for credential probes."""
 
+    def get(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
+        request = Request(url, headers=headers, method="GET")
+        return self._open(
+            request=request,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+        )
+
     def post_json(
         self,
         *,
@@ -1097,6 +1121,19 @@ class UrllibProviderHttpTransport:
             headers=headers,
             method="POST",
         )
+        return self._open(
+            request=request,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+        )
+
+    @staticmethod
+    def _open(
+        *,
+        request: Request,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> ProviderHttpResponse:
         opener = build_opener(_NoRedirectHandler())
         try:
             with opener.open(request, timeout=timeout_seconds) as response:
@@ -1150,6 +1187,14 @@ class VolcengineArkConnectionTester:
                 status_code=409,
             )
         credential = normalize_credential_value(raw_value)
+        if definition.provider_id == "openrouter":
+            return self._test_openrouter_key(
+                definition=definition,
+                binding=binding,
+                credential=credential,
+                settings=settings,
+                model_id=model_id,
+            )
         endpoint = _allowlisted_chat_completions_url(
             getattr(settings, binding.endpoint_field),
             definition.allowed_test_origins,
@@ -1199,6 +1244,47 @@ class VolcengineArkConnectionTester:
             status_code=503,
         )
 
+    def _test_openrouter_key(
+        self,
+        *,
+        definition: ProviderCredentialDefinition,
+        binding: ConsumerCredentialBinding,
+        credential: str,
+        settings: Settings,
+        model_id: str | None,
+    ) -> CredentialTestResult:
+        endpoint = _allowlisted_endpoint_url(
+            base_url=getattr(settings, binding.endpoint_field),
+            suffix="key",
+            allowed_origins=definition.allowed_test_origins,
+        )
+        try:
+            response = self._transport.get(
+                url=endpoint,
+                headers={"Authorization": f"Bearer {credential}"},
+                timeout_seconds=self._timeout_seconds,
+                max_response_bytes=self._max_response_bytes,
+            )
+        except (OSError, TimeoutError, URLError) as exc:
+            raise CredentialSettingsError(
+                code="provider_transport_failed",
+                message="The provider connection test is temporarily unavailable.",
+                status_code=503,
+            ) from exc
+        if 200 <= response.status_code < 300:
+            return CredentialTestResult(accepted=True, model_id=model_id)
+        if response.status_code in {401, 403}:
+            raise CredentialSettingsError(
+                code="provider_credential_rejected",
+                message="The provider rejected the supplied credential.",
+                status_code=422,
+            )
+        raise CredentialSettingsError(
+            code="provider_transport_failed",
+            message="The provider connection test is temporarily unavailable.",
+            status_code=503,
+        )
+
 
 def _allowlisted_chat_completions_url(
     base_url: str | None,
@@ -1241,6 +1327,31 @@ def _allowlisted_chat_completions_url(
     path = parsed.path.rstrip("/")
     if not path.endswith("/chat/completions"):
         path = f"{path}/chat/completions"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def _allowlisted_endpoint_url(
+    *,
+    base_url: str | None,
+    suffix: str,
+    allowed_origins: tuple[str, ...],
+) -> str:
+    if base_url is None:
+        raise CredentialSettingsError(
+            code="credential_test_configuration_invalid",
+            message="The configured provider test endpoint is not valid.",
+            status_code=409,
+        )
+    try:
+        normalized = _normalize_provider_base_url(base_url, allowed_origins)
+        parsed = urlsplit(normalized)
+    except CredentialSettingsError as exc:
+        raise CredentialSettingsError(
+            code="credential_test_configuration_invalid",
+            message="The configured provider test endpoint is not valid.",
+            status_code=409,
+        ) from exc
+    path = f"{parsed.path.rstrip('/')}/{suffix.lstrip('/')}"
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
