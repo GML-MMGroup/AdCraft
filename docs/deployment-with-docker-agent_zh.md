@@ -61,7 +61,7 @@ cd /path/to/AdCraft
 bash scripts/deploy-linux.sh
 ```
 
-等待命令结束。启动器会复用能够正常工作的 Docker Engine；如果受支持的 Ubuntu/Debian 主机尚未安装 Docker，则通过 root 权限安装 Docker Engine 和 Compose v2。之后它会初始化缺失的本地配置，在 `8080`–`8179` 中选择空闲 Web 端口，构建镜像，启动三个服务，等待健康检查，并在存在桌面会话时打开浏览器。
+等待命令结束。启动器会复用能够正常工作的 Docker Engine；如果受支持的 Ubuntu/Debian 主机尚未安装 Docker，则通过 root 权限安装 Docker Engine 和 Compose v2。之后它会初始化缺失的本地配置，在 `8080`–`8179` 中选择空闲 Web 端口，构建镜像，启动三个服务，等待健康检查，并在存在桌面会话时打开浏览器。启动恢复可能继续执行中断的视频导出，因此应持续观察最长 30 分钟的状态显示，不要把短暂无输出直接判断为卡死。
 
 如果 sudo 要求密码，请用户在同一个终端中输入，然后继续观察执行过程。
 

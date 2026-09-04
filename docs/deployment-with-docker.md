@@ -47,7 +47,7 @@ Expected outcome: Agent, API, and Web become healthy and AdCraft opens locally. 
    ```
 
 3. Enter your `sudo` password **only if the launcher asks for it**. It may need that permission to install or start Docker and supporting system packages. Do not type your API key at a `sudo` prompt.
-4. Wait while it checks Ubuntu/Debian, prepares the runtime, builds AdCraft, and waits for the web and API services to become healthy. The first run can take longer than later runs.
+4. Wait while it checks Ubuntu/Debian, prepares the runtime, builds AdCraft, and waits for the Agent Runtime, API, and Web services to become healthy. The first run can take longer than later runs. If AdCraft is recovering an interrupted video export, the launcher keeps showing service status and waits up to 30 minutes by default.
 5. Open the printed `http://127.0.0.1:<port>` URL. On a graphical Linux desktop the launcher may open it automatically; otherwise, copy it into a browser on the same computer.
 
 Expected outcome: the command finishes with a deployment-success message and the local URL. You do not need to install Python, Node.js, Docker, or Docker Compose yourself.
@@ -239,7 +239,7 @@ Linux terminal:
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-Wait until `agent`, `api`, and `web` all show `healthy`. On the first startup, the Agent Runtime becomes healthy before the API, then the web service starts.
+Wait until `agent`, `api`, and `web` all show `healthy`. The containers may start in parallel; the API can remain `starting` while it resumes interrupted video exports, so use the health status rather than startup order to decide when AdCraft is ready.
 
 ### 7. Open AdCraft and Add API Keys
 
@@ -270,6 +270,7 @@ Do not use `down -v`, and do not delete `runtime-data/`, unless you intentionall
 | --- | --- |
 | `docker version` does not show a Server section. | Start Docker Desktop on Windows. On Linux, run `sudo systemctl start docker`, then check the command again. |
 | `docker compose` is unknown. | Install or update the Docker Compose plugin using Docker's official instructions, then open a new terminal. |
+| Linux Docker installation stops during `apt update` because an unrelated repository has no Release file or returns 404. | Disable or correct that broken entry under `/etc/apt/sources.list` or `/etc/apt/sources.list.d/`, run `sudo apt update` successfully, then rerun the AdCraft launcher. Do not disable signature verification. |
 | `failed to fetch anonymous token`, `EOF`, DNS, or registry timeout. | This is a Docker network/proxy problem, not an AdCraft API-key problem. Correct the Docker Desktop or Linux Docker proxy/DNS path, restart Docker, and retry the build. |
 | `port is already allocated`. | Stop the program using the selected port, or edit `ADCRAFT_PORT` in `runtime-data/deployment.env` to another free port from `8080` to `8179`, then run the start command again. |
 | `agent`, `api`, or `web` is `exited` or `unhealthy`. | Run the logs command above. Keep API keys and `runtime-data/deployment.env` out of any log excerpt you share. Fix the first reported error, then rerun the rebuild/start command. |

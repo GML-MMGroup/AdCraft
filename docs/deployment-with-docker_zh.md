@@ -47,7 +47,7 @@
    ```
 
 3. **仅当启动器询问时**输入 `sudo` 密码。它可能需要该权限来安装或启动 Docker 和支持它的系统软件包。不要在 `sudo` 提示处输入 API 密钥。
-4. 等待启动器检查 Ubuntu/Debian、准备运行环境、构建 AdCraft，并等待 Web 与 API 服务变为健康状态。首次运行通常比之后运行更久。
+4. 等待启动器检查 Ubuntu/Debian、准备运行环境、构建 AdCraft，并等待 Agent Runtime、API 和 Web 三个服务变为健康状态。首次运行通常比之后运行更久。如果 AdCraft 正在恢复中断的视频导出，启动器会持续显示服务状态，默认最多等待 30 分钟。
 5. 打开打印出的 `http://127.0.0.1:<port>` URL。在带图形界面的 Linux 桌面上，启动器可能自动打开它；否则请在同一台计算机的浏览器中粘贴该地址。
 
 预期结果：命令以部署成功消息和本地 URL 结束。您无需自行安装 Python、Node.js、Docker 或 Docker Compose。
@@ -239,7 +239,7 @@ Linux 终端：
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-请等待 `agent`、`api` 和 `web` 都显示为 `healthy`。首次启动时，Agent Runtime 先就绪，之后是 API，再启动 Web。
+请等待 `agent`、`api` 和 `web` 都显示为 `healthy`。容器可能并行启动；API 恢复上次中断的视频导出时可能会较长时间显示 `starting`，因此请以健康状态而不是启动顺序判断 AdCraft 是否就绪。
 
 ### 7. 打开 AdCraft 并添加 API 密钥
 
@@ -270,6 +270,7 @@ http://127.0.0.1:8080
 | --- | --- |
 | `docker version` 没有显示 Server 部分。 | Windows 请启动 Docker Desktop；Linux 请运行 `sudo systemctl start docker`，再重新检查。 |
 | 找不到 `docker compose`。 | 按 Docker 官方教程安装或更新 Docker Compose 插件，然后重新打开终端。 |
+| Linux 安装 Docker 时，`apt update` 因无关的软件源缺少 Release 文件或返回 404 而停止。 | 修正或禁用 `/etc/apt/sources.list` 或 `/etc/apt/sources.list.d/` 中对应的失效条目，确认 `sudo apt update` 成功后重新运行 AdCraft 启动器；不要关闭签名校验。 |
 | 出现 `failed to fetch anonymous token`、`EOF`、DNS 或镜像仓库超时。 | 这是 Docker 网络/代理问题，不是 AdCraft API 密钥问题。修复 Docker Desktop 或 Linux Docker 的代理/DNS 路径，重启 Docker 后再重新构建。 |
 | 出现 `port is already allocated`。 | 停止占用所选端口的程序，或将 `runtime-data/deployment.env` 中的 `ADCRAFT_PORT` 改为 `8080` 到 `8179` 内另一个空闲端口，然后再次执行启动命令。 |
 | `agent`、`api` 或 `web` 为 `exited` 或 `unhealthy`。 | 运行上表中的日志命令。分享日志时务必去除 API 密钥和 `runtime-data/deployment.env`。修复最先报告的错误后，重新执行重新构建/启动命令。 |

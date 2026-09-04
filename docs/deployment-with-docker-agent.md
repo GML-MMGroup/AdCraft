@@ -61,7 +61,7 @@ cd /path/to/AdCraft
 bash scripts/deploy-linux.sh
 ```
 
-Allow the command to finish. The launcher reuses a working Docker Engine, or on a supported Ubuntu/Debian host installs Docker Engine and Compose v2 with root privileges. It then initializes missing local configuration, selects a free Web port in `8080`–`8179`, builds the images, starts all three services, waits for health, and opens a browser when a desktop session is available.
+Allow the command to finish. The launcher reuses a working Docker Engine, or on a supported Ubuntu/Debian host installs Docker Engine and Compose v2 with root privileges. It then initializes missing local configuration, selects a free Web port in `8080`–`8179`, builds the images, starts all three services, waits for health, and opens a browser when a desktop session is available. Startup recovery may resume an interrupted video export, so keep monitoring the status display for up to 30 minutes instead of assuming a quiet recovery is stuck.
 
 If sudo requests a password, ask the user to enter it in the same terminal and continue monitoring afterward.
 
