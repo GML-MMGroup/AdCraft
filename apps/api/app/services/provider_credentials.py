@@ -118,7 +118,7 @@ class ProviderCredentialRegistry:
             _siliconflow_definition(),
             _tianpuyue_definition(),
             _volcengine_ark_definition(),
-            _openai_definition(),
+            _openrouter_definition(),
             _minimax_definition(),
             _fake_definition(),
         )
@@ -737,13 +737,24 @@ class ProviderConnectionService:
         definition = self._registry.get(provider_id)
         endpoint_candidates = dict(base_urls or {})
         cleared = tuple(dict.fromkeys(clear_capabilities))
-        if set(api_keys).intersection(cleared) or set(endpoint_candidates).intersection(cleared):
+        normalized_api_keys = {
+            capability: normalize_credential_value(credential)
+            for capability, credential in api_keys.items()
+        }
+        if provider_id == "openrouter":
+            normalized_api_keys, cleared = _normalize_openrouter_shared_key_mutation(
+                api_keys=normalized_api_keys,
+                clear_capabilities=cleared,
+            )
+        if set(normalized_api_keys).intersection(cleared) or set(endpoint_candidates).intersection(
+            cleared
+        ):
             raise CredentialSettingsError(
                 code="credential_update_invalid",
                 message="Credential capabilities cannot be set and cleared together.",
                 status_code=422,
             )
-        requested = tuple(dict.fromkeys((*api_keys, *endpoint_candidates, *cleared)))
+        requested = tuple(dict.fromkeys((*normalized_api_keys, *endpoint_candidates, *cleared)))
         if not requested:
             raise CredentialSettingsError(
                 code="credential_update_invalid",
@@ -757,10 +768,8 @@ class ProviderConnectionService:
         except CredentialSettingsError:
             raise
         values_by_field: dict[str, str | None] = {}
-        for capability, credential in api_keys.items():
-            values_by_field[definition.binding_for_capability(capability).dotenv_field] = (
-                normalize_credential_value(credential)
-            )
+        for capability, credential in normalized_api_keys.items():
+            values_by_field[definition.binding_for_capability(capability).dotenv_field] = credential
         for capability, endpoint in endpoint_candidates.items():
             binding = definition.binding_for_capability(capability)
             if binding.endpoint_dotenv_field is None:
@@ -815,7 +824,7 @@ class ProviderConnectionService:
         )
         return ProviderConnectionUpdateResult(
             provider=provider,
-            updated_capabilities=tuple(dict.fromkeys((*api_keys, *endpoint_candidates))),
+            updated_capabilities=tuple(dict.fromkeys((*normalized_api_keys, *endpoint_candidates))),
             cleared_capabilities=cleared,
             applied_at=self._clock(),
         )
@@ -1381,22 +1390,58 @@ def _tianpuyue_definition() -> ProviderCredentialDefinition:
     )
 
 
-def _openai_definition() -> ProviderCredentialDefinition:
-    binding = ConsumerCredentialBinding(
-        consumer="image",
-        dotenv_field="OPENAI_API_KEY",
-        settings_field="openai_api_key",
-        endpoint_field="openai_base_url",
-        endpoint_dotenv_field="OPENAI_BASE_URL",
-        test_capability="unsupported",
+def _openrouter_definition() -> ProviderCredentialDefinition:
+    bindings: Mapping[ProviderCredentialConsumer, ConsumerCredentialBinding] = MappingProxyType(
+        {
+            "text": ConsumerCredentialBinding(
+                consumer="text",
+                dotenv_field="OPENROUTER_API_KEY",
+                settings_field="openrouter_api_key",
+                endpoint_field="openrouter_text_base_url",
+                endpoint_dotenv_field="OPENROUTER_TEXT_BASE_URL",
+                test_capability="minimal_request",
+            ),
+            "image": ConsumerCredentialBinding(
+                consumer="image",
+                dotenv_field="OPENROUTER_API_KEY",
+                settings_field="openrouter_api_key",
+                endpoint_field="openrouter_image_base_url",
+                endpoint_dotenv_field="OPENROUTER_IMAGE_BASE_URL",
+                test_capability="minimal_request",
+            ),
+        }
     )
     return ProviderCredentialDefinition(
-        provider_id="openai",
-        bindings=MappingProxyType({"image": binding}),
-        allowed_test_origins=("https://api.openai.com",),
-        display_name="OpenAI",
-        capability_consumers=MappingProxyType({"image": "image"}),
+        provider_id="openrouter",
+        bindings=bindings,
+        allowed_test_origins=("https://openrouter.ai",),
+        display_name="OpenRouter",
+        capability_consumers=MappingProxyType({"text": "text", "image": "image"}),
     )
+
+
+def _normalize_openrouter_shared_key_mutation(
+    *,
+    api_keys: Mapping[str, str],
+    clear_capabilities: tuple[str, ...],
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    supplied_values = set(api_keys.values())
+    if len(supplied_values) > 1:
+        raise CredentialSettingsError(
+            code="credential_update_invalid",
+            message="OpenRouter text and image credentials must use the same API key.",
+            status_code=422,
+        )
+    if clear_capabilities and set(clear_capabilities) != {"text", "image"}:
+        raise CredentialSettingsError(
+            code="credential_update_invalid",
+            message="The shared OpenRouter API key must be cleared for both capabilities.",
+            status_code=422,
+        )
+    if supplied_values:
+        shared_value = next(iter(supplied_values))
+        return {"text": shared_value, "image": shared_value}, clear_capabilities
+    return dict(api_keys), clear_capabilities
 
 
 def _minimax_definition() -> ProviderCredentialDefinition:

@@ -95,6 +95,9 @@ class Settings:
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     openai_api_key: str | None = None
     openai_base_url: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_text_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_image_base_url: str = "https://openrouter.ai/api/v1"
     minimax_api_key: str | None = None
     minimax_base_url: str | None = None
     llm_transient_retry_delay_seconds: float = 2.0
@@ -241,6 +244,15 @@ class Settings:
             ),
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             openai_base_url=os.getenv("OPENAI_BASE_URL") or None,
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY") or None,
+            openrouter_text_base_url=os.getenv(
+                "OPENROUTER_TEXT_BASE_URL",
+                cls.openrouter_text_base_url,
+            ),
+            openrouter_image_base_url=os.getenv(
+                "OPENROUTER_IMAGE_BASE_URL",
+                cls.openrouter_image_base_url,
+            ),
             minimax_api_key=os.getenv("MINIMAX_API_KEY") or None,
             minimax_base_url=os.getenv("MINIMAX_BASE_URL") or None,
             llm_transient_retry_delay_seconds=_read_float(
