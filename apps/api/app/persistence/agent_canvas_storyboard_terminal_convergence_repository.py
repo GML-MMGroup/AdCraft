@@ -51,24 +51,36 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
         """Build an exact convergence command from the committed state."""
 
         with self._database.engine.connect() as connection:
-            proposal = connection.execute(
-                select(AgentCanvasConceptProposalRow).where(
-                    AgentCanvasConceptProposalRow.proposal_id == plan.proposal_id,
-                    AgentCanvasConceptProposalRow.workflow_id == plan.workflow_id,
+            proposal = (
+                connection.execute(
+                    select(AgentCanvasConceptProposalRow).where(
+                        AgentCanvasConceptProposalRow.proposal_id == plan.proposal_id,
+                        AgentCanvasConceptProposalRow.workflow_id == plan.workflow_id,
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             if proposal is None or str(proposal["proposal_kind"]) != "storyboard":
                 return None
-            turn = connection.execute(
-                select(AgentCanvasChatTurnRow).where(
-                    AgentCanvasChatTurnRow.turn_id == plan.action_turn_id
+            turn = (
+                connection.execute(
+                    select(AgentCanvasChatTurnRow).where(
+                        AgentCanvasChatTurnRow.turn_id == plan.action_turn_id
+                    )
                 )
-            ).mappings().one_or_none()
-            session = connection.execute(
-                select(AgentCanvasGuidanceSessionRow).where(
-                    AgentCanvasGuidanceSessionRow.workflow_id == plan.workflow_id
+                .mappings()
+                .one_or_none()
+            )
+            session = (
+                connection.execute(
+                    select(AgentCanvasGuidanceSessionRow).where(
+                        AgentCanvasGuidanceSessionRow.workflow_id == plan.workflow_id
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             workflow_revision = connection.execute(
                 select(AgentCanvasWorkflowRow.revision).where(
                     AgentCanvasWorkflowRow.workflow_id == plan.workflow_id
@@ -76,20 +88,22 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
             ).scalar_one_or_none()
             if turn is None or session is None or workflow_revision is None:
                 raise _stale("storyboard_terminal_authority_stale")
-            guided_submission = json.loads(str(turn["request_json"])).get(
-                "guided_submission"
-            )
+            guided_submission = json.loads(str(turn["request_json"])).get("guided_submission")
             if guided_submission is None:
                 return None
             if not isinstance(guided_submission, dict):
                 raise _stale("storyboard_terminal_interaction_stale")
             interaction_id = str(guided_submission.get("interaction_id") or "")
-            interaction = connection.execute(
-                select(AgentCanvasGuidedInteractionRow).where(
-                    AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
-                    AgentCanvasGuidedInteractionRow.workflow_id == plan.workflow_id,
+            interaction = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionRow).where(
+                        AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                        AgentCanvasGuidedInteractionRow.workflow_id == plan.workflow_id,
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             if interaction is None:
                 raise _stale("storyboard_terminal_interaction_stale")
             content = json.loads(str(interaction["content_json"]))
@@ -123,18 +137,22 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    commit = connection.execute(
-                        select(AgentCanvasMaterializationCommitRow).where(
-                            AgentCanvasMaterializationCommitRow.materialization_id
-                            == command.materialization_id,
-                            AgentCanvasMaterializationCommitRow.workflow_id
-                            == command.workflow_id,
-                            AgentCanvasMaterializationCommitRow.proposal_id
-                            == command.proposal_id,
-                            AgentCanvasMaterializationCommitRow.action_turn_id
-                            == command.parent_turn_id,
+                    commit = (
+                        connection.execute(
+                            select(AgentCanvasMaterializationCommitRow).where(
+                                AgentCanvasMaterializationCommitRow.materialization_id
+                                == command.materialization_id,
+                                AgentCanvasMaterializationCommitRow.workflow_id
+                                == command.workflow_id,
+                                AgentCanvasMaterializationCommitRow.proposal_id
+                                == command.proposal_id,
+                                AgentCanvasMaterializationCommitRow.action_turn_id
+                                == command.parent_turn_id,
+                            )
                         )
-                    ).mappings().one_or_none()
+                        .mappings()
+                        .one_or_none()
+                    )
                     if commit is None:
                         raise _stale("storyboard_materialization_receipt_stale")
                     if str(commit["payload_digest"]) != command.materialization_digest:
@@ -149,35 +167,55 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                     ):
                         raise _conflict("storyboard_materialization_receipt_conflict")
 
-                    workflow = connection.execute(
-                        select(AgentCanvasWorkflowRow).where(
-                            AgentCanvasWorkflowRow.workflow_id == command.workflow_id
+                    workflow = (
+                        connection.execute(
+                            select(AgentCanvasWorkflowRow).where(
+                                AgentCanvasWorkflowRow.workflow_id == command.workflow_id
+                            )
                         )
-                    ).mappings().one_or_none()
-                    proposal = connection.execute(
-                        select(AgentCanvasConceptProposalRow).where(
-                            AgentCanvasConceptProposalRow.proposal_id == command.proposal_id,
-                            AgentCanvasConceptProposalRow.workflow_id == command.workflow_id,
+                        .mappings()
+                        .one_or_none()
+                    )
+                    proposal = (
+                        connection.execute(
+                            select(AgentCanvasConceptProposalRow).where(
+                                AgentCanvasConceptProposalRow.proposal_id == command.proposal_id,
+                                AgentCanvasConceptProposalRow.workflow_id == command.workflow_id,
+                            )
                         )
-                    ).mappings().one_or_none()
-                    interaction = connection.execute(
-                        select(AgentCanvasGuidedInteractionRow).where(
-                            AgentCanvasGuidedInteractionRow.interaction_id
-                            == command.interaction_id,
-                            AgentCanvasGuidedInteractionRow.workflow_id == command.workflow_id,
+                        .mappings()
+                        .one_or_none()
+                    )
+                    interaction = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == command.interaction_id,
+                                AgentCanvasGuidedInteractionRow.workflow_id == command.workflow_id,
+                            )
                         )
-                    ).mappings().one_or_none()
-                    parent_turn = connection.execute(
-                        select(AgentCanvasChatTurnRow).where(
-                            AgentCanvasChatTurnRow.turn_id == command.parent_turn_id,
-                            AgentCanvasChatTurnRow.workflow_id == command.workflow_id,
+                        .mappings()
+                        .one_or_none()
+                    )
+                    parent_turn = (
+                        connection.execute(
+                            select(AgentCanvasChatTurnRow).where(
+                                AgentCanvasChatTurnRow.turn_id == command.parent_turn_id,
+                                AgentCanvasChatTurnRow.workflow_id == command.workflow_id,
+                            )
                         )
-                    ).mappings().one_or_none()
-                    session = connection.execute(
-                        select(AgentCanvasGuidanceSessionRow).where(
-                            AgentCanvasGuidanceSessionRow.workflow_id == command.workflow_id
+                        .mappings()
+                        .one_or_none()
+                    )
+                    session = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceSessionRow).where(
+                                AgentCanvasGuidanceSessionRow.workflow_id == command.workflow_id
+                            )
                         )
-                    ).mappings().one_or_none()
+                        .mappings()
+                        .one_or_none()
+                    )
                     if any(
                         item is None
                         for item in (workflow, proposal, interaction, parent_turn, session)
@@ -191,10 +229,8 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                     interaction_content = json.loads(str(interaction["content_json"]))
                     if (
                         int(workflow["revision"]) != command.expected_workflow_revision
-                        or int(proposal["proposal_revision"])
-                        != command.expected_proposal_revision
-                        or int(interaction["revision"])
-                        != command.expected_interaction_revision
+                        or int(proposal["proposal_revision"]) != command.expected_proposal_revision
+                        or int(interaction["revision"]) != command.expected_interaction_revision
                         or int(session["revision"]) != command.expected_session_revision
                         or str(proposal["proposal_kind"]) != "storyboard"
                         or str(proposal["materialization_id"]) != command.materialization_id
@@ -210,22 +246,29 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                     }:
                         raise _conflict("storyboard_terminal_current_proposal_conflict")
 
-                    timeline_rows = connection.execute(
-                        select(AgentCanvasChatEntryRow).where(
-                            AgentCanvasChatEntryRow.workflow_id == command.workflow_id
+                    timeline_rows = (
+                        connection.execute(
+                            select(AgentCanvasChatEntryRow).where(
+                                AgentCanvasChatEntryRow.workflow_id == command.workflow_id
+                            )
                         )
-                    ).mappings().all()
-                    existing_convergence_event = connection.execute(
-                        select(WorkflowEventRow).where(
-                            WorkflowEventRow.transition_key == transition_key
+                        .mappings()
+                        .all()
+                    )
+                    existing_convergence_event = (
+                        connection.execute(
+                            select(WorkflowEventRow).where(
+                                WorkflowEventRow.transition_key == transition_key
+                            )
                         )
-                    ).mappings().one_or_none()
+                        .mappings()
+                        .one_or_none()
+                    )
                     event_preexisted = existing_convergence_event is not None
                     awaiting_exists = (
                         connection.execute(
                             select(AgentCanvasGuidanceAwaitingRow.awaiting_id).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id
-                                == command.workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id,
                                 AgentCanvasGuidanceAwaitingRow.interaction_id
                                 == command.interaction_id,
                             )
@@ -248,9 +291,7 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                         or parent_turn["error_code"] is not None
                         or parent_turn["error_message"] is not None
                     )
-                    session_needs_convergence = (
-                        session["active_proposal_id"] == command.proposal_id
-                    )
+                    session_needs_convergence = session["active_proposal_id"] == command.proposal_id
                     changed = any(
                         (
                             proposal_needs_convergence,
@@ -264,8 +305,7 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                         connection.execute(
                             update(AgentCanvasConceptProposalRow)
                             .where(
-                                AgentCanvasConceptProposalRow.proposal_id
-                                == command.proposal_id,
+                                AgentCanvasConceptProposalRow.proposal_id == command.proposal_id,
                                 AgentCanvasConceptProposalRow.proposal_revision
                                 == command.expected_proposal_revision,
                             )
@@ -308,8 +348,7 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                         connection.execute(
                             update(AgentCanvasGuidanceSessionRow)
                             .where(
-                                AgentCanvasGuidanceSessionRow.session_id
-                                == session["session_id"],
+                                AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
                                 AgentCanvasGuidanceSessionRow.revision
                                 == command.expected_session_revision,
                             )
@@ -318,8 +357,7 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                     if awaiting_exists:
                         connection.execute(
                             delete(AgentCanvasGuidanceAwaitingRow).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id
-                                == command.workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id,
                                 AgentCanvasGuidanceAwaitingRow.interaction_id
                                 == command.interaction_id,
                             )
