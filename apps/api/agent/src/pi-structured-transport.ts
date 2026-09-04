@@ -223,7 +223,7 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
-    if (primary.capabilityFallbackCount > 0) {
+    if ((primary.capabilityFallbackCount ?? 0) > 0) {
       throw structuredFailure(
         "capability_fallback",
         auditForAttempt(
