@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.persistence.provider_model_repository import (
     ModelDefaultRecord,
+    ProviderModelConformanceRunRecord,
     ProviderModelRecord,
     ProviderModelRepository,
 )
@@ -1214,6 +1215,17 @@ class ProviderModelCatalogService:
         """Return one model with current capability credential availability."""
 
         return self._with_current_credential_availability(self._repository.get_model(model_ref))
+
+    def current_conformance(
+        self,
+        *,
+        model_ref: str,
+        operation: str,
+    ) -> ProviderModelConformanceRunRecord | None:
+        return self._repository.current_conformance(
+            model_ref=model_ref,
+            operation=operation,
+        )
 
     def set_defaults(
         self,

@@ -13,7 +13,11 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.persistence.database import V2Database, create_v2_database
-from app.persistence.provider_model_repository import ProviderModelRecord, ProviderModelRepository
+from app.persistence.provider_model_repository import (
+    ProviderModelConformanceRunRecord,
+    ProviderModelRecord,
+    ProviderModelRepository,
+)
 from app.schemas.agent_capabilities import AgentCapabilityV1
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1, AgentName
@@ -26,6 +30,7 @@ from app.services.provider_credentials import CredentialSettingsError, ProviderC
 from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.openrouter_policy import build_openrouter_routing_policy
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
+from app.services.v2_agent_runtime_manifest import V2AgentRuntimeManifestService
 
 
 class AgentCapabilityLookup(Protocol):
@@ -34,6 +39,13 @@ class AgentCapabilityLookup(Protocol):
 
 class AgentModelLookup(Protocol):
     def get_model(self, model_ref: str) -> ProviderModelRecord: ...
+
+    def current_conformance(
+        self,
+        *,
+        model_ref: str,
+        operation: str,
+    ) -> ProviderModelConformanceRunRecord | None: ...
 
 
 GatewayHealthProbe = Callable[[ProviderAdapterProfileV1, str], Mapping[str, object]]
@@ -121,6 +133,24 @@ class V2AgentCredentialBroker:
         if adapter_profile.transport_kind == "litellm_chat":
             self._validate_litellm_gateway(adapter_profile, operation=operation)
         try:
+            execution_policy = resolve_agent_model_execution_policy(
+                model_ref=record.model_ref,
+                operation_policy=operation_policy,
+                capability_metadata=metadata,
+            )
+        except AgentModelExecutionPolicyError as error:
+            raise AgentCredentialError(error.code, str(error)) from error
+        execution_policy = execution_policy.model_copy(
+            update={
+                "json_object_fallback_certified": self._json_object_fallback_certified(
+                    record=record,
+                    operation=operation,
+                    profile=adapter_profile,
+                    routing=openrouter_routing,
+                )
+            }
+        )
+        try:
             provider_definition = self._credential_registry.get(record.provider_id)
             binding = provider_definition.binding_for_capability("text")
         except CredentialSettingsError as error:
@@ -141,14 +171,6 @@ class V2AgentCredentialBroker:
             and adapter_profile.gateway_profile is not None
             else provider_base_url
         )
-        try:
-            execution_policy = resolve_agent_model_execution_policy(
-                model_ref=record.model_ref,
-                operation_policy=operation_policy,
-                capability_metadata=metadata,
-            )
-        except AgentModelExecutionPolicyError as error:
-            raise AgentCredentialError(error.code, str(error)) from error
         return AgentCredentialSnapshot(
             protocol_version=self._settings.agent_runtime_protocol_version,
             provider=provider_definition.display_name,
@@ -186,6 +208,61 @@ class V2AgentCredentialBroker:
             ),
             openrouter_routing=openrouter_routing,
         )
+
+    def _json_object_fallback_certified(
+        self,
+        *,
+        record: ProviderModelRecord,
+        operation: str,
+        profile: ProviderAdapterProfileV1,
+        routing: OpenRouterRoutingPolicyV1 | None,
+    ) -> bool:
+        if record.provider_id != "openrouter" or routing is None:
+            return False
+        conformance = self._current_conformance(
+            model_ref=record.model_ref,
+            operation=operation,
+        )
+        if conformance is None:
+            return False
+        summary = conformance.safe_summary
+        return (
+            conformance.status == "certified"
+            and conformance.completed_at is not None
+            and conformance.adapter_id == profile.adapter_id
+            and conformance.transport_kind == profile.transport_kind
+            and conformance.adapter_revision == profile.adapter_revision
+            and conformance.capability_revision == profile.capability_revision
+            and conformance.contract_digest
+            == V2AgentRuntimeManifestService().expected().contract_digest
+            and conformance.routing_policy_id == routing.routing_policy_id
+            and conformance.routing_policy_digest == routing.routing_policy_digest
+            and summary.get("evidence_kind") == "real_provider"
+            and isinstance(summary.get("operator_approval_id"), str)
+            and bool(str(summary["operator_approval_id"]).strip())
+            and summary.get("json_object_capability_fallback_certified") is True
+        )
+
+    def _current_conformance(
+        self,
+        *,
+        model_ref: str,
+        operation: str,
+    ) -> ProviderModelConformanceRunRecord | None:
+        repository = self._model_repository
+        if repository is not None:
+            return repository.current_conformance(
+                model_ref=model_ref,
+                operation=operation,
+            )
+        database = create_v2_database(self._settings.media_data_dir)
+        try:
+            return ProviderModelRepository(database).current_conformance(
+                model_ref=model_ref,
+                operation=operation,
+            )
+        finally:
+            database.dispose()
 
     def _validate_litellm_gateway(
         self,
