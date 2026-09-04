@@ -321,6 +321,9 @@ class DurableNextActionExecutionService:
                         current_session,
                         reserved_editing_action,
                     )
+                    completion_has_preparation = (
+                        current_session.completion.preparation_receipt_id == preparation.receipt_id
+                    )
                     self._reconcile_editing_action(
                         current_session,
                         action=reserved_editing_action,
@@ -338,11 +341,17 @@ class DurableNextActionExecutionService:
                         ),
                         plan_document_id=(
                             current_session.completion.plan_document_id
+                            if action_is_current and completion_has_preparation
+                            else preparation.plan_document_id
                             if action_is_current
                             else None
                         ),
                         plan_revision=(
-                            current_session.completion.plan_revision if action_is_current else None
+                            current_session.completion.plan_revision
+                            if action_is_current and completion_has_preparation
+                            else preparation.plan_revision
+                            if action_is_current
+                            else None
                         ),
                     )
                     editing_outcome = "prepared" if action_is_current else "superseded"
