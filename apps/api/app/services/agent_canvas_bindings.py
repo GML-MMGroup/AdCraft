@@ -924,7 +924,6 @@ def _validate_storyboard_visual_anchor_binding(
         and getattr(target_node, "node_type", None) == "image"
         and getattr(target_node, "creative_role", None) == "storyboard_sequence"
         and request.input_role == "image_reference"
-        and request.required
         and request.enabled
     )
     if not valid:

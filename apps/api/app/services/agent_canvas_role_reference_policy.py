@@ -269,7 +269,6 @@ class AgentCanvasRoleReferencePolicyService:
                     or binding.source.kind != "node_output"
                     or binding.source.source_node_id != parent.node_id
                     or binding.input_role != "image_reference"
-                    or not binding.required
                     or not binding.enabled
                     or binding.order != 0
                 ):
@@ -361,7 +360,6 @@ class AgentCanvasRoleReferencePolicyService:
                 and item.source_semantic_role == expected_source_role
                 and item.binding_kind == "image_reference"
                 and item.input_role == "image_reference"
-                and item.required
                 and item.display_order == 0
                 and item.media_type == "image"
                 and item.asset_version_id

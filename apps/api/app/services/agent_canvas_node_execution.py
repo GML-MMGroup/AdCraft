@@ -1197,7 +1197,7 @@ def _seedance_grounding_plan(
                 ),
                 "binding_id": item.binding_id or f"asset:{item.asset_id}",
                 "media_type": item.media_type,
-                "required": item.required,
+                "required": True,
                 "display_order": item.display_order,
             }
             for item in media_inputs
@@ -1265,7 +1265,7 @@ def _delivery_failure_identity(
             failure.node_id or (source.source_node_id if source is not None else None)
         ),
         "asset_id": failure.asset_id,
-        "required": source.required if source is not None else True,
+        "required": True,
         "reason": failure.reason,
     }
 
@@ -1288,7 +1288,6 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         and item.source_semantic_role == "character"
         and item.media_type == "image"
         and item.input_role == "image_reference"
-        and item.required
         and item.binding_metadata.get("reference_purpose") == "identity_master"
         and item.binding_metadata.get("semantic_reference_role") == "subject_reference"
         and (

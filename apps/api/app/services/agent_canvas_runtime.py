@@ -2002,13 +2002,6 @@ def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, o
     return payload
 
 
-def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, ...]:
-    return tuple(
-        binding.source.source_node_id
-        for binding in _unready_required_bindings(workflow, target_node_id, nodes)
-    )
-
-
 def _frozen_unready_sources(
     member: CanvasExecutionMembershipV2,
     nodes: dict[str, CanvasNodeV2],
@@ -2049,25 +2042,6 @@ def _same_wave_dependency_sources(
         and (source_member := members_by_node.get(binding.source_id)) is not None
         and source_member.state in {"queued", "waiting", "running"}
     )
-
-
-def _unready_required_bindings(workflow, target_node_id, nodes):
-    waiting = []
-    for binding in workflow.bindings:
-        if (
-            binding.target_node_id != target_node_id
-            or not binding.required
-            or not binding.enabled
-            or binding.source.kind != "node_output"
-        ):
-            continue
-        source = nodes.get(binding.source.source_node_id)
-        if not _node_output_source_is_ready(
-            source=source,
-            input_role=binding.input_role,
-        ):
-            waiting.append(binding)
-    return tuple(waiting)
 
 
 def _node_output_source_is_ready(

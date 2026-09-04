@@ -301,35 +301,12 @@ class StoryboardFanoutActivationService:
                 continue
             if node.prompt_preparation.status != "ready":
                 continue
-            required_bindings = tuple(
-                binding
-                for binding in workflow.bindings
-                if binding.target_node_id == node.node_id
-                and binding.enabled
-                and binding.required
-                and binding.source.kind == "node_output"
-            )
-            if all(_binding_source_is_ready(binding, nodes) for binding in required_bindings):
-                return node.node_id
+            return node.node_id
         return None
 
 
 def _run_identity(fanout_plan_id: str, node_id: str) -> str:
     return f"storyboard-fanout:{fanout_plan_id}:{node_id}"
-
-
-def _binding_source_is_ready(binding, nodes: dict[str, object]) -> bool:
-    source = nodes.get(binding.source.source_node_id)
-    if source is None:
-        return False
-    if source.status == "ready":
-        return True
-    return (
-        binding.input_role == "text_context"
-        and source.node_type in {"text", "script"}
-        and source.status == "draft"
-        and bool(source.structured_content)
-    )
 
 
 def _digest(value: str) -> str:

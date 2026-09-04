@@ -454,7 +454,7 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     "semantic_reference_instruction_invalid",
                 )
-                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                failures.append(delivered)
                 continue
             try:
                 reference_instruction = compile_provider_reference_instruction(
@@ -466,7 +466,7 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     "semantic_reference_instruction_invalid",
                 )
-                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                failures.append(delivered)
                 continue
             if reference_instruction is not None and (
                 context.reference_instruction_transport == "unsupported"
@@ -475,7 +475,7 @@ class V2ProviderReferenceInputDeliveryService:
                     input_snapshot,
                     "semantic_reference_instruction_unsupported",
                 )
-                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                failures.append(delivered)
                 continue
             version = self._asset_library.find_version(
                 asset_id=input_snapshot.asset_id,
@@ -506,7 +506,7 @@ class V2ProviderReferenceInputDeliveryService:
                     delivery_modes,
                 )
             if isinstance(delivered, V2ReferenceInputDeliveryFailure):
-                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                failures.append(delivered)
                 continue
             if reference_instruction is not None:
                 delivered = delivered.model_copy(
@@ -522,7 +522,7 @@ class V2ProviderReferenceInputDeliveryService:
                         input_snapshot,
                         "image_data_url_total_too_large",
                     )
-                    (failures if input_snapshot.required else optional_omissions).append(failure)
+                    failures.append(failure)
                     continue
                 total_data_url_bytes = next_total
             references.append(delivered)
@@ -1008,7 +1008,7 @@ def _canvas_delivered(
         binding_id=input_snapshot.binding_id,
         input_role=input_snapshot.input_role,
         source_semantic_role=input_snapshot.source_semantic_role,
-        required=input_snapshot.required,
+        required=True,
         display_order=input_snapshot.display_order,
         media_type=input_snapshot.media_type,
         mime_type=mime_type or version.mime_type,

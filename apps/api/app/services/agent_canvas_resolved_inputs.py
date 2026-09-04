@@ -107,16 +107,7 @@ class AgentCanvasResolvedInputCompiler:
                     "World Setting context resolution is unavailable.",
                     stage="agent_canvas_resolved_input_compiler",
                 )
-                if item.required:
-                    raise error
-                omitted_list.append(
-                    {
-                        "binding_id": item.binding_id,
-                        "source_node_id": item.source_node_id,
-                        "reason": error.code,
-                    }
-                )
-                continue
+                raise error
             try:
                 world_setting_inputs.append(
                     self._world_settings.resolve_for_run(
@@ -124,16 +115,8 @@ class AgentCanvasResolvedInputCompiler:
                         source=item,
                     )
                 )
-            except V2PersistenceError as error:
-                if item.required:
-                    raise
-                omitted_list.append(
-                    {
-                        "binding_id": item.binding_id,
-                        "source_node_id": item.source_node_id,
-                        "reason": error.code,
-                    }
-                )
+            except V2PersistenceError:
+                raise
         if len(world_setting_inputs) > 1:
             raise V2PersistenceError(
                 "world_setting_binding_ambiguous",

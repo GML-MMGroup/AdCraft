@@ -69,12 +69,7 @@ class AdReferenceBundleResolver:
             if binding.source.kind == "node_output":
                 source = nodes.get(binding.source.source_node_id)
                 if source is None or source.status != "ready" or not source.output_asset_id:
-                    if not binding.required:
-                        continue
-                    raise _error(
-                        "role_reference_bundle_invalid",
-                        "Bound source node does not have a Ready media output.",
-                    )
+                    continue
                 asset_id = source.output_asset_id
                 source_node_id = source.node_id
                 source_role = source.creative_role
@@ -87,8 +82,6 @@ class AdReferenceBundleResolver:
             try:
                 asset = self._asset_resolver(asset_id)
             except (KeyError, V2PersistenceError) as error:
-                if not binding.required:
-                    continue
                 raise _error(
                     "role_reference_bundle_invalid",
                     "Bound media asset is unavailable.",
@@ -99,8 +92,6 @@ class AdReferenceBundleResolver:
                 or asset.version_id is None
                 or asset.media_url is None
             ):
-                if not binding.required:
-                    continue
                 raise _error(
                     "role_reference_bundle_invalid",
                     "Bound media asset is not Ready.",
