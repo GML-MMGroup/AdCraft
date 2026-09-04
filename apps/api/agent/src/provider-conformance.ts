@@ -108,6 +108,8 @@ export interface ConformanceReportV3 {
   readonly adapter_revision: string;
   readonly capability_revision: string;
   readonly contract_digest: string;
+  readonly routing_policy_id?: string | null;
+  readonly routing_policy_digest?: string | null;
   readonly candidate_structured_transport?:
     AgentCredentialSnapshot["execution_policy"]["structured_transport"];
   readonly started_at: string;
@@ -564,6 +566,12 @@ export async function runProviderConformance(
     adapter_revision: options.target.adapter_revision,
     capability_revision: options.target.capability_revision,
     contract_digest: options.target.contract_digest,
+    ...(options.target.routing_policy_id
+      ? { routing_policy_id: options.target.routing_policy_id }
+      : {}),
+    ...(options.target.routing_policy_digest
+      ? { routing_policy_digest: options.target.routing_policy_digest }
+      : {}),
     candidate_structured_transport:
       dependencies.prepared.credential.execution_policy.structured_transport,
     started_at: startedAt.toISOString(),
@@ -604,6 +612,12 @@ export function projectConformanceEvidence(value: unknown): ConformanceReportV3 
     adapter_revision: report.adapter_revision,
     capability_revision: report.capability_revision,
     contract_digest: report.contract_digest,
+    ...(report.routing_policy_id
+      ? { routing_policy_id: report.routing_policy_id }
+      : {}),
+    ...(report.routing_policy_digest
+      ? { routing_policy_digest: report.routing_policy_digest }
+      : {}),
     ...(report.candidate_structured_transport
       ? { candidate_structured_transport: report.candidate_structured_transport }
       : {}),
@@ -929,6 +943,11 @@ function renderMarkdown(report: ConformanceReportV3): string {
     `Target: \`${report.provider_model_id}\` / \`${report.adapter_id}\` / \`${report.transport_kind}\``,
     `Target revisions: \`${report.adapter_revision}\` / \`${report.capability_revision}\``,
     `Contract digest: \`${report.contract_digest}\``,
+    ...(report.routing_policy_id && report.routing_policy_digest
+      ? [
+          `Routing policy: \`${report.routing_policy_id}\` / \`${report.routing_policy_digest}\``,
+        ]
+      : []),
     "",
     ...(report.candidate_structured_transport
       ? [`Candidate transport: \`${report.candidate_structured_transport}\``, ""]
@@ -1171,6 +1190,11 @@ function isOperatorErrorCode(value: unknown): value is string {
 }
 
 function assertReportInvariants(report: ConformanceReportV3): void {
+  const hasRoutingIdentity =
+    typeof report.routing_policy_id === "string" &&
+    report.routing_policy_id.length > 0 &&
+    typeof report.routing_policy_digest === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(report.routing_policy_digest);
   if (
     !report.provider_model_id ||
     !report.adapter_id ||
@@ -1178,7 +1202,10 @@ function assertReportInvariants(report: ConformanceReportV3): void {
     !report.capability ||
     !report.adapter_revision ||
     !report.capability_revision ||
-    !/^[a-f0-9]{64}$/.test(report.contract_digest)
+    !/^[a-f0-9]{64}$/.test(report.contract_digest) ||
+    (report.model_ref.startsWith("openrouter:")
+      ? !hasRoutingIdentity || report.routing_policy_id !== "openrouter-openai-only-v1"
+      : report.routing_policy_id != null || report.routing_policy_digest != null)
   ) {
     throw new Error("conformance_report_invalid");
   }

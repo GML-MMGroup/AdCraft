@@ -72,6 +72,8 @@ class AgentProviderConformanceBootstrapService:
         adapter_revision: str | None = None,
         capability_revision: str = "catalog-1",
         contract_digest: str | None = None,
+        routing_policy_id: str | None = None,
+        routing_policy_digest: str | None = None,
     ) -> AgentProviderConformanceRunHandle:
         timestamp = self._now()
         run_id = self._run_id_factory()
@@ -113,6 +115,8 @@ class AgentProviderConformanceBootstrapService:
             adapter_revision=adapter_revision or adapter_id or "pi-openai-compatible-v1",
             capability_revision=capability_revision,
             contract_digest=contract_digest or frozen_request.contract_digest,
+            routing_policy_id=routing_policy_id,
+            routing_policy_digest=routing_policy_digest,
         )
         frozen_request = frozen_request.model_copy(
             update={
@@ -125,6 +129,14 @@ class AgentProviderConformanceBootstrapService:
                     "adapter_revision": target.adapter_revision,
                     "capability_revision": target.capability_revision,
                     "contract_digest": target.contract_digest,
+                    **(
+                        {
+                            "routing_policy_id": target.routing_policy_id,
+                            "routing_policy_digest": target.routing_policy_digest,
+                        }
+                        if target.routing_policy_id and target.routing_policy_digest
+                        else {}
+                    ),
                 }
             }
         )
