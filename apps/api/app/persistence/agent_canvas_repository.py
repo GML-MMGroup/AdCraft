@@ -259,6 +259,7 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .all()
                 )
+                node_rows = [row for row in node_rows if not _row_is_deleted(row)]
                 binding_rows = (
                     connection.execute(
                         select(AgentCanvasBindingRow)
@@ -337,7 +338,7 @@ class AgentCanvasWorkflowRepository:
                 )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
-        if row is None:
+        if row is None or _row_is_deleted(row):
             raise _node_not_found_error()
         model_summary = _load_model_summaries(self._database, (row,)).get(str(row["model_ref"]))
         return _node_from_row(
@@ -1717,12 +1718,51 @@ class AgentCanvasWorkflowRepository:
                             ),
                         )
                     ).rowcount
+                    node_row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == node_id,
+                            )
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    deleted_metadata = cast(
+                        dict[str, JsonValue], json.loads(str(node_row["metadata_json"]))
+                    )
+                    deleted_metadata["_deleted_at"] = now
                     connection.execute(
-                        delete(AgentCanvasNodeRow).where(
+                        update(AgentCanvasNodeRow)
+                        .where(
                             AgentCanvasNodeRow.workflow_id == workflow_id,
                             AgentCanvasNodeRow.node_id == node_id,
                         )
+                        .values(metadata_json=_json_dump(deleted_metadata), updated_at=now)
                     )
+                    active_execution_ids = tuple(
+                        connection.execute(
+                            select(AgentCanvasExecutionRow.execution_id)
+                            .join(
+                                AgentCanvasExecutionMemberRow,
+                                AgentCanvasExecutionMemberRow.execution_id
+                                == AgentCanvasExecutionRow.execution_id,
+                            )
+                            .where(
+                                AgentCanvasExecutionRow.workflow_id == workflow_id,
+                                AgentCanvasExecutionMemberRow.node_id == node_id,
+                                AgentCanvasExecutionRow.status.not_in(
+                                    ("completed", "partial_completed", "failed", "cancelled")
+                                ),
+                            )
+                        ).scalars()
+                    )
+                    if active_execution_ids:
+                        connection.execute(
+                            update(AgentCanvasExecutionRow)
+                            .where(AgentCanvasExecutionRow.execution_id.in_(active_execution_ids))
+                            .values(cancel_requested=True, updated_at=now)
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=workflow_id,
@@ -2541,14 +2581,23 @@ def _advance_workflow_revision(
 
 
 def _require_node(connection: Connection, workflow_id: str, node_id: str) -> None:
-    exists = connection.execute(
-        select(AgentCanvasNodeRow.node_id).where(
-            AgentCanvasNodeRow.workflow_id == workflow_id,
-            AgentCanvasNodeRow.node_id == node_id,
+    row = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id == node_id,
+            )
         )
-    ).scalar_one_or_none()
-    if exists is None:
+        .mappings()
+        .one_or_none()
+    )
+    if row is None or _row_is_deleted(row):
         raise _node_not_found_error()
+
+
+def _row_is_deleted(row: RowMapping) -> bool:
+    metadata = json.loads(str(row["metadata_json"]))
+    return isinstance(metadata, dict) and isinstance(metadata.get("_deleted_at"), str)
 
 
 def _reconcile_editing_manifest_for_binding(

@@ -160,6 +160,14 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Canvas Node no longer accepts this result.",
                         )
+                    node_metadata = json.loads(str(node["metadata_json"]))
+                    if isinstance(node_metadata, dict) and isinstance(
+                        node_metadata.get("_deleted_at"), str
+                    ):
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Canvas Node no longer accepts this result.",
+                        )
                     prior_asset_id = cast(str | None, node["output_asset_id"])
                     asset_id, version_id = self._register_asset(
                         connection,
