@@ -79,6 +79,8 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
             guided_submission = json.loads(str(turn["request_json"])).get(
                 "guided_submission"
             )
+            if guided_submission is None:
+                return None
             if not isinstance(guided_submission, dict):
                 raise _stale("storyboard_terminal_interaction_stale")
             interaction_id = str(guided_submission.get("interaction_id") or "")
