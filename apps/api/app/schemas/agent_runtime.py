@@ -334,9 +334,9 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
     violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
         min_length=1, max_length=32
     )
-    violation_categories: tuple[
-        Annotated[str, Field(min_length=1, max_length=80)], ...
-    ] = Field(default=(), max_length=32)
+    violation_categories: tuple[Annotated[str, Field(min_length=1, max_length=80)], ...] = Field(
+        default=(), max_length=32
+    )
     repair_allowed: bool
     truncated: bool
 

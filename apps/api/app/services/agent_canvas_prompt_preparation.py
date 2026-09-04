@@ -859,9 +859,7 @@ def _prompt_preparation_error_details(
     details = dict(raw_details) if isinstance(raw_details, dict) else {}
     if getattr(error, "code", None) != "node_prompt_role_contract_invalid":
         return {"retryable": bool(getattr(error, "retryable", False))}
-    attempts = safe_structured_validation_attempts(
-        details.get("structured_validation_attempts")
-    )
+    attempts = safe_structured_validation_attempts(details.get("structured_validation_attempts"))
     terminal_attempt = attempts[-1] if attempts else {}
     categories = terminal_attempt.get("violation_categories", [])
     paths = terminal_attempt.get("validation_paths", [])

@@ -35,9 +35,7 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
     )
     details = getattr(error, "details", {})
     safe_details = details if isinstance(details, dict) else {}
-    explicitly_retryable = transport_interrupted or bool(
-        safe_details.get("retryable", False)
-    )
+    explicitly_retryable = transport_interrupted or bool(safe_details.get("retryable", False))
     role_error = code == "node_prompt_role_contract_invalid"
     user_action = safe_details.get("user_action")
     if user_action not in {"revise", "retry_preparation"}:

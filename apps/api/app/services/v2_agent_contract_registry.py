@@ -258,11 +258,7 @@ def validate_video_agent_contract_parity(
                     "validation_profile": str(definition.validation_profile),
                 }
             )
-        if (
-            not is_proposal
-            and not is_role_brief
-            and definition.validation_profile is not None
-        ):
+        if not is_proposal and not is_role_brief and definition.validation_profile is not None:
             errors.append(
                 {
                     "operation": definition.operation[:160],

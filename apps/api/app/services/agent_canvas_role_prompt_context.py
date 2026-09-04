@@ -295,16 +295,12 @@ class RolePromptContextProjector:
             internal_skill_ref=stage_context.internal_skill_ref,
             style_projection=projected_style,
             style_projection_digest=(
-                _prefixed_digest(projected_style or "")
-                if role_variant == "scene_board"
-                else None
+                _prefixed_digest(projected_style or "") if role_variant == "scene_board" else None
             ),
             world_view_projection=projected_world_view,
             bindings=projected_bindings,
             binding_digest=(
-                _prefixed_digest(
-                    [item.model_dump(mode="json") for item in projected_bindings]
-                )
+                _prefixed_digest([item.model_dump(mode="json") for item in projected_bindings])
                 if role_variant == "scene_board"
                 else None
             ),
