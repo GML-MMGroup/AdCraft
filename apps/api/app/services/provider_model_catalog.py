@@ -850,6 +850,7 @@ _RETIRED_MODEL_REFS = frozenset(
         "openai:gpt-image-2",
     }
 )
+_BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
 
 
 class StaticProviderCatalogAdapter:
@@ -999,7 +1000,7 @@ class ProviderModelCatalogService:
 
     def ensure_no_retired_defaults(self) -> None:
         if any(
-            default.model_ref in _RETIRED_MODEL_REFS
+            default.model_ref in _BLOCKING_RETIRED_DEFAULT_REFS
             for default in self._repository.get_defaults().values()
         ):
             raise ValueError("retired_model_default_conflict")
