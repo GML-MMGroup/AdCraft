@@ -166,12 +166,16 @@ class CanvasResultPublicationIntentV1(_AuthorityModel):
         if self.next_attempt_at > self.recovery_deadline:
             raise ValueError("Publication retry cannot be scheduled after its deadline.")
         self._validate_result(self.planned_result, require_measured=False)
+        if len(self.planned_result.model_dump_json()) > 131_072:
+            raise ValueError("Publication intent metadata exceeds its bounded size.")
         if self.state in {"prepared", "committed"} and self.prepared_result is None:
             raise ValueError("Prepared publication state requires a prepared result.")
         if self.state == "preparing" and self.prepared_result is not None:
             raise ValueError("Preparing publication state cannot claim a prepared result.")
         if self.prepared_result is not None:
             self._validate_result(self.prepared_result, require_measured=True)
+            if len(self.prepared_result.model_dump_json()) > 131_072:
+                raise ValueError("Prepared publication metadata exceeds its bounded size.")
         if self.state == "committed" and self.committed_receipt_id is None:
             raise ValueError("Committed publication state requires a receipt identity.")
         if self.state != "committed" and self.committed_receipt_id is not None:
@@ -222,6 +226,8 @@ def _reject_unsafe_publication_values(value: object, *, key: str | None = None) 
         return
     if isinstance(value, str) and value.startswith(("/", "file:", "data:")):
         raise ValueError("Publication intent cannot persist local paths or raw data URLs.")
+    if isinstance(value, str) and len(value) > 8_192:
+        raise ValueError("Publication intent strings must remain bounded.")
 
 
 class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
