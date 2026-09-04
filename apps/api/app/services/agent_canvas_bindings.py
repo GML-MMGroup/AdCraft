@@ -40,7 +40,6 @@ from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2
 from app.services.agent_canvas_authoring_validation import (
     BindingValidationState,
     validate_node_binding,
-    validate_ready_node_input_history,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
 from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
@@ -52,6 +51,11 @@ class ResolvedRunInputs:
 
     inputs: tuple[ResolvedInputSnapshotV2, ...]
     optional_omissions: tuple[dict[str, str], ...] = ()
+
+
+def _semantic_reference_role(metadata: dict[str, object]) -> str | None:
+    value = metadata.get("semantic_reference_role")
+    return value if isinstance(value, str) and value else None
 
 
 class AgentCanvasBindingService:
@@ -89,7 +93,6 @@ class AgentCanvasBindingService:
     ) -> CanvasBindingV2:
         workflow = self._workflows.get_workflow(workflow_id)
         target = self._workflows.get_node(workflow_id, request.target_node_id)
-        validate_ready_node_input_history(status=target.status, node_type=target.node_type)
         character_turnaround_target = (
             target.creative_role == "character"
             and target.structured_content.get("character_asset_kind") == "turnaround"
@@ -119,6 +122,7 @@ class AgentCanvasBindingService:
                         ),
                         target_node_id=binding.target_node_id,
                         binding_kind=binding.input_role,
+                        semantic_reference_role=_semantic_reference_role(binding.metadata),
                     )
                     for binding in workflow.bindings
                 ),
@@ -128,6 +132,7 @@ class AgentCanvasBindingService:
                 target_node_id=target.node_id,
                 target_node_type=target.node_type,
                 binding_kind=request.input_role,
+                semantic_reference_role=_semantic_reference_role(request.metadata),
             )
             policy_decision = self._connection_policy.decide(
                 source_node_type=source.node_type,
@@ -258,8 +263,6 @@ class AgentCanvasBindingService:
                 "Binding was not found.",
                 stage="agent_canvas_binding_service",
             )
-        target = self._workflows.get_node(workflow_id, existing.target_node_id)
-        validate_ready_node_input_history(status=target.status, node_type=target.node_type)
         if self._candidate_validator is not None:
             self._candidate_validator(
                 _candidate_with_reconciled_editing(
@@ -295,7 +298,6 @@ class AgentCanvasBindingService:
                 stage="agent_canvas_binding_service",
             )
         target = self._workflows.get_node(workflow_id, existing.target_node_id)
-        validate_ready_node_input_history(status=target.status, node_type=target.node_type)
         if isinstance(existing.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, existing.source.node_id)
             policy_decision = self._connection_policy.require(

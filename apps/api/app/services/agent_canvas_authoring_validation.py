@@ -13,6 +13,7 @@ class BindingValidationState:
     source_node_id: str | None
     target_node_id: str
     binding_kind: str
+    semantic_reference_role: str | None = None
 
 
 def require_node_runnable(node: object) -> None:
@@ -39,10 +40,6 @@ def validate_node_patch(
     return "ready" if content else "draft"
 
 
-def validate_ready_node_input_history(*, status: str, node_type: str) -> None:
-    """Compatibility no-op while Binding authoring migrates to future-run inputs."""
-
-
 def validate_node_binding(
     *,
     bindings: tuple[BindingValidationState, ...],
@@ -52,9 +49,13 @@ def validate_node_binding(
     target_node_id: str,
     target_node_type: str,
     binding_kind: str,
+    semantic_reference_role: str | None = None,
 ) -> None:
     if any(
-        binding.source_node_id == source_node_id and binding.target_node_id == target_node_id
+        binding.source_node_id == source_node_id
+        and binding.target_node_id == target_node_id
+        and binding.binding_kind == binding_kind
+        and binding.semantic_reference_role == semantic_reference_role
         for binding in bindings
     ):
         raise V2PersistenceError(
