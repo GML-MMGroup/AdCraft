@@ -337,9 +337,13 @@ class DurableNextActionExecutionService:
                             preparation.receipt_id if action_is_current else None
                         ),
                         plan_document_id=(
-                            preparation.plan_document_id if action_is_current else None
+                            current_session.completion.plan_document_id
+                            if action_is_current
+                            else None
                         ),
-                        plan_revision=preparation.plan_revision if action_is_current else None,
+                        plan_revision=(
+                            current_session.completion.plan_revision if action_is_current else None
+                        ),
                     )
                     editing_outcome = "prepared" if action_is_current else "superseded"
             if journey_action.action == "complete":

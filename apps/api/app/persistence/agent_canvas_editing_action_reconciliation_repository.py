@@ -6,6 +6,7 @@ import json
 from hashlib import sha256
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.agent_canvas_conversation_repository import (
@@ -182,7 +183,7 @@ class AgentCanvasEditingActionReconciliationRepository:
                             self._events,
                             command.awaiting,
                         )
-                    self._require_outcome_evidence(connection, command)
+                    self._require_outcome_evidence(connection, command, session)
                     next_revision = command.expected_session_revision + 1
                     next_journey = session.journey.model_copy(
                         update={
@@ -265,7 +266,7 @@ class AgentCanvasEditingActionReconciliationRepository:
             )
 
     @staticmethod
-    def _require_outcome_evidence(connection, command) -> None:
+    def _require_outcome_evidence(connection, command, session) -> None:
         if command.outcome == "prepared":
             receipt_row = connection.execute(
                 select(
@@ -281,15 +282,51 @@ class AgentCanvasEditingActionReconciliationRepository:
             if receipt_row is None or str(receipt_row[0]) not in command.evidence_ids:
                 raise _evidence_error()
             preparation = GuidedEditingPreparationReceiptV1.model_validate_json(str(receipt_row[1]))
+            if preparation.plan_document_id != command.plan_document_id:
+                raise _evidence_error()
+            if preparation.plan_revision == command.plan_revision:
+                AgentCanvasEditingActionReconciliationRepository._require_current_plan(
+                    connection,
+                    command,
+                )
+                return
+            completion = session.completion
             if (
-                preparation.plan_document_id != command.plan_document_id
-                or preparation.plan_revision != command.plan_revision
+                command.plan_revision != preparation.plan_revision + 1
+                or completion.editing_preparation != "prepared"
+                or completion.preparation_receipt_id != preparation.receipt_id
+                or completion.plan_document_id != command.plan_document_id
+                or completion.plan_revision != command.plan_revision
+                or completion.editing_node_id != preparation.editing_node_id
+                or completion.manifest_revision != preparation.manifest_revision
             ):
                 raise _evidence_error()
-            AgentCanvasEditingActionReconciliationRepository._require_current_plan(
+            row = AgentCanvasEditingActionReconciliationRepository._require_current_plan(
                 connection,
                 command,
+                node_id=preparation.editing_node_id,
             )
+            document = AgentWorkingDocumentRepository.validate_document_row(row)
+            planned_nodes = getattr(document.content, "planned_nodes", None)
+            if planned_nodes is None:
+                planned_nodes = getattr(document.content, "node_records", ())
+            if not any(
+                item.node_id == preparation.editing_node_id and item.node_role == "editing"
+                for item in planned_nodes
+            ):
+                raise _evidence_error()
+            metadata_json = connection.execute(
+                select(AgentCanvasNodeRow.metadata_json).where(
+                    AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                    AgentCanvasNodeRow.node_id == preparation.editing_node_id,
+                )
+            ).scalar_one_or_none()
+            try:
+                metadata = json.loads(str(metadata_json))
+            except (TypeError, ValueError):
+                raise _evidence_error() from None
+            if metadata.get("source_agent_document_revision") != preparation.plan_revision:
+                raise _evidence_error()
             return
         if command.outcome == "waiting_user":
             awaiting_id = connection.execute(
@@ -407,7 +444,12 @@ class AgentCanvasEditingActionReconciliationRepository:
             raise _evidence_error()
 
     @staticmethod
-    def _require_current_plan(connection, command, *, node_id: str | None = None) -> None:
+    def _require_current_plan(
+        connection,
+        command,
+        *,
+        node_id: str | None = None,
+    ) -> RowMapping:
         row = (
             connection.execute(
                 select(AgentWorkingDocumentRow).where(
@@ -424,7 +466,7 @@ class AgentCanvasEditingActionReconciliationRepository:
         if row is None or str(row["document_id"]) not in command.evidence_ids:
             raise _evidence_error()
         if node_id is None:
-            return
+            return row
         if not AgentCanvasEditingActionReconciliationRepository._node_belongs_to_plan_in_transaction(
             connection,
             row=row,
@@ -433,6 +475,7 @@ class AgentCanvasEditingActionReconciliationRepository:
             plan_document_id=command.plan_document_id,
         ):
             raise _evidence_error()
+        return row
 
     @staticmethod
     def _node_belongs_to_plan_in_transaction(
