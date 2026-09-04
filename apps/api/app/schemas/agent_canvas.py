@@ -567,7 +567,26 @@ class ResolvedMediaBindingInputV2(_AgentCanvasModel):
 class OmittedOptionalInputV2(_AgentCanvasModel):
     binding_id: str = Field(min_length=1)
     source_node_id: str | None = None
-    reason_code: Literal["omitted_no_output"]
+    reason_code: Literal["omitted_no_output", "omitted_provider_reference_limit"]
+    asset_id: str | None = Field(default=None, min_length=1)
+    asset_version_id: str | None = Field(default=None, min_length=1)
+    media_type: ProjectAssetMediaTypeV2 | None = None
+    checksum: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_disposition_identity(self) -> "OmittedOptionalInputV2":
+        exact_identity = (
+            self.asset_id,
+            self.asset_version_id,
+            self.media_type,
+            self.checksum,
+        )
+        if self.reason_code == "omitted_provider_reference_limit":
+            if any(value is None for value in exact_identity):
+                raise ValueError("Provider-limit omissions require exact asset identity.")
+        elif any(value is not None for value in exact_identity):
+            raise ValueError("No-output omissions cannot identify an unavailable asset.")
+        return self
 
 
 class ResolvedNodeInputManifestV2(_AgentCanvasModel):
