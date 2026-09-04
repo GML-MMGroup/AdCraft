@@ -138,13 +138,10 @@ class AgentCanvasRunService:
         request: CanvasRunRequestV2,
         *,
         idempotency_key: str,
-        expected_workflow_revision: int | None = None,
+        expected_revision: int | None = None,
     ) -> CanvasRunAcceptedV2:
         workflow = self._workflows.get_workflow(workflow_id)
-        if (
-            expected_workflow_revision is not None
-            and expected_workflow_revision != workflow.revision
-        ):
+        if expected_revision is not None and expected_revision != workflow.revision:
             raise _run_error(
                 "workflow_state_conflict",
                 "Workflow authoring changed before Run admission.",
@@ -199,9 +196,7 @@ class AgentCanvasRunService:
             CanvasExecutionStartCommandV2(
                 workflow_id=workflow_id,
                 expected_workflow_revision=(
-                    workflow.revision
-                    if expected_workflow_revision is None
-                    else expected_workflow_revision
+                    workflow.revision if expected_revision is None else expected_revision
                 ),
                 scope=request.scope,
                 idempotency_key=idempotency_key,

@@ -1335,7 +1335,7 @@ def create_agent_canvas_runtime(
             model_selection=model_selection,
             candidate_validator=editing_responses.validate_workflow,
         ),
-        run_nodes=queue_nodes,
+        run_service=run_service,
     )
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
@@ -2459,7 +2459,7 @@ def commit_guided_product_input(
         committed = runtime.guided_product_inputs.commit(
             workflow_id,
             request,
-            expected_workflow_revision=_expected_revision(if_match, workflow_id),
+            expected_revision=_expected_revision(if_match, workflow_id),
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:
@@ -3343,7 +3343,7 @@ def start_canvas_run(
             workflow_id,
             request,
             idempotency_key=idempotency_key,
-            expected_workflow_revision=_expected_revision(if_match, workflow_id),
+            expected_revision=_expected_revision(if_match, workflow_id),
         )
         if accepted.accepted_node_ids or accepted.joined_node_ids:
             background_tasks.add_task(

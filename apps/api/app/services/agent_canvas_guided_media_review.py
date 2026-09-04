@@ -26,6 +26,7 @@ from app.schemas.agent_canvas_media_review_authority import (
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
 from app.schemas.agent_canvas import CanvasNodePatchRequestV2
+from app.schemas.agent_canvas_runtime import CanvasRunRequestV2
 from app.schemas.agent_working_documents import (
     StoryboardExcludedMediaV3,
     StoryboardPlannedNodeV3,
@@ -632,12 +633,12 @@ class GuidedMediaReviewActionService:
 class GuidedMediaPlanActionService:
     """Apply retry, replacement, and exclusion to current Plan authority."""
 
-    def __init__(self, *, workflows, plan_reader, plan_writer, nodes, run_nodes) -> None:
+    def __init__(self, *, workflows, plan_reader, plan_writer, nodes, run_service) -> None:
         self._workflows = workflows
         self._plan_reader = plan_reader
         self._plan_writer = plan_writer
         self._nodes = nodes
-        self._run_nodes = run_nodes
+        self._run_service = run_service
 
     def retry(
         self,
@@ -737,10 +738,15 @@ class GuidedMediaPlanActionService:
             ),
             expected_revision=workflow.revision,
         )
-        execution_ids = self._run_nodes(
+        accepted = self._run_service.start_or_extend(
             interaction.workflow_id,
-            (source.node_id,),
-            f"guided-media-replace:{idempotency_key}",
+            CanvasRunRequestV2(
+                scope="selected_nodes",
+                node_ids=(source.node_id,),
+                source_action="agent_command",
+            ),
+            idempotency_key=f"guided-media-replace:{idempotency_key}",
+            expected_revision=workflow.revision + 1,
         )
         content = _v3_plan(plan.content)
         replacement = StoryboardPlannedNodeV3(
@@ -777,7 +783,7 @@ class GuidedMediaPlanActionService:
         )
         return GuidedMediaActionOutcome(
             receipt_id=replacement.materialization_id,
-            automatic_run_command_ids=execution_ids,
+            automatic_run_command_ids=(accepted.execution_id,),
         )
 
     def _current_plan_record(self, interaction: GuidedInteractionV1):
