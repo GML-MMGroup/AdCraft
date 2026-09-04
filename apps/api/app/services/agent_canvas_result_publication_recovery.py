@@ -137,12 +137,19 @@ class AgentCanvasResultPublicationRecoveryService:
             return self._abandon(intent, "node_result_publication_source_invalid", now=now)
 
         try:
+            recovered = self._assets.recover_prepared_result(intent.planned_result)
             prepared = intent.prepared_result
             if prepared is None:
-                prepared = self._assets.recover_prepared_result(intent.planned_result)
+                prepared = recovered
                 intent = self._intents.promote_prepared(
                     intent.intent_id,
                     prepared_result=prepared,
+                    now=now,
+                )
+            elif recovered != prepared:
+                return self._abandon(
+                    intent,
+                    "node_result_publication_object_invalid",
                     now=now,
                 )
             lease = self._runtime.claim_lease(
