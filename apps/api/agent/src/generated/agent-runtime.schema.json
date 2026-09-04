@@ -19416,6 +19416,52 @@
       "title": "OmittedRequirementDirectiveV1",
       "type": "object"
     },
+    "OpenRouterRoutingPolicyV1": {
+      "additionalProperties": false,
+      "description": "Frozen exact-upstream routing policy for one OpenRouter attempt.",
+      "properties": {
+        "allow_fallbacks": {
+          "const": false,
+          "title": "Allow Fallbacks",
+          "type": "boolean"
+        },
+        "provider_only": {
+          "items": {
+            "const": "openai",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Provider Only",
+          "type": "array"
+        },
+        "require_parameters": {
+          "const": true,
+          "title": "Require Parameters",
+          "type": "boolean"
+        },
+        "routing_policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Routing Policy Digest",
+          "type": "string"
+        },
+        "routing_policy_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Routing Policy Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "allow_fallbacks",
+        "provider_only",
+        "require_parameters",
+        "routing_policy_digest",
+        "routing_policy_id"
+      ],
+      "title": "OpenRouterRoutingPolicyV1",
+      "type": "object"
+    },
     "OutputResolutionControlPatchV1": {
       "additionalProperties": false,
       "properties": {
@@ -22823,6 +22869,7 @@
             "litellm_openai_image",
             "minimax_video_native",
             "openai_images_native",
+            "openrouter_images_native",
             "pi_native_openai_compatible",
             "tianpuyue_audio_native"
           ],
@@ -22913,6 +22960,7 @@
             "litellm_openai_image",
             "minimax_video_native",
             "openai_images_native",
+            "openrouter_images_native",
             "pi_native_openai_compatible",
             "tianpuyue_audio_native"
           ],
@@ -23024,6 +23072,7 @@
             "litellm_openai_image",
             "minimax_video_native",
             "openai_images_native",
+            "openrouter_images_native",
             "pi_native_openai_compatible",
             "tianpuyue_audio_native"
           ],
@@ -23188,6 +23237,7 @@
                 "litellm_openai_image",
                 "minimax_video_native",
                 "openai_images_native",
+                "openrouter_images_native",
                 "pi_native_openai_compatible",
                 "tianpuyue_audio_native"
               ],
