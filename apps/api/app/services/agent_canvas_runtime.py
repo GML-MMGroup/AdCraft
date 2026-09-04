@@ -17,7 +17,7 @@ from app.persistence.agent_canvas_runtime_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
+from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2, ResolvedInputSnapshotV2
 from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
@@ -107,7 +107,11 @@ ScriptReadyPublisher = Callable[[str, str], object]
 TextReadyPublisher = Callable[[CanvasNodeV2], object]
 MediaReadyPublisher = Callable[[CanvasNodeV2], tuple[str, ...] | None]
 MediaContextPreparer = Callable[
-    [CanvasNodeV2, WorldSettingContextEnvelopeV2 | None],
+    [
+        CanvasNodeV2,
+        WorldSettingContextEnvelopeV2 | None,
+        tuple[ResolvedInputSnapshotV2, ...],
+    ],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
 TerminalMemberReconciler = Callable[..., bool]
@@ -934,6 +938,7 @@ class DynamicCanvasScheduler:
                 compiled_prompt, reference_bundle = self._media_context_preparer(
                     node,
                     world_setting,
+                    inputs,
                 )
                 if compiled_prompt is not None:
                     prompt_metadata.update(
@@ -2116,6 +2121,10 @@ def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, o
     payload = manifest.model_dump(mode="json")
     payload["world_setting_inputs"] = [
         _public_world_setting_input(item) for item in manifest.world_setting_inputs
+    ]
+    payload["omitted_optional_inputs"] = [
+        item.model_dump(mode="json", exclude_none=True)
+        for item in manifest.omitted_optional_inputs
     ]
     return payload
 

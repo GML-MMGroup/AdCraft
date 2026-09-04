@@ -895,12 +895,13 @@ def create_agent_canvas_runtime(
         registration.semantic_role for registration in list_agent_canvas_prompt_registrations()
     }
 
-    def prepare_media_context(node: CanvasNodeV2, world_setting):
+    def prepare_media_context(node: CanvasNodeV2, world_setting, resolved_inputs):
         contract = role_registry.get(node.semantic_role)
         bundle = reference_resolver.resolve(
             node.workflow_id,
             node.node_id,
             contract,
+            resolved_inputs=resolved_inputs,
         )
         compiled = (
             prompt_compiler.compile(

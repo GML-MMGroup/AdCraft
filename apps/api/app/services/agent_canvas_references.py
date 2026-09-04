@@ -12,6 +12,8 @@ from app.schemas.agent_canvas import (
     CanvasBindingV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
+    ResolvedInputSnapshotV2,
+    ResolvedMediaInputSnapshotV2,
     StorageAccessDescriptorV2,
 )
 from app.schemas.agent_canvas_ad_media import (
@@ -47,12 +49,24 @@ class AdReferenceBundleResolver:
         workflow_id: str,
         node_id: str,
         role_contract: AdMediaRoleContractV2,
+        *,
+        resolved_inputs: tuple[ResolvedInputSnapshotV2, ...] | None = None,
     ) -> AdReferenceBundleV2:
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
         if node_id not in nodes:
             raise _error("node_not_found", "Canvas node was not found.")
         _validate_video_character_bindings(nodes[node_id], workflow.bindings, nodes)
+        frozen_media_by_binding = (
+            {
+                item.binding_id: item
+                for item in resolved_inputs
+                if isinstance(item, ResolvedMediaInputSnapshotV2)
+                and item.binding_id is not None
+            }
+            if resolved_inputs is not None
+            else None
+        )
         references: list[ResolvedAdReferenceV2] = []
         binding_kinds: dict[str, list[ResolvedAdReferenceV2]] = {}
         for binding in workflow.bindings:
@@ -66,7 +80,27 @@ class AdReferenceBundleResolver:
                 "audio_reference",
             }:
                 continue
-            if binding.source.kind == "node_output":
+            frozen_input = (
+                frozen_media_by_binding.get(binding.binding_id)
+                if frozen_media_by_binding is not None
+                else None
+            )
+            if frozen_media_by_binding is not None and frozen_input is None:
+                continue
+            if frozen_input is not None:
+                asset_id = frozen_input.asset_id
+                asset_version_id = frozen_input.asset_version_id
+                media_type = frozen_input.media_type
+                access_descriptor = frozen_input.access_descriptor
+                source_node_id = frozen_input.source_node_id
+                source = nodes.get(source_node_id) if source_node_id is not None else None
+                source_role = frozen_input.source_semantic_role
+                source_identity_facts = (
+                    canonical_node_reference_facts(source) if source is not None else {}
+                )
+                binding_metadata = frozen_input.binding_metadata
+                source_node_revision = frozen_input.source_node_revision
+            elif binding.source.kind == "node_output":
                 source = nodes.get(binding.source.source_node_id)
                 if source is None or source.status != "ready" or not source.output_asset_id:
                     continue
@@ -74,38 +108,50 @@ class AdReferenceBundleResolver:
                 source_node_id = source.node_id
                 source_role = source.creative_role
                 source_identity_facts = canonical_node_reference_facts(source)
+                binding_metadata = binding.metadata
+                source_node_revision = source.revision
             else:
                 asset_id = binding.source.asset_id
                 source_node_id = None
                 source_role = None
                 source_identity_facts = {}
-            try:
-                asset = self._asset_resolver(asset_id)
-            except (KeyError, V2PersistenceError) as error:
-                raise _error(
-                    "role_reference_bundle_invalid",
-                    "Bound media asset is unavailable.",
-                ) from error
-            if (
-                asset is None
-                or asset.status != "ready"
-                or asset.version_id is None
-                or asset.media_url is None
-            ):
-                raise _error(
-                    "role_reference_bundle_invalid",
-                    "Bound media asset is not Ready.",
+                binding_metadata = binding.metadata
+                source_node_revision = None
+            if frozen_input is None:
+                try:
+                    asset = self._asset_resolver(asset_id)
+                except (KeyError, V2PersistenceError) as error:
+                    raise _error(
+                        "role_reference_bundle_invalid",
+                        "Bound media asset is unavailable.",
+                    ) from error
+                if (
+                    asset is None
+                    or asset.status != "ready"
+                    or asset.version_id is None
+                    or asset.media_url is None
+                ):
+                    raise _error(
+                        "role_reference_bundle_invalid",
+                        "Bound media asset is not Ready.",
+                    )
+                asset_version_id = asset.version_id
+                media_type = asset.media_type
+                access_descriptor = StorageAccessDescriptorV2(
+                    asset_id=asset.asset_id,
+                    media_url=asset.media_url,
+                    checksum=asset.checksum,
                 )
-            if source_role is None:
-                source_role = asset.source_semantic_role
-            reference_kind = binding.metadata.get("reference_kind")
+                if source_role is None:
+                    source_role = asset.source_semantic_role
+            reference_kind = binding_metadata.get("reference_kind")
             if reference_kind is None and source_node_id is not None and source is not None:
                 reference_kind = source.metadata.get("reference_kind")
             reference_purpose = (
-                binding.metadata.get("reference_purpose") if reference_kind is not None else None
+                binding_metadata.get("reference_purpose") if reference_kind is not None else None
             )
             if (
-                binding.metadata.get("semantic_reference_role")
+                binding_metadata.get("semantic_reference_role")
                 in {"character_reference", "scene_reference"}
                 and reference_kind is None
             ):
@@ -125,10 +171,10 @@ class AdReferenceBundleResolver:
                 ) from error
             resolved = ResolvedAdReferenceV2(
                 binding_id=binding.binding_id,
-                binding_revision=int(binding.metadata.get("revision") or 1),
+                binding_revision=int(binding_metadata.get("revision") or 1),
                 source_kind=binding.source.kind,
                 source_node_id=source_node_id,
-                source_node_revision=(source.revision if source_node_id is not None else None),
+                source_node_revision=source_node_revision,
                 source_sequence_id=(
                     str(source.metadata["source_sequence_id"])
                     if source_node_id is not None and source.metadata.get("source_sequence_id")
@@ -136,26 +182,24 @@ class AdReferenceBundleResolver:
                 ),
                 source_semantic_role=source_role,
                 occurrence_id=(
-                    str(binding.metadata["occurrence_id"])
-                    if binding.metadata.get("occurrence_id")
+                    str(binding_metadata["occurrence_id"])
+                    if binding_metadata.get("occurrence_id")
                     else None
                 ),
-                character_phase=binding.metadata.get("character_phase"),
-                semantic_reference_role=binding.metadata.get("semantic_reference_role"),
+                character_phase=binding_metadata.get("character_phase"),
+                semantic_reference_role=binding_metadata.get("semantic_reference_role"),
                 reference_kind=reference_kind,
                 reference_purpose=reference_purpose,
                 reference_instruction=reference_instruction,
-                storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),
-                asset_id=asset.asset_id,
-                asset_version_id=asset.version_id,
-                media_type=asset.media_type,
+                storyboard_reference_purpose=binding_metadata.get(
+                    "storyboard_reference_purpose"
+                ),
+                asset_id=asset_id,
+                asset_version_id=asset_version_id,
+                media_type=media_type,
                 display_order=binding.display_order,
                 source_identity_facts=source_identity_facts,
-                access_descriptor=StorageAccessDescriptorV2(
-                    asset_id=asset.asset_id,
-                    media_url=asset.media_url,
-                    checksum=asset.checksum,
-                ),
+                access_descriptor=access_descriptor,
             )
             references.append(resolved)
             binding_kinds.setdefault(binding.binding_kind, []).append(resolved)
