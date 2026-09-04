@@ -424,7 +424,6 @@
                 "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -449,9 +448,6 @@
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -521,7 +517,6 @@
                 "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -546,9 +541,6 @@
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -636,7 +628,6 @@
                 "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -661,9 +652,6 @@
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
@@ -898,11 +886,6 @@
           "default": "create_binding",
           "title": "Operation Type",
           "type": "string"
-        },
-        "required": {
-          "default": true,
-          "title": "Required",
-          "type": "boolean"
         },
         "source": {
           "anyOf": [
@@ -1457,93 +1440,6 @@
         "source_agent_document_selector"
       ],
       "title": "AgentDocumentProvenanceV2",
-      "type": "object"
-    },
-    "AgentMaterializeSiblingDraftOperationV2": {
-      "additionalProperties": false,
-      "properties": {
-        "generation_prompt": {
-          "maxLength": 32768,
-          "minLength": 1,
-          "title": "Generation Prompt",
-          "type": "string"
-        },
-        "model_ref": {
-          "anyOf": [
-            {
-              "maxLength": 320,
-              "minLength": 3,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Model Ref"
-        },
-        "model_selection_mode": {
-          "default": "default",
-          "enum": [
-            "default",
-            "explicit"
-          ],
-          "title": "Model Selection Mode",
-          "type": "string"
-        },
-        "operation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Operation Id",
-          "type": "string"
-        },
-        "operation_type": {
-          "const": "materialize_sibling_draft",
-          "default": "materialize_sibling_draft",
-          "title": "Operation Type",
-          "type": "string"
-        },
-        "parameters": {
-          "additionalProperties": true,
-          "title": "Parameters",
-          "type": "object"
-        },
-        "placement_hint": {
-          "$ref": "#/$defs/AgentPlacementHintV2"
-        },
-        "source_node": {
-          "discriminator": {
-            "mapping": {
-              "node_id": "#/$defs/AgentNodeIdRefV2",
-              "operation_result": "#/$defs/AgentOperationResultRefV2"
-            },
-            "propertyName": "kind"
-          },
-          "oneOf": [
-            {
-              "$ref": "#/$defs/AgentNodeIdRefV2"
-            },
-            {
-              "$ref": "#/$defs/AgentOperationResultRefV2"
-            }
-          ],
-          "title": "Source Node"
-        },
-        "title": {
-          "maxLength": 256,
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        }
-      },
-      "required": [
-        "generation_prompt",
-        "operation_id",
-        "placement_hint",
-        "source_node",
-        "title"
-      ],
-      "title": "AgentMaterializeSiblingDraftOperationV2",
       "type": "object"
     },
     "AgentModelExecutionPolicyV1": {
@@ -2170,18 +2066,6 @@
           "default": "patch_binding",
           "title": "Operation Type",
           "type": "string"
-        },
-        "required": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required"
         }
       },
       "required": [
@@ -5761,10 +5645,6 @@
           "title": "Order",
           "type": "integer"
         },
-        "required": {
-          "title": "Required",
-          "type": "boolean"
-        },
         "source": {
           "discriminator": {
             "mapping": {
@@ -5804,7 +5684,6 @@
         "created_at",
         "input_role",
         "order",
-        "required",
         "source",
         "target_node_id",
         "updated_at",
@@ -5911,6 +5790,81 @@
       "title": "CanvasNodeErrorV2",
       "type": "object"
     },
+    "CanvasNodeLatestAttemptV2": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasNodeErrorV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "execution_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "member_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Member Id",
+          "type": "string"
+        },
+        "run_intent_snapshot_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Intent Snapshot Id"
+        },
+        "status": {
+          "enum": [
+            "blocked",
+            "cancelled",
+            "failed",
+            "queued",
+            "running",
+            "skipped_dependency",
+            "succeeded",
+            "waiting"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "execution_id",
+        "member_id",
+        "status",
+        "updated_at"
+      ],
+      "title": "CanvasNodeLatestAttemptV2",
+      "type": "object"
+    },
     "CanvasNodeV2": {
       "additionalProperties": false,
       "properties": {
@@ -5971,6 +5925,17 @@
           ],
           "default": null,
           "title": "Generation Prompt"
+        },
+        "latest_attempt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasNodeLatestAttemptV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "metadata": {
           "additionalProperties": {
@@ -6041,6 +6006,18 @@
           ],
           "default": null,
           "title": "Output Asset Id"
+        },
+        "output_asset_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Asset Version Id"
         },
         "parameter_provenance": {
           "additionalProperties": {
@@ -6137,17 +6114,6 @@
           "format": "date-time",
           "title": "Updated At",
           "type": "string"
-        },
-        "variation_draft": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CanvasVariationDraftV2"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         },
         "workflow_id": {
           "minLength": 1,
@@ -6303,89 +6269,6 @@
         "y"
       ],
       "title": "CanvasPositionV2",
-      "type": "object"
-    },
-    "CanvasVariationDraftV2": {
-      "additionalProperties": false,
-      "properties": {
-        "created_at": {
-          "format": "date-time",
-          "title": "Created At",
-          "type": "string"
-        },
-        "generation_prompt": {
-          "maxLength": 32768,
-          "minLength": 1,
-          "title": "Generation Prompt",
-          "type": "string"
-        },
-        "model_ref": {
-          "anyOf": [
-            {
-              "maxLength": 320,
-              "minLength": 3,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Model Ref"
-        },
-        "model_selection_mode": {
-          "default": "default",
-          "enum": [
-            "default",
-            "explicit"
-          ],
-          "title": "Model Selection Mode",
-          "type": "string"
-        },
-        "parameters": {
-          "additionalProperties": {
-            "$ref": "#/$defs/JsonValue"
-          },
-          "title": "Parameters",
-          "type": "object"
-        },
-        "source_node_id": {
-          "minLength": 1,
-          "title": "Source Node Id",
-          "type": "string"
-        },
-        "source_node_revision": {
-          "minimum": 1,
-          "title": "Source Node Revision",
-          "type": "integer"
-        },
-        "title": {
-          "maxLength": 256,
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        },
-        "updated_at": {
-          "format": "date-time",
-          "title": "Updated At",
-          "type": "string"
-        },
-        "variation_revision": {
-          "minimum": 1,
-          "title": "Variation Revision",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "created_at",
-        "generation_prompt",
-        "source_node_id",
-        "source_node_revision",
-        "title",
-        "updated_at",
-        "variation_revision"
-      ],
-      "title": "CanvasVariationDraftV2",
       "type": "object"
     },
     "CapabilityCommandEnvelopeV2": {
