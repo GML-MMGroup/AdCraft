@@ -45,7 +45,10 @@ from app.schemas.agent_canvas_runtime import (
 from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
-from app.schemas.agent_canvas_video_parameters import CompiledVideoParametersV2
+from app.schemas.agent_canvas_video_parameters import (
+    CompiledVideoParametersV2,
+    VideoParameterCompilationSnapshotV2,
+)
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.schemas.agent_canvas_world_setting import (
@@ -821,6 +824,12 @@ class DynamicCanvasScheduler:
                         self._runtime.get_parameter_compilation_snapshot(
                             member.parameter_compilation_snapshot_id
                         )
+                    )
+                    prompt_authority_node = _parameter_snapshot_prompt_authority(
+                        node,
+                        parameter_compilation_snapshot,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
                     )
                     node = node.model_copy(
                         update={
@@ -2286,6 +2295,36 @@ def _parameter_compilation_revision_is_current(
         current.parameters == compiled.authoring_parameters
         and current.parameter_provenance == compiled.parameter_provenance
     )
+
+
+def _parameter_snapshot_prompt_authority(
+    node: CanvasNodeV2,
+    snapshot: VideoParameterCompilationSnapshotV2,
+    *,
+    execution_id: str,
+    member_id: str,
+) -> CanvasNodeV2:
+    """Restore the exact editable Prompt revision after a parameter-only refresh."""
+
+    projection = node.prompt_presentation
+    prompt = str(node.generation_prompt or "")
+    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
+    if not (
+        projection is not None
+        and projection.revision + 1 == node.revision
+        and projection.text == prompt
+        and projection.prompt_digest == expected_digest
+        and node.metadata.get("guided_review_node_revision") == projection.revision
+        and snapshot.workflow_id == node.workflow_id
+        and snapshot.execution_id == execution_id
+        and snapshot.member_id == member_id
+        and snapshot.node_id == node.node_id
+        and snapshot.node_revision == node.revision
+        and snapshot.requested_parameters == node.parameters
+        and snapshot.parameter_provenance == node.parameter_provenance
+    ):
+        return node
+    return node.model_copy(update={"revision": projection.revision})
 
 
 def _fingerprint(request: CanvasRunRequestV2) -> str:
