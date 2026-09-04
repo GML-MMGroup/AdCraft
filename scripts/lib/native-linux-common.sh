@@ -21,6 +21,7 @@ NATIVE_API_PORT=""
 NATIVE_AGENT_PORT=""
 NATIVE_WEB_PORT=""
 NATIVE_AGENT_RUNTIME_TOKEN=""
+NATIVE_SUBTITLE_FONT_PATH=""
 
 native_info() {
   printf '[AdCraft] %s\n' "$*"
@@ -100,11 +101,15 @@ native_version_in_supported_range() {
 
 native_tool_version() {
   local tool="$1"
-  "$tool" -version 2>/dev/null | sed -nE "1{s/^${tool//\//\\/} version ([0-9]+(\.[0-9]+)+).*/\1/p;}"
+  "$tool" -version 2>/dev/null | sed -nE "1{s/^${tool//\//\\/} version n?([0-9]+(\.[0-9]+)+).*/\1/p;}"
 }
 
 native_verify_ffmpeg() {
-  local ffmpeg_version ffprobe_version
+  local ffmpeg_version ffprobe_version filters filter
+  local -a required_filters=(
+    trim atrim setpts asetpts fps scale crop pad rotate overlay format
+    colorbalance colorlevels hue adelay afade amix volume drawtext anullsrc color
+  )
   native_require_command ffmpeg "请按原生部署教程安装兼容的 FFmpeg 6.1–7.x，并确保它在 PATH 中。"
   native_require_command ffprobe "请安装与 FFmpeg 同一发行版中的 ffprobe，并确保它在 PATH 中。"
 
@@ -123,7 +128,37 @@ native_verify_ffmpeg() {
   LC_ALL=C ffmpeg -hide_banner -encoders 2>/dev/null \
     | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)' >/dev/null \
     || native_die "FFmpeg 缺少 AAC 编码器。"
+  filters="$(LC_ALL=C ffmpeg -hide_banner -filters 2>/dev/null)" \
+    || native_die "无法读取 FFmpeg 过滤器列表。"
+  for filter in "${required_filters[@]}"; do
+    grep -E "^[[:space:]]*[.A-Z]{2,7}[[:space:]]+${filter}([[:space:]]|$)" <<< "$filters" >/dev/null \
+      || native_die "FFmpeg 缺少最终合成所需过滤器：$filter。"
+  done
   native_info "已验证 FFmpeg 工具链：ffmpeg $ffmpeg_version，ffprobe $ffprobe_version。"
+}
+
+native_resolve_subtitle_font() {
+  local configured="${FINAL_COMPOSITION_SUBTITLE_FONT_PATH:-}"
+  local candidate
+  local -a candidates=(
+    /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+    /usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf
+    /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+  )
+
+  if [[ -n "$configured" ]]; then
+    [[ -f "$configured" && -r "$configured" ]] \
+      || native_die "FINAL_COMPOSITION_SUBTITLE_FONT_PATH 不可读：$configured。"
+    printf '%s\n' "$configured"
+    return
+  fi
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" && -r "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  native_die "未找到可读字幕字体。请按原生部署教程安装 fonts-noto-cjk，或设置 FINAL_COMPOSITION_SUBTITLE_FONT_PATH。"
 }
 
 native_initialize_runtime() {
@@ -242,7 +277,7 @@ native_url() {
 }
 
 native_api_health_url() {
-  printf 'http://127.0.0.1:%s/api/v1/health\n' "$NATIVE_API_PORT"
+  printf 'http://127.0.0.1:%s/api/v2/health\n' "$NATIVE_API_PORT"
 }
 
 native_agent_health_url() {
@@ -253,11 +288,14 @@ native_wait_for_url() {
   local label="$1"
   local url="$2"
   local token="${3:-}"
+  local timeout_seconds="${ADCRAFT_NATIVE_WAIT_SECONDS:-1800}"
+  [[ "$timeout_seconds" =~ ^[0-9]+$ ]] && (( 10#$timeout_seconds >= 90 )) \
+    || native_die "ADCRAFT_NATIVE_WAIT_SECONDS 必须是至少 90 的整数。"
   local -a curl_arguments=(--fail --silent --show-error --max-time 3)
   if [[ -n "$token" ]]; then
     curl_arguments+=(-H "Authorization: Bearer $token")
   fi
-  local deadline=$((SECONDS + 90))
+  local deadline=$((SECONDS + 10#$timeout_seconds))
   local frames=('|' '/' '-' '\\')
   local frame_index=0
   local elapsed
@@ -266,14 +304,14 @@ native_wait_for_url() {
       printf '\r[AdCraft] [%s] 服务已就绪。                    \n' "$label"
       return 0
     fi
-    elapsed=$((SECONDS - (deadline - 90)))
-    printf '\r[AdCraft] [%s] 等待服务启动 %s %02ds/90s' \
-      "$label" "${frames[$frame_index]}" "$elapsed"
+    elapsed=$((SECONDS - (deadline - 10#$timeout_seconds)))
+    printf '\r[AdCraft] [%s] 等待服务启动 %s %04ds/%ds' \
+      "$label" "${frames[$frame_index]}" "$elapsed" "$timeout_seconds"
     frame_index=$(( (frame_index + 1) % ${#frames[@]} ))
     sleep 1
   done
   printf '\n' >&2
-  native_die "$label 未能在 90 秒内就绪。请运行 scripts/logs-native-linux.sh 查看日志。"
+  native_die "$label 未能在等待时间内就绪。请运行 scripts/logs-native-linux.sh 查看日志。"
 }
 
 native_open_browser() {

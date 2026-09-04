@@ -75,7 +75,7 @@ function Get-AdCraftNativeCommandPath([string]$Name, [string]$Hint) {
 
 function Get-AdCraftNativeToolVersion([string]$ToolPath, [string]$ToolName) {
     $firstLine = @(& $ToolPath -version 2>&1 | Select-Object -First 1) -join ''
-    $match = [regex]::Match($firstLine, "^$([regex]::Escape($ToolName)) version (\d+(?:\.\d+)+)")
+    $match = [regex]::Match($firstLine, "^$([regex]::Escape($ToolName)) version n?(\d+(?:\.\d+)+)")
     if (-not $match.Success) {
         Stop-AdCraftNative "无法识别 $ToolName 版本：$firstLine"
     }
@@ -97,6 +97,27 @@ function Assert-AdCraftNativeNode([string]$NodePath, [string]$NpmPath) {
 function Test-AdCraftNativeSupportedFfmpegVersion([string]$Version) {
     $parsed = [Version]$Version
     return (($parsed.Major -eq 6 -and $parsed.Minor -ge 1) -or $parsed.Major -eq 7)
+}
+
+function Get-AdCraftNativeSubtitleFont {
+    if (-not [string]::IsNullOrWhiteSpace($env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH)) {
+        if (-not (Test-Path -LiteralPath $env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH -PathType Leaf)) {
+            Stop-AdCraftNative "FINAL_COMPOSITION_SUBTITLE_FONT_PATH 不可读：$($env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH)。"
+        }
+        return (Resolve-Path -LiteralPath $env:FINAL_COMPOSITION_SUBTITLE_FONT_PATH).Path
+    }
+
+    foreach ($candidate in @(
+        (Join-Path $env:WINDIR 'Fonts\msyh.ttc'),
+        (Join-Path $env:WINDIR 'Fonts\msyh.ttf'),
+        (Join-Path $env:WINDIR 'Fonts\simhei.ttf'),
+        (Join-Path $env:WINDIR 'Fonts\arial.ttf')
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    Stop-AdCraftNative '未找到可读字幕字体。请安装中文字体，或设置 FINAL_COMPOSITION_SUBTITLE_FONT_PATH。'
 }
 
 function Assert-AdCraftNativeFfmpeg {
@@ -121,11 +142,24 @@ function Assert-AdCraftNativeFfmpeg {
     if ($encoders -notmatch '(?m)^\s*[.A-Z]{2,7}\s+aac(?:\s|$)') {
         Stop-AdCraftNative 'FFmpeg 缺少 AAC 编码器。'
     }
+    $filters = @(& $ffmpegPath -hide_banner -filters 2>$null) -join "`n"
+    foreach ($filter in @(
+        'trim', 'atrim', 'setpts', 'asetpts', 'fps', 'scale', 'crop', 'pad',
+        'rotate', 'overlay', 'format', 'colorbalance', 'colorlevels', 'hue',
+        'adelay', 'afade', 'amix', 'volume', 'drawtext', 'anullsrc', 'color'
+    )) {
+        $escapedFilter = [regex]::Escape($filter)
+        if ($filters -notmatch "(?m)^\s*[.A-Z]{2,7}\s+$escapedFilter(?:\s|$)") {
+            Stop-AdCraftNative "FFmpeg 缺少最终合成所需过滤器：$filter。"
+        }
+    }
+    $subtitleFontPath = Get-AdCraftNativeSubtitleFont
     return [pscustomobject]@{
         FfmpegPath = $ffmpegPath
         FfprobePath = $ffprobePath
         FfmpegVersion = $ffmpegVersion
         FfprobeVersion = $ffprobeVersion
+        SubtitleFontPath = $subtitleFontPath
     }
 }
 
@@ -248,25 +282,31 @@ function Test-AdCraftNativeUrl([string]$Url, [hashtable]$Headers = @{}) {
 }
 
 function Wait-AdCraftNativeUrl([string]$Label, [string]$Url, [hashtable]$Headers = @{}) {
+    $timeoutSeconds = 1800
+    if (-not [string]::IsNullOrWhiteSpace($env:ADCRAFT_NATIVE_WAIT_SECONDS)) {
+        if (-not [int]::TryParse($env:ADCRAFT_NATIVE_WAIT_SECONDS, [ref]$timeoutSeconds) -or $timeoutSeconds -lt 90) {
+            Stop-AdCraftNative 'ADCRAFT_NATIVE_WAIT_SECONDS 必须是至少 90 的整数。'
+        }
+    }
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $frames = @('|', '/', '-', '\\')
     $frameIndex = 0
-    while ($stopwatch.Elapsed.TotalSeconds -lt 90) {
+    while ($stopwatch.Elapsed.TotalSeconds -lt $timeoutSeconds) {
         if (Test-AdCraftNativeUrl $Url $Headers) {
             Write-Host "`r[AdCraft] [$Label] 服务已就绪。                    "
             return
         }
         $elapsed = [math]::Floor($stopwatch.Elapsed.TotalSeconds)
-        Write-Host -NoNewline ("`r[AdCraft] [{0}] 等待服务启动 {1} {2:D2}s/90s" -f $Label, $frames[$frameIndex], $elapsed)
+        Write-Host -NoNewline ("`r[AdCraft] [{0}] 等待服务启动 {1} {2:D4}s/{3}s" -f $Label, $frames[$frameIndex], $elapsed, $timeoutSeconds)
         $frameIndex = ($frameIndex + 1) % $frames.Count
         Start-Sleep -Seconds 1
     }
     Write-Host ''
-    Stop-AdCraftNative "$Label 未能在 90 秒内就绪。请运行 scripts\logs-native-windows.ps1 查看日志。"
+    Stop-AdCraftNative "$Label 未能在等待时间内就绪。请运行 scripts\logs-native-windows.ps1 查看日志。"
 }
 
 function Get-AdCraftNativeApiUrl([int]$ApiPort) {
-    return "http://127.0.0.1:$ApiPort/api/v1/health"
+    return "http://127.0.0.1:$ApiPort/api/v2/health"
 }
 
 function Get-AdCraftNativeAgentUrl([int]$AgentPort) {

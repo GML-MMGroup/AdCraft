@@ -13,6 +13,8 @@ native_verify_node
 native_require_command curl "请安装 curl 后重新运行。"
 native_require_command setsid "请安装 util-linux 后重新运行。"
 native_verify_ffmpeg
+NATIVE_SUBTITLE_FONT_PATH="$(native_resolve_subtitle_font)"
+native_info "已选择字幕字体：$NATIVE_SUBTITLE_FONT_PATH。"
 
 NATIVE_API_PORT="${ADCRAFT_NATIVE_API_PORT:-8000}"
 NATIVE_AGENT_PORT="${ADCRAFT_NATIVE_AGENT_PORT:-8765}"
@@ -81,6 +83,7 @@ native_stage 7 8 "启动 API：127.0.0.1:$NATIVE_API_PORT……"
     MEDIA_DATA_DIR="$NATIVE_API_DATA_DIR" \
     FFMPEG_PATH="$(command -v ffmpeg)" \
     FFPROBE_PATH="$(command -v ffprobe)" \
+    FINAL_COMPOSITION_SUBTITLE_FONT_PATH="$NATIVE_SUBTITLE_FONT_PATH" \
     LOCAL_SETTINGS_ALLOWED_ORIGINS="$NATIVE_LOCAL_SETTINGS_ALLOWED_ORIGINS" \
     AGENT_RUNTIME_BASE_URL="http://127.0.0.1:$NATIVE_AGENT_PORT" \
     AGENT_RUNTIME_INTERNAL_TOKEN="$NATIVE_AGENT_RUNTIME_TOKEN" \
