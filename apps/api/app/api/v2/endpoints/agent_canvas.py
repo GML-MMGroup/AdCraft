@@ -122,10 +122,6 @@ from app.schemas.agent_canvas import (
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
     CanvasNodeV2,
-    CanvasVariationDraftResponseV2,
-    CanvasVariationDraftUpsertV2,
-    CanvasVariationMaterializeRequestV2,
-    CanvasVariationMaterializeResponseV2,
     ImageLibraryListResponseV2,
     ProjectAssetListResponseV2,
     ProjectAssetUploadMetadataV2,
@@ -304,7 +300,6 @@ from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
 )
 from app.services.agent_canvas_provider_capabilities import (
-    ProviderCapabilityError,
     ProviderCapabilityService,
 )
 from app.services.agent_canvas_provider_prompts import (
@@ -411,7 +406,6 @@ from app.services.agent_canvas_video_parameter_compiler import (
     PiVideoParameterIntentGateway,
 )
 from app.services.agent_trace import V2AgentTraceWriter
-from app.services.agent_canvas_variations import AgentCanvasVariationService
 from app.services.agent_canvas_editing_output_reuse import EditingExportOutputReuseService
 from app.services.model_selection import ModelSelectionService
 from app.services.model_resolution import ModelResolutionService
@@ -473,7 +467,6 @@ class AgentCanvasRuntime:
     guided_media_resume_deliveries: AgentCanvasGuidedMediaResumeRepository
     guided_media_resume_worker: GuidedMediaConfirmationResumeWorker
     commands: AgentCanvasCommandService
-    variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
     conversation_repository: AgentCanvasConversationRepository
     decision_bundles: AgentCanvasDecisionBundleRepository
@@ -1333,58 +1326,16 @@ def create_agent_canvas_runtime(
         replan=command_replan,
     )
 
-    def validate_variation(
-        source: CanvasNodeV2,
-        request: CanvasVariationDraftUpsertV2,
-    ) -> None:
-        candidate = source.model_copy(
-            update={
-                "status": "draft",
-                "title": request.title,
-                "generation_prompt": request.generation_prompt,
-                "model_selection_mode": request.model_selection_mode,
-                "model_ref": request.model_ref,
-                "parameters": request.parameters,
-                "output_asset_id": None,
-                "error": None,
-            },
-            deep=True,
-        )
-        try:
-            model_selection.validate_authoring(candidate)
-            provider_capabilities.resolve(
-                candidate,
-                binding_service.resolve_run_inputs(
-                    source.workflow_id,
-                    source.node_id,
-                ),
-            )
-        except (ProviderCapabilityError, V2PersistenceError) as error:
-            raise V2PersistenceError(
-                "variation_model_incompatible",
-                "Variation model is incompatible with its inputs.",
-                stage="agent_canvas_variation_service",
-            ) from error
-
-    variation_service = AgentCanvasVariationService(
-        workflow_repository,
-        command_repository,
-        variation_validator=validate_variation,
-        run_node=lambda workflow_id, node_id, idempotency_key: run_service.start_or_extend(
-            workflow_id,
-            CanvasRunRequestV2(
-                scope="selected_nodes",
-                node_ids=(node_id,),
-                source_action="variation_materialize",
-            ),
-            idempotency_key=idempotency_key,
-        ),
-    )
     guided_media_plan_actions = GuidedMediaPlanActionService(
         workflows=workflow_repository,
         plan_reader=storyboard_authoring,
         plan_writer=working_documents,
-        variations=variation_service,
+        nodes=AgentCanvasNodeService(
+            workflow_repository,
+            model_selection=model_selection,
+            candidate_validator=editing_responses.validate_workflow,
+        ),
+        run_nodes=queue_nodes,
     )
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
@@ -1755,7 +1706,6 @@ def create_agent_canvas_runtime(
         guided_media_resume_deliveries=guided_media_resume_deliveries,
         guided_media_resume_worker=guided_media_resume_worker,
         commands=command_service,
-        variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
         conversation_repository=conversation_repository,
         decision_bundles=decision_bundles,
@@ -2160,98 +2110,6 @@ def get_node(
         return runtime.editing_responses.project_snapshot_node(workflow, node)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-
-
-@router.put(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft",
-    response_model=CanvasVariationDraftResponseV2,
-)
-def save_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    request: CanvasVariationDraftUpsertV2,
-    response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-) -> CanvasVariationDraftResponseV2:
-    try:
-        result = runtime.variations.save(
-            workflow_id,
-            node_id,
-            request,
-            expected_revision=_expected_revision(if_match, workflow_id),
-        )
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    response.headers["ETag"] = workflow_etag(workflow_id, result.workflow_revision)
-    return result
-
-
-@router.delete(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def discard_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-) -> None:
-    try:
-        runtime.variations.discard(
-            workflow_id,
-            node_id,
-            expected_revision=_expected_revision(if_match, workflow_id),
-        )
-        workflow = runtime.workflows.get_workflow(workflow_id)
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
-
-
-@router.post(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft/materialize",
-    response_model=CanvasVariationMaterializeResponseV2,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-def materialize_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    request: CanvasVariationMaterializeRequestV2,
-    response: Response,
-    background_tasks: BackgroundTasks,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> CanvasVariationMaterializeResponseV2:
-    if not idempotency_key:
-        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
-    try:
-        result = runtime.variations.materialize(
-            workflow_id,
-            node_id,
-            request,
-            expected_revision=_expected_revision(if_match, workflow_id),
-            idempotency_key=idempotency_key,
-        )
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    if result.run is not None and result.run.get("execution_id"):
-        execution_id = str(result.run["execution_id"])
-        background_tasks.add_task(
-            runtime.accepted_background.run,
-            AcceptedBackgroundWork(
-                operation=AcceptedBackgroundOperation.VARIATION_EXECUTION_RESUME,
-                workflow_id=workflow_id,
-                resource_type=AcceptedBackgroundResourceType.EXECUTION,
-                resource_id=execution_id,
-                callback=runtime.scheduler.resume,
-                args=(execution_id,),
-            ),
-        )
-    response.headers["ETag"] = workflow_etag(workflow_id, result.workflow_revision)
-    return result
 
 
 @router.patch(

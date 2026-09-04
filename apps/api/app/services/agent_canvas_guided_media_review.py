@@ -25,10 +25,7 @@ from app.schemas.agent_canvas_media_review_authority import (
     GuidedMediaReviewPublicationCommandV1,
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
-from app.schemas.agent_canvas import (
-    CanvasVariationDraftUpsertV2,
-    CanvasVariationMaterializeRequestV2,
-)
+from app.schemas.agent_canvas import CanvasNodePatchRequestV2
 from app.schemas.agent_working_documents import (
     StoryboardExcludedMediaV3,
     StoryboardPlannedNodeV3,
@@ -635,11 +632,12 @@ class GuidedMediaReviewActionService:
 class GuidedMediaPlanActionService:
     """Apply retry, replacement, and exclusion to current Plan authority."""
 
-    def __init__(self, *, workflows, plan_reader, plan_writer, variations) -> None:
+    def __init__(self, *, workflows, plan_reader, plan_writer, nodes, run_nodes) -> None:
         self._workflows = workflows
         self._plan_reader = plan_reader
         self._plan_writer = plan_writer
-        self._variations = variations
+        self._nodes = nodes
+        self._run_nodes = run_nodes
 
     def retry(
         self,
@@ -728,11 +726,10 @@ class GuidedMediaPlanActionService:
         plan, record = self._current_plan_record(interaction)
         source = self._workflows.get_node(interaction.workflow_id, record.node_id)
         workflow = self._workflows.get_workflow(interaction.workflow_id)
-        saved = self._variations.save(
+        updated = self._nodes.patch(
             interaction.workflow_id,
             source.node_id,
-            CanvasVariationDraftUpsertV2(
-                title=f"{source.title} Alternative",
+            CanvasNodePatchRequestV2(
                 generation_prompt=f"{source.generation_prompt}\n\nRevision direction: {instruction}",
                 model_selection_mode=source.model_selection_mode,
                 model_ref=source.model_ref,
@@ -740,19 +737,17 @@ class GuidedMediaPlanActionService:
             ),
             expected_revision=workflow.revision,
         )
-        materialized = self._variations.materialize(
+        execution_ids = self._run_nodes(
             interaction.workflow_id,
-            source.node_id,
-            CanvasVariationMaterializeRequestV2(action="generate"),
-            expected_revision=saved.workflow_revision,
-            idempotency_key=idempotency_key,
+            (source.node_id,),
+            f"guided-media-replace:{idempotency_key}",
         )
         content = _v3_plan(plan.content)
         replacement = StoryboardPlannedNodeV3(
             sequence_id=record.sequence_id,
             node_role=record.node_role,
-            node_id=materialized.sibling_node.node_id,
-            node_revision=materialized.sibling_node.revision,
+            node_id=updated.node_id,
+            node_revision=updated.revision,
             materialization_id=receipt_id,
         )
         next_content = content.model_copy(
@@ -782,13 +777,7 @@ class GuidedMediaPlanActionService:
         )
         return GuidedMediaActionOutcome(
             receipt_id=replacement.materialization_id,
-            created_node_ids=materialized.created_node_ids or (materialized.sibling_node.node_id,),
-            created_binding_ids=materialized.created_binding_ids or materialized.copied_binding_ids,
-            automatic_run_command_ids=(
-                (str(materialized.run.get("execution_id")),)
-                if materialized.run and materialized.run.get("execution_id")
-                else ()
-            ),
+            automatic_run_command_ids=execution_ids,
         )
 
     def _current_plan_record(self, interaction: GuidedInteractionV1):
@@ -834,7 +823,6 @@ class GuidedMediaPlanActionService:
             if record is not None:
                 return GuidedMediaActionOutcome(
                     receipt_id=receipt_id,
-                    created_node_ids=(record.node_id,),
                 )
         return None
 
