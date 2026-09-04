@@ -147,58 +147,90 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                         )
                     ).mappings().one_or_none()
                     event_preexisted = existing_convergence_event is not None
-                    changed = (
+                    awaiting_exists = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceAwaitingRow.awaiting_id).where(
+                                AgentCanvasGuidanceAwaitingRow.workflow_id
+                                == command.workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == command.interaction_id,
+                            )
+                        ).scalar_one_or_none()
+                        is not None
+                    )
+                    proposal_needs_convergence = (
                         str(proposal["availability"]) != "applied"
                         or str(proposal["materialization_status"]) != "completed"
                         or bool(proposal["materialization_retryable"])
-                        or str(interaction["status"]) != "closed"
-                        or str(parent_turn["status"]) != "completed"
+                        or proposal["materialization_error_code"] is not None
+                        or proposal["materialization_error_message"] is not None
+                    )
+                    interaction_needs_convergence = str(interaction["status"]) != "closed"
+                    turn_needs_convergence = (
+                        str(parent_turn["status"]) != "completed"
                         or bool(parent_turn["retryable"])
+                        or str(parent_turn["operation_stage"] or "") != "completed"
+                        or parent_turn["operation_failure_json"] is not None
                         or parent_turn["error_code"] is not None
                         or parent_turn["error_message"] is not None
-                        or session["active_proposal_id"] is not None
                     )
-                    connection.execute(
-                        update(AgentCanvasConceptProposalRow)
-                        .where(
-                            AgentCanvasConceptProposalRow.proposal_id == command.proposal_id,
-                            AgentCanvasConceptProposalRow.proposal_revision
-                            == command.expected_proposal_revision,
-                        )
-                        .values(
-                            availability="applied",
-                            materialization_status="completed",
-                            materialization_retryable=False,
-                            materialization_error_code=None,
-                            materialization_error_message=None,
-                            updated_at=now,
-                            materialization_updated_at=now,
+                    session_needs_convergence = (
+                        session["active_proposal_id"] == command.proposal_id
+                    )
+                    changed = any(
+                        (
+                            proposal_needs_convergence,
+                            interaction_needs_convergence,
+                            turn_needs_convergence,
+                            session_needs_convergence,
+                            awaiting_exists,
                         )
                     )
-                    connection.execute(
-                        update(AgentCanvasGuidedInteractionRow)
-                        .where(
-                            AgentCanvasGuidedInteractionRow.interaction_id
-                            == command.interaction_id,
-                            AgentCanvasGuidedInteractionRow.revision
-                            == command.expected_interaction_revision,
+                    if proposal_needs_convergence:
+                        connection.execute(
+                            update(AgentCanvasConceptProposalRow)
+                            .where(
+                                AgentCanvasConceptProposalRow.proposal_id
+                                == command.proposal_id,
+                                AgentCanvasConceptProposalRow.proposal_revision
+                                == command.expected_proposal_revision,
+                            )
+                            .values(
+                                availability="applied",
+                                materialization_status="completed",
+                                materialization_retryable=False,
+                                materialization_error_code=None,
+                                materialization_error_message=None,
+                                updated_at=now,
+                                materialization_updated_at=now,
+                            )
                         )
-                        .values(status="closed", updated_at=now)
-                    )
-                    connection.execute(
-                        update(AgentCanvasChatTurnRow)
-                        .where(AgentCanvasChatTurnRow.turn_id == command.parent_turn_id)
-                        .values(
-                            status="completed",
-                            retryable=False,
-                            operation_stage="completed",
-                            operation_failure_json=None,
-                            error_code=None,
-                            error_message=None,
-                            updated_at=now,
+                    if interaction_needs_convergence:
+                        connection.execute(
+                            update(AgentCanvasGuidedInteractionRow)
+                            .where(
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == command.interaction_id,
+                                AgentCanvasGuidedInteractionRow.revision
+                                == command.expected_interaction_revision,
+                            )
+                            .values(status="closed", updated_at=now)
                         )
-                    )
-                    if session["active_proposal_id"] == command.proposal_id:
+                    if turn_needs_convergence:
+                        connection.execute(
+                            update(AgentCanvasChatTurnRow)
+                            .where(AgentCanvasChatTurnRow.turn_id == command.parent_turn_id)
+                            .values(
+                                status="completed",
+                                retryable=False,
+                                operation_stage="completed",
+                                operation_failure_json=None,
+                                error_code=None,
+                                error_message=None,
+                                updated_at=now,
+                            )
+                        )
+                    if session_needs_convergence:
                         connection.execute(
                             update(AgentCanvasGuidanceSessionRow)
                             .where(
@@ -209,13 +241,15 @@ class AgentCanvasStoryboardTerminalConvergenceRepository:
                             )
                             .values(active_proposal_id=None, updated_at=now)
                         )
-                    connection.execute(
-                        delete(AgentCanvasGuidanceAwaitingRow).where(
-                            AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id,
-                            AgentCanvasGuidanceAwaitingRow.interaction_id
-                            == command.interaction_id,
+                    if awaiting_exists:
+                        connection.execute(
+                            delete(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.workflow_id
+                                == command.workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == command.interaction_id,
+                            )
                         )
-                    )
                     for row in timeline_rows:
                         metadata = json.loads(str(row["metadata_json"]))
                         if metadata.get("turn_id") != command.parent_turn_id:
