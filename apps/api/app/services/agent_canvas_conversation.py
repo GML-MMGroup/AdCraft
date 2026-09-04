@@ -2238,7 +2238,6 @@ class AgentConversationService:
                         "operation_id": create_operation_id,
                     },
                     "binding_kind": binding_kind[reference.input_role],
-                    "required": reference.required,
                     "display_order": index,
                 }
             )
