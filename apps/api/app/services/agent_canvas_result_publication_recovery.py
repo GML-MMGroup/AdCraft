@@ -58,6 +58,24 @@ class AgentCanvasResultPublicationRecoveryService:
             for intent in self._intents.list_due(execution_id=execution_id, now=now)
         )
 
+    def defer_member(
+        self,
+        *,
+        execution_id: str,
+        member_id: str,
+        error_code: str,
+    ) -> bool:
+        """Schedule a durable handoff after its original worker cannot commit."""
+
+        intent = self._intents.find_for_member(
+            execution_id=execution_id,
+            member_id=member_id,
+        )
+        if intent is None or intent.state not in {"preparing", "prepared"}:
+            return False
+        self._defer(intent, error_code, now=self._clock())
+        return True
+
     def _recover(
         self,
         intent: CanvasResultPublicationIntentV1,
