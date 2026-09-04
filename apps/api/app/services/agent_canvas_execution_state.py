@@ -34,12 +34,30 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
         else str(getattr(error, "code", default_code))
     )
     details = getattr(error, "details", {})
-    explicitly_retryable = transport_interrupted or bool(details.get("retryable", False))
+    safe_details = details if isinstance(details, dict) else {}
+    explicitly_retryable = transport_interrupted or bool(
+        safe_details.get("retryable", False)
+    )
+    role_error = code == "node_prompt_role_contract_invalid"
+    user_action = safe_details.get("user_action")
+    if user_action not in {"revise", "retry_preparation"}:
+        user_action = None
     return CanvasNodeErrorV2(
         code=code,
         message=(str(error) or "Execution failed.")[:1024],
         retryable=explicitly_retryable and code in APPROVED_TRANSIENT_ERROR_CODES,
+        user_action=user_action if role_error else None,
+        role_variant=_safe_error_text(safe_details, "role_variant", 80) if role_error else None,
+        violation_category=(
+            _safe_error_text(safe_details, "violation_category", 80) if role_error else None
+        ),
+        field_path=_safe_error_text(safe_details, "field_path", 160) if role_error else None,
     )
+
+
+def _safe_error_text(details: dict[str, object], key: str, limit: int) -> str | None:
+    value = details.get(key)
+    return value[:limit] if isinstance(value, str) and value else None
 
 
 class AgentCanvasExecutionStateMachine:

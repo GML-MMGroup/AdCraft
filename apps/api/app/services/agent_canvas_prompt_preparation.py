@@ -38,6 +38,9 @@ from app.services.agent_canvas_role_prompt_context import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
+from app.services.agent_structured_validation_audit import (
+    safe_structured_validation_attempts,
+)
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
@@ -126,7 +129,7 @@ class NodePromptPreparationService:
         role_context: RolePromptPreparationContextV2 | None = None
         try:
             role_context = self._project_context(working, context)
-            if self._role_brief_author is not None:
+            if self._role_brief_author is not None and role_context.user_prompt is None:
                 brief = self._role_brief_author(role_context, operation_id)
                 compiled_prompt = self._compiler.compile(
                     brief,
@@ -332,9 +335,8 @@ class NodePromptPreparationService:
                 )
             return persisted
         except Exception as error:
-            error_code = (
-                error.code if isinstance(error, V2PersistenceError) else "prompt_preparation_failed"
-            )
+            error_code = str(getattr(error, "code", "prompt_preparation_failed"))
+            error_details = _prompt_preparation_error_details(error, role_context)
             failed_recipe = (
                 self._recipes.resolve(role_context.role_variant)
                 if role_context is not None
@@ -387,7 +389,11 @@ class NodePromptPreparationService:
                         error=CanvasNodeErrorV2(
                             code=error_code,
                             message="Node prompt preparation failed.",
-                            retryable=not isinstance(error, V2PersistenceError),
+                            retryable=bool(error_details.get("retryable", False)),
+                            user_action=error_details.get("user_action"),
+                            role_variant=error_details.get("role_variant"),
+                            violation_category=error_details.get("violation_category"),
+                            field_path=error_details.get("field_path"),
                         ),
                         attempt_stage="failed",
                         updated_at=_now(),
@@ -843,6 +849,35 @@ class NodePromptPreparationService:
             expected_workflow_revision=workflow.revision,
             dispatch_context=(context.model_dump(mode="json") if context is not None else None),
         )
+
+
+def _prompt_preparation_error_details(
+    error: Exception,
+    context: RolePromptPreparationContextV2 | None,
+) -> dict[str, object]:
+    raw_details = getattr(error, "details", {})
+    details = dict(raw_details) if isinstance(raw_details, dict) else {}
+    if getattr(error, "code", None) != "node_prompt_role_contract_invalid":
+        return {"retryable": bool(getattr(error, "retryable", False))}
+    attempts = safe_structured_validation_attempts(
+        details.get("structured_validation_attempts")
+    )
+    terminal_attempt = attempts[-1] if attempts else {}
+    categories = terminal_attempt.get("violation_categories", [])
+    paths = terminal_attempt.get("validation_paths", [])
+    return {
+        "retryable": False,
+        "user_action": (
+            "revise"
+            if context is not None and context.user_prompt is not None
+            else "retry_preparation"
+        ),
+        "role_variant": details.get("role_variant")
+        or (context.role_variant if context is not None else None),
+        "violation_category": details.get("violation_category")
+        or (categories[0] if categories else None),
+        "field_path": details.get("field_path") or (paths[0] if paths else None),
+    }
 
 
 def context_digest(context: StageAuthoringContextV1) -> str:

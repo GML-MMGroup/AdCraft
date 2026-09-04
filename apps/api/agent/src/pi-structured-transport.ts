@@ -199,7 +199,9 @@ export class PiStructuredTransportRouter {
     validationAttempts.push(validationAttemptAudit(validation, 1, "initial"));
     if (validation.result?.repair_allowed === false) {
       throw terminalValidationFailure(
-        validation.error_code ?? "agent_structured_output_invalid",
+        roleContractFailureCode(input.request, validation) ??
+          validation.error_code ??
+          "agent_structured_output_invalid",
         auditForAttempt(
           input,
           primary,
@@ -278,6 +280,20 @@ export class PiStructuredTransportRouter {
       validationAttempts.push(
         validationAttemptAudit(repaired, 2, "structured_repair"),
       );
+      const roleContractCode = roleContractFailureCode(input.request, repaired);
+      if (roleContractCode) {
+        throw terminalValidationFailure(
+          roleContractCode,
+          auditForAttempt(
+            input,
+            repair,
+            startedAt,
+            structuredAttempts,
+            validationAttempts,
+          ),
+          isManualRetryableIntake(input),
+        );
+      }
       if (repaired.error_code === "agent_contract_validation_failed") {
         throw terminalValidationFailure(
           repaired.error_code,
@@ -999,6 +1015,7 @@ function validationAttemptAudit(
   const rawViolations = Array.isArray(candidate) ? candidate.slice(0, 128) : [];
   const paths: string[] = [];
   const codes: string[] = [];
+  const categories: string[] = [];
   let pathOverflow = false;
   let codeOverflow = false;
   for (const item of rawViolations) {
@@ -1006,6 +1023,7 @@ function validationAttemptAudit(
     const violation = item as Readonly<Record<string, unknown>>;
     const path = boundedViolationText(violation.path ?? violation.field_path, 512);
     const code = boundedViolationText(violation.code, 160);
+    const category = roleViolationCategory(code, violation.actual);
     if (path && !paths.includes(path)) {
       if (paths.length < 32) paths.push(path);
       else pathOverflow = true;
@@ -1013,6 +1031,9 @@ function validationAttemptAudit(
     if (code && !codes.includes(code)) {
       if (codes.length < 32) codes.push(code);
       else codeOverflow = true;
+    }
+    if (category && !categories.includes(category) && categories.length < 32) {
+      categories.push(category);
     }
   }
   if (codes.length === 0) {
@@ -1024,10 +1045,47 @@ function validationAttemptAudit(
     violation_count: Math.max(1, Math.min(128, rawViolations.length)),
     validation_paths: paths,
     violation_codes: codes,
+    ...(categories.length > 0 ? { violation_categories: categories } : {}),
     repair_allowed: validation.result?.repair_allowed === true,
     truncated: Array.isArray(candidate) &&
       (candidate.length > 128 || pathOverflow || codeOverflow),
   };
+}
+
+function roleContractFailureCode(
+  request: AgentRunRequest,
+  validation: StructuredValidationResult,
+): string | undefined {
+  if (request.validation_profile !== "role_prompt_contract_v1") return undefined;
+  const violations = validation.result?.violations;
+  return Array.isArray(violations) && violations.some(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      (item as Readonly<Record<string, unknown>>).code ===
+        "node_prompt_role_contract_invalid",
+  )
+    ? "node_prompt_role_contract_invalid"
+    : undefined;
+}
+
+function roleViolationCategory(
+  code: string | undefined,
+  actual: unknown,
+): string | undefined {
+  if (code !== "node_prompt_role_contract_invalid" || typeof actual !== "string") {
+    return undefined;
+  }
+  return [
+    "cross_role_content",
+    "narrative_progression",
+    "positive_character",
+    "positive_product",
+    "positive_prop",
+  ].includes(actual)
+    ? actual
+    : undefined;
 }
 
 function boundedViolations(result: Readonly<Record<string, unknown>> | undefined) {

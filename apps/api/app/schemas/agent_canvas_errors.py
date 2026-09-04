@@ -105,6 +105,9 @@ class CanvasNodeErrorV2(BaseModel):
     message: str = Field(min_length=1)
     retryable: bool
     actionable_failure: ActionableFailureV1 | None = None
+    role_variant: str | None = Field(default=None, min_length=1, max_length=80)
+    violation_category: str | None = Field(default=None, min_length=1, max_length=80)
+    field_path: str | None = Field(default=None, min_length=1, max_length=160)
 
     @model_validator(mode="after")
     def validate_retryable_projection(self) -> "CanvasNodeErrorV2":

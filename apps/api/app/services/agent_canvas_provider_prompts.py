@@ -34,6 +34,7 @@ from app.services.agent_canvas_character_reference_prompt_policy import (
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
+from app.services.agent_canvas_role_prompt_compiler import role_prompt_text_violation
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
@@ -157,6 +158,28 @@ class AgentCanvasProviderPromptCompiler:
                 "A media Node requires a saved generation prompt before provider preparation.",
             )
         _validate_editable_prompt_authority(node)
+        if node.semantic_role == "scene":
+            violation = role_prompt_text_violation(
+                "scene_board",
+                str(node.generation_prompt),
+                field_path="generation_prompt",
+            )
+            if violation is not None:
+                raise V2PersistenceError(
+                    "node_prompt_role_contract_invalid",
+                    "The Scene prompt conflicts with its environment-only role contract.",
+                    stage="agent_canvas_provider_prompt_compiler",
+                    details={
+                        "role_variant": violation.role_variant,
+                        "violation_category": violation.violation_category,
+                        "field_path": violation.field_path,
+                        "user_action": (
+                            "retry_preparation"
+                            if has_managed_prompt_preparation(node)
+                            else "revise"
+                        ),
+                    },
+                )
         if role_contract.semantic_role != node.semantic_role:
             raise _error(
                 "provider_prompt_contract_failed",

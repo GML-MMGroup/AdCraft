@@ -334,6 +334,9 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
     violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
         min_length=1, max_length=32
     )
+    violation_categories: tuple[
+        Annotated[str, Field(min_length=1, max_length=80)], ...
+    ] = Field(default=(), max_length=32)
     repair_allowed: bool
     truncated: bool
 
@@ -343,6 +346,8 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
             raise ValueError("Validation paths must be ordered and unique.")
         if len(self.violation_codes) != len(set(self.violation_codes)):
             raise ValueError("Violation codes must be ordered and unique.")
+        if len(self.violation_categories) != len(set(self.violation_categories)):
+            raise ValueError("Violation categories must be ordered and unique.")
         expected_stage = "initial" if self.attempt == 1 else "structured_repair"
         if self.attempt_stage != expected_stage:
             raise ValueError("Validation attempt stage must match its attempt number.")

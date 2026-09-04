@@ -16,6 +16,7 @@ _ATTEMPT_FIELDS = (
     "violation_count",
     "validation_paths",
     "violation_codes",
+    "violation_categories",
     "repair_allowed",
     "truncated",
 )
