@@ -90,6 +90,8 @@ class ProviderModelConformanceRunRecord:
     adapter_revision: str
     capability_revision: str
     contract_digest: str
+    routing_policy_id: str | None
+    routing_policy_digest: str | None
     status: str
     safe_summary: dict[str, Any]
     revision: int
@@ -413,6 +415,8 @@ class ProviderModelRepository:
         adapter_revision: str,
         capability_revision: str,
         contract_digest: str,
+        routing_policy_id: str | None,
+        routing_policy_digest: str | None,
         started_at: str,
     ) -> ProviderModelConformanceRunRecord:
         _validate_conformance_strings(
@@ -426,6 +430,8 @@ class ProviderModelRepository:
             contract_digest,
             started_at,
         )
+        if (routing_policy_id is None) != (routing_policy_digest is None):
+            raise ValueError("provider_model_conformance_identity_invalid")
         try:
             with self._database.engine.begin() as connection:
                 existing = (
@@ -448,6 +454,8 @@ class ProviderModelRepository:
                         adapter_revision=adapter_revision,
                         capability_revision=capability_revision,
                         contract_digest=contract_digest,
+                        routing_policy_id=routing_policy_id,
+                        routing_policy_digest=routing_policy_digest,
                     ):
                         raise ValueError("provider_model_conformance_conflict")
                     return record
@@ -462,13 +470,21 @@ class ProviderModelRepository:
                     .mappings()
                     .one_or_none()
                 )
-                if model is None or not _profile_matches(
-                    model,
-                    model_ref=model_ref,
-                    adapter_id=adapter_id,
-                    transport_kind=transport_kind,
-                    adapter_revision=adapter_revision,
-                    capability_revision=capability_revision,
+                if (
+                    model is None
+                    or not _profile_matches(
+                        model,
+                        model_ref=model_ref,
+                        adapter_id=adapter_id,
+                        transport_kind=transport_kind,
+                        adapter_revision=adapter_revision,
+                        capability_revision=capability_revision,
+                    )
+                    or not _routing_policy_matches(
+                        model,
+                        routing_policy_id=routing_policy_id,
+                        routing_policy_digest=routing_policy_digest,
+                    )
                 ):
                     raise ValueError("provider_model_conformance_identity_invalid")
                 connection.execute(
@@ -481,6 +497,8 @@ class ProviderModelRepository:
                         adapter_revision=adapter_revision,
                         capability_revision=capability_revision,
                         contract_digest=contract_digest,
+                        routing_policy_id=routing_policy_id,
+                        routing_policy_digest=routing_policy_digest,
                         status="unverified",
                         safe_summary_json="{}",
                         revision=1,
@@ -531,6 +549,18 @@ class ProviderModelRepository:
                 if current.provider_id == "fake" and status == "certified":
                     raise ValueError("provider_model_conformance_certification_forbidden")
                 summary = dict(safe_summary)
+                if current.provider_id == "openrouter":
+                    if (
+                        summary.get("routing_policy_id") != current.routing_policy_id
+                        or summary.get("routing_policy_digest") != current.routing_policy_digest
+                    ):
+                        raise ValueError("provider_model_conformance_identity_invalid")
+                    if status == "certified" and (
+                        summary.get("evidence_kind") != "real_provider"
+                        or not isinstance(summary.get("operator_approval_id"), str)
+                        or not str(summary["operator_approval_id"]).strip()
+                    ):
+                        raise ValueError("provider_model_conformance_certification_forbidden")
                 if current.completed_at is not None:
                     if current.status != status or current.safe_summary != summary:
                         raise ValueError("provider_model_conformance_conflict")
@@ -757,6 +787,8 @@ def _conformance_select():
         ProviderModelConformanceRunRow.adapter_revision,
         ProviderModelConformanceRunRow.capability_revision,
         ProviderModelConformanceRunRow.contract_digest,
+        ProviderModelConformanceRunRow.routing_policy_id,
+        ProviderModelConformanceRunRow.routing_policy_digest,
         ProviderModelConformanceRunRow.status,
         ProviderModelConformanceRunRow.safe_summary_json,
         ProviderModelConformanceRunRow.revision,
@@ -831,6 +863,8 @@ def _conformance_from_row(row: RowMapping) -> ProviderModelConformanceRunRecord:
         adapter_revision=str(row["adapter_revision"]),
         capability_revision=str(row["capability_revision"]),
         contract_digest=str(row["contract_digest"]),
+        routing_policy_id=_optional_string(row["routing_policy_id"]),
+        routing_policy_digest=_optional_string(row["routing_policy_digest"]),
         status=str(row["status"]),
         safe_summary=dict(json.loads(str(row["safe_summary_json"]))),
         revision=int(row["revision"]),
@@ -880,6 +914,8 @@ def _same_conformance_identity(
     adapter_revision: str,
     capability_revision: str,
     contract_digest: str,
+    routing_policy_id: str | None,
+    routing_policy_digest: str | None,
 ) -> bool:
     return (
         record.model_ref == model_ref
@@ -889,4 +925,25 @@ def _same_conformance_identity(
         and record.adapter_revision == adapter_revision
         and record.capability_revision == capability_revision
         and record.contract_digest == contract_digest
+        and record.routing_policy_id == routing_policy_id
+        and record.routing_policy_digest == routing_policy_digest
+    )
+
+
+def _routing_policy_matches(
+    row: RowMapping,
+    *,
+    routing_policy_id: str | None,
+    routing_policy_digest: str | None,
+) -> bool:
+    try:
+        metadata = json.loads(str(row["capability_metadata_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    expected = metadata.get("openrouter_routing")
+    if expected is None:
+        return routing_policy_id is None and routing_policy_digest is None
+    return isinstance(expected, Mapping) and (
+        expected.get("routing_policy_id") == routing_policy_id
+        and expected.get("routing_policy_digest") == routing_policy_digest
     )

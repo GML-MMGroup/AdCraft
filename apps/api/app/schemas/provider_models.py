@@ -334,11 +334,9 @@ class ProviderAdapterProfileV1(BaseModel):
         ):
             raise ValueError("provider_adapter_transport_identity_invalid")
         if (
-            self.transport_kind == "openai_images_native"
-            and self.model_ref != official_image_ref
+            self.transport_kind == "openai_images_native" and self.model_ref != official_image_ref
         ) or (
-            self.model_ref == official_image_ref
-            and self.transport_kind != "openai_images_native"
+            self.model_ref == official_image_ref and self.transport_kind != "openai_images_native"
         ):
             raise ValueError("provider_adapter_transport_identity_invalid")
         return self
@@ -358,9 +356,23 @@ class ProviderModelConformanceSummaryV1(BaseModel):
     contract_digest: str = Field(min_length=8, max_length=128)
     capability_revision: str = Field(min_length=1, max_length=80)
     adapter_revision: str = Field(min_length=1, max_length=80)
+    routing_policy_id: str | None = Field(default=None, min_length=1, max_length=120)
+    routing_policy_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     status: ProviderConformanceStatusV1
     safe_summary: dict[str, object] = Field(default_factory=dict)
     duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+
+    @model_validator(mode="after")
+    def validate_routing_identity(self) -> "ProviderModelConformanceSummaryV1":
+        _validate_openrouter_routing_identity(
+            self.model_ref,
+            self.routing_policy_id,
+            self.routing_policy_digest,
+        )
+        return self
 
 
 class ProviderConformanceTargetV1(BaseModel):
@@ -377,13 +389,37 @@ class ProviderConformanceTargetV1(BaseModel):
     adapter_revision: str = Field(min_length=1, max_length=80)
     capability_revision: str = Field(min_length=1, max_length=80)
     contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    routing_policy_id: str | None = Field(default=None, min_length=1, max_length=120)
+    routing_policy_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
 
     @model_validator(mode="after")
     def validate_model_identity(self) -> "ProviderConformanceTargetV1":
         _provider_id, separator, provider_model_id = self.model_ref.partition(":")
         if not separator or provider_model_id != self.provider_model_id:
             raise ValueError("provider_conformance_model_identity_mismatch")
+        _validate_openrouter_routing_identity(
+            self.model_ref,
+            self.routing_policy_id,
+            self.routing_policy_digest,
+        )
         return self
+
+
+def _validate_openrouter_routing_identity(
+    model_ref: str,
+    routing_policy_id: str | None,
+    routing_policy_digest: str | None,
+) -> None:
+    values_present = routing_policy_id is not None or routing_policy_digest is not None
+    if model_ref.startswith("openrouter:"):
+        if routing_policy_id != "openrouter-openai-only-v1" or routing_policy_digest is None:
+            raise ValueError("openrouter_routing_contract_invalid")
+        return
+    if values_present:
+        raise ValueError("openrouter_routing_contract_invalid")
 
 
 class ProviderModelSummaryV2(ProviderModelSummaryV1):

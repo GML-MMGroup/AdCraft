@@ -1023,6 +1023,8 @@ class ProviderModelConformanceRunRow(Base):
     adapter_revision: Mapped[str] = mapped_column(Text, nullable=False)
     capability_revision: Mapped[str] = mapped_column(Text, nullable=False)
     contract_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    routing_policy_id: Mapped[str | None] = mapped_column(Text)
+    routing_policy_digest: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unverified")
     safe_summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

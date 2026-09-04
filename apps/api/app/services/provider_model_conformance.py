@@ -26,6 +26,8 @@ class ProviderModelConformanceService:
         adapter_revision: str,
         capability_revision: str,
         contract_digest: str,
+        routing_policy_id: str | None = None,
+        routing_policy_digest: str | None = None,
         now: str,
         run_id: str,
     ) -> ProviderModelConformanceRunRecord:
@@ -38,6 +40,8 @@ class ProviderModelConformanceService:
             adapter_revision=adapter_revision,
             capability_revision=capability_revision,
             contract_digest=contract_digest,
+            routing_policy_id=routing_policy_id,
+            routing_policy_digest=routing_policy_digest,
             started_at=now,
         )
 
