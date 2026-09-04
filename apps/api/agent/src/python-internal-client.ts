@@ -3,6 +3,7 @@ import type {
   AgentRunRequest,
   AgentToolCall,
   AgentToolResult,
+  OpenRouterRoutingPolicyV1,
 } from "./generated/agent-runtime.js";
 
 export interface AgentCredentialSnapshot {
@@ -24,6 +25,7 @@ export interface AgentCredentialSnapshot {
   readonly gateway_id?: string | null;
   readonly model_alias?: string | null;
   readonly projection_digest?: string | null;
+  readonly openrouter_routing?: OpenRouterRoutingPolicyV1 | null;
   readonly execution_policy: AgentModelExecutionPolicyV1;
   readonly api_key: string;
 }
@@ -85,6 +87,7 @@ export class PythonInternalClient {
       typeof payload.supports_streamed_tool_calls !== "boolean" ||
       typeof payload.supports_reasoning_controls !== "boolean" ||
       !isTransportIdentity(payload) ||
+      !isOpenRouterRouting(payload) ||
       !isExecutionPolicy(
         payload.execution_policy,
         operation,
@@ -119,6 +122,23 @@ export class PythonInternalClient {
     }
     return payload as unknown as AgentToolResult;
   }
+}
+
+function isOpenRouterRouting(payload: Record<string, unknown>): boolean {
+  const routing = payload.openrouter_routing;
+  if (!String(payload.model_ref).startsWith("openrouter:")) {
+    return routing === null || routing === undefined;
+  }
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) return false;
+  const value = routing as Record<string, unknown>;
+  return value.routing_policy_id === "openrouter-openai-only-v1" &&
+    typeof value.routing_policy_digest === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.routing_policy_digest) &&
+    Array.isArray(value.provider_only) &&
+    value.provider_only.length === 1 &&
+    value.provider_only[0] === "openai" &&
+    value.require_parameters === true &&
+    value.allow_fallbacks === false;
 }
 
 function isTransportIdentity(payload: Record<string, unknown>): boolean {
@@ -160,7 +180,7 @@ const OPERATION_CLASSES = new Set([
   "materialization",
   "long_form",
 ]);
-const THINKING_FORMATS = new Set(["zai", "qwen", "none"]);
+const THINKING_FORMATS = new Set(["zai", "qwen", "openai", "none"]);
 const REASONING_CONTROLS = new Set([
   "provider_default",
   "enable_thinking",
@@ -172,6 +192,7 @@ const STRUCTURED_TRANSPORTS = new Set([
   "streamed_tool_call",
   "non_streaming_tool_call",
   "non_streaming_json_object",
+  "non_streaming_json_schema",
   "streaming_json_object",
   "json_object",
 ]);

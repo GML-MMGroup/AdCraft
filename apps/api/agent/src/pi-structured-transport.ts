@@ -27,6 +27,11 @@ interface StructuredCompletionRequestBase {
   readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
   readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
+  readonly provider?: {
+    readonly only: ReadonlyArray<"openai">;
+    readonly require_parameters: true;
+    readonly allow_fallbacks: false;
+  };
 }
 
 export interface NonStreamingStructuredCompletionRequest
@@ -44,7 +49,16 @@ export interface NonStreamingStructuredCompletionRequest
     readonly type: "function";
     readonly function: { readonly name: "submit_structured_result" };
   };
-  readonly response_format?: { readonly type: "json_object" };
+  readonly response_format?:
+    | { readonly type: "json_object" }
+    | {
+      readonly type: "json_schema";
+      readonly json_schema: {
+        readonly name: "agent_structured_result";
+        readonly strict: true;
+        readonly schema: Readonly<Record<string, unknown>>;
+      };
+    };
 }
 
 export interface StreamingJsonCompletionRequest
@@ -151,6 +165,7 @@ export class PiStructuredTransportRouter {
     if (
       policy.structured_transport !== "non_streaming_tool_call" &&
       policy.structured_transport !== "non_streaming_json_object" &&
+      policy.structured_transport !== "non_streaming_json_schema" &&
       policy.structured_transport !== "streaming_json_object"
     ) {
       throw new AgentOperationFailure(
@@ -552,6 +567,7 @@ export function buildPrimaryStructuredCompletionRequest(
   if (
     isJsonObjectTransport(input.credential.execution_policy.structured_transport)
   ) {
+    const openrouter = openrouterRequestProjection(input.credential);
     return {
       model: input.credential.model_id,
       messages: [
@@ -570,7 +586,8 @@ export function buildPrimaryStructuredCompletionRequest(
         "streaming_json_object",
       max_tokens: input.credential.execution_policy.max_output_tokens,
       ...reasoningPayload(input.credential.execution_policy),
-      response_format: { type: "json_object" },
+      ...openrouter,
+      response_format: structuredResponseFormat(input.credential, input.schema),
     };
   }
   return {
@@ -694,8 +711,53 @@ function repairPayload(
       "streaming_json_object",
     max_tokens: input.credential.execution_policy.max_output_tokens,
     ...repairReasoningPayload(input.credential.execution_policy),
-    response_format: { type: "json_object" },
+    ...openrouterRequestProjection(input.credential),
+    response_format: structuredResponseFormat(input.credential, input.schema),
   };
+}
+
+function openrouterRequestProjection(
+  credential: AgentCredentialSnapshot,
+): Pick<StructuredCompletionRequestBase, "provider"> {
+  if (!credential.model_ref.startsWith("openrouter:")) return {};
+  const routing = credential.openrouter_routing;
+  if (
+    credential.model_ref !== "openrouter:openai/gpt-5.6-sol" ||
+    credential.model_id !== "openai/gpt-5.6-sol" ||
+    !routing ||
+    routing.routing_policy_id !== "openrouter-openai-only-v1" ||
+    !/^sha256:[a-f0-9]{64}$/.test(routing.routing_policy_digest) ||
+    routing.provider_only.length !== 1 ||
+    routing.provider_only[0] !== "openai" ||
+    routing.require_parameters !== true ||
+    routing.allow_fallbacks !== false
+  ) {
+    throw new Error("openrouter_routing_contract_invalid");
+  }
+  return {
+    provider: {
+      only: ["openai"],
+      require_parameters: true,
+      allow_fallbacks: false,
+    },
+  };
+}
+
+function structuredResponseFormat(
+  credential: AgentCredentialSnapshot,
+  schema: Readonly<Record<string, unknown>>,
+): NonNullable<NonStreamingStructuredCompletionRequest["response_format"]> {
+  if (credential.execution_policy.structured_transport === "non_streaming_json_schema") {
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: "agent_structured_result",
+        strict: true,
+        schema,
+      },
+    };
+  }
+  return { type: "json_object" };
 }
 
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
@@ -731,6 +793,7 @@ function repairReasoningPayload(
 
 function isJsonObjectTransport(transport: string): boolean {
   return transport === "non_streaming_json_object" ||
+    transport === "non_streaming_json_schema" ||
     transport === "streaming_json_object";
 }
 
