@@ -9,6 +9,7 @@ from typing import Mapping
 
 from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.engine import Connection
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -23,11 +24,13 @@ from app.persistence.models import (
     AgentCanvasConceptOptionRow,
     AgentCanvasConceptProposalRow,
     AgentCanvasContinuationOutboxRow,
+    AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
     AgentCanvasGuidedInteractionRow,
     AgentCanvasRequirementLedgerRow,
+    AgentCanvasMaterializationCommitRow,
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2
@@ -255,6 +258,21 @@ class AgentCanvasCapabilityProposalRepository:
                         "Guidance state changed before capability publication.",
                         stage="capability_publication",
                     )
+                committed_storyboard_proposal_id = _committed_storyboard_proposal_for_stage(
+                    connection,
+                    envelope=envelope,
+                    session=session,
+                )
+                if committed_storyboard_proposal_id is not None:
+                    _terminalize_suppressed_storyboard_publication(
+                        connection,
+                        events=self._events,
+                        envelope=envelope,
+                        canonical_proposal_id=committed_storyboard_proposal_id,
+                        timestamp=timestamp,
+                    )
+                    connection.commit()
+                    return committed_storyboard_proposal_id
                 session_revision = int(session["revision"]) + 1
                 topic_id = f"topic_{envelope.capability_id}"
                 proposed_references = _project_references(envelope)
@@ -705,6 +723,146 @@ class AgentCanvasCapabilityProposalRepository:
                 connection.rollback()
                 raise
         return proposal_id
+
+
+def _committed_storyboard_proposal_for_stage(
+    connection: Connection,
+    *,
+    envelope: CapabilityCommandEnvelopeV2,
+    session: Mapping[str, object],
+) -> str | None:
+    if envelope.capability_id != "storyboard_design":
+        return None
+    journey = parse_production_journey(str(session["journey_state_json"]))
+    proposals = (
+        connection.execute(
+            select(AgentCanvasConceptProposalRow).where(
+                AgentCanvasConceptProposalRow.workflow_id == envelope.workflow_id,
+                AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                AgentCanvasConceptProposalRow.availability == "applied",
+                AgentCanvasConceptProposalRow.materialization_status == "completed",
+            )
+        )
+        .mappings()
+        .all()
+    )
+    matches: list[str] = []
+    for proposal in proposals:
+        committed = connection.execute(
+            select(AgentCanvasMaterializationCommitRow.materialization_id).where(
+                AgentCanvasMaterializationCommitRow.workflow_id == envelope.workflow_id,
+                AgentCanvasMaterializationCommitRow.proposal_id == proposal["proposal_id"],
+                AgentCanvasMaterializationCommitRow.materialization_id
+                == proposal["materialization_id"],
+                AgentCanvasMaterializationCommitRow.action_turn_id
+                == proposal["materialization_turn_id"],
+            )
+        ).scalar_one_or_none()
+        if committed is None:
+            continue
+        interactions = (
+            connection.execute(
+                select(AgentCanvasGuidedInteractionRow.content_json).where(
+                    AgentCanvasGuidedInteractionRow.workflow_id == envelope.workflow_id,
+                    AgentCanvasGuidedInteractionRow.session_id == session["session_id"],
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if any(
+            (content := json.loads(str(raw))).get("proposal_id") == proposal["proposal_id"]
+            and content.get("stage") == journey.stage
+            and content.get("stage_revision") == journey.stage_revision
+            for raw in interactions
+        ):
+            matches.append(str(proposal["proposal_id"]))
+    if len(matches) > 1:
+        raise V2PersistenceError(
+            "storyboard_terminal_authority_conflict",
+            "More than one committed Storyboard authority matches the current stage.",
+            stage="capability_publication",
+        )
+    return matches[0] if matches else None
+
+
+def _terminalize_suppressed_storyboard_publication(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    envelope: CapabilityCommandEnvelopeV2,
+    canonical_proposal_id: str,
+    timestamp: str,
+) -> None:
+    activity = (
+        connection.execute(
+            select(AgentCanvasExpertActivityRow).where(
+                AgentCanvasExpertActivityRow.turn_id == envelope.capability_turn_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if activity is not None and str(activity["status"]) == "working":
+        publish_expert_activity_terminal_in_transaction(
+            connection,
+            events,
+            turn_id=envelope.capability_turn_id,
+            status="superseded",
+            now=timestamp,
+            event_details={"canonical_proposal_id": canonical_proposal_id},
+        )
+    turn_status = connection.execute(
+        select(AgentCanvasChatTurnRow.status).where(
+            AgentCanvasChatTurnRow.turn_id == envelope.capability_turn_id
+        )
+    ).scalar_one_or_none()
+    if turn_status not in {None, "completed", "failed", "superseded"}:
+        connection.execute(
+            update(AgentCanvasChatTurnRow)
+            .where(AgentCanvasChatTurnRow.turn_id == envelope.capability_turn_id)
+            .values(
+                status="superseded",
+                retryable=False,
+                error_code=None,
+                error_message=None,
+                updated_at=timestamp,
+            )
+        )
+    connection.execute(
+        update(AgentCanvasContinuationOutboxRow)
+        .where(
+            AgentCanvasContinuationOutboxRow.continuation_turn_id
+            == envelope.capability_turn_id,
+            AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased")),
+        )
+        .values(
+            status="completed",
+            lease_owner=None,
+            lease_expires_at=None,
+            last_error_code=None,
+            last_error_message=None,
+            updated_at=timestamp,
+        )
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=envelope.workflow_id,
+            conversation_id=envelope.conversation_id,
+            turn_id=envelope.capability_turn_id,
+            event_type="storyboard_duplicate_proposal_suppressed",
+            transition_key=(
+                f"storyboard-proposal-suppressed:{envelope.capability_turn_id}:"
+                f"{canonical_proposal_id}"
+            ),
+            created_at=timestamp,
+            payload={
+                "canonical_proposal_id": canonical_proposal_id,
+                "suppressed_turn_id": envelope.capability_turn_id,
+            },
+        ),
+    )
 
 
 def _concept_interaction(
