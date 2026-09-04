@@ -100,7 +100,6 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     position: CanvasPositionV2
-    clone_inputs_from_node_id: str | None = None
     source_asset_id: str | None = None
 
     @property
@@ -210,6 +209,16 @@ class CanvasLayoutPatchResponseV2(_AgentCanvasModel):
     positions: tuple[CanvasLayoutPositionV2, ...]
 
 
+class CanvasNodeLatestAttemptV2(_AgentCanvasModel):
+    execution_id: str = Field(min_length=1, max_length=160)
+    member_id: str = Field(min_length=1, max_length=160)
+    run_intent_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
+    status: Literal["queued", "waiting", "running", "succeeded", "failed", "cancelled"]
+    created_at: datetime
+    updated_at: datetime
+    error: CanvasNodeErrorV2 | None = None
+
+
 class CanvasNodeV2(_AgentCanvasModel):
     node_id: str = Field(min_length=1)
     workflow_id: str = Field(min_length=1)
@@ -231,13 +240,14 @@ class CanvasNodeV2(_AgentCanvasModel):
     parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
     prompt_context_snapshot_id: str | None = None
     output_asset_id: str | None = None
+    output_asset_version_id: str | None = None
+    latest_attempt: CanvasNodeLatestAttemptV2 | None = None
     position: CanvasPositionV2
     revision: int = Field(ge=1)
     error: CanvasNodeErrorV2 | None = None
     prompt_preparation: NodePromptPreparationV1 = Field(
         default_factory=NodePromptPreparationV1.legacy_ready
     )
-    variation_draft: CanvasVariationDraftV2 | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -306,11 +316,16 @@ class CanvasBindingCreateRequestV2(_AgentCanvasModel):
     source: CanvasBindingSourceV2
     target_node_id: str = Field(min_length=1)
     input_role: CanvasBindingInputRoleV2
-    required: bool = False
     enabled: bool = True
     order: int | None = Field(default=None, ge=0)
     label: str | None = Field(default=None, max_length=160)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def required(self) -> bool:
+        """Bindings are uniformly use-if-available after the V2 cutover."""
+
+        return False
 
 
 class CanvasBindingV2(_AgentCanvasModel):
@@ -319,13 +334,18 @@ class CanvasBindingV2(_AgentCanvasModel):
     source: CanvasBindingSourceV2
     target_node_id: str = Field(min_length=1)
     input_role: CanvasBindingInputRoleV2
-    required: bool
     enabled: bool = True
     order: int = Field(ge=0)
     label: str | None = Field(default=None, max_length=160)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def required(self) -> bool:
+        """Bindings are uniformly use-if-available after the V2 cutover."""
+
+        return False
 
     @property
     def binding_kind(self) -> CanvasBindingInputRoleV2:
@@ -338,7 +358,6 @@ class CanvasBindingV2(_AgentCanvasModel):
 
 class CanvasBindingPatchRequestV2(_AgentCanvasModel):
     input_role: CanvasBindingInputRoleV2 | None = None
-    required: bool | None = None
     enabled: bool | None = None
     order: int | None = Field(default=None, ge=0)
     label: str | None = Field(default=None, max_length=160)
@@ -348,7 +367,6 @@ class CanvasBindingPatchRequestV2(_AgentCanvasModel):
     def require_change(self) -> "CanvasBindingPatchRequestV2":
         if (
             self.input_role is None
-            and self.required is None
             and self.enabled is None
             and self.order is None
             and self.label is None
@@ -545,8 +563,11 @@ class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     binding_id: str | None = None
     input_role: Literal["text_context"] = "text_context"
-    required: bool = False
     display_order: int = Field(default=0, ge=0)
+
+    @property
+    def required(self) -> bool:
+        return False
 
 
 class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
@@ -565,8 +586,11 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     access_descriptor: StorageAccessDescriptorV2
     binding_id: str | None = None
     input_role: CanvasBindingInputRoleV2
-    required: bool = False
     display_order: int = Field(default=0, ge=0)
+
+    @property
+    def required(self) -> bool:
+        return False
 
     @model_validator(mode="after")
     def validate_source_identity(self) -> "ResolvedMediaInputSnapshotV2":
@@ -583,8 +607,11 @@ class ResolvedTextBindingInputV2(_AgentCanvasModel):
     source_node_id: str = Field(min_length=1)
     source_node_revision: int = Field(ge=1)
     input_role: Literal["text_context"] = "text_context"
-    required: bool = False
     display_order: int = Field(default=0, ge=0)
+
+    @property
+    def required(self) -> bool:
+        return False
     snapshot_id: str = Field(min_length=1)
     document_kind: Literal["text", "script"]
     content_digest: str = Field(min_length=1)
@@ -603,18 +630,21 @@ class ResolvedMediaBindingInputV2(_AgentCanvasModel):
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
     source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
-    required: bool = False
     display_order: int = Field(default=0, ge=0)
     asset_id: str = Field(min_length=1)
     asset_version_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
     checksum: str = Field(min_length=1)
 
+    @property
+    def required(self) -> bool:
+        return False
+
 
 class OmittedOptionalInputV2(_AgentCanvasModel):
     binding_id: str = Field(min_length=1)
     source_node_id: str | None = None
-    reason_code: str = Field(min_length=1)
+    reason_code: Literal["omitted_no_output"]
 
 
 class ResolvedNodeInputManifestV2(_AgentCanvasModel):

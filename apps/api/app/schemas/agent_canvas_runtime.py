@@ -99,13 +99,18 @@ class NodeRunBindingSnapshotV2(_RuntimeModel):
     binding_id: str = Field(min_length=1, max_length=160)
     input_role: CanvasInputRoleV2
     order: int = Field(ge=0)
-    required: bool
     source_kind: Literal["node_output", "image_asset"]
     source_id: str = Field(min_length=1, max_length=160)
     source_asset_version_id: str | None = Field(default=None, max_length=160)
     source_node_revision: int | None = Field(default=None, ge=1)
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def required(self) -> bool:
+        """Run Bindings are uniformly use-if-available."""
+
+        return False
 
 
 class NodeRunIntentSnapshotV2(_RuntimeModel):
@@ -188,8 +193,8 @@ class CanvasRunRequestV2(_RuntimeModel):
     def validate_scope(self) -> "CanvasRunRequestV2":
         if self.scope == "selected_nodes" and not self.node_ids:
             raise ValueError("selected_nodes requires at least one node ID")
-        if self.scope == "all_drafts" and (self.node_ids or self.retry_failed):
-            raise ValueError("all_drafts does not accept node IDs or failed retry")
+        if self.scope == "all_drafts" and self.node_ids:
+            raise ValueError("all_drafts does not accept node IDs")
         if len(set(self.node_ids)) != len(self.node_ids):
             raise ValueError("node IDs must be unique")
         return self
