@@ -238,7 +238,8 @@ function isExecutionPolicy(
     !isPositiveInteger(policy.max_output_tokens) ||
     !isBoundedAttempt(policy.transport_retry_limit) ||
     !isBoundedAttempt(policy.structured_repair_limit) ||
-    typeof policy.json_object_fallback_certified !== "boolean"
+    (policy.json_object_fallback_certified !== undefined &&
+      typeof policy.json_object_fallback_certified !== "boolean")
   ) {
     return false;
   }

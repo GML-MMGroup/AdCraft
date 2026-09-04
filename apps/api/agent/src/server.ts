@@ -422,7 +422,7 @@ function submittedModelCount(
     return Math.max(
       1,
       attempt.transport_retry_count + 1,
-      attempt.capability_fallback_count + 1,
+      (attempt.capability_fallback_count ?? 0) + 1,
       attempt.structured_attempt_count,
     );
   }
@@ -472,7 +472,7 @@ function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
     output_tokens: attempt.output_tokens,
     reasoning_tokens: attempt.reasoning_tokens,
     transport_retry_count: attempt.transport_retry_count,
-    capability_fallback_count: attempt.capability_fallback_count,
+    capability_fallback_count: attempt.capability_fallback_count ?? 0,
     structured_attempt_count: attempt.structured_attempt_count,
     structured_validation_attempts: attempt.structured_validation_attempts,
   };
