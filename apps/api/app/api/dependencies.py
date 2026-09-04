@@ -22,7 +22,10 @@ from app.services.provider_credentials import (
     ProviderConnectionService,
     ProviderCredentialRegistry,
 )
-from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.provider_model_catalog import (
+    OpenRouterCatalogAdapter,
+    ProviderModelCatalogService,
+)
 from app.services.video_editing import VideoEditingService
 from app.services.workflow_graph import WorkflowGraphService
 from app.services.workflow_input_resolver import WorkflowNodeInputResolver
@@ -177,7 +180,16 @@ def get_provider_model_catalog_service(
 
     database = create_v2_database(settings.media_data_dir)
     repository = ProviderModelRepository(database)
-    service = ProviderModelCatalogService(repository)
+    openrouter_adapter = (
+        OpenRouterCatalogAdapter(
+            api_key=settings.openrouter_api_key,
+            text_base_url=settings.openrouter_text_base_url,
+            image_base_url=settings.openrouter_image_base_url,
+        )
+        if settings.openrouter_api_key
+        else None
+    )
+    service = ProviderModelCatalogService(repository, openrouter_adapter=openrouter_adapter)
     try:
         yield service
     finally:

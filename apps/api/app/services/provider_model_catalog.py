@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.persistence.provider_model_repository import (
 )
 from app.schemas.provider_models import ProviderAdapterProfileV1
 from app.services.openrouter_policy import build_openrouter_routing_policy
+from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
 
 
 class ProviderCatalogAdapter(Protocol):
@@ -867,6 +869,94 @@ class StaticProviderCatalogAdapter:
         )
 
 
+class OpenRouterCatalogAdapter:
+    """Confirm the two trusted OpenRouter slugs from bounded metadata reads."""
+
+    provider_id = "openrouter"
+    _APPROVED_BASE_URL = "https://openrouter.ai/api/v1"
+    _TEXT_MODEL_ID = "openai/gpt-5.6-sol"
+    _IMAGE_MODEL_ID = "openai/gpt-image-2"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        text_base_url: str = _APPROVED_BASE_URL,
+        image_base_url: str = _APPROVED_BASE_URL,
+        transport: ProviderHttpTransport | None = None,
+        timeout_seconds: float = 5.0,
+        max_response_bytes: int = 256 * 1024,
+    ) -> None:
+        normalized_key = api_key.strip()
+        if not normalized_key or any(char in normalized_key for char in ("\r", "\n", "\x00")):
+            raise ValueError("model_catalog_sync_failed")
+        self._api_key = normalized_key
+        self._text_base_url = self._approved_base_url(text_base_url)
+        self._image_base_url = self._approved_base_url(image_base_url)
+        self._transport = transport or UrllibProviderHttpTransport()
+        self._timeout_seconds = timeout_seconds
+        self._max_response_bytes = max_response_bytes
+
+    def discover_model_ids(self) -> tuple[str, ...]:
+        discovered: list[str] = []
+        if self._endpoint_has_model(
+            url=f"{self._text_base_url}/models",
+            model_id=self._TEXT_MODEL_ID,
+            output_modality="text",
+        ):
+            discovered.append(self._TEXT_MODEL_ID)
+        if self._endpoint_has_model(
+            url=f"{self._image_base_url}/models?output_modalities=image",
+            model_id=self._IMAGE_MODEL_ID,
+            output_modality="image",
+        ):
+            discovered.append(self._IMAGE_MODEL_ID)
+        return tuple(sorted(discovered))
+
+    @classmethod
+    def _approved_base_url(cls, value: str) -> str:
+        normalized = value.rstrip("/")
+        if normalized != cls._APPROVED_BASE_URL:
+            raise ValueError("model_catalog_sync_failed")
+        return normalized
+
+    def _endpoint_has_model(
+        self,
+        *,
+        url: str,
+        model_id: str,
+        output_modality: str,
+    ) -> bool:
+        try:
+            response = self._transport.get(
+                url=url,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                timeout_seconds=self._timeout_seconds,
+                max_response_bytes=self._max_response_bytes,
+            )
+        except (OSError, TimeoutError) as exc:
+            raise ValueError("model_catalog_sync_failed") from exc
+        if not 200 <= response.status_code < 300:
+            raise ValueError("model_catalog_sync_failed")
+        try:
+            payload = json.loads(response.body)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("model_catalog_sync_failed") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise ValueError("model_catalog_sync_failed")
+        for item in payload["data"]:
+            if not isinstance(item, dict) or item.get("id") != model_id:
+                continue
+            architecture = item.get("architecture")
+            modalities = (
+                architecture.get("output_modalities") if isinstance(architecture, dict) else None
+            )
+            if not isinstance(modalities, list) or output_modality not in modalities:
+                raise ValueError("model_catalog_sync_failed")
+            return True
+        return False
+
+
 class ProviderModelCatalogService:
     """Own trusted model metadata, availability, query filtering, and defaults."""
 
@@ -875,6 +965,7 @@ class ProviderModelCatalogService:
         repository: ProviderModelRepository,
         *,
         adapters: tuple[ProviderCatalogAdapter, ...] | None = None,
+        openrouter_adapter: ProviderCatalogAdapter | None = None,
         capability_available: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._repository = repository
@@ -890,6 +981,10 @@ class ProviderModelCatalogService:
             )
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
+        if openrouter_adapter is not None:
+            if openrouter_adapter.provider_id != "openrouter":
+                raise ValueError("provider_not_supported")
+            self._adapters["openrouter"] = openrouter_adapter
         self._capability_available = capability_available or self._repository_capability_available
 
     def sync(self, provider_id: str, *, now: str) -> CatalogSyncResult:
