@@ -80,7 +80,10 @@ from app.services.agent_canvas_output_preparation import (
 from app.services.agent_canvas_result_publication_recovery import (
     AgentCanvasResultPublicationRecoveryService,
 )
-from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_resolved_inputs import (
+    AgentCanvasResolvedInputCompiler,
+    apply_provider_reference_limits,
+)
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_prompt_assertion_policy import (
@@ -752,7 +755,8 @@ class DynamicCanvasScheduler:
                 "context_digest": world_setting.context_digest,
             }
         runtime_omissions = tuple(
-            item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+            item.model_dump(mode="json", exclude_none=True)
+            for item in manifest.omitted_optional_inputs
         )
         stored_resolution = prompt_metadata.get("model_resolution")
         if isinstance(stored_resolution, dict):
@@ -766,6 +770,14 @@ class DynamicCanvasScheduler:
         if resolution is not None:
             model_id = resolution.provider_model_id
             provider_id = resolution.provider_id
+            if node.node_type in {"image", "video", "audio"}:
+                manifest = apply_provider_reference_limits(manifest, resolution)
+                inputs = self._input_compiler.materialize_inputs(manifest)
+                prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
+                runtime_omissions = tuple(
+                    item.model_dump(mode="json", exclude_none=True)
+                    for item in manifest.omitted_optional_inputs
+                )
         if node.node_type in {"image", "video", "audio"}:
             selected_node = (
                 node.model_copy(
@@ -1091,7 +1103,8 @@ class DynamicCanvasScheduler:
                         for item in manifest.media_inputs
                     ],
                     "omitted_optional_inputs": [
-                        item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+                        item.model_dump(mode="json", exclude_none=True)
+                        for item in manifest.omitted_optional_inputs
                     ],
                     "refresh": ["workflow_nodes", "runtime"],
                 },
@@ -1105,7 +1118,7 @@ class DynamicCanvasScheduler:
                     now=now,
                     omitted_optional_inputs=runtime_omissions,
                     event_type="provider_input_omitted",
-                    event_payload=omission.model_dump(mode="json"),
+                    event_payload=omission.model_dump(mode="json", exclude_none=True),
                 )
         if prepared.seedance_input_audit is not None:
             prompt_metadata["seedance_input_manifest"] = prepared.seedance_input_audit.model_dump(
@@ -2118,6 +2131,7 @@ def _frozen_unready_sources(
         binding.source_id
         for binding in snapshot.binding_snapshots
         if binding.source_kind == "node_output"
+        and binding.input_role == "text_context"
         and not _node_output_source_is_ready(
             source=nodes.get(binding.source_id),
             input_role=binding.input_role,
@@ -2153,6 +2167,7 @@ def _same_wave_dependency_sources(
         binding.source_id
         for binding in snapshot.binding_snapshots
         if binding.source_kind == "node_output"
+        and binding.input_role == "text_context"
         and (source_member := members_by_node.get(binding.source_id)) is not None
         and source_member.state in {"queued", "waiting", "running"}
     )
