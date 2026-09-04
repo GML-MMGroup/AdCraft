@@ -67,6 +67,10 @@ If sudo requests a password, ask the user to enter it in the same terminal and c
 
 The launch step is complete only when the launcher exits successfully and prints `部署成功` followed by a local URL.
 
+### Redeploy after a code update
+
+When the checkout already contains newer code from the user, run the same authoritative launcher for the current operating system again. Preserve `.env`, `runtime-data/`, databases, media, and Docker volumes. The launcher rebuilds changed images, reuses eligible Docker cache, recreates the service set, and waits for all three health checks. Existing healthy containers do not prove that they contain the updated code; complete the verification in the next section after every redeployment.
+
 ## 3. Verify the running system
 
 Run the platform status command even when the launcher reported success.

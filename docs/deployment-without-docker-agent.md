@@ -59,6 +59,10 @@ The launcher prints each stage and the progress produced by `uv sync` and `npm c
 
 The launch step is complete only when all eight stages finish and the launcher prints a local Web URL.
 
+### Redeploy after a code update
+
+When the checkout already contains newer code from the user, run the same native launcher again. It synchronizes the locked Python and Node dependencies, stops the three processes previously managed by the launcher, and starts Agent Runtime, API, and Web from the updated files. Preserve `.env` and `runtime-data/`; the launcher also retains the local database, generated media, and saved credentials. Existing processes do not update in place, so complete the verification in Section 4 after every redeployment.
+
 ## 3. Resolve port conflicts as one deployment
 
 The default native ports are API `8000`, internal Agent Runtime `8765`, and Web `5189`. The three ports must be distinct and available.
