@@ -188,8 +188,12 @@ class AgentCanvasResultPublicationRecoveryService:
                 state="running",
                 phase="publishing",
                 now=now,
+                expected_state="running",
+                expected_phase="publishing",
                 expected_lease_generation=lease.generation,
+                validate_expected_phase=True,
             ):
+                self._runtime.complete_lease(lease, now=now)
                 return self._defer(intent, "stale_execution_lease", now=now)
             self._committer.commit(
                 CanvasExecutionResultCommitCommandV2(
