@@ -1282,30 +1282,8 @@ class AgentCanvasMaterializationCommitRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class AgentCanvasVariationDraftRow(Base):
-    __tablename__ = "agent_canvas_variation_drafts"
-    __table_args__ = (
-        CheckConstraint(
-            "variation_revision > 0",
-            name="ck_agent_canvas_variation_revision",
-        ),
-    )
-
-    source_node_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_nodes.node_id"), primary_key=True
-    )
-    workflow_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
-    )
-    source_node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    title: Mapped[str] = mapped_column(Text, nullable=False)
-    generation_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    model_selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="default")
-    model_ref: Mapped[str | None] = mapped_column(Text)
-    parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
-    variation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+class AgentCanvasVariationDraftRow:
+    """Retired name retained temporarily while command callers are removed."""
 
 
 class AgentCanvasConversationRow(Base):
