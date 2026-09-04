@@ -546,6 +546,53 @@ class AgentCanvasAssetService:
             mime_type=mime_type,
         )
 
+    def recover_prepared_result(
+        self,
+        planned: PreparedNodeResultV2,
+    ) -> PreparedNodeResultV2:
+        """Revalidate one content-addressed object without publishing Asset metadata."""
+
+        prepared_object = planned.prepared_object
+        if prepared_object is None:
+            raise _publication_object_error()
+        path = self._storage.resolve_local_path(prepared_object.storage_key)
+        if (
+            not path.is_file()
+            or path.is_symlink()
+            or path.stat().st_size != prepared_object.size_bytes
+            or not self._storage.content_exists(
+                prepared_object.storage_key,
+                prepared_object.sha256,
+            )
+        ):
+            raise _publication_object_error()
+        effective_parameters = planned.asset_metadata.get("effective_parameters")
+        require_native_audio = (
+            prepared_object.media_type == "video"
+            and isinstance(effective_parameters, dict)
+            and effective_parameters.get("generate_audio") is True
+        )
+        facts = self._probe_generated_media(
+            path,
+            mime_type=prepared_object.mime_type,
+            checksum=prepared_object.sha256,
+            size_bytes=prepared_object.size_bytes,
+            require_native_audio=require_native_audio,
+        )
+        recovered = planned.model_copy(
+            update={
+                "prepared_object": prepared_object.model_copy(
+                    update={"media_facts": facts.model_dump(mode="json")}
+                ),
+                "asset_metadata": {
+                    **planned.asset_metadata,
+                    "published_media_facts": facts.model_dump(mode="json"),
+                    "measured_media_facts": facts.model_dump(mode="json"),
+                },
+            }
+        )
+        return PreparedNodeResultV2.model_validate(recovered.model_dump(mode="python"))
+
     def list_project_assets(self, workflow_id: str) -> tuple[ProjectAssetSummaryV2, ...]:
         return tuple(
             self._asset_summary(version)
@@ -1105,6 +1152,15 @@ def _download_filename(version: AssetVersionMetadataV2) -> str:
 def _stable_identifier(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256("\0".join(parts).encode()).hexdigest()[:24]
     return f"{prefix}_{digest}"
+
+
+def _publication_object_error() -> V2PersistenceError:
+    return V2PersistenceError(
+        "node_result_publication_object_invalid",
+        "Prepared media object could not be verified.",
+        stage="agent_canvas_asset_service",
+        details={"retryable": False},
+    )
 
 
 def _library_category(value: str) -> AssetLibraryCategoryV2:
