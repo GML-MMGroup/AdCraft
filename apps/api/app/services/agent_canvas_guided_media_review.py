@@ -661,7 +661,7 @@ class GuidedMediaPlanActionService:
         if request.instruction is None:
             raise _error(
                 "guided_media_replacement_instruction_required",
-                "A sibling replacement requires an explicit instruction.",
+                "A media replacement requires an explicit instruction.",
             )
         return self._replace(
             interaction,
