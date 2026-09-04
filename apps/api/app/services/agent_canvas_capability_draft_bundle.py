@@ -356,7 +356,7 @@ def character_turnaround_prompt(
     subject_identity: str,
     design_summary: str,
 ) -> str:
-    """Compile the canonical companion prompt for a Character Main variation."""
+    """Compile the canonical companion prompt for Character Main regeneration."""
 
     return f"{_TURNAROUND_PROMPT}\n\nIdentity: {subject_identity}. Design: {design_summary}."
 

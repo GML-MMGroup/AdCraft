@@ -798,20 +798,18 @@ class AgentCreateBindingOperationV2(_AgentCommandOperationV2):
         "video_reference",
         "audio_reference",
     ]
-    required: bool = True
     display_order: int = Field(default=0, ge=0)
 
 
 class AgentPatchBindingOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["patch_binding"] = "patch_binding"
     binding_id: str = Field(min_length=1, max_length=160)
-    required: bool | None = None
     enabled: bool | None = None
     display_order: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_changes(self) -> "AgentPatchBindingOperationV2":
-        if self.required is None and self.enabled is None and self.display_order is None:
+        if self.enabled is None and self.display_order is None:
             raise ValueError("Binding patch requires at least one change.")
         return self
 
@@ -826,22 +824,6 @@ class AgentDeleteNodeOperationV2(_AgentCommandOperationV2):
     node: AgentNodeRefV2
 
 
-class AgentMaterializeSiblingDraftOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["materialize_sibling_draft"] = "materialize_sibling_draft"
-    source_node: AgentNodeRefV2
-    title: str = Field(min_length=1, max_length=256)
-    generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_selection_mode: ModelSelectionModeV1 = "default"
-    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
-    parameters: dict[str, Any] = Field(default_factory=dict)
-    placement_hint: AgentPlacementHintV2
-
-    @model_validator(mode="after")
-    def validate_model_selection(self) -> "AgentMaterializeSiblingDraftOperationV2":
-        _validate_model_selection(self.model_selection_mode, self.model_ref)
-        return self
-
-
 class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["request_node_run"] = "request_node_run"
     node: AgentNodeRefV2
@@ -854,7 +836,6 @@ AgentCommandOperationDraftV2 = Annotated[
     | AgentPatchBindingOperationV2
     | AgentDeleteBindingOperationV2
     | AgentDeleteNodeOperationV2
-    | AgentMaterializeSiblingDraftOperationV2
     | AgentRequestNodeRunOperationV2,
     Field(discriminator="operation_type"),
 ]
@@ -862,7 +843,6 @@ AgentCommandOperationDraftV2 = Annotated[
 
 _NODE_RESULT_OPERATIONS = {
     "create_draft_node",
-    "materialize_sibling_draft",
 }
 
 

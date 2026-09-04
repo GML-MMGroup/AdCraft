@@ -106,12 +106,6 @@ class NodeRunBindingSnapshotV2(_RuntimeModel):
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
-    @property
-    def required(self) -> bool:
-        """Run Bindings are uniformly use-if-available."""
-
-        return False
-
 
 class NodeRunIntentSnapshotV2(_RuntimeModel):
     snapshot_id: str = Field(min_length=1, max_length=160)

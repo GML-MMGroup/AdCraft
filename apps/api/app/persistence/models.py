@@ -1282,10 +1282,6 @@ class AgentCanvasMaterializationCommitRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class AgentCanvasVariationDraftRow:
-    """Retired name retained temporarily while command callers are removed."""
-
-
 class AgentCanvasConversationRow(Base):
     __tablename__ = "agent_canvas_conversations"
 

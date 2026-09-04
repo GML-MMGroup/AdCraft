@@ -14,7 +14,6 @@ from pydantic import (
     model_validator,
 )
 
-from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
@@ -140,49 +139,6 @@ class ProjectCreateRequestV2(_AgentCanvasModel):
     video_skill_version: str | None = None
 
 
-class CanvasVariationDraftV2(_AgentCanvasModel):
-    source_node_id: str = Field(min_length=1)
-    source_node_revision: int = Field(ge=1)
-    title: str = Field(min_length=1, max_length=256)
-    generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_selection_mode: ModelSelectionModeV1 = "default"
-    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
-    parameters: dict[str, JsonValue] = Field(default_factory=dict)
-    variation_revision: int = Field(ge=1)
-    created_at: datetime
-    updated_at: datetime
-
-    @model_validator(mode="after")
-    def validate_model_selection(self) -> "CanvasVariationDraftV2":
-        _validate_model_selection(self.model_selection_mode, self.model_ref)
-        return self
-
-
-class CanvasVariationDraftUpsertV2(_AgentCanvasModel):
-    title: str = Field(min_length=1, max_length=256)
-    generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_selection_mode: ModelSelectionModeV1 = "default"
-    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
-    parameters: dict[str, JsonValue] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def validate_model_selection(self) -> "CanvasVariationDraftUpsertV2":
-        _validate_model_selection(self.model_selection_mode, self.model_ref)
-        return self
-
-
-class CanvasVariationDraftResponseV2(_AgentCanvasModel):
-    workflow_id: str = Field(min_length=1)
-    workflow_revision: int = Field(ge=1)
-    node_id: str = Field(min_length=1)
-    variation_draft: CanvasVariationDraftV2
-
-
-class CanvasVariationMaterializeRequestV2(_AgentCanvasModel):
-    action: Literal["create_draft", "generate"]
-    position: CanvasPositionV2 | None = None
-
-
 class CanvasLayoutPositionV2(CanvasPositionV2):
     node_id: str = Field(min_length=1)
 
@@ -282,20 +238,6 @@ class CanvasNodeV2(_AgentCanvasModel):
         return self
 
 
-class CanvasVariationMaterializeResponseV2(_AgentCanvasModel):
-    workflow_id: str = Field(min_length=1)
-    workflow_revision: int = Field(ge=1)
-    source_node_id: str = Field(min_length=1)
-    sibling_node: CanvasNodeV2
-    copied_binding_ids: tuple[str, ...] = ()
-    run: dict[str, JsonValue] | None = None
-    run_error: CanvasNodeErrorV2 | None = None
-    placement_hint: AgentPlacementHintV2
-    created_node_ids: tuple[str, ...] = ()
-    created_binding_ids: tuple[str, ...] = ()
-    placement_hints: tuple[AgentPlacementHintV2, ...] = ()
-
-
 class CanvasBindingSourceNodeV2(_AgentCanvasModel):
     kind: Literal["node_output"] = "node_output"
     source_node_id: str = Field(min_length=1)
@@ -330,12 +272,6 @@ class CanvasBindingCreateRequestV2(_AgentCanvasModel):
     label: str | None = Field(default=None, max_length=160)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
-    @property
-    def required(self) -> bool:
-        """Bindings are uniformly use-if-available after the V2 cutover."""
-
-        return False
-
 
 class CanvasBindingV2(_AgentCanvasModel):
     binding_id: str = Field(min_length=1)
@@ -349,12 +285,6 @@ class CanvasBindingV2(_AgentCanvasModel):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
-
-    @property
-    def required(self) -> bool:
-        """Bindings are uniformly use-if-available after the V2 cutover."""
-
-        return False
 
     @property
     def binding_kind(self) -> CanvasBindingInputRoleV2:
@@ -414,7 +344,6 @@ class CanvasConnectionDecisionV2(_AgentCanvasModel):
 
 class CanvasConnectedNodeBindingRequestV2(_AgentCanvasModel):
     input_role: CanvasBindingInputRoleV2
-    required: bool = False
     order: int | None = Field(default=None, ge=0)
 
 
@@ -574,10 +503,6 @@ class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     input_role: Literal["text_context"] = "text_context"
     display_order: int = Field(default=0, ge=0)
 
-    @property
-    def required(self) -> bool:
-        return False
-
 
 class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     snapshot_type: Literal["media"] = "media"
@@ -597,10 +522,6 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     input_role: CanvasBindingInputRoleV2
     display_order: int = Field(default=0, ge=0)
 
-    @property
-    def required(self) -> bool:
-        return False
-
     @model_validator(mode="after")
     def validate_source_identity(self) -> "ResolvedMediaInputSnapshotV2":
         if self.source_kind == "node_output":
@@ -617,10 +538,6 @@ class ResolvedTextBindingInputV2(_AgentCanvasModel):
     source_node_revision: int = Field(ge=1)
     input_role: Literal["text_context"] = "text_context"
     display_order: int = Field(default=0, ge=0)
-
-    @property
-    def required(self) -> bool:
-        return False
 
     snapshot_id: str = Field(min_length=1)
     document_kind: Literal["text", "script"]
@@ -645,10 +562,6 @@ class ResolvedMediaBindingInputV2(_AgentCanvasModel):
     asset_version_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
     checksum: str = Field(min_length=1)
-
-    @property
-    def required(self) -> bool:
-        return False
 
 
 class OmittedOptionalInputV2(_AgentCanvasModel):
