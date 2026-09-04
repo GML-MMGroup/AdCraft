@@ -795,6 +795,7 @@ _TRUSTED_MANIFESTS = (
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "fake",
+            "supports_reference_only_generation": True,
             "supports_provider_idempotency_token": True,
             "supports_remote_task_lookup": True,
         },

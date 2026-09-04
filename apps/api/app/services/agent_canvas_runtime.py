@@ -110,6 +110,7 @@ StageTraceWriter = Callable[
 ]
 Clock = Callable[[], datetime]
 RunEligibilityValidator = Callable[[CanvasNodeV2], None]
+BlankPromptEligibilityValidator = Callable[[CanvasNodeV2], None]
 
 
 class AgentCanvasRunService:
@@ -123,6 +124,7 @@ class AgentCanvasRunService:
         *,
         run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
         eligibility_validator: RunEligibilityValidator | None = None,
+        blank_prompt_eligibility_validator: BlankPromptEligibilityValidator | None = None,
         clock: Clock = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
@@ -130,6 +132,7 @@ class AgentCanvasRunService:
         self._events = events
         self._run_snapshots = run_snapshots
         self._eligibility_validator = eligibility_validator
+        self._blank_prompt_eligibility_validator = blank_prompt_eligibility_validator
         self._clock = clock
 
     def start_or_extend(
@@ -156,6 +159,20 @@ class AgentCanvasRunService:
         skipped: list[CanvasRunSkippedNodeV2] = []
         for node in requested:
             reason = _skip_reason(node, request)
+            if reason == "node_prompt_empty" and self._blank_prompt_eligibility_validator:
+                try:
+                    self._blank_prompt_eligibility_validator(node)
+                except V2PersistenceError as error:
+                    if request.scope == "selected_nodes":
+                        raise
+                    skipped.append(
+                        CanvasRunSkippedNodeV2(
+                            node_id=node.node_id,
+                            reason=error.code,
+                        )
+                    )
+                    continue
+                reason = None
             if reason is None:
                 try:
                     if self._eligibility_validator is not None:

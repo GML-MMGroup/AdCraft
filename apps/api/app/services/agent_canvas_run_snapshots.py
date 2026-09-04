@@ -54,8 +54,11 @@ class AgentCanvasRunIntentSnapshotService:
         intents: list[CanvasExecutionMemberIntentV2] = []
         for member_order, node in enumerate(nodes):
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
-            mode = classify_canvas_execution_mode(frozen_node)
             binding_snapshots = _binding_snapshots(workflow, frozen_node, workflow_nodes)
+            mode = classify_canvas_execution_mode(
+                frozen_node,
+                has_usable_reference_only_input=_has_available_media_input(binding_snapshots),
+            )
             source_asset_digests: dict[str, str] = {}
             for binding in binding_snapshots:
                 if binding.source_kind != "image_asset":
@@ -190,7 +193,10 @@ class AgentCanvasRunIntentSnapshotService:
                 for binding in bindings
             )
             structured_content_digest = _digest(frozen_node.structured_content)
-            mode = classify_canvas_execution_mode(frozen_node)
+            mode = classify_canvas_execution_mode(
+                frozen_node,
+                has_usable_reference_only_input=_has_available_media_input(binding_snapshots),
+            )
             identity = {
                 "workflow_id": frozen_node.workflow_id,
                 "execution_id": execution_id,
@@ -371,6 +377,14 @@ def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     ).hexdigest()
+
+
+def _has_available_media_input(bindings: tuple[NodeRunBindingSnapshotV2, ...]) -> bool:
+    return any(
+        binding.input_role in {"image_reference", "video_reference", "audio_reference"}
+        and binding.source_asset_version_id is not None
+        for binding in bindings
+    )
 
 
 def _binding_snapshots(

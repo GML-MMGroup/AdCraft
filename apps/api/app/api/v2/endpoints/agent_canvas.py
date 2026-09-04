@@ -420,6 +420,28 @@ from app.services.v2_provider_executor import V2ProviderExecutor
 router = APIRouter(tags=["v2-agent-canvas"])
 
 
+def _validate_reference_only_run(
+    node: CanvasNodeV2,
+    *,
+    bindings: AgentCanvasBindingService,
+    capabilities: ProviderCapabilityService,
+) -> None:
+    inputs = bindings.resolve_available_media_inputs(node.workflow_id, node.node_id)
+    if not inputs:
+        raise V2PersistenceError(
+            "node_prompt_empty",
+            "A generation prompt or supported reference-only input is required.",
+            stage="agent_canvas_run_admission",
+        )
+    capability = capabilities.resolve(node, inputs)
+    if not capability.supports_reference_only_generation:
+        raise V2PersistenceError(
+            "node_prompt_empty",
+            "The selected model requires a generation prompt.",
+            stage="agent_canvas_run_admission",
+        )
+
+
 def _resolve_storyboard_video_audio_constraints(
     requirement_service: object,
     conversation_repository: object,
@@ -1190,6 +1212,11 @@ def create_agent_canvas_runtime(
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+        blank_prompt_eligibility_validator=lambda node: _validate_reference_only_run(
+            node,
+            bindings=binding_service,
+            capabilities=provider_capabilities,
+        ),
     )
     automatic_run_repository = AgentCanvasAutomaticRunRepository(
         database,

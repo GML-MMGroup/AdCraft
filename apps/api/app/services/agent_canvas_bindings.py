@@ -467,6 +467,16 @@ class AgentCanvasBindingService:
     ) -> tuple[ResolvedInputSnapshotV2, ...]:
         return self.resolve_run_input_resolution(workflow_id, target_node_id).inputs
 
+    def resolve_available_media_inputs(
+        self,
+        workflow_id: str,
+        target_node_id: str,
+    ) -> tuple[ResolvedMediaInputSnapshotV2, ...]:
+        """Resolve only currently available media without creating prompt state."""
+
+        resolved, _omissions = self._resolve_media_inputs(workflow_id, target_node_id)
+        return resolved
+
     def resolve_run_input_resolution(
         self,
         workflow_id: str,

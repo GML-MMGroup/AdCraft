@@ -18,14 +18,23 @@ class CanvasExecutionModeDecisionV2:
     semantic_extraction: CanvasSemanticExtractionModeV2
 
 
-def classify_canvas_execution_mode(node: CanvasNodeV2) -> CanvasExecutionModeDecisionV2:
+def classify_canvas_execution_mode(
+    node: CanvasNodeV2,
+    *,
+    has_usable_reference_only_input: bool = False,
+) -> CanvasExecutionModeDecisionV2:
     """Select direct execution only from persisted manual authoring evidence."""
 
     direct = (
-        node.node_type in {"image", "video"}
+        node.node_type in {"image", "video", "audio"}
         and node.execution_mode == "generative"
-        and bool((node.generation_prompt or "").strip())
-        and node.prompt_preparation.status == "ready"
+        and (
+            (
+                bool((node.generation_prompt or "").strip())
+                and node.prompt_preparation.status == "ready"
+            )
+            or has_usable_reference_only_input
+        )
         and not has_managed_prompt_preparation(node)
     )
     if direct:

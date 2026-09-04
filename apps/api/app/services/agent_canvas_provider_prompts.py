@@ -33,6 +33,7 @@ from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_execution_mode import has_managed_prompt_preparation
 from app.services.agent_canvas_prompt_assertion_policy import (
     PromptAssertionEvidenceValidator,
     PromptAssertionPolicyRegistry,
@@ -145,7 +146,12 @@ class AgentCanvasProviderPromptCompiler:
         creative_direction_projection: Mapping[str, object] | None = None,
         world_setting: WorldSettingContextEnvelopeV2 | None = None,
     ) -> CompiledProviderPromptV2:
-        if not str(node.generation_prompt or "").strip():
+        reference_only = (
+            node.semantic_role in {"general_image", "general_video", "general_audio"}
+            and not has_managed_prompt_preparation(node)
+            and bool(reference_bundle.references)
+        )
+        if not str(node.generation_prompt or "").strip() and not reference_only:
             raise _error(
                 "node_prompt_empty",
                 "A media Node requires a saved generation prompt before provider preparation.",

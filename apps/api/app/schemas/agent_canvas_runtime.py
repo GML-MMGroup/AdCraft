@@ -388,6 +388,7 @@ class CanvasProviderModelCapabilityV2(_RuntimeModel):
     available: bool
     unavailable_reason: str | None = None
     supports_native_audio: bool = False
+    supports_reference_only_generation: bool = False
     capability_revision: int = Field(default=1, ge=1)
 
 

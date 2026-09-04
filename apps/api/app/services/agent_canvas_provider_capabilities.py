@@ -218,6 +218,9 @@ def _capability_from_record(record: ProviderModelRecord) -> CanvasProviderModelC
         available=record.availability == "available",
         unavailable_reason=record.unavailable_reason,
         supports_native_audio=bool(metadata.get("supports_native_audio", False)),
+        supports_reference_only_generation=bool(
+            metadata.get("supports_reference_only_generation", False)
+        ),
         capability_revision=record.catalog_revision,
     )
 
