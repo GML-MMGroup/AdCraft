@@ -355,6 +355,81 @@ class ConversationQueryV1(_CapabilityModel):
         return self
 
 
+class FreeformReplyOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["freeform_reply"]
+    assistant_message: str = Field(min_length=1, max_length=2_000)
+
+
+class AgentIdentityOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["agent_identity"]
+
+
+class AgentCapabilitiesOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["agent_capabilities"]
+
+
+class WorkflowStatusOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["workflow_status"]
+
+
+class DocumentExplanationOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["document_explanation"]
+    document_kind: Literal["anchor_registry", "storyboard_production_plan"] | None = None
+    requested_document_kinds: tuple[
+        Literal["anchor_registry", "storyboard_production_plan"], ...
+    ] = Field(default=(), max_length=2)
+    sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    anchor_aliases: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "DocumentExplanationOrdinaryIntentV1":
+        ConversationQueryV1(
+            query_kind="document_explanation",
+            document_kind=self.document_kind,
+            requested_document_kinds=self.requested_document_kinds,
+            sequence_id=self.sequence_id,
+            anchor_aliases=self.anchor_aliases,
+        )
+        return self
+
+    def to_legacy_query(self) -> ConversationQueryV1:
+        return ConversationQueryV1(
+            query_kind="document_explanation",
+            document_kind=self.document_kind,
+            requested_document_kinds=self.requested_document_kinds,
+            sequence_id=self.sequence_id,
+            anchor_aliases=self.anchor_aliases,
+        )
+
+
+_OrdinaryConversationIntentVariantV1 = Annotated[
+    FreeformReplyOrdinaryIntentV1
+    | AgentIdentityOrdinaryIntentV1
+    | AgentCapabilitiesOrdinaryIntentV1
+    | WorkflowStatusOrdinaryIntentV1
+    | DocumentExplanationOrdinaryIntentV1,
+    Field(discriminator="intent_kind"),
+]
+
+
+class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV1]):
+    """One mutually exclusive ordinary-conversation route."""
+
+    @property
+    def intent_kind(self) -> Literal[
+        "freeform_reply",
+        "agent_identity",
+        "agent_capabilities",
+        "workflow_status",
+        "document_explanation",
+    ]:
+        return self.root.intent_kind
+
+    @property
+    def sequence_id(self) -> str | None:
+        return getattr(self.root, "sequence_id", None)
+
+
 class CompactTurnIntentDecisionV3(_CapabilityModel):
     mode: Literal[
         "ordinary_conversation",
@@ -375,6 +450,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
     requested_capability: CapabilityIdV1 | None = None
     explicit_elements: CompactExplicitElementsV3 = Field(default_factory=CompactExplicitElementsV3)
     assistant_message: str | None = Field(default=None, max_length=2_000)
+    ordinary_intent: OrdinaryConversationIntentV1 | None = None
     requirement_patch: CompactRequirementPatchV3 | None = None
     response_locale: BCP47Tag | None = Field(
         default=None,
@@ -384,16 +460,18 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
             "a language, return that language rather than inheriting und."
         ),
     )
-    conversation_query: ConversationQueryV1 | None = None
-
     @model_validator(mode="after")
     def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
         if self.mode != "ordinary_conversation":
-            if self.conversation_query is not None:
-                raise ValueError("conversation_query is valid only for ordinary_conversation.")
+            if self.ordinary_intent is not None:
+                raise ValueError("ordinary_intent is valid only for ordinary_conversation.")
             if self.assistant_message is None or not self.assistant_message.strip():
                 raise ValueError("authoring intent requires a non-empty assistant_message.")
             return self
+        if self.ordinary_intent is None:
+            raise ValueError("ordinary_conversation requires exactly one ordinary_intent.")
+        if self.assistant_message is not None:
+            raise ValueError("ordinary assistant_message belongs only inside freeform_reply.")
         has_explicit_elements = bool(self.explicit_elements.model_dump(exclude_none=True))
         has_requirement_patch = self.requirement_patch is not None and bool(
             self.requirement_patch.controls_to_set.model_dump(exclude_none=True)
@@ -416,17 +494,24 @@ class TurnIntentDecisionV2(_CapabilityModel):
     requested_capability: CapabilityIdV1 | None = None
     explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
     assistant_message: str | None = Field(default=None, max_length=4_000)
+    ordinary_intent: OrdinaryConversationIntentV1 | None = None
     requirement_patch: RequirementPatchV1 | None = None
     response_locale: BCP47Tag = "und"
-    conversation_query: ConversationQueryV1 | None = None
-
     @model_validator(mode="after")
     def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV2":
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
         if len(element_kinds) != len(set(element_kinds)):
             raise ValueError("Explicit element decisions must use unique element kinds.")
-        if self.mode != "ordinary_conversation" and self.conversation_query is not None:
-            raise ValueError("conversation_query is valid only for ordinary_conversation.")
+        if self.mode != "ordinary_conversation":
+            if self.ordinary_intent is not None:
+                raise ValueError("ordinary_intent is valid only for ordinary_conversation.")
+            return self
+        if self.ordinary_intent is None:
+            raise ValueError("ordinary_conversation requires exactly one ordinary_intent.")
+        if self.assistant_message is not None:
+            raise ValueError("ordinary assistant_message belongs only inside freeform_reply.")
+        if self.requested_capability or self.explicit_elements or self.requirement_patch is not None:
+            raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
         return self
 
 
@@ -491,9 +576,9 @@ def expand_compact_turn_intent(
         requested_capability=compact.requested_capability,
         explicit_elements=explicit_elements,
         assistant_message=compact.assistant_message,
+        ordinary_intent=compact.ordinary_intent,
         requirement_patch=requirement_patch,
         response_locale=compact.response_locale or current_response_locale or "und",
-        conversation_query=compact.conversation_query,
     )
 
 
