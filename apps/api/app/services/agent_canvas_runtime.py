@@ -333,6 +333,19 @@ class DynamicCanvasScheduler:
         execution = self._runtime.get_execution(execution_id)
         if execution.status not in {"queued", "running", "waiting"}:
             return
+        if self._run_snapshots is not None:
+            missing_snapshot_node_ids = tuple(
+                member.node_id
+                for member in self._runtime.list_members(execution_id)
+                if member.state in {"queued", "waiting"}
+                and member.run_intent_snapshot is None
+            )
+            if missing_snapshot_node_ids:
+                self._run_snapshots.freeze_members(
+                    execution_id,
+                    now=self._clock(),
+                    node_ids=missing_snapshot_node_ids,
+                )
         if self._publication_recovery is not None:
             self._publication_recovery.recover_execution(execution_id)
             execution = self._runtime.get_execution(execution_id)
