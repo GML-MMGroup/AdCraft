@@ -730,6 +730,7 @@ class DynamicCanvasScheduler:
         world_setting = (
             manifest.world_setting_inputs[0].context if manifest.world_setting_inputs else None
         )
+        prompt_authority_node = node
         model_id = None
         provider_id = None
         resolution = None
@@ -942,7 +943,7 @@ class DynamicCanvasScheduler:
                 provider_id = capability.provider
             if self._media_context_preparer is not None:
                 compiled_prompt, reference_bundle = self._media_context_preparer(
-                    node,
+                    prompt_authority_node,
                     world_setting,
                     inputs,
                     manifest.omitted_optional_inputs,
