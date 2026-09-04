@@ -587,14 +587,6 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
-        mode = (
-            classify_canvas_execution_mode(node)
-            if member.run_intent_snapshot is None
-            else CanvasExecutionModeDecisionV2(
-                execution_mode=member.run_intent_snapshot.execution_mode,
-                semantic_extraction=member.run_intent_snapshot.semantic_extraction,
-            )
-        )
         managed_prompt = has_managed_prompt_preparation(node)
         if node.prompt_preparation.status == "failed":
             preparation_error = _prompt_preparation_failure(node)
@@ -667,6 +659,17 @@ class DynamicCanvasScheduler:
                     "prompt_context_snapshot_id": current_after_inputs.prompt_context_snapshot_id
                 }
             )
+        mode = (
+            classify_canvas_execution_mode(
+                node,
+                has_usable_reference_only_input=bool(manifest.media_inputs),
+            )
+            if member.run_intent_snapshot is None
+            else CanvasExecutionModeDecisionV2(
+                execution_mode=member.run_intent_snapshot.execution_mode,
+                semantic_extraction=member.run_intent_snapshot.semantic_extraction,
+            )
+        )
         self._assert_current_dependency_fence(
             workflow_id,
             execution_id,
@@ -677,6 +680,8 @@ class DynamicCanvasScheduler:
                 inputs=(),
                 input_manifest=manifest,
                 authoring_revision_observed=observed_revision,
+                execution_mode=mode.execution_mode,
+                semantic_extraction=mode.semantic_extraction,
             ),
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
@@ -750,6 +755,16 @@ class DynamicCanvasScheduler:
                 else node
             )
             capability = self._capabilities.resolve(selected_node, inputs)
+            if not (node.generation_prompt or "").strip() and (
+                mode.execution_mode != "manual_prompt_direct"
+                or not capability.supports_reference_only_generation
+                or not manifest.media_inputs
+            ):
+                raise V2PersistenceError(
+                    "node_prompt_empty",
+                    "The selected model requires a generation prompt.",
+                    stage="agent_canvas_scheduler",
+                )
             if (
                 node.node_type == "video"
                 and mode.execution_mode == "agent_assisted"
@@ -1251,9 +1266,13 @@ class DynamicCanvasScheduler:
         )
         if current_node is None:
             reasons.append("target_node_missing")
-        elif current_node.prompt_preparation.status != "ready" and (
-            current_node.prompt_preparation.operation_id is not None
-            or current_node.generation_prompt is None
+        elif (
+            current_node.prompt_preparation.status != "ready"
+            and (
+                current_node.prompt_preparation.operation_id is not None
+                or current_node.generation_prompt is None
+            )
+            and not _reference_only_direct_input_is_frozen(context)
         ):
             # A run snapshot may legitimately carry an older target revision,
             # but it can never bypass the live prompt-preparation barrier.
@@ -2034,6 +2053,15 @@ def _frozen_unready_sources(
             source=nodes.get(binding.source_id),
             input_role=binding.input_role,
         )
+    )
+
+
+def _reference_only_direct_input_is_frozen(context: NodeExecutionContext) -> bool:
+    manifest = context.input_manifest
+    return bool(
+        context.execution_mode == "manual_prompt_direct"
+        and manifest is not None
+        and manifest.media_inputs
     )
 
 
