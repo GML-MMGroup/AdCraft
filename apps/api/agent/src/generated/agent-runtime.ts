@@ -210,6 +210,8 @@ export type StoryboardSegmentAuthoringContextV2 = { readonly "workflow_id": stri
 
 export type CanvasPositionV2 = { readonly "x": number; readonly "y": number };
 
+export type ActionableFailureV1 = { readonly "failure_class": "conflict" | "deterministic" | "external" | "stale" | "transient"; readonly "retry_scope": "execution" | "none" | "prompt_preparation" | "provider_delivery" | "turn"; readonly "user_action": "none" | "redesign" | "regenerate" | "retry" | "revise"; readonly "retryable"?: boolean };
+
 export type CanvasNodeErrorV2 = { readonly "code": string; readonly "message": string; readonly "retryable": boolean; readonly "actionable_failure"?: ActionableFailureV1 | null };
 
 export type CanvasModelSummaryV2 = { readonly "model_ref": string; readonly "provider_id": string; readonly "display_name": string; readonly "capability": "audio" | "image" | "text" | "video"; readonly "availability": "available" | "deprecated" | "unauthorized" | "unavailable" | "unsupported"; readonly "unavailable_reason"?: string | null; readonly "catalog_revision": number };
