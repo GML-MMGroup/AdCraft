@@ -735,24 +735,26 @@ class AgentCanvasBindingService:
             source_semantic_role: str | None = None
             source_structured_content: dict[str, object] = {}
             if binding.source_kind == "node_output":
-                source = self._workflows.get_node(workflow_id, binding.source_id)
+                source_asset_id = binding.source_asset_id
                 version_id = binding.source_asset_version_id
-                if source.output_asset_id is None or version_id is None:
+                if source_asset_id is None and version_id is None:
                     optional_omissions.append(
                         {
                             "binding_id": binding.binding_id,
-                            "source_node_id": source.node_id,
+                            "source_node_id": binding.source_id,
                             "reason": "omitted_no_output",
                         }
                     )
                     continue
+                if source_asset_id is None or version_id is None:
+                    raise _frozen_binding_error()
                 asset = self.resolve_asset_version(
-                    source.output_asset_id,
+                    source_asset_id,
                     version_id,
                 )
-                source_node_id = source.node_id
-                source_semantic_role = source.semantic_role
-                source_structured_content = source.structured_content
+                source_node_id = binding.source_id
+                source_semantic_role = binding.source_semantic_role
+                source_structured_content = binding.source_structured_content
             else:
                 asset = self._resolve_required_asset_version(
                     binding.source_id,

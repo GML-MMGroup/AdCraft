@@ -101,10 +101,12 @@ class NodeRunBindingSnapshotV2(_RuntimeModel):
     order: int = Field(ge=0)
     source_kind: Literal["node_output", "image_asset"]
     source_id: str = Field(min_length=1, max_length=160)
+    source_asset_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_asset_version_id: str | None = Field(default=None, max_length=160)
     source_node_revision: int | None = Field(default=None, ge=1)
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class NodeRunIntentSnapshotV2(_RuntimeModel):

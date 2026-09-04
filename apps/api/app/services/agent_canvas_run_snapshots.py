@@ -176,6 +176,18 @@ class AgentCanvasRunIntentSnapshotService:
                         if isinstance(binding.source, CanvasBindingSourceNodeV2)
                         else binding.source.source_asset_id
                     ),
+                    source_asset_id=(
+                        binding.source.source_asset_id
+                        if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                        else next(
+                            (
+                                source.output_asset_id
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            None,
+                        )
+                    ),
                     source_asset_version_id=(
                         binding.source.source_asset_version_id
                         if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
@@ -213,6 +225,18 @@ class AgentCanvasRunIntentSnapshotService:
                         else None
                     ),
                     binding_metadata=binding.metadata,
+                    source_structured_content=(
+                        next(
+                            (
+                                source.structured_content
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            {},
+                        )
+                        if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                        else {}
+                    ),
                 )
                 for binding in bindings
             )
@@ -437,6 +461,15 @@ def _binding_snapshots(
                 if isinstance(binding.source, CanvasBindingSourceNodeV2)
                 else binding.source.source_asset_id
             ),
+            source_asset_id=(
+                binding.source.source_asset_id
+                if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                else (
+                    workflow_nodes[binding.source.source_node_id].output_asset_id
+                    if binding.source.source_node_id in workflow_nodes
+                    else None
+                )
+            ),
             source_asset_version_id=(
                 binding.source.source_asset_version_id
                 if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
@@ -459,6 +492,12 @@ def _binding_snapshots(
                 else None
             ),
             binding_metadata=binding.metadata,
+            source_structured_content=(
+                workflow_nodes[binding.source.source_node_id].structured_content
+                if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                and binding.source.source_node_id in workflow_nodes
+                else {}
+            ),
         )
         for binding in bindings
         if isinstance(
