@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -12,6 +13,7 @@ from app.persistence.agent_canvas_result_publication_repository import (
 )
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitCommandV2,
     CanvasResultPublicationIntentV1,
@@ -71,9 +73,36 @@ class AgentCanvasResultPublicationRecoveryService:
             None,
         )
         if member is None:
-            return self._abandon(intent, "node_result_publication_source_invalid", now=now)
+            self._intents.abandon(
+                intent.intent_id,
+                error_code="node_result_publication_source_invalid",
+                now=now,
+            )
+            return "abandoned"
         if member.state in {"succeeded", "failed", "cancelled"}:
-            return self._abandon(intent, "node_result_publication_terminal_conflict", now=now)
+            matching_receipt = next(
+                (
+                    receipt
+                    for receipt in self._committer.list_receipts(intent.execution_id)
+                    if receipt.logical_result_key == intent.logical_result_key
+                    and receipt.payload_digest == intent.payload_digest
+                    and receipt.outcome == "succeeded"
+                ),
+                None,
+            )
+            if matching_receipt is not None:
+                self._intents.mark_committed(
+                    intent.intent_id,
+                    receipt_id=matching_receipt.commit_id,
+                    now=now,
+                )
+                return "committed"
+            self._intents.abandon(
+                intent.intent_id,
+                error_code="node_result_publication_terminal_conflict",
+                now=now,
+            )
+            return "abandoned"
         if (
             member.run_intent_snapshot_id != intent.source_snapshot_id
             or member.run_intent_snapshot_digest != intent.source_snapshot_digest
@@ -172,5 +201,38 @@ class AgentCanvasResultPublicationRecoveryService:
         *,
         now: datetime,
     ) -> RecoveryDisposition:
+        lease = self._runtime.claim_lease(
+            intent.execution_id,
+            intent.node_id,
+            owner_id=self._owner_id,
+            now=now,
+            ttl=timedelta(seconds=60),
+        )
+        if lease is None:
+            if now < intent.recovery_deadline and intent.attempt_count < 15:
+                return self._defer(intent, "execution_lease_unavailable", now=now)
+            return "deferred"
+        detail = CanvasNodeErrorV2(
+            code="node_result_publication_recovery_failed",
+            message="Prepared media could not be published safely.",
+            retryable=False,
+        )
+        failure_key = f"{intent.logical_result_key}:publication-recovery-failed"
+        failure_digest = hashlib.sha256(detail.model_dump_json().encode("utf-8")).hexdigest()
+        self._committer.commit(
+            CanvasExecutionResultCommitCommandV2(
+                workflow_id=intent.workflow_id,
+                execution_id=intent.execution_id,
+                member_id=intent.member_id,
+                node_id=intent.node_id,
+                lease_owner_id=lease.owner_id,
+                lease_generation=lease.generation,
+                logical_result_key=failure_key,
+                payload_digest=failure_digest,
+                outcome="failed",
+                error=detail,
+                committed_at=now,
+            )
+        )
         self._intents.abandon(intent.intent_id, error_code=error_code, now=now)
         return "abandoned"
