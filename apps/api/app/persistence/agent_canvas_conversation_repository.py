@@ -3525,6 +3525,16 @@ class AgentCanvasConversationRepository:
                 ).scalar_one_or_none()
                 if committed_storyboard is not None:
                     return _turn(turn)
+                actionable_failure = (
+                    operation_failure.actionable_failure
+                    if operation_failure is not None
+                    and operation_failure.actionable_failure is not None
+                    else ActionableFailureV1(
+                        failure_class=("transient" if retryable else "deterministic"),
+                        retry_scope=("turn" if retryable else "none"),
+                        user_action=("retry" if retryable else "none"),
+                    )
+                )
                 retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
                 is_typed_continuation_snapshot = retry_snapshot.get(
                     "schema_version"
@@ -3590,6 +3600,9 @@ class AgentCanvasConversationRepository:
                                         operation_failure.model_dump(mode="json")
                                         if operation_failure is not None
                                         else None
+                                    ),
+                                    "actionable_failure": actionable_failure.model_dump(
+                                        mode="json"
                                     ),
                                 }
                             )
@@ -3676,6 +3689,7 @@ class AgentCanvasConversationRepository:
                             "code": code,
                             "retryable": retryable,
                             "operation_stage": operation_stage,
+                            "actionable_failure": actionable_failure.model_dump(mode="json"),
                         },
                     ),
                 )
@@ -6298,9 +6312,7 @@ def _materialization_actionable_failure(row: RowMapping) -> ActionableFailureV1:
     return ActionableFailureV1(
         failure_class="deterministic",
         retry_scope="none",
-        user_action=(
-            "redesign" if str(row["proposal_kind"]) == "storyboard" else "revise"
-        ),
+        user_action=("redesign" if str(row["proposal_kind"]) == "storyboard" else "revise"),
     )
 
 
