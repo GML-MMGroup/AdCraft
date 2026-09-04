@@ -53,6 +53,15 @@ class AgentStructuredNormalizationResult:
     violations: tuple[StructuredViolation, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class LegacyTurnIntentDecisionNormalizationResult:
+    """One audit-preserving compatibility result for a historical intake decision."""
+
+    value: dict[str, Any]
+    replayable: bool
+    reason: str
+
+
 NormalizationRule = Callable[[dict[str, Any]], AgentStructuredNormalizationResult]
 _NORMALIZATION_RULES: Mapping[str, NormalizationRule]
 
@@ -69,6 +78,66 @@ class AgentStructuredNormalizationRegistry:
         if rule is None:
             return AgentStructuredNormalizationResult(value=deepcopy(value))
         return rule(value)
+
+
+def normalize_legacy_turn_intent_decision_v2(
+    value: dict[str, Any],
+) -> LegacyTurnIntentDecisionNormalizationResult:
+    """Normalize one unambiguous historical flat ordinary route without mutation."""
+
+    candidate = deepcopy(value)
+    if candidate.get("mode") != "ordinary_conversation" or "ordinary_intent" in candidate:
+        return LegacyTurnIntentDecisionNormalizationResult(
+            value=candidate,
+            replayable=True,
+            reason="current_or_non_ordinary_turn_intent",
+        )
+
+    assistant_message = candidate.get("assistant_message")
+    has_freeform = isinstance(assistant_message, str) and bool(assistant_message.strip())
+    query = candidate.get("conversation_query")
+    has_query = isinstance(query, dict)
+    if has_freeform == has_query:
+        return LegacyTurnIntentDecisionNormalizationResult(
+            value=candidate,
+            replayable=False,
+            reason=(
+                "ambiguous_legacy_ordinary_intent"
+                if has_freeform and has_query
+                else "missing_legacy_ordinary_intent"
+            ),
+        )
+
+    if has_freeform:
+        ordinary_intent: dict[str, Any] = {
+            "intent_kind": "freeform_reply",
+            "assistant_message": assistant_message,
+        }
+    else:
+        assert isinstance(query, dict)
+        query_kind = query.get("query_kind")
+        if query_kind == "workflow_status":
+            ordinary_intent = {"intent_kind": "workflow_status"}
+        elif query_kind == "document_explanation":
+            ordinary_intent = {
+                "intent_kind": "document_explanation",
+                **{key: item for key, item in query.items() if key != "query_kind"},
+            }
+        else:
+            return LegacyTurnIntentDecisionNormalizationResult(
+                value=candidate,
+                replayable=False,
+                reason="unknown_legacy_ordinary_intent",
+            )
+
+    candidate.pop("assistant_message", None)
+    candidate.pop("conversation_query", None)
+    candidate["ordinary_intent"] = ordinary_intent
+    return LegacyTurnIntentDecisionNormalizationResult(
+        value=candidate,
+        replayable=True,
+        reason="normalized_unambiguous_legacy_ordinary_intent",
+    )
 
 
 def _normalize_decision_bundle_capability_alias(
