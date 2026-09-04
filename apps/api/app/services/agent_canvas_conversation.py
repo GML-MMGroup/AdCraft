@@ -99,6 +99,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
     WorkflowConversationAgentContext,
@@ -2988,6 +2989,11 @@ def _agent_operation_failure(
         failure_stage="provider",
         elapsed_ms=max(0, int(elapsed_ms)) if isinstance(elapsed_ms, (int, float)) else 0,
         retryable=error.retryable,
+        actionable_failure=ActionableFailureV1(
+            failure_class=("transient" if error.retryable else "external"),
+            retry_scope=("turn" if error.retryable else "none"),
+            user_action=("retry" if error.retryable else "none"),
+        ),
         validation_paths=validation_paths,
         occurred_at=datetime.now(timezone.utc),
     )

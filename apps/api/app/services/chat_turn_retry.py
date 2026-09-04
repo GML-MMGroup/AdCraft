@@ -124,6 +124,12 @@ class ChatTurnRetryService:
         if source.workflow_id != workflow_id:
             raise _error("chat_turn_not_found", "Chat turn was not found.")
 
+        if self._conversations.has_committed_storyboard_materialization(turn_id):
+            raise _error(
+                "chat_turn_not_retryable",
+                "Committed Storyboard materialization cannot be retried as a Turn.",
+            )
+
         if source.status == "superseded":
             raise _error(
                 "chat_turn_not_retryable",
@@ -135,6 +141,15 @@ class ChatTurnRetryService:
             raise _error(
                 "chat_turn_not_retryable",
                 "This chat turn failure is not retryable.",
+            )
+        if (
+            source.actionable_failure is None
+            or source.actionable_failure.retry_scope != "turn"
+            or source.actionable_failure.user_action != "retry"
+        ):
+            raise _error(
+                "chat_turn_not_retryable",
+                "This failure must use its operation-specific recovery authority.",
             )
 
         workflow = self._workflows.get_workflow(workflow_id)

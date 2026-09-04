@@ -122,6 +122,7 @@ from app.schemas.agent_canvas_guided_interactions import (
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
@@ -162,6 +163,26 @@ class AgentCanvasConversationRepository:
     @property
     def events(self) -> EventRepository:
         return self._events
+
+    def has_committed_storyboard_materialization(self, turn_id: str) -> bool:
+        """Return whether a Turn is immutable accepted Storyboard authority."""
+
+        with self._database.engine.connect() as connection:
+            return (
+                connection.execute(
+                    select(AgentCanvasMaterializationCommitRow.materialization_id)
+                    .join(
+                        AgentCanvasConceptProposalRow,
+                        AgentCanvasConceptProposalRow.proposal_id
+                        == AgentCanvasMaterializationCommitRow.proposal_id,
+                    )
+                    .where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                        AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                    )
+                ).scalar_one_or_none()
+                is not None
+            )
 
     def get_guidance_session(self, workflow_id: str) -> GuidedSessionStateV2:
         session = self.get_guidance_session_or_none(workflow_id)
@@ -5761,6 +5782,24 @@ def _turn(
     *,
     continuation: ContinuationDeliveryV2 | None = None,
 ) -> ChatTurnV2:
+    operation_failure = (
+        AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
+        if row["operation_failure_json"]
+        else None
+    )
+    actionable_failure = (
+        operation_failure.actionable_failure
+        if operation_failure is not None and operation_failure.actionable_failure is not None
+        else (
+            ActionableFailureV1(
+                failure_class=("transient" if bool(row["retryable"]) else "deterministic"),
+                retry_scope=("turn" if bool(row["retryable"]) else "none"),
+                user_action=("retry" if bool(row["retryable"]) else "none"),
+            )
+            if str(row["status"]) == "failed"
+            else None
+        )
+    )
     return ChatTurnV2(
         turn_id=str(row["turn_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -5782,12 +5821,9 @@ def _turn(
         retry_of_turn_id=(str(row["retry_of_turn_id"]) if row["retry_of_turn_id"] else None),
         retry_attempt_no=int(row["retry_attempt_no"]),
         retryable=bool(row["retryable"]),
+        actionable_failure=actionable_failure,
         operation_stage=(str(row["operation_stage"]) if row["operation_stage"] else None),
-        operation_failure=(
-            AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
-            if row["operation_failure_json"]
-            else None
-        ),
+        operation_failure=operation_failure,
         error_code=str(row["error_code"]) if row["error_code"] else None,
         error_message=str(row["error_message"]) if row["error_message"] else None,
         created_at=str(row["created_at"]),
