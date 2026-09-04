@@ -450,8 +450,8 @@ class EditingInputResolver:
             )
         if not videos:
             raise _error(
-                "editing_no_ready_video",
-                "Editing Export requires at least one Ready video input.",
+                "no_exportable_media",
+                "Editing Export has no usable media input.",
             )
         bgm = None
         if manifest.bgm is not None and manifest.bgm.enabled:
