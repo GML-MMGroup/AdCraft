@@ -52,11 +52,6 @@ class AgentCanvasNodeService:
         now = datetime.now(timezone.utc)
         workflow = self._repository.get_workflow(workflow_id)
         normalized_generation_prompt = normalize_manual_generation_prompt(request.generation_prompt)
-        source = (
-            self._repository.get_node(workflow_id, request.clone_inputs_from_node_id)
-            if request.clone_inputs_from_node_id is not None
-            else None
-        )
         node = CanvasNodeV2(
             node_id=f"node_{uuid4().hex}",
             workflow_id=workflow_id,
@@ -75,9 +70,7 @@ class AgentCanvasNodeService:
             model_ref=request.model_ref,
             parameters=request.parameters,
             parameter_provenance=_manual_parameter_provenance(request.parameters),
-            prompt_context_snapshot_id=(
-                source.prompt_context_snapshot_id if source is not None else None
-            ),
+            prompt_context_snapshot_id=None,
             output_asset_id=request.source_asset_id,
             position=request.position,
             revision=1,
@@ -96,16 +89,7 @@ class AgentCanvasNodeService:
                     )
                 }
             )
-        bindings = (
-            _copy_incoming_bindings(
-                self._repository.get_workflow(workflow_id),
-                source_node_id=source.node_id,
-                target_node_id=node.node_id,
-                now=now,
-            )
-            if source is not None
-            else ()
-        )
+        bindings: tuple[CanvasBindingV2, ...] = ()
         if self._model_selection is not None:
             self._model_selection.validate_authoring(node)
             node = node.model_copy(

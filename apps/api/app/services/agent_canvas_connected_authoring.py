@@ -55,10 +55,7 @@ class AgentCanvasConnectedAuthoringService:
                 "Idempotency-Key is required.",
                 stage="agent_canvas_connected_authoring",
             )
-        if (
-            request.node.clone_inputs_from_node_id is not None
-            or request.node.source_asset_id is not None
-        ):
+        if request.node.source_asset_id is not None:
             raise V2PersistenceError(
                 "connected_node_payload_invalid",
                 "Connected node creation accepts only a new Draft node payload.",
