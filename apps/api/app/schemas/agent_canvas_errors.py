@@ -4,7 +4,58 @@ from __future__ import annotations
 
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+
+ActionableFailureClassV1: TypeAlias = Literal[
+    "transient",
+    "deterministic",
+    "stale",
+    "conflict",
+    "external",
+]
+ActionableRetryScopeV1: TypeAlias = Literal[
+    "none",
+    "prompt_preparation",
+    "turn",
+    "execution",
+    "provider_delivery",
+]
+ActionableUserActionV1: TypeAlias = Literal[
+    "none",
+    "retry",
+    "revise",
+    "regenerate",
+    "redesign",
+]
+
+
+class ActionableFailureV1(BaseModel):
+    """One validated public disposition for an exact failed operation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    failure_class: ActionableFailureClassV1
+    retry_scope: ActionableRetryScopeV1
+    user_action: ActionableUserActionV1
+
+    @model_validator(mode="after")
+    def validate_disposition(self) -> "ActionableFailureV1":
+        if self.user_action == "retry":
+            if self.retry_scope == "none":
+                raise ValueError("Retry requires one exact operation scope.")
+            if self.failure_class not in {"transient", "external"}:
+                raise ValueError("Only transient or external failures may be retried.")
+        elif self.retry_scope != "none":
+            raise ValueError("Non-retry actions cannot carry a retry scope.")
+        return self
+
+    @computed_field
+    @property
+    def retryable(self) -> bool:
+        """Compatibility projection derived from typed authority."""
+
+        return self.user_action == "retry" and self.retry_scope != "none"
 
 
 CharacterAuthoringErrorCodeV1: TypeAlias = Literal[
@@ -48,3 +99,13 @@ class CanvasNodeErrorV2(BaseModel):
     code: str = Field(min_length=1)
     message: str = Field(min_length=1)
     retryable: bool
+    actionable_failure: ActionableFailureV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_retryable_projection(self) -> "CanvasNodeErrorV2":
+        if (
+            self.actionable_failure is not None
+            and self.retryable != self.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
+        return self
