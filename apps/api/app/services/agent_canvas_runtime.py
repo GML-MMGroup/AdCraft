@@ -75,6 +75,10 @@ from app.services.agent_canvas_execution_result_commit import (
 )
 from app.services.agent_canvas_output_preparation import (
     AgentCanvasOutputPreparationService,
+    ResultPublicationContext,
+)
+from app.services.agent_canvas_result_publication_recovery import (
+    AgentCanvasResultPublicationRecoveryService,
 )
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
@@ -278,6 +282,7 @@ class DynamicCanvasScheduler:
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         output_preparer: AgentCanvasOutputPreparationService | None = None,
         result_committer: AgentCanvasExecutionResultCommitService | None = None,
+        publication_recovery: AgentCanvasResultPublicationRecoveryService | None = None,
         terminal_member_reconciler: TerminalMemberReconciler | None = None,
         prompt_preparation: NodePromptPreparationService | None = None,
         owner_id: str | None = None,
@@ -310,6 +315,7 @@ class DynamicCanvasScheduler:
         self._leases = NodeLeaseService(runtime, clock=clock)
         self._output_preparer = output_preparer
         self._result_committer = result_committer
+        self._publication_recovery = publication_recovery
         self._terminal_member_reconciler = terminal_member_reconciler
         self._prompt_preparation = prompt_preparation or NodePromptPreparationService(workflows)
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
@@ -327,6 +333,11 @@ class DynamicCanvasScheduler:
         execution = self._runtime.get_execution(execution_id)
         if execution.status not in {"queued", "running", "waiting"}:
             return
+        if self._publication_recovery is not None:
+            self._publication_recovery.recover_execution(execution_id)
+            execution = self._runtime.get_execution(execution_id)
+            if execution.status not in {"queued", "running", "waiting"}:
+                return
         self._runtime.set_execution_status(
             execution_id,
             "running",
@@ -1518,33 +1529,79 @@ class DynamicCanvasScheduler:
             return
         if self._output_preparer is not None and self._result_committer is not None:
             fingerprint = _execution_fingerprint(context)
-            prepared, lease = self._leases.guard(lease).run_with_latest_lease(
-                lambda: self._output_preparer.prepare(
-                    context,
-                    outcome,
-                    fingerprint=fingerprint,
-                )
-            )
-            now = self._clock()
             member = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
             )
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    member_id=member.member_id,
-                    node_id=node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=prepared.logical_result_key,
-                    payload_digest=prepared.payload_digest,
-                    provider_task_id=outcome.provider_task_id,
-                    outcome="succeeded",
-                    prepared_result=prepared,
-                    committed_at=now,
+            if self._publication_recovery is not None and (
+                member.run_intent_snapshot_id is None or member.run_intent_snapshot_digest is None
+            ):
+                raise V2PersistenceError(
+                    "node_result_publication_source_invalid",
+                    "Result publication requires an immutable run snapshot.",
+                    stage="agent_canvas_scheduler",
                 )
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="publishing",
+                now=self._clock(),
+                expected_lease_generation=lease.generation,
             )
+            try:
+                publication = (
+                    ResultPublicationContext(
+                        member_id=member.member_id,
+                        source_snapshot_id=member.run_intent_snapshot_id,
+                        source_snapshot_digest=member.run_intent_snapshot_digest,
+                    )
+                    if self._publication_recovery is not None
+                    and member.run_intent_snapshot_id is not None
+                    and member.run_intent_snapshot_digest is not None
+                    else None
+                )
+                prepared, lease = self._leases.guard(lease).run_with_latest_lease(
+                    lambda: self._output_preparer.prepare(
+                        context,
+                        outcome,
+                        fingerprint=fingerprint,
+                        **({"publication": publication} if publication is not None else {}),
+                    )
+                )
+                now = self._clock()
+                self._result_committer.commit(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                        node_id=node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=prepared.logical_result_key,
+                        payload_digest=prepared.payload_digest,
+                        publication_intent_id=prepared.publication_intent_id,
+                        provider_task_id=outcome.provider_task_id,
+                        outcome="succeeded",
+                        prepared_result=prepared,
+                        committed_at=now,
+                    )
+                )
+            except Exception as error:
+                error_code = (
+                    error.code
+                    if isinstance(error, V2PersistenceError)
+                    else "node_result_publication_commit_failed"
+                )
+                if (
+                    self._publication_recovery is not None
+                    and self._publication_recovery.defer_member(
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                        error_code=error_code,
+                    )
+                ):
+                    return
+                raise
             return
         asset_id = None
         if outcome.media is not None:
