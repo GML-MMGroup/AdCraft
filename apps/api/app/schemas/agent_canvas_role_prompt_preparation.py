@@ -480,8 +480,8 @@ class WorldViewRoleBriefV2(_RoleBriefModel):
     role_variant: Literal["world_view"] = "world_view"
     premise: str = Field(min_length=1, max_length=4_096)
     era_and_place: str = Field(min_length=1, max_length=2_048)
-    world_rules: tuple[str, ...] = Field(min_length=1, max_length=16)
-    visual_continuity: tuple[str, ...] = Field(min_length=1, max_length=16)
+    world_rules: tuple[str, ...] = Field(min_length=1, max_length=8)
+    visual_continuity: tuple[str, ...] = Field(min_length=1, max_length=8)
 
 
 class ProductMainRoleBriefV2(_RoleBriefModel):
