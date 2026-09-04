@@ -454,16 +454,11 @@ class DynamicCanvasScheduler:
             if member.state not in {"queued", "waiting"}:
                 continue
             required_waiting = tuple(
-                dict.fromkeys(
-                    (
-                        *_frozen_unready_sources(member, nodes, required=True),
-                        *_same_wave_dependency_sources(member, members_by_node),
-                    )
-                )
+                dict.fromkeys(_same_wave_dependency_sources(member, members_by_node))
             )
             preferred_waiting = tuple(
                 source_node_id
-                for source_node_id in _frozen_unready_sources(member, nodes, required=False)
+                for source_node_id in _frozen_unready_sources(member, nodes)
                 if members_by_node.get(source_node_id) is not None
                 and members_by_node[source_node_id].state in {"queued", "waiting", "running"}
             )
@@ -2022,8 +2017,6 @@ def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, .
 def _frozen_unready_sources(
     member: CanvasExecutionMembershipV2,
     nodes: dict[str, CanvasNodeV2],
-    *,
-    required: bool,
 ) -> tuple[str, ...]:
     snapshot = member.run_intent_snapshot
     if snapshot is None:
@@ -2031,8 +2024,7 @@ def _frozen_unready_sources(
     return tuple(
         binding.source_id
         for binding in snapshot.binding_snapshots
-        if binding.required is required
-        and binding.source_kind == "node_output"
+        if binding.source_kind == "node_output"
         and not _node_output_source_is_ready(
             source=nodes.get(binding.source_id),
             input_role=binding.input_role,
