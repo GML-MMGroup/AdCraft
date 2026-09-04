@@ -18,6 +18,9 @@ from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import 
 from app.persistence.agent_canvas_repository import (
     invalidate_prompt_preparations_for_source_in_transaction,
 )
+from app.persistence.agent_canvas_result_publication_repository import (
+    AgentCanvasResultPublicationIntentRepository,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -56,6 +59,7 @@ class AgentCanvasResultCommitRepository:
         assets: V2AssetLibraryRepository,
         events: EventRepository,
         *,
+        publication_intents: AgentCanvasResultPublicationIntentRepository | None = None,
         fault_injector: FaultInjector | None = None,
     ) -> None:
         if assets.database is not database or events.database is not database:
@@ -63,6 +67,9 @@ class AgentCanvasResultCommitRepository:
         self._database = database
         self._assets = assets
         self._events = events
+        if publication_intents is not None and publication_intents.database is not database:
+            raise ValueError("Publication and result authorities must share one database.")
+        self._publication_intents = publication_intents
         self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(
             database,
             events,
@@ -100,6 +107,14 @@ class AgentCanvasResultCommitRepository:
                             command,
                             commit_id=receipt.commit_id,
                         )
+                        if command.publication_intent_id is not None:
+                            self._require_publication_intent(connection, command)
+                            self._publication_intents.mark_committed_in_transaction(
+                                connection,
+                                intent_id=command.publication_intent_id,
+                                receipt_id=receipt.commit_id,
+                                now=command.committed_at,
+                            )
                         connection.commit()
                         return receipt
                     execution = (
@@ -169,6 +184,7 @@ class AgentCanvasResultCommitRepository:
                             "Canvas Node no longer accepts this result.",
                         )
                     prior_asset_id = cast(str | None, node["output_asset_id"])
+                    self._require_publication_intent(connection, command)
                     asset_id, version_id = self._register_asset(
                         connection,
                         command,
@@ -315,6 +331,13 @@ class AgentCanvasResultCommitRepository:
                         )
                     )
                     self._insert_effects(connection, command, commit_id=commit_id)
+                    if command.publication_intent_id is not None:
+                        self._publication_intents.mark_committed_in_transaction(
+                            connection,
+                            intent_id=command.publication_intent_id,
+                            receipt_id=commit_id,
+                            now=command.committed_at,
+                        )
                     self._fault("before_commit")
                     connection.commit()
                     return receipt
@@ -328,6 +351,20 @@ class AgentCanvasResultCommitRepository:
                 "execution_result_commit_failed",
                 "Execution result could not be committed.",
             ) from error
+
+    def _require_publication_intent(
+        self,
+        connection,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> None:
+        if command.publication_intent_id is None:
+            return
+        if self._publication_intents is None:
+            raise _error(
+                "node_result_publication_intent_not_configured",
+                "Result publication authority is unavailable.",
+            )
+        self._publication_intents.require_prepared_in_transaction(connection, command)
 
     def reconcile_stale_lease_failure(
         self,

@@ -16,6 +16,7 @@ from app.persistence.models import (
     AgentCanvasResultPublicationIntentRow,
 )
 from app.schemas.agent_canvas_runtime_authority import (
+    CanvasExecutionResultCommitCommandV2,
     CanvasResultPublicationIntentV1,
     PreparedNodeResultV2,
 )
@@ -73,11 +74,15 @@ class AgentCanvasResultPublicationIntentRepository:
     def get(self, intent_id: str) -> CanvasResultPublicationIntentV1 | None:
         try:
             with self._database.engine.connect() as connection:
-                row = connection.execute(
-                    select(AgentCanvasResultPublicationIntentRow).where(
-                        AgentCanvasResultPublicationIntentRow.intent_id == intent_id
+                row = (
+                    connection.execute(
+                        select(AgentCanvasResultPublicationIntentRow).where(
+                            AgentCanvasResultPublicationIntentRow.intent_id == intent_id
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return _intent(row) if row is not None else None
@@ -90,12 +95,16 @@ class AgentCanvasResultPublicationIntentRepository:
     ) -> CanvasResultPublicationIntentV1 | None:
         try:
             with self._database.engine.connect() as connection:
-                row = connection.execute(
-                    select(AgentCanvasResultPublicationIntentRow).where(
-                        AgentCanvasResultPublicationIntentRow.execution_id == execution_id,
-                        AgentCanvasResultPublicationIntentRow.member_id == member_id,
+                row = (
+                    connection.execute(
+                        select(AgentCanvasResultPublicationIntentRow).where(
+                            AgentCanvasResultPublicationIntentRow.execution_id == execution_id,
+                            AgentCanvasResultPublicationIntentRow.member_id == member_id,
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return _intent(row) if row is not None else None
@@ -248,11 +257,15 @@ class AgentCanvasResultPublicationIntentRepository:
         receipt_id: str,
         now: datetime,
     ) -> CanvasResultPublicationIntentV1:
-        row = connection.execute(
-            select(AgentCanvasResultPublicationIntentRow).where(
-                AgentCanvasResultPublicationIntentRow.intent_id == intent_id
+        row = (
+            connection.execute(
+                select(AgentCanvasResultPublicationIntentRow).where(
+                    AgentCanvasResultPublicationIntentRow.intent_id == intent_id
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise _not_found_error()
         current = _intent(row)
@@ -283,9 +296,41 @@ class AgentCanvasResultPublicationIntentRepository:
                 "updated_at": now,
             }
         )
-        return CanvasResultPublicationIntentV1.model_validate(
-            committed.model_dump(mode="python")
+        return CanvasResultPublicationIntentV1.model_validate(committed.model_dump(mode="python"))
+
+    def require_prepared_in_transaction(
+        self,
+        connection: Connection,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> CanvasResultPublicationIntentV1:
+        """Validate the exact durable handoff inside the terminal transaction."""
+
+        if command.publication_intent_id is None or command.prepared_result is None:
+            raise _conflict_error()
+        row = (
+            connection.execute(
+                select(AgentCanvasResultPublicationIntentRow).where(
+                    AgentCanvasResultPublicationIntentRow.intent_id == command.publication_intent_id
+                )
+            )
+            .mappings()
+            .one_or_none()
         )
+        if row is None:
+            raise _not_found_error()
+        intent = _intent(row)
+        if (
+            intent.state not in {"prepared", "committed"}
+            or intent.workflow_id != command.workflow_id
+            or intent.execution_id != command.execution_id
+            or intent.member_id != command.member_id
+            or intent.node_id != command.node_id
+            or intent.logical_result_key != command.logical_result_key
+            or intent.payload_digest != command.payload_digest
+            or intent.prepared_result != command.prepared_result
+        ):
+            raise _conflict_error()
+        return intent
 
     def _transition(
         self,
@@ -321,12 +366,16 @@ class AgentCanvasResultPublicationIntentRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    existing = connection.execute(
-                        select(AgentCanvasResultPublicationIntentRow).where(
-                            AgentCanvasResultPublicationIntentRow.intent_id
-                            == candidate.intent_id
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasResultPublicationIntentRow).where(
+                                AgentCanvasResultPublicationIntentRow.intent_id
+                                == candidate.intent_id
+                            )
                         )
-                    ).mappings().one_or_none()
+                        .mappings()
+                        .one_or_none()
+                    )
                     if existing is not None:
                         current = _intent(existing)
                         if current == candidate:
@@ -382,35 +431,40 @@ class AgentCanvasResultPublicationIntentRepository:
         connection: Connection,
         intent: CanvasResultPublicationIntentV1,
     ) -> RowMapping | None:
-        return connection.execute(
-            select(AgentCanvasResultPublicationIntentRow).where(
-                (
-                    AgentCanvasResultPublicationIntentRow.logical_result_key
-                    == intent.logical_result_key
-                )
-                | (
+        return (
+            connection.execute(
+                select(AgentCanvasResultPublicationIntentRow).where(
                     (
-                        AgentCanvasResultPublicationIntentRow.execution_id
-                        == intent.execution_id
+                        AgentCanvasResultPublicationIntentRow.logical_result_key
+                        == intent.logical_result_key
                     )
-                    & (AgentCanvasResultPublicationIntentRow.member_id == intent.member_id)
+                    | (
+                        (AgentCanvasResultPublicationIntentRow.execution_id == intent.execution_id)
+                        & (AgentCanvasResultPublicationIntentRow.member_id == intent.member_id)
+                    )
                 )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
 
     @staticmethod
     def _assert_member_identity(
         connection: Connection,
         intent: CanvasResultPublicationIntentV1,
     ) -> None:
-        member = connection.execute(
-            select(AgentCanvasExecutionMemberRow).where(
-                AgentCanvasExecutionMemberRow.member_id == intent.member_id,
-                AgentCanvasExecutionMemberRow.execution_id == intent.execution_id,
-                AgentCanvasExecutionMemberRow.workflow_id == intent.workflow_id,
-                AgentCanvasExecutionMemberRow.node_id == intent.node_id,
+        member = (
+            connection.execute(
+                select(AgentCanvasExecutionMemberRow).where(
+                    AgentCanvasExecutionMemberRow.member_id == intent.member_id,
+                    AgentCanvasExecutionMemberRow.execution_id == intent.execution_id,
+                    AgentCanvasExecutionMemberRow.workflow_id == intent.workflow_id,
+                    AgentCanvasExecutionMemberRow.node_id == intent.node_id,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if member is None:
             raise _conflict_error()
         snapshot_id = member["run_intent_snapshot_id"]
@@ -436,9 +490,7 @@ def _insert_values(intent: CanvasResultPublicationIntentV1) -> dict[str, object]
         "expected_object_sha256": intent.expected_object_sha256,
         "planned_result_json": intent.planned_result.model_dump_json(),
         "prepared_result_json": (
-            intent.prepared_result.model_dump_json()
-            if intent.prepared_result is not None
-            else None
+            intent.prepared_result.model_dump_json() if intent.prepared_result is not None else None
         ),
         "state": intent.state,
         "attempt_count": intent.attempt_count,
