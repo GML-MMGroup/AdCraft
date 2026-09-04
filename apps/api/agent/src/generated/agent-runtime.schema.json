@@ -3564,6 +3564,17 @@
           "title": "Validation Paths",
           "type": "array"
         },
+        "violation_categories": {
+          "default": [],
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Violation Categories",
+          "type": "array"
+        },
         "violation_codes": {
           "items": {
             "maxLength": 160,
@@ -5845,6 +5856,20 @@
           "title": "Code",
           "type": "string"
         },
+        "field_path": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Path"
+        },
         "message": {
           "minLength": 1,
           "title": "Message",
@@ -5853,6 +5878,34 @@
         "retryable": {
           "title": "Retryable",
           "type": "boolean"
+        },
+        "role_variant": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Variant"
+        },
+        "violation_category": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Violation Category"
         }
       },
       "required": [
@@ -26007,6 +26060,19 @@
     "RolePromptPreparationContextV2": {
       "additionalProperties": false,
       "properties": {
+        "binding_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Digest"
+        },
         "bindings": {
           "default": [],
           "items": {
@@ -26257,6 +26323,19 @@
           ],
           "default": null,
           "title": "Style Projection"
+        },
+        "style_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Projection Digest"
         },
         "user_prompt": {
           "anyOf": [
@@ -34198,7 +34277,7 @@
       "operation": "author_role_brief",
       "result_contract_name": "RoleCreativeBriefV2",
       "style_projection_role": null,
-      "validation_profile": null
+      "validation_profile": "role_prompt_contract_v1"
     },
     {
       "capability_id": "storyboard_design",
