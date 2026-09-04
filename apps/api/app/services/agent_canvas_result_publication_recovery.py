@@ -172,6 +172,7 @@ class AgentCanvasResultPublicationRecoveryService:
                     logical_result_key=intent.logical_result_key,
                     payload_digest=intent.payload_digest,
                     publication_intent_id=intent.intent_id,
+                    publication_recovery_attempt=intent.attempt_count,
                     provider_task_id=prepared.provider_task_id,
                     outcome="succeeded",
                     prepared_result=prepared,
@@ -230,8 +231,13 @@ class AgentCanvasResultPublicationRecoveryService:
             if now < intent.recovery_deadline and intent.attempt_count < 15:
                 return self._defer(intent, "execution_lease_unavailable", now=now)
             return "deferred"
+        terminal_code = (
+            "node_result_publication_recovery_exhausted"
+            if error_code == "node_result_publication_recovery_exhausted"
+            else "node_result_publication_failed"
+        )
         detail = CanvasNodeErrorV2(
-            code="node_result_publication_recovery_failed",
+            code=terminal_code,
             message="Prepared media could not be published safely.",
             retryable=False,
         )
