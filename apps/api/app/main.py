@@ -170,7 +170,7 @@ def _recover_agent_canvas_executions(
         runtime.provider_recovery.recover_due_tasks()
         runtime.post_ready_effects.run_once()
         state_machine = AgentCanvasExecutionStateMachine()
-        for execution in runtime.runtime_repository.list_executions():
+        for execution in runtime.runtime_repository.list_active_executions():
             state_machine.reconcile(
                 runtime.runtime_repository,
                 execution.execution_id,
