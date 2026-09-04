@@ -208,13 +208,25 @@ class AgentCanvasResultPublicationRecoveryService:
             )
         delay = min(2 ** min(intent.attempt_count, 5), 30)
         next_attempt = min(now + timedelta(seconds=delay), intent.recovery_deadline)
-        self._intents.defer(
-            intent.intent_id,
-            expected_attempt_count=intent.attempt_count,
-            next_attempt_at=next_attempt,
-            error_code=error_code,
-            now=now,
-        )
+        try:
+            self._intents.defer(
+                intent.intent_id,
+                expected_attempt_count=intent.attempt_count,
+                next_attempt_at=next_attempt,
+                error_code=error_code,
+                now=now,
+            )
+        except V2PersistenceError as error:
+            if error.code != "node_result_publication_transition_conflict":
+                raise
+            current = self._intents.get(intent.intent_id)
+            if current is not None and current.state == "committed":
+                return "committed"
+            if current is not None and current.state == "abandoned":
+                return "abandoned"
+            if current is not None and current.attempt_count > intent.attempt_count:
+                return "deferred"
+            raise
         return "deferred"
 
     def _abandon(
