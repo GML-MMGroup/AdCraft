@@ -34240,7 +34240,7 @@
           "items": {
             "type": "string"
           },
-          "maxItems": 16,
+          "maxItems": 8,
           "minItems": 1,
           "title": "Visual Continuity",
           "type": "array"
@@ -34249,7 +34249,7 @@
           "items": {
             "type": "string"
           },
-          "maxItems": 16,
+          "maxItems": 8,
           "minItems": 1,
           "title": "World Rules",
           "type": "array"
