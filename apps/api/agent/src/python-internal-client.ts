@@ -237,7 +237,8 @@ function isExecutionPolicy(
       policy.recovery_mode !== "transport_retry_or_structured_repair") ||
     !isPositiveInteger(policy.max_output_tokens) ||
     !isBoundedAttempt(policy.transport_retry_limit) ||
-    !isBoundedAttempt(policy.structured_repair_limit)
+    !isBoundedAttempt(policy.structured_repair_limit) ||
+    typeof policy.json_object_fallback_certified !== "boolean"
   ) {
     return false;
   }
@@ -272,6 +273,14 @@ function isExecutionPolicy(
         policy.thinking_budget_tokens !== null)) ||
     (policy.reasoning_control !== "reasoning_effort" &&
       policy.reasoning_effort != null)
+  ) {
+    return false;
+  }
+  if (
+    policy.json_object_fallback_certified === true &&
+    (!modelRef.startsWith("openrouter:") ||
+      policy.structured_transport !== "non_streaming_json_schema" ||
+      policy.max_model_submissions !== 2)
   ) {
     return false;
   }

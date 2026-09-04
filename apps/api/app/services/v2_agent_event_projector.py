@@ -54,6 +54,7 @@ _TRANSPORT_AUDIT_KEYS = (
     "reasoning_tokens",
     "response_activity_observed",
     "transport_retry_count",
+    "capability_fallback_count",
     "structured_attempt_count",
     "failure_boundary",
     "model_submission_count",
@@ -84,6 +85,7 @@ _NUMERIC_AUDIT_KEYS = {
     "structured_attempt_count",
     "thinking_budget_tokens",
     "transport_retry_count",
+    "capability_fallback_count",
 }
 _AUDIT_TEXT_LIMITS = {
     "agent_name": 80,

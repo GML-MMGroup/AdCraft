@@ -279,9 +279,18 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: int = Field(ge=0, le=1)
     structured_repair_limit: int = Field(ge=0, le=1)
+    json_object_fallback_certified: bool = False
 
     @model_validator(mode="after")
     def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if self.json_object_fallback_certified and (
+            not self.model_ref.startswith("openrouter:")
+            or self.structured_transport != "non_streaming_json_schema"
+            or self.max_model_submissions != 2
+        ):
+            raise ValueError(
+                "JSON Object capability fallback requires a two-submission OpenRouter JSON Schema policy."
+            )
         if self.reasoning_control == "reasoning_effort":
             if self.reasoning_effort is None or self.enable_thinking:
                 raise ValueError("Reasoning-effort policy cannot use legacy thinking fields.")
@@ -388,6 +397,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     output_tokens: int | None = Field(default=None, ge=0)
     reasoning_tokens: int | None = Field(default=None, ge=0)
     transport_retry_count: int = Field(ge=0, le=1)
+    capability_fallback_count: int = Field(default=0, ge=0, le=1)
     structured_attempt_count: int = Field(ge=1, le=2)
     structured_validation_attempts: tuple[AgentStructuredValidationAttemptAuditV1, ...] = Field(
         default=(), max_length=2

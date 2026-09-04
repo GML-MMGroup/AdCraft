@@ -223,6 +223,19 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    if (primary.capabilityFallbackCount > 0) {
+      throw structuredFailure(
+        "capability_fallback",
+        auditForAttempt(
+          input,
+          primary,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
+        isManualRetryableIntake(input),
+      );
+    }
     if (primary.retryCount > 0) {
       throw structuredFailure(
         "transport_retry",
@@ -304,6 +317,14 @@ export class PiStructuredTransportRouter {
     try {
       return await this.#executeOnce(request, input, "initial");
     } catch (error) {
+      if (isCertifiedJsonObjectCapabilityFallback(error, input)) {
+        const fallback = await this.#executeOnce(
+          jsonObjectCapabilityFallbackRequest(request),
+          input,
+          "capability_fallback",
+        );
+        return { ...fallback, capabilityFallbackCount: 1 };
+      }
       if (
         input.credential.execution_policy.transport_retry_limit < 1 ||
         !isRetryablePreActivityFailure(error)
@@ -396,6 +417,7 @@ interface CompletionAttempt {
   readonly retryCount: number;
   readonly effectiveTimeoutMs?: number;
   readonly attemptStage?: ModelAttemptStage;
+  readonly capabilityFallbackCount?: number;
 }
 
 export async function executeOpenAICompletion(
@@ -774,6 +796,41 @@ function structuredResponseFormat(
   return { type: "json_object" };
 }
 
+function jsonObjectCapabilityFallbackRequest(
+  request: StructuredCompletionRequest,
+): NonStreamingStructuredCompletionRequest {
+  if (request.stream || request.response_format?.type !== "json_schema") {
+    throw new Error("agent_model_capability_mismatch");
+  }
+  return {
+    ...request,
+    response_format: { type: "json_object" },
+  };
+}
+
+function isCertifiedJsonObjectCapabilityFallback(
+  error: unknown,
+  input: StructuredTransportRunInput,
+): boolean {
+  if (
+    input.credential.model_ref !== "openrouter:openai/gpt-5.6-sol" ||
+    input.credential.execution_policy.structured_transport !==
+      "non_streaming_json_schema" ||
+    input.credential.execution_policy.json_object_fallback_certified !== true ||
+    input.credential.execution_policy.max_model_submissions !== 2 ||
+    !(error instanceof AgentOperationFailure)
+  ) {
+    return false;
+  }
+  const metadata = error.attemptMetadata;
+  return (
+    metadata?.attempt_stage === "initial" &&
+    (metadata.http_status === 400 || metadata.http_status === 422) &&
+    (metadata.safe_error_code === "response_format_unsupported" ||
+      metadata.safe_error_code === "json_schema_unsupported")
+  );
+}
+
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
   readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
@@ -927,6 +984,7 @@ function auditForAttempt(
     output_tokens: usage?.completion_tokens ?? null,
     reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens ?? null,
     transport_retry_count: attempt.retryCount,
+    capability_fallback_count: attempt.capabilityFallbackCount ?? 0,
     structured_attempt_count: structuredAttempts,
     structured_validation_attempts: validationAttempts.slice(0, 2),
   };
@@ -1150,6 +1208,7 @@ function failureMetadata(
     finished_at: finishedAt,
     duration_ms: elapsedMilliseconds(startedAt, finishedAt),
     transport_retry_count: stage === "transport_retry" ? 1 : 0,
+    capability_fallback_count: stage === "capability_fallback" ? 1 : 0,
     structured_attempt_count: stage === "structured_repair" ? 2 : 1,
     ...(shape.safeExceptionClass
       ? { safe_exception_class: shape.safeExceptionClass }
