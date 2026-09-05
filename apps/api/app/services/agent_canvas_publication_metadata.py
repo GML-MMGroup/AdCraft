@@ -38,6 +38,7 @@ def _safe_identifier(value: str) -> str:
 
 Identity = Annotated[str, Field(min_length=1, max_length=320), AfterValidator(_safe_identifier)]
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+AuditDigest = Annotated[str, Field(pattern=r"^(sha256:)?[a-f0-9]{64}$")]
 
 
 class _Closed(BaseModel):
@@ -66,8 +67,8 @@ class _Parameters(_Closed):
 
 
 class _PromptAudit(_Closed):
-    canonical_provider_prompt_hash: Digest
-    actual_provider_prompt_hash: Digest
+    canonical_provider_prompt_hash: AuditDigest
+    actual_provider_prompt_hash: AuditDigest
     prompt_match: StrictBool
     prompt_source_contract: Identity | None = None
     prompt_contract_name: Identity | None = None
@@ -231,13 +232,14 @@ def _prompt_audit(value: object) -> dict[str, Any]:
             if not isinstance(text, str) or not text:
                 raise ValueError("Prompt integrity evidence is incomplete.")
             digest = sha256(text.encode("utf-8")).hexdigest()
-            if hash_key in selected and selected[hash_key] != digest:
+            if hash_key in selected and selected[hash_key] not in (digest, f"sha256:{digest}"):
                 raise ValueError("Prompt integrity evidence is inconsistent.")
-            selected[hash_key] = digest
+            selected.setdefault(hash_key, digest)
     audit = _PromptAudit.model_validate(selected)
     if (
         not audit.prompt_match
-        or audit.canonical_provider_prompt_hash != audit.actual_provider_prompt_hash
+        or audit.canonical_provider_prompt_hash.removeprefix("sha256:")
+        != audit.actual_provider_prompt_hash.removeprefix("sha256:")
     ):
         raise V2PersistenceError(
             "v2_provider_prompt_mismatch",
@@ -286,7 +288,10 @@ def project_canvas_publication_metadata(
             values["provider_asset"] = _provider_facts(provider_metadata["provider_asset"])
         if "prompt_audit" in provider_metadata:
             values["prompt_audit"] = _prompt_audit(provider_metadata["prompt_audit"])
-            if values["prompt_audit"]["canonical_provider_prompt_hash"] != values["prompt_digest"]:
+            if (
+                values["prompt_audit"]["canonical_provider_prompt_hash"].removeprefix("sha256:")
+                != values["prompt_digest"]
+            ):
                 raise ValueError("Prompt audit does not match the frozen execution.")
         for key in ("reference_wire_audit", "reference_input_delivery"):
             if key in provider_metadata:

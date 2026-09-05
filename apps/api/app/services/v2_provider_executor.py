@@ -1017,7 +1017,16 @@ class V2ProviderExecutor:
             )
         if self._settings.media_mode.strip().lower() != "real":
             submitted_audit = mark_seedance_grounding_submitted(serialized_audit)
-            provider_payload = {"seedance_input_manifest": submitted_audit.model_dump(mode="json")}
+            provider_payload = {
+                "seedance_input_manifest": submitted_audit.model_dump(mode="json"),
+                "prompt_audit": _minimal_prompt_audit(
+                    slot_type="agent_canvas_video",
+                    canonical_prompt=manifest.prompt,
+                    actual_prompt=manifest.prompt,
+                    payload={},
+                    node_id=node_id,
+                ),
+            }
             result = self._placeholder_result(
                 media_type="video",
                 slot_type="agent_canvas_video",
