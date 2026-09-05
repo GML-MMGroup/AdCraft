@@ -39,6 +39,7 @@ def _safe_identifier(value: str) -> str:
 Identity = Annotated[str, Field(min_length=1, max_length=320), AfterValidator(_safe_identifier)]
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 AuditDigest = Annotated[str, Field(pattern=r"^(sha256:)?[a-f0-9]{64}$")]
+MediaExtension = Annotated[str, Field(max_length=13, pattern=r"^\.[a-z0-9]{1,12}$")]
 
 
 class _Closed(BaseModel):
@@ -147,7 +148,7 @@ class _ProviderFacts(_Parameters):
     provider_duration_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     audio_duration_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     source_content_type: Identity | None = None
-    source_extension: Identity | None = None
+    source_extension: MediaExtension | None = None
     audio_quality: Identity | None = None
     progress: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     submitted_media_facts: _Parameters | None = None
@@ -333,8 +334,8 @@ def _validate_summary_bounds(value: object) -> None:
         _safe_identifier(value)
     elif isinstance(value, dict):
         for key, item in value.items():
-            if key == "prompt_reference_labels":
-                # This one spaced wire label is validated by the closed grounding contract.
+            if key in {"prompt_reference_labels", "source_extension"}:
+                # These wire facts have their own closed patterns, distinct from identifiers.
                 continue
             _validate_summary_bounds(item)
     elif isinstance(value, list):
