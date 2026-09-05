@@ -34,6 +34,22 @@ def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeEr
         if transport_interrupted
         else str(getattr(error, "code", default_code))
     )
+    if code in {"node_result_publication_metadata_invalid", "node_result_publication_failed"}:
+        return CanvasNodeErrorV2(
+            code=code,
+            message=(
+                "Generated media could not be published because its metadata is invalid."
+                if code == "node_result_publication_metadata_invalid"
+                else "Generated media could not be published."
+            ),
+            retryable=False,
+            actionable_failure=ActionableFailureV1(
+                failure_class="deterministic",
+                retry_scope="none",
+                user_action="none",
+                retryable=False,
+            ),
+        )
     details = getattr(error, "details", {})
     safe_details = details if isinstance(details, dict) else {}
     explicitly_retryable = transport_interrupted or bool(safe_details.get("retryable", False))

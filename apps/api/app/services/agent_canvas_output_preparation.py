@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
+from pydantic import ValidationError
+
+from app.persistence.errors import V2PersistenceError
+
 from app.persistence.agent_canvas_result_publication_repository import (
     AgentCanvasResultPublicationIntentRepository,
 )
@@ -20,7 +24,10 @@ from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_node_execution import (
     NodeExecutionContext,
     NodeExecutionOutcome,
-    generated_asset_publication_metadata,
+)
+from app.services.agent_canvas_publication_metadata import (
+    project_canvas_publication_metadata,
+    PUBLICATION_FAILED_MESSAGE,
 )
 
 
@@ -51,8 +58,28 @@ class AgentCanvasOutputPreparationService:
         fingerprint: str,
         publication: ResultPublicationContext | None = None,
     ) -> PreparedNodeResultV2:
+        try:
+            return self._prepare(context, outcome, fingerprint=fingerprint, publication=publication)
+        except ValidationError as error:
+            raise V2PersistenceError(
+                "node_result_publication_failed",
+                PUBLICATION_FAILED_MESSAGE,
+                stage="node_result_publication",
+            ) from error
+
+    def _prepare(
+        self,
+        context: NodeExecutionContext,
+        outcome: NodeExecutionOutcome,
+        *,
+        fingerprint: str,
+        publication: ResultPublicationContext | None = None,
+    ) -> PreparedNodeResultV2:
         effects = _effects(context)
         if outcome.media is not None:
+            metadata = project_canvas_publication_metadata(
+                context, publication, outcome.media.metadata
+            )
             effective_parameters = (
                 context.effective_parameters.effective
                 if context.effective_parameters is not None
@@ -107,10 +134,7 @@ class AgentCanvasOutputPreparationService:
                 content=outcome.media.content,
                 fingerprint=fingerprint,
                 source_semantic_role=context.node.semantic_role,
-                publication_metadata={
-                    **generated_asset_publication_metadata(context),
-                    **outcome.media.metadata,
-                },
+                publication_metadata=metadata,
                 require_native_audio=(
                     context.node.node_type == "video"
                     and effective_parameters.get("generate_audio") is True
