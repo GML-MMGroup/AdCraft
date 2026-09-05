@@ -153,6 +153,12 @@ class _ProviderFacts(_Parameters):
     submitted_media_facts: _Parameters | None = None
 
 
+class _GroundingAudit(StoryboardGridGroundingAuditV1):
+    prompt_reference_labels: tuple[
+        Annotated[str, Field(max_length=32, pattern=r"^Image [1-9][0-9]*$")], ...
+    ] = ()
+
+
 class _CanvasPublicationMetadataV1(_ProviderFacts):
     workflow_id: Identity
     node_id: Identity
@@ -188,7 +194,7 @@ class _CanvasPublicationMetadataV1(_ProviderFacts):
     occurrence_id: Identity | None = None
     character_pair_id: Identity | None = None
     character_phase: Identity | None = None
-    storyboard_grid_grounding: StoryboardGridGroundingAuditV1 | None = None
+    storyboard_grid_grounding: _GroundingAudit | None = None
 
 
 def publication_metadata_error() -> V2PersistenceError:
@@ -324,7 +330,10 @@ def _validate_summary_bounds(value: object) -> None:
             raise ValueError("Publication metadata exceeds the existing string bound.")
         _safe_identifier(value)
     elif isinstance(value, dict):
-        for item in value.values():
+        for key, item in value.items():
+            if key == "prompt_reference_labels":
+                # This one spaced wire label is validated by the closed grounding contract.
+                continue
             _validate_summary_bounds(item)
     elif isinstance(value, list):
         for item in value:
