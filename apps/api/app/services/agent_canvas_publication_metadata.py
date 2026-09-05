@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from typing import Annotated, Any, Literal, Mapping, TYPE_CHECKING
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, StrictBool
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_errors import ActionableFailureV1
@@ -67,7 +68,7 @@ class _Parameters(_Closed):
 class _PromptAudit(_Closed):
     canonical_provider_prompt_hash: Digest
     actual_provider_prompt_hash: Digest
-    prompt_match: bool
+    prompt_match: StrictBool
     prompt_source_contract: Identity | None = None
     prompt_contract_name: Identity | None = None
     prompt_contract_version: Identity | int | None = None
@@ -285,13 +286,33 @@ def project_canvas_publication_metadata(
             values["provider_asset"] = _provider_facts(provider_metadata["provider_asset"])
         if "prompt_audit" in provider_metadata:
             values["prompt_audit"] = _prompt_audit(provider_metadata["prompt_audit"])
+            if values["prompt_audit"]["canonical_provider_prompt_hash"] != values["prompt_digest"]:
+                raise ValueError("Prompt audit does not match the frozen execution.")
         for key in ("reference_wire_audit", "reference_input_delivery"):
             if key in provider_metadata:
                 values[key] = _select(_ReferenceAudit, provider_metadata[key])
         if "quality_flags" in provider_metadata:
             values["quality_flags"] = provider_metadata["quality_flags"]
-        return _CanvasPublicationMetadataV1.model_validate(values).model_dump(
+        result = _CanvasPublicationMetadataV1.model_validate(values).model_dump(
             mode="json", exclude_none=True
         )
+        _validate_summary_bounds(result)
+        return result
     except (ValidationError, ValueError, TypeError) as error:
         raise publication_metadata_error() from error
+
+
+def _validate_summary_bounds(value: object) -> None:
+    """Validate reused typed summaries too; never trim their identities or payloads."""
+    if len(json.dumps(value, ensure_ascii=False)) > 131_072:
+        raise ValueError("Publication metadata exceeds the existing envelope bound.")
+    if isinstance(value, str):
+        if len(value) > 8192:
+            raise ValueError("Publication metadata exceeds the existing string bound.")
+        _safe_identifier(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _validate_summary_bounds(item)
+    elif isinstance(value, list):
+        for item in value:
+            _validate_summary_bounds(item)
