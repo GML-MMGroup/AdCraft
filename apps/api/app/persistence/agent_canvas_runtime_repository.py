@@ -1509,6 +1509,7 @@ class AgentCanvasRuntimeRepository:
             role_contract_version=cast(str, node["role_contract_version"]),
             summary_prompt=cast(str | None, node.get("summary_prompt")),
             generation_prompt=cast(str | None, node.get("generation_prompt")),
+            prompt_presentation=node.get("prompt_presentation"),
             structured_content_digest=_json_digest(node.get("structured_content", {})),
             model_selection_mode=cast(str, node["model_selection_mode"]),
             model_ref=cast(str | None, node.get("model_ref")),

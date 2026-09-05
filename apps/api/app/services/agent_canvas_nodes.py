@@ -186,6 +186,15 @@ class AgentCanvasNodeService:
                     str(changes["generation_prompt"]),
                     now,
                 )
+        if (
+            "prompt_presentation" not in changes
+            and current.prompt_presentation is not None
+            and current.prompt_preparation.status == "ready"
+        ):
+            _validate_inherited_prompt_projection(current)
+            changes["prompt_presentation"] = current.prompt_presentation.model_copy(
+                update={"revision": current.revision + 1}
+            )
         status = (
             current.status
             if source_only_product
@@ -219,7 +228,11 @@ class AgentCanvasNodeService:
                     }
                 )
             )
-        self._repository.update_node(updated, expected_revision=expected_revision)
+        self._repository.update_node(
+            updated,
+            expected_revision=expected_revision,
+            expected_node_revision=current.revision,
+        )
         return self._repository.get_node(workflow_id, node_id)
 
     def delete(
@@ -315,6 +328,30 @@ def _editable_prompt_projection(
         brief_digest=prior.brief_digest if prior is not None else None,
         prompt_digest=f"sha256:{sha256(text.encode('utf-8')).hexdigest()}",
     )
+
+
+def _validate_inherited_prompt_projection(node: CanvasNodeV2) -> None:
+    projection = node.prompt_presentation
+    if projection is None:
+        return
+    prompt = node.generation_prompt or ""
+    review_revision = node.metadata.get("guided_review_node_revision")
+    revision_matches = projection.revision == node.revision or (
+        isinstance(review_revision, int)
+        and not isinstance(review_revision, bool)
+        and review_revision == node.revision
+        and projection.revision + 1 == node.revision
+    )
+    if (
+        projection.text != prompt
+        or projection.prompt_digest != f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
+        or not revision_matches
+    ):
+        raise V2PersistenceError(
+            "prompt_revision_conflict",
+            "The editable prompt projection does not match the Node revision.",
+            stage="agent_canvas_nodes",
+        )
 
 
 def _changes_prompt_authority(changes: dict[str, object]) -> bool:

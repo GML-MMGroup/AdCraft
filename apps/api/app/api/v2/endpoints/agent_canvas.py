@@ -4043,6 +4043,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_model_incompatible": 409,
         "node_prompt_empty": 409,
         "node_prompt_preparation_incomplete": 409,
+        "prompt_revision_conflict": 409,
         "prompt_preparation_revision_conflict": 409,
         "prompt_preparation_failed": 503,
         "stage_content_mismatch": 422,

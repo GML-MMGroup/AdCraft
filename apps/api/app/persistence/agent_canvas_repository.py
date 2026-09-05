@@ -760,6 +760,7 @@ class AgentCanvasWorkflowRepository:
         node: CanvasNodeV2,
         *,
         expected_revision: int,
+        expected_node_revision: int | None = None,
     ) -> AgentCanvasWorkflowV2:
         """Replace one node record and advance authoring once."""
 
@@ -788,6 +789,15 @@ class AgentCanvasWorkflowRepository:
                     if current_row is None:
                         raise _node_not_found_error()
                     current_node = _node_from_row(current_row)
+                    if (
+                        expected_node_revision is not None
+                        and current_node.revision != expected_node_revision
+                    ):
+                        raise V2PersistenceError(
+                            "prompt_revision_conflict",
+                            "The editable prompt projection does not match the Node revision.",
+                            stage="agent_canvas_workflow_repository",
+                        )
                     requested_manual_prompt = (
                         node.prompt_preparation.status == "ready"
                         and not _has_managed_prompt_preparation(node)
