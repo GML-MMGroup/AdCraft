@@ -236,11 +236,9 @@ def _prompt_audit(value: object) -> dict[str, Any]:
                 raise ValueError("Prompt integrity evidence is inconsistent.")
             selected.setdefault(hash_key, digest)
     audit = _PromptAudit.model_validate(selected)
-    if (
-        not audit.prompt_match
-        or audit.canonical_provider_prompt_hash.removeprefix("sha256:")
-        != audit.actual_provider_prompt_hash.removeprefix("sha256:")
-    ):
+    if not audit.prompt_match or audit.canonical_provider_prompt_hash.removeprefix(
+        "sha256:"
+    ) != audit.actual_provider_prompt_hash.removeprefix("sha256:"):
         raise V2PersistenceError(
             "v2_provider_prompt_mismatch",
             "Provider prompt integrity validation failed.",
@@ -288,9 +286,19 @@ def project_canvas_publication_metadata(
             values["provider_asset"] = _provider_facts(provider_metadata["provider_asset"])
         if "prompt_audit" in provider_metadata:
             values["prompt_audit"] = _prompt_audit(provider_metadata["prompt_audit"])
+            expected_prompt_digest = values["prompt_digest"]
+            if context.seedance_manifest is not None:
+                expected_prompt_digest = sha256(
+                    context.seedance_manifest.prompt.encode("utf-8")
+                ).hexdigest()
+                if (
+                    context.seedance_input_audit is None
+                    or context.seedance_input_audit.prompt_hash != expected_prompt_digest
+                ):
+                    raise ValueError("Provider manifest prompt evidence is inconsistent.")
             if (
                 values["prompt_audit"]["canonical_provider_prompt_hash"].removeprefix("sha256:")
-                != values["prompt_digest"]
+                != expected_prompt_digest
             ):
                 raise ValueError("Prompt audit does not match the frozen execution.")
         for key in ("reference_wire_audit", "reference_input_delivery"):
