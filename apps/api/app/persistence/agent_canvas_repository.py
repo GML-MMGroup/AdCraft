@@ -838,6 +838,20 @@ class AgentCanvasWorkflowRepository:
                             }
                         )
                     if node.prompt_preparation.status == "queued":
+                        if (
+                            expected_node_revision is not None
+                            and current_node.prompt_preparation.status == "queued"
+                            and node.prompt_preparation.operation_id
+                            == current_node.prompt_preparation.operation_id
+                            and node.revision != current_node.revision
+                        ):
+                            node = node.model_copy(
+                                update={
+                                    "prompt_preparation": node.prompt_preparation.model_copy(
+                                        update={"operation_id": None}
+                                    )
+                                }
+                            )
                         bindings_for_node = _load_target_bindings(
                             connection,
                             node.workflow_id,
