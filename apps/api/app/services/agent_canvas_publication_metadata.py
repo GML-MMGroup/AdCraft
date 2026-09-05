@@ -293,13 +293,15 @@ def project_canvas_publication_metadata(
         if "prompt_audit" in provider_metadata:
             values["prompt_audit"] = _prompt_audit(provider_metadata["prompt_audit"])
             expected_prompt_digest = values["prompt_digest"]
+            if context.seedance_input_audit is not None:
+                expected_prompt_digest = context.seedance_input_audit.prompt_hash
             if context.seedance_manifest is not None:
-                expected_prompt_digest = sha256(
+                manifest_digest = sha256(
                     context.seedance_manifest.prompt.encode("utf-8")
                 ).hexdigest()
                 if (
                     context.seedance_input_audit is None
-                    or context.seedance_input_audit.prompt_hash != expected_prompt_digest
+                    or manifest_digest != expected_prompt_digest
                 ):
                     raise ValueError("Provider manifest prompt evidence is inconsistent.")
             if (
