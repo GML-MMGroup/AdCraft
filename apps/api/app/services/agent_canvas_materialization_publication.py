@@ -1286,13 +1286,9 @@ class CapabilityMaterializationPublicationService:
     ) -> MaterializationNormalizationV1:
         draft_key, _, _, title_suffix, _ = stage_definitions("storyboard_design")[0]
         summary = envelope.selected_option.public_summary
-        style_prompt = next(
-            (
-                value.strip()
-                for key in ("role_guidance", "global_guidance", "summary")
-                if isinstance((value := context.style_projection.get(key)), str) and value.strip()
-            ),
-            "Detailed semi-realistic advertising illustration",
+        style_prompt = (
+            combined_style_guidance(context.style_projection)
+            or "Detailed semi-realistic advertising illustration"
         )
         style = VisualStyleContractV2(
             style_prompt=style_prompt,
