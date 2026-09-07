@@ -1,6 +1,7 @@
 {
   "skill_id": "luxury-silk-illustration",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "流光丝绸插画广告",
   "description": "以流动装饰线、丝绸材质行为、精炼色场和触觉优雅构建兼具平面秩序与材质感的影像。",
   "content_locale": "zh-CN",

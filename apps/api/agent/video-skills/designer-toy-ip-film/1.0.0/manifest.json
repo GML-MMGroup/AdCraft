@@ -1,6 +1,7 @@
 {
   "skill_id": "designer-toy-ip-film",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "潮玩角色世界广告",
   "description": "以可收藏轮廓、标志性配件、材质魅力和世界构建钩子组织具有角色识别度的商业动画。",
   "content_locale": "zh-CN",

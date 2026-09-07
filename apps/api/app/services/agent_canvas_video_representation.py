@@ -12,8 +12,8 @@ from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.services.agent_canvas_identity_safety import resolve_identity_safety_decision
 
 
-_DEFAULT_MODE: VideoRepresentationModeV2 = "illustrated"
-_POLICY_VERSION = "video-representation-v1"
+_DEFAULT_MODE: VideoRepresentationModeV2 = "illustration_to_live_action"
+_POLICY_VERSION = "video-representation-v2"
 _VALID_MODES = frozenset(("illustrated", "illustration_to_live_action"))
 
 

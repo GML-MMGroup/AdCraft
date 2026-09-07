@@ -1,6 +1,7 @@
 {
   "skill_id": "retro-pixel-arcade",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "复古像素街机动画",
   "description": "以有限像素色盘、精确精灵可读性、街机式场面调度和节奏化图形效果组织高辨识度的复古动画广告。",
   "content_locale": "zh-CN",

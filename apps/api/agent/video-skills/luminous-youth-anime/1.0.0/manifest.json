@@ -1,6 +1,7 @@
 {
   "skill_id": "luminous-youth-anime",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "青春流光动画",
   "description": "以发光氛围、天气细节、青春牵挂和天空到城市的转换组织具有成长感的动画叙事。",
   "content_locale": "zh-CN",

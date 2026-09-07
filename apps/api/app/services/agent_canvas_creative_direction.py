@@ -152,8 +152,8 @@ class CreativeDirectionService:
             )
         public_skill = snapshot.global_direction.get("public_skill")
         skill_metadata = public_skill if isinstance(public_skill, dict) else {}
-        mode = skill_metadata.get("video_representation_mode", "illustrated")
-        if mode not in {"illustrated", "illustration_to_live_action"}:
+        mode = skill_metadata.get("video_representation_mode")
+        if mode not in {None, "illustrated", "illustration_to_live_action"}:
             raise _error(
                 "style_skill_snapshot_invalid",
                 "Creative Direction snapshot contains an invalid Video representation mode.",

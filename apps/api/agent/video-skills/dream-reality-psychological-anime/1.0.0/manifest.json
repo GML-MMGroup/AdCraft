@@ -1,6 +1,7 @@
 {
   "skill_id": "dream-reality-psychological-anime",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "梦境现实心理动画",
   "description": "以主观转场、身份母题、层叠现实和图形匹配剪辑组织具有心理深度的动画叙事。",
   "content_locale": "zh-CN",

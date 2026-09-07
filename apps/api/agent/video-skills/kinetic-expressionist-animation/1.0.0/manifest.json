@@ -1,6 +1,7 @@
 {
   "skill_id": "kinetic-expressionist-animation",
   "version": "1.0.0",
+  "video_representation_mode": "illustrated",
   "display_name": "动势表现主义动画",
   "description": "以弹性绘制、表现性变形、能量化调度和色彩驱动运动组织具有强烈主观节奏的动画影像。",
   "content_locale": "zh-CN",
