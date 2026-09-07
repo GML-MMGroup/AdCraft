@@ -118,6 +118,9 @@ class StoryboardFanoutActivationService:
         return self._activate_runnable_node(
             workflow_id=fanout.workflow_id,
             node_id=next_node_id,
+            node_revision=next(
+                node.revision for node in workflow.nodes if node.node_id == next_node_id
+            ),
             source_action_id=_run_identity(fanout.fanout_plan_id, next_node_id),
             prepared_node_ids=tuple(prepared_node_ids),
         )
@@ -165,6 +168,7 @@ class StoryboardFanoutActivationService:
         return self._activate_runnable_node(
             workflow_id=workflow_id,
             node_id=next_node_id,
+            node_revision=node.revision,
             source_action_id=f"planned-media:{source_id}:{next_node_id}",
             prepared_node_ids=node_ids,
         )
@@ -174,6 +178,7 @@ class StoryboardFanoutActivationService:
         *,
         workflow_id: str,
         node_id: str,
+        node_revision: int,
         source_action_id: str,
         prepared_node_ids: tuple[str, ...],
     ) -> StoryboardFanoutActivationResult:
@@ -211,11 +216,13 @@ class StoryboardFanoutActivationService:
             ):
                 return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
 
+        # A consumed wait cannot own a later result from a re-prepared Draft.
+        manual_identity = _digest(f"{source_action_id}:node-revision:{node_revision}")
         manual_wait = GuidanceAwaitingV2(
-            awaiting_id=f"awaiting_{_digest(source_action_id)}",
+            awaiting_id=f"awaiting_{manual_identity}",
             workflow_id=workflow_id,
             session_id=session.session_id,
-            checkpoint_id=f"checkpoint_{_digest(source_action_id)}",
+            checkpoint_id=f"checkpoint_{manual_identity}",
             kind="manual_node_run",
             requires_user_action=True,
             resume_policy="node_terminal",
