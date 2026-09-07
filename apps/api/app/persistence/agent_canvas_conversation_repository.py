@@ -940,21 +940,41 @@ class AgentCanvasConversationRepository:
 
         now = _now()
         with self._database.engine.begin() as connection:
-            row = _require_guidance_session_row(connection, session_id)
-            _require_guidance_revision(row, expected_session_revision)
-            connection.execute(
-                update(AgentCanvasGuidanceSessionRow)
-                .where(
-                    AgentCanvasGuidanceSessionRow.session_id == session_id,
-                    AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
-                )
-                .values(
-                    completion_json=completion.model_dump_json(),
-                    revision=expected_session_revision + 1,
-                    updated_at=now,
-                )
+            workflow_id = self.update_guidance_completion_in_transaction(
+                connection,
+                session_id,
+                expected_session_revision=expected_session_revision,
+                completion=completion,
+                now=now,
             )
-        return self.get_guidance_session(str(row["workflow_id"]))
+        return self.get_guidance_session(workflow_id)
+
+    def update_guidance_completion_in_transaction(
+        self,
+        connection: Connection,
+        session_id: str,
+        *,
+        expected_session_revision: int,
+        completion: GuidanceCompletionProjectionV2,
+        now: str,
+    ) -> str:
+        """Update only completion projection inside an owning authoring transaction."""
+        completion = GuidanceCompletionProjectionV2.model_validate(completion.model_dump())
+        row = _require_guidance_session_row(connection, session_id)
+        _require_guidance_revision(row, expected_session_revision)
+        connection.execute(
+            update(AgentCanvasGuidanceSessionRow)
+            .where(
+                AgentCanvasGuidanceSessionRow.session_id == session_id,
+                AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+            )
+            .values(
+                completion_json=completion.model_dump_json(),
+                revision=expected_session_revision + 1,
+                updated_at=now,
+            )
+        )
+        return str(row["workflow_id"])
 
     def set_guidance_checkpoint(
         self,

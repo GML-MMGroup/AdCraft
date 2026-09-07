@@ -144,6 +144,13 @@ class AgentCanvasProductionClosureRepository:
             GuidedEditingPreparationReceiptV1,
         )
 
+    def save_preparation_in_transaction(
+        self,
+        connection: Connection,
+        receipt: EditingPreparationReceipt,
+    ) -> EditingPreparationReceipt:
+        return self._save_in_transaction(connection, "editing_preparation", receipt)
+
     def find_preparation(
         self,
         workflow_id: str,

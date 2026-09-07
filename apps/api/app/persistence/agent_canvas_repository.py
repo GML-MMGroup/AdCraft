@@ -655,93 +655,15 @@ class AgentCanvasWorkflowRepository:
     ) -> AgentCanvasWorkflowV2:
         """Atomically persist one guided Editing manifest and its explicit inputs."""
 
-        if node.node_type != "editing" or node.creative_role != "editing":
-            raise _invalid_binding_batch_error()
-        now = node.updated_at.isoformat()
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    current_revision = _require_workflow_revision(
+                    self.upsert_guided_editing_in_transaction(
                         connection,
-                        node.workflow_id,
-                        expected_revision,
-                    )
-                    existing_node = connection.execute(
-                        select(AgentCanvasNodeRow.node_id).where(
-                            AgentCanvasNodeRow.workflow_id == node.workflow_id,
-                            AgentCanvasNodeRow.node_id == node.node_id,
-                        )
-                    ).scalar_one_or_none()
-                    if existing_node is None:
-                        connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
-                    else:
-                        node_values = _node_values(node)
-                        node_values.pop("node_id")
-                        node_values.pop("workflow_id")
-                        connection.execute(
-                            update(AgentCanvasNodeRow)
-                            .where(
-                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
-                                AgentCanvasNodeRow.node_id == node.node_id,
-                            )
-                            .values(**node_values)
-                        )
-                    for binding in bindings:
-                        if (
-                            binding.workflow_id != node.workflow_id
-                            or binding.target_node_id != node.node_id
-                            or not isinstance(binding.source, CanvasBindingSourceNodeV2)
-                        ):
-                            raise _invalid_binding_batch_error()
-                        _require_node(
-                            connection,
-                            binding.workflow_id,
-                            binding.source.node_id,
-                        )
-                        existing_binding = connection.execute(
-                            select(AgentCanvasBindingRow.binding_id).where(
-                                AgentCanvasBindingRow.workflow_id == binding.workflow_id,
-                                AgentCanvasBindingRow.binding_id == binding.binding_id,
-                            )
-                        ).scalar_one_or_none()
-                        if existing_binding is None:
-                            connection.execute(
-                                insert(AgentCanvasBindingRow).values(**_binding_values(binding))
-                            )
-                        else:
-                            binding_values = _binding_values(binding)
-                            binding_values.pop("binding_id")
-                            binding_values.pop("workflow_id")
-                            connection.execute(
-                                update(AgentCanvasBindingRow)
-                                .where(
-                                    AgentCanvasBindingRow.workflow_id == binding.workflow_id,
-                                    AgentCanvasBindingRow.binding_id == binding.binding_id,
-                                )
-                                .values(**binding_values)
-                            )
-                    _advance_workflow_revision(
-                        connection,
-                        workflow_id=node.workflow_id,
-                        current_revision=current_revision,
-                        updated_at=now,
-                    )
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=node.workflow_id,
-                            node_id=node.node_id,
-                            event_type="guided_editing_updated",
-                            created_at=now,
-                            payload={
-                                "binding_ids": [binding.binding_id for binding in bindings],
-                                "manifest_revision": node.structured_content.get(
-                                    "manifest", {}
-                                ).get("manifest_revision"),
-                                "revision": current_revision + 1,
-                            },
-                        ),
+                        node,
+                        bindings,
+                        expected_revision=expected_revision,
                     )
                     connection.commit()
                 except BaseException:
@@ -754,6 +676,100 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def upsert_guided_editing_in_transaction(
+        self,
+        connection: Connection,
+        node: CanvasNodeV2,
+        bindings: tuple[CanvasBindingV2, ...],
+        *,
+        expected_revision: int,
+    ) -> int:
+        """Persist Editing topology inside its Plan and receipt transaction."""
+
+        if node.node_type != "editing" or node.creative_role != "editing":
+            raise _invalid_binding_batch_error()
+        now = node.updated_at.isoformat()
+        current_revision = _require_workflow_revision(
+            connection,
+            node.workflow_id,
+            expected_revision,
+        )
+        existing_node = connection.execute(
+            select(AgentCanvasNodeRow.node_id).where(
+                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                AgentCanvasNodeRow.node_id == node.node_id,
+            )
+        ).scalar_one_or_none()
+        if existing_node is None:
+            connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+        else:
+            node_values = _node_values(node)
+            node_values.pop("node_id")
+            node_values.pop("workflow_id")
+            connection.execute(
+                update(AgentCanvasNodeRow)
+                .where(
+                    AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                    AgentCanvasNodeRow.node_id == node.node_id,
+                )
+                .values(**node_values)
+            )
+        for binding in bindings:
+            if (
+                binding.workflow_id != node.workflow_id
+                or binding.target_node_id != node.node_id
+                or not isinstance(binding.source, CanvasBindingSourceNodeV2)
+            ):
+                raise _invalid_binding_batch_error()
+            _require_node(
+                connection,
+                binding.workflow_id,
+                binding.source.node_id,
+            )
+            existing_binding = connection.execute(
+                select(AgentCanvasBindingRow.binding_id).where(
+                    AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                    AgentCanvasBindingRow.binding_id == binding.binding_id,
+                )
+            ).scalar_one_or_none()
+            if existing_binding is None:
+                connection.execute(insert(AgentCanvasBindingRow).values(**_binding_values(binding)))
+            else:
+                binding_values = _binding_values(binding)
+                binding_values.pop("binding_id")
+                binding_values.pop("workflow_id")
+                connection.execute(
+                    update(AgentCanvasBindingRow)
+                    .where(
+                        AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                        AgentCanvasBindingRow.binding_id == binding.binding_id,
+                    )
+                    .values(**binding_values)
+                )
+        _advance_workflow_revision(
+            connection,
+            workflow_id=node.workflow_id,
+            current_revision=current_revision,
+            updated_at=now,
+        )
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=node.workflow_id,
+                node_id=node.node_id,
+                event_type="guided_editing_updated",
+                created_at=now,
+                payload={
+                    "binding_ids": [binding.binding_id for binding in bindings],
+                    "manifest_revision": node.structured_content.get("manifest", {}).get(
+                        "manifest_revision"
+                    ),
+                    "revision": current_revision + 1,
+                },
+            ),
+        )
+        return current_revision + 1
 
     def update_node(
         self,
