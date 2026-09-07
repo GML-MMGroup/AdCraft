@@ -915,24 +915,48 @@ class AgentCanvasConversationRepository:
     ) -> GuidedSessionStateV2:
         now = _now()
         with self._database.engine.begin() as connection:
-            row = _require_guidance_session_row(connection, session_id)
-            _require_guidance_revision(row, expected_session_revision)
-            values: dict[str, object] = {
-                "status": "completed",
-                "completion_json": completion.model_dump_json(),
-                "current_topic_id": None,
-                "active_proposal_id": None,
-                "revision": expected_session_revision + 1,
-                "updated_at": now,
-            }
-            if journey is not None:
-                values["journey_state_json"] = journey.model_dump_json()
-            connection.execute(
-                update(AgentCanvasGuidanceSessionRow)
-                .where(AgentCanvasGuidanceSessionRow.session_id == session_id)
-                .values(**values)
+            workflow_id = self.complete_guidance_session_in_transaction(
+                connection,
+                session_id,
+                expected_session_revision=expected_session_revision,
+                completion=completion,
+                journey=journey,
+                now=now,
             )
-        return self.get_guidance_session(str(row["workflow_id"]))
+        return self.get_guidance_session(workflow_id)
+
+    def complete_guidance_session_in_transaction(
+        self,
+        connection: Connection,
+        session_id: str,
+        *,
+        expected_session_revision: int,
+        completion: GuidanceCompletionProjectionV2,
+        journey: GuidedProductionJourneyV2 | None,
+        now: str,
+    ) -> str:
+        """Complete Guidance inside its terminal proof transaction."""
+        row = _require_guidance_session_row(connection, session_id)
+        _require_guidance_revision(row, expected_session_revision)
+        values: dict[str, object] = {
+            "status": "completed",
+            "completion_json": completion.model_dump_json(),
+            "current_topic_id": None,
+            "active_proposal_id": None,
+            "revision": expected_session_revision + 1,
+            "updated_at": now,
+        }
+        if journey is not None:
+            values["journey_state_json"] = journey.model_dump_json()
+        connection.execute(
+            update(AgentCanvasGuidanceSessionRow)
+            .where(
+                AgentCanvasGuidanceSessionRow.session_id == session_id,
+                AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+            )
+            .values(**values)
+        )
+        return str(row["workflow_id"])
 
     def update_guidance_completion(
         self,

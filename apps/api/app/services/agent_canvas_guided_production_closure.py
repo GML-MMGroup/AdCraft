@@ -255,6 +255,11 @@ class GuidedProductionClosureService:
             created_at=self._clock(),
         )
 
+    def require_no_active_work(self, workflow_id: str, node_ids: tuple[str, ...]) -> None:
+        """Recheck existing execution ownership while the caller holds its write fence."""
+        if self._has_active_work(workflow_id, node_ids):
+            raise _error("guided_closure_blocked", "Guided source media still has active work.")
+
     def _record_blocked(self, workflow_id: str, document, blockers) -> None:
         digest = _digest([item.model_dump(mode="json") for item in blockers])
         self._events.append(

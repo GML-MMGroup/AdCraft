@@ -185,6 +185,11 @@ class AgentCanvasProductionClosureRepository:
     ) -> GuidedFinalCompletionReceiptV1:
         return self._save("final_completion", receipt)
 
+    def save_completion_in_transaction(
+        self, connection: Connection, receipt: GuidedFinalCompletionReceiptV1
+    ) -> GuidedFinalCompletionReceiptV1:
+        return self._save_in_transaction(connection, "final_completion", receipt)
+
     def save_action_reconciliation_in_transaction(
         self,
         connection: Connection,

@@ -609,6 +609,12 @@ class AgentCanvasWorkflowRepository:
         )
         return current_revision + 1
 
+    def require_workflow_revision_in_transaction(
+        self, connection: Connection, workflow_id: str, expected_revision: int
+    ) -> None:
+        """Fence a read-only workflow snapshot in the caller's authority transaction."""
+        _require_workflow_revision(connection, workflow_id, expected_revision)
+
     def require_node_revision_in_transaction(
         self,
         connection: Connection,
@@ -617,6 +623,7 @@ class AgentCanvasWorkflowRepository:
         node_id: str,
         expected_revision: int,
         expected_output_asset_id: str | None,
+        expected_status: str | None = None,
     ) -> None:
         """Revalidate a source Node while the caller owns the write lock."""
 
@@ -625,6 +632,7 @@ class AgentCanvasWorkflowRepository:
                 select(
                     AgentCanvasNodeRow.revision,
                     AgentCanvasNodeRow.output_asset_id,
+                    AgentCanvasNodeRow.status,
                 ).where(
                     AgentCanvasNodeRow.workflow_id == workflow_id,
                     AgentCanvasNodeRow.node_id == node_id,
@@ -643,6 +651,12 @@ class AgentCanvasWorkflowRepository:
             raise V2PersistenceError(
                 "guided_media_confirmation_stale",
                 "Storyboard fan-out source Asset changed before publication.",
+                stage="agent_canvas_repository",
+            )
+        if expected_status is not None and row["status"] != expected_status:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Confirmed media status changed before publication.",
                 stage="agent_canvas_repository",
             )
 
