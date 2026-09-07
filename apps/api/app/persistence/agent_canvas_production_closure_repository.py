@@ -6,7 +6,7 @@ from hashlib import sha256
 import json
 from typing import Literal, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -18,6 +18,8 @@ from app.persistence.models import AgentCanvasGuidedProductionReceiptRow
 from app.schemas.agent_canvas_production_closure import (
     GuidedEditingActionReconciliationReceiptV1,
     GuidedEditingPreparationReceiptV1,
+    GuidedEditingPreparationReceiptV2,
+    GuidedEditingTopologyReceiptV2,
     GuidedFinalCompletionReceiptV1,
     GuidedMediaConfirmationV1,
     StoryboardFanoutPlanV1,
@@ -35,10 +37,12 @@ ReceiptModel = (
     StoryboardFanoutPlanV1
     | GuidedMediaConfirmationV1
     | GuidedEditingPreparationReceiptV1
+    | GuidedEditingTopologyReceiptV2
     | GuidedEditingActionReconciliationReceiptV1
     | GuidedFinalCompletionReceiptV1
 )
 ReceiptT = TypeVar("ReceiptT", bound=BaseModel)
+EditingPreparationReceipt = GuidedEditingPreparationReceiptV1 | GuidedEditingPreparationReceiptV2
 
 _MODEL_BY_TYPE: dict[ReceiptType, type[BaseModel]] = {
     "storyboard_fanout": StoryboardFanoutPlanV1,
@@ -130,12 +134,10 @@ class AgentCanvasProductionClosureRepository:
             None,
         )
 
-    def save_preparation(
-        self, receipt: GuidedEditingPreparationReceiptV1
-    ) -> GuidedEditingPreparationReceiptV1:
+    def save_preparation(self, receipt: EditingPreparationReceipt) -> EditingPreparationReceipt:
         return self._save("editing_preparation", receipt)
 
-    def get_preparation(self, receipt_id: str) -> GuidedEditingPreparationReceiptV1:
+    def get_preparation(self, receipt_id: str) -> EditingPreparationReceipt:
         return self._get(
             "editing_preparation",
             receipt_id,
@@ -147,10 +149,10 @@ class AgentCanvasProductionClosureRepository:
         workflow_id: str,
         plan_document_id: str,
         plan_revision: int,
-    ) -> GuidedEditingPreparationReceiptV1 | None:
+    ) -> EditingPreparationReceipt | None:
         return next(
             (
-                cast(GuidedEditingPreparationReceiptV1, item)
+                cast(EditingPreparationReceipt, item)
                 for item in self._list("editing_preparation", workflow_id)
                 if item.plan_document_id == plan_document_id and item.plan_revision == plan_revision
             ),
@@ -161,10 +163,10 @@ class AgentCanvasProductionClosureRepository:
         self,
         workflow_id: str,
         editing_node_id: str,
-    ) -> GuidedEditingPreparationReceiptV1 | None:
+    ) -> EditingPreparationReceipt | None:
         return next(
             (
-                cast(GuidedEditingPreparationReceiptV1, item)
+                cast(EditingPreparationReceipt, item)
                 for item in reversed(self._list("editing_preparation", workflow_id))
                 if item.editing_node_id == editing_node_id
             ),
@@ -362,7 +364,7 @@ class AgentCanvasProductionClosureRepository:
                 "guided_production_receipt_not_found",
                 "Guided production receipt was not found.",
             )
-        return model_type.model_validate_json(row.payload_json)
+        return _parse_receipt(model_type, row.payload_json)
 
     def _list(self, receipt_type: ReceiptType, workflow_id: str) -> tuple[ReceiptModel, ...]:
         try:
@@ -384,7 +386,7 @@ class AgentCanvasProductionClosureRepository:
                 "Guided production receipt storage is unavailable.",
             ) from error
         model_type = _MODEL_BY_TYPE[receipt_type]
-        return tuple(model_type.model_validate_json(row.payload_json) for row in rows)
+        return tuple(_parse_receipt(model_type, row.payload_json) for row in rows)
 
     def _get_by_identity(
         self,
@@ -423,6 +425,16 @@ class AgentCanvasProductionClosureRepository:
 
 def _canonical_payload(model: BaseModel) -> str:
     return json.dumps(model.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
+
+def _parse_receipt(model_type: type[ReceiptT], payload: str) -> ReceiptT:
+    if model_type is GuidedEditingPreparationReceiptV1:
+        value = json.loads(payload)
+        if "proof_kind" in value:
+            return cast(
+                ReceiptT, TypeAdapter(GuidedEditingPreparationReceiptV2).validate_python(value)
+            )
+    return model_type.model_validate_json(payload)
 
 
 def _receipt_id(model: BaseModel) -> str:
