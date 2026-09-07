@@ -129,9 +129,18 @@ class GuidedEditingPreparationService:
             for record in plan_records
             if record.node_role == "video_segment" and record.sequence_id is not None
         }
+        excluded = tuple(getattr(plan, "excluded_media", ()))
+        included_segments = tuple(
+            segment
+            for segment in plan.segments
+            if not any(
+                item.node_role == "video_segment" and item.sequence_id == segment.sequence_id
+                for item in excluded
+            )
+        )
         ordered_video_nodes = tuple(
             nodes[record.node_id]
-            for segment in plan.segments
+            for segment in included_segments
             if (record := video_records.get(segment.sequence_id)) is not None
             and record.node_id in nodes
         )
@@ -144,7 +153,7 @@ class GuidedEditingPreparationService:
             None,
         )
         if (
-            len(ordered_video_nodes) != len(plan.segments)
+            len(ordered_video_nodes) != len(included_segments)
             or any(node.node_type != "video" for node in ordered_video_nodes)
             or (audio_node is not None and audio_node.node_type != "audio")
         ):
