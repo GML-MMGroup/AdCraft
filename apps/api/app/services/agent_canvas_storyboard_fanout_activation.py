@@ -199,6 +199,12 @@ class StoryboardFanoutActivationService:
             ):
                 return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
 
+        # Editing authoring needs source topology, not source media. Keep any
+        # existing Node wait above, but do not install a new media dependency on
+        # Editing when a late prompt-ready callback arrives after stage advance.
+        if session.journey.stage == "editing":
+            return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
+
         manual_wait = GuidanceAwaitingV2(
             awaiting_id=f"awaiting_{_digest(source_action_id)}",
             workflow_id=workflow_id,
