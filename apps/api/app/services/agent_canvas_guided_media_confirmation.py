@@ -204,6 +204,7 @@ class GuidedMediaConfirmationService:
                 self._progression is not None
                 and record.node_role == "storyboard_grid"
                 and record.sequence_id == _first_sequence_id(plan.content.segments)
+                and getattr(plan.content, "visual_anchor", None) is None
             ):
                 publish = getattr(
                     self._progression,
@@ -258,6 +259,7 @@ class GuidedMediaConfirmationService:
             self._progression is not None
             and record.node_role == "storyboard_grid"
             and record.sequence_id == _first_sequence_id(plan.content.segments)
+            and getattr(plan.content, "visual_anchor", None) is None
         ):
             created_node_ids = self._progression.on_node_ready(
                 node,
