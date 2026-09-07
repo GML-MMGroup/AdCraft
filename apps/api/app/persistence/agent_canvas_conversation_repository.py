@@ -38,6 +38,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
     _awaiting_for_workflow,
+    current_guided_interaction_row,
     guided_interaction_from_row,
 )
 from app.persistence.models import (
@@ -6273,21 +6274,7 @@ def _guidance_session(
         .mappings()
         .all()
     )
-    interaction_row = (
-        connection.execute(
-            select(AgentCanvasGuidedInteractionRow)
-            .where(
-                AgentCanvasGuidedInteractionRow.workflow_id == row["workflow_id"],
-                AgentCanvasGuidedInteractionRow.status == "open",
-            )
-            .order_by(
-                AgentCanvasGuidedInteractionRow.updated_at.desc(),
-                AgentCanvasGuidedInteractionRow.interaction_id.asc(),
-            )
-        )
-        .mappings()
-        .first()
-    )
+    interaction_row = current_guided_interaction_row(connection, str(row["workflow_id"]))
     persisted_awaiting = _awaiting_for_workflow(connection, str(row["workflow_id"]))
     journey = parse_production_journey(str(row["journey_state_json"]))
     actionable_failure = None

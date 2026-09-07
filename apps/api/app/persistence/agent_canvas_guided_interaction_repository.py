@@ -165,7 +165,7 @@ class AgentCanvasGuidedInteractionRepository:
                     if existing_row is not None:
                         existing = guided_interaction_from_row(existing_row)
                         persisted_awaiting = _awaiting_for_workflow(
-                            connection, interaction.workflow_id
+                            connection, interaction.workflow_id, awaiting_id=awaiting.awaiting_id
                         )
                         if existing != interaction or persisted_awaiting != awaiting:
                             raise _error(
@@ -491,21 +491,7 @@ class AgentCanvasGuidedInteractionRepository:
 
     def get_current(self, workflow_id: str) -> GuidedInteractionV1 | None:
         with self._database.engine.connect() as connection:
-            row = (
-                connection.execute(
-                    select(AgentCanvasGuidedInteractionRow)
-                    .where(
-                        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
-                        AgentCanvasGuidedInteractionRow.status == "open",
-                    )
-                    .order_by(
-                        AgentCanvasGuidedInteractionRow.updated_at.desc(),
-                        AgentCanvasGuidedInteractionRow.interaction_id.asc(),
-                    )
-                )
-                .mappings()
-                .first()
-            )
+            row = current_guided_interaction_row(connection, workflow_id)
         return guided_interaction_from_row(row) if row is not None else None
 
     def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
@@ -2564,6 +2550,32 @@ def insert_guidance_awaiting_in_transaction(
                 "node_ids": list(awaiting.node_ids),
             },
         ),
+    )
+
+
+def current_guided_interaction_row(
+    connection: Connection, workflow_id: str
+) -> Mapping[str, object] | None:
+    awaiting = _awaiting_for_workflow(connection, workflow_id)
+    query = select(AgentCanvasGuidedInteractionRow).where(
+        AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+        AgentCanvasGuidedInteractionRow.status == "open",
+    )
+    if awaiting is not None:
+        if awaiting.interaction_id is None:
+            return None
+        query = query.where(
+            AgentCanvasGuidedInteractionRow.interaction_id == awaiting.interaction_id
+        )
+    return (
+        connection.execute(
+            query.order_by(
+                AgentCanvasGuidedInteractionRow.updated_at.desc(),
+                AgentCanvasGuidedInteractionRow.interaction_id,
+            ).limit(1)
+        )
+        .mappings()
+        .one_or_none()
     )
 
 
