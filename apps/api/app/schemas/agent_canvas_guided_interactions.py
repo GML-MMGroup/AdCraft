@@ -442,6 +442,21 @@ class GuidanceAwaitingV2(_GuidedInteractionModel):
         return self
 
 
+def awaiting_blocks_authoring(
+    awaiting: GuidanceAwaitingV2 | None,
+    *,
+    stage: JourneyStageV2,
+    stage_revision: int,
+) -> bool:
+    """Classify a projected wait, without granting resume or execution authority."""
+
+    return awaiting is not None and not (
+        awaiting.kind in {"manual_node_run", "media_review"}
+        and awaiting.stage != stage
+        and awaiting.stage_revision < stage_revision
+    )
+
+
 class GuidanceAwaitingResumeProofV2(_GuidedInteractionModel):
     awaiting_id: str = Field(min_length=1, max_length=160)
     expected_session_revision: int = Field(ge=1)

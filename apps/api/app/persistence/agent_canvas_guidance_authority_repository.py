@@ -9,6 +9,7 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.engine import Connection, RowMapping
 
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -409,7 +410,10 @@ def _guidance_advance_blocker(
             stage="guidance_advance_service",
         )
     awaiting = session.awaiting
-    if awaiting is not None:
+    if awaiting_blocks_authoring(
+        awaiting, stage=session.journey.stage, stage_revision=session.journey.stage_revision
+    ):
+        assert awaiting is not None
         if (
             awaiting.stage != session.journey.stage
             or awaiting.stage_revision != session.journey.stage_revision
