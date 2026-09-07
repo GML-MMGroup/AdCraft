@@ -86,6 +86,8 @@ class GuidedEditingActionOutcomeResolver:
         session: GuidedSessionStateV2,
     ) -> EditingActionOutcomeResolution:
         current = self._conversations.get_guidance_session(session.workflow_id)
+        if error.code != "guided_closure_blocked":
+            return self._failed(error, current, None)
         if current.awaiting is not None and current.awaiting.kind in {
             "media_review",
             "manual_node_run",
