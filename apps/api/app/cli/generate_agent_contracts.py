@@ -158,6 +158,7 @@ CONTRACT_MODELS = (
     agent_canvas_storyboard_sequences.StoryboardSequenceOutlineDraftV2,
     agent_canvas_storyboard_sequences.StoryboardSegmentMaterializationDraftV2,
     agent_canvas_storyboard_sequences.StoryboardSegmentAuthoringContextV2,
+    agent_canvas_storyboard_sequences.StoryboardGridAuthoringContextV2,
     agent_canvas.CanvasPositionV2,
     agent_canvas_errors.ActionableFailureV1,
     agent_canvas.CanvasNodeErrorV2,

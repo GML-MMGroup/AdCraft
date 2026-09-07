@@ -26457,6 +26457,17 @@
           "title": "Storyboard Parameters",
           "type": "object"
         },
+        "storyboard_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoryboardGridAuthoringContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "style_parameters": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -28761,6 +28772,84 @@
       "title": "StoryboardFanoutPlanV1",
       "type": "object"
     },
+    "StoryboardGridAuthoringContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "anchors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentAnchorV2"
+          },
+          "maxItems": 64,
+          "title": "Anchors",
+          "type": "array"
+        },
+        "plan_content_digest": {
+          "pattern": "^sha256:[0-9a-zA-Z_-]+$",
+          "title": "Plan Content Digest",
+          "type": "string"
+        },
+        "plan_document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Document Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/StoryboardPlanRowV2"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Rows",
+          "type": "array"
+        },
+        "sequence": {
+          "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
+        },
+        "style_excerpt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Excerpt"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_content_digest",
+        "plan_document_id",
+        "plan_revision",
+        "rows",
+        "sequence",
+        "workflow_id"
+      ],
+      "title": "StoryboardGridAuthoringContextV2",
+      "type": "object"
+    },
     "StoryboardGridContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -29339,6 +29428,20 @@
     "StoryboardProductionPlanContentV3": {
       "additionalProperties": false,
       "properties": {
+        "creative_direction_snapshot_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Direction Snapshot Id"
+        },
         "excluded_media": {
           "default": [],
           "items": {
@@ -29523,6 +29626,13 @@
           ],
           "default": null,
           "title": "Prior End State"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
         },
         "sequence": {
           "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
@@ -30136,13 +30246,20 @@
           "type": "string"
         },
         "video_representation_mode": {
-          "default": "illustrated",
-          "enum": [
-            "illustrated",
-            "illustration_to_live_action"
+          "anyOf": [
+            {
+              "enum": [
+                "illustrated",
+                "illustration_to_live_action"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Video Representation Mode",
-          "type": "string"
+          "default": null,
+          "title": "Video Representation Mode"
         },
         "video_representation_source_id": {
           "default": "platform-default",
