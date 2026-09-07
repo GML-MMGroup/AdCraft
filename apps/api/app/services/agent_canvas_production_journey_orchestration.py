@@ -19,7 +19,6 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyContextV2,
     JourneyPolicyResultV2,
 )
-from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV2
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
@@ -452,20 +451,14 @@ class GuidedProductionJourneyService:
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         if session is None:
             return None
-        current_awaiting = session.awaiting
-        if current_awaiting is not None and current_awaiting.kind == "manual_node_run":
-            if self._awaiting is None:
-                raise ValueError("Guidance awaiting authority is required to resume Node work.")
-            self._awaiting.resume(
-                workflow_id,
-                GuidanceAwaitingResumeProofV2(
-                    awaiting_id=current_awaiting.awaiting_id,
-                    expected_session_revision=session.revision,
-                    evidence_kind="node_terminal",
-                    node_ids=current_awaiting.node_ids,
-                ),
-            )
-            session = self._conversations.get_guidance_session(workflow_id)
+        if session.status != "active":
+            return session
+        if session.awaiting is not None and session.awaiting.kind not in {
+            "manual_node_run",
+            "media_review",
+        }:
+            return session
+        # Draft topology advances authorship, not the media wait's completion.
         evidence_by_stage = {
             "storyboard_grids": "storyboard_grids_prepared",
             "videos": "videos_prepared",
