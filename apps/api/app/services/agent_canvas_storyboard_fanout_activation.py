@@ -9,6 +9,8 @@ from typing import Callable
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_stage_authoring_context import combined_style_guidance
 
 
 @dataclass(frozen=True)
@@ -251,12 +253,27 @@ class StoryboardFanoutActivationService:
             fanout.visual_anchor_node_id,
         )
         style = anchor.structured_content.get("style")
-        get_snapshot = getattr(
-            self._conversations,
-            "get_active_creative_direction_snapshot",
-            None,
+        get_document = getattr(self._documents, "get_document", None)
+        document = (
+            get_document(fanout.workflow_id, fanout.plan_document_id)
+            if get_document is not None
+            else None
         )
-        snapshot = get_snapshot(fanout.workflow_id) if get_snapshot is not None else None
+        snapshot_id = getattr(
+            getattr(document, "content", None), "creative_direction_snapshot_id", None
+        )
+        snapshot = (
+            self._conversations.get_creative_direction_snapshot(snapshot_id)
+            if snapshot_id is not None
+            else None
+        )
+        guidance = (
+            CreativeDirectionService().resolve_style_context(
+                snapshot, "storyboard" if node_role == "storyboard_grid" else "video"
+            )
+            if snapshot is not None
+            else None
+        )
         public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
         representation_mode = (
             public_skill.get("video_representation_mode")
@@ -275,7 +292,14 @@ class StoryboardFanoutActivationService:
                 if node_role == "storyboard_grid"
                 else "agent/skills/video_agent_video_direction/SKILL.md"
             ),
-            style_projection=str(style)[:8192] if style is not None else None,
+            style_snapshot_id=snapshot_id,
+            style_projection=(
+                combined_style_guidance(guidance.model_dump())
+                if guidance is not None
+                else str(style)[:8192]
+                if style is not None
+                else None
+            ),
             video_representation_mode=(
                 representation_mode
                 if representation_mode in {"illustrated", "illustration_to_live_action"}

@@ -455,6 +455,9 @@ class CapabilityMaterializationPublicationService:
             )
             try:
                 content = StoryboardProductionPlanContentV3(
+                    creative_direction_snapshot_id=context.style_projection.get(
+                        "creative_direction_snapshot_id"
+                    ),
                     narrative_outline=text,
                     requirement_revision_id=requirement.revision_id,
                     requirement_revision_no=requirement.revision_no,
@@ -520,7 +523,20 @@ class CapabilityMaterializationPublicationService:
             if stage == "style_lock"
             else text
         )
-        next_content = current.content.model_copy(update={"narrative_outline": outline})
+        next_content = current.content.model_copy(
+            update={
+                "narrative_outline": outline,
+                **(
+                    {
+                        "creative_direction_snapshot_id": context.style_projection.get(
+                            "creative_direction_snapshot_id"
+                        )
+                    }
+                    if stage in {"style_lock", "storyboard_plan"}
+                    else {}
+                ),
+            }
+        )
         operation = f"accept_{stage}"
         request_digest = self._working_documents.digest_mutation(
             document_id=current.document_id,
@@ -1356,6 +1372,9 @@ class CapabilityMaterializationPublicationService:
             )
             content = StoryboardProductionPlanContentV3(
                 schema_version="3",
+                creative_direction_snapshot_id=context.style_projection.get(
+                    "creative_direction_snapshot_id"
+                ),
                 narrative_outline=legacy_outline.narrative_outline,
                 requirement_revision_id=requirement.revision_id,
                 requirement_revision_no=requirement.revision_no,
