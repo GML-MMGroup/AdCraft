@@ -1,6 +1,7 @@
 """Activate persisted Storyboard fan-out Drafts through declared Run authority."""
 
 from __future__ import annotations
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -182,17 +183,20 @@ class StoryboardFanoutActivationService:
 
         current = self._awaiting.inspect(workflow_id)
         if current is not None:
-            if current.kind == "manual_node_run" and current.node_ids == (node_id,):
+            owned = (
+                current if current.kind == "manual_node_run" and node_id in current.node_ids
+                else self._awaiting.inspect(workflow_id, node_id=node_id)
+            )
+            if owned is not None:
                 return StoryboardFanoutActivationResult(
                     prepared_node_ids,
-                    current.awaiting_id,
+                    owned.awaiting_id,
                     (),
                 )
-            return StoryboardFanoutActivationResult(
-                prepared_node_ids,
-                None,
-                (),
-            )
+            if awaiting_blocks_authoring(
+                current, stage=session.journey.stage, stage_revision=session.journey.stage_revision
+            ):
+                return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
 
         manual_wait = GuidanceAwaitingV2(
             awaiting_id=f"awaiting_{_digest(source_action_id)}",
