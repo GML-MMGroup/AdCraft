@@ -622,7 +622,7 @@ def _resume_prompt_preparation_barrier(
 def get_agent_canvas_runtime(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Iterator[AgentCanvasRuntime]:
-    runtime = create_agent_canvas_runtime(settings)
+    runtime = create_agent_canvas_runtime(settings, bootstrap_model_policy=False)
     try:
         yield runtime
     finally:
@@ -632,6 +632,7 @@ def get_agent_canvas_runtime(
 def create_agent_canvas_runtime(
     settings: Settings,
     *,
+    bootstrap_model_policy: bool = True,
     video_agent_gateway_override: VideoAgentGateway | None = None,
     provider_executor_override: V2ProviderExecutor | None = None,
     fake_media_bytes_override: Callable[[str], bytes | None] | None = None,
@@ -640,9 +641,11 @@ def create_agent_canvas_runtime(
 
     database = create_v2_database(settings.media_data_dir)
     model_repository = ProviderModelRepository(database)
-    ProviderModelBootstrapService(settings, model_repository).bootstrap(
-        now=datetime.now(timezone.utc).isoformat()
-    )
+    # HTTP requests consume the policy initialized by PersistenceBootstrapService.
+    if bootstrap_model_policy:
+        ProviderModelBootstrapService(settings, model_repository).bootstrap(
+            now=datetime.now(timezone.utc).isoformat()
+        )
     model_catalog = ProviderModelCatalogService(model_repository)
     model_selection = ModelSelectionService(model_catalog)
     adapter_registry = build_trusted_provider_adapter_registry(
