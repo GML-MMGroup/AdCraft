@@ -210,6 +210,7 @@ class GuidedFinalCompletionService:
         )
         self._verify_complete_export(closure, node_id, export_id)
         runtime = self._exports.get(export_id)
+        frozen_manifest = self._exports.manifest(export_id)
         commit = self._commits.receipt_for_export(export_id)
         node = self._workflows.get_node(workflow_id, node_id)
         content = EditingNodeContentV2.model_validate(node.structured_content)
@@ -222,12 +223,19 @@ class GuidedFinalCompletionService:
             or not node.metadata.get("guided_production")
             or node.output_asset_id != runtime.output_asset_id
             or content.manifest.manifest_revision != runtime.manifest_revision
+            or frozen_manifest.manifest_revision != runtime.manifest_revision
         ):
             raise _error(
                 "guided_export_commit_mismatch",
                 "Terminal Export evidence does not match current guided delivery.",
             )
-        asset = self._assets(runtime.output_asset_id)
+        try:
+            asset = self._assets(runtime.output_asset_id)
+        except (KeyError, LookupError, V2PersistenceError) as error:
+            raise _error(
+                "guided_final_asset_unreadable",
+                "Final Editing Asset is not readable through canonical storage.",
+            ) from error
         if (
             asset.status != "ready"
             or asset.media_type != "video"
@@ -241,7 +249,7 @@ class GuidedFinalCompletionService:
         now = self._clock()
         manifest_digest = sha256(
             json.dumps(
-                content.manifest.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+                frozen_manifest.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
             ).encode()
         ).hexdigest()
         identity = f"media_closure:{closure.closure_plan_id}:{node_id}:{manifest_digest}"
@@ -463,7 +471,7 @@ class GuidedFinalCompletionService:
 
     def _require_current_preparation(
         self,
-        preparation: GuidedEditingPreparationReceiptV1,
+        preparation: GuidedEditingPreparationReceiptV1 | GuidedEditingTopologyReceiptV2,
     ) -> GuidedSessionStateV2:
         session = self._conversations.get_guidance_session(preparation.workflow_id)
         completion = session.completion
