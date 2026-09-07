@@ -548,6 +548,7 @@ class StoryboardSequenceAuthoringService:
         sequence_id: str,
         *,
         style_excerpt: str | None = None,
+        response_locale: str = "und",
     ) -> StoryboardSegmentAuthoringContextV2:
         """Build one segment context from validated, not-yet-persisted plan content."""
 
@@ -575,6 +576,7 @@ class StoryboardSequenceAuthoringService:
             )
             anchors = _available_anchor_projection(page.items[0].content) if page.items else ()
         return StoryboardSegmentAuthoringContextV2(
+            response_locale=response_locale,
             workflow_id=workflow_id,
             plan_document_id=plan_document_id,
             plan_revision=plan_revision,

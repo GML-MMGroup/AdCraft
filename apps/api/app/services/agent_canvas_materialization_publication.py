@@ -113,7 +113,9 @@ from app.services.agent_canvas_storyboard_prompt_ready_promotion import (
 )
 from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
+    combined_style_guidance,
 )
+from app.services.agent_working_documents import AgentWorkingDocumentService
 
 
 class CapabilityMaterializationPublicationService:
@@ -278,6 +280,38 @@ class CapabilityMaterializationPublicationService:
             ),
             references=envelope.reference_plan.references,
         )
+        if envelope.capability_id == "storyboard_design" and preview_bundle.nodes:
+            first_node = preview_bundle.nodes[0]
+            document_id = first_node.metadata.get("source_agent_document_id")
+            sequence_id = first_node.metadata.get("source_sequence_id")
+            write = next(
+                (item for item in authority_documents if item.document_id == document_id),
+                None,
+            )
+            candidate = None
+            if write is not None and write.payload is not None:
+                candidate = AgentWorkingDocumentV2.model_validate(write.payload)
+            elif write is not None and write.mutation_plan is not None:
+                current_document = self._working_documents.get(write.document_id)
+                candidate = current_document.model_copy(
+                    update={
+                        "content": write.mutation_plan.next_content,
+                        "revision": write.mutation_plan.next_revision,
+                        "content_digest": self._working_documents.digest_content(
+                            write.mutation_plan.next_content
+                        ),
+                    }
+                )
+            if candidate is not None:
+                frozen_prompt_context = frozen_prompt_context.model_copy(
+                    update={
+                        "working_document_excerpts": (
+                            AgentWorkingDocumentService.bounded_context_from_document(
+                                candidate, f"sequence:{sequence_id}"
+                            ),
+                        ),
+                    }
+                )
         plan = self._plan_compiler.compile(
             envelope,
             normalization,
@@ -1405,7 +1439,8 @@ class CapabilityMaterializationPublicationService:
                 AgentWorkingDocumentRepository.digest_content(content),
                 content,
                 sequence_id,
-                style_excerpt=str(context.style_projection)[:8_192],
+                style_excerpt=combined_style_guidance(context.style_projection),
+                response_locale=context.response_locale,
             )
             segment_draft = self._storyboard_gateway.materialize_storyboard_segment(
                 segment_context,

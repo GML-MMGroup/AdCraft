@@ -397,6 +397,14 @@ class AgentWorkingDocumentService:
                 "agent_document_not_found",
                 "Agent working document was not found.",
             )
+        return self.bounded_context_from_document(document, selector)
+
+    @staticmethod
+    def bounded_context_from_document(
+        document: AgentWorkingDocumentV2,
+        selector: str,
+    ) -> AgentDocumentContextExcerptV2:
+        """Use the same bounded projection for persisted and pre-commit documents."""
         if selector == "overview":
             excerpt = _document_overview(document)
         elif document.kind == "anchor_registry":

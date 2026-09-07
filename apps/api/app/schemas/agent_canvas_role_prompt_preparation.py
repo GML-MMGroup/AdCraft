@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 from app.schemas.agent_canvas_prompt_assertion import PromptAssertionEvidenceV1
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 from app.schemas.language import BCP47Tag
+from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 
 
 RolePromptVariantV2 = Literal[
@@ -339,6 +340,7 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     bound_text_controls: tuple[RoleBoundTextControlV2, ...] = Field(default=(), max_length=32)
     node_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     storyboard_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
+    storyboard_projection: StoryboardGridAuthoringContextV2 | None = None
     style_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     installation_parameters: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
     video_representation_mode: VideoRepresentationModeV2 | None = None

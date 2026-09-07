@@ -8,7 +8,7 @@ import json
 import re
 from typing import cast
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2
@@ -27,6 +27,7 @@ from app.schemas.agent_canvas_role_prompt_preparation import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistration
 from app.services.agent_canvas_video_representation import resolve_video_representation_mode
+from app.schemas.agent_canvas_storyboard_sequences import StoryboardGridAuthoringContextV2
 
 
 _GLOBAL_REQUIREMENT_FIELDS = frozenset(
@@ -308,6 +309,7 @@ class RolePromptContextProjector:
             bound_text_controls=bound_text_controls,
             node_parameters=node.parameters,
             storyboard_parameters=storyboard_parameters or {},
+            storyboard_projection=_storyboard_projection(node, stage_context, role_variant),
             style_parameters=style_parameters or {},
             installation_parameters=installation_parameters or {},
             context_blocks=resolved_context_blocks,
@@ -453,6 +455,52 @@ def _role_requirement_facts(
         and key not in {"character_occurrences", "character_roster"}
     }
     return projected
+
+
+def _storyboard_projection(
+    node: CanvasNodeV2,
+    stage_context: StageAuthoringContextV1,
+    role_variant: RolePromptVariantV2,
+) -> StoryboardGridAuthoringContextV2 | None:
+    if role_variant not in {"storyboard_grid", "video_segment"}:
+        return None
+    excerpts = tuple(
+        item
+        for item in stage_context.working_document_excerpts
+        if item.document_kind == "storyboard_production_plan"
+    )
+    if not excerpts:
+        return None
+    sequence_id = node.metadata.get("source_sequence_id")
+    document_id = node.metadata.get("source_agent_document_id")
+    if len(excerpts) != 1:
+        raise _error("node_prompt_context_stale", "Storyboard context requires one exact sequence.")
+    excerpt = excerpts[0]
+    segments = excerpt.content.get("segments")
+    if (
+        excerpt.document_id != document_id
+        or excerpt.selector != f"sequence:{sequence_id}"
+        or not isinstance(segments, list)
+        or len(segments) != 1
+        or not isinstance(segments[0], dict)
+        or segments[0].get("sequence_id") != sequence_id
+    ):
+        raise _error("node_prompt_context_stale", "Storyboard context does not match its Node.")
+    try:
+        return StoryboardGridAuthoringContextV2(
+            workflow_id=node.workflow_id,
+            plan_document_id=excerpt.document_id,
+            plan_revision=excerpt.revision,
+            plan_content_digest=excerpt.content_digest,
+            sequence=segments[0],
+            rows=excerpt.content.get("rows", []),
+            response_locale=stage_context.requirement_facts.get("response_locale", "und"),
+            style_excerpt=stage_context.style_projection,
+        )
+    except ValidationError as error:
+        raise _error(
+            "node_prompt_context_stale", "Storyboard sequence context is invalid."
+        ) from error
 
 
 def _aesthetic_style_projection(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from app.schemas.language import BCP47Tag
 
 from app.schemas.agent_working_documents import (
     AgentAnchorV2,
@@ -151,6 +152,7 @@ class StoryboardSegmentMaterializationDraftV2(_StoryboardSequenceModel):
 
 
 class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
+    response_locale: BCP47Tag = "und"
     workflow_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)
     plan_revision: int = Field(ge=1)
@@ -162,6 +164,7 @@ class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
 
 
 class StoryboardGridAuthoringContextV2(_StoryboardSequenceModel):
+    response_locale: BCP47Tag = "und"
     workflow_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)
     plan_revision: int = Field(ge=1)
