@@ -26302,6 +26302,19 @@
           "title": "Explicit Controls",
           "type": "object"
         },
+        "global_style_guidance": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Global Style Guidance"
+        },
         "identity_safety_decision": {
           "anyOf": [
             {
