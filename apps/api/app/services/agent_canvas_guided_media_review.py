@@ -122,7 +122,16 @@ class GuidedMediaReviewCoordinator:
                 outcome="superseded",
                 reason_code="not_current_guided_media",
             )
-        awaiting = getattr(session, "awaiting", None)
+        review_id, checkpoint_id, awaiting_id = _review_identity(
+            effect.source_commit_id,
+            plan.document_id,
+            plan.revision,
+            node.node_id,
+            lineage.asset_version_id,
+        )
+        awaiting = self._interactions.get_awaiting(
+            effect.workflow_id, interaction_id=review_id
+        ) or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
         if (
             awaiting is None
             or awaiting.kind != "manual_node_run"
@@ -146,7 +155,11 @@ class GuidedMediaReviewCoordinator:
                     reason_code="media_review_already_published",
                     interaction_id=awaiting.interaction_id,
                 )
-            if awaiting is None and self._is_automatic_mode(effect.workflow_id):
+            if (
+                awaiting is None
+                and getattr(session, "awaiting", None) is None
+                and self._is_automatic_mode(effect.workflow_id)
+            ):
                 if node.output_asset_id != lineage.asset_id or node.status != "ready":
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="superseded",
@@ -169,13 +182,6 @@ class GuidedMediaReviewCoordinator:
                 outcome="superseded",
                 reason_code="current_output_replaced",
             )
-        review_id, checkpoint_id, awaiting_id = _review_identity(
-            effect.source_commit_id,
-            plan.document_id,
-            plan.revision,
-            node.node_id,
-            lineage.asset_version_id,
-        )
         actions = (
             ("accept", "retry", "replace")
             if record.node_role == "storyboard_grid"
@@ -195,8 +201,8 @@ class GuidedMediaReviewCoordinator:
             expected_awaiting_id=awaiting.awaiting_id,
             expected_awaiting_node_ids=awaiting.node_ids,
             expected_session_revision=session.revision,
-            expected_stage=session.journey.stage,
-            expected_stage_revision=session.journey.stage_revision,
+            expected_stage=awaiting.stage,
+            expected_stage_revision=awaiting.stage_revision,
             interaction_id=review_id,
             checkpoint_id=checkpoint_id,
             review_awaiting_id=awaiting_id,

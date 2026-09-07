@@ -494,9 +494,13 @@ class AgentCanvasGuidedInteractionRepository:
             row = current_guided_interaction_row(connection, workflow_id)
         return guided_interaction_from_row(row) if row is not None else None
 
-    def get_awaiting(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
+    def get_awaiting(
+        self, workflow_id: str, *, node_id: str | None = None, interaction_id: str | None = None
+    ) -> GuidanceAwaitingV2 | None:
         with self._database.engine.connect() as connection:
-            return _awaiting_for_workflow(connection, workflow_id)
+            return _awaiting_for_workflow(
+                connection, workflow_id, node_id=node_id, interaction_id=interaction_id
+            )
 
     def open_product_source(
         self,
