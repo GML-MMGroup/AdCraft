@@ -355,6 +355,14 @@ class ConversationQueryV1(_CapabilityModel):
         return self
 
 
+from app.schemas.style_skill_consultation import StyleSkillConsultationQueryV1  # noqa: E402
+
+
+class StyleSkillConsultationOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["style_skill_consultation"]
+    query: StyleSkillConsultationQueryV1
+
+
 class FreeformReplyOrdinaryIntentV1(_CapabilityModel):
     intent_kind: Literal["freeform_reply"]
     assistant_message: str = Field(min_length=1, max_length=2_000)
@@ -407,7 +415,8 @@ _OrdinaryConversationIntentVariantV1 = Annotated[
     | AgentIdentityOrdinaryIntentV1
     | AgentCapabilitiesOrdinaryIntentV1
     | WorkflowStatusOrdinaryIntentV1
-    | DocumentExplanationOrdinaryIntentV1,
+    | DocumentExplanationOrdinaryIntentV1
+    | StyleSkillConsultationOrdinaryIntentV1,
     Field(discriminator="intent_kind"),
 ]
 
@@ -424,6 +433,7 @@ class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV
         "agent_capabilities",
         "workflow_status",
         "document_explanation",
+        "style_skill_consultation",
     ]:
         return self.root.intent_kind
 

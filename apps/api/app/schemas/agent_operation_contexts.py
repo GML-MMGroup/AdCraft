@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.language import BCP47Tag
 from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
+from app.schemas.style_skill_consultation import StyleSkillConsultationContextV1
 
 
 _MAX_CONTEXT_TEXT = 65_536
@@ -382,6 +383,7 @@ class WorkflowConversationAgentContext(_PlanningContextModel):
     source_revision: int | None = Field(default=None, ge=0)
     workflow_context: WorkflowStateCapsuleV1 | None = None
     document_excerpt: AgentDocumentContextExcerptV2 | None = None
+    style_skill_consultation: StyleSkillConsultationContextV1 | None = None
 
 
 class ConversationSummaryAgentContext(_PlanningContextModel):

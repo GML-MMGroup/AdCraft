@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.agent_canvas_capabilities import NextActionContextV1
 from app.schemas.language import BCP47Tag
+from app.schemas.style_skill_consultation import SkillId, StyleSkillConsultationAuditV1
 
 
 _MAX_SAFE_JSON_BYTES = 16_384
@@ -210,6 +211,8 @@ class WorkflowConversationReply(_StrictModel):
     clarification_required: bool = False
     answer_kind: Literal["greeting", "progress", "clarification", "general"] = "general"
     state_reference: WorkflowConversationAnswerContextV1 | None = None
+    referenced_skill_ids: tuple[SkillId, ...] = Field(default=(), max_length=24)
+    style_skill_audit: StyleSkillConsultationAuditV1 | None = None
 
 
 class ConversationSummaryResult(_StrictModel):
