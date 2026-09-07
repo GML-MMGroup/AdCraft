@@ -702,6 +702,16 @@ def _structured_content(
         projection = context.character_identity_projection
         return CharacterDesignAssetContentV2(
             subject_identity=projection.identity if projection is not None else brief.identity,
+            face_and_hair=projection.face_and_hair if projection is not None else brief.face_and_hair,
+            silhouette_and_proportions=(
+                projection.silhouette_and_proportions
+                if projection is not None else brief.silhouette_and_proportions
+            ),
+            wardrobe=projection.wardrobe if projection is not None else brief.wardrobe,
+            accessories=projection.accessories if projection is not None else brief.accessories,
+            gender_presentation=(
+                projection.gender_presentation if projection is not None else brief.gender_presentation
+            ),
             design_summary="; ".join(
                 (
                     projection.face_and_hair if projection is not None else brief.face_and_hair,
@@ -733,6 +743,11 @@ def _structured_content(
     if isinstance(brief, CharacterMainRoleBriefV2):
         return CharacterDesignAssetContentV2(
             subject_identity=brief.identity,
+            face_and_hair=brief.face_and_hair,
+            silhouette_and_proportions=brief.silhouette_and_proportions,
+            wardrobe=brief.wardrobe,
+            accessories=brief.accessories,
+            gender_presentation=brief.gender_presentation,
             design_summary="; ".join(
                 (
                     brief.face_and_hair,

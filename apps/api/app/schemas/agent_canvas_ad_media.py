@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
+from app.schemas.agent_canvas_role_prompt_preparation import CharacterGenderPresentationV1
 
 
 AdMediaSemanticRoleV2 = Literal[
@@ -77,6 +78,12 @@ CharacterReferenceRenderingModeV2 = Literal["detailed_semi_realistic_illustratio
 
 
 class CharacterDesignAssetContentV2(DesignAssetContentV2):
+    # None denotes absent historical proof, not an authored unspecified value.
+    face_and_hair: str | None = Field(default=None, min_length=1, max_length=2_048)
+    silhouette_and_proportions: str | None = Field(default=None, min_length=1, max_length=2_048)
+    wardrobe: str | None = Field(default=None, min_length=1, max_length=2_048)
+    accessories: str | None = Field(default=None, max_length=1_024)
+    gender_presentation: CharacterGenderPresentationV1 | None = None
     character_asset_kind: CharacterAssetKindV2 = "identity_master"
     reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
         "detailed_semi_realistic_illustration"
