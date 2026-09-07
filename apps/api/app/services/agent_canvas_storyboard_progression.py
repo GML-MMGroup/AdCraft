@@ -27,6 +27,7 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardPanelV2,
     VideoSegmentContentV2,
 )
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -1074,6 +1075,15 @@ class ProgressiveStoryboardReadyService:
             explicit_constraints=audio_constraints,
         )
         now = datetime.now(timezone.utc)
+        seed_prompt = (
+            f"Exact Storyboard Production Plan segment for {sequence_id}: "
+            f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
+            "Use the complete matching storyboard grid as the primary ordered reference. "
+            "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
+            "then follow panels 1 through 9 as one continuous commercial segment. "
+            "Preserve required dialogue, voice performance, native ambience, movement, "
+            "and synchronized action effects. Generate no background music."
+        )
         video = CanvasNodeV2(
             node_id=video_id,
             workflow_id=grid.workflow_id,
@@ -1082,15 +1092,8 @@ class ProgressiveStoryboardReadyService:
             title=f"Video {sequence_id}",
             status="draft",
             summary_prompt=content.narrative_goal,
-            generation_prompt=(
-                f"Exact Storyboard Production Plan segment for {sequence_id}: "
-                f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
-                "Use the complete matching storyboard grid as the primary ordered reference. "
-                "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
-                "then follow panels 1 through 9 as one continuous commercial segment. "
-                "Preserve required dialogue, voice performance, native ambience, movement, "
-                "and synchronized action effects. Generate no background music."
-            ),
+            generation_prompt=seed_prompt,
+            prompt_presentation=_seed_presentation(seed_prompt),
             structured_content=video_content.model_dump(mode="json"),
             parameters={
                 "duration_seconds": duration_seconds,
@@ -1707,6 +1710,7 @@ def _grid_node(
         status="draft",
         summary_prompt=sequence.narrative_goal,
         generation_prompt=segment.generation_prompt,
+        prompt_presentation=_seed_presentation(segment.generation_prompt),
         structured_content=StoryboardGridContentV2(
             sequence_summary=sequence.narrative_goal,
             narrative_goal=sequence.narrative_goal,
@@ -1739,6 +1743,16 @@ def _grid_node(
         revision=1,
         created_at=now,
         updated_at=now,
+    )
+
+
+def _seed_presentation(prompt: str) -> EditablePromptProjectionV1:
+    return EditablePromptProjectionV1(
+        text=prompt,
+        locale="und",
+        source="deterministic_projection",
+        revision=1,
+        prompt_digest=f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}",
     )
 
 

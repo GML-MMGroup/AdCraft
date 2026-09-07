@@ -602,10 +602,14 @@ def _structured_content(
     brief: RoleCreativeBriefMemberV2,
     context: RolePromptPreparationContextV2,
 ) -> dict[str, object]:
+    default_style = "Detailed semi-realistic advertising illustration"
+    if (
+        isinstance(brief, VideoSegmentRoleBriefV2)
+        and context.video_representation_mode == "illustration_to_live_action"
+    ):
+        default_style = "Fictional cinematic live-action with coherent lighting and materials"
     style = VisualStyleContractV2(
-        style_prompt=(
-            context.style_projection or "Detailed semi-realistic advertising illustration"
-        ),
+        style_prompt=context.style_projection or default_style,
         source="video_skill" if context.style_projection else "platform_default",
     )
     if isinstance(brief, WorldViewRoleBriefV2):
