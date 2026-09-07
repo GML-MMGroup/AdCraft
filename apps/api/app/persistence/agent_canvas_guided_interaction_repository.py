@@ -1035,7 +1035,9 @@ class AgentCanvasGuidedInteractionRepository:
                     session_id=interaction.session_id,
                     expected_revision=request.expected_session_revision,
                 )
-                awaiting = _awaiting_for_workflow(connection, interaction.workflow_id)
+                awaiting = _awaiting_for_workflow(
+                    connection, interaction.workflow_id, interaction_id=interaction.interaction_id
+                )
                 if (
                     awaiting is None
                     or awaiting.interaction_id != interaction.interaction_id
@@ -1419,7 +1421,9 @@ class AgentCanvasGuidedInteractionRepository:
                     session_id=interaction.session_id,
                     expected_revision=request.expected_session_revision,
                 )
-                awaiting = _awaiting_for_workflow(connection, interaction.workflow_id)
+                awaiting = _awaiting_for_workflow(
+                    connection, interaction.workflow_id, interaction_id=interaction.interaction_id
+                )
                 if (
                     awaiting is None
                     or awaiting.interaction_id != interaction.interaction_id
@@ -1948,7 +1952,9 @@ class AgentCanvasGuidedInteractionRepository:
                         update={"replayed": True}
                     )
 
-                awaiting = _awaiting_for_workflow(connection, interaction.workflow_id)
+                awaiting = _awaiting_for_workflow(
+                    connection, interaction.workflow_id, interaction_id=interaction.interaction_id
+                )
                 if (
                     awaiting is None
                     or awaiting.interaction_id != interaction.interaction_id
@@ -1966,9 +1972,14 @@ class AgentCanvasGuidedInteractionRepository:
                     expected_revision=post_action_session_revision,
                 )
                 next_session_revision = post_action_session_revision + 1
-                journey = _journey(session).model_copy(
-                    update={"stage_status": "working", "active_action": None}
-                )
+                journey = _journey(session)
+                if (
+                    _wait_owns_cursor(connection, awaiting, journey)
+                    and session["status"] == "active"
+                ):
+                    journey = journey.model_copy(
+                        update={"stage_status": "working", "active_action": None}
+                    )
                 _close_interaction_and_awaiting(
                     connection,
                     interaction,
