@@ -237,8 +237,13 @@ class RolePromptContextProjector:
             stage_context.requirement_facts,
             role_variant,
         )
+        scene_guidance = stage_context.style_guidance if role_variant == "scene_board" else None
+        if scene_guidance is not None and scene_guidance.role != "scene":
+            raise _error("node_prompt_context_stale", "Scene style guidance has the wrong role.")
         projected_style = _aesthetic_style_projection(
-            stage_context.style_projection,
+            scene_guidance.role_guidance
+            if scene_guidance is not None
+            else stage_context.style_projection,
             role_variant=role_variant,
         )
         response_locale = stage_context.requirement_facts.get("response_locale")
@@ -248,7 +253,9 @@ class RolePromptContextProjector:
             requirement_facts=projected_requirements,
             selected_direction=selected_direction,
             user_prompt=user_prompt,
-            style_projection=projected_style,
+            style_projection=stage_context.style_projection
+            if scene_guidance is not None
+            else projected_style,
             world_view_projection=projected_world_view,
             document_revisions=document_revisions,
             bindings=projected_bindings,
@@ -295,8 +302,13 @@ class RolePromptContextProjector:
             response_locale=(response_locale if isinstance(response_locale, str) else "und"),
             internal_skill_ref=stage_context.internal_skill_ref,
             style_projection=projected_style,
+            global_style_guidance=(
+                scene_guidance.global_guidance if scene_guidance is not None else None
+            ),
             style_projection_digest=(
-                _prefixed_digest(projected_style or "") if role_variant == "scene_board" else None
+                _prefixed_digest(stage_context.style_projection or "")
+                if role_variant == "scene_board"
+                else None
             ),
             world_view_projection=projected_world_view,
             bindings=projected_bindings,

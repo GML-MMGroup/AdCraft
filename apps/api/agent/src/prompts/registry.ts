@@ -179,6 +179,7 @@ function instructionForOperation(operation: string): string {
       "For video_segment, target_style and editable_prompt must express the supplied video_representation_mode consistently: retain compatible cinematography from style_projection but do not repeat a conflicting Skill medium after a typed user override. Do not change upstream illustrated identity references.",
       shotDirectionPolicy,
       "For scene_board, author only the typed environment, lighting, materials, palette, composition, atmosphere, valid Scene references, technical constraints, and structural exclusions present in the frozen context.",
+      "For scene_board, global_style_guidance is unchanged advisory campaign guidance, not Scene subject content. Express its applicable lighting, materials, palette, composition and camera language in the Scene brief and editable_prompt; keep other role subjects out. style_projection is the Scene-specific advice and remains subordinate to the role contract.",
       "For scene_board, do not add positive Character, Product, Prop, or narrative progression content; explicit structural exclusions such as no characters or props remain valid.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
     ].join(" ");

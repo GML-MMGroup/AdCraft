@@ -13,6 +13,7 @@ from app.schemas.agent_canvas_creative_session import (
     CreativeGoalV2,
     DraftReferenceIntentV2,
     ProposedDraftReferenceV2,
+    StyleGuidanceContextV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
@@ -69,6 +70,7 @@ class StageAuthoringContextV1(_ProgressiveAuthoringModel):
     style_snapshot_id: str | None = Field(default=None, max_length=160)
     internal_skill_ref: str = Field(min_length=1, max_length=320)
     style_projection: str | None = Field(default=None, max_length=8_192)
+    style_guidance: StyleGuidanceContextV2 | None = None
     video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
     video_representation_source_id: str | None = Field(default=None, max_length=160)
     working_document_excerpts: tuple[AgentDocumentContextExcerptV2, ...] = Field(

@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from app.schemas.agent_canvas_conversation import ConceptOptionRecordV2
-from app.schemas.agent_canvas_creative_session import CreativeGoalV2, ProposedDraftReferenceV2
+from app.schemas.agent_canvas_creative_session import (
+    CreativeGoalV2,
+    ProposedDraftReferenceV2,
+    StyleGuidanceContextV2,
+)
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
@@ -85,6 +89,11 @@ def stage_authoring_context_from_materialization(
         style_snapshot_id=style_snapshot_id,
         internal_skill_ref=_SKILL_REFS[context.capability_id],
         style_projection=style_projection,
+        style_guidance=(
+            StyleGuidanceContextV2.model_validate(style)
+            if style.get("source") == "creative_direction_snapshot"
+            else None
+        ),
         video_representation_mode=(
             style.get("video_representation_mode")
             if style.get("video_representation_mode")

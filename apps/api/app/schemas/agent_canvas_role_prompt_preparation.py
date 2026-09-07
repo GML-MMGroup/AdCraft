@@ -327,6 +327,7 @@ class RolePromptPreparationContextV2(_RolePromptModel):
     response_locale: str = Field(default="und", min_length=2, max_length=35)
     internal_skill_ref: str = Field(min_length=1, max_length=320)
     style_projection: str | None = Field(default=None, max_length=8_192)
+    global_style_guidance: str | None = Field(default=None, max_length=8_192)
     style_projection_digest: str | None = Field(
         default=None,
         pattern=r"^sha256:[a-f0-9]{64}$",
