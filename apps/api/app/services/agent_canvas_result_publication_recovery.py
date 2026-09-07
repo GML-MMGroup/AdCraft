@@ -222,6 +222,10 @@ class AgentCanvasResultPublicationRecoveryService:
             }:
                 return self._abandon(intent, error.code, now=now)
             return self._defer(intent, error.code, now=now, lease=lease)
+        except OSError:
+            return self._defer(
+                intent, "node_result_publication_object_unavailable", now=now, lease=lease
+            )
 
     def _close_without_publication(
         self,
