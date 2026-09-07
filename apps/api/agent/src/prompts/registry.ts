@@ -3,6 +3,14 @@ import { createHash } from "node:crypto";
 import { videoAgentBasePolicy } from "./agents.js";
 import { listOperationDescriptors } from "../registry.js";
 
+const shotDirectionPolicy = [
+  "For Storyboard and Video only, the Plan owns story causality, identities, key actions, product facts, sequence order, timing, and ending; do not replace those facts with a new story.",
+  "Refine existing camera_description, content_beat, composition, action, and continuity fields with the frozen global plus current role style, never a newly selected unrelated Skill.",
+  "Nine ordered cells sample staged key states: nine cells do not require nine cuts. A one-take style preserves a continuous camera path; an energetic style uses meaningful preparation, impact, and recovery; a restrained style preserves deliberate holds and legible small motion.",
+  "Begin from the supplied opening state and prior closing state. Advance only the owning sequence's action; use a closing resolution in the final sequence only when its terminal policy permits it.",
+  "Video realizes the same staged states through temporal movement and sound, rather than inventing new actions from an image or sibling prompt. Respect the supplied Video rendering medium without transferring a non-style reference's medium.",
+].join(" ");
+
 export interface PromptDescriptor {
   readonly prompt_id: string;
   readonly prompt_version: string;
@@ -167,6 +175,8 @@ function instructionForOperation(operation: string): string {
       "Return one localized editable_prompt in the same structured response as the typed brief.",
       "Do not request a translation operation or a second model submission.",
       "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      "For storyboard_grid and video_segment, use storyboard_projection as the exact Plan/sequence/shot authority.",
+      shotDirectionPolicy,
       "For scene_board, author only the typed environment, lighting, materials, palette, composition, atmosphere, valid Scene references, technical constraints, and structural exclusions present in the frozen context.",
       "For scene_board, do not add positive Character, Product, Prop, or narrative progression content; explicit structural exclusions such as no characters or props remain valid.",
       "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
@@ -183,7 +193,11 @@ function instructionForOperation(operation: string): string {
     ].join(" ");
   }
   if (operation === "materialize_storyboard_segment") {
-    return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
+    return [
+      "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.",
+      shotDirectionPolicy,
+      "Return the rows and generation prompt in response_locale in this operation. Do not request a translation or a second creative operation.",
+    ].join(" ");
   }
   if (operation === "author_guided_script_checkpoint") {
     return [
