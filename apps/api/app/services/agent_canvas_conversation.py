@@ -103,6 +103,7 @@ from app.schemas.agent_canvas_creative_session import (
     StyleGuidanceContextV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_operation_contexts import (
@@ -2033,7 +2034,11 @@ class AgentConversationService:
                 expected_session_revision=session.revision,
                 idempotency_key=f"targeted-start:{turn_id}",
             )
-        if intent.mode == "guided_production" and session.awaiting is not None:
+        if intent.mode == "guided_production" and awaiting_blocks_authoring(
+            session.awaiting,
+            stage=session.journey.stage,
+            stage_revision=session.journey.stage_revision,
+        ):
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
