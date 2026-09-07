@@ -925,7 +925,8 @@ class AgentCanvasGuidedProductRepository:
         ).hexdigest()[:32]
         connection.execute(
             delete(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                AgentCanvasGuidanceAwaitingRow.interaction_id == request.interaction_id,
             )
         )
         interaction_id = f"interaction_product_source_{identity}"
