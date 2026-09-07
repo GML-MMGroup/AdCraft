@@ -405,6 +405,17 @@ class GuidedFinalCompletionService:
                     ),
                 )
                 connection.commit()
+            except V2PersistenceError:
+                connection.rollback()
+                persisted = self._receipts.find_completion_for_export(export_id)
+                if persisted is not None and persisted.logical_identity == receipt.logical_identity:
+                    current = self._conversations.get_guidance_session(workflow_id)
+                    if (
+                        current.status == "completed"
+                        and current.completion.final_completion_receipt_id == persisted.receipt_id
+                    ):
+                        return persisted
+                raise
             except BaseException:
                 connection.rollback()
                 raise
