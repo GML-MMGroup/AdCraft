@@ -593,6 +593,9 @@ def character_identity_projection_from_node(
     if (
         allow_uninitialized_main
         and node.metadata.get("character_phase") == "main"
+        and node.output_asset_id is None
+        and not node.metadata.get("prompt_recipe_id")
+        and node.prompt_preparation.brief_digest is None
         and all(value is None for value in facets.values())
     ):
         return None
