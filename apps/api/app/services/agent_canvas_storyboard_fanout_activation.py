@@ -150,6 +150,18 @@ class StoryboardFanoutActivationService:
         next_node_id = self._next_runnable_node_id(workflow, node_ids)
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
+        node = next(node for node in workflow.nodes if node.node_id == next_node_id)
+        if (
+            execution_settings.media_execution_mode == "manual"
+            and node.creative_role == "bgm"
+            and self._conversations.get_guidance_session(workflow_id).journey.stage == "editing"
+        ):
+            # BGM publication already advanced authoring. Retain an existing
+            # scoped wait, but do not make media a prerequisite of Editing.
+            owned = self._awaiting.inspect(workflow_id, node_id=next_node_id)
+            return StoryboardFanoutActivationResult(
+                node_ids, owned.awaiting_id if owned is not None else None, ()
+            )
         return self._activate_runnable_node(
             workflow_id=workflow_id,
             node_id=next_node_id,
@@ -198,12 +210,6 @@ class StoryboardFanoutActivationService:
                 current, stage=session.journey.stage, stage_revision=session.journey.stage_revision
             ):
                 return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
-
-        # Editing authoring needs source topology, not source media. Keep any
-        # existing Node wait above, but do not install a new media dependency on
-        # Editing when a late prompt-ready callback arrives after stage advance.
-        if session.journey.stage == "editing":
-            return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
 
         manual_wait = GuidanceAwaitingV2(
             awaiting_id=f"awaiting_{_digest(source_action_id)}",
