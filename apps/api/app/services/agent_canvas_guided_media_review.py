@@ -138,7 +138,13 @@ class GuidedMediaReviewCoordinator:
             or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
         )
         reconcile_grid = (
-            awaiting is None
+            (
+                awaiting is None
+                or (
+                    awaiting.kind == "media_review"
+                    and awaiting.interaction_id in {review_id, node_review_id}
+                )
+            )
             and record.node_role == "storyboard_grid"
             and not self._is_automatic_mode(effect.workflow_id)
         )
@@ -242,14 +248,14 @@ class GuidedMediaReviewCoordinator:
             current_node_revision=node.revision,
             asset_id=lineage.asset_id,
             asset_version_id=lineage.asset_version_id,
-            expected_awaiting_id=awaiting.awaiting_id if awaiting else None,
-            expected_awaiting_node_ids=awaiting.node_ids if awaiting else (),
+            expected_awaiting_id=awaiting.awaiting_id if awaiting and not reconcile_grid else None,
+            expected_awaiting_node_ids=awaiting.node_ids if awaiting and not reconcile_grid else (),
             expected_session_revision=session.revision,
             expected_stage=awaiting.stage if awaiting else session.journey.stage,
             expected_stage_revision=awaiting.stage_revision
             if awaiting
             else session.journey.stage_revision,
-            interaction_id=review_id,
+            interaction_id=awaiting.interaction_id if reconcile_grid and awaiting else review_id,
             checkpoint_id=checkpoint_id,
             review_awaiting_id=awaiting_id,
             response_locale=session.response_locale,
@@ -486,6 +492,15 @@ class GuidedMediaReviewCoordinator:
                 or getattr(plan.content, "node_records", ())
             )
             for record in records:
+                if record.node_role == "storyboard_grid" and self._result_commits is not None:
+                    effect = self._result_commits.find_latest_post_ready_effect(
+                        workflow_id=workflow_id, node_id=record.node_id
+                    )
+                    if effect is not None:
+                        outcome = self.publish_from_effect(effect)
+                        if outcome.outcome in {"applied", "deferred"}:
+                            return tuple(created_node_ids)
+                    continue
                 if record.node_role not in {"video_segment", "bgm"}:
                     continue
                 node = self._node_resolver(workflow_id, record.node_id)

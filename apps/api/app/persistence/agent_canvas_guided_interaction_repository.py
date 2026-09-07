@@ -2379,6 +2379,19 @@ class AgentCanvasGuidedInteractionRepository:
             )
         )
         valid_version = version is not None and str(version["status"]) == "ready"
+        if command.publication_scope == "current_result":
+            current_version_no = connection.execute(
+                select(func.max(AssetVersionRow.version_no)).where(
+                    AssetVersionRow.asset_id == command.asset_id
+                )
+            ).scalar_one()
+            valid_version = valid_version and all(
+                (
+                    version["version_no"] == current_version_no,
+                    version["source_workflow_id"] == command.lineage.workflow_id,
+                    version["source_node_id"] == command.lineage.node_id,
+                )
+            )
         valid_plan = _plan_contains_node(
             plan,
             node_id=command.lineage.node_id,
@@ -2386,6 +2399,11 @@ class AgentCanvasGuidedInteractionRepository:
             sequence_id=command.planned_sequence_id,
             node_revision=command.planned_node_revision,
         )
+        if command.publication_scope == "current_result":
+            valid_plan = valid_plan and plan["guidance_session_id"] == command.session_id
+            valid_node = valid_node and not json.loads(str(node["metadata_json"])).get(
+                "_deleted_at"
+            )
         if not all((valid_commit, valid_node, valid_version, valid_plan)):
             raise _error(
                 "guided_media_result_lineage_invalid",
