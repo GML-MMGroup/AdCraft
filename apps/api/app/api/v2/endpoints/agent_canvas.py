@@ -1225,6 +1225,11 @@ def create_agent_canvas_runtime(
     )
     guided_final_completion = GuidedFinalCompletionService(
         workflows=workflow_repository,
+        documents=working_documents,
+        closure=guided_closure,
+        verify_complete_export=lambda closure, node_id, export_id: (
+            editing_exports.require_complete_guided_export(closure, node_id, export_id)
+        ),
         exports=editing_export_repository,
         commits=editing_commit_service,
         assets=asset_service.resolve_asset,
