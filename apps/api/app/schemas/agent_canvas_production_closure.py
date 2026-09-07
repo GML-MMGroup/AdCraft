@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -150,20 +150,37 @@ class GuidedClosurePlanV1(_ClosureModel):
         return self
 
 
-class GuidedEditingPreparationReceiptV1(_ClosureModel):
+class _GuidedEditingPreparationFields(_ClosureModel):
     receipt_id: str = Field(min_length=1, max_length=160)
     logical_identity: str = Field(min_length=1, max_length=640)
     workflow_id: str = Field(min_length=1, max_length=160)
-    closure_plan_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)
     plan_revision: int = Field(ge=1)
-    confirmation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     editing_node_id: str = Field(min_length=1, max_length=160)
     editing_node_revision: int = Field(ge=1)
     binding_ids: tuple[str, ...]
     manifest_revision: int = Field(ge=1)
     manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     committed_at: datetime
+
+
+class GuidedEditingPreparationReceiptV1(_GuidedEditingPreparationFields):
+    closure_plan_id: str = Field(min_length=1, max_length=160)
+    confirmation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GuidedEditingTopologyReceiptV2(_GuidedEditingPreparationFields):
+    proof_kind: Literal["topology"] = "topology"
+
+
+class GuidedEditingMediaClosureReceiptV2(GuidedEditingPreparationReceiptV1):
+    proof_kind: Literal["media_closure"] = "media_closure"
+
+
+GuidedEditingPreparationReceiptV2 = Annotated[
+    GuidedEditingTopologyReceiptV2 | GuidedEditingMediaClosureReceiptV2,
+    Field(discriminator="proof_kind"),
+]
 
 
 EditingActionReconciliationOutcomeV1 = Literal[
