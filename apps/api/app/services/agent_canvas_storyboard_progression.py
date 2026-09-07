@@ -1653,7 +1653,7 @@ def _fanout_plan(
         bindings=tuple(binding_plans),
         prompt_preparation_keys=tuple(preparation_keys),
         automatic_run_keys=(),
-        created_at=datetime.now(timezone.utc),
+        created_at=confirmation.confirmed_at,
     )
 
 
