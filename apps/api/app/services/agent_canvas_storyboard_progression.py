@@ -26,6 +26,7 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardGridContentV2,
     StoryboardPanelV2,
     VideoSegmentContentV2,
+    VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_storyboard_sequences import (
@@ -1066,6 +1067,14 @@ class ProgressiveStoryboardReadyService:
             duration_seconds=duration_seconds,
             storyboard_content="Follow the nine ordered storyboard frames.",
             representation_mode=representation.mode,
+            style=VisualStyleContractV2(
+                style_prompt=(
+                    "Fictional cinematic live-action with coherent lighting and materials"
+                    if representation.mode == "illustration_to_live_action"
+                    else "Detailed semi-realistic advertising illustration"
+                ),
+                source="platform_default",
+            ),
             environment_sound="Preserve scene ambience.",
             action_effects="Preserve declared action sounds.",
             background_music=False,
