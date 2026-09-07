@@ -181,6 +181,7 @@ class ProgressiveStoryboardReadyService:
                 grid = next((item for item in virtual_nodes if item.node_id == grid_id), None)
                 if grid is None:
                     grid = _grid_node(
+                        plan_document_id=plan_document_id,
                         workflow_id=workflow_id,
                         node_id=grid_id,
                         order=sequence.order,
@@ -549,6 +550,7 @@ class ProgressiveStoryboardReadyService:
                 grid = next((item for item in virtual_nodes if item.node_id == grid_id), None)
                 if grid is None:
                     grid = _grid_node(
+                        plan_document_id=plan_document_id,
                         workflow_id=source_grid.workflow_id,
                         node_id=grid_id,
                         order=sequence.order,
@@ -802,6 +804,7 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                 )
                 grid = _grid_node(
+                    plan_document_id=plan.document_id,
                     workflow_id=node.workflow_id,
                     node_id=grid_id,
                     order=sequence.order,
@@ -954,6 +957,7 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                 )
                 grid = _grid_node(
+                    plan_document_id=plan_document_id,
                     workflow_id=grid_one.workflow_id,
                     node_id=grid_id,
                     order=sequence.order,
@@ -1700,6 +1704,7 @@ def _retarget_binding_metadata(
 
 def _grid_node(
     *,
+    plan_document_id: str,
     workflow_id: str,
     node_id: str,
     order: int,
@@ -1742,6 +1747,7 @@ def _grid_node(
         ).model_dump(mode="json"),
         parameters={},
         metadata={
+            "source_agent_document_id": plan_document_id,
             "source_sequence_id": sequence.sequence_id,
             "sequence_index": order,
             "source_plan_revision": plan_revision,
