@@ -1730,7 +1730,7 @@ class AgentCanvasGuidedInteractionRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                existing = _awaiting_for_workflow(connection, awaiting.workflow_id)
+                existing = _awaiting_in_same_scope(connection, awaiting)
                 if existing is not None:
                     if existing == awaiting:
                         connection.rollback()
@@ -1762,8 +1762,10 @@ class AgentCanvasGuidedInteractionRepository:
                         AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
                     )
                     .values(
-                        journey_state_json=journey.model_copy(
-                            update={"stage_status": "waiting_user"}
+                        journey_state_json=(
+                            journey.model_copy(update={"stage_status": "waiting_user"})
+                            if _wait_owns_cursor(connection, awaiting, journey)
+                            else journey
                         ).model_dump_json(),
                         revision=expected_session_revision + 1,
                         updated_at=awaiting.created_at.isoformat(),
@@ -2350,7 +2352,9 @@ class AgentCanvasGuidedInteractionRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                awaiting = _awaiting_for_workflow(connection, workflow_id)
+                awaiting = _awaiting_for_workflow(
+                    connection, workflow_id, awaiting_id=proof.awaiting_id
+                )
                 if awaiting is None or awaiting.awaiting_id != proof.awaiting_id:
                     raise _error(
                         "guidance_resume_evidence_missing",
@@ -2364,6 +2368,7 @@ class AgentCanvasGuidedInteractionRepository:
                 )
                 _validate_resume_proof(awaiting, proof)
                 journey = _journey(session)
+                owns_cursor = _wait_owns_cursor(connection, awaiting, journey)
                 resumed_at = datetime.now(timezone.utc).isoformat()
                 connection.execute(
                     delete(AgentCanvasGuidanceAwaitingRow).where(
@@ -2377,8 +2382,10 @@ class AgentCanvasGuidedInteractionRepository:
                         AgentCanvasGuidanceSessionRow.revision == proof.expected_session_revision,
                     )
                     .values(
-                        journey_state_json=journey.model_copy(
-                            update={"stage_status": "working"}
+                        journey_state_json=(
+                            journey.model_copy(update={"stage_status": "working"})
+                            if owns_cursor and session["status"] == "active"
+                            else journey
                         ).model_dump_json(),
                         revision=proof.expected_session_revision + 1,
                         updated_at=resumed_at,
@@ -2516,7 +2523,7 @@ def insert_guidance_awaiting_in_transaction(
 ) -> None:
     """Insert one non-interaction Guidance wait in an owning transaction."""
 
-    existing = _awaiting_for_workflow(connection, awaiting.workflow_id)
+    existing = _awaiting_in_same_scope(connection, awaiting)
     if existing is not None:
         if existing == awaiting:
             return
@@ -2560,6 +2567,26 @@ def insert_guidance_awaiting_in_transaction(
     )
 
 
+def _wait_owns_cursor(
+    connection: Connection, awaiting: GuidanceAwaitingV2, journey: GuidedProductionJourneyV2
+) -> bool:
+    return (
+        awaiting.stage == journey.stage
+        and awaiting.stage_revision == journey.stage_revision
+        and _awaiting_for_workflow(connection, awaiting.workflow_id) == awaiting
+    )
+
+
+def _awaiting_in_same_scope(
+    connection: Connection, awaiting: GuidanceAwaitingV2
+) -> GuidanceAwaitingV2 | None:
+    if awaiting.kind in {"manual_node_run", "media_review"}:
+        return _awaiting_for_workflow(
+            connection, awaiting.workflow_id, checkpoint_id=awaiting.checkpoint_id
+        )
+    return _awaiting_for_workflow(connection, awaiting.workflow_id, authoring_only=True)
+
+
 def _awaiting_for_workflow(
     connection: Connection,
     workflow_id: str,
@@ -2567,6 +2594,7 @@ def _awaiting_for_workflow(
     awaiting_id: str | None = None,
     interaction_id: str | None = None,
     checkpoint_id: str | None = None,
+    authoring_only: bool = False,
 ) -> GuidanceAwaitingV2 | None:
     query = select(AgentCanvasGuidanceAwaitingRow).where(
         AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
@@ -2577,7 +2605,16 @@ def _awaiting_for_workflow(
         query = query.where(AgentCanvasGuidanceAwaitingRow.interaction_id == interaction_id)
     if checkpoint_id is not None:
         query = query.where(AgentCanvasGuidanceAwaitingRow.checkpoint_id == checkpoint_id)
-    if awaiting_id is None and interaction_id is None and checkpoint_id is None:
+    if authoring_only:
+        query = query.where(
+            AgentCanvasGuidanceAwaitingRow.kind.not_in(("manual_node_run", "media_review"))
+        )
+    if (
+        not authoring_only
+        and awaiting_id is None
+        and interaction_id is None
+        and checkpoint_id is None
+    ):
         # Next-action projection is not authority to resume a particular wait.
         query = (
             query.join(
