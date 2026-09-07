@@ -477,7 +477,11 @@ class GuidedEditingPreparationService:
         )
 
     def _ready_media(self, node: CanvasNodeV2, media_type: str) -> bool:
-        if node.status != "ready" or node.output_asset_id is None:
+        if (
+            node.status != "ready"
+            or node.output_asset_id is None
+            or self._asset_resolver is None
+        ):
             return False
         try:
             asset: ProjectAssetSummaryV2 = self._asset_resolver(node.output_asset_id)
