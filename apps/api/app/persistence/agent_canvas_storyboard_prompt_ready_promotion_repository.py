@@ -13,6 +13,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.agent_canvas_auto_run_repository import (
     AgentCanvasAutomaticRunRepository,
 )
+from app.persistence.agent_canvas_guided_interaction_repository import (
+    guidance_awaiting_from_row,
+)
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -111,13 +115,18 @@ class StoryboardPromptReadyPromotionRepository:
                         or journey.active_action is not None
                     ):
                         raise _stale("journey_stage")
-                    if (
-                        connection.execute(
-                            select(AgentCanvasGuidanceAwaitingRow.awaiting_id).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id
-                            )
-                        ).scalar_one_or_none()
-                        is not None
+                    waits = connection.execute(
+                        select(AgentCanvasGuidanceAwaitingRow).where(
+                            AgentCanvasGuidanceAwaitingRow.workflow_id == command.workflow_id
+                        )
+                    ).mappings()
+                    if any(
+                        awaiting_blocks_authoring(
+                            guidance_awaiting_from_row(row),
+                            stage=journey.stage,
+                            stage_revision=journey.stage_revision,
+                        )
+                        for row in waits
                     ):
                         raise _stale("guidance_awaiting")
 
