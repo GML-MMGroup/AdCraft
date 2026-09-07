@@ -137,7 +137,12 @@ class GuidedMediaReviewCoordinator:
             or self._interactions.get_awaiting(effect.workflow_id, interaction_id=node_review_id)
             or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
         )
-        if (
+        reconcile_grid = (
+            awaiting is None
+            and record.node_role == "storyboard_grid"
+            and not self._is_automatic_mode(effect.workflow_id)
+        )
+        if not reconcile_grid and (
             awaiting is None
             or awaiting.kind != "manual_node_run"
             or awaiting.resume_policy != "node_terminal"
@@ -226,6 +231,7 @@ class GuidedMediaReviewCoordinator:
             else ("accept", "retry", "replace", "exclude")
         )
         command = GuidedMediaReviewPublicationCommandV1(
+            publication_scope="current_result" if reconcile_grid else "terminal_wait",
             lineage=lineage,
             session_id=session.session_id,
             plan_document_id=plan.document_id,
@@ -236,11 +242,13 @@ class GuidedMediaReviewCoordinator:
             current_node_revision=node.revision,
             asset_id=lineage.asset_id,
             asset_version_id=lineage.asset_version_id,
-            expected_awaiting_id=awaiting.awaiting_id,
-            expected_awaiting_node_ids=awaiting.node_ids,
+            expected_awaiting_id=awaiting.awaiting_id if awaiting else None,
+            expected_awaiting_node_ids=awaiting.node_ids if awaiting else (),
             expected_session_revision=session.revision,
-            expected_stage=awaiting.stage,
-            expected_stage_revision=awaiting.stage_revision,
+            expected_stage=awaiting.stage if awaiting else session.journey.stage,
+            expected_stage_revision=awaiting.stage_revision
+            if awaiting
+            else session.journey.stage_revision,
             interaction_id=review_id,
             checkpoint_id=checkpoint_id,
             review_awaiting_id=awaiting_id,

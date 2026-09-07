@@ -2108,13 +2108,16 @@ class AgentCanvasGuidedInteractionRepository:
         *,
         now: datetime | None = None,
     ) -> CanvasPostReadyEffectDispositionV1:
-        """Replace one exact terminal wait and publish its review atomically."""
+        """Publish one exact result review without consuming unrelated authority."""
 
         timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         created_at = timestamp.isoformat()
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
+                current_result = command.publication_scope == "current_result"
+                if current_result:
+                    self._validate_media_review_authority(connection, command)
                 published = _awaiting_for_workflow(
                     connection, command.lineage.workflow_id, interaction_id=command.interaction_id
                 )
@@ -2125,12 +2128,18 @@ class AgentCanvasGuidedInteractionRepository:
                         reason_code="media_review_already_published",
                         interaction_id=command.interaction_id,
                     )
-                awaiting = _awaiting_for_workflow(
-                    connection,
-                    command.lineage.workflow_id,
-                    awaiting_id=command.expected_awaiting_id,
+                awaiting = (
+                    _awaiting_for_workflow(
+                        connection,
+                        command.lineage.workflow_id,
+                        awaiting_id=command.expected_awaiting_id,
+                    )
+                    if not current_result
+                    else None
                 )
-                if awaiting is None or not _awaiting_matches_publication(awaiting, command):
+                if not current_result and (
+                    awaiting is None or not _awaiting_matches_publication(awaiting, command)
+                ):
                     connection.rollback()
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="superseded",
@@ -2139,13 +2148,32 @@ class AgentCanvasGuidedInteractionRepository:
                 session = _require_session(
                     connection,
                     workflow_id=command.lineage.workflow_id,
-                    session_id=awaiting.session_id,
+                    session_id=command.session_id,
                     expected_revision=command.expected_session_revision,
                 )
                 self._validate_media_review_authority(connection, command)
                 current_journey = _journey(session)
+                if current_result and (
+                    session["status"] != "active"
+                    or current_journey.stage != command.expected_stage
+                    or current_journey.stage_revision != command.expected_stage_revision
+                    or current_journey.active_action is not None
+                    or _awaiting_for_workflow(
+                        connection, command.lineage.workflow_id, authoring_only=True
+                    )
+                    is not None
+                    or _awaiting_for_workflow(
+                        connection, command.lineage.workflow_id, node_id=command.lineage.node_id
+                    )
+                    is not None
+                ):
+                    connection.rollback()
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="deferred", reason_code="guided_interaction_conflict"
+                    )
                 owns_cursor = (
-                    _wait_owns_cursor(connection, awaiting, current_journey)
+                    awaiting is not None
+                    and _wait_owns_cursor(connection, awaiting, current_journey)
                     and session["status"] == "active"
                 )
                 next_session_revision = command.expected_session_revision + int(owns_cursor)
@@ -2156,11 +2184,12 @@ class AgentCanvasGuidedInteractionRepository:
                 interaction = _publication_interaction(command, timestamp, next_session_revision)
                 review_awaiting = _publication_awaiting(command, timestamp)
                 self._fault("after_old_wait_validation")
-                connection.execute(
-                    delete(AgentCanvasGuidanceAwaitingRow).where(
-                        AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
+                if awaiting is not None:
+                    connection.execute(
+                        delete(AgentCanvasGuidanceAwaitingRow).where(
+                            AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
+                        )
                     )
-                )
                 _insert_interaction_and_awaiting_in_transaction(
                     connection,
                     interaction,
@@ -2185,25 +2214,26 @@ class AgentCanvasGuidedInteractionRepository:
                         "Guidance session changed before media review publication.",
                     )
                 self._fault("after_review_awaiting")
-                self._events.append_in_transaction(
-                    connection,
-                    V2EventInsert(
-                        workflow_id=command.lineage.workflow_id,
-                        node_id=command.lineage.node_id,
-                        event_type="guidance_awaiting_resumed",
-                        transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:result-replaced",
-                        created_at=created_at,
-                        payload={
-                            "awaiting_id": awaiting.awaiting_id,
-                            "checkpoint_id": awaiting.checkpoint_id,
-                            "kind": awaiting.kind,
-                            "resume_policy": awaiting.resume_policy,
-                            "resume_evidence": "result_lineage",
-                            "node_ids": list(awaiting.node_ids),
-                            "source_commit_id": command.lineage.commit_id,
-                        },
-                    ),
-                )
+                if awaiting is not None:
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=command.lineage.workflow_id,
+                            node_id=command.lineage.node_id,
+                            event_type="guidance_awaiting_resumed",
+                            transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:result-replaced",
+                            created_at=created_at,
+                            payload={
+                                "awaiting_id": awaiting.awaiting_id,
+                                "checkpoint_id": awaiting.checkpoint_id,
+                                "kind": awaiting.kind,
+                                "resume_policy": awaiting.resume_policy,
+                                "resume_evidence": "result_lineage",
+                                "node_ids": list(awaiting.node_ids),
+                                "source_commit_id": command.lineage.commit_id,
+                            },
+                        ),
+                    )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
