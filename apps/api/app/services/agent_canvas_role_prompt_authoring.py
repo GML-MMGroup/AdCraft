@@ -104,7 +104,11 @@ def deterministic_role_brief(
             "voiceover": "",
             "ambience": "Preserve scene ambience.",
             "action_effects": "Use synchronized action effects.",
-            "target_style": context.style_projection or "Accepted campaign style.",
+            "target_style": context.style_projection or (
+                "Fictional cinematic live-action with coherent lighting and materials"
+                if context.video_representation_mode == "illustration_to_live_action"
+                else "Detailed semi-realistic advertising illustration"
+            ),
         }
     elif variant == "bgm":
         value = {

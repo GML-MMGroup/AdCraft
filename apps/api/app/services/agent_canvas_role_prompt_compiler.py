@@ -196,6 +196,8 @@ class AgentCanvasRolePromptCompiler:
                 explicit_controls=context.explicit_controls,
                 conditioning_plan=conditioning_plan,
             )
+        elif isinstance(concrete_brief, VideoSegmentRoleBriefV2):
+            prompt = f"{prompt} Visual style: {concrete_brief.target_style.strip()}"
         elif context.style_projection:
             _validate_role_prompt_text(
                 context.role_variant,
@@ -788,6 +790,10 @@ def _structured_content(
             panels=panels,
         ).model_dump(mode="json")
     if isinstance(brief, VideoSegmentRoleBriefV2):
+        style = VisualStyleContractV2(
+            style_prompt=brief.target_style,
+            source="video_skill" if context.style_projection else "platform_default",
+        )
         return VideoSegmentContentV2(
             segment_summary=brief.segment_summary,
             duration_seconds=brief.duration_seconds,
