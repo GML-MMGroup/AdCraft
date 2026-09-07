@@ -329,7 +329,14 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
             self._duration_authority.validate_plan(requirement, current.content)
             label = "Style lock" if stage == "style_lock" else "Storyboard plan"
             outline = f"{current.content.narrative_outline}\n{label}: {authored_text}"
-            return current.content.model_copy(update={"narrative_outline": outline})
+            return current.content.model_copy(
+                update={
+                    "narrative_outline": outline,
+                    "creative_direction_snapshot_id": envelope.style_projection.get(
+                        "creative_direction_snapshot_id"
+                    ),
+                }
+            )
         if stage != "narrative_direction":
             raise _error(
                 "agent_document_not_found",
@@ -375,6 +382,9 @@ class AgentCanvasInternalDocumentCheckpointPublisher:
         )
         try:
             return StoryboardProductionPlanContentV3(
+                creative_direction_snapshot_id=envelope.style_projection.get(
+                    "creative_direction_snapshot_id"
+                ),
                 narrative_outline=authored_text,
                 requirement_revision_id=requirement.revision_id,
                 requirement_revision_no=requirement.revision_no,
