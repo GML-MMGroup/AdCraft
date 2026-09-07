@@ -606,21 +606,21 @@ def character_identity_projection_from_node(
             "character_parent_identity_projection_invalid",
             "Character Main lacks complete typed identity authority.",
         )
-    gender = facets["gender_presentation"]
-    if gender not in {"masculine", "feminine", "androgynous", "unspecified"}:
+    try:
+        return CharacterIdentityAuthorityProjectionV1.build(
+            source_node_id=node.node_id,
+            source_node_revision=node.revision,
+            source_asset_id=(source_asset_id if source_asset_version_id is not None else None),
+            source_asset_version_id=source_asset_version_id,
+            occurrence_id=occurrence_id or str(node.metadata.get("occurrence_id") or "unknown"),
+            identity=identity,
+            **facets,
+        )
+    except ValidationError as error:
         raise _error(
             "character_parent_identity_projection_invalid",
-            "Character Main gender facet is not a supported typed value.",
-        )
-    return CharacterIdentityAuthorityProjectionV1.build(
-        source_node_id=node.node_id,
-        source_node_revision=node.revision,
-        source_asset_id=(source_asset_id if source_asset_version_id is not None else None),
-        source_asset_version_id=source_asset_version_id,
-        occurrence_id=occurrence_id or str(node.metadata.get("occurrence_id") or "unknown"),
-        identity=identity,
-        **facets,
-    )
+            "Character Main typed identity authority is invalid.",
+        ) from error
 
 
 def scene_environment_projection_from_node(
