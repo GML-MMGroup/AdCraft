@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 
 from sqlalchemy import insert, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.agent_canvas_auto_run_repository import (
@@ -31,6 +32,7 @@ from app.persistence.models import (
     AgentCanvasNodeRow,
     AgentCanvasWorkflowRow,
     AgentWorkingDocumentRow,
+    WorkflowEventRow,
 )
 from app.schemas.agent_canvas_guided_checkpoint import (
     GuidedCheckpointOriginV1,
@@ -558,8 +560,6 @@ class StoryboardPromptReadyPromotionRepository:
         awaiting_id: str | None = None
         automatic_ids: tuple[str, ...] = ()
         if command.execution_mode == "manual":
-            if journey.stage_status != "waiting_user" and not later_authoring:
-                raise _stale("replay_journey")
             awaiting = (
                 connection.execute(
                     select(AgentCanvasGuidanceAwaitingRow).where(
@@ -571,12 +571,15 @@ class StoryboardPromptReadyPromotionRepository:
                 .one_or_none()
             )
             if awaiting is None:
-                raise _invalid("replay_awaiting")
-            if tuple(json.loads(str(awaiting["node_ids_json"]))) != tuple(
-                item.node_id for item in command.execution_preparations
-            ):
-                raise _invalid("replay_awaiting_nodes")
-            awaiting_id = str(awaiting["awaiting_id"])
+                self._require_consumed_manual_wait(connection, command, checkpoint_id, action_id)
+            else:
+                if journey.stage_status != "waiting_user" and not later_authoring:
+                    raise _stale("replay_journey")
+                if tuple(json.loads(str(awaiting["node_ids_json"]))) != tuple(
+                    item.node_id for item in command.execution_preparations
+                ):
+                    raise _invalid("replay_awaiting_nodes")
+                awaiting_id = str(awaiting["awaiting_id"])
         else:
             if journey.stage_status != "working" and not later_authoring:
                 raise _stale("replay_journey")
@@ -607,6 +610,48 @@ class StoryboardPromptReadyPromotionRepository:
             automatic_run_command_ids=automatic_ids,
             replayed=True,
         )
+
+    @staticmethod
+    def _require_consumed_manual_wait(
+        connection: Connection,
+        command: StoryboardPromptReadyPromotionCommandV1,
+        checkpoint_id: str,
+        action_id: str,
+    ) -> None:
+        entered_json = connection.execute(
+            select(WorkflowEventRow.payload_json).where(
+                WorkflowEventRow.workflow_id == command.workflow_id,
+                WorkflowEventRow.transition_key == f"{action_id}:awaiting",
+                WorkflowEventRow.event_type == "guidance_awaiting_entered",
+            )
+        ).scalar_one_or_none()
+        if entered_json is None:
+            raise _invalid("replay_awaiting")
+        entered = json.loads(entered_json)
+        awaiting_id = entered.get("awaiting_id")
+        if (
+            not isinstance(awaiting_id, str)
+            or entered.get("checkpoint_id") != checkpoint_id
+            or entered.get("session_id") != command.session_id
+        ):
+            raise _invalid("replay_awaiting")
+        terminal_payloads = connection.execute(
+            select(WorkflowEventRow.payload_json).where(
+                WorkflowEventRow.workflow_id == command.workflow_id,
+                WorkflowEventRow.event_type == "guidance_awaiting_resumed",
+                WorkflowEventRow.transition_key.in_((
+                    f"guidance-awaiting:{awaiting_id}:resumed",
+                    f"guidance-awaiting:{awaiting_id}:result-replaced",
+                )),
+            )
+        ).scalars()
+        if not any(
+            (payload := json.loads(raw)).get("awaiting_id") == awaiting_id
+            and payload.get("checkpoint_id") == checkpoint_id
+            and payload.get("node_ids") == entered.get("node_ids")
+            for raw in terminal_payloads
+        ):
+            raise _invalid("replay_awaiting")
 
     def _fault(self, boundary: str) -> None:
         if self._fault_injector is not None:
