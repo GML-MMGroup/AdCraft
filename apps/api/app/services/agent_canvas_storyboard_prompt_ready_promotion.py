@@ -14,7 +14,11 @@ from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository i
 )
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import AgentCanvasWorkflowV2
+from app.schemas.agent_canvas import AgentCanvasWorkflowV2, CanvasNodeV2
+from app.schemas.agent_canvas_guided_checkpoint import (
+    GuidedCheckpointOriginV1,
+    guided_checkpoint_id,
+)
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptPreparationPairV1,
@@ -124,7 +128,9 @@ class StoryboardPromptReadyPromotionService:
             action_turn_id=action_turn_id,
             expected_workflow_revision=workflow.revision,
             expected_session_revision=(self._session_revision(outcome.workflow_id, session_id)),
-            expected_stage_revision=self._stage_revision(outcome.workflow_id, session_id),
+            expected_stage_revision=self._stage_revision(
+                outcome.workflow_id, session_id, tuple(nodes[item.node_id] for item in pairs)
+            ),
             preparations=tuple(pairs),
             execution_preparations=execution_preparations,
             production_plan_document_id=document.document_id,
@@ -221,8 +227,28 @@ class StoryboardPromptReadyPromotionService:
         session = self._session(workflow_id, session_id)
         return session.revision
 
-    def _stage_revision(self, workflow_id: str, session_id: str) -> int:
+    def _stage_revision(
+        self, workflow_id: str, session_id: str, nodes: tuple[CanvasNodeV2, ...]
+    ) -> int:
         session = self._session(workflow_id, session_id)
+        origins = tuple(
+            GuidedCheckpointOriginV1.model_validate(node.metadata["guided_checkpoint"])
+            for node in nodes
+            if node.metadata.get("guided_checkpoint") is not None
+        )
+        if origins:
+            first = origins[0]
+            if (
+                len(origins) != len(nodes)
+                or any(origin != first for origin in origins)
+                or first.guidance_session_id != session_id
+                or first.checkpoint_id
+                != guided_checkpoint_id(
+                    workflow_id, session_id, stage_revision=first.stage_revision
+                )
+            ):
+                raise _invalid("replay_checkpoint_origin")
+            return first.stage_revision
         return session.journey.stage_revision
 
     def _session(self, workflow_id: str, session_id: str):

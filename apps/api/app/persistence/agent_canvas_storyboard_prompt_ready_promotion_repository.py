@@ -82,6 +82,7 @@ class StoryboardPromptReadyPromotionRepository:
                 try:
                     materialization = self._materialization(connection, command)
                     session = self._session(connection, command)
+                    self._validate_materialization_outcome(materialization, command)
                     existing = self._replay_result(
                         connection,
                         command=command,
@@ -120,7 +121,6 @@ class StoryboardPromptReadyPromotionRepository:
                     ):
                         raise _stale("guidance_awaiting")
 
-                    self._validate_materialization_outcome(materialization, command)
                     self._validate_production_plan(connection, command)
                     node_rows = self._validate_nodes(connection, command)
                     self._validate_execution_nodes(connection, command)
@@ -542,10 +542,14 @@ class StoryboardPromptReadyPromotionRepository:
         ):
             return None
         journey = parse_production_journey(str(session["journey_state_json"]))
+        later_authoring = (
+            journey.stage_revision > command.expected_stage_revision
+            and journey.stage != "storyboard_grids"
+        )
         awaiting_id: str | None = None
         automatic_ids: tuple[str, ...] = ()
         if command.execution_mode == "manual":
-            if journey.stage_status != "waiting_user":
+            if journey.stage_status != "waiting_user" and not later_authoring:
                 raise _stale("replay_journey")
             awaiting = (
                 connection.execute(
@@ -565,7 +569,7 @@ class StoryboardPromptReadyPromotionRepository:
                 raise _invalid("replay_awaiting_nodes")
             awaiting_id = str(awaiting["awaiting_id"])
         else:
-            if journey.stage_status != "working":
+            if journey.stage_status != "working" and not later_authoring:
                 raise _stale("replay_journey")
             automatic_ids = tuple(
                 str(value)
