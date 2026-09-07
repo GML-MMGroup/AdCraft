@@ -2227,7 +2227,7 @@ class AgentCanvasGuidedInteractionRepository:
                     session["status"] != "active"
                     or current_journey.stage != command.expected_stage
                     or current_journey.stage_revision != command.expected_stage_revision
-                    or current_journey.active_action is not None
+                    or self._current_action_has_live_leaf(connection, command, current_journey)
                     or _awaiting_for_workflow(
                         connection, command.lineage.workflow_id, authoring_only=True
                     )
@@ -2387,6 +2387,28 @@ class AgentCanvasGuidedInteractionRepository:
             except BaseException:
                 connection.rollback()
                 raise
+
+    def _current_action_has_live_leaf(
+        self,
+        connection: Connection,
+        command: GuidedMediaReviewPublicationCommandV1,
+        journey: GuidedProductionJourneyV2,
+    ) -> bool:
+        if journey.active_action is None:
+            return False
+        from app.persistence.agent_canvas_guidance_authority_repository import (
+            GuidanceAdvanceAuthoritySnapshotRepository,
+        )
+
+        snapshot = GuidanceAdvanceAuthoritySnapshotRepository(
+            AgentCanvasRequirementRepository(self._database)
+        ).read_in_transaction(connection, command.lineage.workflow_id)
+        leaf = snapshot.execution_leaf
+        return (
+            leaf is None
+            or leaf.leaf_status in {"queued", "running"}
+            or leaf.continuation_status in {"queued", "leased", "retry_wait"}
+        )
 
     @staticmethod
     def _validate_media_review_authority(connection, command) -> None:
