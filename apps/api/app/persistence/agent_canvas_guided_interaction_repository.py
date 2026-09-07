@@ -1749,22 +1749,21 @@ class AgentCanvasGuidedInteractionRepository:
                         "Guidance checkpoint changed before entering the wait.",
                     )
                 insert_guidance_awaiting_in_transaction(connection, self._events, awaiting)
-                connection.execute(
-                    update(AgentCanvasGuidanceSessionRow)
-                    .where(
-                        AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
-                        AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                if _wait_owns_cursor(connection, awaiting, journey):
+                    connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=journey.model_copy(
+                                update={"stage_status": "waiting_user"}
+                            ).model_dump_json(),
+                            revision=expected_session_revision + 1,
+                            updated_at=awaiting.created_at.isoformat(),
+                        )
                     )
-                    .values(
-                        journey_state_json=(
-                            journey.model_copy(update={"stage_status": "waiting_user"})
-                            if _wait_owns_cursor(connection, awaiting, journey)
-                            else journey
-                        ).model_dump_json(),
-                        revision=expected_session_revision + 1,
-                        updated_at=awaiting.created_at.isoformat(),
-                    )
-                )
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -1845,22 +1844,24 @@ class AgentCanvasGuidedInteractionRepository:
                 if deleted.rowcount != 1:
                     connection.rollback()
                     return False
-                updated = connection.execute(
-                    update(AgentCanvasGuidanceSessionRow)
-                    .where(
-                        AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                if next_journey != journey:
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                            AgentCanvasGuidanceSessionRow.revision == int(session["revision"]),
+                        )
+                        .values(
+                            journey_state_json=next_journey.model_dump_json(),
+                            revision=AgentCanvasGuidanceSessionRow.revision + 1,
+                            updated_at=now,
+                        )
                     )
-                    .values(
-                        journey_state_json=next_journey.model_dump_json(),
-                        revision=AgentCanvasGuidanceSessionRow.revision + 1,
-                        updated_at=now,
-                    )
-                )
-                if updated.rowcount != 1:
-                    raise _error(
-                        "guidance_revision_conflict",
-                        "Guidance session changed during terminal member reconciliation.",
-                    )
+                    if updated.rowcount != 1:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance session changed during terminal member reconciliation.",
+                        )
                 payload = {
                     "awaiting_id": awaiting.awaiting_id,
                     "execution_id": execution_id,
@@ -2389,22 +2390,22 @@ class AgentCanvasGuidedInteractionRepository:
                         AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
                     )
                 )
-                connection.execute(
-                    update(AgentCanvasGuidanceSessionRow)
-                    .where(
-                        AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
-                        AgentCanvasGuidanceSessionRow.revision == proof.expected_session_revision,
+                if owns_cursor and session["status"] == "active":
+                    connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == awaiting.session_id,
+                            AgentCanvasGuidanceSessionRow.revision
+                            == proof.expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=journey.model_copy(
+                                update={"stage_status": "working"}
+                            ).model_dump_json(),
+                            revision=proof.expected_session_revision + 1,
+                            updated_at=resumed_at,
+                        )
                     )
-                    .values(
-                        journey_state_json=(
-                            journey.model_copy(update={"stage_status": "working"})
-                            if owns_cursor and session["status"] == "active"
-                            else journey
-                        ).model_dump_json(),
-                        revision=proof.expected_session_revision + 1,
-                        updated_at=resumed_at,
-                    )
-                )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
