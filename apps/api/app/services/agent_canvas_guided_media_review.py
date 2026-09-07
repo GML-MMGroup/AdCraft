@@ -129,9 +129,14 @@ class GuidedMediaReviewCoordinator:
             node.node_id,
             lineage.asset_version_id,
         )
-        awaiting = self._interactions.get_awaiting(
-            effect.workflow_id, interaction_id=review_id
-        ) or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
+        node_review_id = "interaction_media_" + _node_review_digest(
+            plan.document_id, plan.revision, node.node_id, node.revision, lineage.asset_version_id
+        )
+        awaiting = (
+            self._interactions.get_awaiting(effect.workflow_id, interaction_id=review_id)
+            or self._interactions.get_awaiting(effect.workflow_id, interaction_id=node_review_id)
+            or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
+        )
         if (
             awaiting is None
             or awaiting.kind != "manual_node_run"
@@ -141,27 +146,22 @@ class GuidedMediaReviewCoordinator:
             if (
                 awaiting is not None
                 and awaiting.kind == "media_review"
-                and awaiting.interaction_id
-                == _review_identity(
-                    effect.source_commit_id,
-                    plan.document_id,
-                    plan.revision,
-                    node.node_id,
-                    lineage.asset_version_id,
-                )[0]
+                and awaiting.interaction_id in {review_id, node_review_id}
             ):
                 return CanvasPostReadyEffectDispositionV1(
                     outcome="already_applied",
                     reason_code="media_review_already_published",
                     interaction_id=awaiting.interaction_id,
                 )
-            if awaiting is None and getattr(session, "awaiting", None) is None:
+            if awaiting is None:
                 if node.output_asset_id != lineage.asset_id or node.status != "ready":
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="superseded",
                         reason_code="current_output_replaced",
                     )
-                if self._is_automatic_mode(effect.workflow_id):
+                automatic = self._is_automatic_mode(effect.workflow_id)
+                current_wait = getattr(session, "awaiting", None)
+                if automatic and current_wait is None:
                     return self._delegate_result_confirmation(
                         effect=effect,
                         lineage=lineage,
@@ -171,11 +171,40 @@ class GuidedMediaReviewCoordinator:
                         record=record,
                     )
                 completion = getattr(session, "completion", None)
-                if getattr(
-                    completion, "editing_preparation", None
-                ) == "prepared" and record.node_role in {"video_segment", "bgm"}:
-                    self.reconcile_current_plan(effect.workflow_id)
-                    review = self._interactions.get_awaiting(effect.workflow_id)
+                if (
+                    getattr(completion, "editing_preparation", None) == "prepared"
+                    and record.node_role in {"video_segment", "bgm"}
+                    and not automatic
+                ):
+                    if current_wait is None:
+                        self.reconcile_current_plan(effect.workflow_id)
+                        review = self._interactions.get_awaiting(effect.workflow_id)
+                    elif (
+                        current_wait.kind not in {"manual_node_run", "media_review"}
+                        and getattr(getattr(session, "creative_authority", None), "authority", None)
+                        != "director"
+                    ):
+                        try:
+                            self._on_node_ready(
+                                node,
+                                reconcile_current=False,
+                                require_terminal_wait=False,
+                                allow_result_revision_advance=True,
+                            )
+                        except V2PersistenceError as error:
+                            if error.code not in {
+                                "guided_interaction_conflict",
+                                "guidance_revision_conflict",
+                            }:
+                                raise
+                            return CanvasPostReadyEffectDispositionV1(
+                                outcome="deferred", reason_code="guided_interaction_conflict"
+                            )
+                        review = self._interactions.get_awaiting(
+                            effect.workflow_id, interaction_id=node_review_id
+                        )
+                    else:
+                        review = None
                     if review is not None and review.kind == "media_review":
                         return CanvasPostReadyEffectDispositionV1(
                             outcome="applied",
@@ -330,16 +359,9 @@ class GuidedMediaReviewCoordinator:
             )
             session = self._conversations.get_guidance_session(node.workflow_id)
         asset = self._assets(node.output_asset_id)
-        logical_identity = ":".join(
-            (
-                plan.document_id,
-                str(plan.revision),
-                node.node_id,
-                str(node.revision),
-                asset.version_id or "",
-            )
+        review_id = _node_review_digest(
+            plan.document_id, plan.revision, node.node_id, node.revision, asset.version_id or ""
         )
-        review_id = sha256(logical_identity.encode()).hexdigest()[:32]
         if (
             session.creative_authority is not None
             and session.creative_authority.authority == "director"
@@ -869,6 +891,17 @@ def _review_identity(
         f"checkpoint_media_{digest}",
         f"awaiting_media_{digest}",
     )
+
+
+def _node_review_digest(
+    plan_document_id: str,
+    plan_revision: int,
+    node_id: str,
+    node_revision: int,
+    asset_version_id: str,
+) -> str:
+    identity = f"{plan_document_id}:{plan_revision}:{node_id}:{node_revision}:{asset_version_id}"
+    return sha256(identity.encode()).hexdigest()[:32]
 
 
 def _v3_plan(content) -> StoryboardProductionPlanContentV3:
