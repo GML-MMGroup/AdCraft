@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic
 from uuid import uuid4
+from typing import Literal
 
 from app.persistence.agent_canvas_editing_commit_repository import (
     AgentCanvasEditingExportCommitRepository,
@@ -446,7 +447,7 @@ class EditingExportService:
             raise _error(
                 "guided_export_incomplete", "Export does not cover current guided delivery."
             )
-        self._require_current_manifest(closure.workflow_id, node_id, runtime)
+        self._require_current_manifest(closure.workflow_id, node_id, runtime, exact_versions=True)
         manifest = self._nodes.content(closure.workflow_id, node_id).manifest
         resolved = self._inputs.resolve(closure.workflow_id, node_id, manifest)
         sources = (*resolved.videos, *((resolved.bgm,) if resolved.bgm is not None else ()))
@@ -474,6 +475,8 @@ class EditingExportService:
         workflow_id: str,
         node_id: str,
         runtime: EditingExportRuntimeV2,
+        *,
+        exact_versions: bool = False,
     ) -> None:
         manifest = self._nodes.content(workflow_id, node_id).manifest
         if manifest.manifest_revision != runtime.manifest_revision:
@@ -487,6 +490,13 @@ class EditingExportService:
             resolved,
             _renderer_fingerprint_payload(self._renderer),
         )
+        # Existing exports predate version-bound fingerprints; retain their
+        # original admission contract, never use it as new full-delivery proof.
+        if not exact_versions and fingerprint != runtime.fingerprint:
+            fingerprint = _fingerprint(
+                manifest.model_dump(mode="json"), resolved,
+                _renderer_fingerprint_payload(self._renderer), contract_version=2,
+            )
         if fingerprint != runtime.fingerprint:
             raise _error(
                 "editing_export_stale",
@@ -672,16 +682,18 @@ def _fingerprint(
     manifest: dict[str, object],
     resolved,
     renderer: dict[str, object],
+    *,
+    contract_version: Literal[2, 3] = 3,
 ) -> str:
     payload = {
-        "contract": "agent-canvas-editing-v3",
+        "contract": f"agent-canvas-editing-v{contract_version}",
         "manifest": manifest,
         "renderer": renderer,
         "videos": [
             {
                 "binding_id": item.binding_id,
                 "asset_id": item.asset.asset_id,
-                "asset_version_id": item.asset.version_id,
+                **({"asset_version_id": item.asset.version_id} if contract_version == 3 else {}),
                 "checksum": item.asset.checksum,
                 "duration_seconds": item.asset.duration_seconds,
             }
@@ -691,7 +703,7 @@ def _fingerprint(
             {
                 "binding_id": resolved.bgm.binding_id,
                 "asset_id": resolved.bgm.asset.asset_id,
-                "asset_version_id": resolved.bgm.asset.version_id,
+                **({"asset_version_id": resolved.bgm.asset.version_id} if contract_version == 3 else {}),
                 "checksum": resolved.bgm.asset.checksum,
             }
             if resolved.bgm
