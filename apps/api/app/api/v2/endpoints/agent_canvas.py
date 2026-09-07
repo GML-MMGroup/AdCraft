@@ -992,7 +992,8 @@ def create_agent_canvas_runtime(
         )
 
     def resolve_storyboard_video_audio_constraints(
-        workflow_id: str, plan_document_id: str,
+        workflow_id: str,
+        plan_document_id: str,
     ) -> dict[str, object]:
         return _resolve_storyboard_video_audio_constraints(
             requirement_service,
