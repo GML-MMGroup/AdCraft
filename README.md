@@ -376,6 +376,53 @@ Manage API keys, default models, aspect ratios, resolution, duration, audio togg
 All orchestrated by AI agents, fully editable on an infinite canvas.
 
 ---
+
+## 🚀 Getting Started
+
+- **Startup guide** — See [Getting Started](./docs/getting-started.md) for detailed startup instructions.
+- **Deployment options** — Follow [native deployment without Docker](./docs/deployment-without-docker.md) or [Docker deployment](./docs/deployment-with-docker.md).
+
+### 📦 Download the Resource Pack
+
+Open **Releases** in the right-hand sidebar of the GitHub repository, or go directly to [AdCraft Releases](https://github.com/GML-MMGroup/AdCraft/releases). Expand the release's **Assets** section and download both files below. The automatically generated **Source code (zip/tar.gz)** downloads are not the resource pack.
+
+The [Recommended Assets v1.0.0 release](https://github.com/GML-MMGroup/AdCraft/releases/tag/recommended-assets-v1.0.0) provides the character and scene library resources:
+
+| Download | Purpose | Where to put it |
+| --- | --- | --- |
+| `adcraft-recommended-assets-v1.0.0.zip` | Recommended character/scene originals, previews, catalog and license metadata | Extract into the backend data directory's `assets/catalogs/recommended/`, preserving the `v1.0.0/` folder |
+| `adcraft-recommended-assets-v1.0.0.zip.sha256` | Download integrity check | Keep beside the ZIP for verification; it is not a runtime asset |
+
+**Directory structure** when using the default launcher:
+
+```text
+AdCraft/
+  runtime-data/api/assets/catalogs/recommended/v1.0.0/
+    catalog.json
+    LICENSES.json
+    originals/
+      characters/
+      scenes/
+    previews/
+      characters/
+      scenes/
+```
+
+Do not add another archive-name folder or a second `v1.0.0/` layer. Do not put these files in the repository's README `assets/` folder or `apps/web/public/`; the backend reads and serves the catalog resources.
+
+**Verify the download** before extracting, from the directory containing both files:
+
+```bash
+# Linux
+sha256sum -c adcraft-recommended-assets-v1.0.0.zip.sha256
+# macOS
+shasum -a 256 -c adcraft-recommended-assets-v1.0.0.zip.sha256
+```
+
+On Windows, run `Get-FileHash .\adcraft-recommended-assets-v1.0.0.zip -Algorithm SHA256` in PowerShell and compare the hash with the `.sha256` file. Do not use a package whose checksum does not match.
+
+---
+
 ## 🤝 Contributing
 
 Pull Requests are always welcome. Contribute code, new features, bug fixes, or other improvements to AdCraft and become a project contributor.

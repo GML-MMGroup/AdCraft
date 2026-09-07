@@ -372,6 +372,53 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 全程由 AI Agent 编排，在无限画布上自由编辑。
 
 ---
+
+## 🚀 快速开始
+
+- **启动指南** — 具体启动步骤请查看 [中文启动指南](./docs/getting-started_zh.md)。
+- **部署方式** — 可参考 [不使用 Docker 的本地部署教程](./docs/deployment-without-docker_zh.md) 或 [Docker 部署教程](./docs/deployment-with-docker_zh.md)。
+
+### 📦 下载资源包
+
+在 GitHub 仓库页面右侧点击 **Releases**，或直接打开 [AdCraft Releases](https://github.com/GML-MMGroup/AdCraft/releases)。展开对应版本的 **Assets** 区域，下载下列两个文件。GitHub 自动生成的 **Source code (zip/tar.gz)** 是源码压缩包，不是资源包。
+
+[Recommended Assets v1.0.0](https://github.com/GML-MMGroup/AdCraft/releases/tag/recommended-assets-v1.0.0) 提供角色与场景资产库资源：
+
+| 下载文件 | 用途 | 放置位置 |
+| --- | --- | --- |
+| `adcraft-recommended-assets-v1.0.0.zip` | 推荐角色/场景原图、预览图、目录及授权元数据 | 解压到后端数据目录下的 `assets/catalogs/recommended/`，保留 `v1.0.0/` 目录 |
+| `adcraft-recommended-assets-v1.0.0.zip.sha256` | 校验下载文件是否完整 | 与 ZIP 放在同一目录用于校验，不需要放入运行时资源目录 |
+
+**目录结构**：使用默认启动脚本时，解压后应为：
+
+```text
+AdCraft/
+  runtime-data/api/assets/catalogs/recommended/v1.0.0/
+    catalog.json
+    LICENSES.json
+    originals/
+      characters/
+      scenes/
+    previews/
+      characters/
+      scenes/
+```
+
+不要额外套一层压缩包名称目录，也不要出现两层 `v1.0.0/`。这些资源不要放入仓库用于 README 展示的 `assets/` 或 `apps/web/public/`；资产目录由后端读取并提供访问。
+
+**下载校验**：解压前，在两个下载文件所在的目录中运行：
+
+```bash
+# Linux
+sha256sum -c adcraft-recommended-assets-v1.0.0.zip.sha256
+# macOS
+shasum -a 256 -c adcraft-recommended-assets-v1.0.0.zip.sha256
+```
+
+Windows 用户可在 PowerShell 中运行 `Get-FileHash .\adcraft-recommended-assets-v1.0.0.zip -Algorithm SHA256`，将结果与 `.sha256` 文件中的哈希值对比。校验不一致时不要使用该资源包。
+
+---
+
 ## 🤝 贡献
 
 欢迎提交 Pull Request，为 AdCraft 贡献代码、功能改进、Bug 修复或其他优化，并成为项目贡献者。
