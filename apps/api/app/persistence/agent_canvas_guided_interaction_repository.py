@@ -2149,12 +2149,54 @@ class AgentCanvasGuidedInteractionRepository:
                 published = _awaiting_for_workflow(
                     connection, command.lineage.workflow_id, interaction_id=command.interaction_id
                 )
+                if current_result:
+                    reviews = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow)
+                            .join(
+                                AgentCanvasGuidanceAwaitingRow,
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == AgentCanvasGuidedInteractionRow.interaction_id,
+                            )
+                            .where(
+                                AgentCanvasGuidedInteractionRow.workflow_id
+                                == command.lineage.workflow_id,
+                                AgentCanvasGuidedInteractionRow.session_id == command.session_id,
+                                AgentCanvasGuidedInteractionRow.kind == "media_review",
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                                func.json_extract(
+                                    AgentCanvasGuidedInteractionRow.content_json, "$.node_id"
+                                )
+                                == command.lineage.node_id,
+                            )
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    if reviews:
+                        review = guided_interaction_from_row(reviews[0])
+                        if len(reviews) != 1 or any(
+                            (
+                                review.content.node_revision != command.current_node_revision,
+                                review.content.asset_id != command.asset_id,
+                                review.content.asset_version_id != command.asset_version_id,
+                            )
+                        ):
+                            connection.rollback()
+                            return CanvasPostReadyEffectDispositionV1(
+                                outcome="deferred", reason_code="guided_interaction_conflict"
+                            )
+                        published = _awaiting_for_workflow(
+                            connection,
+                            command.lineage.workflow_id,
+                            interaction_id=review.interaction_id,
+                        )
                 if published is not None and published.kind == "media_review":
                     connection.rollback()
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="already_applied",
                         reason_code="media_review_already_published",
-                        interaction_id=command.interaction_id,
+                        interaction_id=published.interaction_id,
                     )
                 awaiting = (
                     _awaiting_for_workflow(

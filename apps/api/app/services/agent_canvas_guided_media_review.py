@@ -172,6 +172,18 @@ class GuidedMediaReviewCoordinator:
                     )
                 automatic = self._is_automatic_mode(effect.workflow_id)
                 current_wait = getattr(session, "awaiting", None)
+                if (
+                    automatic
+                    and record.node_role == "storyboard_grid"
+                    and (
+                        current_wait is not None
+                        or session.status != "active"
+                        or session.journey.active_action is not None
+                    )
+                ):
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="deferred", reason_code="guided_interaction_conflict"
+                    )
                 if automatic and current_wait is None:
                     return self._delegate_result_confirmation(
                         effect=effect,
@@ -482,7 +494,7 @@ class GuidedMediaReviewCoordinator:
         if self._receipts is None or self._node_resolver is None:
             return ()
         session = self._conversations.get_guidance_session_or_none(workflow_id)
-        if session is None or getattr(session, "awaiting", None) is not None:
+        if session is None:
             return ()
         confirmations = self._receipts.list_confirmations(workflow_id)
         created_node_ids: list[str] = []
@@ -501,7 +513,7 @@ class GuidedMediaReviewCoordinator:
                         if outcome.outcome in {"applied", "deferred"}:
                             return tuple(created_node_ids)
                     continue
-                if record.node_role not in {"video_segment", "bgm"}:
+                if session.awaiting is not None or record.node_role not in {"video_segment", "bgm"}:
                     continue
                 node = self._node_resolver(workflow_id, record.node_id)
                 if node.status != "ready" or node.output_asset_id is None:
