@@ -621,7 +621,10 @@ class AgentCanvasConversationRepository:
                     awaiting_row = (
                         connection.execute(
                             select(AgentCanvasGuidanceAwaitingRow).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.kind.not_in(
+                                    ("manual_node_run", "media_review")
+                                ),
                             )
                         )
                         .mappings()
@@ -5238,6 +5241,7 @@ def _upsert_clarification_authority(
         connection.execute(
             select(AgentCanvasGuidedInteractionRow).where(
                 AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                AgentCanvasGuidedInteractionRow.kind != "media_review",
                 AgentCanvasGuidedInteractionRow.status == "open",
             )
         )
@@ -5247,7 +5251,8 @@ def _upsert_clarification_authority(
     awaiting_row = (
         connection.execute(
             select(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                AgentCanvasGuidanceAwaitingRow.kind.not_in(("manual_node_run", "media_review")),
             )
         )
         .mappings()
