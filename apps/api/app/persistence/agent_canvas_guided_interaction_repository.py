@@ -9,7 +9,8 @@ from hashlib import sha256
 from typing import Literal, Mapping, cast
 
 from pydantic import TypeAdapter
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import case, delete, func, insert, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
@@ -2559,16 +2560,57 @@ def insert_guidance_awaiting_in_transaction(
     )
 
 
-def _awaiting_for_workflow(connection, workflow_id: str) -> GuidanceAwaitingV2 | None:
-    row = (
-        connection.execute(
-            select(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
-            )
-        )
-        .mappings()
-        .one_or_none()
+def _awaiting_for_workflow(
+    connection: Connection,
+    workflow_id: str,
+    *,
+    awaiting_id: str | None = None,
+    interaction_id: str | None = None,
+    checkpoint_id: str | None = None,
+) -> GuidanceAwaitingV2 | None:
+    query = select(AgentCanvasGuidanceAwaitingRow).where(
+        AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
     )
+    if awaiting_id is not None:
+        query = query.where(AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting_id)
+    if interaction_id is not None:
+        query = query.where(AgentCanvasGuidanceAwaitingRow.interaction_id == interaction_id)
+    if checkpoint_id is not None:
+        query = query.where(AgentCanvasGuidanceAwaitingRow.checkpoint_id == checkpoint_id)
+    if awaiting_id is None and interaction_id is None and checkpoint_id is None:
+        # Next-action projection is not authority to resume a particular wait.
+        query = (
+            query.join(
+                AgentCanvasGuidanceSessionRow,
+                AgentCanvasGuidanceSessionRow.session_id
+                == AgentCanvasGuidanceAwaitingRow.session_id,
+            )
+            .order_by(
+                case(
+                    (
+                        AgentCanvasGuidanceAwaitingRow.kind.not_in(
+                            ("manual_node_run", "media_review")
+                        ),
+                        0,
+                    ),
+                    else_=1,
+                ),
+                case(
+                    (
+                        AgentCanvasGuidanceAwaitingRow.stage
+                        == func.json_extract(
+                            AgentCanvasGuidanceSessionRow.journey_state_json, "$.stage"
+                        ),
+                        0,
+                    ),
+                    else_=1,
+                ),
+                AgentCanvasGuidanceAwaitingRow.created_at,
+                AgentCanvasGuidanceAwaitingRow.awaiting_id,
+            )
+            .limit(1)
+        )
+    row = connection.execute(query).mappings().one_or_none()
     if row is None:
         return None
     return guidance_awaiting_from_row(row)

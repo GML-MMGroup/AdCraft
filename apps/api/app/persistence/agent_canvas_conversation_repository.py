@@ -37,7 +37,7 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
     publish_expert_activity_terminal_in_transaction,
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
-    guidance_awaiting_from_row,
+    _awaiting_for_workflow,
     guided_interaction_from_row,
 )
 from app.persistence.models import (
@@ -6288,15 +6288,7 @@ def _guidance_session(
         .mappings()
         .first()
     )
-    awaiting_row = (
-        connection.execute(
-            select(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == row["workflow_id"]
-            )
-        )
-        .mappings()
-        .one_or_none()
-    )
+    persisted_awaiting = _awaiting_for_workflow(connection, str(row["workflow_id"]))
     journey = parse_production_journey(str(row["journey_state_json"]))
     actionable_failure = None
     if row["active_proposal_id"] is not None:
@@ -6316,8 +6308,8 @@ def _guidance_session(
         ):
             actionable_failure = _materialization_actionable_failure(active_proposal)
     awaiting = (
-        guidance_awaiting_from_row(awaiting_row)
-        if awaiting_row is not None
+        persisted_awaiting
+        if persisted_awaiting is not None
         else _derive_historical_manual_awaiting(connection, row, journey)
     )
     return GuidedSessionStateV2(

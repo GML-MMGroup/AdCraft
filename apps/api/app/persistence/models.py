@@ -1574,7 +1574,7 @@ class AgentCanvasGuidedMediaResumeDeliveryRow(Base):
 
 
 class AgentCanvasGuidanceAwaitingRow(Base):
-    """Current typed durable wait for one Guidance session."""
+    """Typed checkpoint waits with one independent authoring cursor."""
 
     __tablename__ = "agent_canvas_guidance_awaiting"
     __table_args__ = (
@@ -1593,9 +1593,11 @@ class AgentCanvasGuidanceAwaitingRow(Base):
             "stage_revision > 0",
             name="ck_agent_canvas_guidance_awaiting_stage_revision",
         ),
-        UniqueConstraint(
+        Index(
+            "uq_agent_canvas_guidance_awaiting_authoring",
             "workflow_id",
-            name="uq_agent_canvas_guidance_awaiting_workflow",
+            unique=True,
+            sqlite_where=text("kind NOT IN ('manual_node_run','media_review')"),
         ),
         UniqueConstraint(
             "session_id",
