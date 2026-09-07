@@ -745,6 +745,7 @@ def _structured_content(
             )
         }
     if isinstance(brief, StoryboardGridRoleBriefV2):
+        projection = context.storyboard_projection
         panels = tuple(
             StoryboardPanelV2(
                 panel_index=index,
@@ -758,9 +759,31 @@ def _structured_content(
             )
             for index, beat in enumerate(brief.beats, start=1)
         )
+        if projection is not None:
+            panels = tuple(
+                StoryboardPanelV2(
+                    panel_index=row.panel_index,
+                    beat=row.content_beat,
+                    composition=row.camera_description,
+                    camera=row.camera_description,
+                    subject_action=row.content_beat,
+                    continuity_from_previous=(
+                        projection.sequence.start_state
+                        if row.panel_index == 1
+                        else projection.rows[row.panel_index - 2].content_beat
+                    ),
+                )
+                for row in projection.rows
+            )
         return StoryboardGridContentV2(
-            sequence_summary=brief.sequence_summary,
-            narrative_goal=context.selected_direction or brief.sequence_summary,
+            sequence_summary=(
+                projection.sequence.narrative_goal if projection else brief.sequence_summary
+            ),
+            narrative_goal=(
+                projection.sequence.narrative_goal
+                if projection
+                else context.selected_direction or brief.sequence_summary
+            ),
             style=style,
             panels=panels,
         ).model_dump(mode="json")
