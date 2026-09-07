@@ -121,7 +121,7 @@ from app.services.response_locale_resolver import ResponseLocaleResolverV1
 
 
 class AgentCanvasGuidedInteractionRepository:
-    """Persist one current interaction and awaiting descriptor per workflow."""
+    """Persist scoped waits and project the workflow's next authoring interaction."""
 
     def __init__(
         self,
@@ -287,12 +287,12 @@ class AgentCanvasGuidedInteractionRepository:
                 .mappings()
                 .one_or_none()
             )
-        if row is None:
-            raise _error(
-                "guided_interaction_not_found",
-                "Guided interaction was not found.",
-            )
-        return guided_interaction_from_row(row)
+            if row is None:
+                raise _error(
+                    "guided_interaction_not_found",
+                    "Guided interaction was not found.",
+                )
+            return project_guided_interaction(connection, row)
 
     def open_product_source_with_journey(
         self,
@@ -492,7 +492,7 @@ class AgentCanvasGuidedInteractionRepository:
     def get_current(self, workflow_id: str) -> GuidedInteractionV1 | None:
         with self._database.engine.connect() as connection:
             row = current_guided_interaction_row(connection, workflow_id)
-        return guided_interaction_from_row(row) if row is not None else None
+            return project_guided_interaction(connection, row) if row is not None else None
 
     def get_awaiting(
         self, workflow_id: str, *, node_id: str | None = None, interaction_id: str | None = None
@@ -2464,6 +2464,37 @@ class AgentCanvasGuidedInteractionRepository:
                 "guided_interaction_invalid",
                 "Guided interaction kind does not match its awaiting authority.",
             )
+
+
+def project_guided_interaction(
+    connection: Connection, row: Mapping[str, object]
+) -> GuidedInteractionV1:
+    """Refresh only scoped open-review admission; never rewrite its frozen source facts."""
+
+    interaction = guided_interaction_from_row(row)
+    if interaction.kind != "media_review" or interaction.status != "open":
+        return interaction
+    awaiting = _awaiting_for_workflow(
+        connection, interaction.workflow_id, interaction_id=interaction.interaction_id
+    )
+    if (
+        awaiting is None
+        or awaiting.kind != "media_review"
+        or awaiting.session_id != interaction.session_id
+        or awaiting.checkpoint_id != interaction.checkpoint_id
+    ):
+        return interaction
+    revision = connection.execute(
+        select(AgentCanvasGuidanceSessionRow.revision).where(
+            AgentCanvasGuidanceSessionRow.session_id == interaction.session_id,
+            AgentCanvasGuidanceSessionRow.workflow_id == interaction.workflow_id,
+        )
+    ).scalar_one_or_none()
+    return (
+        interaction.model_copy(update={"expected_session_revision": int(revision)})
+        if revision is not None
+        else interaction
+    )
 
 
 def guided_interaction_from_row(row: Mapping[str, object]) -> GuidedInteractionV1:

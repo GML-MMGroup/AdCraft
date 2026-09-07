@@ -40,6 +40,7 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
     _awaiting_for_workflow,
     current_guided_interaction_row,
     guided_interaction_from_row,
+    project_guided_interaction,
 )
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
@@ -6392,7 +6393,9 @@ def _guidance_session(
         ),
         completion=GuidanceCompletionProjectionV2.model_validate_json(str(row["completion_json"])),
         interaction=(
-            guided_interaction_from_row(interaction_row) if interaction_row is not None else None
+            project_guided_interaction(connection, interaction_row)
+            if interaction_row is not None
+            else None
         ),
         awaiting=awaiting,
         actionable_failure=actionable_failure,
