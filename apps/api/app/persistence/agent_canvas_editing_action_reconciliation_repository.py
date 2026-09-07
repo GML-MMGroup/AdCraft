@@ -17,6 +17,7 @@ from app.persistence.agent_canvas_guided_interaction_repository import (
 )
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
+    parse_preparation_receipt,
 )
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.database import V2Database
@@ -37,7 +38,6 @@ from app.persistence.models import (
     AgentWorkingDocumentRow,
 )
 from app.schemas.agent_canvas_production_closure import (
-    GuidedEditingPreparationReceiptV1,
     GuidedMediaConfirmationV1,
     GuidedEditingActionReconciliationCommandV1,
     GuidedEditingActionReconciliationReceiptV1,
@@ -281,7 +281,7 @@ class AgentCanvasEditingActionReconciliationRepository:
             ).one_or_none()
             if receipt_row is None or str(receipt_row[0]) not in command.evidence_ids:
                 raise _evidence_error()
-            preparation = GuidedEditingPreparationReceiptV1.model_validate_json(str(receipt_row[1]))
+            preparation = parse_preparation_receipt(str(receipt_row[1]))
             if preparation.plan_document_id != command.plan_document_id:
                 raise _evidence_error()
             if preparation.plan_revision == command.plan_revision:

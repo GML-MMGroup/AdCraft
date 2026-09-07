@@ -436,12 +436,17 @@ def _canonical_payload(model: BaseModel) -> str:
 
 def _parse_receipt(model_type: type[ReceiptT], payload: str) -> ReceiptT:
     if model_type is GuidedEditingPreparationReceiptV1:
-        value = json.loads(payload)
-        if "proof_kind" in value:
-            return cast(
-                ReceiptT, TypeAdapter(GuidedEditingPreparationReceiptV2).validate_python(value)
-            )
+        return cast(ReceiptT, parse_preparation_receipt(payload))
     return model_type.model_validate_json(payload)
+
+
+def parse_preparation_receipt(payload: str) -> EditingPreparationReceipt:
+    """Read strict historical media evidence or explicitly discriminated V2 proof."""
+
+    value = json.loads(payload)
+    if isinstance(value, dict) and "proof_kind" in value:
+        return TypeAdapter(GuidedEditingPreparationReceiptV2).validate_python(value)
+    return GuidedEditingPreparationReceiptV1.model_validate(value)
 
 
 def _receipt_id(model: BaseModel) -> str:
