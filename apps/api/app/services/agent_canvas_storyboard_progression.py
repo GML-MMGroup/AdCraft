@@ -104,6 +104,96 @@ class ProgressiveStoryboardReadyService:
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
 
+    def materialize_planned_drafts(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        expected_plan_revision: int,
+    ) -> tuple[str, ...]:
+        """Publish accepted Plan topology without claiming a visual anchor."""
+
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == plan_document_id
+            ),
+            None,
+        )
+        if plan is None or plan.revision != expected_plan_revision:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Planned Draft topology requires the current accepted Plan revision.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        workflow = self._workflows.get_workflow(workflow_id)
+        first_sequence = _first_sequence(content)
+        first_record = next(
+            (
+                record
+                for record in _planned_nodes(content)
+                if record.sequence_id == first_sequence.sequence_id
+                and record.node_role == "storyboard_grid"
+            ),
+            None,
+        )
+        source_grid = next(
+            (
+                node
+                for node in workflow.nodes
+                if first_record is not None and node.node_id == first_record.node_id
+            ),
+            None,
+        )
+        if source_grid is None:
+            raise V2PersistenceError(
+                "storyboard_fanout_invalid",
+                "Planned topology requires its committed first Grid Node.",
+                stage="storyboard_progression",
+            )
+        members = self._build_fanout_members(
+            workflow=workflow,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            content=content,
+            source_grid=source_grid,
+        )
+        if not members:
+            return ()
+        next_content = _append_planned_nodes(
+            content,
+            plan_document_id=plan_document_id,
+            planned=tuple(node for node, _ in members),
+        )
+        with self._workflows.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                revision = workflow.revision
+                for node, bindings in members:
+                    revision = self._workflows.add_node_with_bindings_in_transaction(
+                        connection,
+                        node,
+                        bindings,
+                        expected_revision=revision,
+                    )
+                self._authoring.commit_plan_content_in_transaction(
+                    connection,
+                    workflow_id=workflow_id,
+                    agent_run_id=f"planned-drafts:{plan_document_id}",
+                    document_id=plan_document_id,
+                    expected_revision=plan.revision,
+                    operation="materialize_planned_storyboard_drafts",
+                    idempotency_key=f"planned-drafts:{plan_document_id}:{plan.revision}",
+                    next_content=next_content,
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return tuple(node.node_id for node, _ in members)
+
     def preflight_fanout(
         self,
         *,
@@ -1585,6 +1675,32 @@ def _published_plan_content(
     planned = tuple(
         nodes_by_id[item.node_id] for item in fanout.nodes if item.node_id in nodes_by_id
     )
+    updated = _append_planned_nodes(content, plan_document_id=plan_document_id, planned=planned)
+    if isinstance(updated, StoryboardProductionPlanContentV3):
+        anchor = StoryboardVisualAnchorV3(
+            sequence_id=_first_sequence(content).sequence_id,
+            node_id=source_grid.node_id,
+            node_revision=source_grid.revision,
+            asset_id=confirmation.asset_id,
+            asset_version_id=confirmation.asset_version_id,
+            acceptance_evidence_id=confirmation.confirmation_id,
+        )
+    else:
+        anchor = StoryboardVisualAnchorV2(
+            node_id=source_grid.node_id,
+            asset_id=confirmation.asset_id,
+            node_revision=source_grid.revision,
+            document_revision=plan_revision,
+        )
+    return updated.model_copy(update={"visual_anchor": anchor})
+
+
+def _append_planned_nodes(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    *,
+    plan_document_id: str,
+    planned: tuple[CanvasNodeV2, ...],
+) -> StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3:
     if isinstance(content, StoryboardProductionPlanContentV3):
         existing = {(item.sequence_id, item.node_role) for item in content.planned_nodes}
         planned_nodes = list(content.planned_nodes)
@@ -1610,14 +1726,6 @@ def _published_plan_content(
         return content.model_copy(
             update={
                 "planned_nodes": tuple(planned_nodes),
-                "visual_anchor": StoryboardVisualAnchorV3(
-                    sequence_id=_first_sequence(content).sequence_id,
-                    node_id=source_grid.node_id,
-                    node_revision=source_grid.revision,
-                    asset_id=confirmation.asset_id,
-                    asset_version_id=confirmation.asset_version_id,
-                    acceptance_evidence_id=confirmation.confirmation_id,
-                ),
             }
         )
 
@@ -1638,12 +1746,6 @@ def _published_plan_content(
     return content.model_copy(
         update={
             "node_records": tuple(records),
-            "visual_anchor": StoryboardVisualAnchorV2(
-                node_id=source_grid.node_id,
-                asset_id=confirmation.asset_id,
-                node_revision=source_grid.revision,
-                document_revision=plan_revision,
-            ),
         }
     )
 
