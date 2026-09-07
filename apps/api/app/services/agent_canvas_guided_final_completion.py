@@ -288,12 +288,32 @@ class GuidedFinalCompletionService:
             completion_revision=session.revision + 1,
             completed_at=now,
         )
+        return self._commit_current_media(
+            proof=proof, receipt=receipt, closure=closure, session=session,
+            workflow_revision=workflow.revision, node=node, asset=asset,
+        )
+
+    def _commit_current_media(
+        self,
+        *,
+        proof: GuidedEditingMediaClosureReceiptV2,
+        receipt: GuidedFinalCompletionReceiptV1,
+        closure: GuidedClosurePlanV1,
+        session: GuidedSessionStateV2,
+        workflow_revision: int,
+        node: CanvasNodeV2,
+        asset: ProjectAssetSummaryV2,
+    ) -> GuidedFinalCompletionReceiptV1:
+        """Fence source snapshots and append all full-delivery projections atomically."""
+
+        workflow_id, node_id, export_id = proof.workflow_id, proof.editing_node_id, receipt.export_id
+        now = receipt.completed_at
         completion = session.completion.model_copy(
             update={
                 "authoring": "ready",
                 "delivery": "ready",
-                "plan_document_id": document.document_id,
-                "plan_revision": document.revision,
+                "plan_document_id": proof.plan_document_id,
+                "plan_revision": proof.plan_revision,
                 "editing_preparation": "prepared",
                 "editing_node_id": node_id,
                 "preparation_receipt_id": proof.receipt_id,
@@ -321,13 +341,13 @@ class GuidedFinalCompletionService:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
                 self._workflows.require_workflow_revision_in_transaction(
-                    connection, workflow_id, workflow.revision
+                    connection, workflow_id, workflow_revision
                 )
                 AgentWorkingDocumentRepository.require_revision_in_transaction(
                     connection,
                     workflow_id=workflow_id,
-                    document_id=document.document_id,
-                    expected_revision=document.revision,
+                    document_id=proof.plan_document_id,
+                    expected_revision=proof.plan_revision,
                 )
                 self._closure.require_no_active_work(
                     workflow_id, tuple(item.node_id for item in closure.ordered_inputs)
