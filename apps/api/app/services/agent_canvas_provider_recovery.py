@@ -200,6 +200,8 @@ class ProviderTaskRecoveryService:
             )
         except Exception as error:
             source_code = getattr(error, "code", None)
+            if source_code == "stale_execution_lease":
+                raise
             code = "provider_result_download_failed"
             if isinstance(error, TimeoutError) or source_code == (
                 "provider_result_download_timeout"
@@ -523,6 +525,8 @@ class ProviderTaskRecoveryService:
         task: CanvasProviderTaskV2,
         error: Exception,
     ) -> None:
+        if getattr(error, "code", None) == "stale_execution_lease":
+            return
         now = self._clock()
         current = self._runtime.get_provider_task(task.task_id)
         if current.status in {"succeeded", "failed", "cancelled"}:
