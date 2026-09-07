@@ -19626,6 +19626,7 @@
           "agent_identity": "#/$defs/AgentIdentityOrdinaryIntentV1",
           "document_explanation": "#/$defs/DocumentExplanationOrdinaryIntentV1",
           "freeform_reply": "#/$defs/FreeformReplyOrdinaryIntentV1",
+          "style_skill_consultation": "#/$defs/StyleSkillConsultationOrdinaryIntentV1",
           "workflow_status": "#/$defs/WorkflowStatusOrdinaryIntentV1"
         },
         "propertyName": "intent_kind"
@@ -19645,6 +19646,9 @@
         },
         {
           "$ref": "#/$defs/DocumentExplanationOrdinaryIntentV1"
+        },
+        {
+          "$ref": "#/$defs/StyleSkillConsultationOrdinaryIntentV1"
         }
       ],
       "title": "OrdinaryConversationIntentV1"
@@ -30158,6 +30162,281 @@
       "title": "StyleGuidanceContextV2",
       "type": "object"
     },
+    "StyleSkillConsultationAuditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Catalog Version",
+          "type": "string"
+        },
+        "focused_skill_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Focused Skill Ids",
+          "type": "array"
+        },
+        "omitted_entry_count": {
+          "minimum": 0,
+          "title": "Omitted Entry Count",
+          "type": "integer"
+        },
+        "scope": {
+          "enum": [
+            "catalog",
+            "compare",
+            "current",
+            "recommend"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "selected_skill_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selected Skill Id"
+        },
+        "selected_skill_version": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selected Skill Version"
+        },
+        "source_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Turn Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "catalog_version",
+        "omitted_entry_count",
+        "scope",
+        "selected_skill_id",
+        "selected_skill_version",
+        "source_turn_id"
+      ],
+      "title": "StyleSkillConsultationAuditV1",
+      "type": "object"
+    },
+    "StyleSkillConsultationContextV1": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Catalog Version",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/StyleSkillPublicFactV1"
+          },
+          "maxItems": 24,
+          "title": "Entries",
+          "type": "array"
+        },
+        "omitted_entry_count": {
+          "minimum": 0,
+          "title": "Omitted Entry Count",
+          "type": "integer"
+        },
+        "query": {
+          "$ref": "#/$defs/StyleSkillConsultationQueryV1"
+        },
+        "requirement_summary": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Requirement Summary",
+          "type": "string"
+        },
+        "selected_skill_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selected Skill Id"
+        },
+        "selected_skill_version": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selected Skill Version"
+        },
+        "unavailable_skill_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Unavailable Skill Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "catalog_version",
+        "entries",
+        "omitted_entry_count",
+        "query",
+        "selected_skill_id",
+        "selected_skill_version"
+      ],
+      "title": "StyleSkillConsultationContextV1",
+      "type": "object"
+    },
+    "StyleSkillConsultationOrdinaryIntentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "intent_kind": {
+          "const": "style_skill_consultation",
+          "title": "Intent Kind",
+          "type": "string"
+        },
+        "query": {
+          "$ref": "#/$defs/StyleSkillConsultationQueryV1"
+        }
+      },
+      "required": [
+        "intent_kind",
+        "query"
+      ],
+      "title": "StyleSkillConsultationOrdinaryIntentV1",
+      "type": "object"
+    },
+    "StyleSkillConsultationQueryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "enum": [
+            "catalog",
+            "compare",
+            "current",
+            "recommend"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "skill_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Skill Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "title": "StyleSkillConsultationQueryV1",
+      "type": "object"
+    },
+    "StyleSkillPublicFactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Category",
+          "type": "string"
+        },
+        "skill_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "supported_use_cases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Supported Use Cases",
+          "type": "array"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "skill_id",
+        "summary",
+        "title",
+        "version"
+      ],
+      "title": "StyleSkillPublicFactV1",
+      "type": "object"
+    },
     "TurnIntentContextV2": {
       "additionalProperties": false,
       "properties": {
@@ -30268,6 +30547,15 @@
           "title": "Mentioned Node Ids",
           "type": "array"
         },
+        "recent_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InteractionMessageSummary"
+          },
+          "maxItems": 12,
+          "title": "Recent Messages",
+          "type": "array"
+        },
         "requirement_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Requirement Digest",
@@ -30287,6 +30575,17 @@
         "session_exists": {
           "title": "Session Exists",
           "type": "boolean"
+        },
+        "style_skill_catalog": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleSkillConsultationContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "user_input": {
           "maxLength": 32768,
@@ -33217,6 +33516,17 @@
           "default": null,
           "title": "Source Revision"
         },
+        "style_skill_consultation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleSkillConsultationContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "user_input": {
           "maxLength": 65536,
           "minLength": 1,
@@ -33385,10 +33695,33 @@
           "title": "Message",
           "type": "string"
         },
+        "referenced_skill_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 24,
+          "title": "Referenced Skill Ids",
+          "type": "array"
+        },
         "state_reference": {
           "anyOf": [
             {
               "$ref": "#/$defs/WorkflowConversationAnswerContextV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "style_skill_audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleSkillConsultationAuditV1"
             },
             {
               "type": "null"
