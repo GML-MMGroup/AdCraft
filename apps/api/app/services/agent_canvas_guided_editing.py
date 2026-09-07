@@ -212,9 +212,15 @@ class GuidedEditingPreparationService:
             for source in desired_sources
         )
         manifest = EditingManifestV2(
+            timeline_duration_seconds=plan.global_parameters.total_duration_seconds,
             video_entries=tuple(
-                EditingVideoEntryV2(binding_id=binding.binding_id)
-                for binding in desired_bindings[: len(available_videos)]
+                EditingVideoEntryV2(
+                    binding_id=binding.binding_id,
+                    timeline_start_seconds=segment.start_seconds,
+                )
+                for binding, segment in zip(
+                    desired_bindings[: len(available_videos)], included_segments, strict=True
+                )
             ),
             bgm=(
                 EditingBgmEntryV2(binding_id=desired_bindings[-1].binding_id)
@@ -477,11 +483,7 @@ class GuidedEditingPreparationService:
         )
 
     def _ready_media(self, node: CanvasNodeV2, media_type: str) -> bool:
-        if (
-            node.status != "ready"
-            or node.output_asset_id is None
-            or self._asset_resolver is None
-        ):
+        if node.status != "ready" or node.output_asset_id is None or self._asset_resolver is None:
             return False
         try:
             asset: ProjectAssetSummaryV2 = self._asset_resolver(node.output_asset_id)
