@@ -43,12 +43,18 @@ from app.schemas import workflow_v2_planning
 from app.schemas import workflow_v2_prompt_contracts
 from app.schemas import v2_agent_conversations
 from app.schemas import v2_quick_media
+from app.schemas import style_skill_consultation
 from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
 from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
+    style_skill_consultation.StyleSkillConsultationQueryV1,
+    style_skill_consultation.StyleSkillPublicFactV1,
+    style_skill_consultation.StyleSkillConsultationContextV1,
+    style_skill_consultation.StyleSkillConsultationAuditV1,
+    agent_canvas_capabilities.StyleSkillConsultationOrdinaryIntentV1,
     agent_canvas_identity_safety.IdentitySafetyDecisionV1,
     agent_canvas_production_closure.StoryboardFanoutNodePlanV1,
     agent_canvas_production_closure.StoryboardFanoutBindingPlanV1,
