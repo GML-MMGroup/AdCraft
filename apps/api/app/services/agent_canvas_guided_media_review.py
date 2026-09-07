@@ -505,6 +505,14 @@ class GuidedMediaReviewCoordinator:
             )
             for record in records:
                 if record.node_role == "storyboard_grid" and self._result_commits is not None:
+                    if self._is_automatic_mode(workflow_id):
+                        node = self._node_resolver(workflow_id, record.node_id)
+                        if node.status == "ready" and node.output_asset_id is not None:
+                            asset = self._assets(node.output_asset_id)
+                            if _has_current_confirmation(
+                                confirmations, plan=plan, record=record, node=node, asset=asset
+                            ):
+                                continue
                     effect = self._result_commits.find_latest_post_ready_effect(
                         workflow_id=workflow_id, node_id=record.node_id
                     )
@@ -961,7 +969,9 @@ def _find_plan_record(plans, workflow_id: str, node_id: str):
 
 
 def _has_current_confirmation(confirmations, *, plan, record, node, asset) -> bool:
-    media_role = "audio" if record.node_role == "bgm" else "video"
+    media_role = {"bgm": "audio", "video_segment": "video", "storyboard_grid": "image"}[
+        record.node_role
+    ]
     return any(
         confirmation.plan_document_id == plan.document_id
         and confirmation.plan_revision <= plan.revision
