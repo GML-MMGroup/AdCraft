@@ -459,7 +459,11 @@ class GuidedEditingPreparationService:
             bound_audio_node_ids=tuple(
                 node.node_id for node in ordered_nodes if node.node_type == "audio"
             ),
-            omitted_node_ids=(),
+            omitted_node_ids=tuple(
+                node.node_id
+                for node in ordered_nodes
+                if not self._ready_media(node, node.node_type)
+            ),
             manifest_revision=receipt.manifest_revision,
             replayed=replayed,
         )
