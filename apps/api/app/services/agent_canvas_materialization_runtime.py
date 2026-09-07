@@ -86,6 +86,7 @@ class CapabilityMaterializationContextAssembler:
             "requirement_revision_no": envelope.requirement_revision_no,
             "selected_option": envelope.selected_option,
             "creative_goal": raw.get("creative_goal") or envelope.selected_option.public_summary,
+            "response_locale": raw.get("response_locale", "und"),
             "explicit_constraints": raw.get("explicit_constraints") or {},
             "shared_summary": raw.get("shared_summary") or "",
             "capability_facts": raw.get("capability_facts") or {},
