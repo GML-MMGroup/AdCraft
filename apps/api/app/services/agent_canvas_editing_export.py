@@ -629,13 +629,14 @@ def _fingerprint(
     renderer: dict[str, object],
 ) -> str:
     payload = {
-        "contract": "agent-canvas-editing-v2",
+        "contract": "agent-canvas-editing-v3",
         "manifest": manifest,
         "renderer": renderer,
         "videos": [
             {
                 "binding_id": item.binding_id,
                 "asset_id": item.asset.asset_id,
+                "asset_version_id": item.asset.version_id,
                 "checksum": item.asset.checksum,
                 "duration_seconds": item.asset.duration_seconds,
             }
@@ -645,6 +646,7 @@ def _fingerprint(
             {
                 "binding_id": resolved.bgm.binding_id,
                 "asset_id": resolved.bgm.asset.asset_id,
+                "asset_version_id": resolved.bgm.asset.version_id,
                 "checksum": resolved.bgm.asset.checksum,
             }
             if resolved.bgm
