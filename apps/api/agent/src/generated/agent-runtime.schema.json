@@ -8467,6 +8467,19 @@
     "CharacterDesignAssetContentV2": {
       "additionalProperties": false,
       "properties": {
+        "accessories": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accessories"
+        },
         "asset_kind": {
           "default": "main",
           "enum": [
@@ -8499,6 +8512,38 @@
           "maxItems": 64,
           "title": "Explicit Inclusions",
           "type": "array"
+        },
+        "face_and_hair": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Face And Hair"
+        },
+        "gender_presentation": {
+          "anyOf": [
+            {
+              "enum": [
+                "androgynous",
+                "feminine",
+                "masculine",
+                "unspecified"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gender Presentation"
         },
         "identity_projection_digest": {
           "anyOf": [
@@ -8583,6 +8628,20 @@
           "title": "Reference Rendering Mode",
           "type": "string"
         },
+        "silhouette_and_proportions": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Silhouette And Proportions"
+        },
         "style": {
           "$ref": "#/$defs/VisualStyleContractV2"
         },
@@ -8591,6 +8650,20 @@
           "minLength": 1,
           "title": "Subject Identity",
           "type": "string"
+        },
+        "wardrobe": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wardrobe"
         }
       },
       "required": [
