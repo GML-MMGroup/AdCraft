@@ -1976,12 +1976,13 @@ class AgentCanvasGuidedInteractionRepository:
                     session_id=interaction.session_id,
                     expected_revision=post_action_session_revision,
                 )
-                next_session_revision = post_action_session_revision + 1
                 journey = _journey(session)
-                if (
+                owns_cursor = (
                     _wait_owns_cursor(connection, awaiting, journey)
                     and session["status"] == "active"
-                ):
+                )
+                next_session_revision = post_action_session_revision + int(owns_cursor)
+                if owns_cursor:
                     journey = journey.model_copy(
                         update={"stage_status": "working", "active_action": None}
                     )
@@ -2000,7 +2001,7 @@ class AgentCanvasGuidedInteractionRepository:
                     .values(
                         journey_state_json=journey.model_dump_json(),
                         revision=next_session_revision,
-                        updated_at=now,
+                        updated_at=now if owns_cursor else session["updated_at"],
                     )
                 )
                 if changed.rowcount != 1:
@@ -2143,14 +2144,16 @@ class AgentCanvasGuidedInteractionRepository:
                 )
                 self._validate_media_review_authority(connection, command)
                 current_journey = _journey(session)
-                if (
+                owns_cursor = (
                     _wait_owns_cursor(connection, awaiting, current_journey)
                     and session["status"] == "active"
-                ):
+                )
+                next_session_revision = command.expected_session_revision + int(owns_cursor)
+                if owns_cursor:
                     current_journey = current_journey.model_copy(
                         update={"stage_status": "working", "active_action": None}
                     )
-                interaction = _publication_interaction(command, timestamp)
+                interaction = _publication_interaction(command, timestamp, next_session_revision)
                 review_awaiting = _publication_awaiting(command, timestamp)
                 self._fault("after_old_wait_validation")
                 connection.execute(
@@ -2172,8 +2175,8 @@ class AgentCanvasGuidedInteractionRepository:
                     )
                     .values(
                         journey_state_json=current_journey.model_dump_json(),
-                        revision=command.expected_session_revision + 1,
-                        updated_at=created_at,
+                        revision=next_session_revision,
+                        updated_at=created_at if owns_cursor else session["updated_at"],
                     )
                 )
                 if changed.rowcount != 1:
@@ -2270,7 +2273,7 @@ class AgentCanvasGuidedInteractionRepository:
                         created_at=created_at,
                         payload={
                             "session_id": interaction.session_id,
-                            "session_revision": command.expected_session_revision + 1,
+                            "session_revision": next_session_revision,
                             "refresh": ["conversation", "workflow", "runtime", "events"],
                         },
                     ),
@@ -2721,6 +2724,7 @@ def _awaiting_matches_publication(
 def _publication_interaction(
     command: GuidedMediaReviewPublicationCommandV1,
     timestamp: datetime,
+    session_revision: int,
 ) -> GuidedInteractionV1:
     return GuidedInteractionV1(
         interaction_id=command.interaction_id,
@@ -2730,7 +2734,7 @@ def _publication_interaction(
         kind="media_review",
         status="open",
         response_locale=command.response_locale,
-        expected_session_revision=command.expected_session_revision + 1,
+        expected_session_revision=session_revision,
         revision=1,
         title=command.title,
         context=command.summary,
