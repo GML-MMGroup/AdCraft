@@ -215,7 +215,8 @@ class GuidedEditingPreparationService:
             current_manifest = EditingNodeContentV2.model_validate(
                 nodes[editing_node_id].structured_content
             ).manifest
-        if self._asset_resolver is not None:
+            manifest = current_manifest
+        if self._asset_resolver is not None and current_manifest is None:
             source_durations = {
                 ("binding", binding.binding_id): asset.duration_seconds
                 for binding, source in zip(
