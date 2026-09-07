@@ -1498,6 +1498,11 @@ class AgentConversationService:
             and current_session.awaiting.kind == "media_review"
             and current_session.awaiting.interaction_id
             == current_session.interaction.interaction_id
+            and awaiting_blocks_authoring(
+                current_session.awaiting,
+                stage=current_session.journey.stage,
+                stage_revision=current_session.journey.stage_revision,
+            )
         ):
             return self._conversations.create_media_review_wait_turn(
                 workflow_id,
@@ -2793,7 +2798,11 @@ class AgentConversationService:
             action_context(
                 f"Await {session.awaiting.kind} through {session.awaiting.resume_policy}."
             )
-            if session.awaiting is not None
+            if awaiting_blocks_authoring(
+                session.awaiting,
+                stage=session.journey.stage,
+                stage_revision=session.journey.stage_revision,
+            )
             else None
         )
         next_action = (

@@ -120,6 +120,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionV1,
     GuidedQuestionnaireV1,
     GuidedQuestionV1,
+    awaiting_blocks_authoring,
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
@@ -4779,6 +4780,11 @@ class AgentCanvasConversationRepository:
             if authority.session is not None
             and authority.session.awaiting is not None
             and authority.session.awaiting.requires_user_action
+            and awaiting_blocks_authoring(
+                authority.session.awaiting,
+                stage=authority.session.journey.stage,
+                stage_revision=authority.session.journey.stage_revision,
+            )
             else tuple(
                 sorted(
                     (_guidance_session_action(row) for row in current_action_rows),
