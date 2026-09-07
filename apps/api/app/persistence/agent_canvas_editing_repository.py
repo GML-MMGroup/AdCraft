@@ -291,13 +291,15 @@ class AgentCanvasEditingExportRepository:
             )
         for assertion in command.source_asset_assertions:
             found = connection.execute(
-                select(AssetVersionRow.version_id).where(
-                    AssetVersionRow.asset_id == assertion.asset_id,
-                    AssetVersionRow.sha256 == assertion.sha256,
-                    AssetVersionRow.status == "ready",
+                select(
+                    select(AssetVersionRow.version_id).where(
+                        AssetVersionRow.asset_id == assertion.asset_id,
+                        AssetVersionRow.sha256 == assertion.sha256,
+                        AssetVersionRow.status == "ready",
+                    ).exists()
                 )
-            ).scalar_one_or_none()
-            if found is None:
+            ).scalar_one()
+            if not found:
                 raise _error(
                     "editing_export_stale",
                     "An Editing source Asset changed before export admission.",
