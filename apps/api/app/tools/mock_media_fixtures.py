@@ -117,4 +117,3 @@ def deterministic_mock_media_bytes(
         )
     staging_path.replace(path)
     return path.read_bytes()
-
