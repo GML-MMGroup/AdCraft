@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import logging
 from typing import Annotated, Any, Literal, Mapping, TYPE_CHECKING
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, StrictBool
@@ -23,6 +24,28 @@ if TYPE_CHECKING:
 
 METADATA_INVALID_MESSAGE = "Generated media could not be published because its metadata is invalid."
 PUBLICATION_FAILED_MESSAGE = "Generated media could not be published."
+logger = logging.getLogger(__name__)
+
+
+def _model_display_omission_reason(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return "invalid_type_or_empty"
+    if len(value) > 160:
+        return "oversized"
+    if (
+        value.startswith((".", "~"))
+        or ".." in value
+        or value.lstrip().casefold().startswith(("bearer ", "basic ", "sk-", "sk_"))
+        or any(not (c.isalnum() or c in " -_.()+") for c in value)
+    ):
+        return "unsafe_display"
+    return None
+
+
+def _safe_model_display(value: str) -> str:
+    if _model_display_omission_reason(value) is not None:
+        raise ValueError("Publication model display must be bounded and safe.")
+    return value
 
 
 def _safe_identifier(value: str) -> str:
@@ -37,6 +60,9 @@ def _safe_identifier(value: str) -> str:
 
 
 Identity = Annotated[str, Field(min_length=1, max_length=320), AfterValidator(_safe_identifier)]
+ModelDisplay = Annotated[
+    str, Field(min_length=1, max_length=160), AfterValidator(_safe_model_display)
+]
 Digest = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 AuditDigest = Annotated[str, Field(pattern=r"^(sha256:)?[a-f0-9]{64}$")]
 MediaExtension = Annotated[str, Field(max_length=13, pattern=r"^\.[a-z0-9]{1,12}$")]
@@ -131,7 +157,7 @@ class _ReferenceAudit(_Closed):
 
 class _ProviderFacts(_Parameters):
     provider: Identity | None = None
-    model: Identity | None = None
+    model: ModelDisplay | None = None
     model_id: Identity | None = None
     status: Identity | None = None
     provider_status: Identity | None = None
@@ -222,6 +248,11 @@ def _select(model: type[BaseModel], value: object) -> dict[str, Any]:
 
 def _provider_facts(value: object) -> dict[str, Any]:
     selected = _select(_ProviderFacts, value)
+    if "model" in selected and selected["model"] is not None:
+        reason = _model_display_omission_reason(selected["model"])
+        if reason is not None:
+            selected.pop("model")
+            logger.info("publication_model_display_omitted", extra={"reason": reason})
     if selected.get("submitted_media_facts") is not None:
         selected["submitted_media_facts"] = _select(_Parameters, selected["submitted_media_facts"])
     return selected
@@ -324,20 +355,23 @@ def project_canvas_publication_metadata(
         raise publication_metadata_error() from error
 
 
-def _validate_summary_bounds(value: object) -> None:
+def _validate_summary_bounds(value: object, *, path: tuple[str, ...] = ()) -> None:
     """Validate reused typed summaries too; never trim their identities or payloads."""
     if len(json.dumps(value, ensure_ascii=False)) > 131_072:
         raise ValueError("Publication metadata exceeds the existing envelope bound.")
     if isinstance(value, str):
         if len(value) > 8192:
             raise ValueError("Publication metadata exceeds the existing string bound.")
-        _safe_identifier(value)
+        if path in {("model",), ("provider_asset", "model")}:
+            _safe_model_display(value)
+        else:
+            _safe_identifier(value)
     elif isinstance(value, dict):
         for key, item in value.items():
             if key in {"prompt_reference_labels", "source_extension"}:
                 # These wire facts have their own closed patterns, distinct from identifiers.
                 continue
-            _validate_summary_bounds(item)
+            _validate_summary_bounds(item, path=(*path, key))
     elif isinstance(value, list):
         for item in value:
-            _validate_summary_bounds(item)
+            _validate_summary_bounds(item, path=(*path, "[]"))
