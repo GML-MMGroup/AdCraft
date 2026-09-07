@@ -102,13 +102,31 @@ class AdReferenceBundleResolver:
                     else None
                 )
                 if omission is not None:
-                    if source is None or omission.source_node_id != source.node_id:
+                    matches = source is not None and omission.source_node_id == source.node_id
+                    if binding.source.kind == "image_asset":
+                        matches = (
+                            omission.reason_code == "omitted_provider_reference_limit"
+                            and omission.source_node_id is None
+                            and omission.asset_id == binding.source.source_asset_id
+                            and (
+                                binding.source.source_asset_version_id is None
+                                or omission.asset_version_id
+                                == binding.source.source_asset_version_id
+                            )
+                            and omission.media_type
+                            == {
+                                "image_reference": "image",
+                                "video_reference": "video",
+                                "audio_reference": "audio",
+                            }[binding.input_role]
+                        )
+                    if not matches:
                         raise _error(
                             "role_reference_bundle_invalid",
                             "Frozen reference omission does not match its Binding authority.",
                         )
                     consumed_omission_ids.add(binding.binding_id)
-                    if omission.reason_code == "omitted_no_output":
+                    if omission.reason_code == "omitted_no_output" and source is not None:
                         omitted_bindings.append((binding, source))
                 continue
             if frozen_input is not None:
