@@ -280,20 +280,40 @@ class ProviderTaskRecoveryService:
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
-            prepared, lease = self._leases.guard(lease).run_with_latest_lease(
-                lambda: self._output_preparer.prepare(
-                    context,
-                    NodeExecutionOutcome(
-                        media=payload,
-                        provider_task_id=task.task_id,
-                        remote_task_id=remote_task_id,
-                        provider=task.provider,
-                        result_descriptor=result_descriptor,
-                        submission_intent_id=task.submission_intent_id,
-                    ),
-                    fingerprint=fingerprint,
+            preparation_guard = self._leases.guard(lease)
+            try:
+                prepared, lease = preparation_guard.run_with_latest_lease(
+                    lambda: self._output_preparer.prepare(
+                        context,
+                        NodeExecutionOutcome(
+                            media=payload,
+                            provider_task_id=task.task_id,
+                            remote_task_id=remote_task_id,
+                            provider=task.provider,
+                            result_descriptor=result_descriptor,
+                            submission_intent_id=task.submission_intent_id,
+                        ),
+                        fingerprint=fingerprint,
+                    )
                 )
-            )
+            except V2PersistenceError as error:
+                if error.code not in {
+                    "node_result_publication_metadata_invalid",
+                    "node_result_publication_failed",
+                }:
+                    raise
+                # Keep the failed attempt's fence; never claim a successor's lease.
+                detail = safe_execution_error(error, default_code="node_result_publication_failed")
+                self._fail_task(
+                    current,
+                    preparation_guard.lease,
+                    status="failed",
+                    remote_task_id=remote_task_id,
+                    code=detail.code,
+                    message=detail.message,
+                    error=detail,
+                )
+                return True
             try:
                 self._result_committer.commit(
                     CanvasExecutionResultCommitCommandV2(
@@ -401,9 +421,10 @@ class ProviderTaskRecoveryService:
         remote_task_id: str | None,
         code: str,
         message: str,
+        error: CanvasNodeErrorV2 | None = None,
     ) -> None:
         now = self._clock()
-        error = CanvasNodeErrorV2(
+        error = error or CanvasNodeErrorV2(
             code=code,
             message=message,
             retryable=False,
