@@ -1706,6 +1706,8 @@ class AgentCanvasConversationRepository:
                         connection.execute(
                             select(AgentCanvasGuidedInteractionRow).where(
                                 AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == interaction.interaction_id,
                                 AgentCanvasGuidedInteractionRow.status == "open",
                             )
                         )
@@ -1715,7 +1717,8 @@ class AgentCanvasConversationRepository:
                     current_awaiting = (
                         connection.execute(
                             select(AgentCanvasGuidanceAwaitingRow).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id,
                             )
                         )
                         .mappings()
