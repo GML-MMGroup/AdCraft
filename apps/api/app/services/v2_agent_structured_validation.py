@@ -213,6 +213,39 @@ def _semantic_violations(
         return ()
     if profile == "video_parameter_intent_v3":
         return _video_parameter_intent_v3_violations(context, value)
+    if profile == "style_skill_consultation_v1":
+        allowed_ids = context.get("allowed_skill_ids")
+        if not isinstance(allowed_ids, list) or not all(
+            isinstance(item, str) for item in allowed_ids
+        ):
+            return (
+                StructuredViolation(
+                    code="agent_validation_context_invalid",
+                    message="Public Style Skill facts are unavailable.",
+                    field_path="validation_context",
+                ),
+            )
+        referenced = value.get("referenced_skill_ids", [])
+        if len(set(referenced)) != len(referenced) or not set(referenced).issubset(allowed_ids):
+            return (
+                StructuredViolation(
+                    code="style_skill_reference_invalid",
+                    message="Reference only IDs in the supplied public Style Skill facts.",
+                    field_path="referenced_skill_ids",
+                ),
+            )
+        if (
+            value.get("answer_kind") not in {"general", "clarification"}
+            or value.get("style_skill_audit") is not None
+        ):
+            return (
+                StructuredViolation(
+                    code="style_skill_answer_scope_invalid",
+                    message="Preserve the read-only consultation scope; omit Python-owned audit metadata.",
+                    field_path="answer_kind",
+                ),
+            )
+        return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
     if profile == "storyboard_sequence_window_parity_v1":

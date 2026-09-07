@@ -194,6 +194,10 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
 from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.schemas.agent_canvas_capabilities import StyleSkillConsultationOrdinaryIntentV1
+from app.schemas.style_skill_consultation import StyleSkillConsultationAuditV1
+from app.schemas.agent_operation_contexts import InteractionMessageSummary
+from app.services.style_skill_consultation import StyleSkillConsultationResolver
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import (
     AgentOperationPolicyRegistryV2,
@@ -825,6 +829,17 @@ class PiVideoAgentGateway:
         if operation == "decide_turn_intent" and isinstance(turn_id, str):
             validation_profile = "agent_intake_source_quotes_v1"
             validation_context = {"source_turn_id": turn_id}
+        elif (
+            operation == "workflow_conversation"
+            and isinstance(context, WorkflowConversationAgentContext)
+            and context.style_skill_consultation is not None
+        ):
+            validation_profile = "style_skill_consultation_v1"
+            validation_context = {
+                "allowed_skill_ids": [
+                    entry.skill_id for entry in context.style_skill_consultation.entries
+                ],
+            }
         elif operation == "plan_storyboard_sequence_outline" and isinstance(
             context, CapabilityMaterializationContextV1
         ):
@@ -1786,6 +1801,10 @@ class AgentConversationService:
                 )
         if (
             existing_session is not None
+            and not isinstance(
+                getattr(intent.ordinary_intent, "root", None),
+                StyleSkillConsultationOrdinaryIntentV1,
+            )
             and intent.response_locale != existing_session.response_locale
         ):
             existing_session = self._conversations.update_guidance_response_locale(
@@ -1813,6 +1832,15 @@ class AgentConversationService:
                 assistant_metadata={
                     "answer_kind": reply.answer_kind,
                     "ordinary_intent_kind": ordinary_intent.intent_kind,
+                    **(
+                        {
+                            "style_skill_consultation": reply.style_skill_audit.model_dump(
+                                mode="json"
+                            )
+                        }
+                        if reply.style_skill_audit is not None
+                        else {}
+                    ),
                     "state_reference": (
                         reply.state_reference.model_dump(mode="json")
                         if reply.state_reference is not None
@@ -2546,6 +2574,24 @@ class AgentConversationService:
                 state_reference=state_reference,
             )
         document_excerpt = None
+        consultation = None
+        if isinstance(route, StyleSkillConsultationOrdinaryIntentV1):
+            consultation = StyleSkillConsultationResolver(
+                self._video_skills, self._conversations
+            ).resolve(
+                turn.workflow_id,
+                route.query,
+            )
+            context = context.model_copy(
+                update={
+                    "response_locale": intent.response_locale,
+                    "style_skill_consultation": consultation,
+                    "recent_messages": tuple(
+                        InteractionMessageSummary.model_validate(item)
+                        for item in self._conversations.consultation_messages(turn.turn_id)
+                    ),
+                }
+            )
         if isinstance(route, DocumentExplanationOrdinaryIntentV1):
             current_context = self._workflow_context.project(
                 turn.workflow_id,
@@ -2579,7 +2625,12 @@ class AgentConversationService:
                 document_excerpt=document_excerpt,
             )
         if not isinstance(
-            route, (FreeformReplyOrdinaryIntentV1, DocumentExplanationOrdinaryIntentV1)
+            route,
+            (
+                FreeformReplyOrdinaryIntentV1,
+                DocumentExplanationOrdinaryIntentV1,
+                StyleSkillConsultationOrdinaryIntentV1,
+            ),
         ):
             raise V2PersistenceError(
                 "turn_intent_contract_invalid",
@@ -2590,6 +2641,32 @@ class AgentConversationService:
             context,
             turn_id=turn.turn_id,
         )
+        if consultation is not None:
+            allowed_ids = {entry.skill_id for entry in consultation.entries}
+            if (
+                not set(reply.referenced_skill_ids).issubset(allowed_ids)
+                or reply.answer_kind not in {"general", "clarification"}
+                or reply.style_skill_audit is not None
+            ):
+                raise V2PersistenceError(
+                    "agent_structured_output_invalid",
+                    "Style Skill answer must reference only supplied public facts and preserve its consultation route.",
+                    stage="workflow_conversation",
+                )
+            return reply.model_copy(
+                update={
+                    "state_reference": state_reference,
+                    "style_skill_audit": StyleSkillConsultationAuditV1(
+                        source_turn_id=turn.turn_id,
+                        scope=consultation.query.scope,
+                        catalog_version=consultation.catalog_version,
+                        selected_skill_id=consultation.selected_skill_id,
+                        selected_skill_version=consultation.selected_skill_version,
+                        focused_skill_ids=consultation.query.skill_ids,
+                        omitted_entry_count=consultation.omitted_entry_count,
+                    ),
+                }
+            )
         if document_excerpt is not None:
             current_context = self._workflow_context.project(
                 turn.workflow_id,

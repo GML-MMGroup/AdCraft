@@ -4613,6 +4613,43 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
 
+    def consultation_messages(self, source_turn_id: str) -> tuple[dict[str, object], ...]:
+        """Read bounded visible history strictly before the source user message."""
+        with self._database.engine.connect() as connection:
+            turn = _require_turn(connection, source_turn_id)
+            source_sequence = connection.execute(
+                select(AgentCanvasChatEntryRow.sequence_no).where(
+                    AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+                    AgentCanvasChatEntryRow.speaker == "user",
+                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id")
+                    == source_turn_id,
+                )
+            ).scalar_one()
+            rows = (
+                connection.execute(
+                    select(AgentCanvasChatEntryRow)
+                    .where(
+                        AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+                        AgentCanvasChatEntryRow.entry_type == "message",
+                        AgentCanvasChatEntryRow.speaker.in_(("user", "adcraft_video_agent")),
+                        AgentCanvasChatEntryRow.sequence_no < source_sequence,
+                    )
+                    .order_by(AgentCanvasChatEntryRow.sequence_no.desc())
+                    .limit(12)
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(
+            {
+                "sequence_no": row["sequence_no"],
+                "role": "user" if row["speaker"] == "user" else "assistant",
+                "content": str(row["content"])[:4_096],
+            }
+            for row in reversed(rows)
+            if row["content"]
+        )
+
     def list_timeline(
         self,
         workflow_id: str,
