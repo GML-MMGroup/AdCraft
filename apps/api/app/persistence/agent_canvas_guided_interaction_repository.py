@@ -2138,6 +2138,12 @@ class AgentCanvasGuidedInteractionRepository:
                         asset_version_id=command.asset_version_id,
                         asset_digest=digest,
                         connection=connection,
+                        media_role={
+                            "storyboard_grid": "image",
+                            "video_segment": "video",
+                            "bgm": "audio",
+                        }[command.planned_node_role],
+                        sequence_id=command.planned_sequence_id,
                     )
                     if (
                         confirmation is not None

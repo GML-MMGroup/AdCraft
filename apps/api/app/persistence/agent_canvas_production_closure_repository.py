@@ -85,6 +85,8 @@ class AgentCanvasProductionClosureRepository:
         asset_version_id: str,
         asset_digest: str,
         connection: Connection | None = None,
+        media_role: Literal["image", "video", "audio"] | None = None,
+        sequence_id: str | None = None,
     ) -> GuidedMediaConfirmationV1 | None:
         """Find the immutable acceptance for one exact media source."""
 
@@ -101,6 +103,10 @@ class AgentCanvasProductionClosureRepository:
                     and item.asset_id == asset_id
                     and item.asset_version_id == asset_version_id
                     and item.asset_digest == asset_digest
+                    and (
+                        media_role is None
+                        or (item.media_role == media_role and item.sequence_id == sequence_id)
+                    )
                 )
             ),
             None,
