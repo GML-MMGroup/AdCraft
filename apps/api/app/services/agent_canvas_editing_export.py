@@ -438,14 +438,22 @@ class EditingExportService:
         node_id: str,
         runtime: EditingExportRuntimeV2,
     ) -> None:
-        current_revision = self._nodes.content(
-            workflow_id,
-            node_id,
-        ).manifest.manifest_revision
-        if current_revision != runtime.manifest_revision:
+        manifest = self._nodes.content(workflow_id, node_id).manifest
+        if manifest.manifest_revision != runtime.manifest_revision:
             raise _error(
                 "editing_export_stale",
                 "Editing manifest changed after this export was accepted.",
+            )
+        resolved = self._inputs.resolve(workflow_id, node_id, manifest)
+        fingerprint = _fingerprint(
+            manifest.model_dump(mode="json"),
+            resolved,
+            _renderer_fingerprint_payload(self._renderer),
+        )
+        if fingerprint != runtime.fingerprint:
+            raise _error(
+                "editing_export_stale",
+                "Editing source versions changed after this export was accepted.",
             )
 
     def _finish_cancelled(
