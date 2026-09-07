@@ -289,8 +289,13 @@ class GuidedFinalCompletionService:
             completed_at=now,
         )
         return self._commit_current_media(
-            proof=proof, receipt=receipt, closure=closure, session=session,
-            workflow_revision=workflow.revision, node=node, asset=asset,
+            proof=proof,
+            receipt=receipt,
+            closure=closure,
+            session=session,
+            workflow_revision=workflow.revision,
+            node=node,
+            asset=asset,
         )
 
     def _commit_current_media(
@@ -306,7 +311,11 @@ class GuidedFinalCompletionService:
     ) -> GuidedFinalCompletionReceiptV1:
         """Fence source snapshots and append all full-delivery projections atomically."""
 
-        workflow_id, node_id, export_id = proof.workflow_id, proof.editing_node_id, receipt.export_id
+        workflow_id, node_id, export_id = (
+            proof.workflow_id,
+            proof.editing_node_id,
+            receipt.export_id,
+        )
         now = receipt.completed_at
         completion = session.completion.model_copy(
             update={

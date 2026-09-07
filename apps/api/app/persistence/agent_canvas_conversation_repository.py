@@ -39,7 +39,6 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
 from app.persistence.agent_canvas_guided_interaction_repository import (
     _awaiting_for_workflow,
     current_guided_interaction_row,
-    guided_interaction_from_row,
     project_guided_interaction,
 )
 from app.persistence.models import (

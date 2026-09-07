@@ -292,11 +292,13 @@ class AgentCanvasEditingExportRepository:
         for assertion in command.source_asset_assertions:
             found = connection.execute(
                 select(
-                    select(AssetVersionRow.version_id).where(
+                    select(AssetVersionRow.version_id)
+                    .where(
                         AssetVersionRow.asset_id == assertion.asset_id,
                         AssetVersionRow.sha256 == assertion.sha256,
                         AssetVersionRow.status == "ready",
-                    ).exists()
+                    )
+                    .exists()
                 )
             ).scalar_one()
             if not found:

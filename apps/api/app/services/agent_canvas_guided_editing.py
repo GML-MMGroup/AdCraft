@@ -190,8 +190,11 @@ class GuidedEditingPreparationService:
         }
         desired_sources = (*available_videos, *((available_audio,) if available_audio else ()))
         next_order = 1 + max(
-            (binding.order for binding in workflow.bindings
-             if binding.target_node_id == editing_node_id),
+            (
+                binding.order
+                for binding in workflow.bindings
+                if binding.target_node_id == editing_node_id
+            ),
             default=-1,
         )
         additional_bindings = {

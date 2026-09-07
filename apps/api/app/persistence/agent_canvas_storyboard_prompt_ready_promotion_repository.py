@@ -639,10 +639,12 @@ class StoryboardPromptReadyPromotionRepository:
             select(WorkflowEventRow.payload_json).where(
                 WorkflowEventRow.workflow_id == command.workflow_id,
                 WorkflowEventRow.event_type == "guidance_awaiting_resumed",
-                WorkflowEventRow.transition_key.in_((
-                    f"guidance-awaiting:{awaiting_id}:resumed",
-                    f"guidance-awaiting:{awaiting_id}:result-replaced",
-                )),
+                WorkflowEventRow.transition_key.in_(
+                    (
+                        f"guidance-awaiting:{awaiting_id}:resumed",
+                        f"guidance-awaiting:{awaiting_id}:result-replaced",
+                    )
+                ),
             )
         ).scalars()
         if not any(

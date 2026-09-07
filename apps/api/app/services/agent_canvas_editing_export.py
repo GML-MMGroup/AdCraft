@@ -494,8 +494,10 @@ class EditingExportService:
         # original admission contract, never use it as new full-delivery proof.
         if not exact_versions and fingerprint != runtime.fingerprint:
             fingerprint = _fingerprint(
-                manifest.model_dump(mode="json"), resolved,
-                _renderer_fingerprint_payload(self._renderer), contract_version=2,
+                manifest.model_dump(mode="json"),
+                resolved,
+                _renderer_fingerprint_payload(self._renderer),
+                contract_version=2,
             )
         if fingerprint != runtime.fingerprint:
             raise _error(
@@ -703,7 +705,11 @@ def _fingerprint(
             {
                 "binding_id": resolved.bgm.binding_id,
                 "asset_id": resolved.bgm.asset.asset_id,
-                **({"asset_version_id": resolved.bgm.asset.version_id} if contract_version == 3 else {}),
+                **(
+                    {"asset_version_id": resolved.bgm.asset.version_id}
+                    if contract_version == 3
+                    else {}
+                ),
                 "checksum": resolved.bgm.asset.checksum,
             }
             if resolved.bgm

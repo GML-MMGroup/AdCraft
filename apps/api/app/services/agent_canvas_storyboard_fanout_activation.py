@@ -184,7 +184,8 @@ class StoryboardFanoutActivationService:
         current = self._awaiting.inspect(workflow_id)
         if current is not None:
             owned = (
-                current if current.kind == "manual_node_run" and node_id in current.node_ids
+                current
+                if current.kind == "manual_node_run" and node_id in current.node_ids
                 else self._awaiting.inspect(workflow_id, node_id=node_id)
             )
             if owned is not None:
