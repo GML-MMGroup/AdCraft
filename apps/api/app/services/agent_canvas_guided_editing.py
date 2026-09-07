@@ -415,7 +415,9 @@ class GuidedEditingPreparationService:
                             document_id=plan_document_id,
                             expected_revision=plan_document.revision,
                             operation="attach_guided_editing_node",
-                            idempotency_key=f"attach-editing:{editing_node_id}",
+                            idempotency_key=(
+                                f"attach-editing:{editing_node_id}:plan-revision:{plan_document.revision}"
+                            ),
                             next_content=next_content,
                         )
                     receipt = receipts.save_preparation_in_transaction(connection, receipt)
