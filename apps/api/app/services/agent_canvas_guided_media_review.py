@@ -155,24 +155,33 @@ class GuidedMediaReviewCoordinator:
                     reason_code="media_review_already_published",
                     interaction_id=awaiting.interaction_id,
                 )
-            if (
-                awaiting is None
-                and getattr(session, "awaiting", None) is None
-                and self._is_automatic_mode(effect.workflow_id)
-            ):
+            if awaiting is None and getattr(session, "awaiting", None) is None:
                 if node.output_asset_id != lineage.asset_id or node.status != "ready":
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="superseded",
                         reason_code="current_output_replaced",
                     )
-                return self._delegate_result_confirmation(
-                    effect=effect,
-                    lineage=lineage,
-                    node=node,
-                    session=session,
-                    plan=plan,
-                    record=record,
-                )
+                if self._is_automatic_mode(effect.workflow_id):
+                    return self._delegate_result_confirmation(
+                        effect=effect,
+                        lineage=lineage,
+                        node=node,
+                        session=session,
+                        plan=plan,
+                        record=record,
+                    )
+                completion = getattr(session, "completion", None)
+                if getattr(
+                    completion, "editing_preparation", None
+                ) == "prepared" and record.node_role in {"video_segment", "bgm"}:
+                    self.reconcile_current_plan(effect.workflow_id)
+                    review = self._interactions.get_awaiting(effect.workflow_id)
+                    if review is not None and review.kind == "media_review":
+                        return CanvasPostReadyEffectDispositionV1(
+                            outcome="applied",
+                            reason_code="current_plan_media_review_published",
+                            interaction_id=review.interaction_id,
+                        )
             return CanvasPostReadyEffectDispositionV1(
                 outcome="superseded",
                 reason_code="current_wait_replaced",
