@@ -47,6 +47,7 @@ from app.schemas.agent_canvas_materialization import (
     StoryboardMaterializationResultV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationOutcomeV1,
     MaterializationAuthoringSnapshotV1,
     MaterializationDocumentWriteV1,
 )
@@ -138,6 +139,7 @@ class CapabilityMaterializationPublicationService:
             AgentCanvasMaterializationPromptPreparationBarrier | None
         ) = None,
         reference_source_opener: Callable[..., object] | None = None,
+        on_storyboard_authored: Callable[[MaterializationOutcomeV1], None] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -180,6 +182,7 @@ class CapabilityMaterializationPublicationService:
         self._duration_authority = GuidedDurationAuthorityPolicy()
         self._prompt_ready_activation = prompt_ready_activation
         self._reference_source_opener = reference_source_opener
+        self._on_storyboard_authored = on_storyboard_authored
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -366,11 +369,13 @@ class CapabilityMaterializationPublicationService:
             lease_guard=lease_guard,
         )
         lease_guard()
-        self._storyboard_promotion.promote(
+        promotion = self._storyboard_promotion.promote(
             outcome,
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        if promotion is not None and self._on_storyboard_authored is not None:
+            self._on_storyboard_authored(outcome)
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent" and not reference_wait_opened:
             self._parent_derived.reconcile_after_parent(
@@ -1067,11 +1072,13 @@ class CapabilityMaterializationPublicationService:
             lease_guard=lease_guard,
         )
         lease_guard()
-        self._storyboard_promotion.promote(
+        promotion = self._storyboard_promotion.promote(
             outcome,
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        if promotion is not None and self._on_storyboard_authored is not None:
+            self._on_storyboard_authored(outcome)
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
             parent = self._refreshed_parent_reconciliation_envelope(envelope, outcome)
