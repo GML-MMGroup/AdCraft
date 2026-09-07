@@ -461,7 +461,8 @@ class EditingInputResolver:
                 if bgm_entry.binding_id is not None
                 else None
             )
-            if _entry_skip_reason(bgm_entry, source=source) is None:
+            reason = _entry_skip_reason(bgm_entry, source=source)
+            if reason is None:
                 try:
                     asset = _required_asset(
                         self._asset_resolver,
@@ -486,7 +487,16 @@ class EditingInputResolver:
                         bgm_entry=bgm_entry,
                     )
                 except (LookupError, OSError, ValueError, V2PersistenceError):
-                    bgm = None
+                    reason = "source_media_invalid"
+            if bgm is None:
+                skipped.append(
+                    EditingSkippedInputV2(
+                        reference_id=bgm_entry.binding_id or bgm_entry.asset_id or "",
+                        node_id=source.node_id if source is not None else None,
+                        asset_id=bgm_entry.asset_id,
+                        reason=reason or "source_media_invalid",
+                    )
+                )
         return ResolvedEditingInputs(
             videos=tuple(videos),
             bgm=bgm,
