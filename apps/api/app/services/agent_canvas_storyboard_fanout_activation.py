@@ -232,6 +232,7 @@ class StoryboardFanoutActivationService:
         requirement_facts = {
             item.control: item.value for item in controls if item.control != "duration_seconds"
         }
+        requirement_facts["response_locale"] = session.response_locale
         if node_role == "video_segment":
             decision = getattr(requirement_revision, "identity_safety_decision", None)
             if decision is not None:

@@ -490,6 +490,15 @@ def _authoring_user_prompt(node: CanvasNodeV2) -> str | None:
     prompt = node.generation_prompt
     if not prompt:
         return None
+    presentation = node.prompt_presentation
+    if presentation is not None:
+        if presentation.source == "user_edited":
+            return prompt
+        if (
+            presentation.text == prompt
+            and presentation.prompt_digest == f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}"
+        ):
+            return None
     prepared_digest = node.metadata.get("prompt_digest")
     if (
         node.metadata.get("prompt_recipe_id")
