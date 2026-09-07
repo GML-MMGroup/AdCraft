@@ -114,6 +114,9 @@ class ProviderTaskRecoveryService:
         return tuple(reconciled)
 
     def _recover_one(self, task: CanvasProviderTaskV2) -> bool:
+        task = self._runtime.get_provider_task(task.task_id)
+        if task.status in {"succeeded", "failed", "cancelled"}:
+            return False
         now = self._clock()
         lease = self._runtime.claim_lease(
             task.execution_id,
@@ -124,6 +127,20 @@ class ProviderTaskRecoveryService:
         )
         if lease is None:
             return False
+        task = self._runtime.get_provider_task(task.task_id)
+        if task.status in {"succeeded", "failed", "cancelled"}:
+            self._runtime.complete_lease(lease, now=now)
+            return False
+        if task.status == "recovering" and task.recovery_deadline <= now:
+            self._fail_task(
+                task,
+                lease,
+                status="failed",
+                remote_task_id=task.remote_task_id,
+                code="provider_recovery_exhausted",
+                message="Provider task recovery deadline was exhausted.",
+            )
+            return True
         guard = self._leases.guard(lease)
         poll, lease = guard.run_with_latest_lease(lambda: self._poller(task))
         now = self._clock()
