@@ -236,7 +236,8 @@ class StoryboardFanoutActivationService:
         }
         requirement_facts["response_locale"] = session.response_locale
         if node_role == "video_segment":
-            decision = getattr(requirement_revision, "identity_safety_decision", None)
+            ledger = getattr(requirement_revision, "ledger", requirement_revision)
+            decision = getattr(ledger, "identity_safety_decision", None)
             if decision is not None:
                 requirement_facts["identity_safety_decision"] = decision.model_dump(mode="json")
         excerpts = ()
