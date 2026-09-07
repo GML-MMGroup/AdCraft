@@ -4617,14 +4617,25 @@ class AgentCanvasConversationRepository:
         """Read bounded visible history strictly before the source user message."""
         with self._database.engine.connect() as connection:
             turn = _require_turn(connection, source_turn_id)
+            retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
+            source_identity = (
+                AgentCanvasChatEntryRow.entry_id == retry_snapshot.get("source_message_id")
+                if turn["retry_of_turn_id"] is not None
+                else func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id")
+                == source_turn_id
+            )
             source_sequence = connection.execute(
                 select(AgentCanvasChatEntryRow.sequence_no).where(
                     AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
                     AgentCanvasChatEntryRow.speaker == "user",
-                    func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id")
-                    == source_turn_id,
+                    source_identity,
                 )
-            ).scalar_one()
+            ).scalar_one_or_none()
+            if source_sequence is None:
+                raise _error(
+                    "agent_conversation_unavailable",
+                    "The source conversation message is unavailable.",
+                )
             rows = (
                 connection.execute(
                     select(AgentCanvasChatEntryRow)
@@ -4640,15 +4651,24 @@ class AgentCanvasConversationRepository:
                 .mappings()
                 .all()
             )
-        return tuple(
-            {
-                "sequence_no": row["sequence_no"],
-                "role": "user" if row["speaker"] == "user" else "assistant",
-                "content": str(row["content"])[:4_096],
-            }
-            for row in reversed(rows)
-            if row["content"]
-        )
+        messages: list[dict[str, object]] = []
+        remaining_bytes = 16_384
+        for row in rows:
+            content = str(row["content"])[:4_096]
+            if not content:
+                continue
+            bounded = content.encode("utf-8")[:remaining_bytes].decode("utf-8", errors="ignore")
+            if not bounded:
+                break
+            messages.append(
+                {
+                    "sequence_no": row["sequence_no"],
+                    "role": "user" if row["speaker"] == "user" else "assistant",
+                    "content": bounded,
+                }
+            )
+            remaining_bytes -= len(bounded.encode("utf-8"))
+        return tuple(reversed(messages))
 
     def list_timeline(
         self,

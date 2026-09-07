@@ -195,7 +195,10 @@ from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
 from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.schemas.agent_canvas_capabilities import StyleSkillConsultationOrdinaryIntentV1
-from app.schemas.style_skill_consultation import StyleSkillConsultationAuditV1
+from app.schemas.style_skill_consultation import (
+    StyleSkillConsultationAuditV1,
+    StyleSkillConsultationQueryV1,
+)
 from app.schemas.agent_operation_contexts import InteractionMessageSummary
 from app.services.style_skill_consultation import StyleSkillConsultationResolver
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
@@ -1770,6 +1773,16 @@ class AgentConversationService:
                     existing_session.response_locale if existing_session is not None else "und"
                 ),
                 workflow_context=workflow_context,
+                style_skill_catalog=StyleSkillConsultationResolver(
+                    self._video_skills, self._conversations
+                ).resolve(
+                    turn.workflow_id,
+                    StyleSkillConsultationQueryV1(scope="catalog"),
+                ),
+                recent_messages=tuple(
+                    InteractionMessageSummary.model_validate(item)
+                    for item in self._conversations.consultation_messages(turn.turn_id)
+                ),
             ),
             turn_id=turn_id,
         )
@@ -2582,8 +2595,9 @@ class AgentConversationService:
                 turn.workflow_id,
                 route.query,
             )
-            context = context.model_copy(
-                update={
+            context = WorkflowConversationAgentContext.model_validate(
+                context.model_dump()
+                | {
                     "response_locale": intent.response_locale,
                     "style_skill_consultation": consultation,
                     "recent_messages": tuple(

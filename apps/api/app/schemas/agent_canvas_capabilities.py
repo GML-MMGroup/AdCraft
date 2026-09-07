@@ -355,7 +355,10 @@ class ConversationQueryV1(_CapabilityModel):
         return self
 
 
-from app.schemas.style_skill_consultation import StyleSkillConsultationQueryV1  # noqa: E402
+from app.schemas.style_skill_consultation import (  # noqa: E402
+    StyleSkillConsultationContextV1,
+    StyleSkillConsultationQueryV1,
+)
 
 
 class StyleSkillConsultationOrdinaryIntentV1(_CapabilityModel):
@@ -617,6 +620,8 @@ class TurnIntentContextV2(_CapabilityModel):
     )
     current_response_locale: BCP47Tag = "und"
     workflow_context: "WorkflowStateCapsuleV1 | None" = None
+    style_skill_catalog: StyleSkillConsultationContextV1 | None = None
+    recent_messages: tuple["InteractionMessageSummary", ...] = Field(default=(), max_length=12)
 
 
 class AskUserNextActionCommandV1(_CapabilityModel):
@@ -1220,9 +1225,12 @@ CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
 }
 
 
-from app.schemas.agent_operation_contexts import WorkflowStateCapsuleV1  # noqa: E402
+from app.schemas.agent_operation_contexts import InteractionMessageSummary, WorkflowStateCapsuleV1  # noqa: E402
 
 
 TurnIntentContextV2.model_rebuild(
-    _types_namespace={"WorkflowStateCapsuleV1": WorkflowStateCapsuleV1}
+    _types_namespace={
+        "WorkflowStateCapsuleV1": WorkflowStateCapsuleV1,
+        "InteractionMessageSummary": InteractionMessageSummary,
+    }
 )
