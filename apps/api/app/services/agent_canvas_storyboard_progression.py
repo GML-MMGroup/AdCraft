@@ -15,6 +15,7 @@ from app.persistence.agent_canvas_production_closure_repository import (
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
@@ -103,6 +104,30 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
+
+    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> None:
+        """Continue the committed Plan through the existing topology and journey owners."""
+
+        document_ids = {result.document_id for result in outcome.document_results}
+        plans = tuple(
+            plan
+            for plan in self._authoring.list_plans(outcome.workflow_id).items
+            if plan.document_id in document_ids
+        )
+        if len(plans) != 1:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Committed Storyboard publication requires one current owning Plan.",
+                stage="storyboard_progression",
+            )
+        plan = plans[0]
+        self.materialize_planned_drafts(
+            workflow_id=outcome.workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+        )
+        if self._on_storyboard_pipeline_prepared is not None:
+            self._on_storyboard_pipeline_prepared(outcome.workflow_id, plan.document_id)
 
     def materialize_planned_drafts(
         self,

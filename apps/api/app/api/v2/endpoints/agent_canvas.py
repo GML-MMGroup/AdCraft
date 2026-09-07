@@ -1011,6 +1011,11 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
+        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
+            production_journey.record_storyboard_pipeline_prepared(
+                workflow_id, source_id=f"planned-storyboard:{plan_document_id}"
+            )
+        ),
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -1541,6 +1546,7 @@ def create_agent_canvas_runtime(
         asset_resolver=asset_service.resolve_asset,
         storyboard_authoring=storyboard_authoring,
         storyboard_gateway=video_agent_gateway,
+        on_storyboard_authored=storyboard_progression.continue_authored_publication,
         prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
         reference_source_opener=guided_reference_sources.open_for_materialized_main,
         commit_service=AgentCanvasMaterializationCommitService(
