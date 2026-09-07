@@ -84,13 +84,16 @@ class AgentCanvasProductionClosureRepository:
         asset_id: str,
         asset_version_id: str,
         asset_digest: str,
+        connection: Connection | None = None,
     ) -> GuidedMediaConfirmationV1 | None:
         """Find the immutable acceptance for one exact media source."""
 
         return next(
             (
                 cast(GuidedMediaConfirmationV1, item)
-                for item in reversed(self._list("media_confirmation", workflow_id))
+                for item in reversed(
+                    self._list("media_confirmation", workflow_id, connection=connection)
+                )
                 if (
                     item.plan_document_id == plan_document_id
                     and item.node_id == node_id
@@ -378,9 +381,15 @@ class AgentCanvasProductionClosureRepository:
             )
         return _parse_receipt(model_type, row.payload_json)
 
-    def _list(self, receipt_type: ReceiptType, workflow_id: str) -> tuple[ReceiptModel, ...]:
+    def _list(
+        self, receipt_type: ReceiptType, workflow_id: str, *, connection: Connection | None = None
+    ) -> tuple[ReceiptModel, ...]:
         try:
-            with self._database.session_factory() as session:
+            with (
+                Session(bind=connection)
+                if connection is not None
+                else self._database.session_factory()
+            ) as session:
                 rows = session.scalars(
                     select(AgentCanvasGuidedProductionReceiptRow)
                     .where(

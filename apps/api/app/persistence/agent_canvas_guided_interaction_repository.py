@@ -28,6 +28,9 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.persistence.agent_canvas_guided_media_resume_repository import (
     AgentCanvasGuidedMediaResumeRepository,
 )
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
+)
 from app.persistence.agent_canvas_guided_answer_projection import (
     append_guided_answer_message_in_transaction,
 )
@@ -2118,6 +2121,31 @@ class AgentCanvasGuidedInteractionRepository:
                 current_result = command.publication_scope == "current_result"
                 if current_result:
                     self._validate_media_review_authority(connection, command)
+                    digest = connection.execute(
+                        select(AssetVersionRow.sha256).where(
+                            AssetVersionRow.version_id == command.asset_version_id
+                        )
+                    ).scalar_one()
+                    confirmation = AgentCanvasProductionClosureRepository(
+                        self._database
+                    ).find_confirmation_for_source(
+                        workflow_id=command.lineage.workflow_id,
+                        plan_document_id=command.plan_document_id,
+                        node_id=command.lineage.node_id,
+                        node_revision=command.current_node_revision,
+                        asset_id=command.asset_id,
+                        asset_version_id=command.asset_version_id,
+                        asset_digest=digest,
+                        connection=connection,
+                    )
+                    if (
+                        confirmation is not None
+                        and confirmation.plan_revision <= command.plan_revision
+                    ):
+                        connection.rollback()
+                        return CanvasPostReadyEffectDispositionV1(
+                            outcome="already_applied", reason_code="media_result_already_confirmed"
+                        )
                 published = _awaiting_for_workflow(
                     connection, command.lineage.workflow_id, interaction_id=command.interaction_id
                 )
