@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_production_journey import (
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_guided_character import GuidedCharacterAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
@@ -174,7 +175,7 @@ class GuidedProductionJourneyService:
                 expected_stage_revision=active_action.stage_revision,
                 requires_model_call=False,
             )
-        if session.journey.stage == "product" and session.awaiting is None:
+        if session.journey.stage == "product":
             entered = self._ensure_product_source_stage_entry(
                 session,
                 turn_id=turn_id,
@@ -286,7 +287,11 @@ class GuidedProductionJourneyService:
         # it during a continuation would create a duplicate interaction.
         if session.journey.stage_status != "ready":
             return None
-        if session.interaction is not None or session.awaiting is not None:
+        if awaiting_blocks_authoring(
+            session.awaiting,
+            stage=session.journey.stage,
+            stage_revision=session.journey.stage_revision,
+        ) or (session.interaction is not None and session.interaction.kind != "media_review"):
             return None
         interactions = AgentCanvasGuidedInteractionRepository(
             self._conversations.database,
