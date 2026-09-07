@@ -144,17 +144,12 @@ class GuidedEditingPreparationService:
             if (record := video_records.get(segment.sequence_id)) is not None
             and record.node_id in nodes
         )
-        audio_node = next(
-            (
-                nodes[record.node_id]
-                for record in plan_records
-                if record.node_role == "bgm" and record.node_id in nodes
-            ),
-            None,
-        )
+        audio_record = next((record for record in plan_records if record.node_role == "bgm"), None)
+        audio_node = nodes.get(audio_record.node_id) if audio_record is not None else None
         if (
             len(ordered_video_nodes) != len(included_segments)
             or any(node.node_type != "video" for node in ordered_video_nodes)
+            or (audio_record is not None and audio_node is None)
             or (audio_node is not None and audio_node.node_type != "audio")
         ):
             raise V2PersistenceError(
@@ -191,23 +186,27 @@ class GuidedEditingPreparationService:
         current_bindings = {
             _binding_source_id(binding): binding
             for binding in workflow.bindings
-            if binding.target_node_id == editing_node_id
+            if binding.target_node_id == editing_node_id and _binding_source_id(binding)
         }
         desired_sources = (*available_videos, *((available_audio,) if available_audio else ()))
-        desired_bindings = tuple(
-            (
-                current_bindings[source.node_id].model_copy(
-                    update={"order": index, "updated_at": datetime.now(timezone.utc)}
-                )
-                if source.node_id in current_bindings
-                else _editing_binding(
-                    workflow_id,
-                    editing_node_id,
-                    source,
-                    order=index,
-                )
+        next_order = 1 + max(
+            (binding.order for binding in workflow.bindings
+             if binding.target_node_id == editing_node_id),
+            default=-1,
+        )
+        additional_bindings = {
+            source.node_id: _editing_binding(
+                workflow_id, editing_node_id, source, order=next_order + index
             )
-            for index, source in enumerate(desired_sources)
+            for index, source in enumerate(
+                source for source in desired_sources if source.node_id not in current_bindings
+            )
+        }
+        desired_bindings = tuple(
+            current_bindings[source.node_id]
+            if source.node_id in current_bindings
+            else additional_bindings[source.node_id]
+            for source in desired_sources
         )
         manifest = EditingManifestV2(
             video_entries=tuple(
@@ -289,18 +288,7 @@ class GuidedEditingPreparationService:
                     }
                 )
                 changed = True
-            current_source_order = tuple(
-                _binding_source_id(binding)
-                for binding in sorted(
-                    current_bindings.values(),
-                    key=lambda item: (item.order, item.binding_id),
-                )
-            )
-            if current_source_order != tuple(source.node_id for source in desired_sources) or any(
-                current_bindings[source.node_id].order != index
-                for index, source in enumerate(desired_sources)
-                if source.node_id in current_bindings
-            ):
+            if additional_bindings:
                 changed = True
 
         next_content = None
