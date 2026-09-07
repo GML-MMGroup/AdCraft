@@ -16,6 +16,7 @@ from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
@@ -355,6 +356,12 @@ class GuidedEditingPreparationService:
             with self._workflows.database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
+                    AgentWorkingDocumentRepository.require_revision_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        document_id=plan_document_id,
+                        expected_revision=plan_document.revision,
+                    )
                     if changed:
                         self._workflows.upsert_guided_editing_in_transaction(
                             connection,
