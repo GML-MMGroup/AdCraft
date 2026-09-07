@@ -79,6 +79,7 @@ from app.schemas.agent_canvas_media_review_authority import (
     CanvasPostReadyEffectDispositionV1,
     GuidedMediaReviewPublicationCommandV1,
 )
+from app.schemas.agent_canvas_production_closure import GuidedMediaConfirmationV1
 from app.schemas.agent_canvas_guided_media_resume import (
     GuidedMediaConfirmationResumeDeliveryV1,
 )
@@ -2142,7 +2143,11 @@ class AgentCanvasGuidedInteractionRepository:
                         confirmation is not None
                         and confirmation.plan_revision <= command.plan_revision
                     ):
-                        connection.rollback()
+                        self._reconcile_confirmed_result_in_transaction(
+                            connection, command, confirmation, timestamp
+                        )
+                        self._fault("after_media_successor")
+                        connection.commit()
                         return CanvasPostReadyEffectDispositionV1(
                             outcome="already_applied", reason_code="media_result_already_confirmed"
                         )
@@ -2227,7 +2232,9 @@ class AgentCanvasGuidedInteractionRepository:
                     session["status"] != "active"
                     or current_journey.stage != command.expected_stage
                     or current_journey.stage_revision != command.expected_stage_revision
-                    or self._current_action_has_live_leaf(connection, command, current_journey)
+                    or self._current_action_blocks_reconciliation(
+                        connection, command, current_journey
+                    )
                     or _awaiting_for_workflow(
                         connection, command.lineage.workflow_id, authoring_only=True
                     )
@@ -2388,11 +2395,52 @@ class AgentCanvasGuidedInteractionRepository:
                 connection.rollback()
                 raise
 
-    def _current_action_has_live_leaf(
+    def _reconcile_confirmed_result_in_transaction(
+        self,
+        connection: Connection,
+        command: GuidedMediaReviewPublicationCommandV1,
+        confirmation: GuidedMediaConfirmationV1,
+        now: datetime,
+    ) -> None:
+        session = _require_session(
+            connection,
+            workflow_id=command.lineage.workflow_id,
+            session_id=command.session_id,
+            expected_revision=command.expected_session_revision,
+        )
+        journey = _journey(session)
+        if (
+            session["status"] != "active"
+            or journey.stage_status == "failed"
+            or self._current_action_blocks_reconciliation(
+                connection, command, journey, allow_failed_history=False
+            )
+            or _awaiting_for_workflow(connection, command.lineage.workflow_id, authoring_only=True)
+            is not None
+        ):
+            return
+        submission_id = connection.execute(
+            select(AgentCanvasGuidedInteractionSubmissionRow.submission_id).where(
+                AgentCanvasGuidedInteractionSubmissionRow.submission_id == confirmation.action_id,
+                AgentCanvasGuidedInteractionSubmissionRow.workflow_id
+                == command.lineage.workflow_id,
+            )
+        ).scalar_one_or_none()
+        if submission_id is not None:
+            self._media_resume_deliveries.ensure_for_submission_in_transaction(
+                connection,
+                str(submission_id),
+                now=now,
+                expected_confirmation_id=confirmation.confirmation_id,
+            )
+
+    def _current_action_blocks_reconciliation(
         self,
         connection: Connection,
         command: GuidedMediaReviewPublicationCommandV1,
         journey: GuidedProductionJourneyV2,
+        *,
+        allow_failed_history: bool = True,
     ) -> bool:
         if journey.active_action is None:
             return False
@@ -2408,6 +2456,7 @@ class AgentCanvasGuidedInteractionRepository:
             leaf is None
             or leaf.leaf_status in {"queued", "running"}
             or leaf.continuation_status in {"queued", "leased", "retry_wait"}
+            or (not allow_failed_history and leaf.leaf_status in {"failed", "superseded"})
         )
 
     @staticmethod
