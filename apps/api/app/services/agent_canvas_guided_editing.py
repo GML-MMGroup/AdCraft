@@ -74,7 +74,7 @@ class GuidedEditingPreparationService:
         self._events = events
         self._asset_resolver = asset_resolver
         self._closure = closure
-        self._receipts = receipts
+        self._receipts = receipts or AgentCanvasProductionClosureRepository(workflows.database)
         self._clock = clock
         self._requirements = requirements or AgentCanvasRequirementRepository(workflows.database)
         self._duration_authority = GuidedDurationAuthorityPolicy()
@@ -87,14 +87,10 @@ class GuidedEditingPreparationService:
         expected_plan_revision: int,
     ) -> EditingPreparationResultV2:
         agent_run_id = "guided_editing_preparation"
-        existing_preparation = (
-            self._receipts.find_preparation(
-                workflow_id,
-                plan_document_id,
-                expected_plan_revision,
-            )
-            if self._receipts is not None
-            else None
+        existing_preparation = self._receipts.find_preparation(
+            workflow_id,
+            plan_document_id,
+            expected_plan_revision,
         )
         plan_document = self._documents.get_document(workflow_id, plan_document_id)
         if plan_document.kind != "storyboard_production_plan" or (
@@ -340,10 +336,30 @@ class GuidedEditingPreparationService:
             manifest_digest=hashlib.sha256(manifest_payload.encode()).hexdigest(),
             committed_at=now,
         )
-        receipts = self._receipts or AgentCanvasProductionClosureRepository(
-            self._workflows.database
-        )
+        receipts = self._receipts
         session = self._conversations.get_guidance_session(workflow_id)
+        replay_receipt = None
+        # Attaching Editing advances the Plan; completion binds that revision to its receipt.
+        if (
+            not changed
+            and next_content is None
+            and session.completion.plan_document_id == plan_document_id
+            and session.completion.plan_revision == plan_document.revision
+            and session.completion.editing_node_id == editing_node_id
+            and session.completion.preparation_receipt_id is not None
+        ):
+            previous = receipts.get_preparation(session.completion.preparation_receipt_id)
+            if (
+                isinstance(previous, GuidedEditingTopologyReceiptV2)
+                and previous.workflow_id == workflow_id
+                and previous.plan_document_id == plan_document_id
+                and previous.editing_node_id == editing_node_id
+                and previous.editing_node_revision == receipt.editing_node_revision
+                and previous.binding_ids == receipt.binding_ids
+                and previous.manifest_revision == receipt.manifest_revision
+                and previous.manifest_digest == receipt.manifest_digest
+            ):
+                replay_receipt = previous
         next_plan_revision = plan_document.revision + (next_content is not None)
         completion = GuidanceCompletionProjectionV2.model_validate(
             session.completion.model_dump()
@@ -383,6 +399,14 @@ class GuidedEditingPreparationService:
                             expected_revision=editing_node.revision,
                             expected_output_asset_id=editing_node.output_asset_id,
                         )
+                    if replay_receipt is not None:
+                        self._workflows.require_workflow_revision_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            expected_revision=workflow.revision,
+                        )
+                        connection.commit()
+                        return self._preparation_result(replay_receipt, replayed=True)
                     if next_content is not None:
                         self._documents.commit_content_mutation_in_transaction(
                             connection,
