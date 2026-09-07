@@ -1779,7 +1779,7 @@ class AgentCanvasGuidedInteractionRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                awaiting = _awaiting_for_workflow(connection, workflow_id)
+                awaiting = _awaiting_for_workflow(connection, workflow_id, node_id=node_id)
                 if (
                     awaiting is None
                     or awaiting.kind != "manual_node_run"
@@ -1824,6 +1824,11 @@ class AgentCanvasGuidedInteractionRepository:
                         "transition_evidence": (*journey.transition_evidence, transition),
                     }
                 )
+                if (
+                    not _wait_owns_cursor(connection, awaiting, journey)
+                    or session["status"] != "active"
+                ):
+                    next_journey = journey
                 deleted = connection.execute(
                     delete(AgentCanvasGuidanceAwaitingRow).where(
                         AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id
@@ -2093,18 +2098,21 @@ class AgentCanvasGuidedInteractionRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                awaiting = _awaiting_for_workflow(connection, command.lineage.workflow_id)
-                if (
-                    awaiting is not None
-                    and awaiting.kind == "media_review"
-                    and awaiting.interaction_id == command.interaction_id
-                ):
+                published = _awaiting_for_workflow(
+                    connection, command.lineage.workflow_id, interaction_id=command.interaction_id
+                )
+                if published is not None and published.kind == "media_review":
                     connection.rollback()
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="already_applied",
                         reason_code="media_review_already_published",
                         interaction_id=command.interaction_id,
                     )
+                awaiting = _awaiting_for_workflow(
+                    connection,
+                    command.lineage.workflow_id,
+                    awaiting_id=command.expected_awaiting_id,
+                )
                 if awaiting is None or not _awaiting_matches_publication(awaiting, command):
                     connection.rollback()
                     return CanvasPostReadyEffectDispositionV1(
@@ -2118,9 +2126,14 @@ class AgentCanvasGuidedInteractionRepository:
                     expected_revision=command.expected_session_revision,
                 )
                 self._validate_media_review_authority(connection, command)
-                current_journey = _journey(session).model_copy(
-                    update={"stage_status": "working", "active_action": None}
-                )
+                current_journey = _journey(session)
+                if (
+                    _wait_owns_cursor(connection, awaiting, current_journey)
+                    and session["status"] == "active"
+                ):
+                    current_journey = current_journey.model_copy(
+                        update={"stage_status": "working", "active_action": None}
+                    )
                 interaction = _publication_interaction(command, timestamp)
                 review_awaiting = _publication_awaiting(command, timestamp)
                 self._fault("after_old_wait_validation")
@@ -2607,6 +2620,7 @@ def _awaiting_for_workflow(
     interaction_id: str | None = None,
     checkpoint_id: str | None = None,
     authoring_only: bool = False,
+    node_id: str | None = None,
 ) -> GuidanceAwaitingV2 | None:
     query = select(AgentCanvasGuidanceAwaitingRow).where(
         AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
@@ -2621,8 +2635,15 @@ def _awaiting_for_workflow(
         query = query.where(
             AgentCanvasGuidanceAwaitingRow.kind.not_in(("manual_node_run", "media_review"))
         )
+    if node_id is not None:
+        members = func.json_each(AgentCanvasGuidanceAwaitingRow.node_ids_json).table_valued("value")
+        query = query.where(
+            AgentCanvasGuidanceAwaitingRow.kind == "manual_node_run",
+            select(members.c.value).where(members.c.value == node_id).exists(),
+        )
     if (
         not authoring_only
+        and node_id is None
         and awaiting_id is None
         and interaction_id is None
         and checkpoint_id is None
