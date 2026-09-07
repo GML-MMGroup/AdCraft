@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_editing import EditingNodeContentV2
 from app.schemas.agent_canvas_production_closure import (
     GuidedEditingPreparationReceiptV1,
+    GuidedEditingTopologyReceiptV2,
     GuidedFinalCompletionReceiptV1,
 )
 from app.schemas.v2_persistence import V2EventInsert
@@ -67,6 +68,11 @@ class GuidedFinalCompletionService:
         )
         if preparation is None:
             return None
+        if isinstance(preparation, GuidedEditingTopologyReceiptV2):
+            raise _error(
+                "guided_closure_blocked",
+                "Editing topology is not full current-media confirmation evidence.",
+            )
         self._require_current_preparation(preparation)
         existing = self._receipts.find_completion_for_export(export_id)
         if existing is not None:
