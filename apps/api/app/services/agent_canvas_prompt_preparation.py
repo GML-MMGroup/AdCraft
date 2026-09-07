@@ -674,6 +674,7 @@ class NodePromptPreparationService:
                 occurrence_id=str(node.metadata.get("occurrence_id")),
                 source_asset_id=node.output_asset_id,
                 source_asset_version_id=asset_version_id,
+                allow_uninitialized_main=True,
             )
         elif node.creative_role == "scene":
             scene_projection = scene_environment_projection_from_node(node)

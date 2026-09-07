@@ -575,20 +575,38 @@ def character_identity_projection_from_node(
     occurrence_id: str | None = None,
     source_asset_id: str | None = None,
     source_asset_version_id: str | None = None,
-) -> CharacterIdentityAuthorityProjectionV1:
+    allow_uninitialized_main: bool = False,
+) -> CharacterIdentityAuthorityProjectionV1 | None:
     """Project only explicit structured Character Main authority."""
 
     content = node.structured_content
-    identity = _required_text(content.get("subject_identity")) or _required_text(
-        node.summary_prompt
-    )
-    summary = _required_text(content.get("design_summary")) or identity
-    if not identity:
+    facets = {
+        name: content.get(name)
+        for name in (
+            "face_and_hair",
+            "silhouette_and_proportions",
+            "wardrobe",
+            "accessories",
+            "gender_presentation",
+        )
+    }
+    if (
+        allow_uninitialized_main
+        and node.metadata.get("character_phase") == "main"
+        and all(value is None for value in facets.values())
+    ):
+        return None
+    identity = content.get("subject_identity")
+    if (
+        not isinstance(identity, str)
+        or not identity.strip()
+        or any(value is None for value in facets.values())
+    ):
         raise _error(
             "character_parent_identity_projection_invalid",
-            "Character Main has no typed identity authority.",
+            "Character Main lacks complete typed identity authority.",
         )
-    gender = content.get("gender_presentation", "unspecified")
+    gender = facets["gender_presentation"]
     if gender not in {"masculine", "feminine", "androgynous", "unspecified"}:
         raise _error(
             "character_parent_identity_projection_invalid",
@@ -601,13 +619,7 @@ def character_identity_projection_from_node(
         source_asset_version_id=source_asset_version_id,
         occurrence_id=occurrence_id or str(node.metadata.get("occurrence_id") or "unknown"),
         identity=identity,
-        face_and_hair=_required_text(content.get("face_and_hair")) or summary,
-        silhouette_and_proportions=(
-            _required_text(content.get("silhouette_and_proportions")) or summary
-        ),
-        wardrobe=_required_text(content.get("wardrobe")) or summary,
-        accessories=_required_text(content.get("accessories")) or "",
-        gender_presentation=gender,
+        **facets,
     )
 
 
