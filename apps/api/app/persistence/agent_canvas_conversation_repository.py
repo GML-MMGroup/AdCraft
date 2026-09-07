@@ -4613,7 +4613,9 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
 
-    def consultation_messages(self, source_turn_id: str) -> tuple[dict[str, object], ...]:
+    def consultation_messages(
+        self, source_turn_id: str, *, required: bool = True
+    ) -> tuple[dict[str, object], ...]:
         """Read bounded visible history strictly before the source user message."""
         with self._database.engine.connect() as connection:
             turn = _require_turn(connection, source_turn_id)
@@ -4632,6 +4634,10 @@ class AgentCanvasConversationRepository:
                 )
             ).scalar_one_or_none()
             if source_sequence is None:
+                # Intake also handles durable commands without a new user message.
+                # Only consultation answers require the exact user-message cursor.
+                if not required:
+                    return ()
                 raise _error(
                     "agent_conversation_unavailable",
                     "The source conversation message is unavailable.",

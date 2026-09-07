@@ -1781,7 +1781,9 @@ class AgentConversationService:
                 ),
                 recent_messages=tuple(
                     InteractionMessageSummary.model_validate(item)
-                    for item in self._conversations.consultation_messages(turn.turn_id)
+                    for item in self._conversations.consultation_messages(
+                        turn.turn_id, required=False
+                    )
                 ),
             ),
             turn_id=turn_id,
