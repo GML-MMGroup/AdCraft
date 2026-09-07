@@ -2934,6 +2934,22 @@ def _invalidate_target_prompt_preparation(
         and node.metadata.get("prompt_digest")
         == sha256(node.generation_prompt.encode("utf-8")).hexdigest()
     )
+    preserve_storyboard_text = (
+        prepared_projection
+        and has_frozen_context
+        and node.creative_role in {"storyboard_sequence", "storyboard_video"}
+        and node.metadata.get("prepared_authoring_context_digest") == frozen_context_digest
+        and node.prompt_presentation is not None
+        and node.prompt_presentation.brief_digest is not None
+        and node.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
+        and node.prompt_presentation.text == node.generation_prompt
+    )
+    clear_creative_content = prepared_projection and not preserve_storyboard_text
+    preserved_presentation = (
+        node.prompt_presentation.model_copy(update={"revision": node.revision + 1})
+        if preserve_storyboard_text
+        else node.prompt_presentation
+    )
     queued = NodePromptPreparationV1(
         status="queued",
         operation_id=None,
@@ -2963,15 +2979,23 @@ def _invalidate_target_prompt_preparation(
             "output_asset_id": (
                 None if node.status in {"failed", "ready"} else node.output_asset_id
             ),
-            "generation_prompt": None if prepared_projection else node.generation_prompt,
+            "generation_prompt": None if clear_creative_content else node.generation_prompt,
+            "prompt_presentation": preserved_presentation,
             "structured_content": (
-                preserved_discriminator if prepared_projection else node.structured_content
+                preserved_discriminator if clear_creative_content else node.structured_content
             ),
             "prompt_context_snapshot_id": None,
             "metadata": {
-                key: value
-                for key, value in node.metadata.items()
-                if not key.startswith("prompt_") and key != "prepared_reference_snapshots"
+                **{
+                    key: value
+                    for key, value in node.metadata.items()
+                    if not key.startswith("prompt_") and key != "prepared_reference_snapshots"
+                },
+                **(
+                    {"editable_prompt_projection": preserved_presentation.model_dump(mode="json")}
+                    if preserve_storyboard_text
+                    else {}
+                ),
             },
             "prompt_preparation": queued,
             "updated_at": _parse_datetime(updated_at),

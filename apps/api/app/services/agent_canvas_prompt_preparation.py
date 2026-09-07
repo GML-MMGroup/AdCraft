@@ -106,6 +106,16 @@ class NodePromptPreparationService:
         ):
             return current
         snapshot_digest = context_digest(context)
+        preserve_storyboard_text = (
+            current.creative_role in {"storyboard_sequence", "storyboard_video"}
+            and current.metadata.get("prepared_authoring_context_digest") == snapshot_digest
+            and current.prompt_presentation is not None
+            and current.prompt_presentation.brief_digest is not None
+            and current.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
+            and current.prompt_presentation.text == current.generation_prompt
+            and current.prompt_presentation.prompt_digest
+            == f"sha256:{sha256(current.generation_prompt.encode('utf-8')).hexdigest()}"
+        )
         presentation_stream = None
         if self._presentation_publisher is not None:
             presentation_stream = self._presentation_publisher.create_prompt_stream(
@@ -140,7 +150,11 @@ class NodePromptPreparationService:
         role_context: RolePromptPreparationContextV2 | None = None
         try:
             role_context = self._project_context(working, context)
-            if self._role_brief_author is not None and role_context.user_prompt is None:
+            if (
+                self._role_brief_author is not None
+                and role_context.user_prompt is None
+                and not preserve_storyboard_text
+            ):
                 brief = self._role_brief_author(role_context, operation_id)
                 compiled_prompt = self._compiler.compile(
                     brief,
@@ -161,7 +175,12 @@ class NodePromptPreparationService:
                         role_context,
                         self._recipes.resolve(role_context.role_variant),
                     ),
-                    editable_prompt_override=role_context.user_prompt,
+                    editable_prompt_override=(
+                        current.generation_prompt
+                        if preserve_storyboard_text
+                        else role_context.user_prompt
+                    ),
+                    preserved_node=current if preserve_storyboard_text else None,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
@@ -170,7 +189,9 @@ class NodePromptPreparationService:
                 text=editable_text,
                 locale=role_context.response_locale,
                 source=(
-                    "user_edited"
+                    current.prompt_presentation.source
+                    if preserve_storyboard_text
+                    else "user_edited"
                     if role_context.user_prompt is not None
                     else (
                         "agent_authored"
@@ -216,6 +237,11 @@ class NodePromptPreparationService:
                             else {}
                         ),
                         "prompt_context_digest": snapshot_digest,
+                        **(
+                            {"prepared_authoring_context_digest": snapshot_digest}
+                            if working.creative_role in {"storyboard_sequence", "storyboard_video"}
+                            else {}
+                        ),
                         "prompt_digest": digest,
                         "prompt_recipe_id": recipe.recipe_id,
                         "prompt_recipe_version": recipe.recipe_version,

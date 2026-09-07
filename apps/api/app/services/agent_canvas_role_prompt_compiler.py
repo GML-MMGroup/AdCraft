@@ -5,6 +5,11 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 import re
+from typing import TYPE_CHECKING
+from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from app.schemas.agent_canvas import CanvasNodeV2
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_errors import ActionableFailureV1
@@ -135,6 +140,7 @@ class AgentCanvasRolePromptCompiler:
         *,
         parameters: tuple[ResolvedNodeParameterV2, ...] = (),
         editable_prompt_override: str | None = None,
+        preserved_node: CanvasNodeV2 | None = None,
     ) -> CompiledNodePromptV2:
         concrete_brief = brief.root if isinstance(brief, RoleCreativeBriefV2) else brief
         if concrete_brief.role_variant != context.role_variant:
@@ -264,6 +270,40 @@ class AgentCanvasRolePromptCompiler:
                 **structured,
                 "reference_style_policy": style_authority.model_dump(mode="json"),
             }
+        if preserved_node is not None:
+            presentation = preserved_node.prompt_presentation
+            saved_prompt = preserved_node.generation_prompt
+            if (
+                context.role_variant not in {"storyboard_grid", "video_segment"}
+                or presentation is None
+                or presentation.brief_digest is None
+                or presentation.source not in {"agent_authored", "deterministic_projection"}
+                or not saved_prompt
+                or presentation.text != saved_prompt
+                or presentation.prompt_digest
+                != f"sha256:{sha256(saved_prompt.encode('utf-8')).hexdigest()}"
+                or saved_prompt.count(policy.assertion_block) != 1
+            ):
+                raise _error(
+                    "node_prompt_assertion_contract_invalid",
+                    "Saved Storyboard creative authority is invalid.",
+                )
+            content_model = (
+                StoryboardGridContentV2
+                if context.role_variant == "storyboard_grid"
+                else VideoSegmentContentV2
+            )
+            try:
+                structured = content_model.model_validate(
+                    preserved_node.structured_content
+                ).model_dump(mode="json")
+            except ValidationError as error:
+                raise _error(
+                    "node_prompt_brief_invalid", "Saved Storyboard structured content is invalid."
+                ) from error
+            prompt = saved_prompt
+            brief_digest = presentation.brief_digest
+            compaction_decisions = ()
         context_payload = context.model_dump(mode="json")
         references = tuple(item.reference_purpose for item in context.bindings)
         context_digest = _digest(context_payload)
