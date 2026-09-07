@@ -41,6 +41,7 @@ from app.services.agent_canvas_role_prompt_context import (
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
+from app.services.agent_canvas_nodes import _validate_inherited_prompt_projection
 from app.services.agent_structured_validation_audit import (
     safe_structured_validation_attempts,
 )
@@ -92,6 +93,13 @@ class NodePromptPreparationService:
         started_monotonic = monotonic()
         current = self._workflows.get_node(workflow_id, node_id)
         require_node_runnable(current)
+        if (
+            current.prompt_preparation.status == "ready"
+            and current.prompt_presentation is not None
+            and current.prompt_presentation.source == "user_edited"
+        ):
+            _validate_inherited_prompt_projection(current)
+            return current
         if (
             current.prompt_preparation.status == "ready"
             and current.prompt_preparation.operation_id == operation_id
