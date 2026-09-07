@@ -271,7 +271,7 @@ class StoryboardFanoutActivationService:
             CreativeDirectionService().resolve_style_context(
                 snapshot, "storyboard" if node_role == "storyboard_grid" else "video"
             )
-            if snapshot is not None
+            if snapshot is not None and snapshot.global_direction.get("global_guidance")
             else None
         )
         public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
@@ -296,6 +296,8 @@ class StoryboardFanoutActivationService:
             style_projection=(
                 combined_style_guidance(guidance.model_dump())
                 if guidance is not None
+                else combined_style_guidance(snapshot.global_direction)
+                if snapshot is not None
                 else str(style)[:8192]
                 if style is not None
                 else None
