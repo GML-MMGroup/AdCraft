@@ -452,8 +452,10 @@ def _resolve_storyboard_video_audio_constraints(
     requirement_service: object,
     conversation_repository: object,
     workflow_id: str,
+    *,
+    plan_document: AgentWorkingDocumentV2 | None = None,
 ) -> dict[str, object]:
-    """Load the current typed Video constraints for storyboard fan-out."""
+    """Combine current user constraints with the owning Plan's frozen Skill."""
 
     current = requirement_service.get_current(workflow_id)
     constraints = {str(control.control): control.value for control in current.hard_controls}
@@ -461,8 +463,22 @@ def _resolve_storyboard_video_audio_constraints(
         constraints["identity_safety_decision"] = current.identity_safety_decision.model_dump(
             mode="json"
         )
-    snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
-    public_skill = snapshot.global_direction.get("public_skill")
+    if plan_document is None:
+        snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
+    else:
+        if plan_document.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "node_prompt_context_stale",
+                "The Plan does not belong to the Video Workflow.",
+                stage="storyboard_progression",
+            )
+        snapshot_id = getattr(plan_document.content, "creative_direction_snapshot_id", None)
+        snapshot = (
+            conversation_repository.get_creative_direction_snapshot(snapshot_id)
+            if snapshot_id is not None
+            else None
+        )
+    public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
     if isinstance(public_skill, dict):
         mode = public_skill.get("video_representation_mode")
         if mode is not None:
@@ -975,11 +991,14 @@ def create_agent_canvas_runtime(
             None,
         )
 
-    def resolve_storyboard_video_audio_constraints(workflow_id: str) -> dict[str, object]:
+    def resolve_storyboard_video_audio_constraints(
+        workflow_id: str, plan_document_id: str,
+    ) -> dict[str, object]:
         return _resolve_storyboard_video_audio_constraints(
             requirement_service,
             conversation_repository,
             workflow_id,
+            plan_document=working_documents.get_document(workflow_id, plan_document_id),
         )
 
     storyboard_progression = ProgressiveStoryboardReadyService(

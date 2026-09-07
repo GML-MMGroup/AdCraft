@@ -64,7 +64,7 @@ from app.services.agent_canvas_video_representation import resolve_video_represe
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
 StoryboardPipelinePreparedCallback = Callable[[str, str], object]
 VideoResolutionResolver = Callable[[str], str | None]
-VideoAudioConstraintsResolver = Callable[[str], dict[str, object]]
+VideoAudioConstraintsResolver = Callable[[str, str], dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -1049,7 +1049,7 @@ class ProgressiveStoryboardReadyService:
             )
         content = StoryboardGridContentV2.model_validate(grid.structured_content)
         audio_constraints = (
-            self._video_audio_constraints_resolver(grid.workflow_id)
+            self._video_audio_constraints_resolver(grid.workflow_id, plan_document_id)
             if self._video_audio_constraints_resolver is not None
             else {}
         )
