@@ -300,6 +300,7 @@ class AgentModelTraceBundleV1(_FrozenTraceModel):
     source_workflow_id: str | None = Field(default=None, max_length=160)
     source_project_id: str | None = Field(default=None, max_length=160)
     trace_mode: Literal["live_record", "synthetic"]
+    source_bundle_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     parent_bundle_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     entries: tuple[AgentModelTraceEntryV1, ...] = Field(
         min_length=1,

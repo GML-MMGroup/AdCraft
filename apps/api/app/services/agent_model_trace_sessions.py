@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import threading
 from typing import Literal, Mapping, Sequence
 
@@ -36,6 +38,116 @@ class AgentModelTraceSessionError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class AgentModelReplayFixturePlan:
+    """Validated immutable output proposed before any fixture write."""
+
+    source_path: Path
+    output_path: Path
+    source_bundle_digest: str
+    fixture: AgentModelTraceBundleV1
+
+
+@dataclass(frozen=True, slots=True)
+class AgentModelReplayFixtureReceipt:
+    """Bounded result of one reviewed atomic fixture write."""
+
+    output_path: Path
+    source_bundle_digest: str
+    fixture_digest: str
+
+
+class AgentModelReplayFixtureExtractor:
+    """Validate and minimize one sealed bundle into a committed replay fixture."""
+
+    _FIXTURE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+
+    def __init__(
+        self,
+        *,
+        source_bundle: Path,
+        expected_source_digest: str,
+        fixture_id: str,
+        output_root: Path,
+        trusted_source_roots: Sequence[Path] = (EVIDENCE_ROOT, FIXTURE_ROOT),
+    ) -> None:
+        if not self._FIXTURE_ID_PATTERN.fullmatch(fixture_id):
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        self._source_bundle = source_bundle
+        self._expected_source_digest = expected_source_digest
+        self._fixture_id = fixture_id
+        self._output_root = output_root
+        self._trusted_source_roots = tuple(trusted_source_roots)
+
+    def dry_run(self) -> AgentModelReplayFixturePlan:
+        """Validate source, safety, output ownership, and digest without writing."""
+
+        replay = AgentModelTraceSessionService.load_replay(
+            session_id=f"fixture-extract-{self._fixture_id}",
+            bundle_path=self._source_bundle,
+            expected_bundle_digest=self._expected_source_digest,
+            trusted_roots=self._trusted_source_roots,
+        )
+        source = AgentModelTraceBundleV1.model_validate_json(
+            replay.bundle_path.read_text(encoding="utf-8")
+        )
+        output_path = self._validated_output_path()
+        if output_path.exists():
+            raise AgentModelTraceSessionError("acceptance_model_fixture_conflict")
+        payload = source.model_dump(mode="json")
+        payload.update(
+            {
+                "fixture_id": self._fixture_id,
+                "source_bundle_digest": source.bundle_digest,
+                "bundle_digest": f"sha256:{'0' * 64}",
+            }
+        )
+        payload["bundle_digest"] = canonical_model_trace_bundle_digest(payload)
+        try:
+            fixture = AgentModelTraceBundleV1.model_validate(payload)
+        except Exception as error:
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid") from error
+        return AgentModelReplayFixturePlan(
+            source_path=replay.bundle_path,
+            output_path=output_path,
+            source_bundle_digest=source.bundle_digest,
+            fixture=fixture,
+        )
+
+    def write(
+        self,
+        plan: AgentModelReplayFixturePlan,
+    ) -> AgentModelReplayFixtureReceipt:
+        """Revalidate the source and atomically write exactly the reviewed plan."""
+
+        current = self.dry_run()
+        if current != plan:
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        _atomic_write_json(plan.output_path, plan.fixture.model_dump(mode="json"))
+        return AgentModelReplayFixtureReceipt(
+            output_path=plan.output_path,
+            source_bundle_digest=plan.source_bundle_digest,
+            fixture_digest=plan.fixture.bundle_digest,
+        )
+
+    def _validated_output_path(self) -> Path:
+        root = self._output_root.expanduser()
+        if not root.is_absolute():
+            root = Path.cwd() / root
+        for parent in (root, *root.parents):
+            if parent.exists() and parent.is_symlink():
+                raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        resolved_root = root.resolve(strict=False)
+        output_path = (resolved_root / f"{self._fixture_id}.json").resolve(strict=False)
+        try:
+            output_path.relative_to(resolved_root)
+        except ValueError as error:
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid") from error
+        if output_path.parent != resolved_root or output_path.is_symlink():
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        return output_path
 
 
 def agent_model_trace_session_from_environment(
@@ -259,8 +371,8 @@ class AgentModelTraceSessionService:
         """Return bounded consumption counters without response content or paths."""
 
         with self._lock:
-            entry_count = len(self._bundle.entries) if self._bundle is not None else len(
-                self._entries
+            entry_count = (
+                len(self._bundle.entries) if self._bundle is not None else len(self._entries)
             )
             return AgentModelTraceSessionStatusV1(
                 session_id=self.session_id,
@@ -299,9 +411,7 @@ class AgentModelTraceSessionService:
                 model_id=identity.model_id,
                 model_policy_id=identity.operation_policy_id,
                 supports_tool_calls=identity.supports_tool_calls,
-                supports_strict_structured_output=(
-                    identity.supports_strict_structured_output
-                ),
+                supports_strict_structured_output=(identity.supports_strict_structured_output),
                 supports_streaming=identity.supports_streaming,
                 supports_streamed_tool_calls=identity.supports_streamed_tool_calls,
                 supports_reasoning_controls=identity.supports_reasoning_controls,
@@ -433,7 +543,9 @@ class AgentModelTraceSessionService:
 
 def _record_request_digest(request: AgentModelTraceRecordRequestV1) -> str:
     payload = request.model_dump(mode="json", exclude={"session_id"})
-    return canonical_model_trace_request_digest(request.request_identity) + ":" + _json_digest(payload)
+    return (
+        canonical_model_trace_request_digest(request.request_identity) + ":" + _json_digest(payload)
+    )
 
 
 def _json_digest(value: object) -> str:
