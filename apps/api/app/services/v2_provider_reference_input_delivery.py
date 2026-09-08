@@ -64,6 +64,14 @@ PROVIDER_REFERENCE_DELIVERY_MODES: dict[str, set[str]] = {
         "audio_url",
         "data_url",
     },
+    "volcengine_ark": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
     "real_video_provider": {
         "provider_file_id",
         "provider_uploaded_url",
