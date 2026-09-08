@@ -115,6 +115,8 @@ export class PiModelAdapter implements AgentModelAdapter {
         systemPrompt,
         userPrompt,
         schema,
+        loadedSkills: skills,
+        traceClient: this.python,
         signal,
         submit: submitStructured,
       });

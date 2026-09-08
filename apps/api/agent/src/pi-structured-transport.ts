@@ -18,6 +18,12 @@ import {
 import type { AgentCredentialSnapshot } from "./python-internal-client.js";
 import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
 import type { PreparedStructuredModelInput } from "./structured-model-input.js";
+import {
+  isAgentModelTraceFailure,
+  recordAgentModelTraceOutcome,
+  type AgentModelTraceRecordClient,
+} from "./model-trace.js";
+import type { LoadedSkill } from "./skills.js";
 
 
 interface StructuredCompletionRequestBase {
@@ -128,6 +134,8 @@ interface StructuredTransportRunInput {
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
+  readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
+  readonly traceClient?: AgentModelTraceRecordClient;
   readonly signal: AbortSignal;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
@@ -333,6 +341,7 @@ export class PiStructuredTransportRouter {
     try {
       return await this.#executeOnce(request, input, "initial");
     } catch (error) {
+      if (isAgentModelTraceFailure(error)) throw error;
       if (isCertifiedJsonObjectCapabilityFallback(error, input)) {
         const fallback = await this.#executeOnce(
           jsonObjectCapabilityFallbackRequest(request),
@@ -392,6 +401,16 @@ export class PiStructuredTransportRouter {
         timeoutMs,
         maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
       });
+      await recordAgentModelTraceOutcome(
+        {
+          ...input,
+          loadedSkills: input.loadedSkills ?? [],
+        },
+        request,
+        stage,
+        response,
+        true,
+      );
       const firstResponseAt =
         response.transport_metadata?.first_content_at ?? this.#now().toISOString();
       const finishedAt =
@@ -407,6 +426,17 @@ export class PiStructuredTransportRouter {
         attemptStage: stage,
       };
     } catch (error) {
+      if (isAgentModelTraceFailure(error)) throw error;
+      await recordAgentModelTraceOutcome(
+        {
+          ...input,
+          loadedSkills: input.loadedSkills ?? [],
+        },
+        request,
+        stage,
+        error,
+        false,
+      );
       throw normalizeTransportFailure(
         error,
         input.signal,
