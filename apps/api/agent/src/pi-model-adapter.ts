@@ -16,8 +16,10 @@ import type { RunBudget } from "./run-budget.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
 import { event } from "./runtime.js";
 import {
+  isAcceptanceReplaySource,
   PythonInternalClient,
   type AgentCredentialSnapshot,
+  type AgentRuntimeTransportSource,
 } from "./python-internal-client.js";
 import {
   AgentOperationFailure,
@@ -133,6 +135,9 @@ export class PiModelAdapter implements AgentModelAdapter {
       !credential.execution_policy.supports_streamed_tool_calls
     ) {
       throw new Error("agent_model_capability_mismatch");
+    }
+    if (isAcceptanceReplaySource(credential)) {
+      throw new Error("acceptance_model_replay_mismatch");
     }
     const thinkingFormat = thinkingFormatForCredential(credential);
     const model: Model<"openai-completions"> = {
@@ -355,7 +360,7 @@ export function promptAuditForRequest(
 
 export function agentRuntimeAuditForRequest(
   request: AgentRunRequest,
-  credential: AgentCredentialSnapshot,
+  credential: AgentRuntimeTransportSource,
   skills: ReadonlyArray<LoadedSkill> = [],
   structuredAttempts = 0,
 ): Readonly<Record<string, unknown>> {

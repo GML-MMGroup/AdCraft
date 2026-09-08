@@ -9,6 +9,7 @@ import {
 } from "./prompts/registry.js";
 import type {
   AgentCredentialSnapshot,
+  AgentRuntimeTransportSource,
   PythonInternalClient,
 } from "./python-internal-client.js";
 import {
@@ -25,8 +26,10 @@ import {
   type LoadedSkill,
 } from "./skills.js";
 
-export interface PreparedStructuredModelInput {
-  readonly credential: AgentCredentialSnapshot;
+export interface PreparedStructuredModelInput<
+  TCredential extends AgentRuntimeTransportSource = AgentCredentialSnapshot,
+> {
+  readonly credential: TCredential;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
   readonly userPrompt: string;
@@ -55,11 +58,17 @@ const defaultDependencies: StructuredModelInputDependencies = {
   loadRequiredSkills,
 };
 
-export async function prepareStructuredModelInput(
+export async function prepareStructuredModelInput<
+  TCredential extends AgentRuntimeTransportSource,
+>(
   request: AgentRunRequest,
-  python: Pick<PythonInternalClient, "credential">,
+  python: {
+    readonly runtimeSource: (
+      ...args: Parameters<PythonInternalClient["runtimeSource"]>
+    ) => Promise<TCredential>;
+  },
   dependencies: StructuredModelInputDependencies = defaultDependencies,
-): Promise<PreparedStructuredModelInput> {
+): Promise<PreparedStructuredModelInput<TCredential>> {
   const definition = dependencies.getAgentDefinition(request.agent_name);
   if (!definition.operations.includes(request.operation)) {
     throw new Error("agent_operation_not_allowed");
@@ -78,7 +87,7 @@ export async function prepareStructuredModelInput(
   const operationDescriptor = dependencies.getOperationDescriptor(request.operation);
   const userPrompt = promptInputForRequest(request, operationDescriptor);
   if (!request.model_ref) throw new Error("agent_protocol_mismatch");
-  const credential = await python.credential(
+  const credential = await python.runtimeSource(
     request.credential_ref ?? "llm-default",
     request.run_id,
     request.agent_name,
@@ -132,7 +141,7 @@ export async function prepareStructuredModelInput(
 
 export function validateCredentialExecutionPolicy(
   request: AgentRunRequest,
-  credential: AgentCredentialSnapshot,
+  credential: AgentRuntimeTransportSource,
 ): void {
   const runPolicy = request.policy;
   const executionPolicy = credential.execution_policy;
@@ -204,7 +213,7 @@ export function promptInputForRequest(
 }
 
 function transportSubmissionPrompt(
-  transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
+  transport: AgentRuntimeTransportSource["execution_policy"]["structured_transport"],
 ): string {
   if (transport === "non_streaming_json_object") {
     return "Return exactly one JSON object in assistant content. Do not call a tool.";
