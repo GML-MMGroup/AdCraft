@@ -2059,59 +2059,6 @@
           "minimum": 1,
           "title": "Sequence No",
           "type": "integer"
-        },
-        "tool_arguments_fragment": {
-          "anyOf": [
-            {
-              "maxLength": 65536,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tool Arguments Fragment"
-        },
-        "tool_call_id_fragment": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tool Call Id Fragment"
-        },
-        "tool_call_index": {
-          "anyOf": [
-            {
-              "maximum": 0,
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tool Call Index"
-        },
-        "tool_name_fragment": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tool Name Fragment"
         }
       },
       "required": [
@@ -3059,6 +3006,59 @@
           "minimum": 1,
           "title": "Sequence No",
           "type": "integer"
+        },
+        "tool_arguments_fragment": {
+          "anyOf": [
+            {
+              "maxLength": 65536,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Arguments Fragment"
+        },
+        "tool_call_id_fragment": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Id Fragment"
+        },
+        "tool_call_index": {
+          "anyOf": [
+            {
+              "maximum": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Index"
+        },
+        "tool_name_fragment": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name Fragment"
         }
       },
       "required": [
