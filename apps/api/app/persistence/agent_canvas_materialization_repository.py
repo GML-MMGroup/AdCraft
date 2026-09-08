@@ -985,7 +985,9 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance state changed before Proposal materialization.",
                         )
-                    if guided_submission is not None:
+                    if guided_submission is not None and not bool(
+                        guided_submission["submission_already_committed"]
+                    ):
                         interaction_update = connection.execute(
                             update(AgentCanvasGuidedInteractionRow)
                             .where(
@@ -1528,7 +1530,9 @@ class AgentCanvasMaterializationRepository:
                                 payload={"entry_id": entry_id, **metadata},
                             ),
                         )
-                    if guided_submission is not None:
+                    if guided_submission is not None and not bool(
+                        guided_submission["submission_already_committed"]
+                    ):
                         for event_type, payload in (
                             (
                                 "guided_interaction_submitted",
@@ -3622,16 +3626,6 @@ def _guided_submission_context(
     request = TypeAdapter(GuidedInteractionSubmitRequestV1).validate_python(payload.get("request"))
     content = json.loads(str(interaction["content_json"]))
     if (
-        str(interaction["status"]) != "open"
-        or int(interaction["revision"]) != request.expected_interaction_revision
-        or int(interaction["expected_session_revision"]) != request.expected_session_revision
-        or request.expected_session_revision != expected_session_revision
-    ):
-        raise _error(
-            "guided_interaction_stale",
-            "Guided interaction changed before Materialization.",
-        )
-    if (
         not isinstance(request, GuidedConceptSubmitV2)
         or content.get("proposal_id") != proposal_id
         or (request.action == "select" and request.option_id != option_id)
@@ -3646,13 +3640,52 @@ def _guided_submission_context(
         separators=(",", ":"),
         sort_keys=True,
     )
+    request_digest = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
+    submission = (
+        connection.execute(
+            select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                AgentCanvasGuidedInteractionSubmissionRow.submission_id == submission_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    submission_already_committed = submission is not None
+    if submission_already_committed:
+        if (
+            str(submission["workflow_id"]) != workflow_id
+            or str(submission["interaction_id"]) != interaction_id
+            or str(submission["idempotency_key"]) != idempotency_key
+            or str(submission["request_digest"]) != request_digest
+            or str(submission["request_json"]) != request_json
+            or submission["result_json"] is None
+            or str(interaction["status"]) != "closed"
+            or int(interaction["revision"]) != request.expected_interaction_revision + 1
+            or int(interaction["expected_session_revision"])
+            != request.expected_session_revision
+        ):
+            raise _error(
+                "guided_interaction_stale",
+                "Committed guided interaction does not match Materialization authority.",
+            )
+    elif (
+        str(interaction["status"]) != "open"
+        or int(interaction["revision"]) != request.expected_interaction_revision
+        or int(interaction["expected_session_revision"]) != request.expected_session_revision
+        or request.expected_session_revision != expected_session_revision
+    ):
+        raise _error(
+            "guided_interaction_stale",
+            "Guided interaction changed before Materialization.",
+        )
     return {
         "interaction_id": interaction_id,
         "interaction_revision": int(interaction["revision"]),
         "submission_id": submission_id,
         "idempotency_key": idempotency_key,
-        "request_digest": hashlib.sha256(request_json.encode("utf-8")).hexdigest(),
+        "request_digest": request_digest,
         "request_json": request_json,
+        "submission_already_committed": submission_already_committed,
     }
 
 
