@@ -102,6 +102,7 @@ EditingSkippedReasonV2 = Literal[
     "source_output_unavailable",
     "source_media_invalid",
 ]
+EditingSourceAvailabilityV2 = Literal["pending", "available", "failed"]
 
 
 class EditingSkippedInputV2(_EditingModel):
@@ -117,6 +118,7 @@ class EditingPreviewClipV2(_EditingModel):
     node_id: str | None = None
     asset_id: str | None = None
     status: CanvasNodeStatusV2
+    availability: EditingSourceAvailabilityV2
     display_order: int = Field(ge=0)
     preview_url: str | None = None
     duration_seconds: float | None = Field(default=None, ge=0)
@@ -128,6 +130,7 @@ class EditingPreviewV2(_EditingModel):
     bgm_binding_id: str | None = None
     bgm_node_id: str | None = None
     bgm_asset_id: str | None = None
+    bgm_availability: EditingSourceAvailabilityV2 | None = None
     estimated_duration_seconds: float = Field(default=0, ge=0)
     warnings: tuple[str, ...] = ()
 

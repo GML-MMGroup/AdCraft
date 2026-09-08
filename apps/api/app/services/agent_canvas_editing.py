@@ -210,6 +210,7 @@ class EditingNodeService:
                     node_id=source.node_id if source else None,
                     asset_id=asset.asset_id if asset else None,
                     status=_entry_status(source=source, asset=asset),
+                    availability=_entry_availability(entry, source=source, asset=asset),
                     display_order=order,
                     preview_url=(
                         asset.preview_url or asset.media_url if asset is not None else None
@@ -244,6 +245,11 @@ class EditingNodeService:
             bgm_binding_id=selected.bgm.binding_id if selected.bgm else None,
             bgm_node_id=bgm_source.node_id if bgm_source else None,
             bgm_asset_id=bgm_asset.asset_id if bgm_asset else None,
+            bgm_availability=(
+                _entry_availability(selected.bgm, source=bgm_source, asset=bgm_asset)
+                if selected.bgm is not None
+                else None
+            ),
             estimated_duration_seconds=(
                 selected.timeline_duration_seconds
                 if selected.timeline_duration_seconds is not None
@@ -574,6 +580,19 @@ def _entry_status(
     if source is not None:
         return source.status
     return "ready" if asset is not None and asset.status == "ready" else "failed"
+
+
+def _entry_availability(
+    entry: EditingVideoEntryV2 | EditingBgmEntryV2,
+    *,
+    source: CanvasNodeV2 | None,
+    asset: ProjectAssetSummaryV2 | None,
+) -> str:
+    if _entry_warning(entry, source=source, asset=asset) is None:
+        return "available"
+    if source is not None and source.status == "failed":
+        return "failed"
+    return "pending"
 
 
 def _entry_duration(
