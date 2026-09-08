@@ -17,7 +17,7 @@ export type AgentModelTraceToolCallV1 = { readonly "tool_call_id": string; reado
 
 export type AgentModelTraceNonStreamingResponseV1 = { readonly "response_kind"?: "non_streaming"; readonly "response_id"?: string | null; readonly "finish_reason"?: string | null; readonly "content"?: string | null; readonly "tool_calls"?: ReadonlyArray<AgentModelTraceToolCallV1>; readonly "prompt_tokens"?: number | null; readonly "completion_tokens"?: number | null; readonly "reasoning_tokens"?: number | null };
 
-export type AgentModelTraceStreamingChunkV1 = { readonly "sequence_no": number; readonly "content"?: string | null; readonly "finish_reason"?: string | null };
+export type AgentModelTraceStreamingChunkV1 = { readonly "sequence_no": number; readonly "content"?: string | null; readonly "tool_call_index"?: number | null; readonly "tool_call_id_fragment"?: string | null; readonly "tool_name_fragment"?: string | null; readonly "tool_arguments_fragment"?: string | null; readonly "finish_reason"?: string | null };
 
 export type AgentModelTraceStreamingResponseV1 = { readonly "response_kind"?: "streaming"; readonly "chunks": ReadonlyArray<AgentModelTraceStreamingChunkV1>; readonly "prompt_tokens"?: number | null; readonly "completion_tokens"?: number | null; readonly "reasoning_tokens"?: number | null };
 
