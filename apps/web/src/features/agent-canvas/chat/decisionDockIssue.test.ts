@@ -20,6 +20,17 @@ function apiError(status: number, code: string | undefined, message: string) {
   });
 }
 
+function apiErrorWithDetails(status: number, details: Record<string, unknown>) {
+  return new V2ApiError({
+    status,
+    message: "Request rejected",
+    details,
+    violations: [],
+    suggestedActions: [],
+    payload: null,
+  });
+}
+
 describe("decisionDockIssueFromError", () => {
   it("maps duration validation to its field without exposing the code in summary", () => {
     const issue = decisionDockIssueFromError(apiError(
@@ -59,6 +70,23 @@ describe("decisionDockIssueFromError", () => {
     expect(isDecisionDockStaleError(apiError(409, "guided_interaction_stale", "Stale"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(409, "guidance_revision_conflict", "Conflict"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(422, "guided_interaction_invalid", "Invalid"))).toBe(false);
+  });
+
+  it.each([
+    [409, "revision_conflict"],
+    [412, "precondition_failed"],
+    [422, "interaction_revision_mismatch"],
+  ])("recognizes status-based revision conflicts (%s)", (status, code) => {
+    expect(isDecisionDockStaleError(apiError(status, code, "The submitted revision is no longer current."))).toBe(true);
+    expect(decisionDockIssueFromError(apiError(status, code, "The submitted revision is no longer current.")))
+      .toMatchObject({ retryable: true, fieldId: null });
+  });
+
+  it("recognizes an optimistic-lock payload when the gateway omits conflict text", () => {
+    expect(isDecisionDockStaleError(apiErrorWithDetails(412, {
+      expected_revision: 3,
+      current_revision: 4,
+    }))).toBe(true);
   });
 
   it("maps Product count and unreadable AssetVersion errors inside the Product Dock", () => {

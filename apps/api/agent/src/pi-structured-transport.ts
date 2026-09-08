@@ -8,6 +8,7 @@ import {
 } from "./chat-completion-chunk-normalizer.js";
 import type {
   AgentRunRequest,
+  AgentStructuredFallbackAuditV1,
   AgentStructuredValidationAttemptAuditV1,
   AgentTransportAttemptMetadataV1,
 } from "./generated/agent-runtime.js";
@@ -107,6 +108,9 @@ interface StructuredValidationResult {
   readonly result?: Readonly<Record<string, unknown>>;
 }
 
+export const SAFE_CONVERSATION_FALLBACK_MESSAGE =
+  "已收到你的请求，但本轮结构化解析未能安全完成。你的项目没有被修改，请重试或换一种表达。";
+
 interface StructuredTransportRunInput {
   readonly credential: AgentCredentialSnapshot;
   readonly request: AgentRunRequest;
@@ -163,7 +167,8 @@ export class PiStructuredTransportRouter {
     const primary = await this.#executeWithRetry(primaryRequest, input);
     let structuredAttempts = 1;
     const validationAttempts: AgentStructuredValidationAttemptAuditV1[] = [];
-    let value = primaryValue(input, primary.response);
+    const primaryCandidate = primaryValue(input, primary.response);
+    let value = primaryCandidate;
     let validation: StructuredValidationResult | undefined;
     if (value !== undefined) {
       validation = await input.submit(value, 1, primary.toolCallId ?? "call_primary");
@@ -231,6 +236,53 @@ export class PiStructuredTransportRouter {
       validationAttempts.push(
         validationAttemptAudit(malformedRepair, 2, "structured_repair"),
       );
+      if (supportsSafeConversationFallback(input)) {
+        const fallbackMessage = safeConversationFallbackMessage();
+        const fallbackValue = {
+          mode: "ordinary_conversation" as const,
+          objective:
+            "Preserve a safe conversational response after structured validation failed.",
+          assistant_message: fallbackMessage.message,
+        };
+        const fallbackValidation = await input.submit(
+          fallbackValue,
+          2,
+          "call_structured_fallback",
+        );
+        const acceptedFallback = acceptedValue(fallbackValidation);
+        if (acceptedFallback !== undefined) {
+          return resultFor(acceptedFallback, input, repair, {
+            startedAt,
+            structuredAttempts,
+            validationAttempts,
+            structuredFallback: {
+              contract_name: "CompactTurnIntentDecisionV3",
+              error_code: "agent_structured_fallback_applied",
+              failure_codes: [],
+              validation_paths: [],
+              submission_attempt: 2,
+              used_model_message: fallbackMessage.usedModelMessage,
+              reason: "repair_json_invalid",
+            },
+          });
+        }
+        validationAttempts.push(
+          validationAttemptAudit(fallbackValidation, 2, "structured_repair"),
+        );
+        if (fallbackValidation.error_code === "agent_contract_validation_failed") {
+          throw terminalValidationFailure(
+            fallbackValidation.error_code,
+            auditForAttempt(
+              input,
+              repair,
+              startedAt,
+              structuredAttempts,
+              validationAttempts,
+            ),
+            isManualRetryableIntake(input),
+          );
+        }
+      }
       throw structuredFailure(
         "structured_repair",
         auditForAttempt(
@@ -274,10 +326,16 @@ export class PiStructuredTransportRouter {
         isManualRetryableIntake(input),
       );
     }
+    const repairedFallbackAudit = boundedStructuredFallbackAudit(
+      repaired.result?.fallback_audit,
+    );
     return resultFor(accepted, input, repair, {
       startedAt,
       structuredAttempts,
       validationAttempts,
+      ...(repairedFallbackAudit
+        ? { structuredFallback: repairedFallbackAudit }
+        : {}),
     });
   }
 
@@ -736,6 +794,68 @@ function repairContent(
   return parseObject(response.choices?.[0]?.message?.content ?? undefined);
 }
 
+export function supportsSafeConversationFallback(
+  input: Pick<StructuredTransportRunInput, "request">,
+): boolean {
+  return input.request.operation === "decide_turn_intent" &&
+    input.request.contract_name === "CompactTurnIntentDecisionV3";
+}
+
+function safeConversationFallbackMessage(): {
+  readonly message: string;
+  readonly usedModelMessage: boolean;
+} {
+  return {
+    message: SAFE_CONVERSATION_FALLBACK_MESSAGE,
+    usedModelMessage: false,
+  };
+}
+
+function boundedStructuredFallbackAudit(
+  value: unknown,
+): AgentStructuredFallbackAuditV1 | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Readonly<Record<string, unknown>>;
+  if (
+    candidate.contract_name !== "CompactTurnIntentDecisionV3" ||
+    candidate.error_code !== "agent_structured_fallback_applied" ||
+    candidate.submission_attempt !== 2 ||
+    typeof candidate.used_model_message !== "boolean" ||
+    (candidate.reason !== "repair_json_invalid" &&
+      candidate.reason !== "validation_exhausted")
+  ) {
+    return undefined;
+  }
+  const boundedCodes = boundedFallbackList(candidate.failure_codes, 160);
+  const boundedPaths = boundedFallbackList(candidate.validation_paths, 512);
+  return {
+    contract_name: "CompactTurnIntentDecisionV3",
+    error_code: "agent_structured_fallback_applied",
+    ...(boundedCodes ? { failure_codes: boundedCodes } : {}),
+    validation_paths: boundedPaths ?? [],
+    submission_attempt: 2,
+    used_model_message: candidate.used_model_message,
+    reason: candidate.reason,
+  };
+}
+
+function boundedFallbackList(
+  value: unknown,
+  maximumItemLength: number,
+): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const bounded = item.slice(0, maximumItemLength);
+    if (bounded && !result.includes(bounded)) {
+      result.push(bounded);
+      if (result.length >= 32) break;
+    }
+  }
+  return result;
+}
+
 function parseObject(value: string | undefined | null) {
   if (!value) return undefined;
   try {
@@ -768,6 +888,7 @@ function resultFor(
     readonly startedAt: string;
     readonly structuredAttempts: number;
     readonly validationAttempts: ReadonlyArray<AgentStructuredValidationAttemptAuditV1>;
+    readonly structuredFallback?: AgentStructuredFallbackAuditV1;
   },
 ): StructuredTransportResult {
   return {
@@ -778,6 +899,7 @@ function resultFor(
       details.startedAt,
       details.structuredAttempts,
       details.validationAttempts,
+      details.structuredFallback,
     ),
   };
 }
@@ -788,6 +910,7 @@ function auditForAttempt(
   startedAt: string,
   structuredAttempts: number,
   validationAttempts: ReadonlyArray<AgentStructuredValidationAttemptAuditV1> = [],
+  structuredFallback?: AgentStructuredFallbackAuditV1,
 ): AgentTransportAttemptMetadataV1 {
   const choice = attempt.response.choices?.[0];
   const usage = attempt.response.usage;
@@ -830,6 +953,7 @@ function auditForAttempt(
     transport_retry_count: attempt.retryCount,
     structured_attempt_count: structuredAttempts,
     structured_validation_attempts: validationAttempts.slice(0, 2),
+    ...(structuredFallback ? { structured_fallback: structuredFallback } : {}),
   };
 }
 

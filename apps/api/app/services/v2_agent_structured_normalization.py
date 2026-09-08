@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import math
+import re
+import unicodedata
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
@@ -14,6 +17,10 @@ DECISION_BUNDLE_CAPABILITY_ALIAS_RULE_ID = (
     "decision_bundle.creative_directive.capability_ids_alias.v1"
 )
 COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = "compact_turn_intent_v3.omittable_nulls.v1"
+COMPACT_TURN_INTENT_FIELD_ALIASES_RULE_ID = "compact_turn_intent_v3.field_aliases.v1"
+COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID = "compact_turn_intent_v3.presence_aliases.v1"
+COMPACT_TURN_INTENT_PRESENCE_SAFE_DEFAULT_RULE_ID = "compact_turn_intent_v3.presence_safe_default.v1"
+COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID = "compact_turn_intent_v3.lossless_scalars.v1"
 
 _INTAKE_ELEMENT_NAMES = (
     "product",
@@ -52,7 +59,7 @@ class AgentStructuredNormalizationResult:
     violations: tuple[StructuredViolation, ...] = ()
 
 
-NormalizationRule = Callable[[dict[str, Any]], AgentStructuredNormalizationResult]
+NormalizationRule = Callable[[dict[str, Any], Mapping[str, Any]], AgentStructuredNormalizationResult]
 _NORMALIZATION_RULES: Mapping[str, NormalizationRule]
 
 
@@ -63,15 +70,18 @@ class AgentStructuredNormalizationRegistry:
         self,
         contract_name: str,
         value: dict[str, Any],
+        *,
+        validation_context: Mapping[str, Any] | None = None,
     ) -> AgentStructuredNormalizationResult:
         rule = _NORMALIZATION_RULES.get(contract_name)
         if rule is None:
             return AgentStructuredNormalizationResult(value=deepcopy(value))
-        return rule(value)
+        return rule(value, validation_context or {})
 
 
 def _normalize_decision_bundle_capability_alias(
     value: dict[str, Any],
+    _validation_context: Mapping[str, Any],
 ) -> AgentStructuredNormalizationResult:
     candidate = deepcopy(value)
     effects = tuple(_creative_directive_effects(candidate))
@@ -107,6 +117,7 @@ def _normalize_decision_bundle_capability_alias(
 
 def _normalize_compact_turn_intent_omittable_nulls(
     value: dict[str, Any],
+    _validation_context: Mapping[str, Any],
 ) -> AgentStructuredNormalizationResult:
     candidate = deepcopy(value)
     normalized_path_count = 0
@@ -149,6 +160,423 @@ def _normalize_compact_turn_intent_omittable_nulls(
         rule_ids=((COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID,) if normalized_path_count else ()),
         normalized_path_count=normalized_path_count,
     )
+
+
+def _normalize_compact_turn_intent(
+    value: dict[str, Any],
+    validation_context: Mapping[str, Any],
+) -> AgentStructuredNormalizationResult:
+    candidate = deepcopy(value)
+    rule_ids: list[str] = []
+    count = 0
+    violations: list[StructuredViolation] = []
+
+    changed, conflict = _normalize_control_aliases(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_FIELD_ALIASES_RULE_ID)
+    if conflict:
+        violations.append(conflict)
+        return AgentStructuredNormalizationResult(value=deepcopy(value), violations=tuple(violations))
+
+    changed = _normalize_presence_aliases(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_PRESENCE_ALIASES_RULE_ID)
+    changed = _normalize_presence_safe_defaults(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_PRESENCE_SAFE_DEFAULT_RULE_ID)
+    changed = _normalize_lossless_scalars(candidate)
+    count += changed
+    if changed:
+        rule_ids.append(COMPACT_TURN_INTENT_LOSSLESS_SCALARS_RULE_ID)
+
+    null_result = _normalize_compact_turn_intent_omittable_nulls(candidate, validation_context)
+    candidate = null_result.value
+    count += null_result.normalized_path_count
+    rule_ids.extend(null_result.rule_ids)
+    return AgentStructuredNormalizationResult(value=candidate, rule_ids=tuple(rule_ids), normalized_path_count=count)
+
+
+ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID = (
+    "role_creative_brief_v2.role_variant_from_context.v1"
+)
+ROLE_CREATIVE_BRIEF_PRODUCT_MAIN_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.product_main_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_PRODUCT_MULTIVIEW_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.product_multiview_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_PROP_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.prop_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID = (
+    "role_creative_brief_v2.character_main_summary_expansion.v1"
+)
+ROLE_CREATIVE_BRIEF_DISCARD_UNRECOGNIZED_FIELDS_RULE_ID = (
+    "role_creative_brief_v2.discard_unrecognized_fields.v1"
+)
+_PRODUCT_MAIN_SUMMARY_ALIASES = (
+    "summary",
+    "description",
+    "brief_content",
+    "concept_summary",
+)
+_CHARACTER_MAIN_PRESENTATIONAL_FIELDS = frozenset(
+    {
+        "brief_title",
+        "character_profile",
+        "negative_prompt",
+        "production_parameters",
+        "shot_composition",
+        "visual_prompt",
+    }
+)
+_PRODUCT_MAIN_REQUIRED_FIELDS = (
+    "identity",
+    "geometry",
+    "materials",
+    "marks",
+    "palette",
+)
+_ROLE_VARIANT_VALUES = frozenset(
+    {
+        "world_view",
+        "product_main",
+        "product_multiview",
+        "prop",
+        "character_main",
+        "character_turnaround",
+        "scene_board",
+        "script",
+        "storyboard_grid",
+        "video_segment",
+        "bgm",
+        "free_text",
+        "free_image",
+        "free_video",
+        "free_audio",
+    }
+)
+_ROLE_CREATIVE_BRIEF_ALLOWED_FIELDS = MappingProxyType(
+    {
+        "world_view": frozenset({"role_variant", "premise", "era_and_place", "world_rules", "visual_continuity"}),
+        "product_main": frozenset({"role_variant", "identity", "geometry", "materials", "marks", "palette"}),
+        "product_multiview": frozenset({"role_variant", "identity", "geometry", "materials", "marks", "palette", "views"}),
+        "prop": frozenset({"role_variant", "identity", "form", "materials", "palette"}),
+        "character_main": frozenset({"role_variant", "identity", "face_and_hair", "silhouette_and_proportions", "wardrobe", "accessories", "rendering_mode"}),
+        "character_turnaround": frozenset({"role_variant", "identity", "face_and_hair", "silhouette_and_proportions", "wardrobe", "accessories", "rendering_mode", "views"}),
+        "scene_board": frozenset({"role_variant", "environment_identity", "spatial_logic", "lighting", "materials", "atmosphere", "views"}),
+        "script": frozenset({"role_variant", "narrative", "timing", "dialogue", "voiceover"}),
+        "storyboard_grid": frozenset({"role_variant", "sequence_summary", "beats", "visual_language"}),
+        "video_segment": frozenset({"role_variant", "segment_summary", "duration_seconds", "action", "dialogue", "voiceover", "ambience", "action_effects", "target_style"}),
+        "bgm": frozenset({"role_variant", "music_summary", "duration_seconds", "pace", "energy_curve", "instrumentation", "mood"}),
+        "free_text": frozenset({"role_variant", "prompt"}),
+        "free_image": frozenset({"role_variant", "prompt"}),
+        "free_video": frozenset({"role_variant", "prompt"}),
+        "free_audio": frozenset({"role_variant", "prompt"}),
+    }
+)
+
+
+def _normalize_role_creative_brief(
+    value: dict[str, Any],
+    validation_context: Mapping[str, Any],
+) -> AgentStructuredNormalizationResult:
+    """Apply only contract-owned, trusted-context role brief compatibility rules."""
+
+    expected_variant = validation_context.get("role_variant")
+    if expected_variant not in _ROLE_VARIANT_VALUES:
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    supplied = value.get("role_variant")
+    candidate = deepcopy(value)
+    rule_ids: list[str] = []
+    normalized_path_count = 0
+    if "role_variant" not in value:
+        candidate["role_variant"] = expected_variant
+        rule_ids.append(ROLE_CREATIVE_BRIEF_ROLE_VARIANT_RULE_ID)
+        normalized_path_count += 1
+    elif supplied != expected_variant:
+        return AgentStructuredNormalizationResult(
+            value=deepcopy(value),
+            violations=(
+                StructuredViolation(
+                    code="agent_structured_normalization_role_variant_conflict",
+                    message="The structured role brief role_variant conflicts with trusted context.",
+                    field_path="role_variant",
+                ),
+            ),
+        )
+
+    if expected_variant in {"product_main", "product_multiview"}:
+        expansion = _expand_product_main_summary(candidate)
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(
+                value=deepcopy(value),
+                violations=expansion.violations,
+            )
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            expansion_path_count = expansion.normalized_path_count
+            if expected_variant == "product_multiview" and "views" not in candidate:
+                candidate["views"] = ["front", "side", "back", "three-quarter", "detail"]
+                expansion_path_count += 1
+            rule_ids.append(
+                (
+                    ROLE_CREATIVE_BRIEF_PRODUCT_MULTIVIEW_SUMMARY_EXPANSION_RULE_ID
+                    if expected_variant == "product_multiview"
+                    else ROLE_CREATIVE_BRIEF_PRODUCT_MAIN_SUMMARY_EXPANSION_RULE_ID
+                )
+            )
+            normalized_path_count += expansion_path_count
+
+    if expected_variant == "prop":
+        expansion = _expand_role_summary(
+            candidate,
+            {
+                "identity": "{summary}",
+                "form": "Use only the prop form explicitly described in the accepted direction: {summary}",
+                "materials": "Use only the prop materials explicitly described in the accepted direction: {summary}",
+                "palette": "Use only the prop palette explicitly described in the accepted direction: {summary}",
+            },
+        )
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(value=deepcopy(value), violations=expansion.violations)
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            rule_ids.append(ROLE_CREATIVE_BRIEF_PROP_SUMMARY_EXPANSION_RULE_ID)
+            normalized_path_count += expansion.normalized_path_count
+
+    if expected_variant == "character_main":
+        expansion = _expand_role_summary(
+            candidate,
+            {
+                "identity": "{summary}",
+                "face_and_hair": "Use only the face and hair details explicitly described in the accepted direction: {summary}",
+                "silhouette_and_proportions": "Use only the silhouette and proportions explicitly described in the accepted direction: {summary}",
+                "wardrobe": "Use only the wardrobe details explicitly described in the accepted direction: {summary}",
+                "accessories": "",
+            },
+            discard_fields=_CHARACTER_MAIN_PRESENTATIONAL_FIELDS,
+        )
+        if expansion.violations:
+            return AgentStructuredNormalizationResult(value=deepcopy(value), violations=expansion.violations)
+        candidate = expansion.value
+        if expansion.normalized_path_count:
+            rule_ids.append(ROLE_CREATIVE_BRIEF_CHARACTER_MAIN_SUMMARY_EXPANSION_RULE_ID)
+            normalized_path_count += expansion.normalized_path_count
+
+    candidate, dropped_count = _project_role_creative_brief_fields(
+        candidate,
+        expected_variant,
+    )
+    if dropped_count:
+        rule_ids.append(ROLE_CREATIVE_BRIEF_DISCARD_UNRECOGNIZED_FIELDS_RULE_ID)
+        normalized_path_count += dropped_count
+
+    return AgentStructuredNormalizationResult(
+        value=candidate,
+        rule_ids=tuple(rule_ids),
+        normalized_path_count=normalized_path_count,
+    )
+
+
+def _project_role_creative_brief_fields(
+    value: dict[str, Any],
+    role_variant: str,
+) -> tuple[dict[str, Any], int]:
+    """Discard untrusted decoration after projecting onto one trusted contract."""
+
+    allowed = _ROLE_CREATIVE_BRIEF_ALLOWED_FIELDS[role_variant]
+    projected = {name: item for name, item in value.items() if name in allowed}
+    return projected, len(value) - len(projected)
+
+
+def _expand_product_main_summary(
+    value: dict[str, Any],
+) -> AgentStructuredNormalizationResult:
+    """Expand one generic product summary without inventing product attributes.
+
+    This rule applies only when no canonical Product Main field was supplied.
+    Every generated field retains the same source summary and limits the compiler
+    to details explicitly stated in that summary.
+    """
+
+    return _expand_role_summary(
+        value,
+        {
+            "identity": "{summary}",
+            "geometry": "Use only the product geometry explicitly described in the accepted direction: {summary}",
+            "materials": "Use only the materials and finish explicitly described in the accepted direction: {summary}",
+            "marks": "Use only the marks and certifications explicitly described in the accepted direction: {summary}",
+            "palette": "Use only the palette explicitly described in the accepted direction: {summary}",
+        },
+    )
+
+
+def _expand_role_summary(
+    value: dict[str, Any],
+    field_templates: Mapping[str, str],
+    *,
+    discard_fields: frozenset[str] = frozenset(),
+) -> AgentStructuredNormalizationResult:
+    if any(field in value for field in field_templates):
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    supplied = tuple(
+        (name, value[name]) for name in _PRODUCT_MAIN_SUMMARY_ALIASES if name in value
+    )
+    if not supplied or any(not isinstance(item, str) or not item.strip() for _, item in supplied):
+        return AgentStructuredNormalizationResult(value=deepcopy(value))
+
+    summaries = tuple(item.strip() for _, item in supplied)
+    if len(set(summaries)) != 1:
+        return AgentStructuredNormalizationResult(
+            value=deepcopy(value),
+            violations=(
+                StructuredViolation(
+                    code="agent_structured_normalization_alias_conflict",
+                    message="The structured product brief contains conflicting summary aliases.",
+                    field_path="product_main",
+                ),
+            ),
+        )
+
+    summary = summaries[0]
+    candidate = deepcopy(value)
+    for name, _ in supplied:
+        del candidate[name]
+    for name in discard_fields:
+        candidate.pop(name, None)
+    candidate.update({name: template.format(summary=summary) for name, template in field_templates.items()})
+    return AgentStructuredNormalizationResult(
+        value=candidate,
+        normalized_path_count=len(supplied) + len(field_templates),
+    )
+
+
+_CONTROL_ALIASES = MappingProxyType({
+    "target_duration_sec": "duration_seconds",
+    "target_duration_seconds": "duration_seconds",
+    "duration_sec": "duration_seconds",
+    "resolution": "output_resolution",
+    "fps": "frame_rate",
+})
+_PRESENCE_ALIASES = MappingProxyType({
+    "include": "include", "included": "include", "present": "include", "required": "include", "包含": "include", "需要": "include", "已提及": "include",
+    "exclude": "exclude", "excluded": "exclude", "absent": "exclude", "omit": "exclude", "排除": "exclude", "不要": "exclude", "不需要": "exclude",
+    "unspecified": "unspecified", "unknown": "unspecified", "not_mentioned": "unspecified", "not specified": "unspecified", "未说明": "unspecified", "未提及": "unspecified", "不确定": "unspecified",
+})
+_FLOAT_CONTROLS = frozenset(("duration_seconds", "frame_rate"))
+_INT_CONTROLS = frozenset(("product_count", "prop_count", "character_count", "scene_count", "storyboard_sequence_count", "video_segment_count"))
+_DECIMAL_RE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
+_INTEGER_RE = re.compile(r"[0-9]+")
+
+
+def _normalize_control_aliases(candidate: dict[str, Any]) -> tuple[int, StructuredViolation | None]:
+    controls = candidate.get("requirement_patch", {}).get("controls_to_set") if isinstance(candidate.get("requirement_patch"), dict) else None
+    if not isinstance(controls, dict):
+        return 0, None
+    groups: dict[str, list[tuple[str, Any]]] = {}
+    known = frozenset(_CONTROL_ALIASES) | frozenset(_CONTROL_ALIASES.values())
+    for key, val in list(controls.items()):
+        nk = unicodedata.normalize("NFKC", key)
+        target = _CONTROL_ALIASES.get(nk, nk) if nk in known else key
+        groups.setdefault(target, []).append((key, val))
+    changed = 0
+    for target, entries in groups.items():
+        if len(entries) > 1:
+            first_value = entries[0][1]
+            if any(not _typed_equal(first_value, val) for _, val in entries[1:]):
+                return 0, StructuredViolation(code="agent_structured_normalization_alias_conflict", message="Canonical and alias control values conflict.", field_path=f"requirement_patch.controls_to_set.{target}")
+        canonical = next(((key, val) for key, val in entries if key == target), entries[0])
+        if canonical[0] != target or len(entries) > 1:
+            controls[target] = canonical[1]
+        changed += sum(key != target for key, _ in entries)
+        for key, _ in entries:
+            if key != target and key in controls:
+                del controls[key]
+    return changed, None
+
+
+def _typed_equal(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_typed_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_typed_equal(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _normalize_presence_aliases(candidate: dict[str, Any]) -> int:
+    elements = candidate.get("explicit_elements")
+    if not isinstance(elements, dict):
+        return 0
+    changed = 0
+    for name in _INTAKE_ELEMENT_NAMES:
+        item = elements.get(name)
+        if not isinstance(item, dict) or "presence" not in item or not isinstance(item["presence"], str):
+            continue
+        key = unicodedata.normalize("NFKC", item["presence"]).strip().casefold()
+        mapped = _PRESENCE_ALIASES.get(key)
+        if mapped is not None and item["presence"] != mapped:
+            item["presence"] = mapped
+            changed += 1
+    return changed
+
+
+def _normalize_presence_safe_defaults(candidate: dict[str, Any]) -> int:
+    elements = candidate.get("explicit_elements")
+    if not isinstance(elements, dict):
+        return 0
+    changed = 0
+    for name in _INTAKE_ELEMENT_NAMES:
+        item = elements.get(name)
+        if not isinstance(item, dict) or "presence" not in item:
+            continue
+        presence = item["presence"]
+        if isinstance(presence, str):
+            if not presence.strip():
+                continue
+        elif not isinstance(presence, (bool, int, float)):
+            continue
+        if presence in {"include", "exclude", "unspecified"}:
+            continue
+        item["presence"] = "unspecified"
+        changed += 1
+    return changed
+
+
+def _normalize_lossless_scalars(candidate: dict[str, Any]) -> int:
+    patch = candidate.get("requirement_patch")
+    controls = patch.get("controls_to_set") if isinstance(patch, dict) else None
+    if not isinstance(controls, dict):
+        return 0
+    changed = 0
+    for name in _FLOAT_CONTROLS | _INT_CONTROLS:
+        item = controls.get(name)
+        if not isinstance(item, dict) or not isinstance(item.get("value"), str):
+            continue
+        raw = item["value"]
+        try:
+            if name in _FLOAT_CONTROLS:
+                if _DECIMAL_RE.fullmatch(raw) is None:
+                    continue
+                parsed = float(raw)
+                if not math.isfinite(parsed):
+                    continue
+            else:
+                if _INTEGER_RE.fullmatch(raw) is None:
+                    continue
+                parsed = int(raw)
+        except (ValueError, OverflowError):
+            continue
+        item["value"] = parsed
+        changed += 1
+    return changed
 
 
 def _remove_null_property(container: dict[str, Any], property_name: str) -> int:
@@ -196,8 +624,9 @@ def _creative_directive_effects(
 
 _NORMALIZATION_RULES = MappingProxyType(
     {
-        "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent_omittable_nulls,
+        "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent,
         "DecisionBundleDraftV1": _normalize_decision_bundle_capability_alias,
+        "RoleCreativeBriefV2": _normalize_role_creative_brief,
     }
 )
 

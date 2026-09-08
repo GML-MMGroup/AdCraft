@@ -1,0 +1,11 @@
+host: "0.0.0.0"
+port: 8317
+auth-dir: "/root/.cli-proxy-api"
+api-keys:
+  - "replace-with-a-local-cpa-key"
+ws-auth: true
+remote-management:
+  # Required when the management page is opened through the Compose bridge.
+  # compose.yaml still binds the host port to 127.0.0.1 by default.
+  allow-remote: true
+  secret-key: ""

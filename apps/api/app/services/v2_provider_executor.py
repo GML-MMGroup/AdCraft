@@ -796,7 +796,7 @@ class V2ProviderExecutor:
             ]
             try:
                 if media_type == "image":
-                    provider = self._media_provider()
+                    provider = self._media_provider_for("image")
                     image_request: dict[str, Any] = {
                         "prompt": prompt,
                         "slot_type": slot_type,
@@ -815,7 +815,7 @@ class V2ProviderExecutor:
                             image_request[field] = value.strip()
                     output = provider.generate_v2_canonical_image(image_request, workflow_id)
                 elif media_type == "video":
-                    provider = self._media_provider()
+                    provider = self._media_provider_for("video")
                     duration = int(provider_payload.get("duration_seconds") or 5)
                     segment = {
                         "order": 1,
@@ -976,7 +976,7 @@ class V2ProviderExecutor:
                 )
             return result.model_copy(update={"asset_bytes": content})
         try:
-            provider = self._media_provider()
+            provider = self._media_provider_for("video")
             submit_manifest = getattr(provider, "submit_seedance_manifest_task", None)
             if not callable(submit_manifest):
                 return V2ProviderResult(
@@ -1042,7 +1042,7 @@ class V2ProviderExecutor:
                     provider_payload=task.provider_payload_snapshot,
                     reference_asset_ids=list(task.metadata.get("reference_asset_ids") or []),
                 )
-            provider = self._media_provider()
+            provider = self._media_provider_for(media_type)
             if (
                 media_type == "video"
                 and hasattr(provider, "retrieve_storyboard_video_task")
@@ -1148,7 +1148,7 @@ class V2ProviderExecutor:
                     provider_payload=provider_payload,
                     reference_asset_ids=[],
                 )
-            provider = self._media_provider()
+            provider = self._media_provider_for(media_type)
             if media_type == "video" and hasattr(provider, "retrieve_storyboard_video_task"):
                 asset = provider.retrieve_storyboard_video_task(  # type: ignore[attr-defined]
                     remote_task_id,
@@ -1620,7 +1620,7 @@ class V2ProviderExecutor:
         payload: dict[str, Any],
         plan: V2GenerationPlan,
     ) -> V2ProviderResult:
-        provider = self._media_provider()
+        provider = self._media_provider_for("image")
         if not _is_supported_v2_image_slot(slot.slot_type):
             return V2ProviderResult(
                 status="failed",
@@ -1925,7 +1925,7 @@ class V2ProviderExecutor:
             },
             "reference_input_delivery": delivery.audit,
         }
-        provider = self._media_provider()
+        provider = self._media_provider_for("video")
         output = provider.generate_storyboard_video(
             {
                 "segments": [
@@ -2005,6 +2005,14 @@ class V2ProviderExecutor:
         if self._provider is None:
             self._provider = self._provider_factory(self._settings)
         return self._provider
+
+    def _media_provider_for(self, media_type: str) -> MediaProvider:
+        if self._uses_default_provider_factory:
+            return build_media_provider(
+                self._settings,
+                required_media_types={media_type},
+            )
+        return self._media_provider()
 
     def _generate_bgm_audio(
         self,

@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type {
   AgentRunRequest,
   AgentRuntimeEvent,
+  AgentStructuredFallbackAuditV1,
 } from "./generated/agent-runtime.js";
 import {
   event,
@@ -438,6 +439,7 @@ function failureBoundary(code: string, attempt: FailureAudit): string {
 
 function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
   if (!attempt) return {};
+  const structuredFallback = safeStructuredFallbackAudit(attempt.structured_fallback);
   return {
     provider: boundedAuditText(attempt.provider, 160),
     model_ref: boundedAuditText(attempt.model_ref, 320),
@@ -472,7 +474,51 @@ function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
     transport_retry_count: attempt.transport_retry_count,
     structured_attempt_count: attempt.structured_attempt_count,
     structured_validation_attempts: attempt.structured_validation_attempts,
+    ...(structuredFallback ? { structured_fallback: structuredFallback } : {}),
   };
+}
+
+function safeStructuredFallbackAudit(
+  value: AgentStructuredFallbackAuditV1 | null | undefined,
+): AgentStructuredFallbackAuditV1 | undefined {
+  if (
+    !value ||
+    value.contract_name !== "CompactTurnIntentDecisionV3" ||
+    value.error_code !== "agent_structured_fallback_applied" ||
+    value.submission_attempt !== 2 ||
+    typeof value.used_model_message !== "boolean" ||
+    (value.reason !== "repair_json_invalid" && value.reason !== "validation_exhausted")
+  ) {
+    return undefined;
+  }
+  const boundedCodes = boundedFallbackAuditList(value.failure_codes, 160);
+  const boundedPaths = boundedFallbackAuditList(value.validation_paths, 512) ?? [];
+  return {
+    contract_name: "CompactTurnIntentDecisionV3",
+    error_code: "agent_structured_fallback_applied",
+    ...(boundedCodes ? { failure_codes: boundedCodes } : {}),
+    validation_paths: boundedPaths,
+    submission_attempt: 2,
+    used_model_message: value.used_model_message,
+    reason: value.reason,
+  };
+}
+
+function boundedFallbackAuditList(
+  value: ReadonlyArray<string> | undefined,
+  maximumItemLength: number,
+): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const bounded = item.slice(0, maximumItemLength);
+    if (bounded && !result.includes(bounded)) {
+      result.push(bounded);
+      if (result.length >= 32) break;
+    }
+  }
+  return result;
 }
 
 function safeProjectionAudit(

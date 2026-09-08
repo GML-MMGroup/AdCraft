@@ -75,7 +75,17 @@ describe("buildConceptChoiceSubmitRequest", () => {
       action: "select",
       option_id: "option-1",
       custom_text: null,
-      accepted_references: [reference],
+      accepted_references: [{
+        source_kind: "image_asset",
+        source_id: "asset-1",
+        display_name: "World reference",
+        media_type: "image",
+        binding_kind: "image_reference",
+        input_role: "visual_reference",
+        required: true,
+        display_order: 0,
+        semantic_reference_role: "world_setting_reference",
+      }],
     });
   });
 

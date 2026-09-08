@@ -27,6 +27,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     providerModelsError = null,
     modelResolution = null,
     onClose,
+    onRetryPromptPreparation,
     onWorkflowRefresh,
     onOpenAssets,
     onUploadReferences,
@@ -66,7 +67,11 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     >
       {references}
       {promptPreparing ? (
-        <NodePromptPreparationState node={node} onWorkflowRefresh={onWorkflowRefresh} />
+        <NodePromptPreparationState
+          node={node}
+          onRetryPromptPreparation={onRetryPromptPreparation}
+          onWorkflowRefresh={onWorkflowRefresh}
+        />
       ) : null}
       {node.node_type === "text" ? (
         <TextWorkbench

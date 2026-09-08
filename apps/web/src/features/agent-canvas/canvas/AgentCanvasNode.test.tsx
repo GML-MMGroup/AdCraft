@@ -126,6 +126,21 @@ afterEach(() => {
 });
 
 describe("AgentCanvasNodeCard", () => {
+  it("offers a direct retry action on a failed media node", () => {
+    const onRetry = vi.fn();
+
+    render(
+      <AgentCanvasNodeCard
+        node={makeNode("image", "failed")}
+        onRetry={onRetry}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry image node" }));
+
+    expect(onRetry).toHaveBeenCalledWith("image-node");
+  });
+
   it.each([
     ["product", "image", "Product"],
     ["storyboard_sequence", "image", "Storyboard Sequence"],

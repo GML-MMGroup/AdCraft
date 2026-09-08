@@ -152,8 +152,8 @@ function makeTextReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 
   } as AgentCanvasWorkflowV2;
 }
 
-function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
-  const props = {
+function renderWorkbenchProps(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
+  return {
     workflow: makeWorkflow(node),
     node,
     patchNode: vi.fn().mockResolvedValue(undefined),
@@ -171,6 +171,10 @@ function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> 
     onClose: vi.fn(),
     ...overrides,
   };
+}
+
+function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
+  const props = renderWorkbenchProps(node, overrides);
   render(<AgentCanvasInlineWorkbench {...props} />);
   return props;
 }
@@ -307,7 +311,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("shows a retryable prompt preparation error without presenting it as media generation failure", () => {
+  it("shows a prompt-only retry for a retryable prompt preparation failure", () => {
     const node = {
       ...makeNode("image"),
       summary_prompt: "A warm product portrait for the campaign opening.",
@@ -327,11 +331,65 @@ describe("AgentCanvasInlineWorkbench", () => {
       },
     } as CanvasNodeV2;
 
-    renderWorkbench(node);
+    const onRetryPromptPreparation = vi.fn().mockResolvedValue(undefined);
+    renderWorkbench(node, { onRetryPromptPreparation });
 
     expect(screen.getByRole("alert").textContent).toContain("Node prompt preparation failed.");
     expect(screen.getByRole("alert").textContent).toContain("Retryable");
+    expect(screen.getByRole("button", { name: "Retry prompt preparation" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
+  });
+
+  it("keeps prompt retry hidden unless preparation failed and is retryable", () => {
+    for (const promptPreparation of [
+      { ...makeNode("image").prompt_preparation!, status: "ready", error: null },
+      { ...makeNode("image").prompt_preparation!, status: "queued", error: null },
+      { ...makeNode("image").prompt_preparation!, status: "working", error: null },
+      {
+        ...makeNode("image").prompt_preparation!,
+        status: "failed",
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: false,
+        },
+      },
+    ] as CanvasNodeV2["prompt_preparation"][]) {
+      const node = { ...makeNode("image"), prompt_preparation: promptPreparation } as CanvasNodeV2;
+      const { unmount } = render(<AgentCanvasInlineWorkbench {...{
+        ...renderWorkbenchProps(node),
+        onRetryPromptPreparation: vi.fn().mockResolvedValue(undefined),
+      }} />);
+      expect(screen.queryByRole("button", { name: "Retry prompt preparation" })).toBeNull();
+      unmount();
+    }
+  });
+
+  it("disables the lower-right prompt retry while the request is pending", async () => {
+    let resolveRetry: (() => void) | undefined;
+    const onRetryPromptPreparation = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      resolveRetry = resolve;
+    }));
+    const node = {
+      ...makeNode("image"),
+      prompt_preparation: {
+        ...makeNode("image").prompt_preparation!,
+        status: "failed",
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: true,
+        },
+      },
+    } as CanvasNodeV2;
+    renderWorkbench(node, { onRetryPromptPreparation });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry prompt preparation" }));
+
+    expect((screen.getByRole("button", { name: "Retry prompt preparation" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Preparing…")).toBeTruthy();
+    resolveRetry?.();
+    await waitFor(() => expect(onRetryPromptPreparation).toHaveBeenCalledWith(node.node_id));
   });
 
   it("saves a Draft Script prompt without materializing content before running it", async () => {
@@ -551,6 +609,24 @@ describe("AgentCanvasInlineWorkbench", () => {
     })));
     const request = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
     expect(request).not.toHaveProperty("model_id");
+    expect(request).not.toHaveProperty("generation_prompt");
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("keeps a manually edited media prompt visible until the saved node revision arrives", async () => {
+    const node = makeNode("image");
+    const props = renderWorkbench(node);
+
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "A user-authored product photograph." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run image node" }));
+
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(node));
+    expect(screen.getByLabelText("Generation prompt")).toHaveProperty(
+      "value",
+      "A user-authored product photograph.",
+    );
   });
 
   it("opens the shared assets browser from the media workbench", () => {

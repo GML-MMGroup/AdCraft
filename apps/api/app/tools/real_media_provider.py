@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import base64
 import json
+from mimetypes import guess_type
 import os
 from pathlib import Path
 import socket
@@ -9,6 +11,7 @@ import time
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -61,6 +64,8 @@ from app.tools.media_artifact_io import (
 from app.tools.legacy_bgm_adapter import LegacyBgmAdapter
 from app.tools.media_subtitles import generate_subtitle_asset
 from app.tools.volcengine_image_generations import (
+    serialize_openai_image_edit_request,
+    serialize_openai_image_generation_request,
     serialize_volcengine_image_generation_request,
 )
 from app.tools.media_composition import (
@@ -94,6 +99,148 @@ def _v2_sanitized_reference_assets(
         }
         for reference in reference_assets
     ]
+
+
+def _is_openai_image_model(model: str) -> bool:
+    return model.strip().lower().startswith("gpt-image")
+
+
+def _is_cpa_gpt_image_2_model(model: str) -> bool:
+    return model.strip().lower() == "gpt-image-2"
+
+
+def _normalize_openai_image_generation_size(value: Any) -> str:
+    raw = str(value or "").strip()
+    normalized = raw.replace("X", "x").replace(" ", "").lower()
+    parts = normalized.split("x")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        raise MediaConfigurationError(
+            f"IMAGE_GENERATION_SIZE must be a positive WxH value; got {raw!r}."
+        )
+    width, height = (int(part) for part in parts)
+    if width <= 0 or height <= 0:
+        raise MediaConfigurationError(
+            f"IMAGE_GENERATION_SIZE must be a positive WxH value; got {raw!r}."
+        )
+    return f"{width}x{height}"
+
+
+def _normalize_image_generation_size_for_model(value: Any, model: str) -> str:
+    if _is_openai_image_model(model):
+        return _normalize_openai_image_generation_size(value)
+    return _normalize_image_generation_size(value)
+
+
+def _openai_image_edits_endpoint(generation_endpoint: str) -> str:
+    parsed = urlsplit(generation_endpoint)
+    suffix = "/images/generations"
+    if not parsed.scheme or not parsed.netloc or not parsed.path.endswith(suffix):
+        raise MediaConfigurationError(
+            "GPT Image 2 reference editing requires IMAGE_GENERATION_ENDPOINT "
+            "to end with /images/generations."
+        )
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            f"{parsed.path[:-len(suffix)]}/images/edits",
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+
+def _openai_image_edit_multipart_body(
+    payload: dict[str, Any],
+    references: list[dict[str, Any]],
+) -> tuple[bytes, str]:
+    boundary = f"----adcraft-gpt-image-{uuid4().hex}"
+    chunks: list[bytes] = []
+
+    def add_text(name: str, value: str) -> None:
+        chunks.extend(
+            (
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                value.encode("utf-8"),
+                b"\r\n",
+            )
+        )
+
+    for name in ("model", "prompt", "size"):
+        value = payload.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise MediaConfigurationError(f"GPT Image 2 edit request requires {name}.")
+        add_text(name, value)
+
+    image_count = 0
+    seen_asset_ids: set[str] = set()
+    for reference in references:
+        asset_id = str(reference.get("asset_id") or "").strip()
+        if not asset_id or asset_id in seen_asset_ids:
+            continue
+        seen_asset_ids.add(asset_id)
+        value = _openai_image_edit_reference_value(reference)
+        if value is None:
+            continue
+        image_bytes, mime_type = _openai_image_edit_reference_bytes(value)
+        filename = f"reference-{image_count + 1}{_image_file_suffix(mime_type)}"
+        chunks.extend(
+            (
+                f"--{boundary}\r\n".encode(),
+                (
+                    'Content-Disposition: form-data; name="image"; '
+                    f'filename="{filename}"\r\n'
+                ).encode(),
+                f"Content-Type: {mime_type}\r\n\r\n".encode(),
+                image_bytes,
+                b"\r\n",
+            )
+        )
+        image_count += 1
+    if image_count == 0:
+        raise MediaConfigurationError("GPT Image 2 edit request has no usable image reference.")
+    chunks.append(f"--{boundary}--\r\n".encode())
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _openai_image_edit_reference_value(reference: dict[str, Any]) -> str | None:
+    for key in ("provider_input_value", "model_input_value"):
+        value = reference.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _openai_image_edit_reference_bytes(value: str) -> tuple[bytes, str]:
+    if value.startswith("data:image/"):
+        header, separator, encoded = value.partition(",")
+        if not separator or ";base64" not in header:
+            raise MediaConfigurationError("GPT Image 2 reference data URL must be base64 encoded.")
+        mime_type = header[5:].split(";", 1)[0].lower()
+        try:
+            return base64.b64decode(encoded, validate=True), mime_type
+        except ValueError as exc:
+            raise MediaConfigurationError("GPT Image 2 reference data URL is invalid.") from exc
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise MediaConfigurationError("GPT Image 2 reference must be an image data URL or HTTPS URL.")
+    with urllib_request.urlopen(value, timeout=120) as response:
+        image_bytes = response.read()
+        declared_type = response.headers.get_content_type()
+    mime_type = declared_type if declared_type.startswith("image/") else guess_type(parsed.path)[0]
+    if not mime_type or not mime_type.startswith("image/"):
+        raise MediaConfigurationError("GPT Image 2 reference URL did not return an image MIME type.")
+    return image_bytes, mime_type
+
+
+def _image_file_suffix(mime_type: str) -> str:
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }.get(mime_type.lower(), ".img")
 
 
 class _ProviderDownloadError(RuntimeError):
@@ -264,18 +411,39 @@ def _image_file_identity(path: Path) -> tuple[str, str]:
 class RealMediaProvider:
     mode = "real"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        required_media_types: set[str] | None = None,
+    ) -> None:
         self._settings = settings
+        self._required_media_types = required_media_types
         self._validate_settings()
 
     def _validate_settings(self) -> None:
-        required_values = [
-            ("VIDEO_GENERATION_API_KEY", self._settings.video_generation_api_key),
-            ("VIDEO_GENERATION_ENDPOINT", self._settings.video_generation_endpoint),
-            ("IMAGE_GENERATION_API_KEY", self._settings.image_generation_api_key),
-            ("IMAGE_GENERATION_ENDPOINT", self._settings.image_generation_endpoint),
-        ]
-        if not self._settings.skip_audio_agents:
+        required_media_types = self._required_media_types
+        if required_media_types is None:
+            required_media_types = {"image", "video"}
+            if not self._settings.skip_audio_agents:
+                required_media_types.add("audio")
+
+        required_values: list[tuple[str, str | None]] = []
+        if "video" in required_media_types:
+            required_values.extend(
+                [
+                    ("VIDEO_GENERATION_API_KEY", self._settings.video_generation_api_key),
+                    ("VIDEO_GENERATION_ENDPOINT", self._settings.video_generation_endpoint),
+                ]
+            )
+        if "image" in required_media_types:
+            required_values.extend(
+                [
+                    ("IMAGE_GENERATION_API_KEY", self._settings.image_generation_api_key),
+                    ("IMAGE_GENERATION_ENDPOINT", self._settings.image_generation_endpoint),
+                ]
+            )
+        if "audio" in required_media_types and not self._settings.skip_audio_agents:
             required_values.extend(
                 [
                     ("SOUND_EFFECTS_API_KEY", self._settings.sound_effects_api_key),
@@ -290,7 +458,7 @@ class RealMediaProvider:
             if not value:
                 raise MediaConfigurationError(f"Real media mode is enabled, but {name} is missing.")
 
-        if (
+        if self._required_media_types is None and (
             self._settings.composition_provider != "ffmpeg"
             and not self._settings.composition_endpoint
         ):
@@ -298,7 +466,11 @@ class RealMediaProvider:
                 "Real media mode is enabled, but COMPOSITION_ENDPOINT is missing."
             )
 
-        _normalize_image_generation_size(self._settings.image_generation_size)
+        if "image" in required_media_types:
+            _normalize_image_generation_size_for_model(
+                self._settings.image_generation_size,
+                self._settings.image_generation_model,
+            )
 
     # V1-only compatibility adapter; V2 image generation uses generate_v2_canonical_image.
     def generate_storyboard_images(
@@ -515,23 +687,47 @@ class RealMediaProvider:
         reference_assets = [
             asset for asset in request.get("reference_assets", []) if isinstance(asset, dict)
         ]
-        body, wire_audit = serialize_volcengine_image_generation_request(
-            model=model,
-            canonical_prompt=prompt,
-            size=_normalize_image_generation_size(
-                request.get("size") or self._settings.image_generation_size
-            ),
-            references=reference_assets,
-            required_reference_asset_ids=list(request.get("submitted_reference_asset_ids") or []),
-            response_format="url",
-            watermark=False,
+        size = _normalize_image_generation_size_for_model(
+            request.get("size") or self._settings.image_generation_size,
+            model,
         )
+        required_reference_asset_ids = list(request.get("submitted_reference_asset_ids") or [])
+        use_openai_image_edits = _is_cpa_gpt_image_2_model(model) and bool(reference_assets)
+        if use_openai_image_edits:
+            body, wire_audit = serialize_openai_image_edit_request(
+                model=model,
+                canonical_prompt=prompt,
+                size=size,
+                references=reference_assets,
+                required_reference_asset_ids=required_reference_asset_ids,
+            )
+        else:
+            serializer = (
+                serialize_openai_image_generation_request
+                if _is_openai_image_model(model)
+                else serialize_volcengine_image_generation_request
+            )
+            body, wire_audit = serializer(
+                model=model,
+                canonical_prompt=prompt,
+                size=size,
+                references=reference_assets,
+                required_reference_asset_ids=required_reference_asset_ids,
+                **({} if _is_openai_image_model(model) else {
+                    "response_format": "url",
+                    "watermark": False,
+                }),
+            )
         submitted_wire_audit = wire_audit.model_copy(
             update={
                 "submitted_reference_asset_ids": list(wire_audit.serialized_reference_asset_ids)
             }
         ).model_dump(mode="json")
-        response = self._submit_image_generation_request(body)
+        response = (
+            self._submit_openai_image_edit_request(body, reference_assets)
+            if use_openai_image_edits
+            else self._submit_image_generation_request(body)
+        )
         image_url = _image_url_from_response(response)
         image_base64 = _image_base64_from_response(response)
         if image_url is None and image_base64 is None:
@@ -777,6 +973,36 @@ class RealMediaProvider:
                 exc=exc,
                 endpoint=endpoint,
                 payload=payload,
+            ) from exc
+        return json.loads(response_body) if response_body else {}
+
+    def _submit_openai_image_edit_request(
+        self,
+        payload: dict[str, Any],
+        references: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        body, content_type = _openai_image_edit_multipart_body(payload, references)
+        endpoint = _openai_image_edits_endpoint(self._settings.image_generation_endpoint or "")
+        request = urllib_request.Request(
+            endpoint,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {self._settings.image_generation_api_key}",
+                "Content-Type": content_type,
+            },
+            method="POST",
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=120) as response:
+                response_body = response.read().decode("utf-8")
+        except urllib_error.HTTPError as exc:
+            raise _media_api_error(
+                exc=exc,
+                endpoint=endpoint,
+                payload={
+                    **payload,
+                    "reference_count": len(references),
+                },
             ) from exc
         return json.loads(response_body) if response_body else {}
 

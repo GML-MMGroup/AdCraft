@@ -21,7 +21,20 @@ function technicalDetail(error: unknown): string | null {
 }
 
 export function isDecisionDockStaleError(error: unknown): boolean {
-  return isV2ApiError(error) && Boolean(error.code && STALE_CODES.has(error.code));
+  if (!isV2ApiError(error)) return false;
+  if (Boolean(error.code && STALE_CODES.has(error.code))) return true;
+  // Revision preconditions can be reported without a stable error code. Keep
+  // 422 validation errors (for example invalid duration values) actionable in
+  // the dock, while treating explicit stale/conflict wording as authority
+  // failures that require a timeline refresh.
+  if (![409, 412, 422].includes(error.status)) return false;
+  const text = `${error.code ?? ""} ${error.message}`.toLowerCase();
+  if (/(stale|supersed|revision|precondition|conflict|no longer current)/.test(text)) return true;
+  // Some gateways omit the detail message but retain the optimistic-lock
+  // fields in the structured payload.
+  return Object.keys(error.details ?? {}).some((key) =>
+    /(revision|expected|current|precondition)/i.test(key)
+  );
 }
 
 export function decisionDockIssueFromError(error: unknown): DecisionDockIssue {
