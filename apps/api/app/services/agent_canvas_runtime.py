@@ -1611,6 +1611,15 @@ class DynamicCanvasScheduler:
                 expected_lease_generation=lease.generation,
             )
             try:
+                guided_media_context = (
+                    self._guided_media_context_resolver(
+                        context,
+                        lease.generation,
+                        fingerprint,
+                    )
+                    if self._guided_media_context_resolver is not None
+                    else None
+                )
                 publication = (
                     ResultPublicationContext(
                         member_id=member.member_id,
@@ -1628,18 +1637,14 @@ class DynamicCanvasScheduler:
                         outcome,
                         fingerprint=fingerprint,
                         **({"publication": publication} if publication is not None else {}),
+                        **(
+                            {"guided_media_context": guided_media_context}
+                            if guided_media_context is not None
+                            else {}
+                        ),
                     )
                 )
                 now = self._clock()
-                guided_media_context = (
-                    self._guided_media_context_resolver(
-                        context,
-                        lease.generation,
-                        prepared.logical_result_key,
-                    )
-                    if self._guided_media_context_resolver is not None
-                    else None
-                )
                 self._result_committer.commit(
                     CanvasExecutionResultCommitCommandV2(
                         workflow_id=workflow_id,
@@ -1654,7 +1659,7 @@ class DynamicCanvasScheduler:
                         provider_task_id=outcome.provider_task_id,
                         outcome="succeeded",
                         prepared_result=prepared,
-                        guided_media_context=guided_media_context,
+                        guided_media_context=prepared.guided_media_context,
                         committed_at=now,
                     )
                 )

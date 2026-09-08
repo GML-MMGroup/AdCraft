@@ -20,6 +20,9 @@ from app.schemas.agent_canvas_runtime_authority import (
     PreparedNodeResultV2,
     PreparedPostReadyEffectV2,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultPublicationContextV1,
+)
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_node_execution import (
     NodeExecutionContext,
@@ -57,9 +60,16 @@ class AgentCanvasOutputPreparationService:
         *,
         fingerprint: str,
         publication: ResultPublicationContext | None = None,
+        guided_media_context: GuidedMediaResultPublicationContextV1 | None = None,
     ) -> PreparedNodeResultV2:
         try:
-            return self._prepare(context, outcome, fingerprint=fingerprint, publication=publication)
+            return self._prepare(
+                context,
+                outcome,
+                fingerprint=fingerprint,
+                publication=publication,
+                guided_media_context=guided_media_context,
+            )
         except ValidationError as error:
             raise V2PersistenceError(
                 "node_result_publication_failed",
@@ -74,6 +84,7 @@ class AgentCanvasOutputPreparationService:
         *,
         fingerprint: str,
         publication: ResultPublicationContext | None = None,
+        guided_media_context: GuidedMediaResultPublicationContextV1 | None = None,
     ) -> PreparedNodeResultV2:
         effects = _effects(context)
         if outcome.media is not None:
@@ -97,6 +108,9 @@ class AgentCanvasOutputPreparationService:
                 )
 
                 def persist_intent(planned: PreparedNodeResultV2) -> object:
+                    planned = planned.model_copy(
+                        update={"guided_media_context": guided_media_context}
+                    )
                     now = self._clock()
                     prepared_object = planned.prepared_object
                     if prepared_object is None:
@@ -144,6 +158,7 @@ class AgentCanvasOutputPreparationService:
             )
             prepared = prepared.model_copy(
                 update={
+                    "guided_media_context": guided_media_context,
                     "provider_task_id": outcome.provider_task_id,
                     "post_ready_effects": effects,
                 }
@@ -163,6 +178,7 @@ class AgentCanvasOutputPreparationService:
             logical_result_key=fingerprint,
             payload_digest=digest,
             structured_content=structured,
+            guided_media_context=guided_media_context,
             provider_task_id=outcome.provider_task_id,
             post_ready_effects=effects,
         )

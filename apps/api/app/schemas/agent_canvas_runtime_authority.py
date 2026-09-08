@@ -130,6 +130,7 @@ class PreparedNodeResultV2(_AuthorityModel):
     asset_display_name: str | None = Field(default=None, max_length=512)
     asset_source_type: Literal["generated", "derived"] = "generated"
     asset_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    guided_media_context: GuidedMediaResultPublicationContextV1 | None = None
     provider_task_id: str | None = Field(default=None, max_length=160)
     post_ready_effects: tuple[PreparedPostReadyEffectV2, ...] = ()
 

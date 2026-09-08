@@ -210,6 +210,7 @@ class AgentCanvasResultPublicationRecoveryService:
                     provider_task_id=prepared.provider_task_id,
                     outcome="succeeded",
                     prepared_result=prepared,
+                    guided_media_context=prepared.guided_media_context,
                     committed_at=now,
                 )
             )
