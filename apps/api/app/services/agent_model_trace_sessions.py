@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import threading
-from typing import Literal, Sequence
+from typing import Literal, Mapping, Sequence
 
 from app.schemas.agent_model_trace import (
     AgentModelTraceBundleV1,
@@ -33,6 +33,61 @@ class AgentModelTraceSessionError(RuntimeError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def agent_model_trace_session_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> "AgentModelTraceSessionService | None":
+    """Build one isolated Python trace session without exposing its path to Pi."""
+
+    values = environment if environment is not None else os.environ
+    mode = values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_MODE")
+    if mode is None:
+        return None
+    if values.get("ADCRAFT_ACCEPTANCE_ISOLATED") != "1":
+        raise AgentModelTraceSessionError("acceptance_model_replay_forbidden")
+    if mode not in {"live_record", "replay"}:
+        raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+    required = {
+        key: values.get(key)
+        for key in (
+            "ADCRAFT_ACCEPTANCE_MODEL_TRACE_SESSION_ID",
+            "ADCRAFT_ACCEPTANCE_MODEL_TRACE_BUNDLE",
+            "ADCRAFT_ACCEPTANCE_MODEL_TRACE_ROOT",
+        )
+    }
+    if not all(required.values()):
+        raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+    session_id = str(required["ADCRAFT_ACCEPTANCE_MODEL_TRACE_SESSION_ID"])
+    bundle_path = Path(str(required["ADCRAFT_ACCEPTANCE_MODEL_TRACE_BUNDLE"]))
+    trusted_root = Path(str(required["ADCRAFT_ACCEPTANCE_MODEL_TRACE_ROOT"])).resolve()
+    if mode == "replay":
+        expected_digest = values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_EXPECTED_DIGEST")
+        if expected_digest is None:
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        return AgentModelTraceSessionService.load_replay(
+            session_id=session_id,
+            bundle_path=bundle_path,
+            expected_bundle_digest=expected_digest,
+            trusted_roots=(trusted_root,),
+        )
+    profile_id = values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_PROFILE_ID")
+    run_id = values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_RUN_ID")
+    if not profile_id or not run_id:
+        raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+    return AgentModelTraceSessionService.create_live_record(
+        session_id=session_id,
+        bundle_path=bundle_path,
+        trusted_roots=(trusted_root,),
+        fixture_id=values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_FIXTURE_ID")
+        or "acceptance-live-record",
+        profile_id=profile_id,
+        source_acceptance_run_id=run_id,
+        source_attempt_id=run_id,
+        source_workflow_id=values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_WORKFLOW_ID"),
+        source_project_id=values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_PROJECT_ID"),
+        parent_bundle_digest=values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_PARENT_DIGEST"),
+    )
 
 
 def validate_agent_model_trace_path(

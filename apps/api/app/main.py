@@ -21,6 +21,9 @@ from app.persistence.database import create_v2_database
 from app.services.v2_asset_catalog import V2AssetCatalogService
 from app.services.v2_asset_catalog_coordinator import V2AssetCatalogCoordinator
 from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
+from app.services.agent_model_trace_sessions import (
+    agent_model_trace_session_from_environment,
+)
 
 logger = logging.getLogger(__name__)
 AgentCanvasRuntimeFactory = Callable[[Settings], AgentCanvasRuntime]
@@ -42,6 +45,9 @@ def create_app(
             runtime_factory=agent_canvas_runtime_factory,
         ),
     )
+    trace_session = agent_model_trace_session_from_environment()
+    if trace_session is not None:
+        application.state.agent_model_trace_session = trace_session
 
     application.add_middleware(
         CORSMiddleware,
