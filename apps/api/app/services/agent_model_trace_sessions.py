@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import tempfile
 from typing import Literal, Mapping, Sequence
 
 from app.schemas.agent_model_trace import (
@@ -140,7 +141,7 @@ class AgentModelReplayFixtureExtractor:
         if not root.is_absolute():
             root = Path.cwd() / root
         for parent in (root, *root.parents):
-            if parent.exists() and parent.is_symlink():
+            if parent.is_symlink():
                 raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
         resolved_root = root.resolve(strict=False)
         output_path = (resolved_root / f"{self._fixture_id}.json").resolve(strict=False)
@@ -232,7 +233,7 @@ def validate_agent_model_trace_path(
     if not candidate.is_absolute():
         candidate = Path.cwd() / candidate
     for parent in (candidate, *candidate.parents):
-        if parent.exists() and parent.is_symlink():
+        if parent.is_symlink():
             raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
     try:
         resolved = candidate.resolve(strict=must_exist)
@@ -648,11 +649,11 @@ def _json_digest(value: object) -> str:
 
 def _atomic_write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
     encoded = (json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n").encode(
         "utf-8"
     )
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+    temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as output:
             output.write(encoded)
