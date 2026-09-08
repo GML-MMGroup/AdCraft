@@ -318,9 +318,15 @@ class GuidedMediaReviewCoordinator:
     ) -> CanvasPostReadyEffectDispositionV1:
         """Keep new-policy publication free of a synthetic user review."""
 
+        planning_wave_id = getattr(getattr(session, "journey", None), "planning_wave_id", None)
+        if not planning_wave_id:
+            raise _error(
+                "guided_planning_wave_missing",
+                "Guided result publication requires a persisted planning wave.",
+            )
         evidence = GuidedMediaResultEvidenceV2(
             evidence_id=f"guided-result:{lineage.commit_id}",
-            planning_wave_id=f"plan:{plan.document_id}:{plan.revision}",
+            planning_wave_id=planning_wave_id,
             workflow_id=lineage.workflow_id,
             node_id=lineage.node_id,
             node_revision=getattr(node, "revision", 1),
