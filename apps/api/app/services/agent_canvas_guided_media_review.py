@@ -406,9 +406,32 @@ class GuidedMediaReviewCoordinator:
                     payload=evidence.model_dump(mode="json"),
                 )
             )
+        self._resume_ready_manual_node_wait(
+            workflow_id=effect.workflow_id,
+            session=session,
+        )
         return CanvasPostReadyEffectDispositionV1(
             outcome="applied",
             reason_code="guided_media_result_published",
+        )
+
+    def _resume_ready_manual_node_wait(self, *, workflow_id: str, session) -> None:
+        awaiting = getattr(session, "awaiting", None)
+        if (
+            awaiting is None
+            or awaiting.kind != "manual_node_run"
+            or awaiting.resume_policy != "node_terminal"
+            or not self._manual_wait_is_ready(workflow_id, tuple(awaiting.node_ids))
+        ):
+            return
+        self._interactions.resume_awaiting(
+            workflow_id,
+            GuidanceAwaitingResumeProofV2(
+                awaiting_id=awaiting.awaiting_id,
+                expected_session_revision=session.revision,
+                evidence_kind="node_terminal",
+                node_ids=tuple(awaiting.node_ids),
+            ),
         )
 
     def _is_automatic_mode(self, workflow_id: str) -> bool:
