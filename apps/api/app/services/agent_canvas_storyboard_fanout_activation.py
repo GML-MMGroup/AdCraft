@@ -61,6 +61,7 @@ class StoryboardFanoutActivationService:
         fanout = self._receipts.find_fanout_for_confirmation(confirmation_id)
         if fanout is None:
             return StoryboardFanoutActivationResult((), None, ())
+        execution_settings = self._execution_settings(fanout.workflow_id)
 
         prepared_node_ids: list[str] = []
         for plan, operation_id in zip(
@@ -108,6 +109,7 @@ class StoryboardFanoutActivationService:
         next_node_id = self._next_runnable_node_id(
             workflow,
             tuple(plan.node_id for plan in fanout.nodes),
+            require_available_inputs=execution_settings.media_execution_mode == "automatic",
         )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(
@@ -150,7 +152,11 @@ class StoryboardFanoutActivationService:
                 for node_id in node_ids
             ):
                 return StoryboardFanoutActivationResult(node_ids, None, ())
-        next_node_id = self._next_runnable_node_id(workflow, node_ids)
+        next_node_id = self._next_runnable_node_id(
+            workflow,
+            node_ids,
+            require_available_inputs=execution_settings.media_execution_mode == "automatic",
+        )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
         node = next(node for node in workflow.nodes if node.node_id == next_node_id)
@@ -345,6 +351,8 @@ class StoryboardFanoutActivationService:
     def _next_runnable_node_id(
         workflow,
         node_ids: tuple[str, ...],
+        *,
+        require_available_inputs: bool = False,
     ) -> str | None:
         nodes = {node.node_id: node for node in workflow.nodes}
         for node_id in node_ids:
@@ -353,12 +361,39 @@ class StoryboardFanoutActivationService:
                 continue
             if node.prompt_preparation.status != "ready":
                 continue
+            if require_available_inputs and not _has_available_inputs(workflow, node_id, nodes):
+                continue
             return node.node_id
         return None
 
 
 def _run_identity(fanout_plan_id: str, node_id: str) -> str:
     return f"storyboard-fanout:{fanout_plan_id}:{node_id}"
+
+
+def _has_available_inputs(workflow, node_id: str, nodes: dict[str, object]) -> bool:
+    """Keep automatic admission behind the same persisted source outputs as Run."""
+
+    for binding in workflow.bindings:
+        if (
+            binding.target_node_id != node_id
+            or not binding.enabled
+            or binding.input_role
+            not in {"image_reference", "video_reference", "audio_reference"}
+        ):
+            continue
+        source_node_id = getattr(binding.source, "node_id", None)
+        if source_node_id is None:
+            continue
+        source = nodes.get(source_node_id)
+        if source is None:
+            return False
+        if (
+            getattr(source, "output_asset_id", None) is None
+            or getattr(source, "output_asset_version_id", None) is None
+        ):
+            return False
+    return True
 
 
 def _digest(value: str) -> str:
