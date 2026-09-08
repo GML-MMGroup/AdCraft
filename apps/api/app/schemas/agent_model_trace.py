@@ -373,6 +373,40 @@ class AgentModelTraceClaimResponseV1(_FrozenTraceModel):
     replayed: bool = False
 
 
+class AgentModelTraceSealRequestV1(_FrozenTraceModel):
+    protocol_version: Literal["1"] = "1"
+    session_id: str = Field(min_length=1, max_length=160)
+    terminal_disposition: Literal["handled_success", "handled_failure"]
+    terminal_failure_code: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_terminal_failure(self) -> "AgentModelTraceSealRequestV1":
+        if (self.terminal_disposition == "handled_failure") != bool(
+            self.terminal_failure_code
+        ):
+            raise ValueError("acceptance_model_trace_invalid")
+        return self
+
+
+class AgentModelTraceSealReceiptV1(_FrozenTraceModel):
+    protocol_version: Literal["1"] = "1"
+    session_id: str = Field(min_length=1, max_length=160)
+    entry_count: int = Field(ge=0, le=_MAX_TRACE_ENTRIES)
+    bundle_digest: str = Field(pattern=_DIGEST_PATTERN)
+    replayed: bool = False
+
+
+class AgentModelTraceSessionStatusV1(_FrozenTraceModel):
+    protocol_version: Literal["1"] = "1"
+    session_id: str = Field(min_length=1, max_length=160)
+    mode: Literal["live_record", "replay"]
+    sealed: bool
+    entry_count: int = Field(ge=0, le=_MAX_TRACE_ENTRIES)
+    consumed_entries: int = Field(ge=0, le=_MAX_TRACE_ENTRIES)
+    unused_entries: int = Field(ge=0, le=_MAX_TRACE_ENTRIES)
+    bundle_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+
+
 class AgentModelTraceEvidenceV1(_FrozenTraceModel):
     evidence_kind: Literal["live_record", "model_replay", "checkpoint_resume", "final_fresh"]
     relative_bundle_path: str = Field(min_length=1, max_length=320)
