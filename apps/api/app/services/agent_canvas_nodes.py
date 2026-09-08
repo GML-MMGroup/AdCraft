@@ -123,6 +123,16 @@ class AgentCanvasNodeService:
         workflow = self._repository.get_workflow(workflow_id)
         changes = request.model_dump(exclude_unset=True)
         now = datetime.now(timezone.utc)
+        if (
+            _has_managed_prompt_preparation(current)
+            and current.prompt_preparation.status in {"queued", "working"}
+            and _changes_prompt_authority(changes)
+        ):
+            raise V2PersistenceError(
+                "prompt_preparation_in_progress",
+                "Prompt preparation is still in progress.",
+                stage="agent_canvas_nodes",
+            )
         source_only_product = (
             current.node_type == "image"
             and current.creative_role == "product"
