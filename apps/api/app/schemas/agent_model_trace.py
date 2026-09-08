@@ -10,6 +10,9 @@ from typing import Annotated, Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.agent_runtime import AgentModelExecutionPolicyV1
+from app.schemas.provider_models import OpenRouterRoutingPolicyV1
+
 
 _DIGEST_PATTERN = r"^sha256:[a-f0-9]{64}$"
 _MAX_RESPONSE_CHARS = 262_144
@@ -374,3 +377,51 @@ class AgentModelTraceReplayConfigV1(_FrozenTraceModel):
     def validate_bundle_path_is_not_exposed_content(cls, value: str) -> str:
         _validate_safe_trace_value(value)
         return value
+
+
+class _AgentRuntimeTransportSourceBaseV1(_FrozenTraceModel):
+    protocol_version: Literal["1"] = "1"
+    provider: str = Field(min_length=1, max_length=120)
+    model_ref: str = Field(min_length=1, max_length=320)
+    model_id: str = Field(min_length=1, max_length=320)
+    model_policy_id: str = Field(min_length=1, max_length=160)
+    supports_tool_calls: bool
+    supports_strict_structured_output: bool
+    supports_streaming: bool
+    supports_streamed_tool_calls: bool
+    supports_reasoning_controls: bool
+    adapter_id: str = Field(min_length=1, max_length=160)
+    transport_kind: Literal["pi_native_openai_compatible", "litellm_chat"]
+    capability_revision: str = Field(min_length=1, max_length=160)
+    adapter_revision: str = Field(min_length=1, max_length=160)
+    gateway_id: str | None = Field(default=None, max_length=160)
+    model_alias: str | None = Field(default=None, max_length=320)
+    projection_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+    openrouter_routing: OpenRouterRoutingPolicyV1 | None = None
+    execution_policy: AgentModelExecutionPolicyV1
+
+
+class AgentRuntimeProviderSourceV1(_AgentRuntimeTransportSourceBaseV1):
+    source_kind: Literal["provider"] = "provider"
+    base_url: str = Field(min_length=1, max_length=2_048)
+    api_key: str = Field(min_length=1, max_length=4_096, repr=False)
+    trace_mode: Literal["disabled", "live_record"] = "disabled"
+    trace_session_id: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_trace_session(self) -> "AgentRuntimeProviderSourceV1":
+        if (self.trace_mode == "live_record") != bool(self.trace_session_id):
+            raise ValueError("acceptance_model_trace_invalid")
+        return self
+
+
+class AgentRuntimeAcceptanceReplaySourceV1(_AgentRuntimeTransportSourceBaseV1):
+    source_kind: Literal["acceptance_replay"] = "acceptance_replay"
+    trace_session_id: str = Field(min_length=1, max_length=160)
+    expected_bundle_digest: str = Field(pattern=_DIGEST_PATTERN)
+
+
+AgentRuntimeTransportSourceV1 = Annotated[
+    AgentRuntimeProviderSourceV1 | AgentRuntimeAcceptanceReplaySourceV1,
+    Field(discriminator="source_kind"),
+]
