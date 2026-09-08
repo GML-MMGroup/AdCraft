@@ -11,6 +11,7 @@ from pydantic import TypeAdapter
 
 from app.schemas import agent_capabilities
 from app.schemas import agent_runtime
+from app.schemas import agent_model_trace
 from app.schemas import agent_canvas_video_parameters
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
@@ -55,6 +56,22 @@ CONTRACT_MODELS = (
     style_skill_consultation.StyleSkillConsultationContextV1,
     style_skill_consultation.StyleSkillConsultationAuditV1,
     agent_canvas_capabilities.StyleSkillConsultationOrdinaryIntentV1,
+    agent_model_trace.AgentModelTraceRequestIdentityV1,
+    agent_model_trace.AgentModelTraceToolCallV1,
+    agent_model_trace.AgentModelTraceNonStreamingResponseV1,
+    agent_model_trace.AgentModelTraceStreamingChunkV1,
+    agent_model_trace.AgentModelTraceStreamingResponseV1,
+    agent_model_trace.AgentModelTraceSafeFailureV1,
+    agent_model_trace.AgentModelTraceEntryV1,
+    agent_model_trace.AgentModelTraceBundleV1,
+    agent_model_trace.AgentModelTraceRecordRequestV1,
+    agent_model_trace.AgentModelTraceRecordReceiptV1,
+    agent_model_trace.AgentModelTraceClaimRequestV1,
+    agent_model_trace.AgentModelTraceClaimResponseV1,
+    agent_model_trace.AgentModelTraceEvidenceV1,
+    agent_model_trace.AgentModelTraceReplayConfigV1,
+    agent_model_trace.AgentRuntimeProviderSourceV1,
+    agent_model_trace.AgentRuntimeAcceptanceReplaySourceV1,
     agent_canvas_identity_safety.IdentitySafetyDecisionV1,
     agent_canvas_production_closure.StoryboardFanoutNodePlanV1,
     agent_canvas_production_closure.StoryboardFanoutBindingPlanV1,

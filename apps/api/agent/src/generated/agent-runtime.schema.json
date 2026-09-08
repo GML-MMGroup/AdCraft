@@ -1721,6 +1721,1151 @@
       "title": "AgentModelExecutionPolicyV1",
       "type": "object"
     },
+    "AgentModelTraceBundleV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/AgentModelTraceEntryV1"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Entries",
+          "type": "array"
+        },
+        "fixture_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Fixture Id",
+          "type": "string"
+        },
+        "parent_bundle_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Bundle Digest"
+        },
+        "profile_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sealed_at": {
+          "format": "date-time",
+          "title": "Sealed At",
+          "type": "string"
+        },
+        "source_acceptance_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Acceptance Run Id",
+          "type": "string"
+        },
+        "source_attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Attempt Id",
+          "type": "string"
+        },
+        "source_project_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Project Id"
+        },
+        "source_workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Workflow Id"
+        },
+        "terminal_disposition": {
+          "enum": [
+            "handled_failure",
+            "handled_success"
+          ],
+          "title": "Terminal Disposition",
+          "type": "string"
+        },
+        "terminal_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal Failure Code"
+        },
+        "trace_mode": {
+          "enum": [
+            "live_record",
+            "synthetic"
+          ],
+          "title": "Trace Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_digest",
+        "created_at",
+        "entries",
+        "fixture_id",
+        "profile_id",
+        "sealed_at",
+        "source_acceptance_run_id",
+        "source_attempt_id",
+        "terminal_disposition",
+        "trace_mode"
+      ],
+      "title": "AgentModelTraceBundleV1",
+      "type": "object"
+    },
+    "AgentModelTraceClaimRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "request_identity": {
+          "$ref": "#/$defs/AgentModelTraceRequestIdentityV1"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "request_identity",
+        "session_id"
+      ],
+      "title": "AgentModelTraceClaimRequestV1",
+      "type": "object"
+    },
+    "AgentModelTraceClaimResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "entry_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Entry Digest",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "response": {
+          "discriminator": {
+            "mapping": {
+              "non_streaming": "#/$defs/AgentModelTraceNonStreamingResponseV1",
+              "streaming": "#/$defs/AgentModelTraceStreamingResponseV1",
+              "transport_failure": "#/$defs/AgentModelTraceSafeFailureV1"
+            },
+            "propertyName": "response_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentModelTraceNonStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceSafeFailureV1"
+            }
+          ],
+          "title": "Response"
+        },
+        "sequence_no": {
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "entry_digest",
+        "response",
+        "sequence_no",
+        "session_id"
+      ],
+      "title": "AgentModelTraceClaimResponseV1",
+      "type": "object"
+    },
+    "AgentModelTraceEntryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entry_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Entry Digest",
+          "type": "string"
+        },
+        "previous_entry_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Entry Digest"
+        },
+        "recorded_agent_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recorded Agent Run Id",
+          "type": "string"
+        },
+        "request_identity": {
+          "$ref": "#/$defs/AgentModelTraceRequestIdentityV1"
+        },
+        "response": {
+          "discriminator": {
+            "mapping": {
+              "non_streaming": "#/$defs/AgentModelTraceNonStreamingResponseV1",
+              "streaming": "#/$defs/AgentModelTraceStreamingResponseV1",
+              "transport_failure": "#/$defs/AgentModelTraceSafeFailureV1"
+            },
+            "propertyName": "response_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentModelTraceNonStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceSafeFailureV1"
+            }
+          ],
+          "title": "Response"
+        },
+        "sequence_no": {
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "created_at",
+        "entry_digest",
+        "recorded_agent_run_id",
+        "request_identity",
+        "response",
+        "sequence_no"
+      ],
+      "title": "AgentModelTraceEntryV1",
+      "type": "object"
+    },
+    "AgentModelTraceEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "consumed_entries": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Consumed Entries",
+          "type": "integer"
+        },
+        "current_network_submissions": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Current Network Submissions",
+          "type": "integer"
+        },
+        "evidence_kind": {
+          "enum": [
+            "checkpoint_resume",
+            "final_fresh",
+            "live_record",
+            "model_replay"
+          ],
+          "title": "Evidence Kind",
+          "type": "string"
+        },
+        "media_provider_submission_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Media Provider Submission Count",
+          "type": "integer"
+        },
+        "paid_submission_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Paid Submission Count",
+          "type": "integer"
+        },
+        "parent_bundle_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Bundle Digest"
+        },
+        "relative_bundle_path": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Relative Bundle Path",
+          "type": "string"
+        },
+        "replayed_attempts": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Replayed Attempts",
+          "type": "integer"
+        },
+        "safe_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safe Failure Code"
+        },
+        "source_bundle_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Bundle Digest"
+        },
+        "source_recorded_attempts": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Source Recorded Attempts",
+          "type": "integer"
+        },
+        "structured_repair_count": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Structured Repair Count",
+          "type": "integer"
+        },
+        "transport_retry_count": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Transport Retry Count",
+          "type": "integer"
+        },
+        "unused_entries": {
+          "default": 0,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Unused Entries",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bundle_digest",
+        "evidence_kind",
+        "relative_bundle_path"
+      ],
+      "title": "AgentModelTraceEvidenceV1",
+      "type": "object"
+    },
+    "AgentModelTraceNonStreamingResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Tokens"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "maxLength": 262144,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "response_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Id"
+        },
+        "response_kind": {
+          "const": "non_streaming",
+          "default": "non_streaming",
+          "title": "Response Kind",
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentModelTraceToolCallV1"
+          },
+          "maxItems": 1,
+          "title": "Tool Calls",
+          "type": "array"
+        }
+      },
+      "title": "AgentModelTraceNonStreamingResponseV1",
+      "type": "object"
+    },
+    "AgentModelTraceRecordReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "entry_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Entry Digest",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "sequence_no": {
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "entry_digest",
+        "sequence_no",
+        "session_id"
+      ],
+      "title": "AgentModelTraceRecordReceiptV1",
+      "type": "object"
+    },
+    "AgentModelTraceRecordRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "recorded_agent_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recorded Agent Run Id",
+          "type": "string"
+        },
+        "request_identity": {
+          "$ref": "#/$defs/AgentModelTraceRequestIdentityV1"
+        },
+        "response": {
+          "discriminator": {
+            "mapping": {
+              "non_streaming": "#/$defs/AgentModelTraceNonStreamingResponseV1",
+              "streaming": "#/$defs/AgentModelTraceStreamingResponseV1",
+              "transport_failure": "#/$defs/AgentModelTraceSafeFailureV1"
+            },
+            "propertyName": "response_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentModelTraceNonStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceStreamingResponseV1"
+            },
+            {
+              "$ref": "#/$defs/AgentModelTraceSafeFailureV1"
+            }
+          ],
+          "title": "Response"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "recorded_agent_run_id",
+        "request_identity",
+        "response",
+        "session_id"
+      ],
+      "title": "AgentModelTraceRecordRequestV1",
+      "type": "object"
+    },
+    "AgentModelTraceReplayConfigV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Bundle Path",
+          "type": "string"
+        },
+        "case_profile_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Case Profile Id",
+          "type": "string"
+        },
+        "expected_bundle_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Expected Bundle Digest",
+          "type": "string"
+        },
+        "isolated_runtime": {
+          "const": true,
+          "default": true,
+          "title": "Isolated Runtime",
+          "type": "boolean"
+        },
+        "media_mode": {
+          "const": "mock",
+          "default": "mock",
+          "title": "Media Mode",
+          "type": "string"
+        },
+        "mode": {
+          "const": "replay",
+          "default": "replay",
+          "title": "Mode",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_path",
+        "case_profile_id",
+        "expected_bundle_digest",
+        "session_id"
+      ],
+      "title": "AgentModelTraceReplayConfigV1",
+      "type": "object"
+    },
+    "AgentModelTraceRequestIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "attempt_ordinal": {
+          "maximum": 4,
+          "minimum": 1,
+          "title": "Attempt Ordinal",
+          "type": "integer"
+        },
+        "attempt_stage": {
+          "enum": [
+            "capability_fallback",
+            "initial",
+            "structured_repair",
+            "transport_retry"
+          ],
+          "title": "Attempt Stage",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "contract_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/AgentModelExecutionPolicyV1"
+        },
+        "gateway_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gateway Id"
+        },
+        "logical_invocation_key": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Logical Invocation Key",
+          "type": "string"
+        },
+        "model_alias": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Alias"
+        },
+        "model_id": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "openrouter_routing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenRouterRoutingPolicyV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Policy Id",
+          "type": "string"
+        },
+        "policy_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policy Digest",
+          "type": "string"
+        },
+        "projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Digest"
+        },
+        "prompt_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "runtime_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Runtime Digest",
+          "type": "string"
+        },
+        "schema_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Schema Digest",
+          "type": "string"
+        },
+        "skill_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Skill Digest",
+          "type": "string"
+        },
+        "structured_transport": {
+          "enum": [
+            "non_streaming_json_object",
+            "non_streaming_json_schema",
+            "non_streaming_tool_call",
+            "streamed_tool_call",
+            "streaming_json_object"
+          ],
+          "title": "Structured Transport",
+          "type": "string"
+        },
+        "supports_reasoning_controls": {
+          "title": "Supports Reasoning Controls",
+          "type": "boolean"
+        },
+        "supports_streamed_tool_calls": {
+          "title": "Supports Streamed Tool Calls",
+          "type": "boolean"
+        },
+        "supports_streaming": {
+          "title": "Supports Streaming",
+          "type": "boolean"
+        },
+        "supports_strict_structured_output": {
+          "title": "Supports Strict Structured Output",
+          "type": "boolean"
+        },
+        "supports_tool_calls": {
+          "title": "Supports Tool Calls",
+          "type": "boolean"
+        },
+        "transport_kind": {
+          "enum": [
+            "litellm_chat",
+            "pi_native_openai_compatible"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_revision",
+        "attempt_ordinal",
+        "attempt_stage",
+        "capability_revision",
+        "contract_digest",
+        "execution_policy",
+        "logical_invocation_key",
+        "model_id",
+        "model_ref",
+        "operation",
+        "operation_policy_id",
+        "policy_digest",
+        "prompt_digest",
+        "provider",
+        "request_digest",
+        "runtime_digest",
+        "schema_digest",
+        "skill_digest",
+        "structured_transport",
+        "supports_reasoning_controls",
+        "supports_streamed_tool_calls",
+        "supports_streaming",
+        "supports_strict_structured_output",
+        "supports_tool_calls",
+        "transport_kind"
+      ],
+      "title": "AgentModelTraceRequestIdentityV1",
+      "type": "object"
+    },
+    "AgentModelTraceSafeFailureV1": {
+      "additionalProperties": false,
+      "properties": {
+        "error_code": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Error Code",
+          "type": "string"
+        },
+        "exception_class": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exception Class"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "response_kind": {
+          "const": "transport_failure",
+          "default": "transport_failure",
+          "title": "Response Kind",
+          "type": "string"
+        },
+        "response_started": {
+          "title": "Response Started",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "error_code",
+        "response_started"
+      ],
+      "title": "AgentModelTraceSafeFailureV1",
+      "type": "object"
+    },
+    "AgentModelTraceStreamingChunkV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "maxLength": 65536,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "sequence_no": {
+          "maximum": 16384,
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence_no"
+      ],
+      "title": "AgentModelTraceStreamingChunkV1",
+      "type": "object"
+    },
+    "AgentModelTraceStreamingResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "chunks": {
+          "items": {
+            "$ref": "#/$defs/AgentModelTraceStreamingChunkV1"
+          },
+          "maxItems": 16384,
+          "minItems": 1,
+          "title": "Chunks",
+          "type": "array"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Tokens"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "response_kind": {
+          "const": "streaming",
+          "default": "streaming",
+          "title": "Response Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunks"
+      ],
+      "title": "AgentModelTraceStreamingResponseV1",
+      "type": "object"
+    },
+    "AgentModelTraceToolCallV1": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments_json": {
+          "maxLength": 262144,
+          "minLength": 2,
+          "title": "Arguments Json",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "tool_name": {
+          "const": "submit_structured_result",
+          "default": "submit_structured_result",
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments_json",
+        "tool_call_id"
+      ],
+      "title": "AgentModelTraceToolCallV1",
+      "type": "object"
+    },
     "AgentNodeIdRefV2": {
       "additionalProperties": false,
       "properties": {
@@ -3279,6 +4424,177 @@
       "title": "AgentRunRequest",
       "type": "object"
     },
+    "AgentRuntimeAcceptanceReplaySourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/AgentModelExecutionPolicyV1"
+        },
+        "expected_bundle_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Expected Bundle Digest",
+          "type": "string"
+        },
+        "gateway_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gateway Id"
+        },
+        "model_alias": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Alias"
+        },
+        "model_id": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Policy Id",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "openrouter_routing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenRouterRoutingPolicyV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Digest"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "source_kind": {
+          "const": "acceptance_replay",
+          "default": "acceptance_replay",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "supports_reasoning_controls": {
+          "title": "Supports Reasoning Controls",
+          "type": "boolean"
+        },
+        "supports_streamed_tool_calls": {
+          "title": "Supports Streamed Tool Calls",
+          "type": "boolean"
+        },
+        "supports_streaming": {
+          "title": "Supports Streaming",
+          "type": "boolean"
+        },
+        "supports_strict_structured_output": {
+          "title": "Supports Strict Structured Output",
+          "type": "boolean"
+        },
+        "supports_tool_calls": {
+          "title": "Supports Tool Calls",
+          "type": "boolean"
+        },
+        "trace_session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Trace Session Id",
+          "type": "string"
+        },
+        "transport_kind": {
+          "enum": [
+            "litellm_chat",
+            "pi_native_openai_compatible"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_revision",
+        "capability_revision",
+        "execution_policy",
+        "expected_bundle_digest",
+        "model_id",
+        "model_policy_id",
+        "model_ref",
+        "provider",
+        "supports_reasoning_controls",
+        "supports_streamed_tool_calls",
+        "supports_streaming",
+        "supports_strict_structured_output",
+        "supports_tool_calls",
+        "trace_session_id",
+        "transport_kind"
+      ],
+      "title": "AgentRuntimeAcceptanceReplaySourceV1",
+      "type": "object"
+    },
     "AgentRuntimeError": {
       "additionalProperties": false,
       "properties": {
@@ -3466,6 +4782,201 @@
         "status"
       ],
       "title": "AgentRuntimeHealth",
+      "type": "object"
+    },
+    "AgentRuntimeProviderSourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Adapter Revision",
+          "type": "string"
+        },
+        "api_key": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Api Key",
+          "type": "string"
+        },
+        "base_url": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "capability_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Capability Revision",
+          "type": "string"
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/AgentModelExecutionPolicyV1"
+        },
+        "gateway_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gateway Id"
+        },
+        "model_alias": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Alias"
+        },
+        "model_id": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Policy Id",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "openrouter_routing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenRouterRoutingPolicyV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Projection Digest"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "source_kind": {
+          "const": "provider",
+          "default": "provider",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "supports_reasoning_controls": {
+          "title": "Supports Reasoning Controls",
+          "type": "boolean"
+        },
+        "supports_streamed_tool_calls": {
+          "title": "Supports Streamed Tool Calls",
+          "type": "boolean"
+        },
+        "supports_streaming": {
+          "title": "Supports Streaming",
+          "type": "boolean"
+        },
+        "supports_strict_structured_output": {
+          "title": "Supports Strict Structured Output",
+          "type": "boolean"
+        },
+        "supports_tool_calls": {
+          "title": "Supports Tool Calls",
+          "type": "boolean"
+        },
+        "trace_mode": {
+          "default": "disabled",
+          "enum": [
+            "disabled",
+            "live_record"
+          ],
+          "title": "Trace Mode",
+          "type": "string"
+        },
+        "trace_session_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Session Id"
+        },
+        "transport_kind": {
+          "enum": [
+            "litellm_chat",
+            "pi_native_openai_compatible"
+          ],
+          "title": "Transport Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "adapter_revision",
+        "api_key",
+        "base_url",
+        "capability_revision",
+        "execution_policy",
+        "model_id",
+        "model_policy_id",
+        "model_ref",
+        "provider",
+        "supports_reasoning_controls",
+        "supports_streamed_tool_calls",
+        "supports_streaming",
+        "supports_strict_structured_output",
+        "supports_tool_calls",
+        "transport_kind"
+      ],
+      "title": "AgentRuntimeProviderSourceV1",
       "type": "object"
     },
     "AgentStructuredNormalizationAuditV1": {
