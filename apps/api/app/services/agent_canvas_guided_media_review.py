@@ -616,6 +616,12 @@ class GuidedMediaReviewCoordinator:
                         and self._is_automatic_mode(workflow_id)
                         and record.node_role in {"video_segment", "bgm"}
                     ):
+                        if (
+                            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+                            == "proposal_submit_auto_result_v1"
+                        ):
+                            self.publish_from_effect(effect)
+                            continue
                         self._confirmations.confirm_result(
                             workflow_id=workflow_id,
                             plan_document_id=plan.document_id,
