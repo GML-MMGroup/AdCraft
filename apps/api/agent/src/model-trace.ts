@@ -610,11 +610,18 @@ function normalizedTraceFailure(error: unknown): AgentModelTraceResponseV1 {
   const response = value.response && typeof value.response === "object"
     ? value.response as Record<string, unknown>
     : {};
-  const code = typeof value.code === "string"
+  const metadata = value.attemptMetadata && typeof value.attemptMetadata === "object"
+    ? value.attemptMetadata as Record<string, unknown>
+    : {};
+  const code = typeof metadata.safe_error_code === "string"
+    ? metadata.safe_error_code
+    : typeof value.code === "string"
     ? value.code
     : "agent_provider_transport_failed";
   const name = typeof value.name === "string" ? value.name : null;
-  const status = typeof value.status === "number"
+  const status = typeof metadata.http_status === "number"
+    ? metadata.http_status
+    : typeof value.status === "number"
     ? value.status
     : typeof response.status === "number"
       ? response.status
@@ -622,9 +629,11 @@ function normalizedTraceFailure(error: unknown): AgentModelTraceResponseV1 {
   return {
     response_kind: "transport_failure",
     error_code: code.slice(0, 120),
-    exception_class: name?.slice(0, 160) ?? null,
+    exception_class: (typeof metadata.safe_exception_class === "string"
+      ? metadata.safe_exception_class
+      : name?.slice(0, 160)) ?? null,
     http_status: status,
-    response_started: value.response_started === true,
+    response_started: value.response_started === true || metadata.response_activity_observed === true,
   };
 }
 

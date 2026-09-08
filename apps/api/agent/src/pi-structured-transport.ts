@@ -442,17 +442,7 @@ export class PiStructuredTransportRouter {
       };
     } catch (error) {
       if (isAgentModelTraceFailure(error)) throw error;
-      await recordAgentModelTraceOutcome(
-        {
-          ...input,
-          loadedSkills: input.loadedSkills ?? [],
-        },
-        request,
-        stage,
-        error,
-        false,
-      );
-      throw normalizeTransportFailure(
+      const normalized = normalizeTransportFailure(
         error,
         input.signal,
         stage,
@@ -466,6 +456,21 @@ export class PiStructuredTransportRouter {
         ),
         isManualRetryableIntake(input),
       );
+      try {
+        await recordAgentModelTraceOutcome(
+          {
+            ...input,
+            loadedSkills: input.loadedSkills ?? [],
+          },
+          request,
+          stage,
+          normalized,
+          false,
+        );
+      } catch {
+        // Trace capture is secondary to the owning Provider failure boundary.
+      }
+      throw normalized;
     }
   }
 }
