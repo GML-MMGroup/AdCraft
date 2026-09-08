@@ -16,6 +16,7 @@ from app.schemas.agent_model_trace import (
     AgentModelTraceEntryV1,
     AgentModelTraceRecordRequestV1,
     AgentModelTraceRecordReceiptV1,
+    AgentRuntimeAcceptanceReplaySourceV1,
     canonical_model_trace_bundle_digest,
     canonical_model_trace_entry_digest,
     canonical_model_trace_request_digest,
@@ -174,6 +175,52 @@ class AgentModelTraceSessionService:
     def bundle_digest(self) -> str | None:
         bundle = self._sealed or self._bundle
         return bundle.bundle_digest if bundle is not None else None
+
+    def replay_transport_source(
+        self,
+        *,
+        operation: str,
+        model_policy_id: str,
+        model_ref: str,
+    ) -> AgentRuntimeAcceptanceReplaySourceV1:
+        """Return the frozen provider identity without consuming replay state."""
+
+        with self._lock:
+            if self.mode != "replay" or self._bundle is None:
+                raise AgentModelTraceSessionError("acceptance_model_replay_forbidden")
+            if self._cursor >= len(self._bundle.entries):
+                raise AgentModelTraceSessionError("acceptance_model_replay_miss")
+            identity = self._bundle.entries[self._cursor].request_identity
+            if (
+                identity.operation != operation
+                or identity.operation_policy_id != model_policy_id
+                or identity.model_ref != model_ref
+            ):
+                raise AgentModelTraceSessionError("acceptance_model_replay_mismatch")
+            return AgentRuntimeAcceptanceReplaySourceV1(
+                provider=identity.provider,
+                model_ref=identity.model_ref,
+                model_id=identity.model_id,
+                model_policy_id=identity.operation_policy_id,
+                supports_tool_calls=identity.supports_tool_calls,
+                supports_strict_structured_output=(
+                    identity.supports_strict_structured_output
+                ),
+                supports_streaming=identity.supports_streaming,
+                supports_streamed_tool_calls=identity.supports_streamed_tool_calls,
+                supports_reasoning_controls=identity.supports_reasoning_controls,
+                adapter_id=identity.adapter_id,
+                transport_kind=identity.transport_kind,
+                capability_revision=identity.capability_revision,
+                adapter_revision=identity.adapter_revision,
+                gateway_id=identity.gateway_id,
+                model_alias=identity.model_alias,
+                projection_digest=identity.projection_digest,
+                openrouter_routing=identity.openrouter_routing,
+                execution_policy=identity.execution_policy,
+                trace_session_id=self.session_id,
+                expected_bundle_digest=self._bundle.bundle_digest,
+            )
 
     def record_attempt(
         self,

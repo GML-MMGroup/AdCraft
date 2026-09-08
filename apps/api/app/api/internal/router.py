@@ -25,6 +25,7 @@ from app.schemas.agent_model_trace import (
     AgentModelTraceClaimResponseV1,
     AgentModelTraceRecordRequestV1,
     AgentModelTraceRecordReceiptV1,
+    AgentRuntimeProviderSourceV1,
 )
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.services.v2_agent_credential_broker import (
@@ -88,6 +89,7 @@ def require_agent_internal_auth(
 )
 def get_agent_runtime_config(
     credential_ref: str,
+    request: Request,
     response: Response,
     run_id: str,
     agent_name: AgentName,
@@ -110,6 +112,13 @@ def get_agent_runtime_config(
             model_policy_id=model_policy_id,
             model_ref=model_ref,
         )
+        trace_session = getattr(request.app.state, "agent_model_trace_session", None)
+        if isinstance(trace_session, AgentModelTraceSessionService) and trace_session.mode == "replay":
+            return trace_session.replay_transport_source(
+                operation=operation,
+                model_policy_id=model_policy_id,
+                model_ref=model_ref,
+            ).model_dump(mode="json")
         snapshot = V2AgentCredentialBroker(settings).snapshot(
             credential_ref,
             agent_name=agent_name,
@@ -131,33 +140,38 @@ def get_agent_runtime_config(
             status_code=503,
             detail={"code": error.code, "message": error.message},
         ) from error
-    return {
-        "protocol_version": snapshot.protocol_version,
-        "provider": snapshot.provider,
-        "model_ref": snapshot.model_ref,
-        "model_id": snapshot.model_id,
-        "model_policy_id": snapshot.model_policy_id,
-        "base_url": snapshot.base_url,
-        "supports_tool_calls": snapshot.supports_tool_calls,
-        "supports_strict_structured_output": snapshot.supports_strict_structured_output,
-        "supports_streaming": snapshot.supports_streaming,
-        "supports_streamed_tool_calls": snapshot.supports_streamed_tool_calls,
-        "supports_reasoning_controls": snapshot.supports_reasoning_controls,
-        "adapter_id": snapshot.adapter_id,
-        "transport_kind": snapshot.transport_kind,
-        "capability_revision": snapshot.capability_revision,
-        "adapter_revision": snapshot.adapter_revision,
-        "gateway_id": snapshot.gateway_id,
-        "model_alias": snapshot.model_alias,
-        "projection_digest": snapshot.projection_digest,
-        "openrouter_routing": (
-            snapshot.openrouter_routing.model_dump(mode="json")
-            if snapshot.openrouter_routing is not None
-            else None
+    live_trace_session = (
+        trace_session
+        if isinstance(trace_session, AgentModelTraceSessionService)
+        and trace_session.mode == "live_record"
+        else None
+    )
+    return AgentRuntimeProviderSourceV1(
+        provider=snapshot.provider,
+        model_ref=snapshot.model_ref,
+        model_id=snapshot.model_id,
+        model_policy_id=snapshot.model_policy_id,
+        base_url=snapshot.base_url,
+        supports_tool_calls=snapshot.supports_tool_calls,
+        supports_strict_structured_output=snapshot.supports_strict_structured_output,
+        supports_streaming=snapshot.supports_streaming,
+        supports_streamed_tool_calls=snapshot.supports_streamed_tool_calls,
+        supports_reasoning_controls=snapshot.supports_reasoning_controls,
+        adapter_id=snapshot.adapter_id,
+        transport_kind=snapshot.transport_kind,
+        capability_revision=snapshot.capability_revision,
+        adapter_revision=snapshot.adapter_revision,
+        gateway_id=snapshot.gateway_id,
+        model_alias=snapshot.model_alias,
+        projection_digest=snapshot.projection_digest,
+        openrouter_routing=snapshot.openrouter_routing,
+        execution_policy=snapshot.execution_policy,
+        api_key=snapshot.api_key,
+        trace_mode="live_record" if live_trace_session is not None else "disabled",
+        trace_session_id=(
+            live_trace_session.session_id if live_trace_session is not None else None
         ),
-        "execution_policy": snapshot.execution_policy.model_dump(mode="json"),
-        "api_key": snapshot.api_key,
-    }
+    ).model_dump(mode="json")
 
 
 def _frozen_operation_policy(
