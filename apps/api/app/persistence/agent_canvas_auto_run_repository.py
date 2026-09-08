@@ -42,7 +42,7 @@ class AgentCanvasAutomaticRunRepository:
         source_action_id: str,
         node_id: str,
         now: datetime,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
     ) -> AutomaticRunCommandV2:
         command_id = _command_id(workflow_id, source_action_id, node_id)
         try:
@@ -71,7 +71,7 @@ class AgentCanvasAutomaticRunRepository:
         source_action_id: str,
         node_id: str,
         now: datetime,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
     ) -> AutomaticRunCommandV2:
         """Insert one command into its owning publication transaction."""
 
@@ -81,6 +81,10 @@ class AgentCanvasAutomaticRunRepository:
                 "Automatic Run maximum attempts must be positive.",
                 stage="agent_canvas_auto_run",
             )
+        # Automatic execution gets one retry after the initial attempt.  Keep
+        # callers that still pass the historical budget compatible while
+        # preventing new commands from exceeding the policy.
+        max_attempts = min(max_attempts, 2)
         timestamp = _iso(now)
         command_id = _command_id(workflow_id, source_action_id, node_id)
         existing = _select_identity(

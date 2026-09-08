@@ -751,7 +751,7 @@ class AgentCanvasAutomaticRunCommandRow(Base):
     state: Mapped[str] = mapped_column(Text, nullable=False)
     execution_id: Mapped[str | None] = mapped_column(Text)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     next_attempt_at: Mapped[str | None] = mapped_column(Text)
     lease_owner: Mapped[str | None] = mapped_column(Text)
     lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
