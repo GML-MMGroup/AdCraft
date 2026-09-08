@@ -17810,6 +17810,47 @@
           "title": "Decisions",
           "type": "array"
         },
+        "journey_policy_id": {
+          "anyOf": [
+            {
+              "const": "proposal_submit_auto_result_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Policy Id"
+        },
+        "journey_policy_revision": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journey Policy Revision"
+        },
+        "planning_wave_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planning Wave Id"
+        },
         "policy_version": {
           "const": "fixed_ad_production_v2",
           "default": "fixed_ad_production_v2",
