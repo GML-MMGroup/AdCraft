@@ -289,10 +289,13 @@ class AuthoritativeWorkflowContextProjector:
                 owner_state=exact_member.state,
                 blocker_class="automatic_work_in_progress",
             )
+        turn_status = None
+        if leaf is not None:
+            turn_status = self._conversations.get_turn(leaf.leaf_turn_id).status
         return WorkflowActionSummaryV1(
             **base,
             ownership_status="orphaned",
-            turn_status=(leaf.leaf_status if leaf is not None else None),
+            turn_status=turn_status,
             continuation_id=(leaf.continuation_id if leaf is not None else None),
             continuation_status=(leaf.continuation_status if leaf is not None else None),
             error_code="guidance_orphaned_stall",

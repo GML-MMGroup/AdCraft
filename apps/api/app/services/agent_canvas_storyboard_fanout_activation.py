@@ -62,6 +62,7 @@ class StoryboardFanoutActivationService:
         if fanout is None:
             return StoryboardFanoutActivationResult((), None, ())
         execution_settings = self._execution_settings(fanout.workflow_id)
+        media_execution_mode = getattr(execution_settings, "media_execution_mode", "manual")
 
         prepared_node_ids: list[str] = []
         for plan, operation_id in zip(
@@ -109,7 +110,7 @@ class StoryboardFanoutActivationService:
         next_node_id = self._next_runnable_node_id(
             workflow,
             tuple(plan.node_id for plan in fanout.nodes),
-            require_available_inputs=execution_settings.media_execution_mode == "automatic",
+            require_available_inputs=media_execution_mode == "automatic",
         )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(
@@ -138,6 +139,7 @@ class StoryboardFanoutActivationService:
 
         workflow = self._workflows.get_workflow(workflow_id)
         execution_settings = self._execution_settings(workflow_id)
+        media_execution_mode = getattr(execution_settings, "media_execution_mode", "manual")
         if execution_settings.media_execution_mode == "automatic":
             # Recovery callbacks can reach this service without the endpoint
             # wrapper. Keep automatic admission Storyboard-only so a ready
@@ -155,7 +157,7 @@ class StoryboardFanoutActivationService:
         next_node_id = self._next_runnable_node_id(
             workflow,
             node_ids,
-            require_available_inputs=execution_settings.media_execution_mode == "automatic",
+            require_available_inputs=media_execution_mode == "automatic",
         )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
