@@ -197,11 +197,25 @@ class AgentModelTraceNonStreamingResponseV1(_FrozenTraceModel):
 class AgentModelTraceStreamingChunkV1(_FrozenTraceModel):
     sequence_no: int = Field(ge=1, le=16_384)
     content: str | None = Field(default=None, max_length=65_536)
+    tool_call_index: int | None = Field(default=None, ge=0, le=0)
+    tool_call_id_fragment: str | None = Field(default=None, max_length=160)
+    tool_name_fragment: str | None = Field(default=None, max_length=160)
+    tool_arguments_fragment: str | None = Field(default=None, max_length=65_536)
     finish_reason: str | None = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
     def validate_chunk(self) -> "AgentModelTraceStreamingChunkV1":
-        if self.content is None and self.finish_reason is None:
+        tool_fragments = (
+            self.tool_call_id_fragment,
+            self.tool_name_fragment,
+            self.tool_arguments_fragment,
+        )
+        has_tool_fragment = any(fragment is not None for fragment in tool_fragments)
+        if self.content is None and self.finish_reason is None and not has_tool_fragment:
+            raise ValueError("acceptance_model_trace_invalid")
+        if has_tool_fragment != (self.tool_call_index is not None):
+            raise ValueError("acceptance_model_trace_invalid")
+        if self.content is not None and has_tool_fragment:
             raise ValueError("acceptance_model_trace_invalid")
         _validate_safe_trace_value(self.model_dump(mode="json"))
         return self
