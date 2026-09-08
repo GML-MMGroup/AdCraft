@@ -122,7 +122,10 @@ class GuidedMediaReviewCoordinator:
                 outcome="superseded",
                 reason_code="not_current_guided_media",
             )
-        if session.journey.journey_policy_id == "proposal_submit_auto_result_v1":
+        if (
+            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+            == "proposal_submit_auto_result_v1"
+        ):
             return self._publish_automatic_result_evidence(
                 effect=effect,
                 lineage=lineage,
