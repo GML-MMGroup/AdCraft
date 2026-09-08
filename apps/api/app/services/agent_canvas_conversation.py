@@ -1900,6 +1900,7 @@ class AgentConversationService:
                     else None
                 ),
                 response_locale=intent.response_locale,
+                journey_policy_id="proposal_submit_auto_result_v1",
             )
         duration_questionnaire = self._duration_authority.questionnaire(
             requirements,
