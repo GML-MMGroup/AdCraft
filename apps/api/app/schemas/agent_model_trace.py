@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.agent_runtime import AgentModelExecutionPolicyV1
 from app.schemas.provider_models import OpenRouterRoutingPolicyV1
+from app.schemas.agent_model_trace_request_snapshot import AgentModelTraceRequestSnapshotV1
 
 
 _DIGEST_PATTERN = r"^sha256:[a-f0-9]{64}$"
@@ -272,6 +273,7 @@ class AgentModelTraceEntryV1(_FrozenTraceModel):
     recorded_agent_run_id: str = Field(min_length=1, max_length=160)
     request_identity: AgentModelTraceRequestIdentityV1
     response: AgentModelTraceResponseV1
+    request_snapshot_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     created_at: datetime
     entry_digest: str = Field(pattern=_DIGEST_PATTERN)
 
@@ -345,6 +347,13 @@ class AgentModelTraceRecordRequestV1(_FrozenTraceModel):
     recorded_agent_run_id: str = Field(min_length=1, max_length=160)
     request_identity: AgentModelTraceRequestIdentityV1
     response: AgentModelTraceResponseV1
+    request_snapshot: AgentModelTraceRequestSnapshotV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_snapshot_identity(self) -> "AgentModelTraceRecordRequestV1":
+        if self.request_snapshot is not None:
+            self.request_snapshot.validate_identity(self.request_identity)
+        return self
 
 
 class AgentModelTraceRecordReceiptV1(_FrozenTraceModel):

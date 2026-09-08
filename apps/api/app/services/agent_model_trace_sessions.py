@@ -22,6 +22,7 @@ from app.schemas.agent_model_trace import (
     AgentModelTraceSealReceiptV1,
     AgentModelTraceSealRequestV1,
     AgentModelTraceSessionStatusV1,
+    AgentModelTraceRequestSnapshotV1,
     AgentRuntimeAcceptanceReplaySourceV1,
     canonical_model_trace_bundle_digest,
     canonical_model_trace_entry_digest,
@@ -473,6 +474,9 @@ class AgentModelTraceSessionService:
                 "recorded_agent_run_id": request.recorded_agent_run_id,
                 "request_identity": request.request_identity,
                 "response": request.response,
+                "request_snapshot_digest": (
+                    request.request_snapshot.digest if request.request_snapshot else None
+                ),
                 "created_at": datetime.now(timezone.utc),
             }
             values["entry_digest"] = canonical_model_trace_entry_digest(values)
@@ -483,11 +487,59 @@ class AgentModelTraceSessionService:
                 sequence_no=sequence_no,
                 entry_digest=entry.entry_digest,
             )
+            if request.request_snapshot is not None:
+                request.request_snapshot.validate_identity(request.request_identity)
+                path = self._snapshot_path(request.request_snapshot.digest, must_exist=False)
+                if path.exists():
+                    if (
+                        path.read_text()
+                        != json.dumps(
+                            request.request_snapshot.model_dump(mode="json"),
+                            ensure_ascii=True,
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    ):
+                        raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+                else:
+                    _atomic_write_json(path, request.request_snapshot.model_dump(mode="json"))
+            # An unreferenced protected snapshot after a failed write is audit-only.
+            # Publish the response receipt/cursor only after durable entry publication.
+            self._write_partial(entries=(*self._entries, entry))
             self._entries.append(entry)
             self._record_receipts[request.attempt_id] = receipt
             self._record_request_digests[request.attempt_id] = request_digest
-            self._write_partial()
             return receipt
+
+    def _snapshot_path(self, digest: str, *, must_exist: bool) -> Path:
+        return validate_agent_model_trace_path(
+            self.bundle_path.parent / "request-snapshots" / f"{digest[7:]}.json",
+            trusted_roots=self._trusted_roots,
+            must_exist=must_exist,
+        )
+
+    def load_request_snapshot(self, *, sequence_no: int) -> AgentModelTraceRequestSnapshotV1:
+        """Reconstruct only an exact sealed operation; never infer current Workflow state."""
+
+        with self._lock:
+            bundle = self._bundle or self._sealed
+            if bundle is None or not 1 <= sequence_no <= len(bundle.entries):
+                raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+            entry = bundle.entries[sequence_no - 1]
+            if entry.request_snapshot_digest is None:
+                raise AgentModelTraceSessionError("acceptance_model_request_snapshot_missing")
+            path = self._snapshot_path(entry.request_snapshot_digest, must_exist=True)
+            try:
+                if path.stat().st_size > 2_097_152:
+                    raise ValueError("acceptance_model_trace_unsafe")
+                snapshot = AgentModelTraceRequestSnapshotV1.model_validate_json(path.read_text())
+                if snapshot.digest != entry.request_snapshot_digest:
+                    raise ValueError("acceptance_model_trace_invalid")
+                snapshot.validate_identity(entry.request_identity)
+                return snapshot
+            except (ValueError, OSError) as error:
+                raise AgentModelTraceSessionError("acceptance_model_trace_invalid") from error
 
     def seal(
         self,
@@ -563,10 +615,13 @@ class AgentModelTraceSessionService:
             self._claim_request_digests[request.attempt_id] = request_digest
             return response
 
-    def _write_partial(self) -> None:
+    def _write_partial(self, *, entries: Sequence[AgentModelTraceEntryV1] | None = None) -> None:
         payload = {
             **self._bundle_metadata,
-            "entries": [entry.model_dump(mode="json") for entry in self._entries],
+            "entries": [
+                entry.model_dump(mode="json")
+                for entry in (entries if entries is not None else self._entries)
+            ],
             "sealed": False,
         }
         _atomic_write_json(self.bundle_path.with_suffix(".partial.json"), payload)
