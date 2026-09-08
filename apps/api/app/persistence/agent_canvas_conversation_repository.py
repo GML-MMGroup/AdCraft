@@ -230,6 +230,7 @@ class AgentCanvasConversationRepository:
         character_occurrences: tuple[CharacterOccurrenceV1, ...] | None = None,
         active_style_skill_run_id: str | None,
         response_locale: BCP47Tag = "und",
+        journey_policy_id: Literal["proposal_submit_auto_result_v1"] | None = None,
     ) -> GuidedSessionStateV2:
         now = _now()
         locale = canonicalize_bcp47_tag(response_locale)
@@ -270,10 +271,21 @@ class AgentCanvasConversationRepository:
                             active_proposal_id=None,
                             active_style_skill_run_id=active_style_skill_run_id,
                             completion_json=completion.model_dump_json(),
-                            journey_state_json=initial_production_journey(
-                                element_decisions,
-                                character_occurrences=character_occurrences,
-                            ).model_dump_json(),
+                            journey_state_json=(
+                                initial_production_journey(
+                                    element_decisions,
+                                    character_occurrences=character_occurrences,
+                                )
+                                .model_copy(
+                                    update={
+                                        "journey_policy_id": journey_policy_id,
+                                        "journey_policy_revision": (
+                                            1 if journey_policy_id is not None else None
+                                        ),
+                                    }
+                                )
+                                .model_dump_json()
+                            ),
                             revision=1,
                             created_at=now,
                             updated_at=now,
