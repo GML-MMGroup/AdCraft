@@ -2019,6 +2019,19 @@
         "request_identity": {
           "$ref": "#/$defs/AgentModelTraceRequestIdentityV1"
         },
+        "request_snapshot_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Snapshot Digest"
+        },
         "response": {
           "discriminator": {
             "mapping": {
@@ -2418,6 +2431,17 @@
         "request_identity": {
           "$ref": "#/$defs/AgentModelTraceRequestIdentityV1"
         },
+        "request_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentModelTraceRequestSnapshotV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "response": {
           "discriminator": {
             "mapping": {
@@ -2741,6 +2765,55 @@
         "transport_kind"
       ],
       "title": "AgentModelTraceRequestIdentityV1",
+      "type": "object"
+    },
+    "AgentModelTraceRequestSnapshotV1": {
+      "additionalProperties": false,
+      "description": "Exact canonical request bytes from Pi, protected by Python storage.",
+      "properties": {
+        "contract_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Name",
+          "type": "string"
+        },
+        "output_schema_json": {
+          "maxLength": 262144,
+          "minLength": 2,
+          "title": "Output Schema Json",
+          "type": "string"
+        },
+        "provider_request_json": {
+          "maxLength": 524288,
+          "minLength": 2,
+          "title": "Provider Request Json",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "system_prompt": {
+          "maxLength": 262144,
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "user_prompt": {
+          "maxLength": 262144,
+          "title": "User Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_name",
+        "output_schema_json",
+        "provider_request_json",
+        "system_prompt",
+        "user_prompt"
+      ],
+      "title": "AgentModelTraceRequestSnapshotV1",
       "type": "object"
     },
     "AgentModelTraceSafeFailureV1": {

@@ -56,6 +56,7 @@ CONTRACT_MODELS = (
     style_skill_consultation.StyleSkillConsultationContextV1,
     style_skill_consultation.StyleSkillConsultationAuditV1,
     agent_canvas_capabilities.StyleSkillConsultationOrdinaryIntentV1,
+    agent_model_trace.AgentModelTraceRequestSnapshotV1,
     agent_model_trace.AgentModelTraceRequestIdentityV1,
     agent_model_trace.AgentModelTraceToolCallV1,
     agent_model_trace.AgentModelTraceNonStreamingResponseV1,
