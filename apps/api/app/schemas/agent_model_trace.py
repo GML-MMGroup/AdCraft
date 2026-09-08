@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import sha256
 import json
+from pathlib import PurePosixPath
 import re
 from typing import Annotated, Any, Literal, Mapping
 
@@ -320,9 +321,7 @@ class AgentModelTraceBundleV1(_FrozenTraceModel):
             if entry.previous_entry_digest != previous:
                 raise ValueError("acceptance_model_trace_invalid")
             previous = entry.entry_digest
-        if (self.terminal_disposition == "handled_failure") != bool(
-            self.terminal_failure_code
-        ):
+        if (self.terminal_disposition == "handled_failure") != bool(self.terminal_failure_code):
             raise ValueError("acceptance_model_trace_invalid")
         if self.bundle_digest != canonical_model_trace_bundle_digest(self):
             raise ValueError("acceptance_model_trace_invalid")
@@ -381,9 +380,7 @@ class AgentModelTraceSealRequestV1(_FrozenTraceModel):
 
     @model_validator(mode="after")
     def validate_terminal_failure(self) -> "AgentModelTraceSealRequestV1":
-        if (self.terminal_disposition == "handled_failure") != bool(
-            self.terminal_failure_code
-        ):
+        if (self.terminal_disposition == "handled_failure") != bool(self.terminal_failure_code):
             raise ValueError("acceptance_model_trace_invalid")
         return self
 
@@ -423,6 +420,19 @@ class AgentModelTraceEvidenceV1(_FrozenTraceModel):
     media_provider_submission_count: int = Field(default=0, ge=0)
     paid_submission_count: int = Field(default=0, ge=0)
     safe_failure_code: str | None = Field(default=None, max_length=120)
+
+    @field_validator("relative_bundle_path")
+    @classmethod
+    def validate_relative_bundle_path(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if (
+            path.is_absolute()
+            or value != path.as_posix()
+            or any(part in {"", ".", ".."} for part in path.parts)
+            or "\\" in value
+        ):
+            raise ValueError("acceptance_model_trace_unsafe")
+        return value
 
 
 class AgentModelTraceReplayConfigV1(_FrozenTraceModel):
