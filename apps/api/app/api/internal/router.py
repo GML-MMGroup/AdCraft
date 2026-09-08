@@ -135,6 +135,8 @@ def get_agent_runtime_config(
                 "message": "Agent runtime run identity is stale or unavailable.",
             },
         ) from error
+    except AgentModelTraceSessionError as error:
+        raise _trace_http_error(error) from error
     except AgentCredentialError as error:
         raise HTTPException(
             status_code=503,
