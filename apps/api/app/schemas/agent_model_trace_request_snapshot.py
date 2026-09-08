@@ -32,6 +32,7 @@ _PROVIDER_KEYS = frozenset(
     {
         "model",
         "messages",
+        "system_prompt",
         "max_tokens",
         "stream",
         "tools",
@@ -96,6 +97,30 @@ def _parsed(value: str) -> dict[str, Any]:
         raise ValueError("acceptance_model_trace_unsafe") from error
 
 
+def _validate_text_messages(provider: dict[str, Any]) -> None:
+    messages = provider.get("messages", [])
+    if not isinstance(messages, list):
+        raise ValueError("acceptance_model_trace_unsafe")
+    for message in messages:
+        if (
+            not isinstance(message, dict)
+            or set(message) - {"role", "content", "timestamp"}
+            or message.get("role") not in {"system", "user", "assistant"}
+        ):
+            raise ValueError("acceptance_model_trace_unsafe")
+        content = message.get("content")
+        if isinstance(content, str):
+            continue
+        if not isinstance(content, list) or any(
+            not isinstance(part, dict)
+            or set(part) != {"type", "text"}
+            or part["type"] != "text"
+            or not isinstance(part["text"], str)
+            for part in content
+        ):
+            raise ValueError("acceptance_model_trace_unsafe")
+
+
 class AgentModelTraceRequestSnapshotV1(BaseModel):
     """Exact canonical request bytes from Pi, protected by Python storage."""
 
@@ -118,6 +143,7 @@ class AgentModelTraceRequestSnapshotV1(BaseModel):
         provider = _parsed(self.provider_request_json)
         if set(provider) - _PROVIDER_KEYS:
             raise ValueError("acceptance_model_trace_unsafe")
+        _validate_text_messages(provider)
         return self
 
     @property
