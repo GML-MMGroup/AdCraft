@@ -125,6 +125,7 @@ class GuidedMediaReviewCoordinator:
         resume_media_confirmation: Callable[[str], None] | None = None,
         node_resolver: Callable[[str, str], object] | None = None,
         execution_settings: Callable[[str], object] | None = None,
+        prompt_ready_activation: Callable[..., object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -137,6 +138,7 @@ class GuidedMediaReviewCoordinator:
         self._resume_media_confirmation = resume_media_confirmation
         self._node_resolver = node_resolver
         self._execution_settings = execution_settings
+        self._prompt_ready_activation = prompt_ready_activation
 
     def on_node_ready(self, node) -> tuple[str, ...]:
         return self._on_node_ready(
@@ -410,6 +412,21 @@ class GuidedMediaReviewCoordinator:
             workflow_id=effect.workflow_id,
             session=session,
         )
+        if self._prompt_ready_activation is not None:
+            planned_node_ids = tuple(
+                record.node_id
+                for record in (
+                    getattr(plan.content, "planned_nodes", None)
+                    or getattr(plan.content, "node_records", ())
+                )
+                if getattr(record, "node_role", None)
+                in {"storyboard_grid", "video_segment", "bgm"}
+            )
+            self._prompt_ready_activation(
+                effect.workflow_id,
+                planned_node_ids,
+                source_id=f"guided-result:{lineage.commit_id}",
+            )
         return CanvasPostReadyEffectDispositionV1(
             outcome="applied",
             reason_code="guided_media_result_published",

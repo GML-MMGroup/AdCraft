@@ -1365,6 +1365,7 @@ def create_agent_canvas_runtime(
         resume_media_confirmation=resume_media_confirmation,
         node_resolver=workflow_repository.get_node,
         execution_settings=execution_settings.get_or_create,
+        prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
     )
 
     def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
