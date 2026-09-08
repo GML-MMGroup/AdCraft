@@ -214,7 +214,10 @@ class AgentCanvasExecutionParameterResolver:
                 "Direct manual media parameters require a Video Node.",
             )
         try:
-            manual_values, manual_provenance = _manual_parameters(node)
+            manual_values, manual_provenance = _manual_parameters(
+                node,
+                include_user_explicit=True,
+            )
             binding_candidates = _direct_typed_binding_candidates(
                 binding_snapshots,
                 capability=capability,
@@ -319,6 +322,8 @@ def _positive_integer_duration(value: object) -> int:
 
 def _manual_parameters(
     node: CanvasNodeV2,
+    *,
+    include_user_explicit: bool = False,
 ) -> tuple[dict[str, object], dict[str, CanvasParameterProvenanceV2]]:
     values: dict[str, object] = {}
     provenance: dict[str, CanvasParameterProvenanceV2] = {}
@@ -326,7 +331,9 @@ def _manual_parameters(
         if field in NON_PROVIDER_NODE_PARAMETER_KEYS:
             continue
         item = node.parameter_provenance.get(field)
-        if item is not None and item.origin != "manual":
+        if item is not None and item.origin != "manual" and not (
+            include_user_explicit and item.origin == "user_explicit"
+        ):
             continue
         scalar = _validated_platform_value(field, value)
         values[field] = scalar
