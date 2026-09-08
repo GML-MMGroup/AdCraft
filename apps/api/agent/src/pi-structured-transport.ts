@@ -8,6 +8,7 @@ import {
 } from "./chat-completion-chunk-normalizer.js";
 import type {
   AgentRunRequest,
+  AgentModelTraceStreamingChunkV1,
   AgentStructuredValidationAttemptAuditV1,
   AgentTransportAttemptMetadataV1,
 } from "./generated/agent-runtime.js";
@@ -87,6 +88,7 @@ export interface StreamingJsonTransportMetadata {
   readonly response_bytes: number;
   readonly finish_reason: string | null;
   readonly provider_trace_id: string | null;
+  readonly normalized_chunks?: ReadonlyArray<AgentModelTraceStreamingChunkV1>;
 }
 
 export interface StructuredCompletionResponse {
@@ -528,6 +530,7 @@ export async function aggregateStreamingJsonCompletion(
   let finishReason: string | null = null;
   let providerTraceId: string | null = null;
   let terminal = false;
+  const normalizedChunks: AgentModelTraceStreamingChunkV1[] = [];
   try {
     while (true) {
       const item = await abortableNext(iterator, options.signal);
@@ -556,6 +559,15 @@ export async function aggregateStreamingJsonCompletion(
           firstContentAt = observedAt;
         }
         content += parsed.content;
+      }
+      if (parsed.content !== null || parsed.finishReason !== null) {
+        normalizedChunks.push({
+          sequence_no: normalizedChunks.length + 1,
+          ...(parsed.content !== null ? { content: parsed.content } : {}),
+          ...(parsed.finishReason !== null
+            ? { finish_reason: parsed.finishReason }
+            : {}),
+        });
       }
       if (parsed.finishReason !== null) {
         finishReason = parsed.finishReason;
@@ -586,6 +598,7 @@ export async function aggregateStreamingJsonCompletion(
         response_bytes: responseBytes,
         finish_reason: finishReason,
         provider_trace_id: providerTraceId,
+        normalized_chunks: normalizedChunks,
       },
     };
   } catch (error) {

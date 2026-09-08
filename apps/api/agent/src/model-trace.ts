@@ -142,6 +142,16 @@ export function traceRequestIdentity(
 export function normalizedTraceResponse(
   response: StructuredCompletionResponse,
 ): AgentModelTraceResponseV1 {
+  if (response.transport_metadata?.normalized_chunks) {
+    return {
+      response_kind: "streaming",
+      chunks: response.transport_metadata.normalized_chunks,
+      prompt_tokens: response.usage?.prompt_tokens ?? null,
+      completion_tokens: response.usage?.completion_tokens ?? null,
+      reasoning_tokens:
+        response.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+    };
+  }
   const choice = response.choices?.[0];
   const toolCalls = choice?.message?.tool_calls ?? [];
   return {
