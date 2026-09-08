@@ -89,6 +89,14 @@ export async function recordAgentModelTraceOutcome(
     response: succeeded
       ? normalizedTraceResponse(response as StructuredCompletionResponse)
       : normalizedTraceFailure(response),
+    request_snapshot: {
+      schema_version: "1",
+      contract_name: context.request.contract_name ?? "SpecialistDraft",
+      system_prompt: context.systemPrompt,
+      user_prompt: context.userPrompt,
+      output_schema_json: JSON.stringify(canonicalJsonValue(context.schema)),
+      provider_request_json: JSON.stringify(canonicalJsonValue(providerRequest)),
+    },
   };
   await context.traceClient.recordModelTraceAttempt(request);
 }
