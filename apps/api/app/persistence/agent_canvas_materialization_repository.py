@@ -3661,8 +3661,7 @@ def _guided_submission_context(
             or submission["result_json"] is None
             or str(interaction["status"]) != "closed"
             or int(interaction["revision"]) != request.expected_interaction_revision + 1
-            or int(interaction["expected_session_revision"])
-            != request.expected_session_revision
+            or int(interaction["expected_session_revision"]) != request.expected_session_revision
         ):
             raise _error(
                 "guided_interaction_stale",

@@ -378,8 +378,7 @@ def _has_available_inputs(workflow, node_id: str, nodes: dict[str, object]) -> b
         if (
             binding.target_node_id != node_id
             or not binding.enabled
-            or binding.input_role
-            not in {"image_reference", "video_reference", "audio_reference"}
+            or binding.input_role not in {"image_reference", "video_reference", "audio_reference"}
         ):
             continue
         source_node_id = getattr(binding.source, "node_id", None)

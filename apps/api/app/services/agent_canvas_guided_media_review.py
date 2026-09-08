@@ -55,9 +55,7 @@ MediaAction = Callable[
     GuidedMediaActionOutcome,
 ]
 
-_STORYBOARD_PLAN_CREATIVE_ROLES = frozenset(
-    {"storyboard_sequence", "storyboard_video", "bgm"}
-)
+_STORYBOARD_PLAN_CREATIVE_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
 
 
 class GuidedMediaResultPublicationContextResolver:
@@ -419,8 +417,7 @@ class GuidedMediaReviewCoordinator:
                     getattr(plan.content, "planned_nodes", None)
                     or getattr(plan.content, "node_records", ())
                 )
-                if getattr(record, "node_role", None)
-                in {"storyboard_grid", "video_segment", "bgm"}
+                if getattr(record, "node_role", None) in {"storyboard_grid", "video_segment", "bgm"}
             )
             self._prompt_ready_activation(
                 effect.workflow_id,
