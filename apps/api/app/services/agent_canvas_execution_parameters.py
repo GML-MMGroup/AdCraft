@@ -331,8 +331,10 @@ def _manual_parameters(
         if field in NON_PROVIDER_NODE_PARAMETER_KEYS:
             continue
         item = node.parameter_provenance.get(field)
-        if item is not None and item.origin != "manual" and not (
-            include_user_explicit and item.origin == "user_explicit"
+        if (
+            item is not None
+            and item.origin != "manual"
+            and not (include_user_explicit and item.origin == "user_explicit")
         ):
             continue
         scalar = _validated_platform_value(field, value)
