@@ -404,6 +404,13 @@ class GuidedMediaReviewCoordinator:
         session = self._conversations.get_guidance_session_or_none(node.workflow_id)
         if session is None or node.output_asset_id is None:
             return ()
+        if (
+            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+            == "proposal_submit_auto_result_v1"
+        ):
+            # New-policy publication is driven by the typed post-ready evidence
+            # effect. A node-ready projection must never recreate legacy review.
+            return ()
         plan, record = _find_plan_record(self._plans, node.workflow_id, node.node_id)
         if plan is None or record.node_role not in {
             "storyboard_grid",
