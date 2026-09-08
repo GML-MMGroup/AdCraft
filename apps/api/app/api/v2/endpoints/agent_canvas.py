@@ -418,6 +418,7 @@ from app.services.model_resolution import ModelResolutionService
 from app.services.provider_adapter_registry import build_trusted_provider_adapter_registry
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
@@ -646,7 +647,25 @@ def create_agent_canvas_runtime(
         ProviderModelBootstrapService(settings, model_repository).bootstrap(
             now=datetime.now(timezone.utc).isoformat()
         )
-    model_catalog = ProviderModelCatalogService(model_repository)
+    replay_enabled = isolated_agent_model_replay_enabled()
+    replay_defaults = model_repository.get_defaults() if replay_enabled else {}
+    replay_model_refs = {
+        record.model_ref for key, record in replay_defaults.items() if key in {"agent", "text"}
+    }
+    replay_model_ref = next(iter(replay_model_refs)) if len(replay_model_refs) == 1 else None
+    replay_providers = (
+        {replay_model_ref.split(":", 1)[0]}
+        if replay_model_ref is not None and ":" in replay_model_ref
+        else set()
+    )
+    model_catalog = ProviderModelCatalogService(
+        model_repository,
+        capability_available=(
+            lambda provider_id, capability: capability == "text" and provider_id in replay_providers
+        )
+        if replay_providers
+        else None,
+    )
     model_selection = ModelSelectionService(model_catalog)
     adapter_registry = build_trusted_provider_adapter_registry(
         model_catalog.list_models(include_unavailable=True),
@@ -656,6 +675,7 @@ def create_agent_canvas_runtime(
         model_selection,
         model_repository,
         allow_fake=(settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"),
+        acceptance_replay_model_ref=replay_model_ref if replay_enabled else None,
         adapter_registry=adapter_registry,
     )
     project_repository = ProjectRepository(database)

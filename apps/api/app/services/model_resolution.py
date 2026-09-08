@@ -23,11 +23,13 @@ class ModelResolutionService:
         repository: ProviderModelRepository,
         *,
         allow_fake: bool,
+        acceptance_replay_model_ref: str | None = None,
         adapter_registry: ProviderAdapterRegistry | None = None,
     ) -> None:
         self._selection = selection
         self._repository = repository
         self._allow_fake = allow_fake
+        self._acceptance_replay_model_ref = acceptance_replay_model_ref
         self._adapter_registry = adapter_registry
 
     def resolve(self, node: CanvasNodeV2) -> ResolvedModelExecutionV2:
@@ -64,7 +66,13 @@ class ModelResolutionService:
             connection = self._repository.get_connection(selected.provider_id)
         except ValueError as error:
             raise _error("provider_credentials_missing", selected.provider_id) from error
-        if selected.provider_id != "fake" or not self._allow_fake:
+        acceptance_replay_selection = (
+            selected.capability == "text"
+            and selected.model_ref == self._acceptance_replay_model_ref
+        )
+        if not acceptance_replay_selection and (
+            selected.provider_id != "fake" or not self._allow_fake
+        ):
             if connection.connection_state != "configured":
                 raise _error("provider_credentials_missing", selected.provider_id)
             capability_status = connection.credential_status.get(selected.capability)

@@ -24,6 +24,7 @@ from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateM
 from app.services.agent_model_trace_sessions import (
     agent_model_trace_session_from_environment,
 )
+from app.services.agent_model_replay_policy import AgentModelReplayPolicyService
 
 logger = logging.getLogger(__name__)
 AgentCanvasRuntimeFactory = Callable[[Settings], AgentCanvasRuntime]
@@ -85,6 +86,14 @@ def _lifespan(
             application.state.v2_persistence_state = PersistenceBootstrapService(
                 settings
             ).bootstrap()
+            trace_session = getattr(application.state, "agent_model_trace_session", None)
+            if getattr(trace_session, "mode", None) == "replay":
+                bundle = getattr(trace_session, "replay_bundle", None)
+                if bundle is None:
+                    raise RuntimeError("acceptance_model_trace_invalid")
+                application.state.agent_model_replay_policy = AgentModelReplayPolicyService(
+                    settings
+                ).prepare(bundle)
         except V2PersistenceError as error:
             application.state.v2_persistence_state = PersistenceBootstrapFailure(
                 code=error.code,

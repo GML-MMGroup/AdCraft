@@ -205,6 +205,18 @@ def agent_model_trace_session_from_environment(
     )
 
 
+def isolated_agent_model_replay_enabled(
+    environment: Mapping[str, str] | None = None,
+) -> bool:
+    """Return true only for the explicit isolated acceptance replay environment."""
+
+    values = environment if environment is not None else os.environ
+    return (
+        values.get("ADCRAFT_ACCEPTANCE_ISOLATED") == "1"
+        and values.get("ADCRAFT_ACCEPTANCE_MODEL_TRACE_MODE") == "replay"
+    )
+
+
 def validate_agent_model_trace_path(
     path: Path,
     *,
@@ -345,6 +357,12 @@ class AgentModelTraceSessionService:
     def bundle_digest(self) -> str | None:
         bundle = self._sealed or self._bundle
         return bundle.bundle_digest if bundle is not None else None
+
+    @property
+    def replay_bundle(self) -> AgentModelTraceBundleV1 | None:
+        """Expose the already validated immutable bundle to isolated startup policy."""
+
+        return self._bundle if self.mode == "replay" else None
 
     def seal_session(
         self,
