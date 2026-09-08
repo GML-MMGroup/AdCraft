@@ -116,7 +116,10 @@ def get_agent_runtime_config(
             model_ref=model_ref,
         )
         trace_session = getattr(request.app.state, "agent_model_trace_session", None)
-        if isinstance(trace_session, AgentModelTraceSessionService) and trace_session.mode == "replay":
+        if (
+            isinstance(trace_session, AgentModelTraceSessionService)
+            and trace_session.mode == "replay"
+        ):
             return trace_session.replay_transport_source(
                 operation=operation,
                 model_policy_id=model_policy_id,
