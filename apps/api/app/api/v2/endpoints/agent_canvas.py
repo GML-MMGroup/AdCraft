@@ -875,6 +875,19 @@ def create_agent_canvas_runtime(
             for task in runtime_repository.list_recoverable_tasks()
         )
 
+    def current_guided_result_evidence(workflow_id: str, node_id: str):
+        execution_id = result_commit_repository.find_latest_execution_id(
+            workflow_id=workflow_id,
+            node_id=node_id,
+        )
+        if execution_id is None:
+            return None
+        for receipt in reversed(result_commit_repository.list_receipts(execution_id)):
+            evidence = receipt.guided_media_result_evidence
+            if evidence is not None and evidence.node_id == node_id:
+                return evidence
+        return None
+
     guided_closure = GuidedProductionClosureService(
         workflows=workflow_repository,
         documents=working_documents,
@@ -883,6 +896,10 @@ def create_agent_canvas_runtime(
         receipts=production_closure_receipts,
         has_active_work=guided_media_work_active,
         events=event_repository,
+        journey_policy_id=lambda workflow_id: (
+            conversation_repository.get_guidance_session(workflow_id).journey_policy_id
+        ),
+        result_evidence=current_guided_result_evidence,
     )
     guided_editing = GuidedEditingPreparationService(
         workflows=workflow_repository,

@@ -124,7 +124,20 @@ class GuidedClosureInputV1(_ClosureModel):
     asset_id: str = Field(min_length=1, max_length=160)
     asset_version_id: str = Field(min_length=1, max_length=160)
     asset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    confirmation_id: str = Field(min_length=1, max_length=160)
+    confirmation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    result_evidence_id: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_result_authority(self) -> "GuidedClosureInputV1":
+        if (self.confirmation_id is None) == (self.result_evidence_id is None):
+            raise ValueError(
+                "Guided closure inputs require one confirmation or result evidence identity."
+            )
+        return self
+
+    @property
+    def result_authority_id(self) -> str:
+        return self.confirmation_id or self.result_evidence_id or ""
 
 
 class GuidedClosurePlanV1(_ClosureModel):
@@ -144,9 +157,9 @@ class GuidedClosurePlanV1(_ClosureModel):
         orders = [item.order for item in self.ordered_inputs]
         if orders != sorted(orders) or len(orders) != len(set(orders)):
             raise ValueError("Closure inputs must have unique ascending order.")
-        confirmation_ids = [item.confirmation_id for item in self.ordered_inputs]
-        if len(confirmation_ids) != len(set(confirmation_ids)):
-            raise ValueError("Closure confirmations must be unique.")
+        authority_ids = [item.result_authority_id for item in self.ordered_inputs]
+        if len(authority_ids) != len(set(authority_ids)):
+            raise ValueError("Closure result authorities must be unique.")
         return self
 
 
