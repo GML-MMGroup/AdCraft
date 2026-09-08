@@ -55,6 +55,10 @@ MediaAction = Callable[
     GuidedMediaActionOutcome,
 ]
 
+_STORYBOARD_PLAN_CREATIVE_ROLES = frozenset(
+    {"storyboard_sequence", "storyboard_video", "bgm"}
+)
+
 
 class GuidedMediaResultPublicationContextResolver:
     """Resolve current proposal-authorized publication identity without mutation."""
@@ -82,6 +86,9 @@ class GuidedMediaResultPublicationContextResolver:
                 "guided_planning_wave_missing",
                 "Guided result publication requires a persisted planning wave.",
             )
+        creative_role = getattr(context.node, "creative_role", None)
+        if creative_role is not None and creative_role not in _STORYBOARD_PLAN_CREATIVE_ROLES:
+            return None
         plan, record = _find_plan_record(
             self._plans,
             context.node.workflow_id,
