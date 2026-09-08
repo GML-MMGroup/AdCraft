@@ -63,7 +63,7 @@ export type GuidedMediaConfirmationV1 = { readonly "confirmation_id": string; re
 
 export type GuidedClosureBlockerV1 = { readonly "kind": "failed" | "missing" | "nonterminal_work" | "not_ready" | "stale" | "unconfirmed" | "unreadable"; readonly "sequence_id"?: string | null; readonly "media_role": "audio" | "image" | "video"; readonly "node_id"?: string | null; readonly "status": string; readonly "error_code": string; readonly "allowed_actions"?: ReadonlyArray<"accept" | "exclude" | "replace" | "retry" | "wait"> };
 
-export type GuidedClosureInputV1 = { readonly "sequence_id"?: string | null; readonly "order": number; readonly "media_role": "audio" | "image" | "video"; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string; readonly "asset_digest": string; readonly "confirmation_id": string };
+export type GuidedClosureInputV1 = { readonly "sequence_id"?: string | null; readonly "order": number; readonly "media_role": "audio" | "image" | "video"; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string; readonly "asset_digest": string; readonly "confirmation_id"?: string | null; readonly "result_evidence_id"?: string | null };
 
 export type GuidedClosurePlanV1 = { readonly "closure_plan_id": string; readonly "logical_identity": string; readonly "workflow_id": string; readonly "guidance_session_id": string; readonly "plan_document_id": string; readonly "plan_revision": number; readonly "confirmation_digest": string; readonly "ordered_inputs": ReadonlyArray<GuidedClosureInputV1>; readonly "no_active_work": true; readonly "created_at": string };
 

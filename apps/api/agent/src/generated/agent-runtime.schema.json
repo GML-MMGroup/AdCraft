@@ -15668,10 +15668,18 @@
           "type": "string"
         },
         "confirmation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Confirmation Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmation Id"
         },
         "media_role": {
           "enum": [
@@ -15698,6 +15706,20 @@
           "title": "Order",
           "type": "integer"
         },
+        "result_evidence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Evidence Id"
+        },
         "sequence_id": {
           "anyOf": [
             {
@@ -15716,7 +15738,6 @@
         "asset_digest",
         "asset_id",
         "asset_version_id",
-        "confirmation_id",
         "media_role",
         "node_id",
         "node_revision",
