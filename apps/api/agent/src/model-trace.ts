@@ -7,15 +7,17 @@ import type {
   AgentModelTraceSafeFailureV1,
   AgentModelTraceStreamingResponseV1,
   AgentRunRequest,
+  AgentRuntimeAcceptanceReplaySourceV1,
 } from "./generated/agent-runtime.js";
 import { loadRuntimeManifest } from "./manifest.js";
 import type {
   StructuredCompletionRequest,
   StructuredCompletionResponse,
 } from "./pi-structured-transport.js";
-import type {
-  AgentCredentialSnapshot,
-  PythonInternalClient,
+import {
+  isAcceptanceReplaySource,
+  type AgentRuntimeTransportSource,
+  type PythonInternalClient,
 } from "./python-internal-client.js";
 import type { ModelAttemptStage } from "./run-budget.js";
 import type { LoadedSkill } from "./skills.js";
@@ -29,15 +31,23 @@ export type AgentModelTraceRecordClient = Pick<
   PythonInternalClient,
   "recordModelTraceAttempt"
 >;
+export type AgentModelTraceClaimClient = Pick<
+  PythonInternalClient,
+  "claimModelTraceAttempt"
+>;
+export type AgentModelTraceClient =
+  | AgentModelTraceRecordClient
+  | AgentModelTraceClaimClient
+  | (AgentModelTraceRecordClient & AgentModelTraceClaimClient);
 
 export interface AgentModelTraceContext {
-  readonly credential: AgentCredentialSnapshot;
+  readonly credential: AgentRuntimeTransportSource;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly loadedSkills: ReadonlyArray<LoadedSkill>;
-  readonly traceClient?: AgentModelTraceRecordClient;
+  readonly traceClient?: AgentModelTraceClient;
 }
 
 export async function recordAgentModelTraceOutcome(
@@ -47,8 +57,15 @@ export async function recordAgentModelTraceOutcome(
   response: StructuredCompletionResponse | unknown,
   succeeded: boolean,
 ): Promise<void> {
-  if (context.credential.trace_mode !== "live_record") return;
-  if (!context.credential.trace_session_id || !context.traceClient) {
+  if (
+    isAcceptanceReplaySource(context.credential) ||
+    context.credential.trace_mode !== "live_record"
+  ) return;
+  if (
+    !context.credential.trace_session_id ||
+    !context.traceClient ||
+    !("recordModelTraceAttempt" in context.traceClient)
+  ) {
     throw new Error("acceptance_model_trace_invalid");
   }
   const attemptOrdinal = attemptOrdinalForStage(stage);
@@ -68,6 +85,34 @@ export async function recordAgentModelTraceOutcome(
       : normalizedTraceFailure(response),
   };
   await context.traceClient.recordModelTraceAttempt(request);
+}
+
+export async function claimAgentModelTraceOutcome(
+  context: AgentModelTraceContext,
+  providerRequest: StructuredCompletionRequest,
+  stage: ModelAttemptStage,
+): Promise<StructuredCompletionResponse> {
+  const source = context.credential;
+  if (
+    !isAcceptanceReplaySource(source) ||
+    !context.traceClient ||
+    !("claimModelTraceAttempt" in context.traceClient)
+  ) {
+    throw new Error("acceptance_model_replay_forbidden");
+  }
+  const attemptOrdinal = attemptOrdinalForStage(stage);
+  const claimed = await context.traceClient.claimModelTraceAttempt({
+    protocol_version: "1",
+    session_id: source.trace_session_id,
+    attempt_id: `${context.request.run_id}:${stage}:${attemptOrdinal}`,
+    request_identity: traceRequestIdentity(
+      context,
+      providerRequest,
+      stage,
+      attemptOrdinal,
+    ),
+  });
+  return replayedCompletionResponse(source, claimed.response);
 }
 
 export function traceRequestIdentity(
@@ -168,6 +213,76 @@ export function normalizedTraceResponse(
     completion_tokens: response.usage?.completion_tokens ?? null,
     reasoning_tokens:
       response.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+  };
+}
+
+function replayedCompletionResponse(
+  _source: AgentRuntimeAcceptanceReplaySourceV1,
+  response: AgentModelTraceResponseV1,
+): StructuredCompletionResponse {
+  if (response.response_kind === "transport_failure") {
+    throw Object.assign(new Error(response.error_code), {
+      code: response.error_code,
+      status: response.http_status ?? undefined,
+      response_started: response.response_started,
+    });
+  }
+  if (response.response_kind === "streaming") {
+    const content = response.chunks.map((chunk) => chunk.content ?? "").join("");
+    const finishReason = response.chunks.at(-1)?.finish_reason ?? null;
+    return {
+      choices: [{ finish_reason: finishReason, message: { content } }],
+      usage: traceUsage(response),
+      transport_metadata: {
+        response_activity_observed: content.length > 0,
+        first_content_at: null,
+        last_activity_at: null,
+        completed_at: new Date(0).toISOString(),
+        response_bytes: new TextEncoder().encode(content).byteLength,
+        finish_reason: finishReason,
+        provider_trace_id: null,
+        normalized_chunks: response.chunks,
+      },
+    };
+  }
+  const nonStreaming = response as AgentModelTraceNonStreamingResponseV1;
+  return {
+    id: nonStreaming.response_id ?? null,
+    choices: [
+      {
+        finish_reason: nonStreaming.finish_reason ?? null,
+        message: {
+          content: nonStreaming.content ?? null,
+          tool_calls: (nonStreaming.tool_calls ?? []).map((toolCall) => ({
+            id: toolCall.tool_call_id,
+            type: "function",
+            function: {
+              name: toolCall.tool_name ?? "submit_structured_result",
+              arguments: toolCall.arguments_json,
+            },
+          })),
+        },
+      },
+    ],
+    usage: traceUsage(nonStreaming),
+  };
+}
+
+function traceUsage(
+  response: AgentModelTraceNonStreamingResponseV1 | AgentModelTraceStreamingResponseV1,
+): Exclude<StructuredCompletionResponse["usage"], undefined> {
+  if (
+    response.prompt_tokens === null &&
+    response.completion_tokens === null &&
+    response.reasoning_tokens === null
+  ) return null;
+  return {
+    prompt_tokens: response.prompt_tokens ?? 0,
+    completion_tokens: response.completion_tokens ?? 0,
+    total_tokens: (response.prompt_tokens ?? 0) + (response.completion_tokens ?? 0),
+    completion_tokens_details: {
+      reasoning_tokens: response.reasoning_tokens ?? 0,
+    },
   };
 }
 

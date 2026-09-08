@@ -16,13 +16,17 @@ import {
   AgentOperationFailure,
   isProviderTimeoutFailure,
 } from "./operation-recovery.js";
-import type { AgentCredentialSnapshot } from "./python-internal-client.js";
-import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
-import type { PreparedStructuredModelInput } from "./structured-model-input.js";
 import {
+  isAcceptanceReplaySource,
+  type AgentCredentialSnapshot,
+  type AgentRuntimeTransportSource,
+} from "./python-internal-client.js";
+import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
+import {
+  claimAgentModelTraceOutcome,
   isAgentModelTraceFailure,
   recordAgentModelTraceOutcome,
-  type AgentModelTraceRecordClient,
+  type AgentModelTraceClient,
 } from "./model-trace.js";
 import type { LoadedSkill } from "./skills.js";
 
@@ -131,13 +135,13 @@ interface StructuredValidationResult {
 }
 
 interface StructuredTransportRunInput {
-  readonly credential: AgentCredentialSnapshot;
+  readonly credential: AgentRuntimeTransportSource;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
   readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
-  readonly traceClient?: AgentModelTraceRecordClient;
+  readonly traceClient?: AgentModelTraceClient;
   readonly signal: AbortSignal;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
@@ -396,13 +400,22 @@ export class PiStructuredTransportRouter {
       );
     }
     try {
-      const response = await this.#execute(request, {
-        apiKey: input.credential.api_key,
-        baseUrl: input.credential.base_url,
-        signal: input.signal,
-        timeoutMs,
-        maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
-      });
+      const response = isAcceptanceReplaySource(input.credential)
+        ? await claimAgentModelTraceOutcome(
+          {
+            ...input,
+            loadedSkills: input.loadedSkills ?? [],
+          },
+          request,
+          stage,
+        )
+        : await this.#execute(request, {
+          apiKey: input.credential.api_key,
+          baseUrl: input.credential.base_url,
+          signal: input.signal,
+          timeoutMs,
+          maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+        });
       await recordAgentModelTraceOutcome(
         {
           ...input,
@@ -641,7 +654,7 @@ function boundedProviderTrace(value: unknown): string | null {
 
 export function buildPrimaryStructuredCompletionRequest(
   input: Pick<
-    PreparedStructuredModelInput,
+    StructuredTransportRunInput,
     "credential" | "systemPrompt" | "userPrompt" | "schema"
   >,
 ): StructuredCompletionRequest {
@@ -812,7 +825,7 @@ function repairPayload(
 }
 
 function openrouterRequestProjection(
-  credential: AgentCredentialSnapshot,
+  credential: AgentRuntimeTransportSource,
 ): Pick<StructuredCompletionRequestBase, "provider"> {
   if (!credential.model_ref.startsWith("openrouter:")) return {};
   const routing = credential.openrouter_routing;
@@ -839,7 +852,7 @@ function openrouterRequestProjection(
 }
 
 function structuredResponseFormat(
-  credential: AgentCredentialSnapshot,
+  credential: AgentRuntimeTransportSource,
   schema: Readonly<Record<string, unknown>>,
 ): NonNullable<NonStreamingStructuredCompletionRequest["response_format"]> {
   if (credential.execution_policy.structured_transport === "non_streaming_json_schema") {

@@ -41,6 +41,12 @@ export type AgentRuntimeTransportSource =
   | AgentCredentialSnapshot
   | AgentRuntimeAcceptanceReplaySourceV1;
 
+export function isAcceptanceReplaySource(
+  source: AgentRuntimeTransportSource,
+): source is AgentRuntimeAcceptanceReplaySourceV1 {
+  return source.source_kind === "acceptance_replay";
+}
+
 interface PythonInternalClientOptions {
   readonly baseUrl: string;
   readonly internalToken: string;
