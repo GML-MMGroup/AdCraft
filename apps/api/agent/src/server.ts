@@ -53,6 +53,12 @@ interface ProjectionFailureAudit {
 
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
+  "acceptance_model_trace_invalid",
+  "acceptance_model_trace_unsafe",
+  "acceptance_model_replay_forbidden",
+  "acceptance_model_replay_miss",
+  "acceptance_model_replay_mismatch",
+  "acceptance_model_replay_unused",
   "agent_model_incompatible",
   "agent_model_capability_mismatch",
   "agent_model_policy_mismatch",
