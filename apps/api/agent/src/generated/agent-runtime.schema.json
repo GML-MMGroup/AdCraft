@@ -1791,6 +1791,19 @@
           "title": "Source Attempt Id",
           "type": "string"
         },
+        "source_bundle_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Bundle Digest"
+        },
         "source_project_id": {
           "anyOf": [
             {
