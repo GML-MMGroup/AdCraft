@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -68,6 +69,38 @@ def _trace_http_error(error: AgentModelTraceSessionError) -> HTTPException:
             "message": "The isolated Agent model trace request was rejected.",
         },
     )
+
+
+_TRACE_VALIDATION_CODES = frozenset(
+    {
+        "acceptance_model_trace_invalid",
+        "acceptance_model_trace_unsafe",
+        "acceptance_model_replay_mismatch",
+    }
+)
+
+
+def _safe_trace_validation_detail(error: ValidationError) -> list[dict[str, object]]:
+    details: list[dict[str, object]] = []
+    for item in error.errors():
+        message = str(item.get("msg", ""))
+        code = next(
+            (candidate for candidate in _TRACE_VALIDATION_CODES if candidate in message),
+            "acceptance_model_trace_invalid",
+        )
+        location = [str(part) for part in item.get("loc", ())]
+        if not location and code == "acceptance_model_replay_mismatch":
+            location = ["body", "request_identity"]
+        elif not location:
+            location = ["body"]
+        details.append(
+            {
+                "loc": location,
+                "type": str(item.get("type", "value_error")),
+                "code": code,
+            }
+        )
+    return details or [{"loc": ["body"], "type": "value_error", "code": "acceptance_model_trace_invalid"}]
 
 
 def require_agent_internal_auth(
@@ -235,15 +268,19 @@ def _frozen_operation_policy(
 )
 def record_agent_model_trace(
     session_id: str,
-    payload: AgentModelTraceRecordRequestV1,
+    payload: dict[str, Any],
     request: Request,
     response: Response,
 ) -> AgentModelTraceRecordReceiptV1:
     response.headers["Cache-Control"] = "no-store"
-    if payload.session_id != session_id:
+    try:
+        record = AgentModelTraceRecordRequestV1.model_validate(payload)
+    except ValidationError as error:
+        raise HTTPException(status_code=422, detail=_safe_trace_validation_detail(error)) from error
+    if record.session_id != session_id:
         raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
     try:
-        return _trace_session(request).record_attempt(payload)
+        return _trace_session(request).record_attempt(record)
     except AgentModelTraceSessionError as error:
         raise _trace_http_error(error) from error
 
