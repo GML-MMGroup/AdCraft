@@ -25,6 +25,9 @@ from app.schemas.agent_canvas_media_review_authority import (
     GuidedMediaReviewPublicationCommandV1,
 )
 from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultPublicationContextV1,
+)
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
 from app.schemas.agent_canvas import CanvasNodePatchRequestV2
 from app.schemas.agent_canvas_runtime import CanvasRunRequestV2
@@ -51,6 +54,51 @@ MediaAction = Callable[
     [GuidedInteractionV1, GuidedMediaReviewSubmitV1, str],
     GuidedMediaActionOutcome,
 ]
+
+
+class GuidedMediaResultPublicationContextResolver:
+    """Resolve current proposal-authorized publication identity without mutation."""
+
+    def __init__(self, *, conversations, plans) -> None:
+        self._conversations = conversations
+        self._plans = plans
+
+    def resolve(
+        self,
+        context,
+        source_generation: int,
+        operation_id: str,
+    ) -> GuidedMediaResultPublicationContextV1 | None:
+        session = self._conversations.get_guidance_session_or_none(context.node.workflow_id)
+        journey = getattr(session, "journey", None)
+        if (
+            session is None
+            or getattr(journey, "journey_policy_id", None) != "proposal_submit_auto_result_v1"
+        ):
+            return None
+        planning_wave_id = getattr(journey, "planning_wave_id", None)
+        if not planning_wave_id:
+            raise _error(
+                "guided_planning_wave_missing",
+                "Guided result publication requires a persisted planning wave.",
+            )
+        plan, record = _find_plan_record(
+            self._plans,
+            context.node.workflow_id,
+            context.node.node_id,
+        )
+        if plan is None or record is None:
+            raise _error(
+                "guided_media_result_plan_stale",
+                "Guided result publication requires the current owning Plan.",
+            )
+        return GuidedMediaResultPublicationContextV1(
+            planning_wave_id=planning_wave_id,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            operation_id=operation_id,
+            source_generation=source_generation,
+        )
 
 
 class GuidedMediaReviewCoordinator:

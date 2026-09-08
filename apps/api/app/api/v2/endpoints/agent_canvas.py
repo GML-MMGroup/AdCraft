@@ -350,6 +350,7 @@ from app.services.agent_canvas_guided_media_confirmation import (
     GuidedMediaConfirmationService,
 )
 from app.services.agent_canvas_guided_media_review import (
+    GuidedMediaResultPublicationContextResolver,
     GuidedMediaPlanActionService,
     GuidedMediaReviewActionService,
     GuidedMediaReviewCoordinator,
@@ -1062,6 +1063,10 @@ def create_agent_canvas_runtime(
         publication_intents=publication_intents,
     )
     result_committer = AgentCanvasExecutionResultCommitService(result_commit_repository)
+    guided_media_contexts = GuidedMediaResultPublicationContextResolver(
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+    )
     publication_recovery = AgentCanvasResultPublicationRecoveryService(
         publication_intents,
         asset_service,
@@ -1119,6 +1124,7 @@ def create_agent_canvas_runtime(
         publication_recovery=publication_recovery,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
         prompt_preparation=prompt_preparation_service,
+        guided_media_context_resolver=guided_media_contexts.resolve,
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
