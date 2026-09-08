@@ -235,6 +235,7 @@ AgentModelTraceResponseV1 = Annotated[
 
 class AgentModelTraceEntryV1(_FrozenTraceModel):
     sequence_no: int = Field(ge=1, le=_MAX_TRACE_ENTRIES)
+    previous_entry_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
     attempt_id: str = Field(min_length=1, max_length=160)
     recorded_agent_run_id: str = Field(min_length=1, max_length=160)
     request_identity: AgentModelTraceRequestIdentityV1
@@ -283,6 +284,11 @@ class AgentModelTraceBundleV1(_FrozenTraceModel):
         sequence = tuple(entry.sequence_no for entry in self.entries)
         if sequence != tuple(range(1, len(sequence) + 1)):
             raise ValueError("acceptance_model_trace_invalid")
+        previous: str | None = None
+        for entry in self.entries:
+            if entry.previous_entry_digest != previous:
+                raise ValueError("acceptance_model_trace_invalid")
+            previous = entry.entry_digest
         if (self.terminal_disposition == "handled_failure") != bool(
             self.terminal_failure_code
         ):

@@ -193,6 +193,9 @@ class AgentModelTraceSessionService:
             sequence_no = len(self._entries) + 1
             values: dict[str, object] = {
                 "sequence_no": sequence_no,
+                "previous_entry_digest": (
+                    self._entries[-1].entry_digest if self._entries else None
+                ),
                 "attempt_id": request.attempt_id,
                 "recorded_agent_run_id": request.recorded_agent_run_id,
                 "request_identity": request.request_identity,
