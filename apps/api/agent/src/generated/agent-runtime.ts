@@ -35,6 +35,12 @@ export type AgentModelTraceClaimRequestV1 = { readonly "protocol_version"?: "1";
 
 export type AgentModelTraceClaimResponseV1 = { readonly "protocol_version"?: "1"; readonly "session_id": string; readonly "attempt_id": string; readonly "sequence_no": number; readonly "entry_digest": string; readonly "response": AgentModelTraceNonStreamingResponseV1 | AgentModelTraceStreamingResponseV1 | AgentModelTraceSafeFailureV1; readonly "replayed"?: boolean };
 
+export type AgentModelTraceSealRequestV1 = { readonly "protocol_version"?: "1"; readonly "session_id": string; readonly "terminal_disposition": "handled_failure" | "handled_success"; readonly "terminal_failure_code"?: string | null };
+
+export type AgentModelTraceSealReceiptV1 = { readonly "protocol_version"?: "1"; readonly "session_id": string; readonly "entry_count": number; readonly "bundle_digest": string; readonly "replayed"?: boolean };
+
+export type AgentModelTraceSessionStatusV1 = { readonly "protocol_version"?: "1"; readonly "session_id": string; readonly "mode": "live_record" | "replay"; readonly "sealed": boolean; readonly "entry_count": number; readonly "consumed_entries": number; readonly "unused_entries": number; readonly "bundle_digest"?: string | null };
+
 export type AgentModelTraceEvidenceV1 = { readonly "evidence_kind": "checkpoint_resume" | "final_fresh" | "live_record" | "model_replay"; readonly "relative_bundle_path": string; readonly "bundle_digest": string; readonly "source_bundle_digest"?: string | null; readonly "parent_bundle_digest"?: string | null; readonly "source_recorded_attempts"?: number; readonly "current_network_submissions"?: number; readonly "replayed_attempts"?: number; readonly "consumed_entries"?: number; readonly "unused_entries"?: number; readonly "structured_repair_count"?: number; readonly "transport_retry_count"?: number; readonly "media_provider_submission_count"?: number; readonly "paid_submission_count"?: number; readonly "safe_failure_code"?: string | null };
 
 export type AgentModelTraceReplayConfigV1 = { readonly "mode"?: "replay"; readonly "session_id": string; readonly "bundle_path": string; readonly "expected_bundle_digest": string; readonly "case_profile_id": string; readonly "isolated_runtime"?: true; readonly "media_mode"?: "mock" };

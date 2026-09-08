@@ -2784,6 +2784,161 @@
       "title": "AgentModelTraceSafeFailureV1",
       "type": "object"
     },
+    "AgentModelTraceSealReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "entry_count": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Entry Count",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_digest",
+        "entry_count",
+        "session_id"
+      ],
+      "title": "AgentModelTraceSealReceiptV1",
+      "type": "object"
+    },
+    "AgentModelTraceSealRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "terminal_disposition": {
+          "enum": [
+            "handled_failure",
+            "handled_success"
+          ],
+          "title": "Terminal Disposition",
+          "type": "string"
+        },
+        "terminal_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal Failure Code"
+        }
+      },
+      "required": [
+        "session_id",
+        "terminal_disposition"
+      ],
+      "title": "AgentModelTraceSealRequestV1",
+      "type": "object"
+    },
+    "AgentModelTraceSessionStatusV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bundle Digest"
+        },
+        "consumed_entries": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Consumed Entries",
+          "type": "integer"
+        },
+        "entry_count": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Entry Count",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "live_record",
+            "replay"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "sealed": {
+          "title": "Sealed",
+          "type": "boolean"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "unused_entries": {
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Unused Entries",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "consumed_entries",
+        "entry_count",
+        "mode",
+        "sealed",
+        "session_id",
+        "unused_entries"
+      ],
+      "title": "AgentModelTraceSessionStatusV1",
+      "type": "object"
+    },
     "AgentModelTraceStreamingChunkV1": {
       "additionalProperties": false,
       "properties": {
