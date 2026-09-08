@@ -98,6 +98,7 @@ class EditingManifestV2(_EditingModel):
 EditingSkippedReasonV2 = Literal[
     "source_not_ready",
     "source_failed",
+    "omitted_no_output",
     "source_output_unavailable",
     "source_media_invalid",
 ]

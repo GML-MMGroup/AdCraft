@@ -617,7 +617,7 @@ def _skip_reason(node: CanvasNodeV2) -> str | None:
     if node.status != "ready":
         return "source_not_ready"
     if node.output_asset_id is None:
-        return "source_output_unavailable"
+        return "omitted_no_output"
     return None
 
 
