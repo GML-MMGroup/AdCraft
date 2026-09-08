@@ -596,6 +596,9 @@ def _entry_skip_reason(
         return None
     if source is None:
         return "source_output_unavailable"
+    # A later failed/working attempt must not hide the last readable output.
+    if source.output_asset_id is not None:
+        return None
     return _skip_reason(source)
 
 
@@ -612,12 +615,12 @@ def _entry_trim_is_valid(
 
 
 def _skip_reason(node: CanvasNodeV2) -> str | None:
+    if node.output_asset_id is None:
+        return "omitted_no_output"
     if node.status == "failed":
         return "source_failed"
     if node.status != "ready":
         return "source_not_ready"
-    if node.output_asset_id is None:
-        return "omitted_no_output"
     return None
 
 
