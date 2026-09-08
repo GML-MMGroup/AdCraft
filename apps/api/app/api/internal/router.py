@@ -6,7 +6,7 @@ import hmac
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
@@ -20,6 +20,12 @@ from app.schemas.agent_runtime import (
     AgentToolCall,
     AgentToolResult,
 )
+from app.schemas.agent_model_trace import (
+    AgentModelTraceClaimRequestV1,
+    AgentModelTraceClaimResponseV1,
+    AgentModelTraceRecordRequestV1,
+    AgentModelTraceRecordReceiptV1,
+)
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.services.v2_agent_credential_broker import (
     AgentCredentialError,
@@ -28,9 +34,36 @@ from app.services.v2_agent_credential_broker import (
 from app.services.v2_agent_structured_validation import (
     V2AgentStructuredValidationService,
 )
+from app.services.agent_model_trace_sessions import (
+    AgentModelTraceSessionError,
+    AgentModelTraceSessionService,
+)
 
 router = APIRouter(prefix="/internal/v1")
 logger = logging.getLogger(__name__)
+
+
+def _trace_session(request: Request) -> AgentModelTraceSessionService:
+    service = getattr(request.app.state, "agent_model_trace_session", None)
+    if not isinstance(service, AgentModelTraceSessionService):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "acceptance_model_trace_invalid",
+                "message": "The isolated Agent model trace session is unavailable.",
+            },
+        )
+    return service
+
+
+def _trace_http_error(error: AgentModelTraceSessionError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": error.code,
+            "message": "The isolated Agent model trace request was rejected.",
+        },
+    )
 
 
 def require_agent_internal_auth(
@@ -171,6 +204,46 @@ def _frozen_operation_policy(
             "Agent runtime request contradicts the frozen run policy.",
         )
     return operation_policy
+
+
+@router.post(
+    "/agent-model-traces/{session_id}/record",
+    response_model=AgentModelTraceRecordReceiptV1,
+    dependencies=[Depends(require_agent_internal_auth)],
+)
+def record_agent_model_trace(
+    session_id: str,
+    payload: AgentModelTraceRecordRequestV1,
+    request: Request,
+    response: Response,
+) -> AgentModelTraceRecordReceiptV1:
+    response.headers["Cache-Control"] = "no-store"
+    if payload.session_id != session_id:
+        raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
+    try:
+        return _trace_session(request).record_attempt(payload)
+    except AgentModelTraceSessionError as error:
+        raise _trace_http_error(error) from error
+
+
+@router.post(
+    "/agent-model-traces/{session_id}/claim",
+    response_model=AgentModelTraceClaimResponseV1,
+    dependencies=[Depends(require_agent_internal_auth)],
+)
+def claim_agent_model_trace(
+    session_id: str,
+    payload: AgentModelTraceClaimRequestV1,
+    request: Request,
+    response: Response,
+) -> AgentModelTraceClaimResponseV1:
+    response.headers["Cache-Control"] = "no-store"
+    if payload.session_id != session_id:
+        raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
+    try:
+        return _trace_session(request).claim_attempt(payload)
+    except AgentModelTraceSessionError as error:
+        raise _trace_http_error(error) from error
 
 
 @router.post(
