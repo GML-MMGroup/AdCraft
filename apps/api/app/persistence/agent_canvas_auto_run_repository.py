@@ -323,6 +323,97 @@ class AgentCanvasAutomaticRunRepository:
             now=now,
         )
 
+    def schedule_terminal_retry(
+        self,
+        command_id: str,
+        *,
+        execution_id: str,
+        error: CanvasNodeErrorV2,
+        retry_at: datetime,
+        now: datetime,
+    ) -> AutomaticRunCommandV2:
+        """CAS a retryable terminal execution into its one successor attempt."""
+
+        timestamp = _iso(now)
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasAutomaticRunCommandRow).where(
+                                AgentCanvasAutomaticRunCommandRow.command_id == command_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise V2PersistenceError(
+                            "agent_auto_run_not_found",
+                            "Automatic Run command was not found.",
+                            stage="agent_canvas_auto_run",
+                        )
+                    if row["execution_id"] is not None and str(row["execution_id"]) != execution_id:
+                        raise V2PersistenceError(
+                            "agent_auto_run_execution_conflict",
+                            "Terminal execution does not own this Automatic Run command.",
+                            stage="agent_canvas_auto_run",
+                        )
+                    if (
+                        str(row["state"]) != "submitted"
+                        or not error.retryable
+                        or int(row["attempt_count"]) + 1 >= int(row["max_attempts"])
+                    ):
+                        connection.commit()
+                        return _command(row)
+                    next_attempt = int(row["attempt_count"]) + 1
+                    values = {
+                        "state": "pending",
+                        "attempt_count": next_attempt,
+                        "next_attempt_at": _iso(retry_at),
+                        "execution_id": None,
+                        "last_error_code": error.code,
+                        "last_error_message": error.message,
+                        "last_error_retryable": error.retryable,
+                        "updated_at": timestamp,
+                    }
+                    connection.execute(
+                        update(AgentCanvasAutomaticRunCommandRow)
+                        .where(
+                            AgentCanvasAutomaticRunCommandRow.command_id == command_id,
+                            AgentCanvasAutomaticRunCommandRow.state == "submitted",
+                            AgentCanvasAutomaticRunCommandRow.execution_id == execution_id,
+                        )
+                        .values(**values)
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(row["workflow_id"]),
+                            node_id=str(row["node_id"]),
+                            action_id=str(row["source_action_id"]),
+                            event_type="agent_auto_run_retry_scheduled",
+                            transition_key=f"agent-auto-run:{command_id}:retry:{next_attempt}",
+                            created_at=timestamp,
+                            payload={
+                                "command_id": command_id,
+                                "execution_id": execution_id,
+                                "retry_ordinal": next_attempt,
+                                "error": error.model_dump(mode="json"),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return _command({**row, **values})
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as persistence_error:
+            raise _unavailable_error() from persistence_error
+
     def defer(
         self,
         command_id: str,
