@@ -19,6 +19,7 @@ _UNSAFE = re.compile(
     r"[A-Za-z]:[\\/]|\\\\[\w.-]+\\|\b(?:sk|sf)-[A-Za-z0-9_-]{16,})",
     re.IGNORECASE,
 )
+_SCHEMA_URL = re.compile(r"https?://[^\s\"']+")
 _FORBIDDEN_KEYS = (
     "api_key",
     "authorization",
@@ -78,6 +79,16 @@ def _safe(value: object, depth: int = 0, *, schema_metadata: bool = False) -> No
     if depth > 40:
         raise ValueError("acceptance_model_trace_unsafe")
     if isinstance(value, str):
+        urls = _SCHEMA_URL.findall(value)
+        if schema_metadata and urls:
+            allowed = all(
+                url in _ALLOWED_SCHEMA_URLS or url.startswith(_ALLOWED_SCHEMA_ID_PREFIX)
+                for url in urls
+            )
+            if allowed:
+                remaining = _SCHEMA_URL.sub("", value)
+                if not _UNSAFE.search(remaining):
+                    return
         if _UNSAFE.search(value):
             raise ValueError("acceptance_model_trace_unsafe")
     elif isinstance(value, dict):
@@ -178,7 +189,7 @@ class AgentModelTraceRequestSnapshotV1(BaseModel):
         logical = {
             "contract_name": self.contract_name,
             "operation": identity.operation,
-            "schema": _parsed(self.output_schema_json),
+            "schema": _parsed(self.output_schema_json, schema_metadata=True),
             "system_prompt": self.system_prompt,
             "user_prompt": self.user_prompt,
         }
