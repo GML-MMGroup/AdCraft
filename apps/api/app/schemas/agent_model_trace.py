@@ -136,6 +136,20 @@ class AgentModelTraceRequestIdentityV1(_FrozenTraceModel):
     schema_digest: str = Field(pattern=_DIGEST_PATTERN)
     skill_digest: str = Field(pattern=_DIGEST_PATTERN)
     policy_digest: str = Field(pattern=_DIGEST_PATTERN)
+    supports_tool_calls: bool
+    supports_strict_structured_output: bool
+    supports_streaming: bool
+    supports_streamed_tool_calls: bool
+    supports_reasoning_controls: bool
+    adapter_id: str = Field(min_length=1, max_length=160)
+    transport_kind: Literal["pi_native_openai_compatible", "litellm_chat"]
+    capability_revision: str = Field(min_length=1, max_length=160)
+    adapter_revision: str = Field(min_length=1, max_length=160)
+    gateway_id: str | None = Field(default=None, max_length=160)
+    model_alias: str | None = Field(default=None, max_length=320)
+    projection_digest: str | None = Field(default=None, pattern=_DIGEST_PATTERN)
+    openrouter_routing: OpenRouterRoutingPolicyV1 | None = None
+    execution_policy: AgentModelExecutionPolicyV1
 
 
 def canonical_model_trace_request_digest(
