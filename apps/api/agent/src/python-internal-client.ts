@@ -1,5 +1,10 @@
 import type {
+  AgentModelTraceClaimRequestV1,
+  AgentModelTraceClaimResponseV1,
+  AgentModelTraceRecordRequestV1,
+  AgentModelTraceRecordReceiptV1,
   AgentModelExecutionPolicyV1,
+  AgentRuntimeAcceptanceReplaySourceV1,
   AgentRunRequest,
   AgentToolCall,
   AgentToolResult,
@@ -8,6 +13,7 @@ import type {
 
 export interface AgentCredentialSnapshot {
   readonly protocol_version: "1";
+  readonly source_kind?: "provider";
   readonly provider: string;
   readonly model_ref: string;
   readonly model_id: string;
@@ -28,7 +34,12 @@ export interface AgentCredentialSnapshot {
   readonly openrouter_routing?: OpenRouterRoutingPolicyV1 | null;
   readonly execution_policy: AgentModelExecutionPolicyV1;
   readonly api_key: string;
+  readonly trace_mode?: "disabled" | "live_record";
+  readonly trace_session_id?: string | null;
 }
+export type AgentRuntimeTransportSource =
+  | AgentCredentialSnapshot
+  | AgentRuntimeAcceptanceReplaySourceV1;
 
 interface PythonInternalClientOptions {
   readonly baseUrl: string;
@@ -55,6 +66,28 @@ export class PythonInternalClient {
     modelPolicyId: string,
     modelRef: string,
   ): Promise<AgentCredentialSnapshot> {
+    const source = await this.runtimeSource(
+      credentialRef,
+      runId,
+      agentName,
+      operation,
+      modelPolicyId,
+      modelRef,
+    );
+    if (source.source_kind !== "provider") {
+      throw new Error("agent_protocol_mismatch");
+    }
+    return source;
+  }
+
+  async runtimeSource(
+    credentialRef: string,
+    runId: string,
+    agentName: AgentRunRequest["agent_name"],
+    operation: string,
+    modelPolicyId: string,
+    modelRef: string,
+  ): Promise<AgentRuntimeTransportSource> {
     const query = new URLSearchParams({
       run_id: runId,
       agent_name: agentName,
@@ -78,8 +111,6 @@ export class PythonInternalClient {
       typeof payload.model_ref !== "string" ||
       typeof payload.model_id !== "string" ||
       typeof payload.model_policy_id !== "string" ||
-      typeof payload.base_url !== "string" ||
-      typeof payload.api_key !== "string" ||
       typeof payload.provider !== "string" ||
       typeof payload.supports_tool_calls !== "boolean" ||
       typeof payload.supports_strict_structured_output !== "boolean" ||
@@ -98,7 +129,80 @@ export class PythonInternalClient {
     ) {
       throw new Error("agent_protocol_mismatch");
     }
-    return payload as unknown as AgentCredentialSnapshot;
+    if (payload.source_kind === "provider") {
+      if (
+        typeof payload.base_url !== "string" ||
+        typeof payload.api_key !== "string" ||
+        (payload.trace_mode !== "disabled" && payload.trace_mode !== "live_record") ||
+        ((payload.trace_mode === "live_record") !==
+          (typeof payload.trace_session_id === "string"))
+      ) {
+        throw new Error("agent_protocol_mismatch");
+      }
+      return payload as unknown as AgentCredentialSnapshot;
+    }
+    if (
+      payload.source_kind !== "acceptance_replay" ||
+      typeof payload.trace_session_id !== "string" ||
+      !isDigest(payload.expected_bundle_digest) ||
+      "base_url" in payload ||
+      "api_key" in payload
+    ) {
+      throw new Error("agent_protocol_mismatch");
+    }
+    return payload as unknown as AgentRuntimeAcceptanceReplaySourceV1;
+  }
+
+  async recordModelTraceAttempt(
+    request: AgentModelTraceRecordRequestV1,
+  ): Promise<AgentModelTraceRecordReceiptV1> {
+    const payload = await this.#postTraceRequest(
+      request.session_id,
+      "record",
+      request,
+    );
+    if (!isTraceReceipt(payload, request.session_id, request.attempt_id)) {
+      throw new Error("agent_protocol_mismatch");
+    }
+    return payload as unknown as AgentModelTraceRecordReceiptV1;
+  }
+
+  async claimModelTraceAttempt(
+    request: AgentModelTraceClaimRequestV1,
+  ): Promise<AgentModelTraceClaimResponseV1> {
+    const payload = await this.#postTraceRequest(
+      request.session_id,
+      "claim",
+      request,
+    );
+    if (
+      !isTraceReceipt(payload, request.session_id, request.attempt_id) ||
+      !isTraceResponse(payload.response)
+    ) {
+      throw new Error("agent_protocol_mismatch");
+    }
+    return payload as unknown as AgentModelTraceClaimResponseV1;
+  }
+
+  async #postTraceRequest(
+    sessionId: string,
+    action: "record" | "claim",
+    body: AgentModelTraceRecordRequestV1 | AgentModelTraceClaimRequestV1,
+  ): Promise<Record<string, unknown>> {
+    const response = await this.#fetch(
+      `${this.#baseUrl}/internal/v1/agent-model-traces/${encodeURIComponent(sessionId)}/${action}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#internalToken}`,
+          "cache-control": "no-store",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    return boundedJson(response);
   }
 
   async executeTool(call: AgentToolCall): Promise<AgentToolResult> {
@@ -122,6 +226,47 @@ export class PythonInternalClient {
     }
     return payload as unknown as AgentToolResult;
   }
+}
+
+function isTraceReceipt(
+  payload: Record<string, unknown>,
+  sessionId: string,
+  attemptId: string,
+): boolean {
+  return payload.protocol_version === "1" &&
+    payload.session_id === sessionId &&
+    payload.attempt_id === attemptId &&
+    isPositiveInteger(payload.sequence_no) &&
+    isDigest(payload.entry_digest) &&
+    typeof payload.replayed === "boolean";
+}
+
+function isTraceResponse(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  if (response.response_kind === "transport_failure") {
+    return typeof response.error_code === "string" &&
+      typeof response.response_started === "boolean";
+  }
+  if (response.response_kind === "non_streaming") {
+    return (response.content === null || typeof response.content === "string") &&
+      Array.isArray(response.tool_calls);
+  }
+  if (response.response_kind === "streaming") {
+    return Array.isArray(response.chunks) &&
+      response.chunks.every(
+        (chunk) =>
+          !!chunk &&
+          typeof chunk === "object" &&
+          !Array.isArray(chunk) &&
+          isPositiveInteger((chunk as Record<string, unknown>).sequence_no),
+      );
+  }
+  return false;
+}
+
+function isDigest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 }
 
 function isOpenRouterRouting(payload: Record<string, unknown>): boolean {
