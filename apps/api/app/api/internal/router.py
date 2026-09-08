@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import logging
-import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -100,7 +99,9 @@ def _safe_trace_validation_detail(error: ValidationError) -> list[dict[str, obje
                 "code": code,
             }
         )
-    return details or [{"loc": ["body"], "type": "value_error", "code": "acceptance_model_trace_invalid"}]
+    return details or [
+        {"loc": ["body"], "type": "value_error", "code": "acceptance_model_trace_invalid"}
+    ]
 
 
 def require_agent_internal_auth(
