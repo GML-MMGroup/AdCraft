@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
 from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -16,7 +17,10 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasAutomaticRunCommandRow
 from app.schemas.agent_canvas import CanvasNodeErrorV2
-from app.schemas.agent_canvas_execution_settings import AutomaticRunCommandV2
+from app.schemas.agent_canvas_execution_settings import (
+    AutomaticRunCommandV2,
+    AutomaticRunRetryPolicyV1,
+)
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -75,16 +79,6 @@ class AgentCanvasAutomaticRunRepository:
     ) -> AutomaticRunCommandV2:
         """Insert one command into its owning publication transaction."""
 
-        if max_attempts < 1:
-            raise V2PersistenceError(
-                "agent_auto_run_attempts_invalid",
-                "Automatic Run maximum attempts must be positive.",
-                stage="agent_canvas_auto_run",
-            )
-        # Automatic execution gets one retry after the initial attempt.  Keep
-        # callers that still pass the historical budget compatible while
-        # preventing new commands from exceeding the policy.
-        max_attempts = min(max_attempts, 2)
         timestamp = _iso(now)
         command_id = _command_id(workflow_id, source_action_id, node_id)
         existing = _select_identity(
@@ -95,6 +89,14 @@ class AgentCanvasAutomaticRunRepository:
         )
         if existing is not None:
             return _command(existing)
+        try:
+            policy = AutomaticRunRetryPolicyV1(max_attempts=max_attempts)
+        except ValidationError as error:
+            raise V2PersistenceError(
+                "agent_auto_run_attempts_invalid",
+                "Automatic Run policy permits one or two total attempts.",
+                stage="agent_canvas_auto_run",
+            ) from error
         values = {
             "command_id": command_id,
             "workflow_id": workflow_id,
@@ -104,7 +106,7 @@ class AgentCanvasAutomaticRunRepository:
             "state": "pending",
             "execution_id": None,
             "attempt_count": 0,
-            "max_attempts": max_attempts,
+            "max_attempts": policy.max_attempts,
             "next_attempt_at": timestamp,
             "lease_owner": None,
             "lease_generation": 0,
