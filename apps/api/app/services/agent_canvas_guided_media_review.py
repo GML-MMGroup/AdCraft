@@ -24,6 +24,7 @@ from app.schemas.agent_canvas_media_review_authority import (
     CanvasExecutionResultLineageV2,
     GuidedMediaReviewPublicationCommandV1,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
 from app.schemas.agent_canvas import CanvasNodePatchRequestV2
 from app.schemas.agent_canvas_runtime import CanvasRunRequestV2
@@ -317,7 +318,33 @@ class GuidedMediaReviewCoordinator:
     ) -> CanvasPostReadyEffectDispositionV1:
         """Keep new-policy publication free of a synthetic user review."""
 
-        del effect, lineage, node, session, plan, record
+        evidence = GuidedMediaResultEvidenceV2(
+            evidence_id=f"guided-result:{lineage.commit_id}",
+            planning_wave_id=f"plan:{plan.document_id}:{plan.revision}",
+            workflow_id=lineage.workflow_id,
+            node_id=lineage.node_id,
+            node_revision=getattr(node, "revision", 1),
+            operation_id=lineage.commit_id,
+            asset_id=lineage.asset_id or "",
+            asset_version_id=lineage.asset_version_id or "",
+            publication_digest=f"sha256:{effect.payload_digest}",
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            publication_receipt_id=lineage.commit_id,
+            source_generation=effect.attempt_no,
+            recorded_at=lineage.committed_at,
+        )
+        if self._events is not None:
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=lineage.workflow_id,
+                    node_id=lineage.node_id,
+                    event_type="guided_media_result_published",
+                    transition_key=f"guided-media-result:{lineage.commit_id}",
+                    created_at=lineage.committed_at.isoformat(),
+                    payload=evidence.model_dump(mode="json"),
+                )
+            )
         return CanvasPostReadyEffectDispositionV1(
             outcome="applied",
             reason_code="guided_media_result_published",

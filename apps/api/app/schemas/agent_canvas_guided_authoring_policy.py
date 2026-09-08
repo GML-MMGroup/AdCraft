@@ -46,5 +46,11 @@ class GuidedMediaResultEvidenceV2(_GuidedAuthoringPolicyModel):
     asset_id: str = Field(min_length=1, max_length=160)
     asset_version_id: str = Field(min_length=1, max_length=160)
     publication_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    proof_kind: Literal["provider_publication"] = "provider_publication"
+    source: Literal["provider_publication"] = "provider_publication"
+    plan_document_id: str = Field(min_length=1, max_length=160)
+    plan_revision: int = Field(ge=1)
+    publication_receipt_id: str = Field(min_length=1, max_length=160)
+    source_generation: int = Field(ge=0)
     outcome: Literal["published"] = "published"
     recorded_at: datetime
