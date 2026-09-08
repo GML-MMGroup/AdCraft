@@ -356,7 +356,6 @@ class GuidedMediaReviewCoordinator:
             reason_code="guided_media_result_published",
         )
 
-
     def _is_automatic_mode(self, workflow_id: str) -> bool:
         if self._execution_settings is None:
             return False
