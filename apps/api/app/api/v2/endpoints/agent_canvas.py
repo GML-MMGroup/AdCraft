@@ -897,7 +897,7 @@ def create_agent_canvas_runtime(
         has_active_work=guided_media_work_active,
         events=event_repository,
         journey_policy_id=lambda workflow_id: (
-            conversation_repository.get_guidance_session(workflow_id).journey_policy_id
+            conversation_repository.get_guidance_session(workflow_id).journey.journey_policy_id
         ),
         result_evidence=current_guided_result_evidence,
     )
