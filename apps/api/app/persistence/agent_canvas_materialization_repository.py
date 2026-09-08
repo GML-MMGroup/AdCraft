@@ -2558,6 +2558,8 @@ class AgentCanvasMaterializationRepository:
                                 created_at=timestamp,
                             )
                         )
+                        if self._fault_injector is not None:
+                            self._fault_injector("proposal_submission")
                     connection.commit()
                 except BaseException:
                     connection.rollback()
