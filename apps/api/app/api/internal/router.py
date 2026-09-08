@@ -25,6 +25,9 @@ from app.schemas.agent_model_trace import (
     AgentModelTraceClaimResponseV1,
     AgentModelTraceRecordRequestV1,
     AgentModelTraceRecordReceiptV1,
+    AgentModelTraceSealReceiptV1,
+    AgentModelTraceSealRequestV1,
+    AgentModelTraceSessionStatusV1,
     AgentRuntimeProviderSourceV1,
 )
 from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
@@ -260,6 +263,43 @@ def claim_agent_model_trace(
         return _trace_session(request).claim_attempt(payload)
     except AgentModelTraceSessionError as error:
         raise _trace_http_error(error) from error
+
+
+@router.post(
+    "/agent-model-traces/{session_id}/seal",
+    response_model=AgentModelTraceSealReceiptV1,
+    dependencies=[Depends(require_agent_internal_auth)],
+)
+def seal_agent_model_trace(
+    session_id: str,
+    payload: AgentModelTraceSealRequestV1,
+    request: Request,
+    response: Response,
+) -> AgentModelTraceSealReceiptV1:
+    response.headers["Cache-Control"] = "no-store"
+    if payload.session_id != session_id:
+        raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
+    try:
+        return _trace_session(request).seal_session(payload)
+    except AgentModelTraceSessionError as error:
+        raise _trace_http_error(error) from error
+
+
+@router.get(
+    "/agent-model-traces/{session_id}/status",
+    response_model=AgentModelTraceSessionStatusV1,
+    dependencies=[Depends(require_agent_internal_auth)],
+)
+def get_agent_model_trace_status(
+    session_id: str,
+    request: Request,
+    response: Response,
+) -> AgentModelTraceSessionStatusV1:
+    response.headers["Cache-Control"] = "no-store"
+    service = _trace_session(request)
+    if service.session_id != session_id:
+        raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
+    return service.session_status()
 
 
 @router.post(

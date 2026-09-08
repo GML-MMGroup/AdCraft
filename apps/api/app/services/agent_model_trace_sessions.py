@@ -16,6 +16,9 @@ from app.schemas.agent_model_trace import (
     AgentModelTraceEntryV1,
     AgentModelTraceRecordRequestV1,
     AgentModelTraceRecordReceiptV1,
+    AgentModelTraceSealReceiptV1,
+    AgentModelTraceSealRequestV1,
+    AgentModelTraceSessionStatusV1,
     AgentRuntimeAcceptanceReplaySourceV1,
     canonical_model_trace_bundle_digest,
     canonical_model_trace_entry_digest,
@@ -230,6 +233,44 @@ class AgentModelTraceSessionService:
     def bundle_digest(self) -> str | None:
         bundle = self._sealed or self._bundle
         return bundle.bundle_digest if bundle is not None else None
+
+    def seal_session(
+        self,
+        request: AgentModelTraceSealRequestV1,
+    ) -> AgentModelTraceSealReceiptV1:
+        """Seal one handled live attempt and return bounded report evidence."""
+
+        if request.session_id != self.session_id:
+            raise AgentModelTraceSessionError("acceptance_model_trace_invalid")
+        with self._lock:
+            replayed = self._sealed is not None
+            bundle = self.seal(
+                terminal_disposition=request.terminal_disposition,
+                terminal_failure_code=request.terminal_failure_code,
+            )
+            return AgentModelTraceSealReceiptV1(
+                session_id=self.session_id,
+                entry_count=len(bundle.entries),
+                bundle_digest=bundle.bundle_digest,
+                replayed=replayed,
+            )
+
+    def session_status(self) -> AgentModelTraceSessionStatusV1:
+        """Return bounded consumption counters without response content or paths."""
+
+        with self._lock:
+            entry_count = len(self._bundle.entries) if self._bundle is not None else len(
+                self._entries
+            )
+            return AgentModelTraceSessionStatusV1(
+                session_id=self.session_id,
+                mode=self.mode,
+                sealed=self._sealed is not None or self._bundle is not None,
+                entry_count=entry_count,
+                consumed_entries=self.consumed_count if self.mode == "replay" else 0,
+                unused_entries=self.unused_count if self.mode == "replay" else 0,
+                bundle_digest=self.bundle_digest,
+            )
 
     def replay_transport_source(
         self,
