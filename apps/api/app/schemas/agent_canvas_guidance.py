@@ -39,7 +39,7 @@ class GuidedActionExecutionLeafV1(_PrivateGuidanceAuthorityModel):
     root_turn_id: str = Field(min_length=1, max_length=160)
     leaf_turn_id: str = Field(min_length=1, max_length=160)
     leaf_turn_kind: str = Field(min_length=1, max_length=64)
-    leaf_status: Literal["queued", "running", "completed", "failed", "superseded"]
+    leaf_status: Literal["queued", "running", "completed", "failed"]
     continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
     continuation_status: str | None = Field(default=None, min_length=1, max_length=64)
     operation: ContinuationOperationV2 | None = None
