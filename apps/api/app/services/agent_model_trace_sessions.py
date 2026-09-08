@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -29,6 +30,7 @@ from app.schemas.agent_model_trace import (
 
 
 EVIDENCE_ROOT = Path("/data/wenwu.meng/adcraft-evidence")
+logger = logging.getLogger(__name__)
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "agent_model_replay"
 
 
@@ -537,6 +539,17 @@ class AgentModelTraceSessionService:
                 raise AgentModelTraceSessionError("acceptance_model_replay_miss")
             entry = self._bundle.entries[self._cursor]
             if canonical_model_trace_request_digest(entry.request_identity) != request_digest:
+                differing_fields = sorted(
+                    field
+                    for field in type(entry.request_identity).model_fields
+                    if getattr(entry.request_identity, field)
+                    != getattr(request.request_identity, field)
+                )
+                logger.warning(
+                    "acceptance_model_replay_mismatch sequence=%s differing_fields=%s",
+                    entry.sequence_no,
+                    ",".join(differing_fields),
+                )
                 raise AgentModelTraceSessionError("acceptance_model_replay_mismatch")
             response = AgentModelTraceClaimResponseV1(
                 session_id=self.session_id,
