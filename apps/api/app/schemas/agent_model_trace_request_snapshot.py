@@ -48,6 +48,13 @@ _PROVIDER_KEYS = frozenset(
         "max_completion_tokens",
     }
 )
+_ALLOWED_SCHEMA_URLS = frozenset(
+    {
+        "https://json-schema.org/draft/2020-12/schema",
+        "http://json-schema.org/draft-07/schema#",
+    }
+)
+_ALLOWED_SCHEMA_ID_PREFIX = "https://adcraft.local/contracts/"
 
 
 def _json(value: object) -> str:
@@ -67,7 +74,7 @@ def _object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _safe(value: object, depth: int = 0) -> None:
+def _safe(value: object, depth: int = 0, *, schema_metadata: bool = False) -> None:
     if depth > 40:
         raise ValueError("acceptance_model_trace_unsafe")
     if isinstance(value, str):
@@ -75,23 +82,32 @@ def _safe(value: object, depth: int = 0) -> None:
             raise ValueError("acceptance_model_trace_unsafe")
     elif isinstance(value, dict):
         for key, item in value.items():
+            if schema_metadata and key == "$schema" and item in _ALLOWED_SCHEMA_URLS:
+                continue
+            if (
+                schema_metadata
+                and key == "$id"
+                and isinstance(item, str)
+                and item.startswith(_ALLOWED_SCHEMA_ID_PREFIX)
+            ):
+                continue
             if any(part in key.casefold() for part in _FORBIDDEN_KEYS):
                 raise ValueError("acceptance_model_trace_unsafe")
-            _safe(key, depth + 1)
-            _safe(item, depth + 1)
+            _safe(key, depth + 1, schema_metadata=schema_metadata)
+            _safe(item, depth + 1, schema_metadata=schema_metadata)
     elif isinstance(value, list):
         for item in value:
-            _safe(item, depth + 1)
+            _safe(item, depth + 1, schema_metadata=schema_metadata)
     elif isinstance(value, float) and not math.isfinite(value):
         raise ValueError("acceptance_model_trace_unsafe")
 
 
-def _parsed(value: str) -> dict[str, Any]:
+def _parsed(value: str, *, schema_metadata: bool = False) -> dict[str, Any]:
     try:
         parsed = json.loads(value, object_pairs_hook=_object)
         if not isinstance(parsed, dict) or _json(parsed) != value:
             raise ValueError("acceptance_model_trace_unsafe")
-        _safe(parsed)
+        _safe(parsed, schema_metadata=schema_metadata)
         return parsed
     except (ValueError, RecursionError) as error:
         raise ValueError("acceptance_model_trace_unsafe") from error
@@ -138,9 +154,15 @@ class AgentModelTraceRequestSnapshotV1(BaseModel):
         payload = self.model_dump(mode="json")
         if len(_json(payload).encode()) > _MAX_BYTES:
             raise ValueError("acceptance_model_trace_unsafe")
-        _safe(payload)
-        _parsed(self.output_schema_json)
-        provider = _parsed(self.provider_request_json)
+        _safe(
+            {
+                key: value
+                for key, value in payload.items()
+                if key not in {"output_schema_json", "provider_request_json"}
+            }
+        )
+        _parsed(self.output_schema_json, schema_metadata=True)
+        provider = _parsed(self.provider_request_json, schema_metadata=True)
         if set(provider) - _PROVIDER_KEYS:
             raise ValueError("acceptance_model_trace_unsafe")
         _validate_text_messages(provider)
