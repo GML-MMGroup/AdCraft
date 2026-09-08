@@ -16,6 +16,11 @@ import type { RunBudget } from "./run-budget.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
 import { event } from "./runtime.js";
 import {
+  recordedAssistantMessageStream,
+  replayedAssistantMessageStream,
+  type AgentModelTraceContext,
+} from "./model-trace.js";
+import {
   isAcceptanceReplaySource,
   PythonInternalClient,
   type AgentCredentialSnapshot,
@@ -136,16 +141,14 @@ export class PiModelAdapter implements AgentModelAdapter {
     ) {
       throw new Error("agent_model_capability_mismatch");
     }
-    if (isAcceptanceReplaySource(credential)) {
-      throw new Error("acceptance_model_replay_mismatch");
-    }
-    const thinkingFormat = thinkingFormatForCredential(credential);
+    const replay = isAcceptanceReplaySource(credential);
+    const thinkingFormat = replay ? undefined : thinkingFormatForCredential(credential);
     const model: Model<"openai-completions"> = {
-      id: modelIdForCredential(credential),
-      name: modelIdForCredential(credential),
+      id: replay ? credential.model_id : modelIdForCredential(credential),
+      name: replay ? credential.model_id : modelIdForCredential(credential),
       api: "openai-completions",
-      provider: providerForCredential(credential),
-      baseUrl: credential.base_url,
+      provider: replay ? credential.provider : providerForCredential(credential),
+      baseUrl: replay ? "about:blank" : credential.base_url,
       reasoning: credential.execution_policy.thinking_format !== "none",
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -186,7 +189,9 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     const tools: Array<AgentTool<typeof structuredValueSchema>> = [structuredTool];
     const toolChoice = toolChoiceForRequest(request);
+    let transportAttempt = 0;
     const runAttempt = async (): Promise<void> => {
+      transportAttempt += 1;
       const agent = new Agent({
         initialState: {
           systemPrompt,
@@ -203,17 +208,42 @@ export class PiModelAdapter implements AgentModelAdapter {
               "structured_repair",
             );
           }
-          const streamOptions = {
+          const streamOptions: SimpleStreamOptions = {
             ...options,
-            apiKey: credential.api_key,
+            ...(!replay ? { apiKey: credential.api_key } : {}),
             ...(toolChoice ? { toolChoice } : {}),
           };
-          return modelStreamForCredential(
+          const stage = attempts > 0
+            ? "structured_repair"
+            : transportAttempt > 1
+              ? "transport_retry"
+              : "initial";
+          const traceContext: AgentModelTraceContext = {
+            credential,
+            request,
+            systemPrompt,
+            userPrompt,
+            schema,
+            loadedSkills: skills,
+            traceClient: this.python,
+          };
+          const traceRequest = streamedToolCallTraceRequest(
+            selectedModel as Model<"openai-completions">,
+            context,
+            credential.execution_policy.max_output_tokens,
+          );
+          if (replay) {
+            return replayedAssistantMessageStream(traceContext, traceRequest, stage);
+          }
+          const source = modelStreamForCredential(
             selectedModel as Model<"openai-completions">,
             context,
             streamOptions,
             credential,
           );
+          return credential.trace_mode === "live_record"
+            ? recordedAssistantMessageStream(traceContext, traceRequest, stage, source)
+            : source;
         },
       });
       const eventProjection = new AgentEventProjection(() => agent.abort());
@@ -252,6 +282,25 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
   }
 
+}
+
+function streamedToolCallTraceRequest(
+  model: Model<"openai-completions">,
+  context: Context,
+  maxTokens: number,
+): Readonly<Record<string, unknown>> {
+  return {
+    model: model.id,
+    messages: context.messages,
+    system_prompt: context.systemPrompt ?? null,
+    tools: context.tools?.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    })) ?? [],
+    max_tokens: maxTokens,
+    stream: true,
+  };
 }
 
 export function modelIdForCredential(credential: AgentCredentialSnapshot): string {

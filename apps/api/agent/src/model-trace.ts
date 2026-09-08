@@ -1,17 +1,22 @@
 import { createHash } from "node:crypto";
 
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessageEvent,
+  type AssistantMessageEventStream,
+} from "@earendil-works/pi-ai";
+
 import type {
   AgentModelTraceRecordRequestV1,
   AgentModelTraceRequestIdentityV1,
   AgentModelTraceNonStreamingResponseV1,
   AgentModelTraceSafeFailureV1,
+  AgentModelTraceStreamingChunkV1,
   AgentModelTraceStreamingResponseV1,
   AgentRunRequest,
-  AgentRuntimeAcceptanceReplaySourceV1,
 } from "./generated/agent-runtime.js";
 import { loadRuntimeManifest } from "./manifest.js";
 import type {
-  StructuredCompletionRequest,
   StructuredCompletionResponse,
 } from "./pi-structured-transport.js";
 import {
@@ -26,6 +31,7 @@ type AgentModelTraceResponseV1 =
   | AgentModelTraceNonStreamingResponseV1
   | AgentModelTraceStreamingResponseV1
   | AgentModelTraceSafeFailureV1;
+type AgentModelTraceProviderRequest = object;
 
 export type AgentModelTraceRecordClient = Pick<
   PythonInternalClient,
@@ -52,7 +58,7 @@ export interface AgentModelTraceContext {
 
 export async function recordAgentModelTraceOutcome(
   context: AgentModelTraceContext,
-  providerRequest: StructuredCompletionRequest,
+  providerRequest: AgentModelTraceProviderRequest,
   stage: ModelAttemptStage,
   response: StructuredCompletionResponse | unknown,
   succeeded: boolean,
@@ -89,9 +95,18 @@ export async function recordAgentModelTraceOutcome(
 
 export async function claimAgentModelTraceOutcome(
   context: AgentModelTraceContext,
-  providerRequest: StructuredCompletionRequest,
+  providerRequest: AgentModelTraceProviderRequest,
   stage: ModelAttemptStage,
 ): Promise<StructuredCompletionResponse> {
+  const response = await claimAgentModelTraceResponse(context, providerRequest, stage);
+  return replayedCompletionResponse(response);
+}
+
+async function claimAgentModelTraceResponse(
+  context: AgentModelTraceContext,
+  providerRequest: AgentModelTraceProviderRequest,
+  stage: ModelAttemptStage,
+): Promise<AgentModelTraceResponseV1> {
   const source = context.credential;
   if (
     !isAcceptanceReplaySource(source) ||
@@ -112,12 +127,307 @@ export async function claimAgentModelTraceOutcome(
       attemptOrdinal,
     ),
   });
-  return replayedCompletionResponse(source, claimed.response);
+  return claimed.response;
+}
+
+export function recordedAssistantMessageStream(
+  context: AgentModelTraceContext,
+  providerRequest: AgentModelTraceProviderRequest,
+  stage: ModelAttemptStage,
+  source: AssistantMessageEventStream,
+): AssistantMessageEventStream {
+  const output = createAssistantMessageEventStream();
+  void recordThenReleaseAssistantEvents(
+    context,
+    providerRequest,
+    stage,
+    source,
+    output,
+  );
+  return output;
+}
+
+async function recordThenReleaseAssistantEvents(
+  context: AgentModelTraceContext,
+  providerRequest: AgentModelTraceProviderRequest,
+  stage: ModelAttemptStage,
+  source: AssistantMessageEventStream,
+  output: AssistantMessageEventStream,
+): Promise<void> {
+  const events: AssistantMessageEvent[] = [];
+  try {
+    for await (const event of source) events.push(event);
+    const terminal = events.at(-1);
+    if (terminal?.type !== "done") {
+      throw new Error("acceptance_model_trace_invalid");
+    }
+    const chunks = normalizedAssistantToolCallChunks(events);
+    await recordAgentModelTraceOutcome(
+      context,
+      providerRequest,
+      stage,
+      {
+        choices: [{
+          finish_reason: finishReasonForAssistantEvent(terminal.reason),
+          message: { content: null },
+        }],
+        usage: {
+          prompt_tokens: terminal.message.usage.input,
+          completion_tokens: terminal.message.usage.output,
+          total_tokens: terminal.message.usage.totalTokens,
+          completion_tokens_details: {
+            reasoning_tokens: terminal.message.usage.reasoning ?? 0,
+          },
+        },
+        transport_metadata: {
+          response_activity_observed: chunks.length > 1,
+          first_content_at: null,
+          last_activity_at: null,
+          completed_at: new Date(0).toISOString(),
+          response_bytes: new TextEncoder().encode(
+            chunks.map((chunk) => chunk.tool_arguments_fragment ?? "").join(""),
+          ).byteLength,
+          finish_reason: finishReasonForAssistantEvent(terminal.reason),
+          provider_trace_id: null,
+          normalized_chunks: chunks,
+        },
+      },
+      true,
+    );
+    for (const event of events) output.push(event);
+  } catch (error) {
+    if (!isAgentModelTraceFailure(error)) {
+      try {
+        await recordAgentModelTraceOutcome(
+          context,
+          providerRequest,
+          stage,
+          error,
+          false,
+        );
+      } catch (captureError) {
+        error = captureError;
+      }
+    }
+    output.push(assistantErrorEvent(context, error));
+  }
+}
+
+export function replayedAssistantMessageStream(
+  context: AgentModelTraceContext,
+  providerRequest: AgentModelTraceProviderRequest,
+  stage: ModelAttemptStage,
+): AssistantMessageEventStream {
+  const output = createAssistantMessageEventStream();
+  void claimThenReleaseAssistantEvents(context, providerRequest, stage, output);
+  return output;
+}
+
+async function claimThenReleaseAssistantEvents(
+  context: AgentModelTraceContext,
+  providerRequest: AgentModelTraceProviderRequest,
+  stage: ModelAttemptStage,
+  output: AssistantMessageEventStream,
+): Promise<void> {
+  try {
+    const response = await claimAgentModelTraceResponse(context, providerRequest, stage);
+    if (response.response_kind !== "streaming") {
+      throw new Error("acceptance_model_replay_mismatch");
+    }
+    for (const event of assistantEventsFromTrace(context, response)) output.push(event);
+  } catch (error) {
+    output.push(assistantErrorEvent(context, error));
+  }
+}
+
+function normalizedAssistantToolCallChunks(
+  events: ReadonlyArray<AssistantMessageEvent>,
+): ReadonlyArray<AgentModelTraceStreamingChunkV1> {
+  const chunks: AgentModelTraceStreamingChunkV1[] = [];
+  for (const event of events) {
+    if (event.type === "toolcall_start") {
+      const toolCall = event.partial.content[event.contentIndex];
+      if (!toolCall || toolCall.type !== "toolCall") {
+        throw new Error("acceptance_model_trace_invalid");
+      }
+      chunks.push({
+        sequence_no: chunks.length + 1,
+        tool_call_index: 0,
+        tool_call_id_fragment: toolCall.id,
+        tool_name_fragment: toolCall.name,
+      });
+    } else if (event.type === "toolcall_delta" && event.delta.length > 0) {
+      chunks.push({
+        sequence_no: chunks.length + 1,
+        tool_call_index: 0,
+        tool_arguments_fragment: event.delta,
+      });
+    } else if (event.type === "done") {
+      chunks.push({
+        sequence_no: chunks.length + 1,
+        finish_reason: finishReasonForAssistantEvent(event.reason),
+      });
+    }
+  }
+  if (chunks.length < 2 || chunks[0]?.tool_call_index !== 0) {
+    throw new Error("acceptance_model_trace_invalid");
+  }
+  return chunks;
+}
+
+function assistantEventsFromTrace(
+  context: AgentModelTraceContext,
+  response: AgentModelTraceStreamingResponseV1,
+): ReadonlyArray<AssistantMessageEvent> {
+  let toolCallId = "";
+  let toolName = "";
+  let argumentsJson = "";
+  const events: AssistantMessageEvent[] = [];
+  const initial = assistantMessage(context, [], "toolUse", response);
+  events.push({ type: "start", partial: initial });
+  let started = false;
+  for (const chunk of response.chunks) {
+    if (chunk.tool_call_index === 0) {
+      toolCallId += chunk.tool_call_id_fragment ?? "";
+      toolName += chunk.tool_name_fragment ?? "";
+      if (!started) {
+        if (!toolCallId || !toolName) throw new Error("acceptance_model_replay_mismatch");
+        started = true;
+        events.push({
+          type: "toolcall_start",
+          contentIndex: 0,
+          partial: assistantMessage(
+            context,
+            [{ type: "toolCall", id: toolCallId, name: toolName, arguments: {} }],
+            "toolUse",
+            response,
+          ),
+        });
+      }
+      const delta = chunk.tool_arguments_fragment ?? "";
+      if (delta) {
+        argumentsJson += delta;
+        events.push({
+          type: "toolcall_delta",
+          contentIndex: 0,
+          delta,
+          partial: assistantMessage(
+            context,
+            [{
+              type: "toolCall",
+              id: toolCallId,
+              name: toolName,
+              arguments: partialJsonObject(argumentsJson),
+            }],
+            "toolUse",
+            response,
+          ),
+        });
+      }
+    }
+  }
+  if (
+    !started ||
+    toolName !== "submit_structured_result" ||
+    response.chunks.at(-1)?.finish_reason !== "tool_calls"
+  ) {
+    throw new Error("acceptance_model_replay_mismatch");
+  }
+  let argumentsValue: Readonly<Record<string, unknown>>;
+  try {
+    const parsed = JSON.parse(argumentsJson) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("invalid");
+    }
+    argumentsValue = parsed as Readonly<Record<string, unknown>>;
+  } catch {
+    throw new Error("acceptance_model_replay_mismatch");
+  }
+  const toolCall = {
+    type: "toolCall" as const,
+    id: toolCallId,
+    name: toolName,
+    arguments: argumentsValue,
+  };
+  const final = assistantMessage(context, [toolCall], "toolUse", response);
+  events.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial: final });
+  events.push({ type: "done", reason: "toolUse", message: final });
+  return events;
+}
+
+function assistantMessage(
+  context: AgentModelTraceContext,
+  content: ReadonlyArray<Readonly<Record<string, unknown>>>,
+  stopReason: "toolUse",
+  response: AgentModelTraceStreamingResponseV1,
+) {
+  return {
+    role: "assistant" as const,
+    content,
+    api: "openai-completions" as const,
+    provider: context.credential.provider,
+    model: context.credential.model_id,
+    usage: {
+      input: response.prompt_tokens ?? 0,
+      output: response.completion_tokens ?? 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: response.reasoning_tokens ?? 0,
+      totalTokens: (response.prompt_tokens ?? 0) + (response.completion_tokens ?? 0),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason,
+    timestamp: 0,
+  } as never;
+}
+
+function partialJsonObject(value: string): Readonly<Record<string, unknown>> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Readonly<Record<string, unknown>>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function finishReasonForAssistantEvent(reason: "stop" | "length" | "toolUse"): string {
+  return reason === "toolUse" ? "tool_calls" : reason;
+}
+
+function assistantErrorEvent(
+  context: AgentModelTraceContext,
+  error: unknown,
+): AssistantMessageEvent {
+  const message = error instanceof Error ? error.message : "acceptance_model_trace_invalid";
+  return {
+    type: "error",
+    reason: "error",
+    error: {
+      role: "assistant",
+      content: [],
+      api: "openai-completions",
+      provider: context.credential.provider,
+      model: context.credential.model_id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "error",
+      errorMessage: message,
+      timestamp: 0,
+    },
+  };
 }
 
 export function traceRequestIdentity(
   context: AgentModelTraceContext,
-  providerRequest: StructuredCompletionRequest,
+  providerRequest: AgentModelTraceProviderRequest,
   stage: ModelAttemptStage,
   attemptOrdinal = attemptOrdinalForStage(stage),
 ): AgentModelTraceRequestIdentityV1 {
@@ -217,7 +527,6 @@ export function normalizedTraceResponse(
 }
 
 function replayedCompletionResponse(
-  _source: AgentRuntimeAcceptanceReplaySourceV1,
   response: AgentModelTraceResponseV1,
 ): StructuredCompletionResponse {
   if (response.response_kind === "transport_failure") {
