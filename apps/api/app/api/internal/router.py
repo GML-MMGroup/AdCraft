@@ -277,7 +277,9 @@ def record_agent_model_trace(
     try:
         record = AgentModelTraceRecordRequestV1.model_validate(payload)
     except ValidationError as error:
-        raise HTTPException(status_code=422, detail=_safe_trace_validation_detail(error)) from error
+        details = _safe_trace_validation_detail(error)
+        logger.info("agent_model_trace_record_validation_rejected", extra={"details": details})
+        raise HTTPException(status_code=422, detail=details) from error
     if record.session_id != session_id:
         raise _trace_http_error(AgentModelTraceSessionError("acceptance_model_trace_invalid"))
     try:
