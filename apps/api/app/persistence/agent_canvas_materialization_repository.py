@@ -2225,15 +2225,31 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
                         )
+                    queued_guided_submission: dict[str, object] | None = None
+                    planning_wave_id: str | None = None
                     if (
                         journey.journey_policy_id == "proposal_submit_auto_result_v1"
                         and action_request is not None
                     ):
+                        queued_guided_submission = _guided_submission_context(
+                            connection,
+                            source_turn_id=envelope.action_turn_id,
+                            workflow_id=envelope.workflow_id,
+                            proposal_id=envelope.proposal_id,
+                            option_id=envelope.selected_option.option_id,
+                            expected_session_revision=envelope.expected_session_revision,
+                        )
+                        if queued_guided_submission is None:
+                            raise _error(
+                                "guided_interaction_incomplete",
+                                "Proposal submission is missing guided interaction authority.",
+                            )
                         wave_digest = sha256(
                             f"{envelope.workflow_id}:{session_row['session_id']}:"
                             f"{envelope.proposal_id}:{envelope.proposal_revision}:"
                             f"{envelope.expected_session_revision}".encode("utf-8")
                         ).hexdigest()[:32]
+                        planning_wave_id = f"wave:{envelope.workflow_id}:{wave_digest}"
                         session_update = connection.execute(
                             update(AgentCanvasGuidanceSessionRow)
                             .where(
@@ -2243,12 +2259,10 @@ class AgentCanvasMaterializationRepository:
                                 == envelope.expected_session_revision,
                             )
                             .values(
+                                revision=envelope.expected_session_revision + 1,
+                                updated_at=timestamp,
                                 journey_state_json=journey.model_copy(
-                                    update={
-                                        "planning_wave_id": (
-                                            f"wave:{envelope.workflow_id}:{wave_digest}"
-                                        )
-                                    }
+                                    update={"planning_wave_id": (planning_wave_id)}
                                 ).model_dump_json(),
                             )
                         )
@@ -2257,6 +2271,32 @@ class AgentCanvasMaterializationRepository:
                                 "guidance_revision_conflict",
                                 "Guidance session revision is stale.",
                             )
+                        interaction_update = connection.execute(
+                            update(AgentCanvasGuidedInteractionRow)
+                            .where(
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == queued_guided_submission["interaction_id"],
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                                AgentCanvasGuidedInteractionRow.revision
+                                == queued_guided_submission["interaction_revision"],
+                            )
+                            .values(
+                                status="closed",
+                                revision=int(queued_guided_submission["interaction_revision"]) + 1,
+                                updated_at=timestamp,
+                            )
+                        )
+                        if interaction_update.rowcount != 1:
+                            raise _error(
+                                "guided_interaction_stale",
+                                "Guided interaction changed before Proposal submission.",
+                            )
+                        connection.execute(
+                            delete(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == queued_guided_submission["interaction_id"]
+                            )
+                        )
                     if envelope.capability_id == "character_design":
                         journey = parse_production_journey(str(session_row["journey_state_json"]))
                         active_action = journey.active_action
@@ -2445,6 +2485,79 @@ class AgentCanvasMaterializationRepository:
                             },
                         ),
                     )
+                    if queued_guided_submission is not None:
+                        for event_type, payload in (
+                            (
+                                "guided_interaction_submitted",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "proposal_id": envelope.proposal_id,
+                                    "option_id": envelope.selected_option.option_id,
+                                    "planning_wave_id": planning_wave_id,
+                                },
+                            ),
+                            (
+                                "guided_interaction_closed",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "receipt_id": f"receipt_{envelope.action_turn_id}",
+                                },
+                            ),
+                            (
+                                "guidance_awaiting_resumed",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "resume_evidence": "proposal_submit",
+                                },
+                            ),
+                        ):
+                            self._events.append_in_transaction(
+                                connection,
+                                V2EventInsert(
+                                    workflow_id=envelope.workflow_id,
+                                    conversation_id=envelope.conversation_id,
+                                    turn_id=envelope.action_turn_id,
+                                    action_id=str(queued_guided_submission["interaction_id"]),
+                                    event_type=event_type,
+                                    transition_key=(
+                                        f"guided-submission:"
+                                        f"{queued_guided_submission['submission_id']}:{event_type}"
+                                    ),
+                                    created_at=timestamp,
+                                    payload=payload,
+                                ),
+                            )
+                        events_cursor = int(
+                            connection.execute(
+                                select(func.coalesce(func.max(WorkflowEventRow.seq), 0)).where(
+                                    WorkflowEventRow.workflow_id == envelope.workflow_id
+                                )
+                            ).scalar_one()
+                        )
+                        accepted_result = GuidedInteractionAcceptedV1(
+                            workflow_id=envelope.workflow_id,
+                            interaction_id=str(queued_guided_submission["interaction_id"]),
+                            submission_id=str(queued_guided_submission["submission_id"]),
+                            receipt_id=f"receipt_{envelope.action_turn_id}",
+                            continuation_id=continuation_id,
+                            resulting_session_revision=envelope.expected_session_revision + 1,
+                            events_cursor=events_cursor,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                                submission_id=queued_guided_submission["submission_id"],
+                                workflow_id=envelope.workflow_id,
+                                interaction_id=queued_guided_submission["interaction_id"],
+                                idempotency_key=queued_guided_submission["idempotency_key"],
+                                request_digest=queued_guided_submission["request_digest"],
+                                request_json=queued_guided_submission["request_json"],
+                                result_json=accepted_result.model_dump_json(),
+                                created_at=timestamp,
+                            )
+                        )
                     connection.commit()
                 except BaseException:
                     connection.rollback()
