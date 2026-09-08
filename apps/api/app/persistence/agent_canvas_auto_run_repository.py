@@ -81,6 +81,7 @@ class AgentCanvasAutomaticRunRepository:
 
         timestamp = _iso(now)
         command_id = _command_id(workflow_id, source_action_id, node_id)
+        logical_operation_id = _logical_operation_id(workflow_id, source_action_id, node_id)
         existing = _select_identity(
             connection,
             workflow_id=workflow_id,
@@ -99,6 +100,10 @@ class AgentCanvasAutomaticRunRepository:
             ) from error
         values = {
             "command_id": command_id,
+            "logical_operation_id": logical_operation_id,
+            "operation_generation": 1,
+            "retry_ordinal": 0,
+            "max_automatic_retries": policy.max_attempts - 1,
             "workflow_id": workflow_id,
             "source_action_id": source_action_id,
             "node_id": node_id,
@@ -131,6 +136,10 @@ class AgentCanvasAutomaticRunRepository:
                     "action_id": source_action_id,
                     "node_id": node_id,
                     "command_id": command_id,
+                    "logical_operation_id": logical_operation_id,
+                    "operation_generation": 1,
+                    "retry_ordinal": 0,
+                    "max_automatic_retries": policy.max_attempts - 1,
                 },
             ),
         )
@@ -371,6 +380,7 @@ class AgentCanvasAutomaticRunRepository:
                     values = {
                         "state": "pending",
                         "attempt_count": next_attempt,
+                        "retry_ordinal": next_attempt,
                         "next_attempt_at": _iso(retry_at),
                         "execution_id": None,
                         "last_error_code": error.code,
@@ -399,7 +409,10 @@ class AgentCanvasAutomaticRunRepository:
                             payload={
                                 "command_id": command_id,
                                 "execution_id": execution_id,
+                                "logical_operation_id": str(row["logical_operation_id"]),
+                                "operation_generation": int(row["operation_generation"]),
                                 "retry_ordinal": next_attempt,
+                                "max_automatic_retries": int(row["max_automatic_retries"]),
                                 "error": error.model_dump(mode="json"),
                             },
                         ),
@@ -510,6 +523,7 @@ class AgentCanvasAutomaticRunRepository:
                         "state": state,
                         "execution_id": execution_id,
                         "attempt_count": attempt_count,
+                        "retry_ordinal": attempt_count,
                         "next_attempt_at": _iso(retry_at) if retry_at else None,
                         "lease_owner": None,
                         "lease_expires_at": None,
@@ -539,6 +553,10 @@ class AgentCanvasAutomaticRunRepository:
                         payload = {
                             "command_id": command_id,
                             "node_id": str(row["node_id"]),
+                            "logical_operation_id": str(row["logical_operation_id"]),
+                            "operation_generation": int(row["operation_generation"]),
+                            "retry_ordinal": attempt_count,
+                            "max_automatic_retries": int(row["max_automatic_retries"]),
                         }
                         if execution_id is not None:
                             payload["execution_id"] = execution_id
@@ -598,6 +616,13 @@ def _command_id(workflow_id: str, source_action_id: str, node_id: str) -> str:
     return f"auto_run_{digest}"
 
 
+def _logical_operation_id(workflow_id: str, source_action_id: str, node_id: str) -> str:
+    digest = hashlib.sha256(
+        f"{workflow_id}:{source_action_id}:{node_id}:automatic-operation".encode()
+    ).hexdigest()[:32]
+    return f"auto_operation_{digest}"
+
+
 def _command(row: object) -> AutomaticRunCommandV2:
     values = dict(row)  # type: ignore[arg-type]
     error = None
@@ -609,6 +634,10 @@ def _command(row: object) -> AutomaticRunCommandV2:
         )
     return AutomaticRunCommandV2(
         command_id=str(values["command_id"]),
+        logical_operation_id=str(values["logical_operation_id"]),
+        operation_generation=int(values["operation_generation"]),
+        retry_ordinal=int(values["retry_ordinal"]),
+        max_automatic_retries=int(values["max_automatic_retries"]),
         workflow_id=str(values["workflow_id"]),
         source_action_id=str(values["source_action_id"]),
         node_id=str(values["node_id"]),

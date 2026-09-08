@@ -742,6 +742,10 @@ class AgentCanvasAutomaticRunCommandRow(Base):
     )
 
     command_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    logical_operation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    operation_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    retry_ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_automatic_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     workflow_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
     )

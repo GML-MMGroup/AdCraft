@@ -48,6 +48,10 @@ class AutomaticRunRetryPolicyV1(_ExecutionSettingsModel):
 
 class AutomaticRunCommandV2(_ExecutionSettingsModel):
     command_id: str = Field(min_length=1, max_length=160)
+    logical_operation_id: str = Field(min_length=1, max_length=160)
+    operation_generation: int = Field(ge=1)
+    retry_ordinal: int = Field(ge=0)
+    max_automatic_retries: int = Field(ge=0)
     workflow_id: str = Field(min_length=1, max_length=160)
     source_action_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)
