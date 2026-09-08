@@ -8,6 +8,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultEvidenceV2,
+    GuidedMediaResultPublicationContextV1,
+)
 from app.schemas.agent_canvas_runtime import (
     CanvasExecutionRecordV2,
     CanvasRunScopeV2,
@@ -244,6 +248,7 @@ class CanvasExecutionResultCommitCommandV2(_AuthorityModel):
     provider_task_id: str | None = Field(default=None, max_length=160)
     outcome: Literal["succeeded", "failed", "cancelled"]
     prepared_result: PreparedNodeResultV2 | None = None
+    guided_media_context: GuidedMediaResultPublicationContextV1 | None = None
     error: CanvasNodeErrorV2 | None = None
     committed_at: datetime
 
@@ -271,6 +276,7 @@ class CanvasExecutionResultCommitReceiptV2(_AuthorityModel):
     outcome: Literal["succeeded", "failed", "cancelled"]
     asset_id: str | None = None
     version_id: str | None = None
+    guided_media_result_evidence: GuidedMediaResultEvidenceV2 | None = None
     event_cursor: int = Field(ge=0)
     committed_at: datetime
 

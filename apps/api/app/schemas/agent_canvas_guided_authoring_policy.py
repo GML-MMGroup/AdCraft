@@ -34,6 +34,16 @@ class PlanningWaveIdentityV1(_GuidedAuthoringPolicyModel):
     source_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
+class GuidedMediaResultPublicationContextV1(_GuidedAuthoringPolicyModel):
+    """Immutable plan authority supplied to terminal media publication."""
+
+    planning_wave_id: str = Field(min_length=1, max_length=160)
+    plan_document_id: str = Field(min_length=1, max_length=160)
+    plan_revision: int = Field(ge=1)
+    operation_id: str = Field(min_length=1, max_length=160)
+    source_generation: int = Field(ge=0, le=16)
+
+
 class GuidedMediaResultEvidenceV2(_GuidedAuthoringPolicyModel):
     """Durable publication evidence; it is not a synthetic user acceptance."""
 

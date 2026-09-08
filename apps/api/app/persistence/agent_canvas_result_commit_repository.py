@@ -38,6 +38,7 @@ from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitReceiptV2,
     CanvasPostReadyEffectV2,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
 from app.schemas.agent_canvas_media_review_authority import (
     CanvasExecutionResultLineageV2,
 )
@@ -107,6 +108,18 @@ class AgentCanvasResultCommitRepository:
                             command,
                             commit_id=receipt.commit_id,
                         )
+                        expected_evidence = _guided_result_evidence(
+                            command,
+                            commit_id=receipt.commit_id,
+                            asset_id=receipt.asset_id,
+                            version_id=receipt.version_id,
+                            node_revision=_stored_node_revision(connection, command),
+                        )
+                        if receipt.guided_media_result_evidence != expected_evidence:
+                            raise _error(
+                                "execution_result_payload_conflict",
+                                "Execution result publication evidence is immutable.",
+                            )
                         if command.publication_intent_id is not None:
                             self._require_publication_intent(connection, command)
                             self._publication_intents.mark_committed_in_transaction(
@@ -184,6 +197,7 @@ class AgentCanvasResultCommitRepository:
                             "Canvas Node no longer accepts this result.",
                         )
                     prior_asset_id = cast(str | None, node["output_asset_id"])
+                    commit_id = _commit_id(command.logical_result_key)
                     self._require_publication_intent(connection, command)
                     asset_id, version_id = self._register_asset(
                         connection,
@@ -291,18 +305,19 @@ class AgentCanvasResultCommitRepository:
                         .values(state="completed", heartbeat_at=timestamp)
                     )
                     self._fault("after_runtime")
+                    evidence = _guided_result_evidence(
+                        command,
+                        commit_id=commit_id,
+                        asset_id=asset_id,
+                        version_id=version_id,
+                        node_revision=int(node["revision"]),
+                    )
                     event_cursor = self._append_events(
                         connection,
                         command,
                         asset_id=asset_id,
                         version_id=version_id,
                         execution_status=aggregate,
-                    )
-                    commit_id = (
-                        "result_commit_"
-                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[
-                            :32
-                        ]
                     )
                     receipt = CanvasExecutionResultCommitReceiptV2(
                         commit_id=commit_id,
@@ -311,6 +326,7 @@ class AgentCanvasResultCommitRepository:
                         outcome=command.outcome,
                         asset_id=asset_id,
                         version_id=version_id,
+                        guided_media_result_evidence=evidence,
                         event_cursor=event_cursor,
                         committed_at=command.committed_at,
                     )
@@ -655,6 +671,29 @@ class AgentCanvasResultCommitRepository:
             committed_at=str(row["committed_at"]),
         )
 
+    def get_result_evidence(self, source_commit_id: str) -> GuidedMediaResultEvidenceV2 | None:
+        """Read publication evidence committed with one terminal result."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    select(AgentCanvasExecutionResultCommitRow.receipt_json).where(
+                        AgentCanvasExecutionResultCommitRow.commit_id == source_commit_id
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_lineage_unavailable",
+                "Execution result lineage is temporarily unavailable.",
+            ) from error
+        if row is None:
+            raise _error(
+                "execution_result_lineage_not_found",
+                "Execution result lineage was not found.",
+            )
+        receipt = CanvasExecutionResultCommitReceiptV2.model_validate_json(str(row))
+        return receipt.guided_media_result_evidence
+
     def find_latest_execution_id(self, *, workflow_id: str, node_id: str) -> str | None:
         """Return the newest successful result execution for one immutable Ready Node."""
 
@@ -989,3 +1028,55 @@ def _digest(value: object) -> str:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_canvas_result_commit_repository")
+
+
+def _commit_id(logical_result_key: str) -> str:
+    return "result_commit_" + hashlib.sha256(logical_result_key.encode("utf-8")).hexdigest()[:32]
+
+
+def _stored_node_revision(connection, command: CanvasExecutionResultCommitCommandV2) -> int:
+    revision = connection.execute(
+        select(AgentCanvasNodeRow.revision).where(
+            AgentCanvasNodeRow.workflow_id == command.workflow_id,
+            AgentCanvasNodeRow.node_id == command.node_id,
+        )
+    ).scalar_one_or_none()
+    return int(revision) if revision is not None else 1
+
+
+def _guided_result_evidence(
+    command: CanvasExecutionResultCommitCommandV2,
+    *,
+    commit_id: str,
+    asset_id: str | None,
+    version_id: str | None,
+    node_revision: int,
+) -> GuidedMediaResultEvidenceV2 | None:
+    context = command.guided_media_context
+    prepared = command.prepared_result
+    if (
+        command.outcome != "succeeded"
+        or context is None
+        or prepared is None
+        or prepared.prepared_object is None
+        or asset_id is None
+        or version_id is None
+    ):
+        return None
+    publication_digest = f"sha256:{prepared.prepared_object.sha256}"
+    return GuidedMediaResultEvidenceV2(
+        evidence_id=f"guided-result:{commit_id}",
+        planning_wave_id=context.planning_wave_id,
+        workflow_id=command.workflow_id,
+        node_id=command.node_id,
+        node_revision=node_revision,
+        operation_id=context.operation_id,
+        asset_id=asset_id,
+        asset_version_id=version_id,
+        publication_digest=publication_digest,
+        plan_document_id=context.plan_document_id,
+        plan_revision=context.plan_revision,
+        publication_receipt_id=commit_id,
+        source_generation=context.source_generation,
+        recorded_at=command.committed_at,
+    )
