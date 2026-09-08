@@ -228,6 +228,12 @@ class GuidedInteractionService:
             interaction.content,
             GuidedMediaReviewV1,
         ):
+            session = self._conversations.get_guidance_session(workflow_id)
+            if session.journey.journey_policy_id == "proposal_submit_auto_result_v1":
+                raise _error(
+                    "guided_media_action_unsupported",
+                    "Media Accept, Retry, and Replace are unavailable for this guided policy.",
+                )
             if self._media_submit is None:
                 raise _error(
                     "guided_interaction_action_not_allowed",

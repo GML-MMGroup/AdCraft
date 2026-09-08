@@ -2219,11 +2219,44 @@ class AgentCanvasMaterializationRepository:
                         .mappings()
                         .one()
                     )
+                    journey = parse_production_journey(str(session_row["journey_state_json"]))
                     if int(session_row["revision"]) != envelope.expected_session_revision:
                         raise _error(
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
                         )
+                    if (
+                        journey.journey_policy_id == "proposal_submit_auto_result_v1"
+                        and action_request is not None
+                    ):
+                        wave_digest = sha256(
+                            f"{envelope.workflow_id}:{session_row['session_id']}:"
+                            f"{envelope.proposal_id}:{envelope.proposal_revision}:"
+                            f"{envelope.expected_session_revision}".encode("utf-8")
+                        ).hexdigest()[:32]
+                        session_update = connection.execute(
+                            update(AgentCanvasGuidanceSessionRow)
+                            .where(
+                                AgentCanvasGuidanceSessionRow.session_id
+                                == session_row["session_id"],
+                                AgentCanvasGuidanceSessionRow.revision
+                                == envelope.expected_session_revision,
+                            )
+                            .values(
+                                journey_state_json=journey.model_copy(
+                                    update={
+                                        "planning_wave_id": (
+                                            f"wave:{envelope.workflow_id}:{wave_digest}"
+                                        )
+                                    }
+                                ).model_dump_json(),
+                            )
+                        )
+                        if session_update.rowcount != 1:
+                            raise _error(
+                                "guidance_revision_conflict",
+                                "Guidance session revision is stale.",
+                            )
                     if envelope.capability_id == "character_design":
                         journey = parse_production_journey(str(session_row["journey_state_json"]))
                         active_action = journey.active_action

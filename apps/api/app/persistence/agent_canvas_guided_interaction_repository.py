@@ -2462,7 +2462,10 @@ class AgentCanvasGuidedInteractionRepository:
             leaf is None
             or leaf.leaf_status in {"queued", "running"}
             or leaf.continuation_status in {"queued", "leased", "retry_wait"}
-            or (not allow_failed_history and leaf.leaf_status in {"failed", "superseded"})
+            or (
+                not allow_failed_history
+                and (leaf.leaf_status == "failed" or leaf.continuation_status == "superseded")
+            )
         )
 
     @staticmethod
