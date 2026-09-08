@@ -122,6 +122,15 @@ class GuidedMediaReviewCoordinator:
                 outcome="superseded",
                 reason_code="not_current_guided_media",
             )
+        if session.journey.journey_policy_id == "proposal_submit_auto_result_v1":
+            return self._publish_automatic_result_evidence(
+                effect=effect,
+                lineage=lineage,
+                node=node,
+                session=session,
+                plan=plan,
+                record=record,
+            )
         review_id, checkpoint_id, awaiting_id = _review_identity(
             effect.source_commit_id,
             plan.document_id,
@@ -292,6 +301,25 @@ class GuidedMediaReviewCoordinator:
                     "Current Guided media result lineage could not be resolved.",
                 ) from error
             raise
+
+    def _publish_automatic_result_evidence(
+        self,
+        *,
+        effect: CanvasPostReadyEffectV2,
+        lineage: CanvasExecutionResultLineageV2,
+        node,
+        session,
+        plan,
+        record,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        """Keep new-policy publication free of a synthetic user review."""
+
+        del effect, lineage, node, session, plan, record
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="guided_media_result_published",
+        )
+
 
     def _is_automatic_mode(self, workflow_id: str) -> bool:
         if self._execution_settings is None:
