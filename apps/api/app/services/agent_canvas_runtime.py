@@ -51,6 +51,9 @@ from app.schemas.agent_canvas_video_parameters import (
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultPublicationContextV1,
+)
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingContextEnvelopeV2,
     WorldSettingResolvedInputV2,
@@ -131,6 +134,10 @@ StageTraceWriter = Callable[
 Clock = Callable[[], datetime]
 RunEligibilityValidator = Callable[[CanvasNodeV2], None]
 BlankPromptEligibilityValidator = Callable[[CanvasNodeV2], None]
+GuidedMediaContextResolver = Callable[
+    [NodeExecutionContext, int, str],
+    GuidedMediaResultPublicationContextV1 | None,
+]
 
 
 class AgentCanvasRunService:
@@ -301,6 +308,7 @@ class DynamicCanvasScheduler:
         publication_recovery: AgentCanvasResultPublicationRecoveryService | None = None,
         terminal_member_reconciler: TerminalMemberReconciler | None = None,
         prompt_preparation: NodePromptPreparationService | None = None,
+        guided_media_context_resolver: GuidedMediaContextResolver | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -334,6 +342,7 @@ class DynamicCanvasScheduler:
         self._publication_recovery = publication_recovery
         self._terminal_member_reconciler = terminal_member_reconciler
         self._prompt_preparation = prompt_preparation or NodePromptPreparationService(workflows)
+        self._guided_media_context_resolver = guided_media_context_resolver
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
@@ -1622,6 +1631,15 @@ class DynamicCanvasScheduler:
                     )
                 )
                 now = self._clock()
+                guided_media_context = (
+                    self._guided_media_context_resolver(
+                        context,
+                        lease.generation,
+                        prepared.logical_result_key,
+                    )
+                    if self._guided_media_context_resolver is not None
+                    else None
+                )
                 self._result_committer.commit(
                     CanvasExecutionResultCommitCommandV2(
                         workflow_id=workflow_id,
@@ -1636,6 +1654,7 @@ class DynamicCanvasScheduler:
                         provider_task_id=outcome.provider_task_id,
                         outcome="succeeded",
                         prepared_result=prepared,
+                        guided_media_context=guided_media_context,
                         committed_at=now,
                     )
                 )
