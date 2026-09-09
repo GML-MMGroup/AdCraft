@@ -60,7 +60,10 @@ from app.services.agent_canvas_role_reference_policy import (
 from app.services.agent_canvas_guided_media_parameters import (
     resolve_video_audio_parameter,
 )
-from app.services.agent_canvas_video_representation import resolve_video_representation_mode
+from app.services.agent_canvas_video_representation import (
+    resolve_video_representation_mode,
+    select_video_representation_mode,
+)
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
@@ -270,6 +273,20 @@ class ProgressiveStoryboardReadyService:
             )
         asset = self._asset_resolver(source_grid.output_asset_id)
         self._validate_confirmation(plan, source_grid, asset, confirmation)
+        admission_constraints = (
+            self._video_audio_constraints_resolver(workflow_id, plan_document_id)
+            if self._video_audio_constraints_resolver is not None
+            else {}
+        )
+        resolve_video_representation_mode(
+            explicit_control=admission_constraints.get("video_representation_mode"),
+            skill_mode=admission_constraints.get("_video_skill_representation_mode"),
+            skill_source_id=str(
+                admission_constraints.get("_video_skill_representation_source_id")
+                or "video-skill"
+            ),
+            identity_safety_decision=admission_constraints.get("identity_safety_decision"),
+        )
         workflow = self._workflows.get_workflow(workflow_id)
         fanout_plan = _fanout_plan(
             plan_document_id=plan.document_id,
@@ -1173,13 +1190,12 @@ class ProgressiveStoryboardReadyService:
             if self._video_audio_constraints_resolver is not None
             else {}
         )
-        representation = resolve_video_representation_mode(
+        representation = select_video_representation_mode(
             explicit_control=audio_constraints.get("video_representation_mode"),
             skill_mode=audio_constraints.get("_video_skill_representation_mode"),
             skill_source_id=str(
                 audio_constraints.get("_video_skill_representation_source_id") or "video-skill"
             ),
-            identity_safety_decision=audio_constraints.get("identity_safety_decision"),
         )
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,
