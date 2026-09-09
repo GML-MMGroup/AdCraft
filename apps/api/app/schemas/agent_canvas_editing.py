@@ -127,21 +127,21 @@ class EditingPreviewClipV2(_EditingModel):
     @model_validator(mode="before")
     @classmethod
     def restore_legacy_availability(cls, value: object) -> object:
-        """Derive the added field from the persisted node status for old previews."""
-
+        """Derive the added field only for legacy persisted preview clips."""
         if not isinstance(value, dict) or "availability" in value:
             return value
-        status_to_availability = {
-            "ready": "available",
-            "working": "pending",
-            "failed": "failed",
-            "draft": "pending",
-        }
         status = value.get("status")
-        availability = status_to_availability.get(status)
-        if availability is None:
-            return value
-        return {**value, "availability": availability}
+        asset_id = value.get("asset_id")
+        warning = value.get("warning")
+        if status == "failed":
+            availability = "failed"
+        elif status == "ready" and asset_id and warning != "source_media_invalid":
+            availability = "available"
+        else:
+            availability = "pending"
+        restored = dict(value)
+        restored["availability"] = availability
+        return restored
 
 
 class EditingPreviewV2(_EditingModel):
