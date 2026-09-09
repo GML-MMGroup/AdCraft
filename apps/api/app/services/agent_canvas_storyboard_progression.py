@@ -282,8 +282,7 @@ class ProgressiveStoryboardReadyService:
             explicit_control=admission_constraints.get("video_representation_mode"),
             skill_mode=admission_constraints.get("_video_skill_representation_mode"),
             skill_source_id=str(
-                admission_constraints.get("_video_skill_representation_source_id")
-                or "video-skill"
+                admission_constraints.get("_video_skill_representation_source_id") or "video-skill"
             ),
             identity_safety_decision=admission_constraints.get("identity_safety_decision"),
         )
