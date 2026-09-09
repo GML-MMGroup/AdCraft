@@ -131,11 +131,10 @@ class EditingPreviewClipV2(_EditingModel):
         if not isinstance(value, dict) or "availability" in value:
             return value
         status = value.get("status")
-        asset_id = value.get("asset_id")
         warning = value.get("warning")
         if status == "failed":
             availability = "failed"
-        elif status == "ready" and asset_id and warning != "source_media_invalid":
+        elif status == "ready" and warning != "source_media_invalid":
             availability = "available"
         else:
             availability = "pending"
