@@ -2909,6 +2909,9 @@ class AgentConversationService:
         return AgentCanvasPublicConceptProjector().project_proposal(
             proposal,
             response_locale=session.response_locale,
+            require_submit=(
+                session.journey.journey_policy_id == "proposal_submit_auto_result_v1"
+            ),
         )
 
     def _revise_capability_proposal(

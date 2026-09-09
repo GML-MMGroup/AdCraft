@@ -62,11 +62,16 @@ class AgentCanvasPublicConceptProjector:
         proposal: ConceptProposalV2,
         *,
         response_locale: str,
+        require_submit: bool = False,
     ) -> ConceptProposalV2:
         """Return a public Proposal copy without changing persisted private facts."""
 
         if len(proposal.options) == 1:
-            return self.project_direct_proposal(proposal, response_locale=response_locale)
+            return self.project_direct_proposal(
+                proposal,
+                response_locale=response_locale,
+                preserve_submit_actions=require_submit,
+            )
 
         option_ids = tuple(option.option_id for option in proposal.options)
         projection = self.project(
@@ -93,6 +98,7 @@ class AgentCanvasPublicConceptProjector:
         proposal: ConceptProposalV2,
         *,
         response_locale: str,
+        preserve_submit_actions: bool = False,
     ) -> ConceptProposalV2:
         """Project one private direct-materialization handle without actions."""
 
@@ -109,8 +115,10 @@ class AgentCanvasPublicConceptProjector:
         return proposal.model_copy(
             update={
                 "options": (compact_option,),
-                "actions": (),
-                "proposed_references": (),
+                "actions": proposal.actions if preserve_submit_actions else (),
+                "proposed_references": (
+                    proposal.proposed_references if preserve_submit_actions else ()
+                ),
             }
         )
 

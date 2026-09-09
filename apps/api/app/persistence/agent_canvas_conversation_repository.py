@@ -3851,6 +3851,11 @@ class AgentCanvasConversationRepository:
                         AgentCanvasGuidanceSessionRow.session_id == proposal["guidance_session_id"]
                     )
                 ).scalar_one()
+                session_journey = connection.execute(
+                    select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
+                        AgentCanvasGuidanceSessionRow.session_id == proposal["guidance_session_id"]
+                    )
+                ).scalar_one()
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -3862,6 +3867,10 @@ class AgentCanvasConversationRepository:
             options,
             applications,
             current_session_revision=int(current_session_revision),
+            require_submit=(
+                parse_production_journey(str(session_journey)).journey_policy_id
+                == "proposal_submit_auto_result_v1"
+            ),
         )
 
     def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
@@ -6016,6 +6025,7 @@ def _proposal(
     applications: list[RowMapping] | None = None,
     *,
     current_session_revision: int | None = None,
+    require_submit: bool = False,
 ) -> ConceptProposalV2:
     applications = applications or []
     latest_application = None
@@ -6074,7 +6084,7 @@ def _proposal(
             expected_session_revision=int(row["guidance_session_revision"]),
             proposal_kind=str(row["proposal_kind"]),
         )
-        if availability == "open" and len(options) == 3
+        if availability == "open" and (len(options) == 3 or require_submit)
         else (
             _historical_proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),
