@@ -173,15 +173,33 @@ class GuidedMediaReviewCoordinator:
         )
         session = self._conversations.get_guidance_session_or_none(effect.workflow_id)
         plan, record = _find_plan_record(self._plans, effect.workflow_id, effect.node_id)
-        if node is None or session is None or plan is None or record is None:
+        if node is None or session is None:
             return CanvasPostReadyEffectDispositionV1(
                 outcome="superseded",
                 reason_code="not_current_guided_media",
             )
-        if (
+        automatic_result_policy = (
             getattr(getattr(session, "journey", None), "journey_policy_id", None)
             == "proposal_submit_auto_result_v1"
-        ):
+        )
+        if plan is None or record is None:
+            resumed = (
+                automatic_result_policy
+                and node.status == "ready"
+                and node.output_asset_id == lineage.asset_id
+                and self._resume_ready_manual_node_wait(
+                    workflow_id=effect.workflow_id,
+                    session=session,
+                    node_id=lineage.node_id,
+                )
+            )
+            return CanvasPostReadyEffectDispositionV1(
+                outcome="applied" if resumed else "superseded",
+                reason_code="guided_manual_node_wait_resumed"
+                if resumed
+                else "not_current_guided_media",
+            )
+        if automatic_result_policy:
             return self._publish_automatic_result_evidence(
                 effect=effect,
                 lineage=lineage,
@@ -409,6 +427,7 @@ class GuidedMediaReviewCoordinator:
         self._resume_ready_manual_node_wait(
             workflow_id=effect.workflow_id,
             session=session,
+            node_id=lineage.node_id,
         )
         if self._prompt_ready_activation is not None:
             planned_node_ids = tuple(
@@ -429,15 +448,15 @@ class GuidedMediaReviewCoordinator:
             reason_code="guided_media_result_published",
         )
 
-    def _resume_ready_manual_node_wait(self, *, workflow_id: str, session) -> None:
-        awaiting = getattr(session, "awaiting", None)
+    def _resume_ready_manual_node_wait(self, *, workflow_id: str, session, node_id: str) -> bool:
+        awaiting = self._interactions.get_awaiting(workflow_id, node_id=node_id)
         if (
             awaiting is None
             or awaiting.kind != "manual_node_run"
             or awaiting.resume_policy != "node_terminal"
             or not self._manual_wait_is_ready(workflow_id, tuple(awaiting.node_ids))
         ):
-            return
+            return False
         self._interactions.resume_awaiting(
             workflow_id,
             GuidanceAwaitingResumeProofV2(
@@ -447,6 +466,7 @@ class GuidedMediaReviewCoordinator:
                 node_ids=tuple(awaiting.node_ids),
             ),
         )
+        return True
 
     def _is_automatic_mode(self, workflow_id: str) -> bool:
         if self._execution_settings is None:
