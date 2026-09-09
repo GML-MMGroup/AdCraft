@@ -124,6 +124,25 @@ class EditingPreviewClipV2(_EditingModel):
     duration_seconds: float | None = Field(default=None, ge=0)
     warning: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def restore_legacy_availability(cls, value: object) -> object:
+        """Derive the added field from the persisted node status for old previews."""
+
+        if not isinstance(value, dict) or "availability" in value:
+            return value
+        status_to_availability = {
+            "ready": "available",
+            "working": "pending",
+            "failed": "failed",
+            "draft": "pending",
+        }
+        status = value.get("status")
+        availability = status_to_availability.get(status)
+        if availability is None:
+            return value
+        return {**value, "availability": availability}
+
 
 class EditingPreviewV2(_EditingModel):
     clips: tuple[EditingPreviewClipV2, ...] = ()

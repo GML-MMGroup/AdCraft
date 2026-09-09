@@ -352,21 +352,18 @@ class EditingExportService:
         try:
             self._on_completed(workflow_id, node_id, export_id)
         except Exception as error:  # noqa: BLE001 - Export remains terminal and recoverable.
+            error_code = getattr(error, "code", "guided_completion_failed")
             self._events.append(
                 V2EventInsert(
                     workflow_id=workflow_id,
                     execution_id=export_id,
                     node_id=node_id,
                     event_type="guided_completion_failed",
-                    transition_key=f"guided-completion:{export_id}:failed",
+                    transition_key=f"guided-completion:{export_id}:failed:{error_code}",
                     created_at=self._clock().isoformat(),
                     payload={
                         "export_id": export_id,
-                        "error_code": getattr(
-                            error,
-                            "code",
-                            "guided_completion_failed",
-                        ),
+                        "error_code": error_code,
                         "error_message": str(error),
                         "retryable": True,
                         "refresh": ["conversation", "runtime", "events"],
