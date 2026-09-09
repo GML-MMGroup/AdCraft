@@ -217,6 +217,7 @@ class AgentCanvasExecutionParameterResolver:
             manual_values, manual_provenance = _manual_parameters(
                 node,
                 include_user_explicit=True,
+                include_structured_content=True,
             )
             binding_candidates = _direct_typed_binding_candidates(
                 binding_snapshots,
@@ -324,6 +325,7 @@ def _manual_parameters(
     node: CanvasNodeV2,
     *,
     include_user_explicit: bool = False,
+    include_structured_content: bool = False,
 ) -> tuple[dict[str, object], dict[str, CanvasParameterProvenanceV2]]:
     values: dict[str, object] = {}
     provenance: dict[str, CanvasParameterProvenanceV2] = {}
@@ -334,7 +336,10 @@ def _manual_parameters(
         if (
             item is not None
             and item.origin != "manual"
-            and not (include_user_explicit and item.origin == "user_explicit")
+            and not (
+                (include_user_explicit and item.origin == "user_explicit")
+                or (include_structured_content and item.origin == "structured_content")
+            )
         ):
             continue
         scalar = _validated_platform_value(field, value)
