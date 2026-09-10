@@ -163,6 +163,13 @@ class GuidedProductionJourneyService:
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
         self._require_stage_duration(workflow_id, session.journey.stage)
+        if session.journey.stage == "editing" and session.journey.stage_status == "failed":
+            raise V2PersistenceError(
+                "guided_editing_not_retryable",
+                "Editing preparation is terminally failed and cannot be requeued.",
+                stage="guided_production_journey_service",
+                details={"retryable": False, "user_action": "none"},
+            )
         active_action = session.journey.active_action
         if (
             session.journey.stage == "editing"

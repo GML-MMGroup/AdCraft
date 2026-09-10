@@ -4047,6 +4047,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_timeline_duration_invalid": 422,
         "editing_timeline_out_of_bounds": 422,
         "editing_timeline_overlap": 422,
+        "guided_editing_not_retryable": 409,
         "editing_no_ready_video": 409,
         "no_exportable_media": 409,
         "editing_export_already_active": 409,
