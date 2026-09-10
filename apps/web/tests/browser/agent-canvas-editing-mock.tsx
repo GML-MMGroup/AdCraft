@@ -52,7 +52,6 @@ function node(
     revision: 1,
     error: null,
     prompt_preparation: null,
-    variation_draft: null,
     created_at: timestamp,
     updated_at: timestamp,
   };
@@ -108,7 +107,6 @@ function binding(
     source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: targetNodeId,
     input_role: inputRole,
-    required: true,
     enabled: true,
     order,
     label: null,
@@ -293,7 +291,6 @@ function AcceptanceHarness() {
         source: { kind: "node_output", source_node_id: importedNode.node_id },
         target_node_id: "editing-downstream",
         input_role: "video_reference",
-        required: true,
         enabled: true,
         order: 0,
       });
@@ -330,7 +327,6 @@ function AcceptanceHarness() {
               node={importedNode}
               patchNode={async () => undefined}
               onRun={async () => undefined}
-              onSaveVariation={async () => undefined}
               onDiscardVariation={async () => undefined}
               onMaterializeVariation={async () => null}
               onSaveImageToLibrary={async () => undefined}

@@ -22,6 +22,10 @@ const TERMINAL_RUNTIME_EVENTS = new Set([
   "runtime_snapshot_updated",
 ]);
 
+export function isTerminalRuntimeEvent(eventType: string): boolean {
+  return TERMINAL_RUNTIME_EVENTS.has(eventType);
+}
+
 const PRESENTATION_PAYLOAD_KEYS = new Set([
   "progress",
   "progress_percent",
@@ -66,6 +70,24 @@ export function runtimeRefreshIdentity(event: CanvasRuntimeEventV2): string {
     payload: presentationPayload(event.payload),
     seq: TERMINAL_RUNTIME_EVENTS.has(event.event_type) ? event.seq : null,
   });
+}
+
+export function runtimeReflectsTerminalEvent(
+  snapshot: CanvasRuntimeSnapshotV2,
+  event: CanvasRuntimeEventV2,
+): boolean {
+  if (snapshot.events_cursor < event.seq) return false;
+  if (!event.node_id) return true;
+  const nodeRuntime = snapshot.node_runtime[event.node_id];
+  if (event.event_type === "node_ready") {
+    return snapshot.ready_node_ids.includes(event.node_id)
+      || nodeRuntime?.visible_status === "ready";
+  }
+  if (event.event_type === "node_failed") {
+    return snapshot.failed_node_ids.includes(event.node_id)
+      || nodeRuntime?.visible_status === "failed";
+  }
+  return true;
 }
 
 export function sameRuntimePresentation(

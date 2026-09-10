@@ -27,7 +27,6 @@ function audioNode(status: CanvasNodeStatusV2, prompt: string | null = null): Ca
     position: { x: 100, y: 100 },
     revision: 1,
     error: null,
-    variation_draft: null,
     created_at: "2026-08-04T00:00:00Z",
     updated_at: "2026-08-04T00:00:00Z",
   };

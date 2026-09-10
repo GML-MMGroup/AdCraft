@@ -144,6 +144,14 @@
   height: 100%;
 }
 
+.agent-canvas-node__media--awaiting-generation-reveal {
+  opacity: 0;
+}
+
+.agent-canvas-node__media--generation-revealed {
+  animation: agent-canvas-node-media-reveal 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 .agent-canvas-node__media--cover {
   object-fit: cover;
   object-position: center;
@@ -162,6 +170,9 @@
 }
 
 .agent-canvas-node__video-stage > video {
+  display: block;
+  object-fit: cover;
+  object-position: center;
   pointer-events: none;
 }
 
@@ -664,63 +675,56 @@
 }
 
 .agent-canvas-node__working--media {
-  background: transparent;
+  container-type: size;
+  background: #1f1f1f;
+  contain: paint;
+  isolation: isolate;
 }
 
-.agent-canvas-node__generation-loader {
+.agent-canvas-node__working--over-media {
+  background: rgba(18, 18, 18, 0.26);
+}
+
+.agent-canvas-node__generation-dots {
   position: absolute;
   inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
   border-radius: inherit;
-  color: #f4f7ff;
+  background-position: center;
+  background-repeat: repeat;
+  background-size: clamp(8px, 5.3cqmin, 12px) clamp(8px, 5.3cqmin, 12px);
+  pointer-events: none;
 }
 
-.agent-canvas-node__generation-field {
-  position: absolute;
-  inset: 4%;
+.agent-canvas-node__generation-dots--static {
+  background-image: radial-gradient(circle, #a1a1a1 0.7px, transparent 1.3px);
+  opacity: 0.22;
 }
 
-.agent-canvas-node__generation-star {
-  position: absolute;
-  top: var(--star-y);
-  left: var(--star-x);
-  width: var(--star-size);
-  aspect-ratio: 1;
-  background: currentColor;
-  filter: blur(3px);
-  opacity: 0.06;
-  transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.42);
-  -webkit-mask: url("/imgs/node-icons/solar-star-outline.svg") center / contain no-repeat;
-  mask: url("/imgs/node-icons/solar-star-outline.svg") center / contain no-repeat;
-  animation: agent-canvas-star-diffusion 2.5s ease-in-out infinite;
-  animation-delay: var(--star-delay);
-  will-change: filter, opacity, transform;
+.agent-canvas-node__generation-dots--dynamic {
+  background-image: radial-gradient(circle, #f5f5f5 1.1px, transparent 1.6px);
+  mask-image:
+    radial-gradient(ellipse at center, #000 0%, transparent 60%),
+    radial-gradient(ellipse at center, #000 0%, transparent 62%);
+  mask-repeat: no-repeat;
+  mask-size: 52% 46%, 38% 38%;
+  mask-position: 16.7% 20.4%, 58.1% 19.4%;
+  -webkit-mask-image:
+    radial-gradient(ellipse at center, #000 0%, transparent 60%),
+    radial-gradient(ellipse at center, #000 0%, transparent 62%);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 52% 46%, 38% 38%;
+  -webkit-mask-position: 16.7% 20.4%, 58.1% 19.4%;
+  animation:
+    agent-canvas-node-dots-morph 6.4s linear var(--agent-canvas-loader-orbit-delay, 0s) infinite,
+    agent-canvas-node-dots-breathe 2.4s cubic-bezier(0.66, 0, 0.34, 1) var(--agent-canvas-loader-breathe-delay, 0s) infinite;
 }
 
-@keyframes agent-canvas-star-diffusion {
-  0%, 100% {
-    filter: blur(3px) drop-shadow(0 0 0 rgba(157, 175, 230, 0));
-    opacity: 0.06;
-    transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.42);
-  }
+.agent-canvas-node__working--over-media > .agent-canvas-node__generation-dots--static {
+  opacity: 0.12;
+}
 
-  40% {
-    filter:
-      blur(0)
-      drop-shadow(0 0 3px rgba(244, 247, 255, 0.94))
-      drop-shadow(0 0 12px rgba(157, 175, 230, 0.72));
-    opacity: 0.96;
-    transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(1);
-  }
-
-  70% {
-    filter: blur(0.7px) drop-shadow(0 0 6px rgba(157, 175, 230, 0.34));
-    opacity: 0.28;
-    transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.68);
-  }
+.agent-canvas-node__working--over-media > .agent-canvas-node__generation-dots--dynamic {
+  opacity: 0.72;
 }
 
 .agent-canvas-node__working-orbit {
@@ -758,53 +762,51 @@
 .react-flow__handle.agent-canvas-node__handle {
   z-index: 12;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: var(--agent-canvas-handle-hit-size);
+  height: var(--agent-canvas-handle-hit-size);
   place-items: center;
   border: 0;
   border-radius: 50%;
   background: transparent;
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transition: opacity 150ms ease;
 }
 
 .react-flow__handle.agent-canvas-node__handle::after {
-  width: 14px;
-  height: 14px;
+  width: var(--agent-canvas-handle-ring-size);
+  height: var(--agent-canvas-handle-ring-size);
   box-sizing: border-box;
   border: 2px solid rgba(148, 151, 160, 0.92);
   border-radius: 50%;
   background: transparent;
   box-shadow: 0 2px 8px rgba(5, 6, 10, 0.28);
   content: "";
-  transform: translateX(var(--agent-handle-ring-offset, 0px));
   transition: border-color 150ms ease, transform 150ms ease;
 }
 
 .react-flow__handle.agent-canvas-node__handle--input {
-  --agent-handle-ring-offset: -26px;
-  left: 14px;
+  left: calc(-1 * var(--agent-canvas-handle-center-offset));
 }
 
 .react-flow__handle.agent-canvas-node__handle--output {
-  --agent-handle-ring-offset: 26px;
-  right: 14px;
+  right: calc(-1 * var(--agent-canvas-handle-center-offset));
 }
 
 .agent-canvas-node-shell:has(> .agent-canvas-node:hover) > .agent-canvas-node__handle,
 .react-flow__handle.agent-canvas-node__handle:hover,
 .react-flow__handle.agent-canvas-node__handle:focus-visible,
-.react-flow__handle.agent-canvas-node__handle:active {
+.react-flow__handle.agent-canvas-node__handle:active,
+.react-flow__handle.agent-canvas-node__handle.connectingfrom,
+.react-flow__handle.agent-canvas-node__handle.connectingto {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .react-flow__handle.agent-canvas-node__handle:hover::after,
 .react-flow__handle.agent-canvas-node__handle:focus-visible::after,
 .react-flow__handle.agent-canvas-node__handle:active::after {
   border-color: rgba(184, 187, 194, 0.98);
-  transform: translateX(var(--agent-handle-ring-offset, 0px)) scale(1.08);
+  transform: scale(1.08);
 }
 
 .react-flow__handle.agent-canvas-node__handle:focus-visible {
@@ -828,32 +830,103 @@
   72%, 100% { transform: translateX(56%); opacity: 0; }
 }
 
+@keyframes agent-canvas-node-media-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-node,
   .agent-canvas-node__video-play,
   .agent-canvas-node__action,
+  .agent-canvas-node__media--generation-revealed,
   .agent-canvas-audio-player__waveform i,
-  .agent-canvas-node__generation-star,
+  .agent-canvas-node__generation-dots--dynamic,
   .agent-canvas-node__working-orbit,
   .agent-canvas-node__working-sheen {
     animation: none;
     transition: none;
   }
 
+  .agent-canvas-node__media--generation-revealed {
+    opacity: 1;
+  }
+
   .agent-canvas-node__working-orbit {
     transform: translate(-50%, -50%);
   }
 
-  .agent-canvas-node__generation-star {
-    filter: drop-shadow(0 0 5px rgba(157, 175, 230, 0.42));
-    opacity: 0.48;
-    transform: translate(-50%, -50%) rotate(var(--star-rotation)) scale(0.78);
+  .agent-canvas-node__generation-dots--dynamic {
+    opacity: 0.7;
   }
 
   .agent-canvas-audio-player__waveform i {
     height: 24px;
     transform: none;
   }
+}
+
+@keyframes agent-canvas-node-dots-morph {
+  0%, 100% {
+    mask-size: 52% 46%, 38% 38%;
+    mask-position: 16.7% 20.4%, 58.1% 19.4%;
+    -webkit-mask-size: 52% 46%, 38% 38%;
+    -webkit-mask-position: 16.7% 20.4%, 58.1% 19.4%;
+  }
+
+  12.5% {
+    mask-size: 50% 50%, 42% 40%;
+    mask-position: 50% 6%, 74.1% 31.7%;
+    -webkit-mask-size: 50% 50%, 42% 40%;
+    -webkit-mask-position: 50% 6%, 74.1% 31.7%;
+  }
+
+  25% {
+    mask-size: 46% 58%, 44% 38%;
+    mask-position: 83.3% 16.7%, 80.4% 53.2%;
+    -webkit-mask-size: 46% 58%, 44% 38%;
+    -webkit-mask-position: 83.3% 16.7%, 80.4% 53.2%;
+  }
+
+  37.5% {
+    mask-size: 54% 52%, 42% 44%;
+    mask-position: 100% 54.2%, 65.5% 76.8%;
+    -webkit-mask-size: 54% 52%, 42% 44%;
+    -webkit-mask-position: 100% 54.2%, 65.5% 76.8%;
+  }
+
+  50% {
+    mask-size: 60% 44%, 38% 46%;
+    mask-position: 82.5% 83.9%, 40.3% 87%;
+    -webkit-mask-size: 60% 44%, 38% 46%;
+    -webkit-mask-position: 82.5% 83.9%, 40.3% 87%;
+  }
+
+  62.5% {
+    mask-size: 54% 50%, 44% 42%;
+    mask-position: 43.5% 98%, 21.4% 67.2%;
+    -webkit-mask-size: 54% 50%, 44% 42%;
+    -webkit-mask-position: 43.5% 98%, 21.4% 67.2%;
+  }
+
+  75% {
+    mask-size: 48% 54%, 46% 40%;
+    mask-position: 13.5% 82.6%, 16.7% 43.3%;
+    -webkit-mask-size: 48% 54%, 46% 40%;
+    -webkit-mask-position: 13.5% 82.6%, 16.7% 43.3%;
+  }
+
+  87.5% {
+    mask-size: 50% 48%, 40% 38%;
+    mask-position: 0% 46.2%, 36.7% 25.8%;
+    -webkit-mask-size: 50% 48%, 40% 38%;
+    -webkit-mask-position: 0% 46.2%, 36.7% 25.8%;
+  }
+}
+
+@keyframes agent-canvas-node-dots-breathe {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 0.88; }
 }
 
 :root .agent-canvas-node {

@@ -185,6 +185,10 @@
   border-top: 1px solid rgba(74, 82, 111, 0.15);
 }
 
+.api-space-credential-row--shared {
+  background: rgba(255, 255, 255, 0.24);
+}
+
 .api-space-credential-copy,
 .api-space-credential-control {
   display: grid;
@@ -231,6 +235,14 @@
   color: inherit;
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.api-space-credential-endpoint {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .api-space-credential-control input {
@@ -341,6 +353,10 @@
   border-color: var(--info);
 }
 
+:root .api-space-credential-row--shared {
+  background: var(--surface-raised);
+}
+
 :root .api-space-eyebrow,
 :root .api-space-credential-status,
 :root .api-space-credential-status.is-not-configured {
@@ -369,6 +385,10 @@
 
 :root .api-space-credential-status code {
   background: var(--success-subtle);
+}
+
+:root .api-space-credential-endpoint {
+  color: var(--muted);
 }
 
 :root .api-space-credential-control input {

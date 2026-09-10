@@ -1,73 +1,22 @@
 import { createPortal } from "react-dom";
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ChevronDownIcon, ChevronUpIcon } from "../../../icons.tsx";
+import { useMemo } from "react";
+import { useWorkbenchMenu } from "./useWorkbenchMenu.ts";
 
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
+import { modelEligibility } from "../../../api/providerModelPolicy.ts";
 import type {
   CanvasModelSelectionModeV2,
   CanvasModelSummaryV2,
   CanvasRuntimeModelResolutionV2,
 } from "../../../types-v2.ts";
 
-const MODEL_MENU_MAX_HEIGHT = 236;
-const MODEL_MENU_WIDTH = 360;
-const MODEL_MENU_GAP = 5;
-const VIEWPORT_GUTTER = 12;
-
-interface ModelMenuPosition {
-  top: number;
-  left: number;
-  width: number;
-  maxHeight: number;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), Math.max(min, max));
-}
-
-function calculateModelMenuPosition(
-  triggerRect: DOMRect,
-  menuRect: DOMRect | null,
-): ModelMenuPosition {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const width = Math.min(
-    MODEL_MENU_WIDTH,
-    Math.max(0, viewportWidth - VIEWPORT_GUTTER * 2),
-  );
-  const maxHeight = Math.min(
-    MODEL_MENU_MAX_HEIGHT,
-    Math.max(120, viewportHeight - VIEWPORT_GUTTER * 2),
-  );
-  const menuHeight = Math.min(menuRect?.height || MODEL_MENU_MAX_HEIGHT, maxHeight);
-  const canPlaceBelow = triggerRect.bottom + MODEL_MENU_GAP + menuHeight
-    <= viewportHeight - VIEWPORT_GUTTER;
-  const canPlaceAbove = triggerRect.top - MODEL_MENU_GAP - menuHeight >= VIEWPORT_GUTTER;
-  const placeAbove = !canPlaceBelow && canPlaceAbove;
-  const requestedTop = placeAbove
-    ? triggerRect.top - MODEL_MENU_GAP - menuHeight
-    : triggerRect.bottom + MODEL_MENU_GAP;
-  const top = clamp(
-    requestedTop,
-    VIEWPORT_GUTTER,
-    viewportHeight - menuHeight - VIEWPORT_GUTTER,
-  );
-  const left = clamp(
-    triggerRect.left,
-    VIEWPORT_GUTTER,
-    viewportWidth - width - VIEWPORT_GUTTER,
-  );
-
-  return { top, left, width, maxHeight };
-}
-
 function modelSummaryLabel(model: Pick<ProviderModelSummaryV1, "display_name" | "provider_id" | "capability">): string {
   return `${model.display_name} · ${model.provider_id} · ${model.capability}`;
+}
+
+function readableTransport(value: string): string {
+  return value.replaceAll("_", " ");
 }
 
 function modelFromNodeSummary(summary: CanvasModelSummaryV2): ProviderModelSummaryV1 {
@@ -94,6 +43,10 @@ export function CanvasModelPicker({
   modelResolution,
   disabled,
   onChange,
+  appearance = "default",
+  showOptionDetails = true,
+  showStatusDetails = true,
+  defaultModelRef,
 }: {
   models: ProviderModelSummaryV1[];
   loading: boolean;
@@ -104,93 +57,39 @@ export function CanvasModelPicker({
   modelResolution?: CanvasRuntimeModelResolutionV2 | null;
   disabled: boolean;
   onChange: (mode: CanvasModelSelectionModeV2, modelRef: string | null) => void;
+  appearance?: "default" | "monochrome";
+  showOptionDetails?: boolean;
+  showStatusDetails?: boolean;
+  defaultModelRef?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<ModelMenuPosition | null>(null);
-  const triggerRef = useRef<HTMLElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const selectedModel = useMemo(() => {
     if (selectionMode !== "explicit" || !modelRef) return null;
     return models.find((model) => model.model_ref === modelRef)
       ?? (modelSummary?.model_ref === modelRef ? modelFromNodeSummary(modelSummary) : null);
   }, [modelRef, modelSummary, models, selectionMode]);
-  const selectedLabel = selectionMode === "default"
+  const visibleModels = useMemo(
+    () => models.filter((model) => modelEligibility(model, "diagnostic").visible),
+    [models],
+  );
+  const defaultModelName = models.find((model) => model.model_ref === defaultModelRef)?.display_name;
+  const defaultLabel = defaultModelRef === undefined
     ? "Default model"
+    : `Default model · ${error ? "Unavailable" : defaultModelName ?? (defaultModelRef ? "Name unavailable" : "Not configured")}`;
+  const selectedLabel = selectionMode === "default"
+    ? defaultLabel
     : selectedModel
-      ? modelSummaryLabel(selectedModel)
+      ? showStatusDetails ? modelSummaryLabel(selectedModel) : selectedModel.display_name
       : `${modelRef ?? "Selected model"} · unavailable`;
 
-  useEffect(() => {
-    if (disabled || loading) {
-      setOpen(false);
-    }
-  }, [disabled, loading]);
+  const { open, setOpen, menuStyle, triggerRef, menuRef } = useWorkbenchMenu(disabled || loading, visibleModels.length);
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setMenuPosition(null);
-      return;
-    }
-
-    let frame: number | null = null;
-    const updatePosition = () => {
-      frame = null;
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      setMenuPosition(calculateModelMenuPosition(
-        trigger.getBoundingClientRect(),
-        menuRef.current?.getBoundingClientRect() ?? null,
-      ));
-    };
-    const schedulePositionUpdate = () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(updatePosition);
-    };
-
-    updatePosition();
-    window.addEventListener("resize", schedulePositionUpdate);
-    window.addEventListener("scroll", schedulePositionUpdate, true);
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", schedulePositionUpdate);
-      window.removeEventListener("scroll", schedulePositionUpdate, true);
-    };
-  }, [models.length, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeFromOutside = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      triggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeFromOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeFromOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  const menu = open && menuPosition ? createPortal(
+  const menu = open ? createPortal(
     <div
       ref={menuRef}
-      className="agent-node-workbench__model-menu"
+      className={`agent-node-workbench__model-menu${appearance === "monochrome" ? " agent-node-workbench__model-menu--monochrome" : ""}`}
       role="listbox"
       aria-label="Compatible models"
-      style={{
-        position: "fixed",
-        top: menuPosition.top,
-        left: menuPosition.left,
-        width: menuPosition.width,
-        maxHeight: menuPosition.maxHeight,
-      }}
+      style={menuStyle}
     >
       <button
         type="button"
@@ -202,11 +101,11 @@ export function CanvasModelPicker({
           setOpen(false);
         }}
       >
-        <strong>Default model</strong>
-        <small>Uses the current API Space default for this node type.</small>
+        <strong>{defaultLabel}</strong>
+        {showOptionDetails ? <small>Uses the current API Space default for this node type.</small> : null}
       </button>
-      {models.map((model) => {
-        const available = model.availability === "available";
+      {visibleModels.map((model) => {
+        const eligibility = modelEligibility(model, "diagnostic");
         const selected = selectionMode === "explicit" && modelRef === model.model_ref;
         return (
           <button
@@ -214,26 +113,39 @@ export function CanvasModelPicker({
             role="option"
             aria-selected={selected}
             key={model.model_ref}
-            disabled={disabled || !available}
-            title={model.unavailable_reason ?? undefined}
+            disabled={disabled || !eligibility.selectable}
+            title={eligibility.reason ?? undefined}
             onClick={() => {
               onChange("explicit", model.model_ref);
               setOpen(false);
             }}
           >
             <strong>{model.display_name}</strong>
-            <small>{model.provider_id} · {model.capability} · {model.availability}</small>
-            {model.unavailable_reason ? <em>{model.unavailable_reason}</em> : null}
+            {showOptionDetails ? (
+              <>
+                <small>
+                  {model.provider_id} · {model.capability} · {model.availability}
+                  {model.conformance_status ? ` · ${model.conformance_status}` : ""}
+                </small>
+                {model.adapter_id && model.transport_kind && model.release_tier ? (
+                  <small>
+                    {model.adapter_id} · {readableTransport(model.transport_kind)} · {model.release_tier}
+                  </small>
+                ) : null}
+                {eligibility.reason ? <em>{eligibility.reason}</em> : null}
+              </>
+            ) : null}
           </button>
         );
       })}
-      {!models.length && !loading ? <p>No compatible models are currently available.</p> : null}
+      {!visibleModels.length && !loading ? <p>No compatible models are currently available.</p> : null}
+      {!showStatusDetails && error ? <p role="alert">{error}</p> : null}
     </div>,
     document.body,
   ) : null;
 
   return (
-    <div className="agent-node-workbench__model-picker">
+    <div className={`agent-node-workbench__model-picker${appearance === "monochrome" ? " agent-node-workbench__model-picker--monochrome" : ""}`}>
       <span className="agent-node-workbench__model-label">Model</span>
       <details
         open={open}
@@ -241,25 +153,34 @@ export function CanvasModelPicker({
         <summary
           ref={triggerRef}
           aria-label="Choose model"
+          aria-expanded={open}
           aria-disabled={disabled || loading}
+          title={!showStatusDetails ? error ?? (selectedModel ? modelEligibility(selectedModel, "diagnostic").reason ?? selectedLabel : selectedLabel) : undefined}
           onClick={(event) => {
+            event.preventDefault();
             if (disabled || loading) {
-              event.preventDefault();
               return;
             }
             setOpen((current) => !current);
           }}
         >
           <span>{loading ? "Loading compatible models..." : selectedLabel}</span>
-          {selectedModel ? <small className={`is-${selectedModel.availability}`}>{selectedModel.availability}</small> : null}
+          {showStatusDetails && selectedModel ? <small className={`is-${selectedModel.availability}`}>{selectedModel.availability}</small> : null}
+          {appearance === "monochrome" ? (
+            <span className="agent-node-workbench__model-chevron" aria-hidden="true">
+              {open ? <ChevronDownIcon /> : <ChevronUpIcon />}
+            </span>
+          ) : null}
         </summary>
       </details>
       {menu}
-      {error ? <p className="agent-node-workbench__field-error">{error}</p> : null}
-      {selectionMode === "explicit" && selectedModel?.unavailable_reason ? (
-        <p className="agent-node-workbench__field-error">{selectedModel.unavailable_reason}</p>
+      {showStatusDetails && error ? <p className="agent-node-workbench__field-error">{error}</p> : null}
+      {showStatusDetails && selectionMode === "explicit" && selectedModel && !modelEligibility(selectedModel, "diagnostic").selectable ? (
+        <p className="agent-node-workbench__field-error">
+          {modelEligibility(selectedModel, "diagnostic").reason}
+        </p>
       ) : null}
-      {modelResolution ? (
+      {showStatusDetails && modelResolution ? (
         <p className="agent-node-workbench__model-resolution">
           Running with {modelResolution.provider_id} · {modelResolution.provider_model_id}
         </p>

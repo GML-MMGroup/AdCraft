@@ -5,6 +5,7 @@ import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
 
 const api = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
+  getModelDefaults: vi.fn(),
 }));
 
 vi.mock("../../../api/client.ts", () => ({ api }));
@@ -33,7 +34,6 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     position: { x: 0, y: 0 },
     revision: 1,
     error: null,
-    variation_draft: null,
     created_at: "2026-07-30T00:00:00Z",
     updated_at: "2026-07-30T00:00:00Z",
   };
@@ -56,6 +56,11 @@ function workflowWith(nodeValue: CanvasNodeV2): AgentCanvasWorkflowV2 {
 describe("useAgentCanvasProviderModels", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.getModelDefaults.mockResolvedValue({
+      defaults: { text: "vendor:text-default", video: "vendor:video-default" },
+      modes: { text: "explicit", video: "explicit" },
+      revisions: { text: 1, video: 1 },
+    });
   });
 
   it.each(["text", "script", "image", "video", "audio"] as const)(
@@ -66,7 +71,10 @@ describe("useAgentCanvasProviderModels", () => {
 
       renderHook(() => useAgentCanvasProviderModels(workflowWith(selected), selected));
 
-      await waitFor(() => expect(api.listProviderModels).toHaveBeenCalledWith({ node_type: nodeType }));
+      await waitFor(() => expect(api.listProviderModels).toHaveBeenCalledWith({
+        node_type: nodeType,
+        include_unavailable: true,
+      }));
     },
   );
 
@@ -84,5 +92,34 @@ describe("useAgentCanvasProviderModels", () => {
     const { result } = renderHook(() => useAgentCanvasProviderModels(workflowWith(image), image));
 
     await waitFor(() => expect(result.current.error).toBe("Model catalog is unavailable."));
+  });
+
+  it("keeps the model catalog available when only installation defaults fail", async () => {
+    const catalogModel = { model_ref: "vendor:image-model" };
+    api.listProviderModels.mockResolvedValue({ items: [catalogModel] });
+    api.getModelDefaults.mockRejectedValue(new Error("Defaults are unavailable."));
+    const image = node("image-1", "image");
+
+    const { result } = renderHook(() => useAgentCanvasProviderModels(workflowWith(image), image));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.models).toEqual([catalogModel]);
+    expect(result.current.defaultModelRef).toBeNull();
+    expect(result.current.error).toBe("Default model could not be loaded.");
+  });
+
+  it.each([
+    ["script", "vendor:text-default"],
+    ["video", "vendor:video-default"],
+  ] as const)("returns the installation default for a %s node", async (nodeType, expected) => {
+    api.listProviderModels.mockResolvedValue({ items: [] });
+    const selected = node(`${nodeType}-default`, nodeType);
+
+    const { result } = renderHook(() => useAgentCanvasProviderModels(
+      workflowWith(selected),
+      selected,
+    ));
+
+    await waitFor(() => expect(result.current.defaultModelRef).toBe(expected));
   });
 });

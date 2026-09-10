@@ -22,7 +22,7 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   journey_custom_input_invalid:
     "The custom direction is incomplete or too long. Revise it and submit again.",
   guidance_orphaned_stall:
-    "The guided step lost its active operation. Refresh the conversation before retrying.",
+    "The guided operation is no longer active. Backend recovery is required before production can proceed.",
   parent_materialization_missing:
     "The required parent draft is not available yet.",
   parent_materialization_revision_stale:

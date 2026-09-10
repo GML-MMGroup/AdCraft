@@ -13,6 +13,15 @@ export function providerRegistryErrorMessage(
   if (code === "credential_update_invalid") {
     return "Enter a valid non-empty key without line breaks.";
   }
+  if (code === "provider_base_url_invalid" || code === "credential_endpoint_invalid") {
+    return "Enter an approved HTTPS Base URL for this provider capability.";
+  }
+  if (code === "provider_gateway_config_stale") {
+    return "Provider gateway configuration is out of date. Synchronize models before retrying.";
+  }
+  if (code === "provider_gateway_unavailable") {
+    return "The configured provider gateway is unavailable.";
+  }
   if (code === "credential_update_conflict") {
     return "Another credential update is in progress. Try again shortly.";
   }
@@ -31,6 +40,12 @@ export function providerRegistryErrorMessage(
   if (code === "credential_test_failed") {
     return "The provider rejected this credential.";
   }
+  if (code === "provider_credential_rejected") {
+    return "The provider rejected this credential.";
+  }
+  if (code === "provider_credentials_missing") {
+    return "Configure the provider credential before using this model.";
+  }
   if (code === "provider_test_unavailable") {
     return "The provider is temporarily unavailable. Try again later.";
   }
@@ -45,6 +60,15 @@ export function providerRegistryErrorMessage(
   }
   if (code === "model_unavailable") {
     return backendMessage(error) ?? "This model is currently unavailable.";
+  }
+  if (code === "model_conformance_required") {
+    return backendMessage(error) ?? "This model must pass conformance verification before it can be selected.";
+  }
+  if (code === "provider_model_retired") {
+    return backendMessage(error) ?? "This provider model has been retired and cannot be selected.";
+  }
+  if (code === "retired_model_default_conflict") {
+    return backendMessage(error) ?? "Choose an available certified model to replace the retired default.";
   }
   if (code === "model_default_mode_invalid") {
     return backendMessage(error) ?? "The selected default routing mode is invalid.";

@@ -15,7 +15,6 @@ function imageBinding(
     },
     target_node_id: "node-target",
     input_role: "image_reference",
-    required: true,
     enabled: true,
     order: 0,
   };

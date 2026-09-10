@@ -74,6 +74,16 @@ export function conversationRecoveryFromError(
   const copy = scopeCopy(scope);
   const detail = technicalDetail(error);
 
+  if (isV2ApiError(error) && error.code === "guidance_orphaned_stall") {
+    return {
+      scope,
+      title: "Guided step requires recovery",
+      message: "The guided operation is no longer active. Backend recovery is required before production can proceed.",
+      technicalDetail: detail,
+      action: "none",
+    };
+  }
+
   if (isV2ApiError(error) && error.code && STALE_AUTHORITY_CODES.has(error.code)) {
     return {
       scope,

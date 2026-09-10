@@ -1,5 +1,21 @@
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
+  AgentRoleAnimation: ({
+    capabilityId,
+    motionState,
+  }: {
+    capabilityId: AgentCapabilityIdV2;
+    motionState: string;
+  }) => (
+    <span
+      data-testid="agent-role-animation-double"
+      data-capability-id={capabilityId}
+      data-motion-state={motionState}
+    />
+  ),
+}));
 
 import type { AgentCapabilityIdV2 } from "../../../types-v2.ts";
 import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
@@ -20,6 +36,13 @@ const expectedRoleClasses: Array<[AgentCapabilityIdV2, string]> = [
 describe("AgentCapabilityIdentity", () => {
   afterEach(() => cleanup());
 
+  it("keeps the name visually hidden until a decoded identity resource is available", () => {
+    const { container } = render(<AgentCapabilityIdentity capabilityId="scene_design" displayName="Scene Designer" />);
+    const copy = container.querySelector<HTMLElement>(".agent-chat__capability-identity-copy")!;
+    expect(getComputedStyle(copy).visibility).toBe("hidden");
+    expect(container.querySelector('[data-role-identity-state="pending"]')).not.toBeNull();
+  });
+
   it("assigns a stable semantic accent class to every capability", () => {
     const { container } = render(
       <>
@@ -39,5 +62,21 @@ describe("AgentCapabilityIdentity", () => {
     expectedRoleClasses.forEach(([, className], index) => {
       expect(identities[index]?.classList.contains(className)).toBe(true);
     });
+  });
+
+  it("forwards working state through the identity into the role animation host", () => {
+    render(
+      <AgentCapabilityIdentity
+        capabilityId="scene_design"
+        displayName="Scene Designer"
+        motionState="working"
+      />,
+    );
+
+    const animation = document.querySelector<HTMLElement>(
+      '[data-testid="agent-role-animation-double"]',
+    );
+    expect(animation?.dataset.capabilityId).toBe("scene_design");
+    expect(animation?.dataset.motionState).toBe("working");
   });
 });

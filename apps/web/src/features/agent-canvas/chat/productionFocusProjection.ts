@@ -44,6 +44,7 @@ function guidanceProjection(
     concept_selection: ["Your creative choice is needed", "Choose an option to continue"],
     product_source: ["A product source is needed", "Add or choose a product source to continue"],
     media_review: ["Your media review is needed", "Review the generated media to continue"],
+    reference_source: ["A reference source is needed", "Choose a reference image or skip to continue"],
     manual_node_run: ["A node is ready to run", "Run the node to continue"],
     milestone_idle: ["This production milestone is complete", "Continue when you are ready"],
   };

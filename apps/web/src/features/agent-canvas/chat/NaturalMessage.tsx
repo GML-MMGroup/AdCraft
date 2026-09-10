@@ -45,7 +45,11 @@ export function NaturalMessage({ message, presentation, related, skillTitle }: N
         <strong className="agent-chat__message-identity">AdCraft Video Agent</strong>
       ) : null}
       <div
-        className={`agent-chat__message-body${long ? expanded ? " is-expanded" : " is-collapsed" : ""}`}
+        className={[
+          "agent-chat__message-body",
+          isAgent ? "agent-chat__message-body--agent-bubble" : "",
+          long ? expanded ? "is-expanded" : "is-collapsed" : "",
+        ].filter(Boolean).join(" ")}
       >
         {!isAgent && skillTitle ? (
           <div className="agent-chat__message-skill" aria-label={`Skill: ${skillTitle}`}>

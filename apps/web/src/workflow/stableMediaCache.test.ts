@@ -4,6 +4,7 @@ import {
   __resetStableMediaCacheForTests,
   isStableMediaUrl,
   loadStableMedia,
+  retainStableMedia,
 } from "./stableMediaCache.ts";
 
 describe("stable media cache", () => {
@@ -34,5 +35,27 @@ describe("stable media cache", () => {
     await loadStableMedia("/api/v2/assets/version-change/content?v=v1");
     await loadStableMedia("/api/v2/assets/version-change/content?v=v2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not revoke a retained media URL when the memory cache trims", async () => {
+    let objectUrlIndex = 0;
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => `blob:media-${objectUrlIndex++}`),
+      revokeObjectURL,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("image", { status: 200 }));
+
+    const firstSource = "/api/v2/assets/retained/content?v=version-0";
+    await loadStableMedia(firstSource);
+    const release = retainStableMedia(firstSource);
+    for (let index = 1; index <= 300; index += 1) {
+      await loadStableMedia(`/api/v2/assets/trimmed-${index}/content?v=version-${index}`);
+    }
+
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:media-0");
+    release();
+    release();
   });
 });

@@ -32,7 +32,6 @@ function node(promptPreparation: CanvasNodeV2["prompt_preparation"]): CanvasNode
     revision: 1,
     error: null,
     prompt_preparation: promptPreparation,
-    variation_draft: null,
     created_at: "2026-08-20T00:00:00Z",
     updated_at: "2026-08-20T00:00:00Z",
   };

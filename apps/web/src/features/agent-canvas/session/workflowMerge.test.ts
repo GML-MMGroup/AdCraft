@@ -14,6 +14,7 @@ import {
   mergeAgentCanvasBindingMutation,
   mergeAgentCanvasConnectedNode,
   mergeAgentCanvasEditingExportImport,
+  mergeExistingAgentCanvasNode,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -40,7 +41,6 @@ function node(
     position: { x: 120, y: 80 },
     revision: 2,
     error: null,
-    variation_draft: null,
     created_at: "2026-07-28T10:00:00Z",
     updated_at: "2026-07-28T10:01:00Z",
     ...overrides,
@@ -80,7 +80,6 @@ const binding: CanvasBindingV2 = {
   source: { kind: "node_output", source_node_id: "node-image" },
   target_node_id: "node-video",
   input_role: "image_reference",
-  required: true,
   enabled: true,
   order: 0,
   label: null,
@@ -156,6 +155,13 @@ describe("mergeAgentCanvasWorkflow", () => {
       output_asset_id: publishedAsset.asset_id,
       position: { x: 410, y: 220 },
     });
+  });
+
+  it("does not restore a deleted node from a stale full Workflow response", () => {
+    const afterDeletion = workflow({ revision: 8, nodes: [] });
+    const staleBeforeDeletion = workflow({ revision: 7, nodes: [node({ revision: 6 })] });
+
+    expect(mergeAgentCanvasWorkflow(afterDeletion, staleBeforeDeletion).nodes).toEqual([]);
   });
 
   it("accepts newer semantic data without regressing a newer local layout", () => {
@@ -329,6 +335,19 @@ describe("mergeAgentCanvasNode", () => {
       position: { x: 510, y: 240 },
     });
   });
+
+  it("ignores a late node refresh after the node was deleted", () => {
+    const afterDeletion = workflow({ revision: 8, nodes: [] });
+    const lateRecoveredNode = node({
+      status: "ready",
+      revision: 6,
+      output_asset_id: publishedAsset.asset_id,
+      output_asset_version_id: publishedAsset.version_id,
+      updated_at: "2026-09-04T00:00:00Z",
+    });
+
+    expect(mergeExistingAgentCanvasNode(afterDeletion, lateRecoveredNode)).toBe(afterDeletion);
+  });
 });
 
 describe("semantic mutation merges", () => {
@@ -356,12 +375,12 @@ describe("semantic mutation merges", () => {
   });
 
   it("replaces the target node's incoming bindings after a binding patch", () => {
-    const optional = { ...binding, required: false, enabled: false, order: 2 };
+    const disabled = { ...binding, enabled: false, order: 2 };
     const response: CanvasBindingMutationResponseV2 = {
       workflow_id: "workflow-1",
       revision: 6,
-      binding: optional,
-      incoming_bindings: [optional],
+      binding: disabled,
+      incoming_bindings: [disabled],
       events_cursor: 8,
     };
 
@@ -376,7 +395,7 @@ describe("semantic mutation merges", () => {
     );
 
     expect(next.revision).toBe(6);
-    expect(next.bindings.find((item) => item.binding_id === "binding-1")).toEqual(optional);
+    expect(next.bindings.find((item) => item.binding_id === "binding-1")).toEqual(disabled);
     expect(next.bindings.find((item) => item.binding_id === "unrelated")).toBeTruthy();
   });
 });

@@ -1,12 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "./client.ts";
+import { credentialUpdateFromDraft } from "./providerRegistry.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("provider registry client", () => {
+  it("builds a capability-scoped credential update without retaining blank endpoints", () => {
+    expect(credentialUpdateFromDraft(
+      { image: " image-secret ", video: "" },
+      { image: " https://gateway.example.test/v1 ", video: "  " },
+    )).toEqual({
+      api_keys: { image: "image-secret" },
+      base_urls: { image: "https://gateway.example.test/v1" },
+      clear_capabilities: [],
+    });
+  });
+
   it("uses the canonical SiliconFlow credential route instead of a Volcengine route", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toMatch(/\/api\/v1\/providers\/siliconflow\/credentials$/);

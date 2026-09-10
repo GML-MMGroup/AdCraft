@@ -8,6 +8,11 @@ import {
   type ModelDefaultsResponseV1,
   type ProviderModelSummaryV1,
 } from "../../api/providerRegistry.ts";
+import {
+  modelEligibility,
+  RETIRED_ARK_MINI_MODEL_REF,
+  selectableModelOptions,
+} from "../../api/providerModelPolicy.ts";
 import { type ApiSpaceNotice } from "./providerRegistryMessages.ts";
 
 export function ModelDefaultsPanel({
@@ -82,11 +87,13 @@ export function ModelDefaultsPanel({
       <div className="api-space-default-grid">
         {MODEL_DEFAULT_PURPOSES.map((purpose) => {
           const allOptions = modelsByPurpose[purpose];
-          const options = allOptions.filter((model) => model.provider_id !== "fake");
+          const options = selectableModelOptions(allOptions);
           const selected = modelDraft[purpose] ?? "";
-          const selectedIsTestOnly = selected.startsWith("fake:")
-            || allOptions.some((model) => model.model_ref === selected && model.provider_id === "fake");
-          const visibleSelected = selectedIsTestOnly ? "" : selected;
+          const selectedCatalogModel = allOptions.find((model) => model.model_ref === selected);
+          const selectedIsHidden = selected.startsWith("fake:")
+            || selected === RETIRED_ARK_MINI_MODEL_REF
+            || Boolean(selectedCatalogModel && !modelEligibility(selectedCatalogModel, "diagnostic").visible);
+          const visibleSelected = selectedIsHidden ? "" : selected;
           const selectedMissing = Boolean(visibleSelected)
             && !options.some((model) => model.model_ref === visibleSelected);
           return (

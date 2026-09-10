@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent role clip window probe</title>
+    <style>
+      html, body { margin: 0; background: rgb(16, 21, 29); }
+      #root { display: flex; flex-wrap: wrap; gap: 16px; }
+      [data-probe-role] { width: 32px; height: 32px; }
+      [data-probe-role] > svg { display: block; width: 32px; height: 32px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/tests/browser/agent-role-clip-windows-mock.tsx"></script>
+  </body>
+</html>

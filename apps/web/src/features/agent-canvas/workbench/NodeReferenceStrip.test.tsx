@@ -22,7 +22,6 @@ const node: CanvasNodeV2 = {
   position: { x: 0, y: 0 },
   revision: 1,
   error: null,
-  variation_draft: null,
   created_at: "2026-08-29T00:00:00Z",
   updated_at: "2026-08-29T00:00:00Z",
 };
@@ -46,7 +45,6 @@ const workflow: AgentCanvasWorkflowV2 = {
     },
     input_role: "image_reference",
     label: "Reference",
-    required: true,
     enabled: true,
     order: 0,
     revision: 1,

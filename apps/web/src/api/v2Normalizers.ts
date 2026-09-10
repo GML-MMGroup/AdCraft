@@ -1498,6 +1498,30 @@ function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").Pro
   const status = requiredProjectString(record, "status");
   if (status !== "active" && status !== "archived" && status !== "trashed") invalidProjectPayload();
   if (typeof record.is_favorite !== "boolean") invalidProjectPayload();
+  const coverState = record.cover_state;
+  if (
+    coverState !== undefined
+    && coverState !== "ready"
+    && coverState !== "unresolved"
+    && coverState !== "none"
+    && coverState !== "broken"
+  ) invalidProjectPayload();
+  const coverSource = record.cover_source;
+  if (
+    coverSource !== undefined
+    && coverSource !== null
+    && coverSource !== "manual"
+    && coverSource !== "product_main"
+    && coverSource !== "scene_main"
+    && coverSource !== "character_main"
+    && coverSource !== "storyboard_grid"
+    && coverSource !== "video_poster"
+    && coverSource !== "migrated"
+  ) invalidProjectPayload();
+  const coverUpdatedAt = record.cover_updated_at;
+  if (coverUpdatedAt !== undefined && coverUpdatedAt !== null && typeof coverUpdatedAt !== "string") {
+    invalidProjectPayload();
+  }
   return {
     project_id: requiredProjectString(record, "project_id"),
     workflow_id: requiredProjectString(record, "workflow_id"),
@@ -1505,8 +1529,33 @@ function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").Pro
     status,
     is_favorite: record.is_favorite,
     cover_asset_id: stringOrNull(record.cover_asset_id) ?? null,
+    cover_version_id: stringOrNull(record.cover_version_id) ?? null,
+    cover_state: coverState,
+    cover_source: coverSource ?? null,
+    cover_updated_at: coverUpdatedAt ?? null,
+    cover: normalizeProjectCoverV2(record.cover),
     project_version: requiredPositiveInteger(record, "project_version"),
     updated_at: requiredProjectString(record, "updated_at"),
+  };
+}
+
+function normalizeProjectCoverV2(value: unknown): import("../types-v2.ts").ProjectCoverV2 | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const record = recordValue(value);
+  if (!record) invalidProjectPayload();
+  const mediaType = record.media_type;
+  if (mediaType !== "image" && mediaType !== "video") invalidProjectPayload();
+  const previewUrl = record.preview_url;
+  if (previewUrl !== null && typeof previewUrl !== "string") invalidProjectPayload();
+  const posterUrl = record.poster_url;
+  if (posterUrl !== null && typeof posterUrl !== "string") invalidProjectPayload();
+  return {
+    asset_id: requiredProjectString(record, "asset_id"),
+    version_id: requiredProjectString(record, "version_id"),
+    media_type: mediaType,
+    preview_url: previewUrl,
+    poster_url: posterUrl ?? null,
   };
 }
 

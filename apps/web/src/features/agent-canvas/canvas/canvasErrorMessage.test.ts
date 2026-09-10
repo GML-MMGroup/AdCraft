@@ -60,4 +60,37 @@ describe("canvasAuthoringErrorMessage", () => {
       payload: null,
     }))).toBe("The selected model is currently unavailable.");
   });
+
+  it("explains that incomplete prompt preparation blocks Run admission", () => {
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 409,
+      code: "node_prompt_preparation_incomplete",
+      message: "Prompt preparation is incomplete.",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }))).toBe("Prompt preparation is still in progress. Try running this node again when it is ready.");
+  });
+
+  it.each([
+    ["provider_gateway_config_stale", "Provider gateway configuration is out of date. Synchronize models before retrying."],
+    ["provider_gateway_unavailable", "The configured provider gateway is unavailable."],
+    ["model_adapter_unavailable", "The selected model has no executable adapter."],
+    ["model_conformance_required", "The selected model has not completed compatibility verification."],
+    ["model_conformance_revoked", "Compatibility approval for the selected model has been revoked."],
+    ["model_parameter_incompatible", "One or more parameters are not supported by the selected model."],
+    ["reference_input_mode_unsupported", "The selected model cannot use the current reference input mode."],
+    ["reference_count_exceeded", "The current references exceed the selected model's limit."],
+  ])("maps provider-neutral failure %s", (code, message) => {
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 422,
+      code,
+      message: "backend implementation detail",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }))).toBe(message);
+  });
 });

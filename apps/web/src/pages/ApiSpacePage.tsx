@@ -17,6 +17,7 @@ import "./api-space.css";
 
 type ModelsByProvider = Record<string, ProviderModelSummaryV1[]>;
 type ModelsByPurpose = Record<ModelDefaultPurpose, ProviderModelSummaryV1[]>;
+const HIDDEN_PROVIDER_IDS = new Set(["fake", "litellm", "openai"]);
 
 export function ApiSpacePage() {
   const [providers, setProviders] = useState<ProviderConnectionStatusV1[]>([]);
@@ -35,16 +36,19 @@ export function ApiSpacePage() {
     setLoadError(null);
     try {
       const providerResponse = await api.listProviders();
+      const configurableProviders = providerResponse.items.filter((provider) => (
+        !HIDDEN_PROVIDER_IDS.has(provider.provider_id)
+      ));
       const [defaultsResponse, purposeResponses, providerResponses] = await Promise.all([
         api.getModelDefaults(),
         Promise.all(MODEL_DEFAULT_PURPOSES.map((purpose) => api.listProviderModels({ purpose }))),
-        Promise.all(providerResponse.items.map(async (provider) => ({
+        Promise.all(configurableProviders.map(async (provider) => ({
           providerId: provider.provider_id,
           response: await api.listProviderModels({ provider: provider.provider_id, include_unavailable: true }),
         }))),
       ]);
       if (requestId !== requestRef.current) return;
-      setProviders(providerResponse.items);
+      setProviders(configurableProviders);
       setDefaults(defaultsResponse);
       setModelsByPurpose(Object.fromEntries(MODEL_DEFAULT_PURPOSES.map((purpose, index) => [
         purpose,

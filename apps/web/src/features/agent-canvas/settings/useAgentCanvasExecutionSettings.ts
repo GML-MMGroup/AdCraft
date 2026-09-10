@@ -11,6 +11,36 @@ type SettingsConflict = {
   message: string;
 };
 
+type SettingsRead = ReturnType<typeof agentCanvasApi.agentCanvasExecutionSettings>;
+
+const executionSettingsReads = new Map<string, {
+  promise: SettingsRead;
+  expiresAt: number;
+}>();
+
+function readExecutionSettings(workflowId: string, force = false): SettingsRead {
+  const existing = executionSettingsReads.get(workflowId);
+  if (!force && existing && (existing.expiresAt === 0 || existing.expiresAt > Date.now())) {
+    return existing.promise;
+  }
+  if (force) executionSettingsReads.delete(workflowId);
+  const promise = agentCanvasApi.agentCanvasExecutionSettings(workflowId);
+  executionSettingsReads.set(workflowId, { promise, expiresAt: 0 });
+  void promise.then(() => {
+    const current = executionSettingsReads.get(workflowId);
+    if (current?.promise === promise) current.expiresAt = Date.now() + 1000;
+  }).catch(() => {
+    if (executionSettingsReads.get(workflowId)?.promise === promise) {
+      executionSettingsReads.delete(workflowId);
+    }
+  });
+  return promise;
+}
+
+export function __resetExecutionSettingsReadsForTests() {
+  executionSettingsReads.clear();
+}
+
 function errorMessage(error: unknown): string {
   if (isV2ApiError(error)) {
     if (error.code === "agent_settings_precondition_required") {
@@ -39,10 +69,10 @@ export function useAgentCanvasExecutionSettings(
   const activeWorkflowIdRef = useRef(workflowId);
   activeWorkflowIdRef.current = workflowId;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
     setLoading(true);
     try {
-      const response = await agentCanvasApi.agentCanvasExecutionSettings(workflowId);
+      const response = await readExecutionSettings(workflowId, force);
       if (activeWorkflowIdRef.current !== workflowId) return null;
       setSettings(response.value);
       setError(null);
@@ -59,7 +89,7 @@ export function useAgentCanvasExecutionSettings(
     setSettings(null);
     setConflict(null);
     setError(null);
-    void load();
+    void load({ force: eventRevision > 0 });
   }, [eventRevision, load]);
 
   const commitMode = useCallback(async (
@@ -84,7 +114,7 @@ export function useAgentCanvasExecutionSettings(
         isV2ApiError(updateError)
         && (updateError.status === 412 || updateError.status === 428)
       ) {
-        const latest = await load();
+        const latest = await load({ force: true });
         setConflict({
           desiredMode,
           message: updateError.status === 412
