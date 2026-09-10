@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around ink and paper. Use cutout and decorative traditions to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+决定角色由墨线、纸片、剪影、纹样或多层材料构成，记录轮廓、关节、服饰边缘和可辨认的负空间。ink 的浓淡和纸面纹理应服务身份，不要用装饰覆盖脸部与动作锚点。
+
+跨镜头保持材料层级、纹样方向、比例和角色轮廓。

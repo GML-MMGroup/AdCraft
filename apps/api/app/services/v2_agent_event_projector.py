@@ -28,6 +28,7 @@ _TRANSPORT_AUDIT_KEYS = (
     "thinking_format",
     "reasoning_control",
     "reasoning_mode",
+    "reasoning_effort",
     "enable_thinking",
     "thinking_budget_tokens",
     "deadline_seconds",
@@ -53,6 +54,7 @@ _TRANSPORT_AUDIT_KEYS = (
     "reasoning_tokens",
     "response_activity_observed",
     "transport_retry_count",
+    "capability_fallback_count",
     "structured_attempt_count",
     "failure_boundary",
     "model_submission_count",
@@ -83,6 +85,7 @@ _NUMERIC_AUDIT_KEYS = {
     "structured_attempt_count",
     "thinking_budget_tokens",
     "transport_retry_count",
+    "capability_fallback_count",
 }
 _AUDIT_TEXT_LIMITS = {
     "agent_name": 80,
@@ -101,6 +104,7 @@ _AUDIT_TEXT_LIMITS = {
     "provider": 160,
     "provider_trace_id": 320,
     "reasoning_control": 80,
+    "reasoning_effort": 80,
     "reasoning_mode": 80,
     "safe_error_code": 120,
     "safe_exception_class": 160,

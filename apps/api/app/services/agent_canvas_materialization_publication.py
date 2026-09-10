@@ -11,6 +11,9 @@ from pydantic import BaseModel, ValidationError
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
@@ -44,6 +47,7 @@ from app.schemas.agent_canvas_materialization import (
     StoryboardMaterializationResultV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationOutcomeV1,
     MaterializationAuthoringSnapshotV1,
     MaterializationDocumentWriteV1,
 )
@@ -81,6 +85,9 @@ from app.services.agent_canvas_parent_derived_materialization import (
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
 )
+from app.services.agent_canvas_materialization_prompt_barrier import (
+    AgentCanvasMaterializationPromptPreparationBarrier,
+)
 from app.services.agent_canvas_materialization_plan import (
     CapabilityMaterializationPlanCompiler,
 )
@@ -107,7 +114,9 @@ from app.services.agent_canvas_storyboard_prompt_ready_promotion import (
 )
 from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
+    combined_style_guidance,
 )
+from app.services.agent_working_documents import AgentWorkingDocumentService
 
 
 class CapabilityMaterializationPublicationService:
@@ -126,6 +135,11 @@ class CapabilityMaterializationPublicationService:
         prompt_ready_activation: Callable[..., object] | None = None,
         parent_derived: ParentDerivedMaterializationCoordinator | None = None,
         prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
+        prompt_preparation_barrier: (
+            AgentCanvasMaterializationPromptPreparationBarrier | None
+        ) = None,
+        reference_source_opener: Callable[..., object] | None = None,
+        on_storyboard_authored: Callable[[MaterializationOutcomeV1], None] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -140,6 +154,16 @@ class CapabilityMaterializationPublicationService:
         self._prompt_dispatch = prompt_dispatch or AgentCanvasPromptPreparationDispatchRepository(
             workflows.database,
             conversations.events,
+        )
+        self._prompt_preparation_barrier = prompt_preparation_barrier or (
+            AgentCanvasMaterializationPromptPreparationBarrier(
+                dispatches=self._prompt_dispatch,
+                continuations=AgentCanvasContinuationOutboxRepository(
+                    workflows.database,
+                    conversations.events,
+                ),
+                events=conversations.events,
+            )
         )
         self._parent_derived = parent_derived or ParentDerivedMaterializationCoordinator(
             workflows=workflows,
@@ -157,6 +181,8 @@ class CapabilityMaterializationPublicationService:
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
         self._duration_authority = GuidedDurationAuthorityPolicy()
         self._prompt_ready_activation = prompt_ready_activation
+        self._reference_source_opener = reference_source_opener
+        self._on_storyboard_authored = on_storyboard_authored
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -257,6 +283,38 @@ class CapabilityMaterializationPublicationService:
             ),
             references=envelope.reference_plan.references,
         )
+        if envelope.capability_id == "storyboard_design" and preview_bundle.nodes:
+            first_node = preview_bundle.nodes[0]
+            document_id = first_node.metadata.get("source_agent_document_id")
+            sequence_id = first_node.metadata.get("source_sequence_id")
+            write = next(
+                (item for item in authority_documents if item.document_id == document_id),
+                None,
+            )
+            candidate = None
+            if write is not None and write.payload is not None:
+                candidate = AgentWorkingDocumentV2.model_validate(write.payload)
+            elif write is not None and write.mutation_plan is not None:
+                current_document = self._working_documents.get(write.document_id)
+                candidate = current_document.model_copy(
+                    update={
+                        "content": write.mutation_plan.next_content,
+                        "revision": write.mutation_plan.next_revision,
+                        "content_digest": self._working_documents.digest_content(
+                            write.mutation_plan.next_content
+                        ),
+                    }
+                )
+            if candidate is not None:
+                frozen_prompt_context = frozen_prompt_context.model_copy(
+                    update={
+                        "working_document_excerpts": (
+                            AgentWorkingDocumentService.bounded_context_from_document(
+                                candidate, f"sequence:{sequence_id}"
+                            ),
+                        ),
+                    }
+                )
         plan = self._plan_compiler.compile(
             envelope,
             normalization,
@@ -269,6 +327,7 @@ class CapabilityMaterializationPublicationService:
             ),
             storyboard_documents=authority_documents,
             prompt_context=frozen_prompt_context,
+            reference_source_admission=self._requires_reference_source_checkpoint(envelope),
         )
         lease_guard()
         try:
@@ -281,21 +340,27 @@ class CapabilityMaterializationPublicationService:
                 "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
             ) from error
-        self._prepare_prompts(
+        reference_wait_opened = self._open_reference_source_checkpoint(
             envelope,
-            materialization_context,
-            session_id=session.session_id,
-            session_revision=session.revision,
-            stage=session.journey.stage,
-            occurrence_id=(
-                session.journey.active_action.occurrence_id
-                if session.journey.active_action is not None
-                else None
-            ),
-            node_ids=outcome.node_ids,
-            operation_ids=outcome.prompt_preparation_ids,
-            lease_guard=lease_guard,
+            outcome,
+            source_turn_id=envelope.action_turn_id,
         )
+        if not reference_wait_opened:
+            self._prepare_prompts(
+                envelope,
+                materialization_context,
+                session_id=session.session_id,
+                session_revision=session.revision,
+                stage=session.journey.stage,
+                occurrence_id=(
+                    session.journey.active_action.occurrence_id
+                    if session.journey.active_action is not None
+                    else None
+                ),
+                node_ids=outcome.node_ids,
+                operation_ids=outcome.prompt_preparation_ids,
+                lease_guard=lease_guard,
+            )
         self._prepare_storyboard_dependencies(
             envelope,
             materialization_context,
@@ -304,18 +369,64 @@ class CapabilityMaterializationPublicationService:
             lease_guard=lease_guard,
         )
         lease_guard()
-        self._storyboard_promotion.promote(
+        promotion = self._storyboard_promotion.promote(
             outcome,
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        if promotion is not None and self._on_storyboard_authored is not None:
+            self._on_storyboard_authored(outcome)
         self._activate_prompt_ready_media(envelope, outcome)
-        if envelope.operation_kind == "parent":
+        if envelope.operation_kind == "parent" and not reference_wait_opened:
             self._parent_derived.reconcile_after_parent(
                 self._refreshed_parent_reconciliation_envelope(envelope, outcome),
                 lease_guard=lease_guard,
             )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _open_reference_source_checkpoint(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome,
+        *,
+        source_turn_id: str,
+    ) -> bool:
+        """Open optional Main reference input before prompt-ready admission."""
+
+        reference_source_opener = getattr(self, "_reference_source_opener", None)
+        if reference_source_opener is None:
+            return False
+        expected_operation_kind = {
+            "character_design": "parent",
+            "scene_design": "standalone",
+        }.get(envelope.capability_id)
+        if expected_operation_kind is None or envelope.operation_kind != expected_operation_kind:
+            return False
+        if not outcome.node_ids:
+            return False
+        opened = reference_source_opener(
+            workflow_id=envelope.workflow_id,
+            target_node_id=outcome.node_ids[0],
+            target_node_revision=1,
+            reference_kind=(
+                "character_main" if envelope.capability_id == "character_design" else "scene_main"
+            ),
+            occurrence_id=envelope.occurrence_id
+            if envelope.capability_id == "character_design"
+            else None,
+            source_turn_id=source_turn_id,
+        )
+        return bool(opened)
+
+    def _requires_reference_source_checkpoint(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+    ) -> bool:
+        if getattr(self, "_reference_source_opener", None) is None:
+            return False
+        return (
+            envelope.capability_id == "character_design" and envelope.operation_kind == "parent"
+        ) or (envelope.capability_id == "scene_design" and envelope.operation_kind == "standalone")
 
     def _prepare_guided_document_stage(
         self,
@@ -383,6 +494,9 @@ class CapabilityMaterializationPublicationService:
             )
             try:
                 content = StoryboardProductionPlanContentV3(
+                    creative_direction_snapshot_id=context.style_projection.get(
+                        "creative_direction_snapshot_id"
+                    ),
                     narrative_outline=text,
                     requirement_revision_id=requirement.revision_id,
                     requirement_revision_no=requirement.revision_no,
@@ -448,7 +562,20 @@ class CapabilityMaterializationPublicationService:
             if stage == "style_lock"
             else text
         )
-        next_content = current.content.model_copy(update={"narrative_outline": outline})
+        next_content = current.content.model_copy(
+            update={
+                "narrative_outline": outline,
+                **(
+                    {
+                        "creative_direction_snapshot_id": context.style_projection.get(
+                            "creative_direction_snapshot_id"
+                        )
+                    }
+                    if stage in {"style_lock", "storyboard_plan"}
+                    else {}
+                ),
+            }
+        )
         operation = f"accept_{stage}"
         request_digest = self._working_documents.digest_mutation(
             document_id=current.document_id,
@@ -853,6 +980,8 @@ class CapabilityMaterializationPublicationService:
         self,
         envelope: ProposalApplicationEnvelopeV1,
         lease_guard: Callable[[], None],
+        *,
+        continuation_source_turn_id: str | None = None,
     ) -> str | None:
         """Resume only prompt preparation after an immutable commit."""
 
@@ -863,25 +992,43 @@ class CapabilityMaterializationPublicationService:
         if outcome is None:
             return None
         pending_preparations: list[tuple[str, str]] = []
+        reference_source_resolved = False
         for node_id, operation_id in zip(
             outcome.node_ids,
             outcome.prompt_preparation_ids,
             strict=True,
         ):
             node = self._workflows.get_node(envelope.workflow_id, node_id)
-            if node.prompt_preparation.operation_id != operation_id:
+            current_operation_id = self._resolve_reference_prompt_successor(
+                workflow_id=envelope.workflow_id,
+                node_id=node_id,
+                committed_operation_id=operation_id,
+                current_operation_id=node.prompt_preparation.operation_id,
+                allow_successor=self._requires_reference_source_checkpoint(envelope),
+            )
+            if current_operation_id is None:
                 raise V2PersistenceError(
                     "prompt_preparation_dispatch_stale",
                     "Committed prompt-preparation operation is no longer current.",
                     stage="capability_materialization_publication",
                     details={"node_id": node_id, "operation_id": operation_id},
                 )
+            reference_source_resolved = reference_source_resolved or (
+                current_operation_id != operation_id
+            )
             if node.prompt_preparation.status == "ready":
                 continue
-            pending_preparations.append((node_id, operation_id))
+            pending_preparations.append((node_id, current_operation_id))
         pending_preparations = tuple(pending_preparations)
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        if pending_preparations:
+        reference_wait_opened = False
+        if not reference_source_resolved:
+            reference_wait_opened = self._open_reference_source_checkpoint(
+                envelope,
+                outcome,
+                source_turn_id=envelope.action_turn_id,
+            )
+        if pending_preparations and not reference_wait_opened:
             # A committed materialization is recovered from the exact
             # dispatch operation that was persisted with its Draft.  Rebuilding
             # context from the mutable requirement/session state here could
@@ -925,18 +1072,63 @@ class CapabilityMaterializationPublicationService:
             lease_guard=lease_guard,
         )
         lease_guard()
-        self._storyboard_promotion.promote(
+        promotion = self._storyboard_promotion.promote(
             outcome,
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        if promotion is not None and self._on_storyboard_authored is not None:
+            self._on_storyboard_authored(outcome)
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
-            self._parent_derived.reconcile_after_parent(
-                self._refreshed_parent_reconciliation_envelope(envelope, outcome),
-                lease_guard=lease_guard,
-            )
+            parent = self._refreshed_parent_reconciliation_envelope(envelope, outcome)
+            if continuation_source_turn_id is None:
+                self._parent_derived.reconcile_after_parent(
+                    parent,
+                    lease_guard=lease_guard,
+                )
+            else:
+                self._parent_derived.reconcile_after_parent(
+                    parent,
+                    lease_guard=lease_guard,
+                    source_turn_id=continuation_source_turn_id,
+                )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _resolve_reference_prompt_successor(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        committed_operation_id: str,
+        current_operation_id: str | None,
+        allow_successor: bool,
+    ) -> str | None:
+        if current_operation_id == committed_operation_id:
+            return current_operation_id
+        if current_operation_id is None or not allow_successor:
+            return None
+        committed = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            committed_operation_id,
+        )
+        current = self._prompt_dispatch.get_by_node_operation(
+            workflow_id,
+            node_id,
+            current_operation_id,
+        )
+        if (
+            committed is None
+            or current is None
+            or getattr(committed, "status", None) != "superseded"
+            or getattr(committed, "supersession_reason", None) != "guided_reference_source_resolved"
+            or getattr(committed, "superseded_by_dispatch_id", None)
+            != getattr(current, "dispatch_id", None)
+            or getattr(current, "status", None) not in {"queued", "leased", "completed"}
+        ):
+            return None
+        return current.operation_id
 
     def _refreshed_parent_reconciliation_envelope(
         self,
@@ -973,7 +1165,14 @@ class CapabilityMaterializationPublicationService:
             ) from error
         current = self._workflows.get_node(envelope.workflow_id, parent_snapshot.node_id)
         current_operation_id = current.prompt_preparation.operation_id
-        if not current_operation_id or current_operation_id != expected_operation_id:
+        resolved_operation_id = self._resolve_reference_prompt_successor(
+            workflow_id=envelope.workflow_id,
+            node_id=parent_snapshot.node_id,
+            committed_operation_id=expected_operation_id,
+            current_operation_id=current_operation_id,
+            allow_successor=self._requires_reference_source_checkpoint(envelope),
+        )
+        if resolved_operation_id is None:
             raise V2PersistenceError(
                 "prompt_preparation_dispatch_stale",
                 "Current parent Node does not match its committed preparation identity.",
@@ -984,6 +1183,7 @@ class CapabilityMaterializationPublicationService:
                     "current_operation_id": current_operation_id,
                 },
             )
+        current_operation_id = resolved_operation_id
         refreshed_snapshot = parent_snapshot.model_copy(
             update={
                 "node_revision": current.revision,
@@ -1093,13 +1293,9 @@ class CapabilityMaterializationPublicationService:
     ) -> MaterializationNormalizationV1:
         draft_key, _, _, title_suffix, _ = stage_definitions("storyboard_design")[0]
         summary = envelope.selected_option.public_summary
-        style_prompt = next(
-            (
-                value.strip()
-                for key in ("role_guidance", "global_guidance", "summary")
-                if isinstance((value := context.style_projection.get(key)), str) and value.strip()
-            ),
-            "Detailed semi-realistic advertising illustration",
+        style_prompt = (
+            combined_style_guidance(context.style_projection)
+            or "Detailed semi-realistic advertising illustration"
         )
         style = VisualStyleContractV2(
             style_prompt=style_prompt,
@@ -1213,6 +1409,9 @@ class CapabilityMaterializationPublicationService:
             )
             content = StoryboardProductionPlanContentV3(
                 schema_version="3",
+                creative_direction_snapshot_id=context.style_projection.get(
+                    "creative_direction_snapshot_id"
+                ),
                 narrative_outline=legacy_outline.narrative_outline,
                 requirement_revision_id=requirement.revision_id,
                 requirement_revision_no=requirement.revision_no,
@@ -1243,7 +1442,8 @@ class CapabilityMaterializationPublicationService:
                 AgentWorkingDocumentRepository.digest_content(content),
                 content,
                 sequence_id,
-                style_excerpt=str(context.style_projection)[:8_192],
+                style_excerpt=combined_style_guidance(context.style_projection),
+                response_locale=context.response_locale,
             )
             segment_draft = self._storyboard_gateway.materialize_storyboard_segment(
                 segment_context,
@@ -1359,6 +1559,7 @@ class CapabilityMaterializationPublicationService:
                         **normalization.parameters,
                         "source_agent_document_id": document_id,
                         "source_sequence_id": sequence_id,
+                        "sequence_index": sequence.order,
                     },
                 }
             ),
@@ -1381,6 +1582,29 @@ class CapabilityMaterializationPublicationService:
     ) -> None:
         if not operation_ids:
             return
+        operation_pairs = tuple(zip(node_ids, operation_ids, strict=True))
+        dispatch_owned: list[tuple[str, str]] = []
+        direct: list[tuple[str, str]] = []
+        for node_id, operation_id in operation_pairs:
+            dispatch = self._prompt_dispatch.get_by_node_operation(
+                envelope.workflow_id,
+                node_id,
+                operation_id,
+            )
+            if dispatch is None:
+                direct.append((node_id, operation_id))
+            else:
+                dispatch_owned.append((node_id, operation_id))
+        if dispatch_owned:
+            self._prompt_preparation_barrier.require_terminal(
+                workflow_id=envelope.workflow_id,
+                materialization_id=envelope.materialization_id,
+                operations=tuple(dispatch_owned),
+            )
+        if not direct:
+            return
+        node_ids = tuple(node_id for node_id, _operation_id in direct)
+        operation_ids = tuple(operation_id for _node_id, operation_id in direct)
         if context_by_node is not None:
             # A dependency wave must carry one immutable context for every
             # operation.  Never let a missing entry fall back to a sibling (or

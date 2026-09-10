@@ -99,7 +99,7 @@ class AgentCanvasAutoRunDispatcher:
             )
             persist_failure = (
                 self._commands.defer
-                if error.code == "upstream_inputs_not_ready"
+                if error.code in {"upstream_inputs_not_ready", "prompt_preparation_in_progress"}
                 else self._commands.record_failure
             )
             updated = persist_failure(

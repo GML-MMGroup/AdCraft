@@ -100,7 +100,8 @@ try {
     Invoke-AdCraftCompose @('build')
     Write-AdCraftInfo '启动 AdCraft……'
     Invoke-AdCraftCompose @('up','-d','--remove-orphans')
-    Write-AdCraftInfo '等待 Agent/API/Web 健康，最长 120 秒……'
+    $waitSeconds = if ($env:ADCRAFT_DEPLOY_WAIT_SECONDS) { $env:ADCRAFT_DEPLOY_WAIT_SECONDS } else { '1800' }
+    Write-AdCraftInfo "等待 Agent/API/Web 健康，最长 $waitSeconds 秒……"
     Wait-AdCraftServices
     $url = Get-AdCraftUrl
     Write-AdCraftInfo "部署成功：$url"

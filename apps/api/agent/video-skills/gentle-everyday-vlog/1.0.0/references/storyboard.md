@@ -1,1 +1,5 @@
-Organize shots around intimate handheld observation, develop visual progression through soft routine, and reserve natural gestures for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+从空间建立和自然手势开始，再靠近触感或关系，最后回到完成后的状态。关键帧记录镜头距离、手部、物件前后状态、视线、光线和环境声入口；不要把每个日常动作剪成同样的节拍。
+
+用动作匹配、视线、声音桥接和短暂留白转场，检查观察是否打扰主体。

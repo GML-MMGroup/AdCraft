@@ -1,29 +1,33 @@
 {
   "skill_id": "monumental-minimalist-science-fiction",
   "version": "1.0.0",
-  "display_name": "Monumental Minimalist Science Fiction",
-  "description": "An advertising treatment built around vast scale, sparse geometry, atmospheric depth, and human-to-environment contrast.",
+  "display_name": "宏大极简科幻影像",
+  "description": "以广阔尺度、稀疏几何、大气深度和人与环境的对照构建克制而有方向的科幻商业画面。",
+  "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
-    "cinematic",
-    "narrative",
-    "composition"
+    "科幻影像",
+    "尺度叙事",
+    "极简构图"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "科幻广告",
+    "概念影像",
+    "未来产品展示"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Monumental Minimalist Science Fiction creative treatment."
+    "kind": "image",
+    "summary": "宏大极简科幻影像视觉预览。",
+    "media_url": "/api/v2/video-skills/monumental-minimalist-science-fiction/preview?v=1.0.0"
   },
   "display_order": 240,
   "files": {
-    "SKILL.md": "ff33e3c3e53a3fd17b059c9f5d6a75c1d865d54d9e4c9f4c3fd5d3cdc8c12009",
-    "references/script.md": "eebd72b0ff2a086275ac862346ae3a407790252552bc36b8954ad22b4f0e35cf",
-    "references/scene.md": "4a92e9b4a208ab2ef3637221a9fba2651f99dcac25079a2271758385db55529f",
-    "references/storyboard.md": "ed49b605078e8fb931496d02fc0b1dd679e55f03392271d8cd87130bd370f057",
-    "references/video.md": "48212ddd6d8e0125f19a9b01e4ac3d46decf3ca186828453246011e7d11bbb4b"
+    "SKILL.md": "4a80103f477e25aac550d744605fb3fd4b92a9f2e0dd3b9b81c0ba0d92f860c8",
+    "references/script.md": "f988167dd2a0a3acd1e5d5ed13deb86f1e807fb1e9d6e48791aaa6e20351d44b",
+    "references/scene.md": "0d020539f9142c2431890e29e85c6f5128f3f5330cf041b5e604c8cab5ce9fc9",
+    "references/storyboard.md": "65984977494ff510ff1bd14df8e0d2c4bf1d4fa33c97504380f003e088950ad2",
+    "references/video.md": "f395de403e1dbcc8b99fade1c209b9009a53fc199e68a4caf2439db98370e583",
+    "previews/preview.webp": "b1f194f11d5e2049729cbf5cbe40d8143355f91170de82017e779de58d89224b"
   },
   "role_guidance": {
     "script": "references/script.md",

@@ -1,8 +1,23 @@
 ---
-name: Product Promotional Film
-description: An advertising treatment built around selling-point hierarchy, use context, benefit reveal, and clean packshot logic.
+name: 商品卖点宣传片
+description: 以卖点层级、使用情境、利益揭示和清晰收束组织可理解、可转化的商品广告。
 ---
 
-Use selling-point hierarchy, use context, benefit reveal, and clean packshot logic as the style's creative grammar. Establish selling-point hierarchy as the primary visual idea, reinforce it through use context, and let benefit reveal shape the progression toward clean packshot logic.
+把 selling-point hierarchy、use context、benefit reveal、clean packshot logic 作为商品宣传的四个创作支点。先决定观众必须记住的一个主卖点，再用使用情境证明它，最后让利益揭示落到产品和品牌上。镜头越多，信息越要分层；不要让包装、人物或特效抢走主卖点。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 卖点与情境
+
+把功能翻译成用户可以感受到的利益：更省力、更清楚、更舒适、更快找到、更容易使用或更适合某种生活方式。为每个卖点指定证据动作和受众反应。多个卖点按照主次排序，次要卖点支持主线，不平铺成清单。
+
+使用情境要有真实需求、明确操作和可观察结果。人物的动作、表情和空间变化应说明产品如何改善状态；不要让人物只拿着产品摆姿势。产品的尺寸、包装、颜色、材质和关键部件跨镜头保持一致。
+
+## 揭示与收束
+
+用问题、尝试、变化、结果和回收等相对段落安排利益揭示。第一次展示产品时保持识别，功能展示时给足接触和因果，结尾使用 clean packshot logic 回到干净、可读的产品全貌。Logo、价格或文字只有在确有信息职责时出现，不能遮盖主体。
+
+## 纠偏边界
+
+工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供商业表达。参考资产用于锁定产品和人物事实；结果偏离时指出是卖点、使用动作、产品结构还是收束构图出了问题，再针对性减少变化。
+
+正例：先展示用户的具体困扰，再用一个清楚的操作带来可见改善，最后回到产品全貌和一句准确的利益承诺。
+反例：每个镜头都出现新的卖点、背景和口号，观众记不住主张，也看不懂产品怎样产生结果。

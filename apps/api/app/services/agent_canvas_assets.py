@@ -36,6 +36,7 @@ from app.schemas.v2_asset_library import (
     AssetVersionMetadataV2,
 )
 from app.services.v2_storage_adapter import StorageAdapter
+from app.services.v2_asset_renditions import V2AssetRenditionService
 from app.services.agent_canvas_asset_reference_resolver import (
     AgentCanvasAssetReferenceResolver,
 )
@@ -43,6 +44,8 @@ from app.services.v2_final_composition_renderer import V2MediaProbe, V2MediaProb
 
 
 MediaFactsProbe = Callable[[Path, str], V2MediaProbeResult]
+AssetVersionPublishedCallback = Callable[[AssetVersionMetadataV2], object]
+PreparedObjectCallback = Callable[[PreparedNodeResultV2], object]
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,8 @@ class AgentCanvasAssetService:
         workflows: AgentCanvasWorkflowRepository,
         *,
         media_facts_probe: MediaFactsProbe | None = None,
+        rendition_service: V2AssetRenditionService | None = None,
+        on_version_published: AssetVersionPublishedCallback | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._assets = assets
@@ -76,6 +81,8 @@ class AgentCanvasAssetService:
         self._storage = StorageAdapter(data_dir)
         self._reference_resolver = AgentCanvasAssetReferenceResolver(data_dir, assets)
         self._media_facts_probe = media_facts_probe or V2MediaProbe()
+        self._renditions = rendition_service or V2AssetRenditionService(data_dir)
+        self._on_version_published = on_version_published
 
     def upload_bytes(
         self,
@@ -87,6 +94,7 @@ class AgentCanvasAssetService:
         title: str,
         media_type: str,
         idempotency_key: str,
+        source_semantic_role: str | None = None,
     ) -> ProjectAssetSummaryV2:
         _validate_upload(media_type, mime_type, content, idempotency_key)
         asset_id = _stable_identifier("asset", workflow_id, idempotency_key)
@@ -104,6 +112,7 @@ class AgentCanvasAssetService:
                     "Idempotency key was reused with different upload content.",
                     stage="agent_canvas_asset_service",
                 )
+            self._notify_version_published(existing)
             return self._asset_summary(existing)
 
         extension = _extension(filename, mime_type)
@@ -130,9 +139,11 @@ class AgentCanvasAssetService:
                     "display_name": title,
                     "original_filename": Path(filename).name,
                     "source_type": "upload",
+                    "source_semantic_role": source_semantic_role,
                 },
             ),
         )
+        self._notify_version_published(version)
         return self._asset_summary(version)
 
     def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
@@ -162,6 +173,24 @@ class AgentCanvasAssetService:
                 ) from error
             raise
         return self._asset_summary(verified.metadata)
+
+    def resolve_asset_versions(
+        self,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ProjectAssetSummaryV2]:
+        """Resolve exact immutable pairs with one bounded metadata query."""
+
+        try:
+            verified = self._reference_resolver.resolve_bound_assets(pairs)
+        except V2PersistenceError as error:
+            if error.code == "canvas_asset_reference_version_required":
+                raise V2PersistenceError(
+                    "asset_version_not_found",
+                    "Asset version was not found.",
+                    stage="agent_canvas_asset_service",
+                ) from error
+            raise
+        return {pair: self._asset_summary(item.metadata) for pair, item in verified.items()}
 
     def resolve_target_asset(
         self,
@@ -253,6 +282,7 @@ class AgentCanvasAssetService:
                     "The node-run fingerprint resolved to different output bytes.",
                     stage="agent_canvas_asset_service",
                 )
+            self._notify_version_published(existing)
             return self._asset_summary(existing)
         extension = _extension(filename, mime_type)
         staging = (
@@ -341,7 +371,17 @@ class AgentCanvasAssetService:
                 },
             ),
         )
+        self._notify_version_published(version)
         return self._asset_summary(version)
+
+    def _notify_version_published(self, version: AssetVersionMetadataV2) -> None:
+        if self._on_version_published is None:
+            return
+        try:
+            self._on_version_published(version)
+        except V2PersistenceError:
+            # Cover metadata is repairable and must not invalidate published media.
+            return
 
     def prepare_generated_bytes(
         self,
@@ -357,6 +397,8 @@ class AgentCanvasAssetService:
         source_semantic_role: str | None = None,
         publication_metadata: Mapping[str, object] | None = None,
         require_native_audio: bool = False,
+        publication_intent_id: str | None = None,
+        before_object_publish: PreparedObjectCallback | None = None,
     ) -> PreparedNodeResultV2:
         """Prepare verified bytes without publishing product Asset metadata."""
 
@@ -370,6 +412,51 @@ class AgentCanvasAssetService:
         asset_id = _stable_identifier("asset", workflow_id, node_id, fingerprint)
         version_id = f"version_{asset_id}"
         extension = _extension(filename, mime_type)
+        storage_key = self._storage.content_storage_key(checksum, extension)
+        workflow = self._workflows.get_workflow(workflow_id)
+        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        metadata = {
+            **dict(publication_metadata or {}),
+            "display_name": Path(filename).stem,
+            "source_type": source_type,
+            "source_node_id": node_id,
+            "source_execution_id": execution_id,
+            "source_semantic_role": source_semantic_role,
+            "fingerprint": fingerprint,
+            "project_id": workflow.project_id,
+            "workflow_id": workflow_id,
+            "checksum": checksum,
+            "publication_status": "prepared",
+            "publication_id": fingerprint,
+            "generated_asset_provenance": _generated_provenance(
+                dict(publication_metadata or {}),
+                workflow_id=workflow_id,
+                node_id=node_id,
+                execution_id=execution_id,
+                node_revision=(node.revision if node is not None else 1),
+            ).model_dump(mode="json"),
+        }
+        planned = PreparedNodeResultV2(
+            logical_result_key=fingerprint,
+            payload_digest=checksum,
+            publication_intent_id=publication_intent_id,
+            prepared_object=PreparedContentObjectV2(
+                storage_key=storage_key,
+                sha256=checksum,
+                size_bytes=len(content),
+                media_type=mime_type.split("/", 1)[0],
+                mime_type=mime_type,
+                filename=filename,
+                media_facts={},
+            ),
+            asset_id=asset_id,
+            version_id=version_id,
+            asset_display_name=Path(filename).stem,
+            asset_source_type=("generated" if source_type == "editing_export" else source_type),
+            asset_metadata={key: value for key, value in metadata.items() if value is not None},
+        )
+        if before_object_publish is not None:
+            before_object_publish(planned)
         staging = (
             self._data_dir
             / "v2"
@@ -387,35 +474,22 @@ class AgentCanvasAssetService:
             size_bytes=len(content),
             require_native_audio=require_native_audio,
         )
-        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
-        workflow = self._workflows.get_workflow(workflow_id)
-        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        published_storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        if published_storage_key != storage_key:
+            raise V2PersistenceError(
+                "v2_storage_key_invalid",
+                "Prepared storage identity changed during publication.",
+                stage="agent_canvas_asset_service",
+            )
         metadata = {
-            **dict(publication_metadata or {}),
-            "display_name": Path(filename).stem,
-            "source_type": source_type,
-            "source_node_id": node_id,
-            "source_execution_id": execution_id,
-            "source_semantic_role": source_semantic_role,
-            "fingerprint": fingerprint,
-            "project_id": workflow.project_id,
-            "workflow_id": workflow_id,
-            "checksum": checksum,
-            "publication_status": "prepared",
-            "publication_id": fingerprint,
+            **metadata,
             "published_media_facts": facts.model_dump(mode="json"),
             "measured_media_facts": facts.model_dump(mode="json"),
-            "generated_asset_provenance": _generated_provenance(
-                dict(publication_metadata or {}),
-                workflow_id=workflow_id,
-                node_id=node_id,
-                execution_id=execution_id,
-                node_revision=(node.revision if node is not None else 1),
-            ).model_dump(mode="json"),
         }
         return PreparedNodeResultV2(
             logical_result_key=fingerprint,
             payload_digest=checksum,
+            publication_intent_id=publication_intent_id,
             prepared_object=PreparedContentObjectV2(
                 storage_key=storage_key,
                 sha256=checksum,
@@ -490,11 +564,74 @@ class AgentCanvasAssetService:
             mime_type=mime_type,
         )
 
+    def recover_prepared_result(
+        self,
+        planned: PreparedNodeResultV2,
+    ) -> PreparedNodeResultV2:
+        """Revalidate one content-addressed object without publishing Asset metadata."""
+
+        prepared_object = planned.prepared_object
+        if prepared_object is None:
+            raise _publication_object_error()
+        path = self._storage.resolve_local_path(prepared_object.storage_key)
+        if (
+            not path.is_file()
+            or path.is_symlink()
+            or path.stat().st_size != prepared_object.size_bytes
+            or not self._storage.content_exists(
+                prepared_object.storage_key,
+                prepared_object.sha256,
+            )
+        ):
+            raise _publication_object_error()
+        effective_parameters = planned.asset_metadata.get("effective_parameters")
+        require_native_audio = (
+            prepared_object.media_type == "video"
+            and isinstance(effective_parameters, dict)
+            and effective_parameters.get("generate_audio") is True
+        )
+        facts = self._probe_generated_media(
+            path,
+            mime_type=prepared_object.mime_type,
+            checksum=prepared_object.sha256,
+            size_bytes=prepared_object.size_bytes,
+            require_native_audio=require_native_audio,
+        )
+        recovered = planned.model_copy(
+            update={
+                "prepared_object": prepared_object.model_copy(
+                    update={"media_facts": facts.model_dump(mode="json")}
+                ),
+                "asset_metadata": {
+                    **planned.asset_metadata,
+                    "published_media_facts": facts.model_dump(mode="json"),
+                    "measured_media_facts": facts.model_dump(mode="json"),
+                },
+            }
+        )
+        return PreparedNodeResultV2.model_validate(recovered.model_dump(mode="python"))
+
     def list_project_assets(self, workflow_id: str) -> tuple[ProjectAssetSummaryV2, ...]:
         return tuple(
             self._asset_summary(version)
             for version in self._assets.list_versions_for_workflow(workflow_id)
         )
+
+    def find_latest_ready_versions(
+        self,
+        asset_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve selected cover assets without one database read per project."""
+
+        return self._assets.find_latest_ready_versions(asset_ids)
+
+    def find_versions_by_id(
+        self,
+        version_ids: tuple[str, ...],
+    ) -> dict[str, AssetVersionMetadataV2]:
+        """Resolve immutable versions without promoting a cover to a newer version."""
+
+        return self._assets.find_versions_by_id(version_ids)
 
     def validate_asset_backed_node(self, asset_id: str, node_type: str) -> None:
         asset = self.resolve_asset(asset_id)
@@ -509,10 +646,11 @@ class AgentCanvasAssetService:
         self,
         asset_id: str,
         *,
+        version_id: str | None = None,
         range_header: str | None = None,
         download: bool = False,
     ) -> AssetContentResponse:
-        version = self._require_ready_version(asset_id)
+        version = self._require_ready_version(asset_id, version_id=version_id)
         path = self._storage.resolve_local_path(version.storage_key)
         size = path.stat().st_size
         start, end, partial = _parse_range(range_header, size)
@@ -522,6 +660,12 @@ class AgentCanvasAssetService:
         headers = {
             "Accept-Ranges": "bytes",
             "Content-Length": str(len(body)),
+            "Cache-Control": (
+                "private, max-age=31536000, immutable"
+                if version_id is not None
+                else "private, max-age=0, must-revalidate"
+            ),
+            "ETag": f'"{version.asset_id}:{version.version_id}"',
         }
         if partial:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
@@ -532,6 +676,47 @@ class AgentCanvasAssetService:
             status_code=206 if partial else 200,
             media_type=version.mime_type,
             headers=headers,
+        )
+
+    def open_rendition(
+        self,
+        asset_id: str,
+        version_id: str,
+        *,
+        kind: str,
+        max_dimension: int | None = None,
+    ) -> AssetContentResponse:
+        """Return one exact version-pinned browser rendition."""
+
+        version = self._require_ready_version(asset_id, version_id=version_id)
+        media_type = _media_type_from_mime(version.mime_type)
+        if media_type not in {"image", "video"}:
+            raise V2PersistenceError(
+                "asset_rendition_media_unsupported",
+                "Asset rendition media type is unsupported.",
+                stage="agent_canvas_asset_service",
+            )
+        source_path = self._storage.resolve_local_path(version.storage_key)
+        rendition = self._renditions.ensure(
+            source_path,
+            asset_id=asset_id,
+            version_id=version_id,
+            media_type=media_type,
+            kind=kind,
+            max_dimension=max_dimension,
+        )
+        body = rendition.path.read_bytes()
+        return AssetContentResponse(
+            body=body,
+            status_code=200,
+            media_type=rendition.media_type,
+            headers={
+                "Content-Length": str(len(body)),
+                "Cache-Control": "private, max-age=31536000, immutable",
+                "ETag": f'"{asset_id}:{version_id}:{kind}'
+                + (f":{max_dimension}" if max_dimension is not None else "")
+                + '"',
+            },
         )
 
     def list_images(
@@ -620,8 +805,13 @@ class AgentCanvasAssetService:
                 continue
             self._storage.resolve_local_path(storage_key).unlink(missing_ok=True)
 
-    def _require_ready_version(self, asset_id: str) -> AssetVersionMetadataV2:
-        version = self._assets.find_version(asset_id=asset_id)
+    def _require_ready_version(
+        self,
+        asset_id: str,
+        *,
+        version_id: str | None = None,
+    ) -> AssetVersionMetadataV2:
+        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
         if (
             version is None
             or version.status != "ready"
@@ -682,6 +872,10 @@ def _asset_summary(
         "editing_export",
     }:
         source_type = "generated"
+    rendition_url = None
+    if version.status == "ready" and media_type in {"image", "video"}:
+        rendition_kind = "preview" if media_type == "image" else "poster"
+        rendition_url = f"/api/v2/assets/{version.asset_id}/{rendition_kind}?v={version.version_id}"
     return ProjectAssetSummaryV2(
         asset_id=version.asset_id,
         version_id=version.version_id,
@@ -694,9 +888,10 @@ def _asset_summary(
         status=version.status,
         size_bytes=version.size_bytes,
         storage_key=version.storage_key,
-        preview_url=(
-            f"/api/v2/assets/{version.asset_id}/content" if media_type == "image" else None
-        ),
+        # Canvas consumers must receive a derived, version-pinned rendition;
+        # source content remains available through media_url for explicit
+        # preview/download actions.
+        preview_url=rendition_url,
         media_url=f"/api/v2/assets/{version.asset_id}/content",
         width=version.width,
         height=version.height,
@@ -857,6 +1052,8 @@ def _generated_provenance(
         provider=_optional_string(metadata.get("provider")) or "unknown",
         model_id=_optional_string(metadata.get("model_id")) or "unknown",
         provider_task_id=_optional_string(metadata.get("provider_task_id")),
+        execution_mode=_optional_string(metadata.get("execution_mode")) or "agent_assisted",
+        semantic_extraction=(_optional_string(metadata.get("semantic_extraction")) or "agent"),
         requested_parameters=_json_mapping(metadata.get("requested_parameters")),
         effective_parameters=_json_mapping(metadata.get("effective_parameters")),
         normalizations=_generated_normalizations(metadata.get("normalizations")),
@@ -973,6 +1170,15 @@ def _download_filename(version: AssetVersionMetadataV2) -> str:
 def _stable_identifier(prefix: str, *parts: str) -> str:
     digest = hashlib.sha256("\0".join(parts).encode()).hexdigest()[:24]
     return f"{prefix}_{digest}"
+
+
+def _publication_object_error() -> V2PersistenceError:
+    return V2PersistenceError(
+        "node_result_publication_object_invalid",
+        "Prepared media object could not be verified.",
+        stage="agent_canvas_asset_service",
+        details={"retryable": False},
+    )
 
 
 def _library_category(value: str) -> AssetLibraryCategoryV2:

@@ -1,1 +1,5 @@
-Organize shots around scale contrast, develop visual progression through macro optics, and reserve handcrafted detail for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按尺度建立、微距发现、动作路径、阻碍、结果和宏观回收组织画面。关键帧记录参照物、焦点、主体轮廓、路径、接触点和 tiny-world action readability 的结果。
+
+用焦点转移、地面线、物件遮挡或动作匹配转场，检查观众始终知道目标。

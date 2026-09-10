@@ -1,30 +1,35 @@
 {
   "skill_id": "observational-human-documentary",
   "version": "1.0.0",
-  "display_name": "Observational Human Documentary",
-  "description": "An advertising treatment built around respectful observation, environmental context, authentic action, and restrained narration.",
+  "display_name": "人文观察纪录影像",
+  "description": "以尊重式观察、环境语境、真实行动和克制旁白组织不替人物发言的纪录式商业影像。",
+  "content_locale": "zh-CN",
   "category": "lifestyle-documentary",
   "tags": [
-    "lifestyle",
-    "documentary",
-    "observational"
+    "人文纪录",
+    "真实观察",
+    "环境语境"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "纪录式广告",
+    "社会观察",
+    "品牌故事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Observational Human Documentary creative treatment."
+    "kind": "image",
+    "summary": "人文观察纪录影像视觉预览。",
+    "media_url": "/api/v2/video-skills/observational-human-documentary/preview?v=1.0.0"
   },
   "display_order": 540,
+  "video_representation_mode": "illustration_to_live_action",
   "files": {
-    "SKILL.md": "ce38b9315d8870e91b82056ac0e944e536ec80e6616b8e65229f9e7af56f67e2",
-    "references/script.md": "020159fc85e471b69bbab8ece771675c64c8986f6a79b539ef1e0f12669df88c",
-    "references/scene.md": "1e7826bb1eca244cfb854f686070b5eb00c9b6327af1d12f8f18619222498f1a",
-    "references/storyboard.md": "7bccb12a2bf0bea3457a6f26d45c6d98c80304386268ef167fe5ad2cc89336ae",
-    "references/video.md": "7a22c5bca8e13256737ce214a1d64dc99e94454aac9b6bacb950541497ab0774",
-    "references/bgm.md": "d9e7cc4126590e3c55dbe2c893e5a2f0595f4ec4f3f665c2c0fcecc9e4a5903a"
+    "SKILL.md": "5688e89906123512fe4f510807a0e0ec3948bc64f27467cff9c9d44031582f8f",
+    "references/script.md": "75e3551b41b7927e097adefbb6945af04806c3f7253e48b19058878b2b0dbe54",
+    "references/scene.md": "c0361269ee2190b3c43bbe7e86e3bffdbb1db77301bc92ec8586cf96c8136713",
+    "references/storyboard.md": "094d1c15105ce17e0f07daaf211e7333432e2049043807941d269c32cc64664a",
+    "references/video.md": "5847400c1fd2e6f05023fa219019c0555cc76e9793393c32339d732fc4cecce4",
+    "references/bgm.md": "d4232d3766b07a8578104d0da5a6f97fd0bc9bc99ad76f926e70ddca70e04114",
+    "previews/preview.webp": "07e582837e171d77b8e44e316ee84f077561e4f4be27eb96b4b4bd4fa23872b2"
   },
   "role_guidance": {
     "script": "references/script.md",

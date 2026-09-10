@@ -1,1 +1,6 @@
-Shape wardrobe, pose, and expression around silhouette and fabric motion. Use editorial posing to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+角色指导服务于服装廓形和穿着状态。锁定人物身份、体态、发型、妆容、肤色、鞋履和服装组合；每个姿态都说明重心、肩胯关系、手部位置和视线。编辑式姿态可以克制、张力明确，但必须让衣服结构可检查。
+
+从秀场步伐到生活动作，保持同一人物和服装事实。人物反应不要抢过面料和轮廓；若需要多人，明确他们的距离、视线和服装层级。结果偏离时先恢复身份和服装，再改变姿态。
+
+正例：人物以稳定重心站立，抬手让袖型展开，随后自然转身进入生活空间。
+反例：为了摆出夸张姿势改变肩线、手指或服装比例，观众无法判断穿着效果。

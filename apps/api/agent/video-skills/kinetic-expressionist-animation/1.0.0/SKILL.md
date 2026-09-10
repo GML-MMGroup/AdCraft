@@ -1,8 +1,21 @@
 ---
-name: Kinetic Expressionist Animation
-description: An advertising treatment built around elastic drawing, expressive distortion, energetic staging, and color-driven motion.
+name: 动势表现主义动画
+description: 以弹性绘制、表现性变形、能量化调度和色彩驱动运动组织具有强烈主观节奏的动画影像。
 ---
 
-Use elastic drawing, expressive distortion, energetic staging, and color-driven motion as the style's creative grammar. Establish elastic drawing as the primary visual idea, reinforce it through expressive distortion, and let energetic staging shape the progression toward color-driven motion.
+把 elastic drawing、expressive distortion、energetic staging、color-driven motion 作为表现主义动画的四个创作支点。变形必须表达力量、情绪或声音，不能让角色在每一帧失去身份；高能量画面仍需要可读的方向、重心和节拍。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 形变与身份
+
+先定义角色不可丢失的轮廓、面部锚点、动作极限和变形触发条件。elastic drawing 可以拉伸、压缩、残影或夸张线条，但回到中性姿态时要能恢复原身份。expressive distortion 应对应冲击、兴奋、恐惧、速度或声音，而不是随机扭曲。
+
+## 调度与色彩
+
+energetic staging 先建立主运动线、视线和层级，再让群体、道具和背景跟随。color-driven motion 用色块、互补关系、明暗脉冲和形状流动引导运动，不把颜色变化当成独立特效。关键节拍要有准备、爆发和余波。
+
+## 连续性与纠偏
+
+保持动作方向、角色锚点、道具关系和色彩逻辑。结果太乱时，先减少变形、颜色和同时运动的层，再恢复主运动线。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供动画表达判断。
+
+正例：角色受到声音冲击而拉伸，色块沿同一运动线爆发，落地后轮廓恢复。
+反例：每一帧都更换脸、肢体方向和主色，只有噪声没有能量结构。

@@ -1,30 +1,34 @@
 {
   "skill_id": "gentle-everyday-vlog",
   "version": "1.0.0",
-  "display_name": "Gentle Everyday Vlog",
-  "description": "An advertising treatment built around intimate handheld observation, soft routine, natural gestures, and warm ambient detail.",
+  "display_name": "温柔日常Vlog影像",
+  "description": "以亲密手持观察、柔和日常、自然手势和温暖环境细节组织可信而不做作的生活方式内容。",
+  "content_locale": "zh-CN",
   "category": "lifestyle-documentary",
   "tags": [
-    "lifestyle",
-    "documentary",
-    "observational"
+    "日常Vlog",
+    "手持观察",
+    "生活细节"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "生活方式内容",
+    "日常产品广告",
+    "人物观察"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Gentle Everyday Vlog creative treatment."
+    "kind": "image",
+    "summary": "温柔日常Vlog影像视觉预览。",
+    "media_url": "/api/v2/video-skills/gentle-everyday-vlog/preview?v=1.0.0"
   },
   "display_order": 520,
   "files": {
-    "SKILL.md": "c66f4c143bcf1f91a43db44d07b3c5632b92cb29b122b83af74a773e3b7e883c",
-    "references/script.md": "23ce23c93ab3930f39e05d1eb42e8d47650c58e1d734ebf9de5b0808e4e507ba",
-    "references/scene.md": "79b42fb76d0a9d26ea3e25177c28a826bd3eb1346854d93c332bc478a53f3844",
-    "references/storyboard.md": "67a9caa1cbb2e32b62173c0a5856ef3a73146ae19d7cc83695d11b4d2f9b7ab1",
-    "references/video.md": "913d3733518ff83edf14707aae4af6846d4e473bf97ebecdaec8ee5be4c9aeed",
-    "references/bgm.md": "4f56dbf4b6400241923281262b6c050aa64ea1e509c88750831e4c904e54e04e"
+    "SKILL.md": "7914f6de8ba98e0dbb042c53de9cdcca3c3f010de421c9555a65b428360093f5",
+    "references/script.md": "5ec1d2f346231efd70b99ef4548380aca1c0c31a5db6cf788d7ef5fcef3cc19b",
+    "references/scene.md": "57a4faec24bec34703fdd070dcba09c355dece07bf3ed873f38282149e1b655b",
+    "references/storyboard.md": "537d4466a737a8ea0bd8955a2cfb594ade42106193e7db33c1aaa5315794af3f",
+    "references/video.md": "7142b739d14fde03b83b8329f579624c507e6da8a5e0742c30d9436b74d9ec65",
+    "references/bgm.md": "d25998cbf2f4bd1b62e927ad1ef19f4455d221b2c03dd008914dbe12c9d51f43",
+    "previews/preview.webp": "cd1a877c4827d332c5444ae86e0917a9f7f76663dea42518010d1c96ff648486"
   },
   "role_guidance": {
     "script": "references/script.md",

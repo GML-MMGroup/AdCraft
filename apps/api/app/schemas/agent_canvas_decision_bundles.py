@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_requirements import (
     SpokenLanguageValueV1,
     StoryboardSequenceCountValueV1,
     VideoSegmentCountValueV1,
+    VideoRepresentationModeValueV1,
 )
 
 
@@ -112,6 +113,11 @@ class SetVideoSegmentCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
     value: VideoSegmentCountValueV1
 
 
+class SetVideoRepresentationModeDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["video_representation_mode"]
+    value: VideoRepresentationModeValueV1
+
+
 SetControlDecisionEffectMemberV1: TypeAlias = Annotated[
     SetDurationSecondsDecisionEffectV1
     | SetAspectRatioDecisionEffectV1
@@ -124,7 +130,8 @@ SetControlDecisionEffectMemberV1: TypeAlias = Annotated[
     | SetCharacterCountDecisionEffectV1
     | SetSceneCountDecisionEffectV1
     | SetStoryboardSequenceCountDecisionEffectV1
-    | SetVideoSegmentCountDecisionEffectV1,
+    | SetVideoSegmentCountDecisionEffectV1
+    | SetVideoRepresentationModeDecisionEffectV1,
     Field(discriminator="control"),
 ]
 

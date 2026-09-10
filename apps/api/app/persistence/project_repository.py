@@ -17,6 +17,8 @@ from app.persistence.models import AgentCanvasWorkflowRow, ProjectRow
 from app.schemas.workflow_v2_projects import (
     ProjectCatalogRecord,
     ProjectCatalogRecordPage,
+    ProjectCoverSourceV2,
+    ProjectCoverStateV2,
     ProjectCreate,
     ProjectRecord,
     ProjectRecordPage,
@@ -57,6 +59,10 @@ class ProjectRepository:
                 status=project.status,
                 is_favorite=project.is_favorite,
                 cover_asset_id=project.cover_asset_id,
+                cover_version_id=project.cover_version_id,
+                cover_state=project.cover_state,
+                cover_source=project.cover_source,
+                cover_updated_at=project.cover_updated_at,
                 project_version=1,
                 created_at=project.created_at,
                 updated_at=project.updated_at,
@@ -203,7 +209,17 @@ class ProjectRepository:
     ) -> ProjectRecord:
         """Apply a validated Project metadata edit with optimistic concurrency."""
 
-        allowed_keys = {"name", "description", "is_favorite", "cover_asset_id", "status"}
+        allowed_keys = {
+            "name",
+            "description",
+            "is_favorite",
+            "cover_asset_id",
+            "cover_version_id",
+            "cover_state",
+            "cover_source",
+            "cover_updated_at",
+            "status",
+        }
         if not changes or not set(changes) <= allowed_keys:
             raise V2PersistenceError(
                 "project_update_invalid",
@@ -316,6 +332,10 @@ def _project_select():
         ProjectRow.status,
         ProjectRow.is_favorite,
         ProjectRow.cover_asset_id,
+        ProjectRow.cover_version_id,
+        ProjectRow.cover_state,
+        ProjectRow.cover_source,
+        ProjectRow.cover_updated_at,
         ProjectRow.project_version,
         ProjectRow.created_at,
         ProjectRow.updated_at,
@@ -353,6 +373,10 @@ def _project_from_row(row: RowMapping) -> ProjectRecord:
         status=cast(ProjectStatusV2, str(row["status"])),
         is_favorite=bool(row["is_favorite"]),
         cover_asset_id=_optional_string(row["cover_asset_id"]),
+        cover_version_id=_optional_string(row["cover_version_id"]),
+        cover_state=cast(ProjectCoverStateV2, str(row["cover_state"])),
+        cover_source=cast(ProjectCoverSourceV2 | None, _optional_string(row["cover_source"])),
+        cover_updated_at=_optional_string(row["cover_updated_at"]),
         project_version=int(row["project_version"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),

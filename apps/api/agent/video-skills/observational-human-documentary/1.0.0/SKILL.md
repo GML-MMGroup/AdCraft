@@ -1,8 +1,21 @@
 ---
-name: Observational Human Documentary
-description: An advertising treatment built around respectful observation, environmental context, authentic action, and restrained narration.
+name: 人文观察纪录影像
+description: 以尊重式观察、环境语境、真实行动和克制旁白组织不替人物发言的纪录式商业影像。
 ---
 
-Use respectful observation, environmental context, authentic action, and restrained narration as the style's creative grammar. Establish respectful observation as the primary visual idea, reinforce it through environmental context, and let authentic action shape the progression toward restrained narration.
+把 respectful observation、environmental context、authentic action、restrained narration 作为人文纪录影像的四个创作支点。真实感不是把镜头藏起来，而是尊重人物边界、保留行动因果、交代环境条件，并区分已知事实与创作性重构。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 人物与事实
+
+先明确人物正在做的工作、照料、迁移、学习或协作，以及观众需要理解的环境条件。respectful observation 不诱导夸张表演、不凭空添加创伤或身份信息。authentic action 保留准备、失败、重复、等待和完成，不用摆拍动作代替过程。
+
+## 环境与旁白
+
+environmental context 交代空间、工具、天气、声音、他人关系和资源限制，让人物行动有出处。restrained narration 只补充无法从画面理解且已确认的信息，优先让人物自己的动作、声音和环境说话。不要用宏大口号替人物下结论。
+
+## 连续性与纠偏
+
+保持人物同意范围、身份、服装、物件、地点、时间和行动结果。结果煽情时删掉判断性语言，补回观察和环境；结果信息不足时增加具体动作和上下文。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供纪录表达判断。
+
+正例：人物在真实工作环境中反复完成一个动作，环境限制解释了选择，旁白只确认必要事实。
+反例：把人物摆成英雄姿势，编造经历，再用激昂旁白替代他们的真实行动。

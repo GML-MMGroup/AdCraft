@@ -1,1 +1,8 @@
-Build the narrative premise around rhythmic camera accents, then use movement-to-cut coordination to shape escalation and visual impact beats to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+用一个明确的广告意图统领节奏：先让观众理解主体和情境，再通过动作、视线或空间变化逐步提高注意力，最后把视觉冲击点放在核心卖点、情绪转折或品牌记忆点上。节奏可以由动作密度、句子长度、画面信息量和声音重音共同形成，不必依赖固定的镜头数量或时长。
+
+为每个叙事段落写清楚“信息目的、主体动作、镜头动机、转折依据和声音提示”。动作必须有原因：展示功能、回应环境、引导视线或完成情绪变化。需要加速时，先给观众一个可识别的基准，再压缩间隔；需要舒缓时，保留足够的观察空间，让产品事实或人物状态被读懂。
+
+当产品是主角，优先安排卖点出现的顺序、证明卖点的动作和品牌露出的自然位置；当人物或场景承担叙事，确保产品仍有清楚的进入、使用或结果。对白、旁白和画面不要重复表达同一件事，除非重复本身是记忆策略。
+
+正例：人物打开包装，动作方向连续地引出材质特写，声音重音落在功能显现的瞬间，最后回到完整产品与受众承诺。
+反例：开头堆叠风格形容词和快速转场，却没有交代主体、卖点或动作因果；或者为了卡点删掉使观众理解产品所需的关键步骤。

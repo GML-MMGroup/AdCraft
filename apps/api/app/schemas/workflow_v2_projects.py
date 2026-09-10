@@ -8,6 +8,28 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 ProjectStatusV2 = Literal["active", "archived", "trashed"]
+ProjectCoverStateV2 = Literal["ready", "unresolved", "none", "broken"]
+ProjectCoverSourceV2 = Literal[
+    "manual",
+    "product_main",
+    "scene_main",
+    "character_main",
+    "storyboard_grid",
+    "video_poster",
+    "migrated",
+]
+
+
+class ProjectCoverV2(BaseModel):
+    """Immutable AssetVersion identity and browser-safe preview metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    asset_id: str = Field(min_length=1)
+    version_id: str = Field(min_length=1)
+    media_type: Literal["image", "video"]
+    preview_url: str | None = None
+    poster_url: str | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -21,6 +43,10 @@ class ProjectCreate(BaseModel):
     status: ProjectStatusV2 = "active"
     is_favorite: bool = False
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "none"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
 
@@ -36,6 +62,10 @@ class ProjectRecord(BaseModel):
     status: ProjectStatusV2
     is_favorite: bool
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
@@ -78,6 +108,10 @@ class ProjectV2(BaseModel):
     status: ProjectStatusV2 = "active"
     is_favorite: bool = False
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
     project_version: int = Field(ge=1)
     semantic_revision_no: int = Field(ge=1)
     created_at: str = Field(min_length=1)
@@ -96,6 +130,11 @@ class ProjectV2Summary(BaseModel):
     status: ProjectStatusV2
     is_favorite: bool
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
+    cover_state: ProjectCoverStateV2 = "unresolved"
+    cover_source: ProjectCoverSourceV2 | None = None
+    cover_updated_at: str | None = None
+    cover: ProjectCoverV2 | None = None
     project_version: int = Field(ge=1)
     updated_at: str = Field(min_length=1)
 
@@ -118,4 +157,5 @@ class ProjectV2UpdateRequest(BaseModel):
     description: str | None = None
     is_favorite: bool | None = None
     cover_asset_id: str | None = None
+    cover_version_id: str | None = None
     status: Literal["active", "archived"] | None = None

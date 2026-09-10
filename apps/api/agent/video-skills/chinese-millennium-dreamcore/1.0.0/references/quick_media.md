@@ -1,1 +1,5 @@
-Apply nostalgic digital texture, liminal familiarity, and memory fragments as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速探索屏幕质感、夜色、空置空间或一个记忆物件时，只改变一个变量，保留人物和空间锚点。变体用于比较怀旧材质、临界感或色彩，不自动改变正式世界设定。
+
+先检查熟悉感是否具体，再看梦境偏移是否可控。

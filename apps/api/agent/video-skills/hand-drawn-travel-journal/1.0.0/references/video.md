@@ -1,1 +1,5 @@
-Direct camera and subject motion through drawn overlays and travel observation, using location rhythm for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+手持观察要有行走、停留、转身和重新取景的动机，避免无目的抖动。travel observation 优先捕捉真实材质、风、光和动作，drawn overlays 随空间透视和主体移动，不漂浮穿透。
+
+声音使用脚步、交通、风、市场、人声和纸张摩擦，地点变化时保留一个可辨认的环境声。

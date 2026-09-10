@@ -17,14 +17,24 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_asset_library import AssetBindingV2, AssetVersionMetadataV2
 from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
 from app.schemas.agent_canvas_runtime import (
+    ProviderReferenceInstructionTransportV1,
     ProviderReferenceDeliveryContextV1,
     ResolvedModelExecutionV1,
+)
+from app.schemas.seedance_inputs import StoryboardGridGroundingPlanV1
+from app.services.agent_canvas_reference_semantics import (
+    compile_provider_reference_instruction,
 )
 from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_storage_adapter import StorageAdapter
 from app.services.v2_data_boundary import validate_v2_relative_path
+from app.services.v2_library_reference_preview import (
+    LibraryReferencePreviewError,
+    ResolvedLibraryPreview,
+    V2LibraryReferencePreviewResolver,
+)
 
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
 CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
@@ -47,6 +57,14 @@ PROVIDER_REFERENCE_DELIVERY_MODES: dict[str, set[str]] = {
         "data_url",
     },
     "volcengine-seedance": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
+    "volcengine_ark": {
         "provider_file_id",
         "provider_uploaded_url",
         "image_url",
@@ -115,6 +133,9 @@ def reference_delivery_context_from_model_resolution(
             target_capability=resolution.capability,
             accepted_input_types=tuple(str(item) for item in accepted_value),
             reference_limits=dict(limits_value),
+            reference_instruction_transport=str(
+                metadata.get("reference_instruction_transport", "provider_only")
+            ),
         )
     except ValidationError as error:
         raise _canvas_context_error(
@@ -146,12 +167,21 @@ class V2DeliveredProviderReference(BaseModel):
     provider_input_value: str = Field(exclude=True, repr=False)
     source: Literal["public_url", "local_file", "provider_upload"]
     delivery_status: Literal["ready"] = "ready"
-    rendition_kind: Literal["original", "provider_ready"] = "original"
+    rendition_kind: Literal["original", "provider_ready", "preview"] = "original"
     checksum: str | None = None
     byte_count: int | None = None
+    source_checksum: str | None = None
+    source_byte_count: int | None = None
+    source_mime_type: str | None = None
+    rendition_checksum: str | None = None
+    rendition_byte_count: int | None = None
+    rendition_width: int | None = None
+    rendition_height: int | None = None
+    reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
+    reference_instruction_transport: ProviderReferenceInstructionTransportV1 | None = None
 
     def provider_asset(self) -> dict[str, Any]:
-        return {
+        payload = {
             "asset_id": self.asset_id,
             "version_id": self.version_id,
             "slot_id": self.slot_id,
@@ -174,6 +204,10 @@ class V2DeliveredProviderReference(BaseModel):
             "checksum": self.checksum,
             "byte_count": self.byte_count,
         }
+        if self.reference_instruction is not None:
+            payload["reference_instruction"] = self.reference_instruction
+            payload["reference_instruction_transport"] = self.reference_instruction_transport
+        return payload
 
 
 class V2ProviderReferenceWireAudit(BaseModel):
@@ -242,6 +276,15 @@ class V2DeliveredReferenceSet(BaseModel):
                     "checksum": reference.checksum,
                     "byte_count": reference.byte_count,
                     "rendition_kind": reference.rendition_kind,
+                    "source_checksum": reference.source_checksum,
+                    "source_byte_count": reference.source_byte_count,
+                    "source_mime_type": reference.source_mime_type,
+                    "rendition_checksum": reference.rendition_checksum,
+                    "rendition_byte_count": reference.rendition_byte_count,
+                    "rendition_width": reference.rendition_width,
+                    "rendition_height": reference.rendition_height,
+                    "reference_instruction": reference.reference_instruction,
+                    "reference_instruction_transport": reference.reference_instruction_transport,
                 }
                 for reference in self.references
             ],
@@ -304,6 +347,7 @@ class V2ProviderReferenceInputDeliveryService:
         self._settings = settings or get_settings()
         self._asset_store = V2AssetStoreService(data_dir)
         self._asset_library = V2AssetLibraryRepository(create_v2_database(data_dir))
+        self._library_preview = V2LibraryReferencePreviewResolver(data_dir)
         self._converter = MediaInputConverter(
             data_dir,
             url_validator=is_provider_compatible_public_url,
@@ -380,6 +424,7 @@ class V2ProviderReferenceInputDeliveryService:
         *,
         model_resolution: ResolvedModelExecutionV1,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+        grounding_plan: StoryboardGridGroundingPlanV1 | None = None,
     ) -> V2DeliveredReferenceSet:
         """Deliver explicit Canvas media bindings in persisted input order."""
 
@@ -390,10 +435,56 @@ class V2ProviderReferenceInputDeliveryService:
         failures: list[V2ReferenceInputDeliveryFailure] = []
         optional_omissions: list[V2ReferenceInputDeliveryFailure] = []
         total_data_url_bytes = 0
-        for input_snapshot in sorted(
+        order_by_identity = (
+            {
+                (item.asset_id, item.version_id): index
+                for index, item in enumerate(grounding_plan.ordered_references)
+            }
+            if grounding_plan is not None
+            else {}
+        )
+        ordered_inputs = sorted(
             inputs,
-            key=lambda item: (item.display_order, item.binding_id or ""),
-        ):
+            key=lambda item: (
+                order_by_identity.get((item.asset_id, item.asset_version_id), 10_000),
+                item.display_order,
+                item.binding_id or "",
+            ),
+        )
+        for input_snapshot in ordered_inputs:
+            is_guided_reference = input_snapshot.binding_metadata.get(
+                "semantic_reference_role"
+            ) in {"character_reference", "scene_reference"}
+            reference_kind = input_snapshot.binding_metadata.get("reference_kind")
+            reference_purpose = input_snapshot.binding_metadata.get("reference_purpose")
+            if is_guided_reference and reference_kind is None:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_invalid",
+                )
+                failures.append(delivered)
+                continue
+            try:
+                reference_instruction = compile_provider_reference_instruction(
+                    reference_kind=reference_kind,
+                    reference_purpose=reference_purpose,
+                )
+            except ValueError:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_invalid",
+                )
+                failures.append(delivered)
+                continue
+            if reference_instruction is not None and (
+                context.reference_instruction_transport == "unsupported"
+            ):
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "semantic_reference_instruction_unsupported",
+                )
+                failures.append(delivered)
+                continue
             version = self._asset_library.find_version(
                 asset_id=input_snapshot.asset_id,
                 version_id=input_snapshot.asset_version_id,
@@ -423,8 +514,15 @@ class V2ProviderReferenceInputDeliveryService:
                     delivery_modes,
                 )
             if isinstance(delivered, V2ReferenceInputDeliveryFailure):
-                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                failures.append(delivered)
                 continue
+            if reference_instruction is not None:
+                delivered = delivered.model_copy(
+                    update={
+                        "reference_instruction": reference_instruction.instruction,
+                        "reference_instruction_transport": context.reference_instruction_transport,
+                    }
+                )
             if delivered.provider_input_type == "data_url" and delivered.byte_count:
                 next_total = total_data_url_bytes + delivered.byte_count
                 if next_total > self._settings.v2_provider_reference_total_data_url_bytes:
@@ -432,7 +530,7 @@ class V2ProviderReferenceInputDeliveryService:
                         input_snapshot,
                         "image_data_url_total_too_large",
                     )
-                    (failures if input_snapshot.required else optional_omissions).append(failure)
+                    failures.append(failure)
                     continue
                 total_data_url_bytes = next_total
             references.append(delivered)
@@ -450,6 +548,34 @@ class V2ProviderReferenceInputDeliveryService:
         delivery_modes: frozenset[str],
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
+        try:
+            preview = self._library_preview.resolve(
+                input_snapshot,
+                version,
+                max_data_url_bytes=self._settings.v2_provider_reference_max_data_url_bytes,
+            )
+        except LibraryReferencePreviewError as error:
+            return _canvas_delivery_failure(input_snapshot, error.reason)
+        if preview is not None:
+            if "data_url" not in delivery_modes:
+                return _canvas_delivery_failure(
+                    input_snapshot,
+                    "preview_rendition_delivery_unsupported",
+                )
+            return _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type="data_url",
+                input_value=preview.data_url,
+                source="local_file",
+                byte_count=preview.data_url_byte_count,
+                rendition_kind="preview",
+                mime_type=preview.mime_type,
+                rendition_checksum=preview.sha256,
+                rendition_byte_count=preview.byte_count,
+                rendition_width=preview.width,
+                rendition_height=preview.height,
+            )
         if input_snapshot.binding_metadata.get("rendition_kind") == "provider_ready":
             provider_ready = _verified_provider_ready_rendition(
                 metadata,
@@ -595,6 +721,66 @@ class V2ProviderReferenceInputDeliveryService:
                 reason=f"{target_media_type}_provider_reference_media_type_{record.media_type}_unsupported",
                 record=record,
             )
+        if (
+            record.library_entity_id is not None
+            or record.metadata.get("reference_source") == "asset_library"
+        ):
+            try:
+                version = self._asset_library.find_version(
+                    asset_id=record.asset_id,
+                    version_id=record.version_id,
+                )
+            except V2PersistenceError:
+                version = None
+            if version is None:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason="asset_metadata_missing",
+                    record=record,
+                )
+            try:
+                provenance = dict(record.metadata)
+                provenance.setdefault("reference_source", "asset_library")
+                provenance.setdefault("source_scope", "my")
+                preview = self._library_preview.resolve_version(
+                    asset_id=record.asset_id,
+                    version_id=record.version_id,
+                    media_type=record.media_type,
+                    provenance=provenance,
+                    version=version,
+                    max_data_url_bytes=self._settings.v2_provider_reference_max_data_url_bytes,
+                )
+            except LibraryReferencePreviewError as error:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason=error.reason,
+                    record=record,
+                )
+            if preview is None:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED,
+                    reason="library_provenance_invalid",
+                    record=record,
+                )
+            if "data_url" not in delivery_modes:
+                return _failure(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                    asset_id=record.asset_id,
+                    code=PROVIDER_REFERENCE_ERROR_UNSUPPORTED,
+                    reason="preview_rendition_delivery_unsupported",
+                    record=record,
+                )
+            return _record_preview_delivered(record, version, preview)
         provider_file_id = _first_metadata_string(
             record, "provider_file_id", "file_id", "ark_file_id"
         )
@@ -768,6 +954,37 @@ def _delivered_reference(
     )
 
 
+def _record_preview_delivered(
+    record: WorkflowAssetVersionV2,
+    version: AssetVersionMetadataV2,
+    preview: ResolvedLibraryPreview,
+) -> V2DeliveredProviderReference:
+    return V2DeliveredProviderReference(
+        asset_id=record.asset_id,
+        version_id=record.version_id,
+        slot_id=record.slot_id,
+        role=_provider_reference_role_from_record(record),
+        semantic_type=record.semantic_type,
+        binding_id=None,
+        input_role=str(record.metadata.get("reference_role") or "image_reference"),
+        media_type=record.media_type,
+        mime_type=preview.mime_type,
+        provider_input_type="data_url",
+        provider_input_value=preview.data_url,
+        source="local_file",
+        checksum=version.sha256,
+        byte_count=preview.data_url_byte_count,
+        rendition_kind="preview",
+        source_checksum=version.sha256,
+        source_byte_count=version.size_bytes,
+        source_mime_type=version.mime_type,
+        rendition_checksum=preview.sha256,
+        rendition_byte_count=preview.byte_count,
+        rendition_width=preview.width,
+        rendition_height=preview.height,
+    )
+
+
 def _canvas_delivered(
     input_snapshot: ResolvedMediaInputSnapshotV2,
     version: AssetVersionMetadataV2,
@@ -783,7 +1000,12 @@ def _canvas_delivered(
     input_value: str,
     source: Literal["public_url", "local_file", "provider_upload"],
     byte_count: int | None = None,
-    rendition_kind: Literal["original", "provider_ready"] = "original",
+    rendition_kind: Literal["original", "provider_ready", "preview"] = "original",
+    mime_type: str | None = None,
+    rendition_checksum: str | None = None,
+    rendition_byte_count: int | None = None,
+    rendition_width: int | None = None,
+    rendition_height: int | None = None,
 ) -> V2DeliveredProviderReference:
     return V2DeliveredProviderReference(
         asset_id=input_snapshot.asset_id,
@@ -794,16 +1016,23 @@ def _canvas_delivered(
         binding_id=input_snapshot.binding_id,
         input_role=input_snapshot.input_role,
         source_semantic_role=input_snapshot.source_semantic_role,
-        required=input_snapshot.required,
+        required=True,
         display_order=input_snapshot.display_order,
         media_type=input_snapshot.media_type,
-        mime_type=version.mime_type,
+        mime_type=mime_type or version.mime_type,
         provider_input_type=input_type,
         provider_input_value=input_value,
         source=source,
         checksum=version.sha256,
         byte_count=byte_count,
         rendition_kind=rendition_kind,
+        source_checksum=version.sha256,
+        source_byte_count=version.size_bytes,
+        source_mime_type=version.mime_type,
+        rendition_checksum=rendition_checksum or version.sha256,
+        rendition_byte_count=rendition_byte_count or version.size_bytes,
+        rendition_width=rendition_width or version.width,
+        rendition_height=rendition_height or version.height,
     )
 
 
@@ -942,6 +1171,10 @@ def _workflow_asset_from_library_binding(
     metadata = dict(version.metadata)
     metadata["mime_type"] = version.mime_type
     metadata["reference_role"] = binding.reference_role
+    metadata["reference_source"] = "asset_library"
+    metadata["source_scope"] = (
+        "recommended" if metadata.get("source_scope") == "recommended" else "my"
+    )
     semantic_type = metadata.get("semantic_type")
     return WorkflowAssetVersionV2(
         asset_id=version.asset_id,

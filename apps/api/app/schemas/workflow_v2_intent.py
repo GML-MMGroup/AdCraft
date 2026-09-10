@@ -5,6 +5,8 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
+
 
 V2_INTENT_CONTRACT_VERSION = "v2-intent-contract-1"
 V2_MAX_INTENT_INVENTORY_ITEMS = 12
@@ -295,6 +297,7 @@ class V2IntentPlan(BaseModel):
     scenes: list[V2IntentScene] = Field(default_factory=list)
     storyboard: V2IntentStoryboard
     audio: V2IntentAudio
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -344,6 +347,7 @@ class V2ExplicitConstraints(BaseModel):
     duration_seconds: int | None = None
     duration_source_span: str | None = None
     aspect_ratio: str | None = None
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
 
     @field_validator(
         "product_name",

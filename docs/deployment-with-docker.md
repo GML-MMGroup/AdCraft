@@ -12,7 +12,7 @@ If the one-click launcher cannot complete on your computer, use the manual step-
 - Internet access for the first deployment, because the launcher may download required components and build images.
 - One supported operating system:
   - **Windows:** 64-bit Windows 10 22H2 (build 19045) or later, or 64-bit Windows 11 23H2 (build 22631) or later. Hardware virtualization must be available. Windows Server and Windows containers are not supported.
-  - **Linux:** Ubuntu or Debian. Other Linux distributions are not supported by the first-release launcher.
+  - **Linux:** Ubuntu or Debian on a host that can run the Docker Engine service. Other Linux distributions and unprivileged containers are not supported by the first-release launcher.
 - On Windows, permission to run a file as an administrator. On Linux, an account that can enter its `sudo` password if the launcher asks.
 - API keys from the provider you intend to use. You add them after AdCraft is running; do not put them in a chat message or a public document.
 
@@ -32,7 +32,7 @@ The address printed at the end has the form `http://127.0.0.1:<port>`. `127.0.0.
 1. Open the project folder in File Explorer and open its `scripts` folder.
 2. Right-click `scripts\\deploy-windows.cmd` and choose **Run as administrator**. Approve the Windows prompt.
 3. On a new machine, the launcher may enable or install WSL 2 and Docker Desktop. Windows may ask you to reboot. If it does, restart Windows, then right-click and run the **same** `scripts\\deploy-windows.cmd` file as administrator again.
-4. Wait while the launcher checks the system, prepares its runtime, builds AdCraft, and starts the web and API services. The first run can take longer than later runs.
+4. Wait while the launcher checks the system, prepares its runtime, builds AdCraft, and starts the Agent, API, and Web services. The first run can take longer than later runs.
 5. When it reports success, open the printed `http://127.0.0.1:<port>` URL. The launcher normally opens a browser for you; if it does not, copy the displayed URL into a browser on the same computer.
 
 Expected outcome: Agent, API, and Web become healthy and AdCraft opens locally. Docker Desktop must run in **Linux containers** mode. The person deploying is responsible for complying with the applicable Docker Desktop licensing terms.
@@ -47,7 +47,7 @@ Expected outcome: Agent, API, and Web become healthy and AdCraft opens locally. 
    ```
 
 3. Enter your `sudo` password **only if the launcher asks for it**. It may need that permission to install or start Docker and supporting system packages. Do not type your API key at a `sudo` prompt.
-4. Wait while it checks Ubuntu/Debian, prepares the runtime, builds AdCraft, and waits for the web and API services to become healthy. The first run can take longer than later runs.
+4. Wait while it checks Ubuntu/Debian, prepares the runtime, builds AdCraft, and waits for the Agent Runtime, API, and Web services to become healthy. The first run can take longer than later runs. If AdCraft is recovering an interrupted video export, the launcher keeps showing service status and waits up to 30 minutes by default.
 5. Open the printed `http://127.0.0.1:<port>` URL. On a graphical Linux desktop the launcher may open it automatically; otherwise, copy it into a browser on the same computer.
 
 Expected outcome: the command finishes with a deployment-success message and the local URL. You do not need to install Python, Node.js, Docker, or Docker Compose yourself.
@@ -239,7 +239,7 @@ Linux terminal:
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-Wait until `agent`, `api`, and `web` all show `healthy`. On the first startup, the Agent Runtime becomes healthy before the API, then the web service starts.
+Wait until `agent`, `api`, and `web` all show `healthy`. The containers may start in parallel; the API can remain `starting` while it resumes interrupted video exports, so use the health status rather than startup order to decide when AdCraft is ready.
 
 ### 7. Open AdCraft and Add API Keys
 
@@ -270,6 +270,7 @@ Do not use `down -v`, and do not delete `runtime-data/`, unless you intentionall
 | --- | --- |
 | `docker version` does not show a Server section. | Start Docker Desktop on Windows. On Linux, run `sudo systemctl start docker`, then check the command again. |
 | `docker compose` is unknown. | Install or update the Docker Compose plugin using Docker's official instructions, then open a new terminal. |
+| Linux Docker installation stops during `apt update` because an unrelated repository has no Release file or returns 404. | Disable or correct that broken entry under `/etc/apt/sources.list` or `/etc/apt/sources.list.d/`, run `sudo apt update` successfully, then rerun the AdCraft launcher. Do not disable signature verification. |
 | `failed to fetch anonymous token`, `EOF`, DNS, or registry timeout. | This is a Docker network/proxy problem, not an AdCraft API-key problem. Correct the Docker Desktop or Linux Docker proxy/DNS path, restart Docker, and retry the build. |
 | `port is already allocated`. | Stop the program using the selected port, or edit `ADCRAFT_PORT` in `runtime-data/deployment.env` to another free port from `8080` to `8179`, then run the start command again. |
 | `agent`, `api`, or `web` is `exited` or `unhealthy`. | Run the logs command above. Keep API keys and `runtime-data/deployment.env` out of any log excerpt you share. Fix the first reported error, then rerun the rebuild/start command. |
@@ -280,7 +281,7 @@ This manual route remains local-only: the web port is bound to `127.0.0.1`. Do n
 ## Open AdCraft and Add API Keys
 
 1. Open the printed local URL and go to **API Space**.
-2. Choose the available provider, currently **Volcengine Ark**. API Space presents separate key entries for **LLM**, **Image**, and **Video**. Enter the key for each type of work you plan to use. If your provider issued one key with the right permissions for all three, you can use the page's **Use for all** option; otherwise use the appropriate separate keys.
+2. Choose an available provider shown in API Space. The page presents the credential fields supported by that provider; enter the keys for the capabilities you plan to use. If the page offers **Use for all**, use it only when the same key is valid for all selected capabilities.
 3. Select **Save credentials**. A successful save reports that the credentials were saved and applied, so you do not need to restart AdCraft for that change.
 4. If API Space offers a connection test for a configured key, use it to confirm the provider connection. A successful test reports that the connection succeeded, sometimes with the model name.
 

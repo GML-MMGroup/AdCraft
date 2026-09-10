@@ -86,6 +86,7 @@ try {
         MEDIA_DATA_DIR = $script:NativeApiDataDirectory
         FFMPEG_PATH = $toolchain.FfmpegPath
         FFPROBE_PATH = $toolchain.FfprobePath
+        FINAL_COMPOSITION_SUBTITLE_FONT_PATH = $toolchain.SubtitleFontPath
         LOCAL_SETTINGS_ALLOWED_ORIGINS = $localSettingsAllowedOrigins
         AGENT_RUNTIME_BASE_URL = "http://127.0.0.1:$agentPort"
         AGENT_RUNTIME_INTERNAL_TOKEN = $state.AgentRuntimeToken

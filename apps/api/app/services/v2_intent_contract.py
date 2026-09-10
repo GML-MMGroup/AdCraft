@@ -929,6 +929,7 @@ def _canonical_explicit_constraints(
         duration_seconds=_positive_integer(payload.get("duration_seconds")),
         duration_source_span=_optional_text(payload.get("duration_source_span")),
         aspect_ratio=_optional_text(payload.get("aspect_ratio")),
+        identity_safety_decision=payload.get("identity_safety_decision"),
     )
 
 

@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around limited pixel palette and sprite readability. Use arcade staging to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+为角色、产品和敌对或辅助对象建立像素轮廓、侧面轮廓、动作帧、明暗层和状态色。sprite readability 优先于纹理，检查静止、移动、转身和接触时仍能辨认。限定色盘内用对比区分主体。
+
+保持网格、比例、轮廓和状态反馈连续。

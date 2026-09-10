@@ -1,1 +1,6 @@
-Direct camera and subject motion through continuous spatial choreography and motivated transitions, using reveal timing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+视频提示要像一张可执行的空间地图：说明摄影机起点、移动路径、主体相对位置、交接动作、遮挡如何发生、焦点何时转移以及结尾停在哪里。运动速度应服从人物步伐、产品重量和场景障碍。
+
+保持服装、产品朝向、光源、声音和屏幕方向。用门框、经过镜头的物体、手部或视线完成 motivated transitions，不使用无空间依据的瞬移。输出断裂时，减少同时移动的主体，先验证路径和接触点。
+
+正例：摄影机沿人物右侧跟随，人物把产品放到台面，台面遮挡完成切换，镜头从同一方向升起揭示产品。
+反例：镜头穿过实体墙、人物突然换位，或高速旋转让观众失去空间地图。

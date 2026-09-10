@@ -1,8 +1,21 @@
 ---
-name: Hand-Drawn Travel Journal
-description: An advertising treatment built around drawn overlays, travel observation, location rhythm, and scrapbook continuity.
+name: 手绘旅行日志影像
+description: 以手绘叠加、旅行观察、地点节奏和剪贴簿连续性组织具有个人记录感的生活方式影像。
 ---
 
-Use drawn overlays, travel observation, location rhythm, and scrapbook continuity as the style's creative grammar. Establish drawn overlays as the primary visual idea, reinforce it through travel observation, and let location rhythm shape the progression toward scrapbook continuity.
+把 drawn overlays、travel observation、location rhythm、scrapbook continuity 作为旅行日志影像的四个创作支点。手绘不是给所有画面加装饰，而是把路线、感受、声音和记忆标记成可追踪的视觉层；真实地点、人物和产品事实优先于漂亮的涂鸦。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 观察与叠加
+
+先确定旅行者正在寻找什么：一处地点、一种味道、一个人物关系或一次具体体验。travel observation 记录光线、天气、地面、招牌形状、手部动作、交通声音和停留原因。drawn overlays 可以标记路线、方向、气味、节奏或情绪，但不把不可编辑的文字烙进主体画面。
+
+## 地点与连续性
+
+location rhythm 由抵达、探索、停留、转向和离开组成，每个地点保留一个可识别锚点。scrapbook continuity 通过票据、边角、照片、纸张、贴纸、颜色或重复手势连接不同地点；叠加层要有来源和层次，不遮住真实动作。
+
+## 纠偏边界
+
+保持地点顺序、天气、人物身份、服装、产品和绘制语汇。结果像旅游海报时，补回观察细节和行动；结果过满时减少贴纸与线条。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供旅行叙事判断。
+
+正例：手部收起一张票据，路线线条沿真实街道转向，环境声把地点变化连接起来。
+反例：每个地点只换一张风景图，手绘层遮满画面，观众不知道旅行者为何移动。

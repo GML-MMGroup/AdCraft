@@ -1,1 +1,5 @@
-Organize shots around transformation grammar, develop visual progression through symbolic props, and reserve pastel-neon contrast for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按日常状态、触发、聚能、局部变化、完整轮廓、heroic reveal 排列关键帧。记录脸部、手部、symbolic prop、服装层次和光带方向，确保每个变身阶段能接回上一个阶段。
+
+转场可用道具旋转、光带轨迹、姿态匹配或同一动作完成，避免无依据闪白。

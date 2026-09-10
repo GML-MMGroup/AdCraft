@@ -1,29 +1,33 @@
 {
   "skill_id": "one-take-commercial",
   "version": "1.0.0",
-  "display_name": "One-Take Commercial",
-  "description": "An advertising treatment built around continuous spatial choreography, motivated transitions, and reveal timing.",
+  "display_name": "一镜到底空间广告",
+  "description": "以连续空间调度、有动机的转场和揭示时机组织一条可追踪的广告长镜头。",
+  "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
-    "commercial",
-    "campaign",
-    "product"
+    "长镜头",
+    "空间调度",
+    "连续动作"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌广告",
+    "产品展示",
+    "空间叙事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "One-Take Commercial creative treatment."
+    "kind": "image",
+    "summary": "一镜到底空间广告视觉预览。",
+    "media_url": "/api/v2/video-skills/one-take-commercial/preview?v=1.0.0"
   },
   "display_order": 50,
   "files": {
-    "SKILL.md": "141a35dce52f423bb70816c827f855fcaa7df6500f18b5d881033135b3b73fd6",
-    "references/script.md": "34803a4759a7218db1a5cae9adef9bb58fa014a6a88cca902b8fa4d8576fa9b4",
-    "references/product.md": "19727d1bd1ffd7c8cfad3c8d6a86a486f7eab6eaf7f8a5cf4f3d59f6f333199b",
-    "references/storyboard.md": "00a4bf3cff1bf480f2472e5c208fbfd6ed8a133aabacc26a6c9d220541cfecda",
-    "references/video.md": "26ff08de80c66cec12dd11d7b0a5ed4a0e12ec48b08fbc49d60fc0b23a840c0f"
+    "SKILL.md": "8b9631e4fed3b102119ca39f4b8f2853bd3888578025f7c17eee6ee72da58cb5",
+    "references/script.md": "258df0690b655a8495a99ef42a732bd6389c1a1c7720ff1c42dd93342c33a1b8",
+    "references/product.md": "c27930e8fdca15be0524e34ef48c84d50339f12d0460541fc7f43476934180a3",
+    "references/storyboard.md": "41abee4bc0c1aa877faccbbc2a8f2d7eb24454cda0983be251536afef7fa5c98",
+    "references/video.md": "ed94786cf132b3b18ea517f81960995baee05ec81085fa292a41cfa01e9f03b2",
+    "previews/preview.webp": "7bdde9c26cbbf8563370737e5dbfc3ac8171a94cb800a750ba80520d6bbc9368"
   },
   "role_guidance": {
     "script": "references/script.md",

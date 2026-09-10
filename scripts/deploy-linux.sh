@@ -372,10 +372,10 @@ main() {
     die "容器启动失败。"
   fi
 
-  info "等待 Agent/API/Web 健康，最长 120 秒……"
+  info "等待 Agent/API/Web 健康，最长 ${ADCRAFT_DEPLOY_WAIT_SECONDS:-1800} 秒……"
   if ! wait_for_services; then
     show_recent_logs
-    die "服务未在 120 秒内达到健康状态。"
+    die "服务未在等待时间内达到健康状态。"
   fi
 
   url="$(adcraft_url)"

@@ -1,1 +1,5 @@
-Organize shots around cut-paper layers, develop visual progression through typography-aware rhythm without baked text, and reserve tactile compositing for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+用底面建立、层片进入、遮挡揭示、拼合、产品落点组织动效。关键帧记录每层的初始位置、移动方向、遮挡边缘、视觉中心和节拍。typography-aware rhythm without baked text 只标记排版节奏、对齐和留白，不写死画面文字。
+
+用翻页、撕开、形状匹配和层片交接转场，检查信息是否按层级出现。

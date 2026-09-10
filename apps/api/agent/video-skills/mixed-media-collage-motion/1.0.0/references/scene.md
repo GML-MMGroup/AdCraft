@@ -1,1 +1,5 @@
-Construct spaces that express cut-paper layers through layout and typography-aware rhythm without baked text through light, color, and material. Use tactile compositing to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+先决定拼贴的底面、深度层、负空间和主视线，再安排 cut-paper layers 的入口与出口。不同材料可有不同纸纹、阴影和边缘，但要共享一个光向与色彩层级。
+
+留出可编辑信息区域，跨镜头保持底面、层次、遮挡和主体位置连续。

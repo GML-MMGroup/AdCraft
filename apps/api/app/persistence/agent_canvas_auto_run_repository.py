@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
 from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -16,7 +17,10 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import AgentCanvasAutomaticRunCommandRow
 from app.schemas.agent_canvas import CanvasNodeErrorV2
-from app.schemas.agent_canvas_execution_settings import AutomaticRunCommandV2
+from app.schemas.agent_canvas_execution_settings import (
+    AutomaticRunCommandV2,
+    AutomaticRunRetryPolicyV1,
+)
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -42,7 +46,7 @@ class AgentCanvasAutomaticRunRepository:
         source_action_id: str,
         node_id: str,
         now: datetime,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
     ) -> AutomaticRunCommandV2:
         command_id = _command_id(workflow_id, source_action_id, node_id)
         try:
@@ -71,18 +75,13 @@ class AgentCanvasAutomaticRunRepository:
         source_action_id: str,
         node_id: str,
         now: datetime,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
     ) -> AutomaticRunCommandV2:
         """Insert one command into its owning publication transaction."""
 
-        if max_attempts < 1:
-            raise V2PersistenceError(
-                "agent_auto_run_attempts_invalid",
-                "Automatic Run maximum attempts must be positive.",
-                stage="agent_canvas_auto_run",
-            )
         timestamp = _iso(now)
         command_id = _command_id(workflow_id, source_action_id, node_id)
+        logical_operation_id = _logical_operation_id(workflow_id, source_action_id, node_id)
         existing = _select_identity(
             connection,
             workflow_id=workflow_id,
@@ -91,8 +90,20 @@ class AgentCanvasAutomaticRunRepository:
         )
         if existing is not None:
             return _command(existing)
+        try:
+            policy = AutomaticRunRetryPolicyV1(max_attempts=max_attempts)
+        except ValidationError as error:
+            raise V2PersistenceError(
+                "agent_auto_run_attempts_invalid",
+                "Automatic Run policy permits one or two total attempts.",
+                stage="agent_canvas_auto_run",
+            ) from error
         values = {
             "command_id": command_id,
+            "logical_operation_id": logical_operation_id,
+            "operation_generation": 1,
+            "retry_ordinal": 0,
+            "max_automatic_retries": policy.max_attempts - 1,
             "workflow_id": workflow_id,
             "source_action_id": source_action_id,
             "node_id": node_id,
@@ -100,7 +111,7 @@ class AgentCanvasAutomaticRunRepository:
             "state": "pending",
             "execution_id": None,
             "attempt_count": 0,
-            "max_attempts": max_attempts,
+            "max_attempts": policy.max_attempts,
             "next_attempt_at": timestamp,
             "lease_owner": None,
             "lease_generation": 0,
@@ -125,6 +136,10 @@ class AgentCanvasAutomaticRunRepository:
                     "action_id": source_action_id,
                     "node_id": node_id,
                     "command_id": command_id,
+                    "logical_operation_id": logical_operation_id,
+                    "operation_generation": 1,
+                    "retry_ordinal": 0,
+                    "max_automatic_retries": policy.max_attempts - 1,
                 },
             ),
         )
@@ -145,6 +160,20 @@ class AgentCanvasAutomaticRunRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return _command(row) if row is not None else None
+
+    def get_lease_generation(self, command_id: str) -> int | None:
+        """Return the current private claim generation for one command."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                generation = connection.execute(
+                    select(AgentCanvasAutomaticRunCommandRow.lease_generation).where(
+                        AgentCanvasAutomaticRunCommandRow.command_id == command_id
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return int(generation) if generation is not None else None
 
     def list_for_workflow(self, workflow_id: str) -> tuple[AutomaticRunCommandV2, ...]:
         try:
@@ -303,6 +332,101 @@ class AgentCanvasAutomaticRunRepository:
             now=now,
         )
 
+    def schedule_terminal_retry(
+        self,
+        command_id: str,
+        *,
+        execution_id: str,
+        error: CanvasNodeErrorV2,
+        retry_at: datetime,
+        now: datetime,
+    ) -> AutomaticRunCommandV2:
+        """CAS a retryable terminal execution into its one successor attempt."""
+
+        timestamp = _iso(now)
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasAutomaticRunCommandRow).where(
+                                AgentCanvasAutomaticRunCommandRow.command_id == command_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise V2PersistenceError(
+                            "agent_auto_run_not_found",
+                            "Automatic Run command was not found.",
+                            stage="agent_canvas_auto_run",
+                        )
+                    if row["execution_id"] is not None and str(row["execution_id"]) != execution_id:
+                        raise V2PersistenceError(
+                            "agent_auto_run_execution_conflict",
+                            "Terminal execution does not own this Automatic Run command.",
+                            stage="agent_canvas_auto_run",
+                        )
+                    if (
+                        str(row["state"]) != "submitted"
+                        or not error.retryable
+                        or int(row["attempt_count"]) + 1 >= int(row["max_attempts"])
+                    ):
+                        connection.commit()
+                        return _command(row)
+                    next_attempt = int(row["attempt_count"]) + 1
+                    values = {
+                        "state": "pending",
+                        "attempt_count": next_attempt,
+                        "retry_ordinal": next_attempt,
+                        "next_attempt_at": _iso(retry_at),
+                        "execution_id": None,
+                        "last_error_code": error.code,
+                        "last_error_message": error.message,
+                        "last_error_retryable": error.retryable,
+                        "updated_at": timestamp,
+                    }
+                    connection.execute(
+                        update(AgentCanvasAutomaticRunCommandRow)
+                        .where(
+                            AgentCanvasAutomaticRunCommandRow.command_id == command_id,
+                            AgentCanvasAutomaticRunCommandRow.state == "submitted",
+                            AgentCanvasAutomaticRunCommandRow.execution_id == execution_id,
+                        )
+                        .values(**values)
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(row["workflow_id"]),
+                            node_id=str(row["node_id"]),
+                            action_id=str(row["source_action_id"]),
+                            event_type="agent_auto_run_retry_scheduled",
+                            transition_key=f"agent-auto-run:{command_id}:retry:{next_attempt}",
+                            created_at=timestamp,
+                            payload={
+                                "command_id": command_id,
+                                "execution_id": execution_id,
+                                "logical_operation_id": str(row["logical_operation_id"]),
+                                "operation_generation": int(row["operation_generation"]),
+                                "retry_ordinal": next_attempt,
+                                "max_automatic_retries": int(row["max_automatic_retries"]),
+                                "error": error.model_dump(mode="json"),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return _command({**row, **values})
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as persistence_error:
+            raise _unavailable_error() from persistence_error
+
     def defer(
         self,
         command_id: str,
@@ -399,6 +523,7 @@ class AgentCanvasAutomaticRunRepository:
                         "state": state,
                         "execution_id": execution_id,
                         "attempt_count": attempt_count,
+                        "retry_ordinal": attempt_count,
                         "next_attempt_at": _iso(retry_at) if retry_at else None,
                         "lease_owner": None,
                         "lease_expires_at": None,
@@ -428,6 +553,10 @@ class AgentCanvasAutomaticRunRepository:
                         payload = {
                             "command_id": command_id,
                             "node_id": str(row["node_id"]),
+                            "logical_operation_id": str(row["logical_operation_id"]),
+                            "operation_generation": int(row["operation_generation"]),
+                            "retry_ordinal": attempt_count,
+                            "max_automatic_retries": int(row["max_automatic_retries"]),
                         }
                         if execution_id is not None:
                             payload["execution_id"] = execution_id
@@ -487,6 +616,13 @@ def _command_id(workflow_id: str, source_action_id: str, node_id: str) -> str:
     return f"auto_run_{digest}"
 
 
+def _logical_operation_id(workflow_id: str, source_action_id: str, node_id: str) -> str:
+    digest = hashlib.sha256(
+        f"{workflow_id}:{source_action_id}:{node_id}:automatic-operation".encode()
+    ).hexdigest()[:32]
+    return f"auto_operation_{digest}"
+
+
 def _command(row: object) -> AutomaticRunCommandV2:
     values = dict(row)  # type: ignore[arg-type]
     error = None
@@ -498,6 +634,10 @@ def _command(row: object) -> AutomaticRunCommandV2:
         )
     return AutomaticRunCommandV2(
         command_id=str(values["command_id"]),
+        logical_operation_id=str(values["logical_operation_id"]),
+        operation_generation=int(values["operation_generation"]),
+        retry_ordinal=int(values["retry_ordinal"]),
+        max_automatic_retries=int(values["max_automatic_retries"]),
         workflow_id=str(values["workflow_id"]),
         source_action_id=str(values["source_action_id"]),
         node_id=str(values["node_id"]),

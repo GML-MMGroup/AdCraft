@@ -1,8 +1,23 @@
 ---
-name: One-Take Commercial
-description: An advertising treatment built around continuous spatial choreography, motivated transitions, and reveal timing.
+name: 一镜到底空间广告
+description: 以连续空间调度、有动机的转场和揭示时机组织一条可追踪的广告长镜头。
 ---
 
-Use continuous spatial choreography, motivated transitions, and reveal timing as the style's creative grammar. Establish continuous spatial choreography as the primary visual idea, reinforce it through motivated transitions, and let reveal timing shape the progression toward reveal timing.
+把 continuous spatial choreography、motivated transitions、reveal timing 作为一镜到底广告的三个创作支点。连续不等于让镜头不停旋转，而是让观众始终知道摄影机在哪里、主体往哪里走、下一个信息为什么在此刻出现。每次转向、遮挡、交接和焦点变化都要有空间原因。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 空间地图
+
+先建立入口、路径、关键停留点、出口和不可穿越的障碍。记录主体、产品、人物、道具、光源和摄影机的相对位置。把空间分成可连续连接的段落，每段只引入必要的新信息。复杂调度先保证地理清晰，再增加速度或表演。
+
+motivated transitions 可以来自人物经过门框、物体遮挡镜头、视线引导、手部交接、光线变化或声音桥接。遮挡前后至少保留一个身份锚点，避免用黑场或无依据的跳跃伪装一镜到底。
+
+## 揭示与连续性
+
+把 reveal timing 设计成空间行动的结果：摄影机绕过障碍看到产品，人物完成交接后露出关键部件，或路径抵达一个能承接品牌信息的位置。产品和人物的方向、步伐、手部、服装、光线和声音必须连续；需要隐藏剪辑时，隐藏点仍要符合空间和动作。
+
+## 约束与纠偏
+
+工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供空间叙事。结果断裂时，先画出上一状态和下一状态之间缺失的路径或遮挡，再减少角色、道具和摄影机动作，不用更快运动掩盖空间错误。
+
+正例：人物把产品交给另一人，摄影机沿同一手部方向穿过门框，遮挡解除时产品新功能自然揭示。
+反例：镜头突然穿墙、人物瞬移或同时改变空间轴线、服装和光源，却仍声称是连续长镜头。

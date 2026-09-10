@@ -1,8 +1,25 @@
 ---
-name: Industrial Product Commercial
-description: An advertising treatment built around engineering form, material precision, functional demonstration, and controlled light.
+name: 工业产品功能广告
+description: 以工程形态、材料精度、功能演示和受控光线呈现工业产品的可信价值。
 ---
 
-Use engineering form, material precision, functional demonstration, and controlled light as the style's creative grammar. Establish engineering form as the primary visual idea, reinforce it through material precision, and let functional demonstration shape the progression toward controlled light.
+把 engineering form、material precision、functional demonstration、controlled light 作为工业产品广告的四个创作支点。观众不仅要看到设备外观，还要理解它如何工作、为什么可靠、与环境和人的关系是什么。把复杂技术翻译成轮廓、接口、受力、运动、反馈和结果，避免用抽象科技词替代工程证据。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 形态与材料
+
+先拆解外壳、连接件、控制面、运动部件、接口、警示标识和维护区域。保持比例、装配关系、边缘处理、表面粗糙度、金属反射、橡胶弹性和玻璃透光等可辨识特征。材质精度不是增加更多高光，而是让光线、摩擦、重量和使用痕迹符合材料行为。
+
+把产品放入真实工作环境，说明底座、地面、工件、工具和操作者的尺度关系。环境只保留帮助理解功能和安全性的元素，不用无关的未来城市或烟雾掩盖结构。受力、运动和温度变化都要有前因后果。
+
+## 功能证明
+
+每个功能演示只突出一个主要问题：输入是什么，产品做了什么，输出或反馈是什么。先建立静态形态，再展示接口或动作，最后回到结果和整体可靠性。复杂流程拆成可继承的状态，不把多个互相独立的动作压缩成无法检查的一瞬间。
+
+保持镜头轴线、操作者手部、工件位置、指示灯状态、液体或粉尘轨迹和光源方向连续。需要展示内部结构时，用透明、剖面或图形化投影表达，但不能把示意图误当成真实外观。安全信息和品牌事实优先于炫技。
+
+## 约束与纠偏
+
+工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供工业视觉和叙事判断。参考图优先锁定产品结构；结果偏离时，具体指出接口、比例、材质、受力或功能反馈的错误，再减少动作复杂度。
+
+正例：先展示设备完整轮廓，再沿工件进入方向跟随夹持动作，反馈出现后以清晰的局部和全貌证明精度。
+反例：让设备在相邻镜头改变接口和外壳比例，或用蓝色光束说明“高科技”却没有输入、动作和结果。

@@ -416,6 +416,7 @@ class StoryboardExcludedMediaV3(_AuthoritativeWorkingDocumentModel):
 
 class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
     schema_version: Literal["3"] = "3"
+    creative_direction_snapshot_id: str | None = Field(default=None, min_length=1, max_length=160)
     narrative_outline: str = Field(
         min_length=1,
         max_length=PERSISTED_STORYBOARD_PLAN_NARRATIVE_MAX_LENGTH,

@@ -30,6 +30,7 @@ export function operationDeadlineSeconds(operation: string): number {
 export type ModelAttemptStage =
   | "initial"
   | "transport_retry"
+  | "capability_fallback"
   | "structured_repair";
 
 export function modelAttemptTimeoutMs(

@@ -1,0 +1,382 @@
+"""Classify blocked Editing preparation against current durable authority."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
+
+from app.persistence.agent_canvas_auto_run_repository import (
+    AgentCanvasAutomaticRunRepository,
+)
+from app.persistence.agent_canvas_conversation_repository import (
+    AgentCanvasConversationRepository,
+)
+from app.persistence.agent_canvas_execution_settings_repository import (
+    AgentCanvasExecutionSettingsRepository,
+)
+from app.persistence.agent_canvas_editing_action_reconciliation_repository import (
+    AgentCanvasEditingActionReconciliationRepository,
+)
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    AgentCanvasGuidedMediaResumeRepository,
+)
+from app.persistence.agent_canvas_post_ready_repository import (
+    AgentCanvasPostReadyEffectRepository,
+)
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
+)
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
+from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import CanvasNodeV2
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
+from app.schemas.agent_canvas_production_closure import (
+    EditingActionReconciliationOutcomeV1,
+    EditingActionSystemOwnerKindV1,
+)
+from app.schemas.agent_canvas_execution_settings import MediaExecutionModeV2
+
+
+@dataclass(frozen=True)
+class EditingActionOutcomeResolution:
+    session: GuidedSessionStateV2
+    outcome: EditingActionReconciliationOutcomeV1
+    reason_code: str
+    evidence_ids: tuple[str, ...] = ()
+    plan_document_id: str | None = None
+    plan_revision: int | None = None
+    media_execution_mode: MediaExecutionModeV2 | None = None
+    awaiting_id: str | None = None
+    awaiting_kind: str | None = None
+    awaiting: GuidanceAwaitingV2 | None = None
+    system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
+    system_owner_id: str | None = None
+    system_owner_node_id: str | None = None
+    system_owner_generation: int | None = None
+    error_code: str | None = None
+
+
+class GuidedEditingActionOutcomeResolver:
+    """Resolve one blocker without inventing work or a second lifecycle."""
+
+    def __init__(
+        self,
+        *,
+        workflows: AgentCanvasWorkflowRepository,
+        conversations: AgentCanvasConversationRepository,
+    ) -> None:
+        database = workflows.database
+        events = conversations.events
+        self._workflows = workflows
+        self._conversations = conversations
+        self._runtime = AgentCanvasRuntimeRepository(database, events)
+        self._automatic = AgentCanvasAutomaticRunRepository(database, events)
+        self._post_ready = AgentCanvasPostReadyEffectRepository(database, events)
+        self._media_resume = AgentCanvasGuidedMediaResumeRepository(database, events)
+        self._receipts = AgentCanvasProductionClosureRepository(database)
+        self._settings = AgentCanvasExecutionSettingsRepository(database, events)
+        self._reconciliation = AgentCanvasEditingActionReconciliationRepository(database, events)
+
+    def resolve(
+        self,
+        error: V2PersistenceError,
+        session: GuidedSessionStateV2,
+    ) -> EditingActionOutcomeResolution:
+        current = self._conversations.get_guidance_session(session.workflow_id)
+        if error.code != "guided_closure_blocked":
+            return self._failed(error, current, None)
+        if current.awaiting is not None and current.awaiting.kind in {
+            "media_review",
+            "manual_node_run",
+        }:
+            return EditingActionOutcomeResolution(
+                session=current,
+                outcome="waiting_user",
+                reason_code=f"editing_requires_{current.awaiting.kind}",
+                evidence_ids=(current.awaiting.awaiting_id, *current.awaiting.node_ids),
+                awaiting_id=current.awaiting.awaiting_id,
+                awaiting_kind=current.awaiting.kind,
+                awaiting=current.awaiting,
+            )
+        session = current
+        blockers = _blockers(error)
+        workflow = self._workflows.get_workflow(session.workflow_id)
+        nodes = {node.node_id: node for node in workflow.nodes}
+        specific = tuple(
+            blocker
+            for blocker in blockers
+            if isinstance(blocker.get("node_id"), str) and blocker["node_id"] in nodes
+        )
+
+        hard = next(
+            (
+                blocker
+                for blocker in _ordered(specific)
+                if blocker.get("kind") in {"failed", "missing", "unreadable"}
+            ),
+            None,
+        )
+        if hard is not None:
+            return self._failed(error, session, hard)
+
+        plan_authority = _plan_authority(error)
+        owner_by_node = {
+            str(blocker["node_id"]): self._owner(
+                session.workflow_id,
+                nodes[str(blocker["node_id"])],
+                plan_authority=plan_authority,
+            )
+            for blocker in _ordered(specific)
+        }
+        owners = tuple(
+            owner
+            for blocker in _ordered(specific)
+            if (owner := owner_by_node[str(blocker["node_id"])]) is not None
+        )
+        unowned_drafts = tuple(
+            str(blocker["node_id"])
+            for blocker in _ordered(specific)
+            if blocker.get("kind") in {"not_ready", "nonterminal_work"}
+            and nodes[str(blocker["node_id"])].status == "draft"
+            and owner_by_node[str(blocker["node_id"])] is None
+        )
+        if unowned_drafts:
+            settings = self._settings.get_or_create_manual(
+                session.workflow_id,
+                now=datetime.now(timezone.utc),
+            )
+            if settings.media_execution_mode == "manual":
+                return self._enter_manual_wait(session, unowned_drafts)
+            return EditingActionOutcomeResolution(
+                session=session,
+                outcome="failed",
+                reason_code="automatic_editing_work_orphaned",
+                evidence_ids=unowned_drafts,
+                error_code="guided_editing_automatic_work_orphaned",
+            )
+        if owners:
+            if plan_authority is None:
+                return self._failed(error, session, specific[0] if specific else None)
+            owner_kind, owner_id, owner_node_id, owner_generation = sorted(
+                owners, key=lambda item: (_OWNER_ORDER[item[0]], item[1])
+            )[0]
+            settings = self._settings.get_or_create_manual(
+                session.workflow_id,
+                now=datetime.now(timezone.utc),
+            )
+            plan_document_id, plan_revision = plan_authority
+            return EditingActionOutcomeResolution(
+                session=session,
+                outcome="system_deferred",
+                reason_code="editing_work_owned",
+                evidence_ids=(owner_id, owner_node_id, plan_document_id),
+                plan_document_id=plan_document_id,
+                plan_revision=plan_revision,
+                media_execution_mode=settings.media_execution_mode,
+                system_owner_kind=owner_kind,
+                system_owner_id=owner_id,
+                system_owner_node_id=owner_node_id,
+                system_owner_generation=owner_generation,
+            )
+        return self._failed(error, session, specific[0] if specific else None)
+
+    def _owner(
+        self,
+        workflow_id: str,
+        node: CanvasNodeV2,
+        *,
+        plan_authority: tuple[str, int] | None,
+    ) -> tuple[EditingActionSystemOwnerKindV1, str, str, int] | None:
+        if plan_authority is None or not self._reconciliation.node_belongs_to_plan(
+            workflow_id=workflow_id,
+            node_id=node.node_id,
+            plan_document_id=plan_authority[0],
+            plan_revision=plan_authority[1],
+        ):
+            return None
+        node_id = node.node_id
+        for member in self._runtime.list_latest_members_for_workflow(workflow_id):
+            if (
+                member.node_id == node_id
+                and member.state in {"queued", "waiting", "running"}
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="execution_member",
+                    owner_id=member.member_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
+            ):
+                return "execution_member", member.member_id, node_id, member.attempt_no
+        for command in self._automatic.list_for_workflow(workflow_id):
+            if (
+                command.node_id == node_id
+                and command.state in {"pending", "claimed"}
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="automatic_run",
+                    owner_id=command.command_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
+            ):
+                generation = self._automatic.get_lease_generation(command.command_id)
+                if generation is not None:
+                    return "automatic_run", command.command_id, node_id, generation
+        for effect in self._post_ready.list_for_workflow(workflow_id):
+            if (
+                effect.node_id == node_id
+                and effect.status in {"queued", "running"}
+                and self._reconciliation.owner_matches_plan(
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    owner_kind="post_ready_effect",
+                    owner_id=effect.effect_id,
+                    plan_document_id=plan_authority[0],
+                    plan_revision=plan_authority[1],
+                )
+            ):
+                return "post_ready_effect", effect.effect_id, node_id, effect.lease_generation
+        for delivery in self._media_resume.list_for_workflow(workflow_id):
+            if delivery.status not in {"queued", "running"}:
+                continue
+            confirmation = self._receipts.get_confirmation(delivery.confirmation_id)
+            if (
+                confirmation.node_id == node_id
+                and confirmation.plan_document_id == plan_authority[0]
+                and confirmation.plan_revision == plan_authority[1]
+            ):
+                return (
+                    "guided_media_resume",
+                    delivery.delivery_id,
+                    node_id,
+                    delivery.lease_generation,
+                )
+        return None
+
+    def _enter_manual_wait(
+        self,
+        session: GuidedSessionStateV2,
+        node_ids: tuple[str, ...],
+    ) -> EditingActionOutcomeResolution:
+        action = session.journey.active_action
+        if action is None:
+            return EditingActionOutcomeResolution(
+                session=session,
+                outcome="superseded",
+                reason_code="editing_action_superseded",
+            )
+        identity = f"{session.workflow_id}:{action.action_id}:{action.stage_revision}"
+        digest = sha256(identity.encode()).hexdigest()[:24]
+        awaiting = GuidanceAwaitingV2(
+            awaiting_id=f"awaiting_editing_{digest}",
+            workflow_id=session.workflow_id,
+            session_id=session.session_id,
+            checkpoint_id=f"editing-node-run:{digest}",
+            kind="manual_node_run",
+            requires_user_action=True,
+            resume_policy="node_terminal",
+            node_ids=node_ids,
+            stage="editing",
+            stage_revision=action.stage_revision,
+            created_at=datetime.now(timezone.utc),
+        )
+        return EditingActionOutcomeResolution(
+            session=session,
+            outcome="waiting_user",
+            reason_code="editing_requires_manual_node_run",
+            evidence_ids=(awaiting.awaiting_id, *node_ids),
+            awaiting_id=awaiting.awaiting_id,
+            awaiting_kind="manual_node_run",
+            awaiting=awaiting,
+        )
+
+    @staticmethod
+    def _failed(
+        error: V2PersistenceError,
+        session: GuidedSessionStateV2,
+        blocker: dict[str, object] | None,
+    ) -> EditingActionOutcomeResolution:
+        evidence = _safe_ids(error, blocker)
+        error_code = (
+            str(blocker.get("error_code"))
+            if blocker is not None and isinstance(blocker.get("error_code"), str)
+            else error.code
+        )
+        return EditingActionOutcomeResolution(
+            session=session,
+            outcome="failed",
+            reason_code="editing_preparation_failed",
+            evidence_ids=evidence,
+            error_code=error_code,
+        )
+
+
+_OWNER_ORDER: dict[EditingActionSystemOwnerKindV1, int] = {
+    "execution_member": 0,
+    "automatic_run": 1,
+    "post_ready_effect": 2,
+    "guided_media_resume": 3,
+}
+
+
+def _blockers(error: V2PersistenceError) -> tuple[dict[str, object], ...]:
+    value = error.details.get("blockers")
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, dict))
+
+
+def _plan_authority(error: V2PersistenceError) -> tuple[str, int] | None:
+    document_id = error.details.get("plan_document_id")
+    revision = error.details.get("plan_revision")
+    if (
+        not isinstance(document_id, str)
+        or not document_id
+        or not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 1
+    ):
+        return None
+    return document_id, revision
+
+
+def _ordered(blockers: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
+    priority = {
+        "failed": 0,
+        "missing": 1,
+        "unreadable": 2,
+        "not_ready": 3,
+        "nonterminal_work": 4,
+        "unconfirmed": 5,
+    }
+    return tuple(
+        sorted(
+            blockers,
+            key=lambda item: (
+                priority.get(str(item.get("kind")), 99),
+                str(item.get("node_id") or ""),
+                str(item.get("error_code") or ""),
+            ),
+        )
+    )
+
+
+def _safe_ids(
+    error: V2PersistenceError,
+    blocker: dict[str, object] | None,
+) -> tuple[str, ...]:
+    values: list[str] = []
+    if blocker is not None:
+        node_id = blocker.get("node_id")
+        if isinstance(node_id, str) and node_id:
+            values.append(node_id)
+    plan_document_id = error.details.get("plan_document_id")
+    if isinstance(plan_document_id, str) and plan_document_id:
+        values.append(plan_document_id)
+    return tuple(dict.fromkeys(values))[:16]

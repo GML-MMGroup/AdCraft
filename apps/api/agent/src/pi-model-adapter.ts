@@ -16,8 +16,15 @@ import type { RunBudget } from "./run-budget.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
 import { event } from "./runtime.js";
 import {
+  recordedAssistantMessageStream,
+  replayedAssistantMessageStream,
+  type AgentModelTraceContext,
+} from "./model-trace.js";
+import {
+  isAcceptanceReplaySource,
   PythonInternalClient,
   type AgentCredentialSnapshot,
+  type AgentRuntimeTransportSource,
 } from "./python-internal-client.js";
 import {
   AgentOperationFailure,
@@ -115,6 +122,8 @@ export class PiModelAdapter implements AgentModelAdapter {
         systemPrompt,
         userPrompt,
         schema,
+        loadedSkills: skills,
+        traceClient: this.python,
         signal,
         submit: submitStructured,
       });
@@ -132,13 +141,14 @@ export class PiModelAdapter implements AgentModelAdapter {
     ) {
       throw new Error("agent_model_capability_mismatch");
     }
-    const thinkingFormat = thinkingFormatForCredential(credential);
+    const replay = isAcceptanceReplaySource(credential);
+    const thinkingFormat = replay ? undefined : thinkingFormatForCredential(credential);
     const model: Model<"openai-completions"> = {
-      id: credential.model_id,
-      name: credential.model_id,
+      id: replay ? credential.model_id : modelIdForCredential(credential),
+      name: replay ? credential.model_id : modelIdForCredential(credential),
       api: "openai-completions",
-      provider: credential.provider,
-      baseUrl: credential.base_url,
+      provider: replay ? credential.provider : providerForCredential(credential),
+      baseUrl: replay ? "about:blank" : credential.base_url,
       reasoning: credential.execution_policy.thinking_format !== "none",
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -179,7 +189,9 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     const tools: Array<AgentTool<typeof structuredValueSchema>> = [structuredTool];
     const toolChoice = toolChoiceForRequest(request);
+    let transportAttempt = 0;
     const runAttempt = async (): Promise<void> => {
+      transportAttempt += 1;
       const agent = new Agent({
         initialState: {
           systemPrompt,
@@ -196,17 +208,42 @@ export class PiModelAdapter implements AgentModelAdapter {
               "structured_repair",
             );
           }
-          const streamOptions = {
+          const streamOptions: SimpleStreamOptions = {
             ...options,
-            apiKey: credential.api_key,
+            ...(!replay ? { apiKey: credential.api_key } : {}),
             ...(toolChoice ? { toolChoice } : {}),
           };
-          return modelStreamForCredential(
+          const stage = attempts > 0
+            ? "structured_repair"
+            : transportAttempt > 1
+              ? "transport_retry"
+              : "initial";
+          const traceContext: AgentModelTraceContext = {
+            credential,
+            request,
+            systemPrompt,
+            userPrompt,
+            schema,
+            loadedSkills: skills,
+            traceClient: this.python,
+          };
+          const traceRequest = streamedToolCallTraceRequest(
+            selectedModel as Model<"openai-completions">,
+            context,
+            credential.execution_policy.max_output_tokens,
+          );
+          if (replay) {
+            return replayedAssistantMessageStream(traceContext, traceRequest, stage);
+          }
+          const source = modelStreamForCredential(
             selectedModel as Model<"openai-completions">,
             context,
             streamOptions,
             credential,
           );
+          return credential.trace_mode === "live_record"
+            ? recordedAssistantMessageStream(traceContext, traceRequest, stage, source)
+            : source;
         },
       });
       const eventProjection = new AgentEventProjection(() => agent.abort());
@@ -247,12 +284,44 @@ export class PiModelAdapter implements AgentModelAdapter {
 
 }
 
+function streamedToolCallTraceRequest(
+  model: Model<"openai-completions">,
+  context: Context,
+  maxTokens: number,
+): Readonly<Record<string, unknown>> {
+  return {
+    model: model.id,
+    messages: context.messages,
+    system_prompt: context.systemPrompt ?? null,
+    tools: context.tools?.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    })) ?? [],
+    max_tokens: maxTokens,
+    stream: true,
+  };
+}
+
+export function modelIdForCredential(credential: AgentCredentialSnapshot): string {
+  if (credential.transport_kind === "litellm_chat") {
+    if (!credential.model_alias) throw new Error("agent_protocol_mismatch");
+    return credential.model_alias;
+  }
+  return credential.model_id;
+}
+
+export function providerForCredential(credential: AgentCredentialSnapshot): string {
+  return credential.transport_kind === "litellm_chat" ? "litellm" : credential.provider;
+}
+
 export function isNonStreamingStructuredTransport(
   transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
 ): boolean {
   return (
     transport === "non_streaming_tool_call" ||
-    transport === "non_streaming_json_object"
+    transport === "non_streaming_json_object" ||
+    transport === "non_streaming_json_schema"
   );
 }
 
@@ -260,7 +329,7 @@ export function thinkingFormatForCredential(
   credential: AgentCredentialSnapshot,
 ): "qwen" | "zai" | undefined {
   const format = credential.execution_policy.thinking_format;
-  return format === "none" ? undefined : format;
+  return format === "qwen" || format === "zai" ? format : undefined;
 }
 
 export function modelStreamForCredential(
@@ -340,7 +409,7 @@ export function promptAuditForRequest(
 
 export function agentRuntimeAuditForRequest(
   request: AgentRunRequest,
-  credential: AgentCredentialSnapshot,
+  credential: AgentRuntimeTransportSource,
   skills: ReadonlyArray<LoadedSkill> = [],
   structuredAttempts = 0,
 ): Readonly<Record<string, unknown>> {

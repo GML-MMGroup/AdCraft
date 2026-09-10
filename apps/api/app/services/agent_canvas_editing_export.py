@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic
 from uuid import uuid4
+from typing import Literal
 
 from app.persistence.agent_canvas_editing_commit_repository import (
     AgentCanvasEditingExportCommitRepository,
@@ -37,6 +38,7 @@ from app.schemas.agent_canvas_editing_authority import (
     RevisionAssertionV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.schemas.agent_canvas_production_closure import GuidedClosurePlanV1
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
@@ -350,21 +352,18 @@ class EditingExportService:
         try:
             self._on_completed(workflow_id, node_id, export_id)
         except Exception as error:  # noqa: BLE001 - Export remains terminal and recoverable.
+            error_code = getattr(error, "code", "guided_completion_failed")
             self._events.append(
                 V2EventInsert(
                     workflow_id=workflow_id,
                     execution_id=export_id,
                     node_id=node_id,
                     event_type="guided_completion_failed",
-                    transition_key=f"guided-completion:{export_id}:failed",
+                    transition_key=f"guided-completion:{export_id}:failed:{error_code}",
                     created_at=self._clock().isoformat(),
                     payload={
                         "export_id": export_id,
-                        "error_code": getattr(
-                            error,
-                            "code",
-                            "guided_completion_failed",
-                        ),
+                        "error_code": error_code,
                         "error_message": str(error),
                         "retryable": True,
                         "refresh": ["conversation", "runtime", "events"],
@@ -432,20 +431,75 @@ class EditingExportService:
                 self._run_completed_effect(workflow_id, node_id, runtime.export_id)
         return tuple(resumed)
 
+    def require_complete_guided_export(
+        self, closure: GuidedClosurePlanV1, node_id: str, export_id: str
+    ) -> None:
+        """Read-only proof that this Export contains the exact current confirmed set."""
+        runtime = self._exports.get(export_id)
+        if (
+            self._exports.identity(export_id) != (closure.workflow_id, node_id)
+            or runtime.status != "completed"
+            or runtime.skipped_inputs
+        ):
+            raise _error(
+                "guided_export_incomplete", "Export does not cover current guided delivery."
+            )
+        self._require_current_manifest(closure.workflow_id, node_id, runtime, exact_versions=True)
+        manifest = self._nodes.content(closure.workflow_id, node_id).manifest
+        resolved = self._inputs.resolve(closure.workflow_id, node_id, manifest)
+        sources = (*resolved.videos, *((resolved.bgm,) if resolved.bgm is not None else ()))
+        actual = sorted(
+            (
+                item.node_id or "",
+                item.asset.media_type,
+                item.asset.asset_id,
+                item.asset.version_id or "",
+                item.asset.checksum,
+            )
+            for item in sources
+        )
+        expected = sorted(
+            (item.node_id, item.media_role, item.asset_id, item.asset_version_id, item.asset_digest)
+            for item in closure.ordered_inputs
+        )
+        if not resolved.videos or resolved.skipped or actual != expected:
+            raise _error(
+                "guided_export_incomplete", "Export does not cover current guided delivery."
+            )
+
     def _require_current_manifest(
         self,
         workflow_id: str,
         node_id: str,
         runtime: EditingExportRuntimeV2,
+        *,
+        exact_versions: bool = False,
     ) -> None:
-        current_revision = self._nodes.content(
-            workflow_id,
-            node_id,
-        ).manifest.manifest_revision
-        if current_revision != runtime.manifest_revision:
+        manifest = self._nodes.content(workflow_id, node_id).manifest
+        if manifest.manifest_revision != runtime.manifest_revision:
             raise _error(
                 "editing_export_stale",
                 "Editing manifest changed after this export was accepted.",
+            )
+        resolved = self._inputs.resolve(workflow_id, node_id, manifest)
+        fingerprint = _fingerprint(
+            manifest.model_dump(mode="json"),
+            resolved,
+            _renderer_fingerprint_payload(self._renderer),
+        )
+        # Existing exports predate version-bound fingerprints; retain their
+        # original admission contract, never use it as new full-delivery proof.
+        if not exact_versions and fingerprint != runtime.fingerprint:
+            fingerprint = _fingerprint(
+                manifest.model_dump(mode="json"),
+                resolved,
+                _renderer_fingerprint_payload(self._renderer),
+                contract_version=2,
+            )
+        if fingerprint != runtime.fingerprint:
+            raise _error(
+                "editing_export_stale",
+                "Editing source versions changed after this export was accepted.",
             )
 
     def _finish_cancelled(
@@ -627,15 +681,18 @@ def _fingerprint(
     manifest: dict[str, object],
     resolved,
     renderer: dict[str, object],
+    *,
+    contract_version: Literal[2, 3] = 3,
 ) -> str:
     payload = {
-        "contract": "agent-canvas-editing-v2",
+        "contract": f"agent-canvas-editing-v{contract_version}",
         "manifest": manifest,
         "renderer": renderer,
         "videos": [
             {
                 "binding_id": item.binding_id,
                 "asset_id": item.asset.asset_id,
+                **({"asset_version_id": item.asset.version_id} if contract_version == 3 else {}),
                 "checksum": item.asset.checksum,
                 "duration_seconds": item.asset.duration_seconds,
             }
@@ -645,6 +702,11 @@ def _fingerprint(
             {
                 "binding_id": resolved.bgm.binding_id,
                 "asset_id": resolved.bgm.asset.asset_id,
+                **(
+                    {"asset_version_id": resolved.bgm.asset.version_id}
+                    if contract_version == 3
+                    else {}
+                ),
                 "checksum": resolved.bgm.asset.checksum,
             }
             if resolved.bgm

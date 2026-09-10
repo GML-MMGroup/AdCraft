@@ -281,6 +281,32 @@ class AgentWorkingDocumentRepository:
             raise _unavailable_error() from error
         return _document(row) if row is not None else None
 
+    @staticmethod
+    def require_revision_in_transaction(
+        connection: Connection,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+    ) -> None:
+        """Fence a read-only document dependency inside its consumer's transaction."""
+
+        revision = connection.execute(
+            select(AgentWorkingDocumentRow.revision).where(
+                AgentWorkingDocumentRow.workflow_id == workflow_id,
+                AgentWorkingDocumentRow.document_id == document_id,
+            )
+        ).scalar_one_or_none()
+        if revision is None:
+            raise _error("agent_document_not_found", "Agent working document was not found.")
+        if revision != expected_revision:
+            raise V2PersistenceError(
+                "agent_document_revision_conflict",
+                "Agent working document changed before this transaction.",
+                stage="agent_working_documents",
+                details={"current_revision": revision},
+            )
+
     def get_by_kind(
         self,
         workflow_id: str,

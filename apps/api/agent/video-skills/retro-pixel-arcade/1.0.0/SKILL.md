@@ -1,8 +1,21 @@
 ---
-name: Retro Pixel Arcade
-description: An advertising treatment built around limited pixel palette, sprite readability, arcade staging, and rhythmic graphic effects.
+name: 复古像素街机动画
+description: 以有限像素色盘、精确精灵可读性、街机式场面调度和节奏化图形效果组织高辨识度的复古动画广告。
 ---
 
-Use limited pixel palette, sprite readability, arcade staging, and rhythmic graphic effects as the style's creative grammar. Establish limited pixel palette as the primary visual idea, reinforce it through sprite readability, and let arcade staging shape the progression toward rhythmic graphic effects.
+把 limited pixel palette、sprite readability、arcade staging、rhythmic graphic effects 作为像素街机动画的四个创作支点。像素限制不是降低信息，而是迫使轮廓、动作、色彩和反馈更准确。每个画面都应能在小尺寸和快速阅读中说明谁在做什么。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 轮廓与色盘
+
+先定义角色、产品、障碍和交互物的像素轮廓、明暗层、强调色和受伤或成功状态。limited pixel palette 让颜色承担层级和反馈，避免渐变与细节互相竞争。sprite readability 要检查正面、侧面、跳跃、转身和静止姿态。
+
+## 街机调度与效果
+
+arcade staging 用路径、平台、入口、目标和障碍组织动作。rhythmic graphic effects 可以是闪烁、冲击线、粒子、分数感图形或屏幕震动，但每种效果都要对应输入、动作或结果。不要把可读性牺牲给装饰。
+
+## 连续性与纠偏
+
+保持像素网格逻辑、轮廓、调色、碰撞关系和动作方向。结果混乱时先删掉效果，恢复精灵、平台和目标，再调整节奏。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供像素动画判断。
+
+正例：角色沿平台接近产品，拾取动作触发一组短促图形反馈，轮廓和目标始终清楚。
+反例：每帧都换调色和像素密度，爆炸效果遮住角色与交互结果。

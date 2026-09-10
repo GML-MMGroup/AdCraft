@@ -1,1 +1,5 @@
-Organize shots around axial framing, develop visual progression through curated palettes, and reserve chapter-like staging for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+为每个镜头记录主轴、镜头中心、角色站位、产品可见状态、视线和关键帧。chapter-like staging 要让段落之间有明确的进入与回收；precise comic timing 要在关键帧间保留准备、停顿和反应，而不是只标一个高潮姿态。
+
+转场优先使用门框、道具交接、构图对齐或动作回扣。检查对称被打破的瞬间是否有原因，检查相邻镜头的服装、道具朝向和光线是否连续。

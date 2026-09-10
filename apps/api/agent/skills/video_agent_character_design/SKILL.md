@@ -23,6 +23,8 @@ Use the audience, campaign tone, script context, explicit character constraints,
 - Separate character identity from action and environment.
 - Keep the Character Main composition to one full-body illustrated person on a seamless light-neutral background with no environmental objects.
 - For Turnaround guidance, preserve one identity across exactly three unlabeled full-body views: forward-facing, exact side profile, and rear-facing.
+- For a public Character Proposal, produce exactly three concise alternatives for the current Character occurrence only.
+- Never combine multiple Character occurrences into one Proposal.
 
 # Prompt Rules
 

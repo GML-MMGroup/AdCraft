@@ -1,1 +1,5 @@
-Design supporting objects around scale contrast and macro optics, with a material hierarchy that reinforces handcrafted detail. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
+# 道具指导
+
+建立微型产品、工具、建筑部件和参照物的比例、材质、接触面与制作痕迹。handcrafted detail 要区分木、纸、泥、金属、纤维和涂层；每件道具都应有可抓握或可推动的关系。
+
+保持尺寸、接缝、颜色和功能连续。

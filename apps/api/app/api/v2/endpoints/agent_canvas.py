@@ -22,6 +22,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
@@ -121,10 +122,6 @@ from app.schemas.agent_canvas import (
     CanvasNodeCreateRequestV2,
     CanvasNodePatchRequestV2,
     CanvasNodeV2,
-    CanvasVariationDraftResponseV2,
-    CanvasVariationDraftUpsertV2,
-    CanvasVariationMaterializeRequestV2,
-    CanvasVariationMaterializeResponseV2,
     ImageLibraryListResponseV2,
     ProjectAssetListResponseV2,
     ProjectAssetUploadMetadataV2,
@@ -174,6 +171,11 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedMediaReviewSubmitV1,
+)
+from app.schemas.agent_canvas_guided_references import (
+    ReferenceCandidateKindV2,
+    ReferenceCandidateListResponseV2,
+    ReferenceCandidateScopeV2,
 )
 from app.schemas.agent_canvas_guided_product import (
     GuidedProductAssetVersionRefV1,
@@ -225,13 +227,23 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.project_cover_authority import ProjectCoverAuthorityService
+from app.services.project_cover_renditions import ProjectCoverRenditionPrewarmer
 from app.services.agent_canvas_guided_product import GuidedProductInputCommitService
+from app.services.agent_canvas_guided_reference import GuidedReferenceSourceService
+from app.services.agent_canvas_guided_reference_candidates import (
+    GuidedReferenceCandidateService,
+)
+from app.persistence.agent_canvas_guided_reference_repository import (
+    AgentCanvasGuidedReferenceRepository,
+)
 from app.persistence.agent_canvas_guided_product_repository import (
     AgentCanvasGuidedProductRepository,
 )
 from app.services.product_upload_multiview_compiler import ProductUploadMultiviewCompiler
 from app.tools.ffmpeg import FfmpegTool
 from app.services.v2_final_composition_renderer import V2MediaProbe
+from app.services.v2_asset_renditions import V2AssetRenditionService
 from app.services.agent_canvas_accepted_background import (
     AcceptedBackgroundOperation,
     AcceptedBackgroundResourceType,
@@ -243,6 +255,7 @@ from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
 )
 from app.services.agent_canvas_editing import EditingInputResolver, EditingNodeService
+from app.services.agent_canvas_editing_response_projector import EditingResponseProjector
 from app.services.agent_canvas_editing_export import EditingExportService
 from app.services.agent_canvas_editing_commit import AgentCanvasEditingExportCommitService
 from app.services.agent_canvas_ad_media import (
@@ -272,10 +285,16 @@ from app.persistence.agent_canvas_post_ready_checkpoint_repository import (
 from app.persistence.agent_canvas_result_commit_repository import (
     AgentCanvasResultCommitRepository,
 )
+from app.persistence.agent_canvas_result_publication_repository import (
+    AgentCanvasResultPublicationIntentRepository,
+)
 from app.services.agent_canvas_execution_result_commit import (
     AgentCanvasExecutionResultCommitService,
 )
 from app.services.agent_canvas_output_preparation import AgentCanvasOutputPreparationService
+from app.services.agent_canvas_result_publication_recovery import (
+    AgentCanvasResultPublicationRecoveryService,
+)
 from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEffectWorker
 from app.services.agent_canvas_post_ready_checkpoint import (
     AgentCanvasPostReadyCheckpointService,
@@ -287,7 +306,6 @@ from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
 )
 from app.services.agent_canvas_provider_capabilities import (
-    ProviderCapabilityError,
     ProviderCapabilityService,
 )
 from app.services.agent_canvas_provider_prompts import (
@@ -332,6 +350,7 @@ from app.services.agent_canvas_guided_media_confirmation import (
     GuidedMediaConfirmationService,
 )
 from app.services.agent_canvas_guided_media_review import (
+    GuidedMediaResultPublicationContextResolver,
     GuidedMediaPlanActionService,
     GuidedMediaReviewActionService,
     GuidedMediaReviewCoordinator,
@@ -360,6 +379,9 @@ from app.services.agent_canvas_capability_execution import capability_context_fr
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_materialization_publication import (
     CapabilityMaterializationPublicationService,
+)
+from app.services.agent_canvas_materialization_prompt_barrier import (
+    AgentCanvasMaterializationPromptPreparationBarrier,
 )
 from app.services.agent_canvas_materialization_commit import (
     AgentCanvasMaterializationCommitService,
@@ -391,18 +413,82 @@ from app.services.agent_canvas_video_parameter_compiler import (
     PiVideoParameterIntentGateway,
 )
 from app.services.agent_trace import V2AgentTraceWriter
-from app.services.agent_canvas_variations import AgentCanvasVariationService
 from app.services.agent_canvas_editing_output_reuse import EditingExportOutputReuseService
 from app.services.model_selection import ModelSelectionService
 from app.services.model_resolution import ModelResolutionService
+from app.services.provider_adapter_registry import build_trusted_provider_adapter_registry
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.provider_model_catalog import ProviderModelCatalogService
+from app.services.agent_model_trace_sessions import isolated_agent_model_replay_enabled
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
 
 router = APIRouter(tags=["v2-agent-canvas"])
+
+
+def _validate_reference_only_run(
+    node: CanvasNodeV2,
+    *,
+    bindings: AgentCanvasBindingService,
+    capabilities: ProviderCapabilityService,
+) -> None:
+    inputs = bindings.resolve_available_media_inputs(node.workflow_id, node.node_id)
+    if not inputs:
+        raise V2PersistenceError(
+            "node_prompt_empty",
+            "A generation prompt or supported reference-only input is required.",
+            stage="agent_canvas_run_admission",
+        )
+    capability = capabilities.resolve(node, inputs)
+    if not capability.supports_reference_only_generation:
+        raise V2PersistenceError(
+            "node_prompt_empty",
+            "The selected model requires a generation prompt.",
+            stage="agent_canvas_run_admission",
+        )
+
+
+def _resolve_storyboard_video_audio_constraints(
+    requirement_service: object,
+    conversation_repository: object,
+    workflow_id: str,
+    *,
+    plan_document: AgentWorkingDocumentV2 | None = None,
+) -> dict[str, object]:
+    """Combine current user constraints with the owning Plan's frozen Skill."""
+
+    current = requirement_service.get_current(workflow_id)
+    constraints = {str(control.control): control.value for control in current.hard_controls}
+    if current.identity_safety_decision is not None:
+        constraints["identity_safety_decision"] = current.identity_safety_decision.model_dump(
+            mode="json"
+        )
+    if plan_document is None:
+        snapshot = conversation_repository.get_active_creative_direction_snapshot(workflow_id)
+    else:
+        if plan_document.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "node_prompt_context_stale",
+                "The Plan does not belong to the Video Workflow.",
+                stage="storyboard_progression",
+            )
+        snapshot_id = getattr(plan_document.content, "creative_direction_snapshot_id", None)
+        snapshot = (
+            conversation_repository.get_creative_direction_snapshot(snapshot_id)
+            if snapshot_id is not None
+            else None
+        )
+    public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
+    if isinstance(public_skill, dict):
+        mode = public_skill.get("video_representation_mode")
+        if mode is not None:
+            constraints["_video_skill_representation_mode"] = mode
+            constraints["_video_skill_representation_source_id"] = (
+                f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
+            )
+    return constraints
 
 
 @dataclass(frozen=True)
@@ -417,6 +503,8 @@ class AgentCanvasRuntime:
     connection_policy: AgentCanvasConnectionPolicyService
     assets: AgentCanvasAssetService
     guided_product_inputs: GuidedProductInputCommitService
+    guided_reference_sources: GuidedReferenceSourceService
+    guided_reference_candidates: GuidedReferenceCandidateService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
@@ -425,7 +513,6 @@ class AgentCanvasRuntime:
     guided_media_resume_deliveries: AgentCanvasGuidedMediaResumeRepository
     guided_media_resume_worker: GuidedMediaConfirmationResumeWorker
     commands: AgentCanvasCommandService
-    variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
     conversation_repository: AgentCanvasConversationRepository
     decision_bundles: AgentCanvasDecisionBundleRepository
@@ -442,6 +529,7 @@ class AgentCanvasRuntime:
     post_ready_effects: AgentCanvasPostReadyEffectWorker
     post_ready_checkpoints: AgentCanvasPostReadyCheckpointService
     editing_nodes: EditingNodeService
+    editing_responses: EditingResponseProjector
     editing_exports: EditingExportService
     editing_output_reuse: EditingExportOutputReuseService
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -462,6 +550,7 @@ def _resume_prompt_preparation_barrier(
     *,
     runtime_repository: AgentCanvasRuntimeRepository,
     scheduler: DynamicCanvasScheduler,
+    materialization_barrier: (AgentCanvasMaterializationPromptPreparationBarrier | None) = None,
     prompt_ready_activation: Callable[..., object] | None = None,
     notified_dispatch_ids: set[str] | None = None,
 ) -> None:
@@ -476,11 +565,19 @@ def _resume_prompt_preparation_barrier(
 
     if dispatch.status not in {"completed", "failed"}:
         return
+    materialization_owned = False
+    if materialization_barrier is not None:
+        materialization_owned = materialization_barrier.owns_dispatch(dispatch)
+        materialization_barrier.reconcile_terminal_dispatch(dispatch)
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
         return
     activation_result: object | None = None
-    if dispatch.status == "completed" and prompt_ready_activation is not None:
+    if (
+        dispatch.status == "completed"
+        and prompt_ready_activation is not None
+        and not materialization_owned
+    ):
         operation_id = getattr(dispatch, "operation_id", None)
         if isinstance(operation_id, str) and operation_id:
             activation_result = prompt_ready_activation(
@@ -527,7 +624,7 @@ def _resume_prompt_preparation_barrier(
 def get_agent_canvas_runtime(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Iterator[AgentCanvasRuntime]:
-    runtime = create_agent_canvas_runtime(settings)
+    runtime = create_agent_canvas_runtime(settings, bootstrap_model_policy=False)
     try:
         yield runtime
     finally:
@@ -537,6 +634,7 @@ def get_agent_canvas_runtime(
 def create_agent_canvas_runtime(
     settings: Settings,
     *,
+    bootstrap_model_policy: bool = True,
     video_agent_gateway_override: VideoAgentGateway | None = None,
     provider_executor_override: V2ProviderExecutor | None = None,
     fake_media_bytes_override: Callable[[str], bytes | None] | None = None,
@@ -545,15 +643,41 @@ def create_agent_canvas_runtime(
 
     database = create_v2_database(settings.media_data_dir)
     model_repository = ProviderModelRepository(database)
-    ProviderModelBootstrapService(settings, model_repository).bootstrap(
-        now=datetime.now(timezone.utc).isoformat()
+    # HTTP requests consume the policy initialized by PersistenceBootstrapService.
+    if bootstrap_model_policy:
+        ProviderModelBootstrapService(settings, model_repository).bootstrap(
+            now=datetime.now(timezone.utc).isoformat()
+        )
+    replay_enabled = isolated_agent_model_replay_enabled()
+    replay_defaults = model_repository.get_defaults() if replay_enabled else {}
+    replay_model_refs = {
+        record.model_ref for key, record in replay_defaults.items() if key in {"agent", "text"}
+    }
+    replay_model_ref = next(iter(replay_model_refs)) if len(replay_model_refs) == 1 else None
+    replay_providers = (
+        {replay_model_ref.split(":", 1)[0]}
+        if replay_model_ref is not None and ":" in replay_model_ref
+        else set()
     )
-    model_catalog = ProviderModelCatalogService(model_repository)
+    model_catalog = ProviderModelCatalogService(
+        model_repository,
+        capability_available=(
+            lambda provider_id, capability: capability == "text" and provider_id in replay_providers
+        )
+        if replay_providers
+        else None,
+    )
     model_selection = ModelSelectionService(model_catalog)
+    adapter_registry = build_trusted_provider_adapter_registry(
+        model_catalog.list_models(include_unavailable=True),
+        settings=settings,
+    )
     model_resolution = ModelResolutionService(
         model_selection,
         model_repository,
         allow_fake=(settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"),
+        acceptance_replay_model_ref=replay_model_ref if replay_enabled else None,
+        adapter_registry=adapter_registry,
     )
     project_repository = ProjectRepository(database)
     event_repository = EventRepository(database)
@@ -577,6 +701,16 @@ def create_agent_canvas_runtime(
     )
     document_repository = AgentCanvasDocumentRepository(database)
     asset_repository = V2AssetLibraryRepository(database)
+    cover_renditions = V2AssetRenditionService(
+        settings.media_data_dir,
+        ffmpeg_path=settings.ffmpeg_path,
+    )
+    project_cover_authority = ProjectCoverAuthorityService(
+        project_repository,
+        asset_repository,
+        workflow_repository,
+        ProjectCoverRenditionPrewarmer(settings.media_data_dir, cover_renditions),
+    )
     asset_service = AgentCanvasAssetService(
         settings.media_data_dir,
         asset_repository,
@@ -586,6 +720,8 @@ def create_agent_canvas_runtime(
             if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
             else None
         ),
+        rendition_service=cover_renditions,
+        on_version_published=project_cover_authority.consider_published_version,
     )
     guided_product_inputs = GuidedProductInputCommitService(
         assets=asset_service,
@@ -699,11 +835,14 @@ def create_agent_canvas_runtime(
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
+    editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
+    editing_responses = EditingResponseProjector(editing_nodes)
     binding_service = AgentCanvasBindingService(
         workflow_repository,
         document_repository,
         asset_resolver=asset_service.resolve_asset,
         asset_version_resolver=asset_service.resolve_asset_version,
+        asset_version_batch_resolver=asset_service.resolve_asset_versions,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -712,6 +851,7 @@ def create_agent_canvas_runtime(
             )
         ),
         connection_policy=connection_policy,
+        candidate_validator=editing_responses.validate_workflow,
     )
     world_setting_context = WorldSettingContextResolverV2(workflow_repository)
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
@@ -735,6 +875,19 @@ def create_agent_canvas_runtime(
             for task in runtime_repository.list_recoverable_tasks()
         )
 
+    def current_guided_result_evidence(workflow_id: str, node_id: str):
+        execution_id = result_commit_repository.find_latest_execution_id(
+            workflow_id=workflow_id,
+            node_id=node_id,
+        )
+        if execution_id is None:
+            return None
+        for receipt in reversed(result_commit_repository.list_receipts(execution_id)):
+            evidence = receipt.guided_media_result_evidence
+            if evidence is not None and evidence.node_id == node_id:
+                return evidence
+        return None
+
     guided_closure = GuidedProductionClosureService(
         workflows=workflow_repository,
         documents=working_documents,
@@ -743,6 +896,10 @@ def create_agent_canvas_runtime(
         receipts=production_closure_receipts,
         has_active_work=guided_media_work_active,
         events=event_repository,
+        journey_policy_id=lambda workflow_id: (
+            conversation_repository.get_guidance_session(workflow_id).journey.journey_policy_id
+        ),
+        result_evidence=current_guided_result_evidence,
     )
     guided_editing = GuidedEditingPreparationService(
         workflows=workflow_repository,
@@ -777,6 +934,7 @@ def create_agent_canvas_runtime(
     provider_executor = provider_executor_override or V2ProviderExecutor(
         settings=settings,
         data_dir=settings.media_data_dir,
+        adapter_registry=adapter_registry,
     )
     dispatcher = build_default_node_dispatcher(
         settings,
@@ -794,12 +952,14 @@ def create_agent_canvas_runtime(
         registration.semantic_role for registration in list_agent_canvas_prompt_registrations()
     }
 
-    def prepare_media_context(node: CanvasNodeV2, world_setting):
+    def prepare_media_context(node: CanvasNodeV2, world_setting, resolved_inputs, omitted_inputs):
         contract = role_registry.get(node.semantic_role)
         bundle = reference_resolver.resolve(
             node.workflow_id,
             node.node_id,
             contract,
+            resolved_inputs=resolved_inputs,
+            omitted_inputs=omitted_inputs,
         )
         compiled = (
             prompt_compiler.compile(
@@ -872,11 +1032,16 @@ def create_agent_canvas_runtime(
             None,
         )
 
-    def resolve_storyboard_video_audio_constraints(workflow_id: str) -> dict[str, object]:
-        return {
-            str(control.control): control.value
-            for control in requirement_service.get_current(workflow_id).hard_controls
-        }
+    def resolve_storyboard_video_audio_constraints(
+        workflow_id: str,
+        plan_document_id: str,
+    ) -> dict[str, object]:
+        return _resolve_storyboard_video_audio_constraints(
+            requirement_service,
+            conversation_repository,
+            workflow_id,
+            plan_document=working_documents.get_document(workflow_id, plan_document_id),
+        )
 
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
@@ -887,6 +1052,11 @@ def create_agent_canvas_runtime(
         events=event_repository,
         video_resolution_resolver=resolve_storyboard_video_resolution,
         video_audio_constraints_resolver=resolve_storyboard_video_audio_constraints,
+        on_storyboard_pipeline_prepared=lambda workflow_id, plan_document_id: (
+            production_journey.record_storyboard_pipeline_prepared(
+                workflow_id, source_id=f"planned-storyboard:{plan_document_id}"
+            )
+        ),
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -895,13 +1065,33 @@ def create_agent_canvas_runtime(
             )
         ),
     )
-    output_preparer = AgentCanvasOutputPreparationService(asset_service)
+    publication_intents = AgentCanvasResultPublicationIntentRepository(
+        database,
+        event_repository,
+    )
+    output_preparer = AgentCanvasOutputPreparationService(
+        asset_service,
+        publication_intents=publication_intents,
+    )
     result_commit_repository = AgentCanvasResultCommitRepository(
         database,
         asset_repository,
         event_repository,
+        publication_intents=publication_intents,
     )
     result_committer = AgentCanvasExecutionResultCommitService(result_commit_repository)
+    guided_media_contexts = GuidedMediaResultPublicationContextResolver(
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+    )
+    publication_recovery = AgentCanvasResultPublicationRecoveryService(
+        publication_intents,
+        asset_service,
+        runtime_repository,
+        workflow_repository,
+        result_committer,
+        owner_id=f"agent-canvas-result-publication:{uuid4().hex}",
+    )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -948,8 +1138,10 @@ def create_agent_canvas_runtime(
         total_limit=settings.v2_max_parallel_generation_jobs,
         output_preparer=output_preparer,
         result_committer=result_committer,
+        publication_recovery=publication_recovery,
         terminal_member_reconciler=guidance_awaiting.reconcile_terminal_member,
         prompt_preparation=prompt_preparation_service,
+        guided_media_context_resolver=guided_media_contexts.resolve,
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
@@ -1067,10 +1259,9 @@ def create_agent_canvas_runtime(
         on_batch_reconciled=lambda execution_ids: [
             scheduler.resume(execution_id) for execution_id in execution_ids
         ],
-        output_preparer=output_preparer,
+        output_preparer=AgentCanvasOutputPreparationService(asset_service),
         result_committer=result_committer,
     )
-    editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
     editing_commit_service = AgentCanvasEditingExportCommitService(
         AgentCanvasEditingExportCommitRepository(
             database,
@@ -1080,6 +1271,11 @@ def create_agent_canvas_runtime(
     )
     guided_final_completion = GuidedFinalCompletionService(
         workflows=workflow_repository,
+        documents=working_documents,
+        closure=guided_closure,
+        verify_complete_export=lambda closure, node_id, export_id: (
+            editing_exports.require_complete_guided_export(closure, node_id, export_id)
+        ),
         exports=editing_export_repository,
         commits=editing_commit_service,
         assets=asset_service.resolve_asset,
@@ -1118,6 +1314,11 @@ def create_agent_canvas_runtime(
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+        blank_prompt_eligibility_validator=lambda node: _validate_reference_only_run(
+            node,
+            bindings=binding_service,
+            capabilities=provider_capabilities,
+        ),
     )
     automatic_run_repository = AgentCanvasAutomaticRunRepository(
         database,
@@ -1164,6 +1365,7 @@ def create_agent_canvas_runtime(
         resume_media_confirmation=resume_media_confirmation,
         node_resolver=workflow_repository.get_node,
         execution_settings=execution_settings.get_or_create,
+        prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
     )
 
     def persist_script_document(effect) -> CanvasPostReadyEffectDispositionV1:
@@ -1254,58 +1456,16 @@ def create_agent_canvas_runtime(
         replan=command_replan,
     )
 
-    def validate_variation(
-        source: CanvasNodeV2,
-        request: CanvasVariationDraftUpsertV2,
-    ) -> None:
-        candidate = source.model_copy(
-            update={
-                "status": "draft",
-                "title": request.title,
-                "generation_prompt": request.generation_prompt,
-                "model_selection_mode": request.model_selection_mode,
-                "model_ref": request.model_ref,
-                "parameters": request.parameters,
-                "output_asset_id": None,
-                "error": None,
-            },
-            deep=True,
-        )
-        try:
-            model_selection.validate_authoring(candidate)
-            provider_capabilities.resolve(
-                candidate,
-                binding_service.resolve_run_inputs(
-                    source.workflow_id,
-                    source.node_id,
-                ),
-            )
-        except (ProviderCapabilityError, V2PersistenceError) as error:
-            raise V2PersistenceError(
-                "variation_model_incompatible",
-                "Variation model is incompatible with its inputs.",
-                stage="agent_canvas_variation_service",
-            ) from error
-
-    variation_service = AgentCanvasVariationService(
-        workflow_repository,
-        command_repository,
-        variation_validator=validate_variation,
-        run_node=lambda workflow_id, node_id, idempotency_key: run_service.start_or_extend(
-            workflow_id,
-            CanvasRunRequestV2(
-                scope="selected_nodes",
-                node_ids=(node_id,),
-                source_action="variation_materialize",
-            ),
-            idempotency_key=idempotency_key,
-        ),
-    )
     guided_media_plan_actions = GuidedMediaPlanActionService(
         workflows=workflow_repository,
         plan_reader=storyboard_authoring,
         plan_writer=working_documents,
-        variations=variation_service,
+        nodes=AgentCanvasNodeService(
+            workflow_repository,
+            model_selection=model_selection,
+            candidate_validator=editing_responses.validate_workflow,
+        ),
+        run_service=run_service,
     )
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
@@ -1313,6 +1473,7 @@ def create_agent_canvas_runtime(
         nodes=AgentCanvasNodeService(
             workflow_repository,
             model_selection=model_selection,
+            candidate_validator=editing_responses.validate_workflow,
         ),
         gateway=video_agent_gateway,
         video_skills=video_skills,
@@ -1372,6 +1533,23 @@ def create_agent_canvas_runtime(
         database,
         event_repository,
     )
+    guided_reference_sources = GuidedReferenceSourceService(
+        assets=asset_service,
+        asset_repository=asset_repository,
+        workflows=workflow_repository,
+        commits=AgentCanvasGuidedReferenceRepository(
+            workflow_repository,
+            event_repository,
+            interactions=guided_interaction_repository,
+        ),
+    )
+    guided_reference_sources.set_continuation_writer(
+        conversation_repository.insert_continuation_in_transaction
+    )
+    guided_reference_candidates = GuidedReferenceCandidateService(
+        assets=asset_service,
+        workflows=workflow_repository,
+    )
 
     def guided_reference_snapshot(
         workflow_id: str,
@@ -1408,18 +1586,49 @@ def create_agent_canvas_runtime(
         ).submit,
     )
     guided_interactions.set_product_submitter(guided_product_inputs.submit_interaction)
+    guided_interactions.set_reference_submitter(guided_reference_sources.submit_interaction)
+    materialization_prompt_barrier = AgentCanvasMaterializationPromptPreparationBarrier(
+        dispatches=prompt_dispatches,
+        continuations=continuation_outbox,
+        events=event_repository,
+    )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
         asset_resolver=asset_service.resolve_asset,
         storyboard_authoring=storyboard_authoring,
         storyboard_gateway=video_agent_gateway,
+        on_storyboard_authored=storyboard_progression.continue_authored_publication,
         prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
+        reference_source_opener=guided_reference_sources.open_for_materialized_main,
         commit_service=AgentCanvasMaterializationCommitService(
             materialization_repository,
             GuidedProductionJourneyReducer(),
         ),
+        prompt_dispatch=prompt_dispatches,
+        prompt_preparation_barrier=materialization_prompt_barrier,
     )
+
+    def resume_reference_materialization(
+        envelope_id: str,
+        source_turn_id: str,
+        lease_guard,
+    ) -> object:
+        envelope = materialization_repository.get_envelope(envelope_id)
+        recovered = materialization_publisher.resume_committed(
+            envelope,
+            lease_guard,
+            continuation_source_turn_id=source_turn_id,
+        )
+        if recovered is None:
+            raise V2PersistenceError(
+                "materialization_resume_not_found",
+                "Committed reference materialization could not be resumed.",
+                stage="capability_materialization_publication",
+            )
+        return recovered
+
+    durable_next_action.set_materialization_resumer(resume_reference_materialization)
     materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,
         context_loader=lambda envelope: materialization_context_from_state(
@@ -1492,6 +1701,13 @@ def create_agent_canvas_runtime(
         capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
+        dependency_reconciler=lambda delivery, materialization_id: (
+            materialization_prompt_barrier.reconcile_dependency_wait(
+                workflow_id=delivery.workflow_id,
+                continuation_id=delivery.continuation_id,
+                materialization_id=materialization_id,
+            )
+        ),
     )
 
     def activate_prompt_ready_nodes(
@@ -1551,6 +1767,7 @@ def create_agent_canvas_runtime(
             result,
             runtime_repository=runtime_repository,
             scheduler=scheduler,
+            materialization_barrier=materialization_prompt_barrier,
             prompt_ready_activation=activate_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
         ),
@@ -1605,10 +1822,13 @@ def create_agent_canvas_runtime(
                     reference_count=reference_count,
                 )
             ),
+            candidate_validator=editing_responses.validate_workflow,
         ),
         connection_policy=connection_policy,
         assets=asset_service,
         guided_product_inputs=guided_product_inputs,
+        guided_reference_sources=guided_reference_sources,
+        guided_reference_candidates=guided_reference_candidates,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
         turn_retries=turn_retries,
@@ -1617,7 +1837,6 @@ def create_agent_canvas_runtime(
         guided_media_resume_deliveries=guided_media_resume_deliveries,
         guided_media_resume_worker=guided_media_resume_worker,
         commands=command_service,
-        variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
         conversation_repository=conversation_repository,
         decision_bundles=decision_bundles,
@@ -1638,6 +1857,7 @@ def create_agent_canvas_runtime(
         post_ready_effects=post_ready_effects,
         post_ready_checkpoints=post_ready_checkpoints,
         editing_nodes=editing_nodes,
+        editing_responses=editing_responses,
         editing_exports=editing_exports,
         editing_output_reuse=editing_output_reuse,
         editing_export_repository=editing_export_repository,
@@ -1684,20 +1904,35 @@ def create_project(
 @router.get("/projects", response_model=ProjectV2ListResponse)
 def list_projects(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    response: Response,
     project_status: Annotated[
         Literal["active", "archived", "trashed"], Query(alias="status")
     ] = "active",
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     cursor: str | None = None,
-) -> ProjectV2ListResponse:
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
+) -> ProjectV2ListResponse | Response:
     try:
-        return runtime.projects.list_projects(
+        listing = runtime.projects.list_projects(
             status=project_status,
             limit=limit,
             cursor=cursor,
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
+    etag = f'"projects-{sha256(listing.model_dump_json().encode()).hexdigest()}"'
+    cache_control = "private, max-age=10, stale-while-revalidate=30"
+    if if_none_match and if_none_match.strip() == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": cache_control,
+            },
+        )
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = cache_control
+    return listing
 
 
 @router.get("/projects/{project_id}", response_model=ProjectV2)
@@ -1779,7 +2014,9 @@ def get_workflow(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> AgentCanvasWorkflowV2:
     try:
-        workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(
+            runtime.projects.get_workflow(workflow_id)
+        )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -1928,6 +2165,13 @@ def create_node(
 ) -> CanvasMutationResponseV2:
     expected = _expected_revision(if_match, workflow_id)
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
+        runtime.editing_responses.validate_content_payload(
+            workflow_id=workflow_id,
+            node_id="pending",
+            node_type=request.node_type,
+            structured_content=request.structured_content,
+        )
         runtime.ad_media_validation.validate(
             node_type=request.node_type,
             semantic_role=request.semantic_role,
@@ -1944,6 +2188,8 @@ def create_node(
             expected_revision=expected,
         )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
+        node = _projected_node(workflow, node.node_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -1990,110 +2236,11 @@ def get_node(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> CanvasNodeV2:
     try:
-        node = runtime.workflows.get_node(workflow_id, node_id)
-        if node.node_type == "editing":
-            return node.model_copy(
-                update={
-                    "structured_content": runtime.editing_nodes.content(
-                        workflow_id, node_id
-                    ).model_dump(mode="json")
-                }
-            )
-        return node
+        workflow = runtime.projects.get_workflow(workflow_id)
+        node = _projected_node(workflow, node_id)
+        return runtime.editing_responses.project_snapshot_node(workflow, node)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-
-
-@router.put(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft",
-    response_model=CanvasVariationDraftResponseV2,
-)
-def save_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    request: CanvasVariationDraftUpsertV2,
-    response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-) -> CanvasVariationDraftResponseV2:
-    try:
-        result = runtime.variations.save(
-            workflow_id,
-            node_id,
-            request,
-            expected_revision=_expected_revision(if_match, workflow_id),
-        )
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    response.headers["ETag"] = workflow_etag(workflow_id, result.workflow_revision)
-    return result
-
-
-@router.delete(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def discard_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    response: Response,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-) -> None:
-    try:
-        runtime.variations.discard(
-            workflow_id,
-            node_id,
-            expected_revision=_expected_revision(if_match, workflow_id),
-        )
-        workflow = runtime.workflows.get_workflow(workflow_id)
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
-
-
-@router.post(
-    "/workflows/{workflow_id}/nodes/{node_id}/variation-draft/materialize",
-    response_model=CanvasVariationMaterializeResponseV2,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-def materialize_variation_draft(
-    workflow_id: str,
-    node_id: str,
-    request: CanvasVariationMaterializeRequestV2,
-    response: Response,
-    background_tasks: BackgroundTasks,
-    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> CanvasVariationMaterializeResponseV2:
-    if not idempotency_key:
-        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
-    try:
-        result = runtime.variations.materialize(
-            workflow_id,
-            node_id,
-            request,
-            expected_revision=_expected_revision(if_match, workflow_id),
-            idempotency_key=idempotency_key,
-        )
-    except V2PersistenceError as error:
-        raise _persistence_http_error(error) from error
-    if result.run is not None and result.run.get("execution_id"):
-        execution_id = str(result.run["execution_id"])
-        background_tasks.add_task(
-            runtime.accepted_background.run,
-            AcceptedBackgroundWork(
-                operation=AcceptedBackgroundOperation.VARIATION_EXECUTION_RESUME,
-                workflow_id=workflow_id,
-                resource_type=AcceptedBackgroundResourceType.EXECUTION,
-                resource_id=execution_id,
-                callback=runtime.scheduler.resume,
-                args=(execution_id,),
-            ),
-        )
-    response.headers["ETag"] = workflow_etag(workflow_id, result.workflow_revision)
-    return result
 
 
 @router.patch(
@@ -2110,6 +2257,7 @@ def patch_node(
 ) -> CanvasMutationResponseV2:
     try:
         current = runtime.workflows.get_node(workflow_id, node_id)
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         expected_revision = _expected_revision(if_match, workflow_id)
         if current.node_type == "editing" and request.structured_content is not None:
             raw_manifest = request.structured_content.get("manifest", request.structured_content)
@@ -2144,6 +2292,8 @@ def patch_node(
                 expected_revision=expected_revision,
             )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
+        node = _projected_node(workflow, node.node_id)
     except ValueError as error:
         raise _http_error(
             "editing_manifest_invalid",
@@ -2224,11 +2374,13 @@ def delete_node(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         workflow = runtime.nodes.delete(
             workflow_id,
             node_id,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2251,11 +2403,21 @@ def create_connected_node(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
+        runtime.editing_responses.validate_content_payload(
+            workflow_id=workflow_id,
+            node_id="pending",
+            node_type=request.node.node_type,
+            structured_content=request.node.structured_content,
+        )
         created = runtime.connected_authoring.create_connected_node(
             workflow_id,
             request,
             expected_revision=_expected_revision(if_match, workflow_id),
             idempotency_key=idempotency_key,
+        )
+        created = created.model_copy(
+            update={"node": runtime.editing_responses.project_node(created.node)}
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
@@ -2279,6 +2441,7 @@ def patch_binding(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         mutation = runtime.bindings.patch(
             workflow_id,
             binding_id,
@@ -2316,12 +2479,14 @@ def create_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         binding = runtime.bindings.create(
             workflow_id,
             request,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
         workflow = runtime.projects.get_workflow(workflow_id)
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2340,11 +2505,13 @@ def delete_binding(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> CanvasMutationResponseV2:
     try:
+        runtime.editing_responses.validate_workflow(runtime.projects.get_workflow(workflow_id))
         workflow = runtime.bindings.delete(
             workflow_id,
             binding_id,
             expected_revision=_expected_revision(if_match, workflow_id),
         )
+        workflow = runtime.editing_responses.project_workflow(workflow)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
@@ -2376,6 +2543,7 @@ async def upload_asset(
             title=parsed.title,
             media_type=parsed.media_type,
             idempotency_key=idempotency_key,
+            source_semantic_role=parsed.semantic_role,
         )
         pending_handoff_id = None
         if parsed.semantic_role == "product_main":
@@ -2447,6 +2615,30 @@ def list_project_assets(
     return ProjectAssetListResponseV2(workflow_id=workflow_id, assets=assets)
 
 
+@router.get(
+    "/workflows/{workflow_id}/reference-candidates",
+    response_model=ReferenceCandidateListResponseV2,
+)
+def list_guided_reference_candidates(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    reference_kind: Annotated[ReferenceCandidateKindV2, Query()],
+    scope: Annotated[ReferenceCandidateScopeV2, Query()],
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    query: Annotated[str | None, Query(max_length=128)] = None,
+) -> ReferenceCandidateListResponseV2:
+    try:
+        return runtime.guided_reference_candidates.list(
+            workflow_id,
+            reference_kind=reference_kind,
+            scope=scope,
+            cursor=cursor,
+            query=query,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
 @router.get("/assets/recommended", response_model=ImageLibraryListResponseV2)
 def list_recommended_assets(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
@@ -2465,17 +2657,46 @@ def list_my_assets(
     return _image_library_response(runtime.assets.list_images(scope="my", category=category))
 
 
+@router.get("/assets/{asset_id}/preview")
+@router.get("/assets/{asset_id}/poster")
+def get_asset_rendition(
+    asset_id: str,
+    request: Request,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version_id: Annotated[str, Query(alias="v", min_length=1, max_length=160)],
+    size: Annotated[int | None, Query(ge=320, le=640, multiple_of=320)] = None,
+) -> Response:
+    kind = request.url.path.rsplit("/", 1)[-1]
+    try:
+        rendition = runtime.assets.open_rendition(
+            asset_id,
+            version_id,
+            kind=kind,
+            max_dimension=size,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return Response(
+        content=rendition.body,
+        status_code=rendition.status_code,
+        media_type=rendition.media_type,
+        headers=rendition.headers,
+    )
+
+
 @router.get("/assets/{asset_id}/content")
 def get_asset_content(
     asset_id: str,
     response: Response,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    version_id: Annotated[str | None, Query(alias="v", min_length=1, max_length=160)] = None,
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     download: Annotated[bool, Query()] = False,
 ) -> Response:
     try:
         content = runtime.assets.open_content(
             asset_id,
+            version_id=version_id,
             range_header=range_header,
             download=download,
         )
@@ -3243,6 +3464,7 @@ def start_canvas_run(
     request: CanvasRunRequestV2,
     background_tasks: BackgroundTasks,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CanvasRunAcceptedV2:
     if not idempotency_key:
@@ -3252,6 +3474,7 @@ def start_canvas_run(
             workflow_id,
             request,
             idempotency_key=idempotency_key,
+            expected_revision=_expected_revision(if_match, workflow_id),
         )
         if accepted.accepted_node_ids or accepted.joined_node_ids:
             background_tasks.add_task(
@@ -3565,11 +3788,12 @@ def _process_agent_turn_and_resume(
             else None
         )
         if stream is not None and turn.status == "completed":
-            message = turn.assistant_message or ""
+            persisted_result = _persisted_assistant_result(runtime, workflow_id, turn_id)
+            authoritative_id, message = persisted_result or (turn.turn_id, "")
             presentation_publisher.publish_validated_text(stream, message)
             presentation_publisher.commit(
                 stream,
-                authoritative_id=turn.message_id or turn.turn_id,
+                authoritative_id=authoritative_id,
                 content=message,
             )
         elif stream is not None and turn.status == "failed":
@@ -3580,6 +3804,22 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _persisted_assistant_result(
+    runtime: AgentCanvasRuntime,
+    workflow_id: str,
+    turn_id: str,
+) -> tuple[str, str] | None:
+    timeline = runtime.conversations.get_timeline(workflow_id)
+    for entry in reversed(timeline.items):
+        if (
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.metadata.get("turn_id") == turn_id
+        ):
+            return entry.entry_id, entry.content
+    return None
 
 
 def _presentation_stream_id(workflow_id: str, generation_id: str) -> str:
@@ -3672,6 +3912,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "project_cursor_invalid": 422,
         "project_page_invalid": 422,
         "project_update_invalid": 422,
+        "project_cover_version_required": 422,
+        "project_cover_media_invalid": 422,
         "workflow_not_found": 404,
         "workflow_not_agent_canvas": 409,
         "presentation_stream_not_found": 404,
@@ -3696,6 +3938,21 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_not_found": 404,
         "binding_not_found": 404,
         "asset_not_found": 404,
+        "guided_interaction_action_not_allowed": 422,
+        "guided_interaction_submission_conflict": 409,
+        "guided_interaction_not_found": 404,
+        "guided_interaction_stale": 409,
+        "guided_reference_source_kind_invalid": 409,
+        "guided_reference_source_target_invalid": 409,
+        "guided_reference_source_revision_conflict": 409,
+        "guided_reference_source_asset_required": 422,
+        "guided_reference_source_asset_not_found": 404,
+        "guided_reference_source_asset_foreign_workflow": 409,
+        "guided_reference_source_asset_unreadable": 422,
+        "guided_reference_source_asset_not_image": 422,
+        "reference_candidate_not_found": 404,
+        "reference_candidate_cursor_invalid": 422,
+        "reference_candidates_unavailable": 503,
         "guided_product_asset_not_found": 404,
         "guided_product_asset_foreign_workflow": 409,
         "guided_product_asset_not_image": 422,
@@ -3710,6 +3967,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guided_product_persistence_unavailable": 503,
         "guided_product_source_only_not_runnable": 409,
         "asset_not_ready": 409,
+        "asset_version_not_found": 422,
         "canvas_asset_reference_version_required": 422,
         "canvas_asset_reference_media_type_invalid": 422,
         "asset_reference_version_required": 422,
@@ -3717,12 +3975,14 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_export_not_ready": 409,
         "editing_export_asset_unreadable": 409,
         "editing_export_import_conflict": 409,
+        "editing_manifest_projection_invalid": 500,
         "source_only_node_not_runnable": 409,
         "target_not_found": 404,
         "target_type_not_supported": 422,
         "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
+        "workflow_state_conflict": 409,
         "requirement_ledger_not_found": 404,
         "requirement_revision_conflict": 412,
         "requirement_patch_invalid": 422,
@@ -3741,17 +4001,12 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "style_skill_activation_conflict": 409,
         "style_skill_snapshot_invalid": 422,
         "style_skill_context_budget_exceeded": 422,
-        "variation_source_not_ready": 409,
-        "variation_source_media_type_unsupported": 422,
-        "variation_model_incompatible": 409,
         "model_selection_invalid": 422,
         "model_not_found": 409,
         "model_unavailable": 409,
         "model_default_not_configured": 409,
         "model_capability_mismatch": 409,
         "agent_model_incompatible": 409,
-        "variation_draft_not_found": 404,
-        "variation_materialization_conflict": 409,
         "layout_revision_conflict": 409,
         "layout_node_not_found": 404,
         "layout_position_invalid": 422,
@@ -3792,7 +4047,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "editing_timeline_duration_invalid": 422,
         "editing_timeline_out_of_bounds": 422,
         "editing_timeline_overlap": 422,
+        "guided_editing_not_retryable": 409,
         "editing_no_ready_video": 409,
+        "no_exportable_media": 409,
         "editing_export_already_active": 409,
         "editing_export_not_found": 404,
         "editing_export_already_terminal": 409,
@@ -3863,7 +4120,10 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_already_working": 409,
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
+        "node_prompt_empty": 409,
+        "prompt_preparation_in_progress": 409,
         "node_prompt_preparation_incomplete": 409,
+        "prompt_revision_conflict": 409,
         "prompt_preparation_revision_conflict": 409,
         "prompt_preparation_failed": 503,
         "stage_content_mismatch": 422,
@@ -3875,6 +4135,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guided_media_confirmation_required": 409,
         "guided_media_confirmation_stale": 409,
         "guided_media_asset_unreadable": 409,
+        "identity_safety_decision_required": 409,
+        "identity_safety_decision_invalid": 422,
+        "identity_safety_decision_stale": 409,
         "guided_media_replacement_instruction_required": 422,
         "guided_closure_blocked": 409,
         "guided_closure_plan_stale": 409,
@@ -3907,6 +4170,17 @@ def _http_error(
         status_code=status_code,
         detail={"code": code, "message": message, "details": details or {}},
     )
+
+
+def _projected_node(workflow: AgentCanvasWorkflowV2, node_id: str) -> CanvasNodeV2:
+    node = next((node for node in workflow.nodes if node.node_id == node_id), None)
+    if node is None:
+        raise V2PersistenceError(
+            "node_not_found",
+            "Node was not found.",
+            stage="agent_canvas_editing_response_projector",
+        )
+    return node
 
 
 def _provider_download_mime_type(media_type: str, path: Path | str) -> str:

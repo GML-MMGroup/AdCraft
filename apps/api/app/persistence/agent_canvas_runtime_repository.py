@@ -36,6 +36,7 @@ from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     NodeRunIntentSnapshotV2,
     NodeExecutionLeaseV2,
+    ResolvedModelExecutionV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.agent_canvas_video_parameters import VideoParameterCompilationSnapshotV2
@@ -48,6 +49,8 @@ from app.schemas.agent_canvas_runtime_authority import (
 
 
 _ACTIVE_EXECUTION_STATES = ("queued", "running", "waiting")
+_TERMINAL_EXECUTION_STATES = ("completed", "partial_completed", "failed", "cancelled")
+_TERMINAL_MEMBER_STATES = ("succeeded", "failed", "skipped_dependency", "cancelled")
 
 
 class AgentCanvasRuntimeRepository:
@@ -736,6 +739,12 @@ class AgentCanvasRuntimeRepository:
                             payload=event_payload or {},
                         ),
                     )
+                if state in {"failed", "cancelled"}:
+                    self._reconcile_terminal_leases_in_transaction(
+                        connection,
+                        execution_id,
+                        now=now,
+                    )
                 return True
         except V2PersistenceError:
             raise
@@ -772,11 +781,100 @@ class AgentCanvasRuntimeRepository:
                         payload=payload or {},
                     ),
                 )
+                if status in _TERMINAL_EXECUTION_STATES:
+                    self._reconcile_terminal_leases_in_transaction(
+                        connection,
+                        execution_id,
+                        now=now,
+                    )
         except SQLAlchemyError as error:
             raise _error(
                 "execution_persistence_failed", "Execution storage is unavailable."
             ) from error
         return self.get_execution(execution_id)
+
+    def reconcile_terminal_leases(self, execution_id: str, *, now: datetime) -> int:
+        """Close current claimed leases that no longer have runnable work."""
+
+        try:
+            with self._database.engine.begin() as connection:
+                return self._reconcile_terminal_leases_in_transaction(
+                    connection,
+                    execution_id,
+                    now=now,
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
+
+    def _reconcile_terminal_leases_in_transaction(
+        self,
+        connection: Connection,
+        execution_id: str,
+        *,
+        now: datetime,
+    ) -> int:
+        execution = self._execution_in_transaction(connection, execution_id)
+        members = {
+            str(row["node_id"]): str(row["state"])
+            for row in connection.execute(
+                select(AgentCanvasExecutionMemberRow).where(
+                    AgentCanvasExecutionMemberRow.execution_id == execution_id
+                )
+            ).mappings()
+        }
+        leases = connection.execute(
+            select(AgentCanvasNodeLeaseRow).where(
+                AgentCanvasNodeLeaseRow.execution_id == execution_id,
+                AgentCanvasNodeLeaseRow.state == "claimed",
+            )
+        ).mappings()
+        timestamp = now.isoformat()
+        reconciled = 0
+        for lease in leases:
+            if (
+                execution.status not in _TERMINAL_EXECUTION_STATES
+                and members.get(str(lease["node_id"])) not in _TERMINAL_MEMBER_STATES
+            ):
+                continue
+            expired = datetime.fromisoformat(str(lease["expires_at"])) <= now
+            next_state = "expired" if expired else "released"
+            changed = connection.execute(
+                update(AgentCanvasNodeLeaseRow)
+                .where(
+                    AgentCanvasNodeLeaseRow.lease_id == lease["lease_id"],
+                    AgentCanvasNodeLeaseRow.execution_id == execution_id,
+                    AgentCanvasNodeLeaseRow.node_id == lease["node_id"],
+                    AgentCanvasNodeLeaseRow.owner_id == lease["owner_id"],
+                    AgentCanvasNodeLeaseRow.generation == lease["generation"],
+                    AgentCanvasNodeLeaseRow.state == "claimed",
+                )
+                .values(state=next_state, heartbeat_at=timestamp)
+            )
+            if changed.rowcount != 1:
+                continue
+            reconciled += 1
+            self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=execution.workflow_id,
+                    execution_id=execution_id,
+                    node_id=str(lease["node_id"]),
+                    event_type="node_lease_reconciled",
+                    created_at=timestamp,
+                    payload={
+                        "lease_id": str(lease["lease_id"]),
+                        "owner_id": str(lease["owner_id"]),
+                        "generation": int(lease["generation"]),
+                        "before_state": "claimed",
+                        "after_state": next_state,
+                        "execution_status": execution.status,
+                        "member_state": members.get(str(lease["node_id"])),
+                    },
+                ),
+            )
+        return reconciled
 
     def request_cancel(self, execution_id: str, *, now: datetime) -> CanvasExecutionRecordV2:
         execution = self.get_execution(execution_id)
@@ -990,7 +1088,7 @@ class AgentCanvasRuntimeRepository:
         self,
         intent: ProviderSubmissionIntentV2,
     ) -> ProviderSubmissionIntentV2:
-        values = intent.model_dump(mode="json")
+        values = _submission_intent_values(intent)
         try:
             with self._database.engine.begin() as connection:
                 existing = (
@@ -1005,7 +1103,10 @@ class AgentCanvasRuntimeRepository:
                 )
                 if existing is not None:
                     stored = _submission_intent(existing)
-                    if stored.request_digest != intent.request_digest:
+                    if (
+                        stored.request_digest != intent.request_digest
+                        or stored.frozen_model_resolution != intent.frozen_model_resolution
+                    ):
                         raise _error(
                             "provider_submission_intent_conflict",
                             "Provider submission intent content is immutable.",
@@ -1014,6 +1115,43 @@ class AgentCanvasRuntimeRepository:
                 connection.execute(insert(AgentCanvasProviderSubmissionIntentRow).values(**values))
         except V2PersistenceError:
             raise
+        except IntegrityError as error:
+            # Another runtime may win the unique logical-operation insert after
+            # this transaction's read.  Re-read that winner and return the
+            # canonical immutable intent instead of surfacing a transient
+            # persistence failure.
+            try:
+                with self._database.engine.connect() as connection:
+                    raced = (
+                        connection.execute(
+                            select(AgentCanvasProviderSubmissionIntentRow).where(
+                                AgentCanvasProviderSubmissionIntentRow.logical_operation_key
+                                == intent.logical_operation_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+            except SQLAlchemyError as reread_error:
+                raise _error(
+                    "execution_persistence_failed",
+                    "Provider submission intent storage failed.",
+                ) from reread_error
+            if raced is not None:
+                stored = _submission_intent(raced)
+                if (
+                    stored.request_digest != intent.request_digest
+                    or stored.frozen_model_resolution != intent.frozen_model_resolution
+                ):
+                    raise _error(
+                        "provider_submission_intent_conflict",
+                        "Provider submission intent content is immutable.",
+                    ) from error
+                return stored
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
         except SQLAlchemyError as error:
             raise _error(
                 "execution_persistence_failed",
@@ -1077,7 +1215,7 @@ class AgentCanvasRuntimeRepository:
         *,
         expected_state: str,
     ) -> ProviderSubmissionIntentV2:
-        values = intent.model_dump(mode="json")
+        values = _submission_intent_values(intent)
         values.pop("intent_id")
         try:
             with self._database.engine.begin() as connection:
@@ -1371,6 +1509,7 @@ class AgentCanvasRuntimeRepository:
             role_contract_version=cast(str, node["role_contract_version"]),
             summary_prompt=cast(str | None, node.get("summary_prompt")),
             generation_prompt=cast(str | None, node.get("generation_prompt")),
+            prompt_presentation=node.get("prompt_presentation"),
             structured_content_digest=_json_digest(node.get("structured_content", {})),
             model_selection_mode=cast(str, node["model_selection_mode"]),
             model_ref=cast(str | None, node.get("model_ref")),
@@ -1378,6 +1517,8 @@ class AgentCanvasRuntimeRepository:
             binding_snapshots=intent.binding_snapshots,
             snapshot_digest=intent.snapshot_digest,
             created_at=command.created_at,
+            execution_mode=intent.execution_mode,
+            semantic_extraction=intent.semantic_extraction,
         )
 
     @staticmethod
@@ -1477,6 +1618,7 @@ def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
 
 
 def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
+    frozen_model_resolution_json = cast(str | None, row.get("frozen_model_resolution_json"))
     return ProviderSubmissionIntentV2(
         intent_id=str(row["intent_id"]),
         logical_operation_key=str(row["logical_operation_key"]),
@@ -1490,6 +1632,11 @@ def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
         attempt_no=int(row["attempt_no"]),
         supports_idempotency_token=bool(row["supports_idempotency_token"]),
         supports_remote_task_lookup=bool(row["supports_remote_task_lookup"]),
+        frozen_model_resolution=(
+            ResolvedModelExecutionV2.model_validate_json(frozen_model_resolution_json)
+            if frozen_model_resolution_json
+            else None
+        ),
         provider_idempotency_token=cast(str | None, row["provider_idempotency_token"]),
         remote_task_id=cast(str | None, row["remote_task_id"]),
         provider_task_id=cast(str | None, row["provider_task_id"]),
@@ -1497,6 +1644,17 @@ def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _submission_intent_values(intent: ProviderSubmissionIntentV2) -> dict[str, object]:
+    values = intent.model_dump(mode="json")
+    frozen_model_resolution = values.pop("frozen_model_resolution")
+    values["frozen_model_resolution_json"] = (
+        json.dumps(frozen_model_resolution, sort_keys=True)
+        if frozen_model_resolution is not None
+        else None
+    )
+    return values
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

@@ -79,6 +79,8 @@ def capability_context_from_envelope(
     """Project only immutable, capability-local context for the Pi boundary."""
 
     capability_context = dict(envelope.capability_context)
+    if envelope.character_target is not None:
+        capability_context["character_target"] = envelope.character_target.model_dump(mode="json")
     if envelope.publication_kind == "internal_document":
         capability_context["journey_stage"] = envelope.journey_stage
     existing_constraints = capability_context.get("explicit_constraints")
@@ -91,9 +93,13 @@ def capability_context_from_envelope(
             for control in envelope.requirement_projection.hard_controls
         }
     )
+    if envelope.requirement_projection.identity_safety_decision is not None:
+        explicit_constraints["identity_safety_decision"] = (
+            envelope.requirement_projection.identity_safety_decision.model_dump(mode="json")
+        )
     if explicit_constraints:
         capability_context["explicit_constraints"] = explicit_constraints
-    return {
+    projected_context: dict[str, object] = {
         "context_kind": "capability_operation",
         "workflow_id": envelope.workflow_id,
         "conversation_id": envelope.conversation_id,
@@ -108,6 +114,9 @@ def capability_context_from_envelope(
         "style_projection": envelope.style_projection,
         "response_locale": envelope.response_locale,
     }
+    if envelope.character_target is not None:
+        projected_context["character_target"] = envelope.character_target
+    return projected_context
 
 
 class CapabilityExecutionService:

@@ -12,7 +12,7 @@
 - 首次部署时可用的互联网连接；启动器可能需要下载组件并构建镜像。
 - 下列任一受支持的操作系统：
   - **Windows：** 64 位 Windows 10 22H2（build 19045）或更高版本，或 64 位 Windows 11 23H2（build 22631）或更高版本。计算机必须支持硬件虚拟化。不支持 Windows Server 和 Windows containers。
-  - **Linux：** Ubuntu 或 Debian。首发启动器不支持其他 Linux 发行版。
+  - **Linux：** Ubuntu 或 Debian，并且主机能够运行 Docker Engine 服务。首发启动器不支持其他 Linux 发行版和无特权容器。
 - Windows 上能够以管理员身份运行文件的权限；Linux 上在启动器询问时能够输入 `sudo` 密码的账户。
 - 您计划使用的服务商提供的 API 密钥。AdCraft 启动后再添加密钥；不要将密钥发到聊天、公开文档或工单中。
 
@@ -32,7 +32,7 @@
 1. 在文件资源管理器中打开项目文件夹，再打开其中的 `scripts` 文件夹。
 2. 右键单击 `scripts\\deploy-windows.cmd`，选择 **Run as administrator**，然后确认 Windows 提示。
 3. 在新计算机上，启动器可能会启用或安装 WSL 2 和 Docker Desktop，Windows 也可能要求重启。若要求重启，请重启 Windows，然后再次右键以管理员身份运行**同一个** `scripts\\deploy-windows.cmd` 文件。
-4. 等待启动器检查系统、准备运行环境、构建 AdCraft 并启动 Web 与 API 服务。首次运行通常比之后运行更久。
+4. 等待启动器检查系统、准备运行环境、构建 AdCraft 并启动 Agent、API 和 Web 服务。首次运行通常比之后运行更久。
 5. 成功后，打开打印出的 `http://127.0.0.1:<port>` URL。启动器通常会自动打开浏览器；若没有，请在同一台计算机的浏览器中粘贴显示的 URL。
 
 预期结果：Agent、API 和 Web 均变为健康状态，AdCraft 在本机打开。Docker Desktop 必须处于 **Linux containers** 模式。部署者负责确认并遵守适用的 Docker Desktop 许可条款。
@@ -47,7 +47,7 @@
    ```
 
 3. **仅当启动器询问时**输入 `sudo` 密码。它可能需要该权限来安装或启动 Docker 和支持它的系统软件包。不要在 `sudo` 提示处输入 API 密钥。
-4. 等待启动器检查 Ubuntu/Debian、准备运行环境、构建 AdCraft，并等待 Web 与 API 服务变为健康状态。首次运行通常比之后运行更久。
+4. 等待启动器检查 Ubuntu/Debian、准备运行环境、构建 AdCraft，并等待 Agent Runtime、API 和 Web 三个服务变为健康状态。首次运行通常比之后运行更久。如果 AdCraft 正在恢复中断的视频导出，启动器会持续显示服务状态，默认最多等待 30 分钟。
 5. 打开打印出的 `http://127.0.0.1:<port>` URL。在带图形界面的 Linux 桌面上，启动器可能自动打开它；否则请在同一台计算机的浏览器中粘贴该地址。
 
 预期结果：命令以部署成功消息和本地 URL 结束。您无需自行安装 Python、Node.js、Docker 或 Docker Compose。
@@ -239,7 +239,7 @@ Linux 终端：
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-请等待 `agent`、`api` 和 `web` 都显示为 `healthy`。首次启动时，Agent Runtime 先就绪，之后是 API，再启动 Web。
+请等待 `agent`、`api` 和 `web` 都显示为 `healthy`。容器可能并行启动；API 恢复上次中断的视频导出时可能会较长时间显示 `starting`，因此请以健康状态而不是启动顺序判断 AdCraft 是否就绪。
 
 ### 7. 打开 AdCraft 并添加 API 密钥
 
@@ -270,6 +270,7 @@ http://127.0.0.1:8080
 | --- | --- |
 | `docker version` 没有显示 Server 部分。 | Windows 请启动 Docker Desktop；Linux 请运行 `sudo systemctl start docker`，再重新检查。 |
 | 找不到 `docker compose`。 | 按 Docker 官方教程安装或更新 Docker Compose 插件，然后重新打开终端。 |
+| Linux 安装 Docker 时，`apt update` 因无关的软件源缺少 Release 文件或返回 404 而停止。 | 修正或禁用 `/etc/apt/sources.list` 或 `/etc/apt/sources.list.d/` 中对应的失效条目，确认 `sudo apt update` 成功后重新运行 AdCraft 启动器；不要关闭签名校验。 |
 | 出现 `failed to fetch anonymous token`、`EOF`、DNS 或镜像仓库超时。 | 这是 Docker 网络/代理问题，不是 AdCraft API 密钥问题。修复 Docker Desktop 或 Linux Docker 的代理/DNS 路径，重启 Docker 后再重新构建。 |
 | 出现 `port is already allocated`。 | 停止占用所选端口的程序，或将 `runtime-data/deployment.env` 中的 `ADCRAFT_PORT` 改为 `8080` 到 `8179` 内另一个空闲端口，然后再次执行启动命令。 |
 | `agent`、`api` 或 `web` 为 `exited` 或 `unhealthy`。 | 运行上表中的日志命令。分享日志时务必去除 API 密钥和 `runtime-data/deployment.env`。修复最先报告的错误后，重新执行重新构建/启动命令。 |
@@ -280,7 +281,7 @@ http://127.0.0.1:8080
 ## 打开 AdCraft 并添加 API 密钥
 
 1. 打开打印出的本地 URL，然后进入 **API Space**。
-2. 选择当前可用的服务商 **Volcengine Ark**。API Space 为 **LLM**、**Image** 和 **Video** 分别提供密钥输入框。请为计划使用的工作类型输入对应密钥。若服务商发放的一把密钥对三种类型都具有正确权限，可使用页面上的 **Use for all**；否则请分别填写适用的密钥。
+2. 选择 API Space 中显示的可用服务商。页面会显示该服务商支持的凭据输入项；只填写计划使用的能力对应的密钥。如果页面提供 **Use for all**，仅在同一个密钥确实具备所选全部能力权限时使用。
 3. 选择 **Save credentials**。保存成功时会提示凭据已保存并已应用，因此不需要为此重启 AdCraft。
 4. 若 API Space 为已配置的密钥提供连接测试，可用它确认服务商连接。测试成功会显示连接成功，有时还会显示模型名称。
 

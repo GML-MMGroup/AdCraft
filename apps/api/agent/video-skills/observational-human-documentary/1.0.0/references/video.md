@@ -1,1 +1,5 @@
-Direct camera and subject motion through respectful observation and environmental context, using authentic action for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头与人物保持尊重的观察距离，靠近是为了理解手部或工具，后退是为了交代环境。authentic action 保留犹豫、失败、重复和完成，不用慢动作或音乐制造虚假英雄感。
+
+声音优先使用工作声、脚步、风、机器、人声和房间底噪；旁白克制、清楚、可回溯。

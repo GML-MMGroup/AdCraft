@@ -1,1 +1,5 @@
-Organize shots around material transformation, develop visual progression through hand detail, and reserve process causality for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按材料初态、hand detail、过程变化、检查、修整和成品关系排列镜头。关键帧记录工具角度、受力点、材料边缘、碎屑、制作者视线和前后状态；每个跳转都要有因果证据。
+
+用动作匹配、纹理接续、工具声和工作台空间连接步骤，避免只拍成品。

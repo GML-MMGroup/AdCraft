@@ -10,6 +10,7 @@ from pathlib import Path
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
     CanvasNodeV2,
@@ -65,10 +66,32 @@ class EditingNodeService:
         self._asset_resolver = asset_resolver
 
     def content(self, workflow_id: str, node_id: str) -> EditingNodeContentV2:
-        node = self._require_editing_node(workflow_id, node_id)
+        workflow = self._workflows.get_workflow(workflow_id)
+        return self.content_from_snapshot(workflow, node_id)
+
+    def content_from_snapshot(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+    ) -> EditingNodeContentV2:
+        """Build canonical content from an authoring snapshot without persisting it."""
+
+        node = next(
+            (item for item in workflow.nodes if item.node_id == node_id),
+            None,
+        )
+        if node is None:
+            raise _error("node_not_found", "Node was not found.")
+        if node.node_type != "editing":
+            raise _error("node_type_mismatch", "Node is not an Editing node.")
         content = EditingNodeContentV2.model_validate(node.structured_content)
-        manifest = self._canonical_manifest(
-            workflow_id,
+        self._validate_manifest_bindings_from_snapshot(
+            workflow,
+            node_id,
+            content.manifest,
+        )
+        manifest = self._response_manifest(
+            workflow,
             node_id,
             content.manifest,
             current_manifest=content.manifest,
@@ -76,7 +99,7 @@ class EditingNodeService:
         return content.model_copy(
             update={
                 "manifest": manifest,
-                "preview": self.build_preview(workflow_id, node_id, manifest),
+                "preview": self._preview_from_manifest(workflow, manifest),
             }
         )
 
@@ -89,10 +112,11 @@ class EditingNodeService:
         expected_revision: int,
     ) -> CanvasNodeV2:
         node = self._require_editing_node(workflow_id, node_id)
-        self._validate_manifest_bindings(workflow_id, node_id, manifest)
+        workflow = self._workflows.get_workflow(workflow_id)
+        self._validate_manifest_bindings_from_snapshot(workflow, node_id, manifest)
         current = EditingNodeContentV2.model_validate(node.structured_content)
         updated_manifest = self._canonical_manifest(
-            workflow_id,
+            workflow,
             node_id,
             manifest,
             current_manifest=current.manifest,
@@ -105,7 +129,7 @@ class EditingNodeService:
             update={
                 "manifest": updated_manifest,
                 "dirty": True,
-                "preview": self.build_preview(workflow_id, node_id, updated_manifest),
+                "preview": self._build_preview(workflow, node_id, updated_manifest),
                 "active_export": None,
             }
         )
@@ -125,15 +149,37 @@ class EditingNodeService:
         node_id: str,
         manifest: EditingManifestV2 | None = None,
     ) -> EditingPreviewV2:
-        node = self._require_editing_node(workflow_id, node_id)
+        workflow = self._workflows.get_workflow(workflow_id)
+        return self._build_preview(workflow, node_id, manifest)
+
+    def _build_preview(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+        manifest: EditingManifestV2 | None = None,
+    ) -> EditingPreviewV2:
+        node = next(
+            (item for item in workflow.nodes if item.node_id == node_id),
+            None,
+        )
+        if node is None:
+            raise _error("node_not_found", "Node was not found.")
+        if node.node_type != "editing":
+            raise _error("node_type_mismatch", "Node is not an Editing node.")
         current_manifest = EditingNodeContentV2.model_validate(node.structured_content).manifest
         selected = self._canonical_manifest(
-            workflow_id,
+            workflow,
             node_id,
             manifest or current_manifest,
             current_manifest=current_manifest,
         )
-        workflow = self._workflows.get_workflow(workflow_id)
+        return self._preview_from_manifest(workflow, selected)
+
+    def _preview_from_manifest(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        selected: EditingManifestV2,
+    ) -> EditingPreviewV2:
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {item.node_id: item for item in workflow.nodes}
         clips: list[EditingPreviewClipV2] = []
@@ -164,6 +210,7 @@ class EditingNodeService:
                     node_id=source.node_id if source else None,
                     asset_id=asset.asset_id if asset else None,
                     status=_entry_status(source=source, asset=asset),
+                    availability=_entry_availability(entry, source=source, asset=asset),
                     display_order=order,
                     preview_url=(
                         asset.preview_url or asset.media_url if asset is not None else None
@@ -198,6 +245,11 @@ class EditingNodeService:
             bgm_binding_id=selected.bgm.binding_id if selected.bgm else None,
             bgm_node_id=bgm_source.node_id if bgm_source else None,
             bgm_asset_id=bgm_asset.asset_id if bgm_asset else None,
+            bgm_availability=(
+                _entry_availability(selected.bgm, source=bgm_source, asset=bgm_asset)
+                if selected.bgm is not None
+                else None
+            ),
             estimated_duration_seconds=(
                 selected.timeline_duration_seconds
                 if selected.timeline_duration_seconds is not None
@@ -206,9 +258,32 @@ class EditingNodeService:
             warnings=tuple(warnings),
         )
 
+    def _response_manifest(
+        self,
+        workflow: AgentCanvasWorkflowV2,
+        node_id: str,
+        manifest: EditingManifestV2,
+        *,
+        current_manifest: EditingManifestV2 | None = None,
+    ) -> EditingManifestV2:
+        try:
+            return self._canonical_manifest(
+                workflow,
+                node_id,
+                manifest,
+                current_manifest=current_manifest,
+            )
+        except V2PersistenceError as error:
+            if (
+                error.code != "editing_timeline_duration_invalid"
+                or manifest.timeline_duration_seconds is not None
+            ):
+                raise
+            return manifest
+
     def _canonical_manifest(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
         *,
@@ -217,16 +292,15 @@ class EditingNodeService:
         return normalize_manifest(
             manifest,
             current_manifest=current_manifest,
-            source_durations=self._source_durations(workflow_id, node_id, manifest),
+            source_durations=self._source_durations(workflow, node_id, manifest),
         )
 
     def _source_durations(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
     ) -> dict[tuple[str, str], float]:
-        workflow = self._workflows.get_workflow(workflow_id)
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         nodes = {node.node_id: node for node in workflow.nodes}
         durations: dict[tuple[str, str], float] = {}
@@ -241,13 +315,12 @@ class EditingNodeService:
                 durations[entry.source_key] = asset.duration_seconds
         return durations
 
-    def _validate_manifest_bindings(
+    def _validate_manifest_bindings_from_snapshot(
         self,
-        workflow_id: str,
+        workflow: AgentCanvasWorkflowV2,
         node_id: str,
         manifest: EditingManifestV2,
     ) -> None:
-        workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
         bindings = {binding.binding_id: binding for binding in workflow.bindings}
         for entry in manifest.video_entries:
@@ -266,7 +339,7 @@ class EditingNodeService:
                     )
                 continue
             asset = _required_asset(self._asset_resolver, entry.asset_id)
-            _validate_project_asset(workflow_id, workflow.project_id, asset, "video")
+            _validate_project_asset(workflow.workflow_id, workflow.project_id, asset, "video")
         if manifest.bgm is None:
             return
         if manifest.bgm.binding_id is not None:
@@ -284,7 +357,7 @@ class EditingNodeService:
                 )
             return
         asset = _required_asset(self._asset_resolver, manifest.bgm.asset_id)
-        _validate_project_asset(workflow_id, workflow.project_id, asset, "audio")
+        _validate_project_asset(workflow.workflow_id, workflow.project_id, asset, "audio")
 
     def _require_editing_node(self, workflow_id: str, node_id: str) -> CanvasNodeV2:
         node = self._workflows.get_node(workflow_id, node_id)
@@ -383,8 +456,8 @@ class EditingInputResolver:
             )
         if not videos:
             raise _error(
-                "editing_no_ready_video",
-                "Editing Export requires at least one Ready video input.",
+                "no_exportable_media",
+                "Editing Export has no usable media input.",
             )
         bgm = None
         if manifest.bgm is not None and manifest.bgm.enabled:
@@ -394,7 +467,8 @@ class EditingInputResolver:
                 if bgm_entry.binding_id is not None
                 else None
             )
-            if _entry_skip_reason(bgm_entry, source=source) is None:
+            reason = _entry_skip_reason(bgm_entry, source=source)
+            if reason is None:
                 try:
                     asset = _required_asset(
                         self._asset_resolver,
@@ -419,7 +493,16 @@ class EditingInputResolver:
                         bgm_entry=bgm_entry,
                     )
                 except (LookupError, OSError, ValueError, V2PersistenceError):
-                    bgm = None
+                    reason = "source_media_invalid"
+            if bgm is None:
+                skipped.append(
+                    EditingSkippedInputV2(
+                        reference_id=bgm_entry.binding_id or bgm_entry.asset_id or "",
+                        node_id=source.node_id if source is not None else None,
+                        asset_id=bgm_entry.asset_id,
+                        reason=reason or "source_media_invalid",
+                    )
+                )
         return ResolvedEditingInputs(
             videos=tuple(videos),
             bgm=bgm,
@@ -499,6 +582,19 @@ def _entry_status(
     return "ready" if asset is not None and asset.status == "ready" else "failed"
 
 
+def _entry_availability(
+    entry: EditingVideoEntryV2 | EditingBgmEntryV2,
+    *,
+    source: CanvasNodeV2 | None,
+    asset: ProjectAssetSummaryV2 | None,
+) -> str:
+    if _entry_warning(entry, source=source, asset=asset) is None:
+        return "available"
+    if source is not None and source.status == "failed":
+        return "failed"
+    return "pending"
+
+
 def _entry_duration(
     entry: EditingVideoEntryV2,
     asset: ProjectAssetSummaryV2 | None,
@@ -519,6 +615,9 @@ def _entry_skip_reason(
         return None
     if source is None:
         return "source_output_unavailable"
+    # A later failed/working attempt must not hide the last readable output.
+    if source.output_asset_id is not None:
+        return None
     return _skip_reason(source)
 
 
@@ -535,12 +634,12 @@ def _entry_trim_is_valid(
 
 
 def _skip_reason(node: CanvasNodeV2) -> str | None:
+    if node.output_asset_id is None:
+        return "omitted_no_output"
     if node.status == "failed":
         return "source_failed"
     if node.status != "ready":
         return "source_not_ready"
-    if node.output_asset_id is None:
-        return "source_output_unavailable"
     return None
 
 

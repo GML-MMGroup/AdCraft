@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -191,6 +193,10 @@ class CompactVideoSegmentCountControlV2(_CompactControlValueV2):
     value: int = Field(ge=0, le=64)
 
 
+class CompactVideoRepresentationModeControlV2(_CompactControlValueV2):
+    value: Literal["illustrated", "illustration_to_live_action"]
+
+
 class CompactRequirementControlsV2(_CapabilityModel):
     # Non-nullable optional properties keep the model-facing schema precise: omission
     # means unspecified, while an explicitly supplied control must be a complete object.
@@ -206,6 +212,7 @@ class CompactRequirementControlsV2(_CapabilityModel):
     scene_count: CompactSceneCountControlV2 = Field(default=None)
     storyboard_sequence_count: CompactStoryboardSequenceCountControlV2 = Field(default=None)
     video_segment_count: CompactVideoSegmentCountControlV2 = Field(default=None)
+    video_representation_mode: CompactVideoRepresentationModeControlV2 = Field(default=None)
 
     def to_requirement_patches(self) -> tuple[RequirementControlPatchV1, ...]:
         patches: list[RequirementControlPatchV1] = []
@@ -281,8 +288,161 @@ class CompactRequirementPatchV3(_CapabilityModel):
         default=(), max_length=16
     )
     character_occurrences_to_set: tuple[CompactCharacterOccurrencePatchV3, ...] | None = Field(
-        default=None, max_length=32
+        default=None,
+        max_length=32,
+        description=(
+            "Optional complete character occurrence roster. When character_count "
+            "is also supplied, included occurrences must equal that count."
+        ),
     )
+
+    @model_validator(mode="after")
+    def validate_character_count_occurrences(self) -> "CompactRequirementPatchV3":
+        character_count = self.controls_to_set.character_count
+        occurrences = self.character_occurrences_to_set
+        if character_count is None or occurrences is None:
+            return self
+        included_count = sum(item.presence == "include" for item in occurrences)
+        if included_count != character_count.value:
+            raise ValueError(
+                "character occurrence count must match the included occurrence roster."
+            )
+        return self
+
+
+class ConversationQueryV1(_CapabilityModel):
+    query_kind: Literal["workflow_status", "document_explanation"]
+    document_kind: Literal["anchor_registry", "storyboard_production_plan"] | None = None
+    requested_document_kinds: tuple[
+        Literal["anchor_registry", "storyboard_production_plan"], ...
+    ] = Field(default=(), max_length=2)
+    sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    anchor_aliases: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "ConversationQueryV1":
+        if len(self.anchor_aliases) != len(set(self.anchor_aliases)):
+            raise ValueError("Conversation query anchor aliases must be unique.")
+        if self.query_kind == "workflow_status":
+            if (
+                self.document_kind is not None
+                or self.requested_document_kinds
+                or self.sequence_id is not None
+                or self.anchor_aliases
+            ):
+                raise ValueError("Workflow status query cannot carry a document selector.")
+            return self
+        if self.requested_document_kinds:
+            if self.requested_document_kinds != (
+                "anchor_registry",
+                "storyboard_production_plan",
+            ):
+                raise ValueError("Document selection requires the canonical two-document pair.")
+            if (
+                self.document_kind is not None
+                or self.sequence_id is not None
+                or self.anchor_aliases
+            ):
+                raise ValueError("Document selection cannot carry a document selector.")
+            return self
+        if self.document_kind is None:
+            raise ValueError("Document explanation requires a document kind.")
+        if self.document_kind == "anchor_registry":
+            if self.sequence_id is not None:
+                raise ValueError("Anchor Registry query cannot carry a sequence selector.")
+        elif self.anchor_aliases:
+            raise ValueError("Storyboard plan query cannot carry anchor aliases.")
+        return self
+
+
+from app.schemas.style_skill_consultation import (  # noqa: E402
+    StyleSkillConsultationContextV1,
+    StyleSkillConsultationQueryV1,
+)
+
+
+class StyleSkillConsultationOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["style_skill_consultation"]
+    query: StyleSkillConsultationQueryV1
+
+
+class FreeformReplyOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["freeform_reply"]
+    assistant_message: str = Field(min_length=1, max_length=2_000)
+
+
+class AgentIdentityOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["agent_identity"]
+
+
+class AgentCapabilitiesOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["agent_capabilities"]
+
+
+class WorkflowStatusOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["workflow_status"]
+
+
+class DocumentExplanationOrdinaryIntentV1(_CapabilityModel):
+    intent_kind: Literal["document_explanation"]
+    document_kind: Literal["anchor_registry", "storyboard_production_plan"] | None = None
+    requested_document_kinds: tuple[
+        Literal["anchor_registry", "storyboard_production_plan"], ...
+    ] = Field(default=(), max_length=2)
+    sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    anchor_aliases: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "DocumentExplanationOrdinaryIntentV1":
+        ConversationQueryV1(
+            query_kind="document_explanation",
+            document_kind=self.document_kind,
+            requested_document_kinds=self.requested_document_kinds,
+            sequence_id=self.sequence_id,
+            anchor_aliases=self.anchor_aliases,
+        )
+        return self
+
+    def to_legacy_query(self) -> ConversationQueryV1:
+        return ConversationQueryV1(
+            query_kind="document_explanation",
+            document_kind=self.document_kind,
+            requested_document_kinds=self.requested_document_kinds,
+            sequence_id=self.sequence_id,
+            anchor_aliases=self.anchor_aliases,
+        )
+
+
+_OrdinaryConversationIntentVariantV1 = Annotated[
+    FreeformReplyOrdinaryIntentV1
+    | AgentIdentityOrdinaryIntentV1
+    | AgentCapabilitiesOrdinaryIntentV1
+    | WorkflowStatusOrdinaryIntentV1
+    | DocumentExplanationOrdinaryIntentV1
+    | StyleSkillConsultationOrdinaryIntentV1,
+    Field(discriminator="intent_kind"),
+]
+
+
+class OrdinaryConversationIntentV1(RootModel[_OrdinaryConversationIntentVariantV1]):
+    """One mutually exclusive ordinary-conversation route."""
+
+    @property
+    def intent_kind(
+        self,
+    ) -> Literal[
+        "freeform_reply",
+        "agent_identity",
+        "agent_capabilities",
+        "workflow_status",
+        "document_explanation",
+        "style_skill_consultation",
+    ]:
+        return self.root.intent_kind
+
+    @property
+    def sequence_id(self) -> str | None:
+        return getattr(self.root, "sequence_id", None)
 
 
 class CompactTurnIntentDecisionV3(_CapabilityModel):
@@ -305,6 +465,7 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
     requested_capability: CapabilityIdV1 | None = None
     explicit_elements: CompactExplicitElementsV3 = Field(default_factory=CompactExplicitElementsV3)
     assistant_message: str | None = Field(default=None, max_length=2_000)
+    ordinary_intent: OrdinaryConversationIntentV1 | None = None
     requirement_patch: CompactRequirementPatchV3 | None = None
     response_locale: BCP47Tag | None = Field(
         default=None,
@@ -318,7 +479,15 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
     @model_validator(mode="after")
     def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
         if self.mode != "ordinary_conversation":
+            if self.ordinary_intent is not None:
+                raise ValueError("ordinary_intent is valid only for ordinary_conversation.")
+            if self.assistant_message is None or not self.assistant_message.strip():
+                raise ValueError("authoring intent requires a non-empty assistant_message.")
             return self
+        if self.ordinary_intent is None:
+            raise ValueError("ordinary_conversation requires exactly one ordinary_intent.")
+        if self.assistant_message is not None:
+            raise ValueError("ordinary assistant_message belongs only inside freeform_reply.")
         has_explicit_elements = bool(self.explicit_elements.model_dump(exclude_none=True))
         has_requirement_patch = self.requirement_patch is not None and bool(
             self.requirement_patch.controls_to_set.model_dump(exclude_none=True)
@@ -341,6 +510,7 @@ class TurnIntentDecisionV2(_CapabilityModel):
     requested_capability: CapabilityIdV1 | None = None
     explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
     assistant_message: str | None = Field(default=None, max_length=4_000)
+    ordinary_intent: OrdinaryConversationIntentV1 | None = None
     requirement_patch: RequirementPatchV1 | None = None
     response_locale: BCP47Tag = "und"
 
@@ -349,6 +519,20 @@ class TurnIntentDecisionV2(_CapabilityModel):
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
         if len(element_kinds) != len(set(element_kinds)):
             raise ValueError("Explicit element decisions must use unique element kinds.")
+        if self.mode != "ordinary_conversation":
+            if self.ordinary_intent is not None:
+                raise ValueError("ordinary_intent is valid only for ordinary_conversation.")
+            return self
+        if self.ordinary_intent is None:
+            raise ValueError("ordinary_conversation requires exactly one ordinary_intent.")
+        if self.assistant_message is not None:
+            raise ValueError("ordinary assistant_message belongs only inside freeform_reply.")
+        if (
+            self.requested_capability
+            or self.explicit_elements
+            or self.requirement_patch is not None
+        ):
+            raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
         return self
 
 
@@ -413,6 +597,7 @@ def expand_compact_turn_intent(
         requested_capability=compact.requested_capability,
         explicit_elements=explicit_elements,
         assistant_message=compact.assistant_message,
+        ordinary_intent=compact.ordinary_intent,
         requirement_patch=requirement_patch,
         response_locale=compact.response_locale or current_response_locale or "und",
     )
@@ -434,6 +619,9 @@ class TurnIntentContextV2(_CapabilityModel):
         default=(), max_length=32
     )
     current_response_locale: BCP47Tag = "und"
+    workflow_context: "WorkflowStateCapsuleV1 | None" = None
+    style_skill_catalog: StyleSkillConsultationContextV1 | None = None
+    recent_messages: tuple["InteractionMessageSummary", ...] = Field(default=(), max_length=12)
 
 
 class AskUserNextActionCommandV1(_CapabilityModel):
@@ -576,6 +764,108 @@ class CapabilityReferencePlanV1(_CapabilityModel):
         return tuple(reference.source_id for reference in self.references)
 
 
+class CharacterProposalTargetV1(BaseModel):
+    """Immutable identity of the Character occurrence a Proposal describes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    occurrence_id: str = Field(min_length=1, max_length=160)
+    occurrence_index: int = Field(ge=1, le=32)
+    occurrence_count: int = Field(ge=1, le=32)
+    character_phase: Literal["main"] = "main"
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_no: int = Field(ge=1)
+    target_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @classmethod
+    def digest_for(
+        cls,
+        *,
+        occurrence_id: str,
+        occurrence_index: int,
+        occurrence_count: int,
+        character_phase: Literal["main"] = "main",
+        requirement_revision_id: str,
+        requirement_revision_no: int,
+    ) -> str:
+        payload = {
+            "character_phase": character_phase,
+            "occurrence_count": occurrence_count,
+            "occurrence_id": occurrence_id,
+            "occurrence_index": occurrence_index,
+            "requirement_revision_id": requirement_revision_id,
+            "requirement_revision_no": requirement_revision_no,
+        }
+        return hashlib.sha256(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        occurrence_id: str,
+        occurrence_index: int,
+        occurrence_count: int,
+        requirement_revision_id: str,
+        requirement_revision_no: int,
+    ) -> "CharacterProposalTargetV1":
+        return cls(
+            occurrence_id=occurrence_id,
+            occurrence_index=occurrence_index,
+            occurrence_count=occurrence_count,
+            character_phase="main",
+            requirement_revision_id=requirement_revision_id,
+            requirement_revision_no=requirement_revision_no,
+            target_digest=cls.digest_for(
+                occurrence_id=occurrence_id,
+                occurrence_index=occurrence_index,
+                occurrence_count=occurrence_count,
+                requirement_revision_id=requirement_revision_id,
+                requirement_revision_no=requirement_revision_no,
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "CharacterProposalTargetV1":
+        if self.occurrence_index > self.occurrence_count:
+            raise ValueError("Character occurrence index exceeds the target count.")
+        expected = self.digest_for(
+            occurrence_id=self.occurrence_id,
+            occurrence_index=self.occurrence_index,
+            occurrence_count=self.occurrence_count,
+            character_phase=self.character_phase,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+        )
+        if self.target_digest != expected:
+            raise ValueError("Character proposal target digest does not match its fields.")
+        return self
+
+
+def _validate_character_target_contract(
+    *,
+    target: CharacterProposalTargetV1 | None,
+    capability_id: CapabilityIdV1,
+    requirement_revision_id: str,
+    requirement_revision_no: int,
+    required: bool = False,
+) -> None:
+    """Keep occurrence scope present only on guided Character Proposal commands."""
+
+    if required and target is None:
+        raise ValueError("Guided Character Proposal commands require an occurrence target.")
+    if target is None:
+        return
+    if capability_id != "character_design":
+        raise ValueError("Character occurrence scope is valid only for Character proposals.")
+    if (
+        target.requirement_revision_id != requirement_revision_id
+        or target.requirement_revision_no != requirement_revision_no
+    ):
+        raise ValueError("Character occurrence scope must match the Requirement Ledger revision.")
+
+
 GuidanceSourceActionV1 = Literal[
     "required_deferred_final_review",
     "user_resumed_deferred_topic",
@@ -598,8 +888,19 @@ class CapabilityContextSnapshotV2(_CapabilityModel):
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     shared_summary: str = Field(default="", max_length=8_192)
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityContextSnapshotV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.requirement_projection.capability_id,
+            requirement_revision_id=self.requirement_projection.ledger_revision_id,
+            requirement_revision_no=self.requirement_projection.ledger_revision_no,
+        )
+        return self
 
 
 class CapabilityInvocationContextV2(_CapabilityModel):
@@ -617,8 +918,19 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     repair_error: str | None = Field(default=None, max_length=160)
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityInvocationContextV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.capability_id,
+            requirement_revision_id=self.requirement_projection.ledger_revision_id,
+            requirement_revision_no=self.requirement_projection.ledger_revision_no,
+        )
+        return self
 
 
 class CapabilityCommandEnvelopeV2(_CapabilityModel):
@@ -653,8 +965,24 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     agent_request_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
     response_locale: BCP47Tag = "und"
+    character_target: CharacterProposalTargetV1 | None = None
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="after")
+    def validate_character_target(self) -> "CapabilityCommandEnvelopeV2":
+        _validate_character_target_contract(
+            target=self.character_target,
+            capability_id=self.capability_id,
+            requirement_revision_id=self.requirement_revision_id,
+            requirement_revision_no=self.requirement_revision_no,
+            required=(
+                self.publication_kind == "proposal"
+                and self.capability_id == "character_design"
+                and self.session_id is not None
+            ),
+        )
+        return self
 
     @model_validator(mode="after")
     def validate_publication_boundary(
@@ -695,6 +1023,11 @@ class NextActionEnvelopeV1(_CapabilityModel):
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: CharacterAuthoringPhaseV1 | None = None
+    resume_materialization_envelope_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
     action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     created_at: datetime
 
@@ -890,3 +1223,14 @@ CAPABILITY_RESULT_CONTRACTS: dict[CapabilityIdV1, type[_CapabilityModel]] = {
     "bgm_direction": GuidedProposalAuthoringResultV4,
     "quick_media": ProposalCardResultV2,
 }
+
+
+from app.schemas.agent_operation_contexts import InteractionMessageSummary, WorkflowStateCapsuleV1  # noqa: E402
+
+
+TurnIntentContextV2.model_rebuild(
+    _types_namespace={
+        "WorkflowStateCapsuleV1": WorkflowStateCapsuleV1,
+        "InteractionMessageSummary": InteractionMessageSummary,
+    }
+)

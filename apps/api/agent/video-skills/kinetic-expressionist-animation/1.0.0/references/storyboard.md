@@ -1,1 +1,5 @@
-Organize shots around elastic drawing, develop visual progression through expressive distortion, and reserve energetic staging for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+为每个节拍画出准备、爆发、拖尾、落点和恢复关键帧。记录角色锚点、主运动线、色块方向、镜头视点和道具接触。变形强度应随能量曲线变化，而不是持续最大化。
+
+用形状匹配、线条延展、色块擦过或动作方向转场，检查落点是否可读。

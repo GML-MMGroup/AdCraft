@@ -1,1 +1,5 @@
-Build the narrative premise around axial framing, then use curated palettes to shape escalation and precise comic timing to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先写一个清楚的愿望、阻碍和回扣动作，再按章节式进入、等待、误会、变化、收束组织广告。每个段落只承担一个信息，重复动作要在后续改变意义。把 precise comic timing 拆成准备、停顿、反应和回收，避免把笑点全部写在台词里。
+
+为每个段落标记主轴关系、产品信息和观众应看到的反应。对白保持短，动作和构图承担更多说明。正例是同一个等待动作在产品出现后产生新含义；反例是堆叠无关笑话而没有品牌或产品回扣。

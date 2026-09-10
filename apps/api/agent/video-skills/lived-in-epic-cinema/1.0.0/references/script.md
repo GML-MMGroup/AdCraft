@@ -1,1 +1,5 @@
-Build the narrative premise around weathered worlds, then use tactile production design to shape escalation and layered stakes to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先写环境历史、人物目标和一个具体代价，再按个人、关系、群体、环境的 layered stakes 递进。让 grounded spectacle 改变角色选择，而不是只做背景。结尾回到一个被触摸、修补或交接的物件，证明事件产生了后果。
+
+每段都给出可见行动和阻力。正例是设备的磨损说明人物如何准备；反例是用宏大旁白替代冲突和选择。

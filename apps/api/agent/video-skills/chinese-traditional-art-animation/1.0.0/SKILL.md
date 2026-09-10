@@ -1,8 +1,21 @@
 ---
-name: Chinese Traditional Art Animation
-description: An advertising treatment built around ink, paper, cutout and decorative traditions, negative space, and poetic motion.
+name: 中国传统艺术动画
+description: 以墨色、纸张、剪纸与装饰传统、负空间和诗性运动构建具有东方材料感的动画影像。
 ---
 
-Use ink, paper, cutout and decorative traditions, negative space, and poetic motion as the style's creative grammar. Establish ink as the primary visual idea, reinforce it through paper, and let cutout and decorative traditions shape the progression toward negative space.
+把 ink、paper、cutout and decorative traditions、negative space、poetic motion 作为传统艺术动画的五个创作支点。传统材料不是表面滤镜，而是决定形体边缘、层次、运动阻力、留白和声音的制作语法。可以融合多种传统，但要说明各层如何共存。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 材料与层次
+
+先区分墨线、晕染、纸纤维、剪纸边缘、织物纹样、印章感和装饰图形。paper 与 cutout and decorative traditions 要有厚度、折痕、遮挡和层间关系；ink 的浓淡、渗化和干湿变化应由笔触、湿度或运动触发。negative space 负责呼吸、视线和情绪，不是未完成的空白。
+
+## 诗性运动
+
+poetic motion 可以来自纸片翻转、墨线生长、风吹纹样、影子移动、水面扩散或人物的克制动作。运动应保留材料阻力与层次，不能把纸变成无重量的三维烟雾。角色和产品的轮廓要能在平面化层次中辨认。
+
+## 纠偏边界
+
+保持材料规则、角色身份、纹样方向、色彩和留白。结果杂乱时先减少装饰层，恢复墨线、纸面和主运动。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供材料与动画判断。
+
+正例：墨线沿纸纤维展开，剪纸层依次打开，留白把人物动作引向产品轮廓。
+反例：所有元素都变成相同的发光纹理，材料无厚度，留白被装饰填满。

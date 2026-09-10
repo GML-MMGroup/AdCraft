@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
+from types import SimpleNamespace
+from sqlalchemy.engine import Connection
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
@@ -22,7 +27,9 @@ from app.schemas.agent_canvas_ad_media import (
     StoryboardGridContentV2,
     StoryboardPanelV2,
     VideoSegmentContentV2,
+    VisualStyleContractV2,
 )
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -34,8 +41,12 @@ from app.schemas.agent_canvas_production_closure import (
     StoryboardFanoutPlanV1,
 )
 from app.schemas.agent_working_documents import (
+    StoryboardNodeRecordV2,
+    StoryboardPlannedNodeV3,
     StoryboardProductionPlanContentV2,
     StoryboardProductionPlanContentV3,
+    StoryboardVisualAnchorV2,
+    StoryboardVisualAnchorV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_conversation import VideoAgentGateway
@@ -49,12 +60,24 @@ from app.services.agent_canvas_role_reference_policy import (
 from app.services.agent_canvas_guided_media_parameters import (
     resolve_video_audio_parameter,
 )
+from app.services.agent_canvas_video_representation import (
+    resolve_video_representation_mode,
+    select_video_representation_mode,
+)
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
 StoryboardPipelinePreparedCallback = Callable[[str, str], object]
 VideoResolutionResolver = Callable[[str], str | None]
-VideoAudioConstraintsResolver = Callable[[str], dict[str, object]]
+VideoAudioConstraintsResolver = Callable[[str, str], dict[str, object]]
+
+
+@dataclass(frozen=True)
+class StoryboardFanoutPreflightResult:
+    """Immutable evidence used to fence the later local fan-out publication."""
+
+    fanout_plan: StoryboardFanoutPlanV1
+    preflight_digest: str
 
 
 class ProgressiveStoryboardReadyService:
@@ -84,6 +107,696 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
+
+    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> None:
+        """Continue the committed Plan through the existing topology and journey owners."""
+
+        document_ids = {result.document_id for result in outcome.document_results}
+        plans = tuple(
+            plan
+            for plan in self._authoring.list_plans(outcome.workflow_id).items
+            if plan.document_id in document_ids
+        )
+        if len(plans) != 1:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Committed Storyboard publication requires one current owning Plan.",
+                stage="storyboard_progression",
+            )
+        plan = plans[0]
+        self.materialize_planned_drafts(
+            workflow_id=outcome.workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+        )
+        if self._on_storyboard_pipeline_prepared is not None:
+            self._on_storyboard_pipeline_prepared(outcome.workflow_id, plan.document_id)
+
+    def materialize_planned_drafts(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        expected_plan_revision: int,
+    ) -> tuple[str, ...]:
+        """Publish accepted Plan topology without claiming a visual anchor."""
+
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == plan_document_id
+            ),
+            None,
+        )
+        if plan is None or plan.revision != expected_plan_revision:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Planned Draft topology requires the current accepted Plan revision.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        workflow = self._workflows.get_workflow(workflow_id)
+        first_sequence = _first_sequence(content)
+        first_record = next(
+            (
+                record
+                for record in _planned_nodes(content)
+                if record.sequence_id == first_sequence.sequence_id
+                and record.node_role == "storyboard_grid"
+            ),
+            None,
+        )
+        source_grid = next(
+            (
+                node
+                for node in workflow.nodes
+                if first_record is not None and node.node_id == first_record.node_id
+            ),
+            None,
+        )
+        if source_grid is None:
+            raise V2PersistenceError(
+                "storyboard_fanout_invalid",
+                "Planned topology requires its committed first Grid Node.",
+                stage="storyboard_progression",
+            )
+        members = self._build_fanout_members(
+            workflow=workflow,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            content=content,
+            source_grid=source_grid,
+        )
+        if not members:
+            return ()
+        next_content = _append_planned_nodes(
+            content,
+            plan_document_id=plan_document_id,
+            planned=tuple(node for node, _ in members),
+        )
+        with self._workflows.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                revision = workflow.revision
+                for node, bindings in members:
+                    revision = self._workflows.add_node_with_bindings_in_transaction(
+                        connection,
+                        node,
+                        bindings,
+                        expected_revision=revision,
+                    )
+                self._authoring.commit_plan_content_in_transaction(
+                    connection,
+                    workflow_id=workflow_id,
+                    agent_run_id=f"planned-drafts:{plan_document_id}",
+                    document_id=plan_document_id,
+                    expected_revision=plan.revision,
+                    operation="materialize_planned_storyboard_drafts",
+                    idempotency_key=f"planned-drafts:{plan_document_id}:{plan.revision}",
+                    next_content=next_content,
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return tuple(node.node_id for node, _ in members)
+
+    def preflight_fanout(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        source_grid: CanvasNodeV2,
+        confirmation: GuidedMediaConfirmationV1,
+    ) -> StoryboardFanoutPreflightResult:
+        """Validate every planned member without publishing any durable state."""
+
+        if source_grid.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source belongs to another workflow.",
+                stage="storyboard_progression",
+            )
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Plan is not current.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        first_sequence = _first_sequence(content)
+        if not any(
+            record.node_id == source_grid.node_id
+            and record.node_role == "storyboard_grid"
+            and record.sequence_id == first_sequence.sequence_id
+            for record in _planned_nodes(content)
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source is not the first planned Grid.",
+                stage="storyboard_progression",
+            )
+        if self._asset_resolver is None or source_grid.output_asset_id is None:
+            raise V2PersistenceError(
+                "guided_media_confirmation_required",
+                "Storyboard fan-out requires an exact source Asset.",
+                stage="storyboard_progression",
+            )
+        asset = self._asset_resolver(source_grid.output_asset_id)
+        self._validate_confirmation(plan, source_grid, asset, confirmation)
+        admission_constraints = (
+            self._video_audio_constraints_resolver(workflow_id, plan_document_id)
+            if self._video_audio_constraints_resolver is not None
+            else {}
+        )
+        resolve_video_representation_mode(
+            explicit_control=admission_constraints.get("video_representation_mode"),
+            skill_mode=admission_constraints.get("_video_skill_representation_mode"),
+            skill_source_id=str(
+                admission_constraints.get("_video_skill_representation_source_id") or "video-skill"
+            ),
+            identity_safety_decision=admission_constraints.get("identity_safety_decision"),
+        )
+        workflow = self._workflows.get_workflow(workflow_id)
+        fanout_plan = _fanout_plan(
+            plan_document_id=plan.document_id,
+            # Anchor freezing is the first atomic document revision in the
+            # publication phase; the receipt records that resulting revision.
+            plan_revision=plan.revision + 1,
+            workflow=workflow,
+            content=content,
+            grid_one=source_grid,
+            asset=asset,
+            confirmation=confirmation,
+        )
+
+        # Build future nodes in memory. This exercises the same representation,
+        # capability, reference, and identity admission used after commit.
+        virtual_nodes = list(workflow.nodes)
+        virtual_bindings = list(workflow.bindings)
+        video_resolution = self._resolve_video_resolution(workflow_id)
+        for sequence in content.segments:
+            if sequence.order == 1:
+                grid = source_grid
+            else:
+                grid_id = _node_id(plan.document_id, sequence.sequence_id, "grid")
+                grid = next((item for item in virtual_nodes if item.node_id == grid_id), None)
+                if grid is None:
+                    grid = _grid_node(
+                        plan_document_id=plan_document_id,
+                        workflow_id=workflow_id,
+                        node_id=grid_id,
+                        order=sequence.order,
+                        sequence=sequence,
+                        segment=_accepted_segment(content, sequence.sequence_id),
+                        source=source_grid,
+                        plan_revision=plan.revision,
+                    )
+                    grid_bindings = _later_grid_bindings(
+                        workflow=SimpleNamespace(
+                            nodes=tuple(virtual_nodes),
+                            bindings=tuple(virtual_bindings),
+                        ),
+                        grid_one=source_grid,
+                        target=grid,
+                    )
+                    self._validate_grid_capacity(grid, grid_bindings)
+                    virtual_nodes.append(grid)
+                    virtual_bindings.extend(grid_bindings)
+            video_id = _node_id(plan.document_id, sequence.sequence_id, "video")
+            video = next((item for item in virtual_nodes if item.node_id == video_id), None)
+            if video is None:
+                video, video_bindings = self._build_video_node(
+                    plan.document_id,
+                    sequence.sequence_id,
+                    grid,
+                    plan_revision=plan.revision,
+                    duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                    sequence_start_seconds=sequence.start_seconds,
+                    sequence_end_seconds=sequence.end_seconds,
+                    aspect_ratio=content.global_parameters.aspect_ratio,
+                    resolution=video_resolution,
+                    workflow=SimpleNamespace(
+                        nodes=tuple(virtual_nodes),
+                        bindings=tuple(virtual_bindings),
+                    ),
+                )
+                self._validate_grid_capacity(video, video_bindings)
+                virtual_nodes.append(video)
+                virtual_bindings.extend(video_bindings)
+        preflight_digest = self._preflight_digest(
+            fanout_plan,
+            source_grid=source_grid,
+            asset=asset,
+        )
+        return StoryboardFanoutPreflightResult(
+            fanout_plan=fanout_plan,
+            preflight_digest=preflight_digest,
+        )
+
+    def publish_confirmation_and_fanout(
+        self,
+        *,
+        source_grid: CanvasNodeV2,
+        confirmation: GuidedMediaConfirmationV1,
+    ) -> tuple[GuidedMediaConfirmationV1, tuple[str, ...]]:
+        """Publish the first accepted Grid and all local fan-out state atomically."""
+
+        if self._receipts is None or self._events is None or self._asset_resolver is None:
+            raise V2PersistenceError(
+                "storyboard_transaction_authority_required",
+                "Storyboard fan-out requires shared receipt and event transaction authority.",
+                stage="storyboard_progression",
+            )
+        preflight = self.preflight_fanout(
+            workflow_id=source_grid.workflow_id,
+            plan_document_id=confirmation.plan_document_id,
+            source_grid=source_grid,
+            confirmation=confirmation,
+        )
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(source_grid.workflow_id).items
+                if item.document_id == confirmation.plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Plan is not current.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        workflow = self._workflows.get_workflow(source_grid.workflow_id)
+        asset = self._asset_resolver(confirmation.asset_id)
+        self._validate_confirmation(plan, source_grid, asset, confirmation)
+        expected_digest = self._preflight_digest(
+            preflight.fanout_plan,
+            source_grid=source_grid,
+            asset=asset,
+        )
+        if expected_digest != preflight.preflight_digest:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Storyboard fan-out preflight evidence changed before publication.",
+                stage="storyboard_progression",
+            )
+
+        members = self._build_fanout_members(
+            workflow=workflow,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            content=content,
+            source_grid=source_grid,
+        )
+        next_content = _published_plan_content(
+            content,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            source_grid=source_grid,
+            confirmation=confirmation,
+            members=members,
+            fanout=preflight.fanout_plan,
+            existing_nodes=workflow.nodes,
+        )
+        agent_run_id = f"storyboard-fanout:{preflight.fanout_plan.fanout_plan_id}"
+        event_time = datetime.now(timezone.utc).isoformat()
+        try:
+            with self._workflows.database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    self._workflows.require_node_revision_in_transaction(
+                        connection,
+                        workflow_id=source_grid.workflow_id,
+                        node_id=source_grid.node_id,
+                        expected_revision=source_grid.revision,
+                        expected_output_asset_id=source_grid.output_asset_id,
+                    )
+                    stored_confirmation = self._receipts.save_confirmation_in_transaction(
+                        connection,
+                        confirmation,
+                    )
+                    current_workflow_revision = workflow.revision
+                    created_node_ids: list[str] = []
+                    for node, bindings in members:
+                        current_workflow_revision = (
+                            self._workflows.add_node_with_bindings_in_transaction(
+                                connection,
+                                node,
+                                bindings,
+                                expected_revision=current_workflow_revision,
+                            )
+                        )
+                        created_node_ids.append(node.node_id)
+                    self._authoring.commit_plan_content_in_transaction(
+                        connection,
+                        workflow_id=source_grid.workflow_id,
+                        agent_run_id=agent_run_id,
+                        document_id=plan.document_id,
+                        expected_revision=plan.revision,
+                        operation="publish_storyboard_fanout",
+                        idempotency_key=preflight.fanout_plan.fanout_plan_id,
+                        next_content=next_content,
+                    )
+                    fanout = self._receipts.save_fanout_in_transaction(
+                        connection,
+                        preflight.fanout_plan,
+                    )
+                    self._append_publication_events_in_transaction(
+                        connection,
+                        confirmation=stored_confirmation,
+                        fanout=fanout,
+                        event_time=event_time,
+                    )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        if created_node_ids and self._on_storyboard_pipeline_prepared is not None:
+            self._on_storyboard_pipeline_prepared(
+                source_grid.workflow_id,
+                confirmation.plan_document_id,
+            )
+        return stored_confirmation, tuple(created_node_ids)
+
+    def reconcile_fanout(
+        self,
+        *,
+        fanout_plan_id: str,
+        source_grid: CanvasNodeV2,
+    ) -> tuple[str, ...]:
+        """Complete only missing members of one persisted fan-out receipt."""
+
+        if self._receipts is None or self._events is None or self._asset_resolver is None:
+            raise V2PersistenceError(
+                "storyboard_transaction_authority_required",
+                "Storyboard recovery requires shared receipt and event transaction authority.",
+                stage="storyboard_progression",
+            )
+        fanout = self._receipts.get_fanout(fanout_plan_id)
+        confirmation = self._receipts.get_confirmation(fanout.visual_anchor_confirmation_id)
+        if fanout.fanout_plan_id != fanout_plan_id:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out identity does not match the requested recovery.",
+                stage="storyboard_progression",
+            )
+        if (
+            fanout.workflow_id != source_grid.workflow_id
+            or fanout.visual_anchor_node_id != source_grid.node_id
+            or fanout.visual_anchor_node_revision != source_grid.revision
+            or fanout.visual_anchor_asset_id != source_grid.output_asset_id
+            or fanout.visual_anchor_asset_version_id != confirmation.asset_version_id
+            or fanout.visual_anchor_asset_digest != confirmation.asset_digest
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out source proof is stale.",
+                stage="storyboard_progression",
+            )
+        asset = self._asset_resolver(source_grid.output_asset_id or "")
+        if (
+            asset.version_id != confirmation.asset_version_id
+            or asset.checksum != confirmation.asset_digest
+            or asset.status != "ready"
+            or asset.media_type != "image"
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Asset proof is stale.",
+                stage="storyboard_progression",
+            )
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(source_grid.workflow_id).items
+                if item.document_id == fanout.plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out Plan is not current.",
+                stage="storyboard_progression",
+            )
+        content = _plan_content(plan.content)
+        if not _anchor_matches_confirmation(content, source_grid, confirmation):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out anchor no longer matches its source proof.",
+                stage="storyboard_progression",
+            )
+        workflow = self._workflows.get_workflow(source_grid.workflow_id)
+        expected_plan = _fanout_plan(
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=fanout.plan_revision,
+            workflow=workflow,
+            content=content,
+            grid_one=source_grid,
+            asset=asset,
+            confirmation=confirmation,
+        )
+        if (
+            fanout.logical_identity != expected_plan.logical_identity
+            or fanout.nodes != expected_plan.nodes
+            or fanout.bindings != expected_plan.bindings
+            or fanout.prompt_preparation_keys != expected_plan.prompt_preparation_keys
+            or fanout.automatic_run_keys != expected_plan.automatic_run_keys
+        ):
+            raise V2PersistenceError(
+                "guided_media_confirmation_stale",
+                "Storyboard fan-out member identity does not match current Plan.",
+                stage="storyboard_progression",
+            )
+        all_members = self._build_fanout_members(
+            workflow=workflow,
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=plan.revision,
+            content=content,
+            source_grid=source_grid,
+        )
+        allowed_node_ids = {item.node_id for item in fanout.nodes}
+        members = tuple(
+            (node, bindings) for node, bindings in all_members if node.node_id in allowed_node_ids
+        )
+        next_content = _published_plan_content(
+            content,
+            plan_document_id=fanout.plan_document_id,
+            plan_revision=plan.revision,
+            source_grid=source_grid,
+            confirmation=confirmation,
+            members=members,
+            fanout=fanout,
+            existing_nodes=workflow.nodes,
+        )
+        created_node_ids: list[str] = []
+        event_time = datetime.now(timezone.utc).isoformat()
+        with self._workflows.database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                self._workflows.require_node_revision_in_transaction(
+                    connection,
+                    workflow_id=source_grid.workflow_id,
+                    node_id=source_grid.node_id,
+                    expected_revision=source_grid.revision,
+                    expected_output_asset_id=source_grid.output_asset_id,
+                )
+                current_workflow_revision = workflow.revision
+                for node, bindings in members:
+                    current_workflow_revision = (
+                        self._workflows.add_node_with_bindings_in_transaction(
+                            connection,
+                            node,
+                            bindings,
+                            expected_revision=current_workflow_revision,
+                        )
+                    )
+                    created_node_ids.append(node.node_id)
+                if next_content != content:
+                    self._authoring.commit_plan_content_in_transaction(
+                        connection,
+                        workflow_id=source_grid.workflow_id,
+                        agent_run_id=f"storyboard-reconcile:{fanout_plan_id}",
+                        document_id=plan.document_id,
+                        expected_revision=plan.revision,
+                        operation="reconcile_storyboard_fanout",
+                        idempotency_key=f"reconcile:{fanout_plan_id}",
+                        next_content=next_content,
+                    )
+                self._receipts.save_fanout_in_transaction(connection, fanout)
+                if created_node_ids:
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=fanout.workflow_id,
+                            node_id=fanout.visual_anchor_node_id,
+                            event_type="storyboard_fanout_reconciled",
+                            transition_key=f"storyboard-fanout-reconciled:{fanout_plan_id}",
+                            created_at=event_time,
+                            payload={
+                                "fanout_plan_id": fanout_plan_id,
+                                "created_node_ids": created_node_ids,
+                                "plan_revision": plan.revision,
+                            },
+                        ),
+                    )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return tuple(created_node_ids)
+
+    def _build_fanout_members(
+        self,
+        *,
+        workflow,
+        plan_document_id: str,
+        plan_revision: int,
+        content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+        source_grid: CanvasNodeV2,
+    ) -> tuple[tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]], ...]:
+        virtual_nodes = list(workflow.nodes)
+        virtual_bindings = list(workflow.bindings)
+        members: list[tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]]] = []
+        video_resolution = self._resolve_video_resolution(source_grid.workflow_id)
+        for sequence in content.segments:
+            if sequence.order == 1:
+                grid = source_grid
+            else:
+                grid_id = _node_id(plan_document_id, sequence.sequence_id, "grid")
+                grid = next((item for item in virtual_nodes if item.node_id == grid_id), None)
+                if grid is None:
+                    grid = _grid_node(
+                        plan_document_id=plan_document_id,
+                        workflow_id=source_grid.workflow_id,
+                        node_id=grid_id,
+                        order=sequence.order,
+                        sequence=sequence,
+                        segment=_accepted_segment(content, sequence.sequence_id),
+                        source=source_grid,
+                        plan_revision=plan_revision,
+                    )
+                    grid_bindings = _later_grid_bindings(
+                        workflow=SimpleNamespace(
+                            nodes=tuple(virtual_nodes),
+                            bindings=tuple(virtual_bindings),
+                        ),
+                        grid_one=source_grid,
+                        target=grid,
+                    )
+                    self._validate_grid_capacity(grid, grid_bindings)
+                    members.append((grid, grid_bindings))
+                    virtual_nodes.append(grid)
+                    virtual_bindings.extend(grid_bindings)
+            video_id = _node_id(plan_document_id, sequence.sequence_id, "video")
+            if any(item.node_id == video_id for item in virtual_nodes):
+                continue
+            video, video_bindings = self._build_video_node(
+                plan_document_id,
+                sequence.sequence_id,
+                grid,
+                plan_revision=plan_revision,
+                duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                sequence_start_seconds=sequence.start_seconds,
+                sequence_end_seconds=sequence.end_seconds,
+                aspect_ratio=content.global_parameters.aspect_ratio,
+                resolution=video_resolution,
+                workflow=SimpleNamespace(
+                    nodes=tuple(virtual_nodes),
+                    bindings=tuple(virtual_bindings),
+                ),
+            )
+            self._validate_grid_capacity(video, video_bindings)
+            members.append((video, video_bindings))
+            virtual_nodes.append(video)
+            virtual_bindings.extend(video_bindings)
+        return tuple(members)
+
+    @staticmethod
+    def _preflight_digest(
+        fanout_plan: StoryboardFanoutPlanV1,
+        *,
+        source_grid: CanvasNodeV2,
+        asset: ProjectAssetSummaryV2,
+    ) -> str:
+        return sha256(
+            json.dumps(
+                {
+                    "fanout_plan": fanout_plan.model_dump(mode="json"),
+                    "source_grid_revision": source_grid.revision,
+                    "source_asset_id": source_grid.output_asset_id,
+                    "source_asset_version_id": asset.version_id,
+                    "source_asset_digest": asset.checksum,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    def _append_publication_events_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        confirmation: GuidedMediaConfirmationV1,
+        fanout: StoryboardFanoutPlanV1,
+        event_time: str,
+    ) -> None:
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=fanout.workflow_id,
+                node_id=fanout.visual_anchor_node_id,
+                event_type="storyboard_visual_anchor_frozen",
+                transition_key=f"storyboard_visual_anchor_frozen:{fanout.plan_document_id}",
+                created_at=event_time,
+                payload={
+                    "node_id": fanout.visual_anchor_node_id,
+                    "asset_id": fanout.visual_anchor_asset_id,
+                    "asset_version_id": fanout.visual_anchor_asset_version_id,
+                    "plan_document_id": fanout.plan_document_id,
+                    "plan_revision": fanout.plan_revision,
+                },
+            ),
+        )
+        self._events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=confirmation.workflow_id,
+                node_id=confirmation.node_id,
+                event_type="guided_media_confirmed",
+                transition_key=f"guided-media-confirmed:{confirmation.confirmation_id}",
+                action_id=confirmation.action_id,
+                created_at=confirmation.confirmed_at.isoformat(),
+                payload={
+                    "confirmation_id": confirmation.confirmation_id,
+                    "plan_document_id": confirmation.plan_document_id,
+                    "plan_revision": confirmation.plan_revision,
+                    "node_revision": confirmation.node_revision,
+                    "asset_id": confirmation.asset_id,
+                    "asset_version_id": confirmation.asset_version_id,
+                    "asset_digest": confirmation.asset_digest,
+                    "accepted_by": confirmation.accepted_by,
+                    "sequence_id": confirmation.sequence_id,
+                    "media_role": confirmation.media_role,
+                },
+            ),
+        )
+        for event in _fanout_events(fanout, event_time=event_time):
+            self._events.append_in_transaction(connection, event)
 
     def on_node_ready(
         self,
@@ -130,6 +843,7 @@ class ProgressiveStoryboardReadyService:
                 node,
             )
         replay: StoryboardFanoutPlanV1 | None = None
+        preflight: StoryboardFanoutPreflightResult | None = None
         if self._receipts is not None:
             if confirmation is None or self._asset_resolver is None:
                 raise V2PersistenceError(
@@ -168,7 +882,11 @@ class ProgressiveStoryboardReadyService:
                         stage="storyboard_progression",
                     )
             if replay is None:
-                self._validate_confirmation(plan, node, asset, confirmation)
+                _confirmation, created_node_ids = self.publish_confirmation_and_fanout(
+                    source_grid=node,
+                    confirmation=confirmation,
+                )
+                return created_node_ids
         if replay is None:
             plan = self._authoring.freeze_visual_anchor(
                 workflow_id=node.workflow_id,
@@ -185,17 +903,13 @@ class ProgressiveStoryboardReadyService:
         content = _plan_content(plan.content)
         fanout_authority = replay
         if self._receipts is not None and replay is None:
-            fanout_authority = self._receipts.save_fanout(
-                _fanout_plan(
-                    plan_document_id=plan.document_id,
-                    plan_revision=plan.revision,
-                    workflow=self._workflows.get_workflow(node.workflow_id),
-                    content=content,
-                    grid_one=node,
-                    asset=asset,
-                    confirmation=confirmation,
+            if preflight is None:
+                raise V2PersistenceError(
+                    "storyboard_fanout_invalid",
+                    "Storyboard fan-out preflight evidence is required.",
+                    stage="storyboard_progression",
                 )
-            )
+            fanout_authority = self._receipts.save_fanout(preflight.fanout_plan)
         first_sequence = _first_sequence(content)
         video_resolution = self._resolve_video_resolution(node.workflow_id)
         created.extend(
@@ -221,6 +935,7 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                 )
                 grid = _grid_node(
+                    plan_document_id=plan.document_id,
                     workflow_id=node.workflow_id,
                     node_id=grid_id,
                     order=sequence.order,
@@ -373,6 +1088,7 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                 )
                 grid = _grid_node(
+                    plan_document_id=plan_document_id,
                     workflow_id=grid_one.workflow_id,
                     node_id=grid_id,
                     order=sequence.order,
@@ -440,7 +1156,7 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_sequence_authoring",
             )
 
-    def _ensure_video(
+    def _build_video_node(
         self,
         plan_document_id: str,
         sequence_id: str,
@@ -453,35 +1169,64 @@ class ProgressiveStoryboardReadyService:
         aspect_ratio: str,
         resolution: str | None,
         node_identity_scope: str | None = None,
-        attach_to_plan: bool = True,
-    ) -> tuple[str, ...]:
+        workflow=None,
+    ) -> tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]]:
         video_id = _node_id(
             node_identity_scope or plan_document_id,
             sequence_id,
             "video",
         )
-        workflow = self._workflows.get_workflow(grid.workflow_id)
+        workflow = workflow or self._workflows.get_workflow(grid.workflow_id)
         if any(item.node_id == video_id for item in workflow.nodes):
-            return ()
+            raise V2PersistenceError(
+                "storyboard_fanout_conflict",
+                "Storyboard Video identity already exists during fan-out preparation.",
+                stage="storyboard_progression",
+            )
         content = StoryboardGridContentV2.model_validate(grid.structured_content)
+        audio_constraints = (
+            self._video_audio_constraints_resolver(grid.workflow_id, plan_document_id)
+            if self._video_audio_constraints_resolver is not None
+            else {}
+        )
+        representation = select_video_representation_mode(
+            explicit_control=audio_constraints.get("video_representation_mode"),
+            skill_mode=audio_constraints.get("_video_skill_representation_mode"),
+            skill_source_id=str(
+                audio_constraints.get("_video_skill_representation_source_id") or "video-skill"
+            ),
+        )
         video_content = VideoSegmentContentV2(
             segment_summary=content.sequence_summary,
             duration_seconds=duration_seconds,
             storyboard_content="Follow the nine ordered storyboard frames.",
+            representation_mode=representation.mode,
+            style=VisualStyleContractV2(
+                style_prompt=(
+                    "Fictional cinematic live-action with coherent lighting and materials"
+                    if representation.mode == "illustration_to_live_action"
+                    else "Detailed semi-realistic advertising illustration"
+                ),
+                source="platform_default",
+            ),
             environment_sound="Preserve scene ambience.",
             action_effects="Preserve declared action sounds.",
             background_music=False,
-        )
-        audio_constraints = (
-            self._video_audio_constraints_resolver(grid.workflow_id)
-            if self._video_audio_constraints_resolver is not None
-            else {}
         )
         generate_audio, audio_provenance = resolve_video_audio_parameter(
             structured_values=video_content,
             explicit_constraints=audio_constraints,
         )
         now = datetime.now(timezone.utc)
+        seed_prompt = (
+            f"Exact Storyboard Production Plan segment for {sequence_id}: "
+            f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
+            "Use the complete matching storyboard grid as the primary ordered reference. "
+            "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
+            "then follow panels 1 through 9 as one continuous commercial segment. "
+            "Preserve required dialogue, voice performance, native ambience, movement, "
+            "and synchronized action effects. Generate no background music."
+        )
         video = CanvasNodeV2(
             node_id=video_id,
             workflow_id=grid.workflow_id,
@@ -490,15 +1235,8 @@ class ProgressiveStoryboardReadyService:
             title=f"Video {sequence_id}",
             status="draft",
             summary_prompt=content.narrative_goal,
-            generation_prompt=(
-                f"Exact Storyboard Production Plan segment for {sequence_id}: "
-                f"{grid.generation_prompt or grid.summary_prompt or ''}\n"
-                "Use the complete matching storyboard grid as the primary ordered reference. "
-                "Lock the opening frame to panel 1 without requiring a cropped panel asset, "
-                "then follow panels 1 through 9 as one continuous commercial segment. "
-                "Preserve required dialogue, voice performance, native ambience, movement, "
-                "and synchronized action effects. Generate no background music."
-            ),
+            generation_prompt=seed_prompt,
+            prompt_presentation=_seed_presentation(seed_prompt),
             structured_content=video_content.model_dump(mode="json"),
             parameters={
                 "duration_seconds": duration_seconds,
@@ -512,11 +1250,16 @@ class ProgressiveStoryboardReadyService:
             metadata={
                 "source_agent_document_id": plan_document_id,
                 "source_sequence_id": sequence_id,
+                "sequence_index": grid.metadata.get("sequence_index"),
                 "source_plan_revision": plan_revision,
                 "source_sequence_window": {
                     "start_seconds": sequence_start_seconds,
                     "end_seconds": sequence_end_seconds,
                 },
+                "video_representation_mode": representation.mode,
+                "video_representation_source": representation.source,
+                "video_representation_policy_version": representation.policy_version,
+                "video_representation_digest": representation.digest,
             },
             position=CanvasPositionV2(x=grid.position.x + 360, y=grid.position.y),
             revision=1,
@@ -547,7 +1290,6 @@ class ProgressiveStoryboardReadyService:
                     source=CanvasBindingSourceNodeV2(source_node_id=source_node.node_id),
                     target_node_id=video.node_id,
                     input_role="image_reference",
-                    required=True,
                     order=len(identity_bindings) + 1,
                     metadata={
                         "semantic_reference_role": _video_semantic_reference_role(source_role),
@@ -563,7 +1305,6 @@ class ProgressiveStoryboardReadyService:
                 source=CanvasBindingSourceNodeV2(source_node_id=grid.node_id),
                 target_node_id=video.node_id,
                 input_role="image_reference",
-                required=True,
                 order=0,
                 metadata={"semantic_reference_role": "storyboard_visual_reference"},
                 created_at=now,
@@ -585,6 +1326,43 @@ class ProgressiveStoryboardReadyService:
                 )
                 for index, binding in enumerate(identity_bindings, start=1)
             ),
+        )
+        return video, bindings
+
+    def _ensure_video(
+        self,
+        plan_document_id: str,
+        sequence_id: str,
+        grid: CanvasNodeV2,
+        *,
+        plan_revision: int,
+        duration_seconds: float,
+        sequence_start_seconds: float,
+        sequence_end_seconds: float,
+        aspect_ratio: str,
+        resolution: str | None,
+        node_identity_scope: str | None = None,
+        attach_to_plan: bool = True,
+    ) -> tuple[str, ...]:
+        video_id = _node_id(
+            node_identity_scope or plan_document_id,
+            sequence_id,
+            "video",
+        )
+        workflow = self._workflows.get_workflow(grid.workflow_id)
+        if any(item.node_id == video_id for item in workflow.nodes):
+            return ()
+        video, bindings = self._build_video_node(
+            plan_document_id,
+            sequence_id,
+            grid,
+            plan_revision=plan_revision,
+            duration_seconds=duration_seconds,
+            sequence_start_seconds=sequence_start_seconds,
+            sequence_end_seconds=sequence_end_seconds,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            node_identity_scope=node_identity_scope,
         )
         self._workflows.add_node_with_bindings(
             video,
@@ -645,7 +1423,6 @@ def _later_grid_bindings(
             source=CanvasBindingSourceNodeV2(source_node_id=grid_one.node_id),
             target_node_id=target.node_id,
             input_role="image_reference",
-            required=True,
             order=len(bindings),
             metadata={
                 "semantic_reference_role": "style_composition_reference",
@@ -891,12 +1668,167 @@ def _fanout_plan(
         bindings=tuple(binding_plans),
         prompt_preparation_keys=tuple(preparation_keys),
         automatic_run_keys=(),
-        created_at=datetime.now(timezone.utc),
+        created_at=confirmation.confirmed_at,
     )
 
 
 def _fanout_plan_id(confirmation: GuidedMediaConfirmationV1) -> str:
     return "fanout_" + sha256(confirmation.logical_identity.encode()).hexdigest()[:32]
+
+
+def _anchor_matches_confirmation(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    source_grid: CanvasNodeV2,
+    confirmation: GuidedMediaConfirmationV1,
+) -> bool:
+    anchor = content.visual_anchor
+    if anchor is None:
+        return True
+    if isinstance(anchor, StoryboardVisualAnchorV3):
+        return (
+            anchor.node_id == source_grid.node_id
+            and anchor.node_revision == source_grid.revision
+            and anchor.asset_id == confirmation.asset_id
+            and anchor.asset_version_id == confirmation.asset_version_id
+            and anchor.acceptance_evidence_id == confirmation.confirmation_id
+        )
+    return (
+        anchor.node_id == source_grid.node_id
+        and anchor.node_revision == source_grid.revision
+        and anchor.asset_id == confirmation.asset_id
+    )
+
+
+def _published_plan_content(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    *,
+    plan_document_id: str,
+    plan_revision: int,
+    source_grid: CanvasNodeV2,
+    confirmation: GuidedMediaConfirmationV1,
+    members: tuple[tuple[CanvasNodeV2, tuple[CanvasBindingV2, ...]], ...],
+    fanout: StoryboardFanoutPlanV1,
+    existing_nodes: tuple[CanvasNodeV2, ...],
+) -> StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3:
+    nodes_by_id = {node.node_id: node for node in existing_nodes}
+    nodes_by_id.update({node.node_id: node for node, _bindings in members})
+    planned = tuple(
+        nodes_by_id[item.node_id] for item in fanout.nodes if item.node_id in nodes_by_id
+    )
+    updated = _append_planned_nodes(content, plan_document_id=plan_document_id, planned=planned)
+    if isinstance(updated, StoryboardProductionPlanContentV3):
+        anchor = StoryboardVisualAnchorV3(
+            sequence_id=_first_sequence(content).sequence_id,
+            node_id=source_grid.node_id,
+            node_revision=source_grid.revision,
+            asset_id=confirmation.asset_id,
+            asset_version_id=confirmation.asset_version_id,
+            acceptance_evidence_id=confirmation.confirmation_id,
+        )
+    else:
+        anchor = StoryboardVisualAnchorV2(
+            node_id=source_grid.node_id,
+            asset_id=confirmation.asset_id,
+            node_revision=source_grid.revision,
+            document_revision=plan_revision,
+        )
+    return updated.model_copy(update={"visual_anchor": anchor})
+
+
+def _append_planned_nodes(
+    content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
+    *,
+    plan_document_id: str,
+    planned: tuple[CanvasNodeV2, ...],
+) -> StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3:
+    if isinstance(content, StoryboardProductionPlanContentV3):
+        existing = {(item.sequence_id, item.node_role) for item in content.planned_nodes}
+        planned_nodes = list(content.planned_nodes)
+        for node in planned:
+            sequence_id = str(node.metadata["source_sequence_id"])
+            node_role = "storyboard_grid" if node.node_type == "image" else "video_segment"
+            if (sequence_id, node_role) in existing:
+                continue
+            planned_nodes.append(
+                StoryboardPlannedNodeV3(
+                    sequence_id=sequence_id,
+                    node_role=node_role,
+                    node_id=node.node_id,
+                    node_revision=node.revision,
+                    materialization_id=(
+                        "materialization_"
+                        + sha256(
+                            f"{plan_document_id}:{sequence_id}:{node_role}:{node.node_id}".encode()
+                        ).hexdigest()[:32]
+                    ),
+                )
+            )
+        return content.model_copy(
+            update={
+                "planned_nodes": tuple(planned_nodes),
+            }
+        )
+
+    existing = {(item.sequence_id, item.node_role) for item in content.node_records}
+    records = list(content.node_records)
+    for node in planned:
+        sequence_id = str(node.metadata["source_sequence_id"])
+        node_role = "storyboard_grid" if node.node_type == "image" else "video_segment"
+        if (sequence_id, node_role) in existing:
+            continue
+        records.append(
+            StoryboardNodeRecordV2(
+                sequence_id=sequence_id,
+                node_role=node_role,
+                node_id=node.node_id,
+            )
+        )
+    return content.model_copy(
+        update={
+            "node_records": tuple(records),
+        }
+    )
+
+
+def _fanout_events(
+    fanout: StoryboardFanoutPlanV1,
+    *,
+    event_time: str,
+) -> tuple[V2EventInsert, V2EventInsert]:
+    return (
+        V2EventInsert(
+            workflow_id=fanout.workflow_id,
+            node_id=fanout.visual_anchor_node_id,
+            event_type="storyboard_visual_anchor_confirmed",
+            transition_key=(
+                f"storyboard-visual-anchor-confirmed:{fanout.visual_anchor_confirmation_id}"
+            ),
+            created_at=event_time,
+            payload={
+                "fanout_plan_id": fanout.fanout_plan_id,
+                "confirmation_id": fanout.visual_anchor_confirmation_id,
+                "node_revision": fanout.visual_anchor_node_revision,
+                "asset_id": fanout.visual_anchor_asset_id,
+                "asset_version_id": fanout.visual_anchor_asset_version_id,
+                "plan_document_id": fanout.plan_document_id,
+                "plan_revision": fanout.plan_revision,
+            },
+        ),
+        V2EventInsert(
+            workflow_id=fanout.workflow_id,
+            node_id=fanout.visual_anchor_node_id,
+            event_type="storyboard_fanout_committed",
+            transition_key=f"storyboard-fanout-committed:{fanout.fanout_plan_id}",
+            created_at=event_time,
+            payload={
+                "fanout_plan_id": fanout.fanout_plan_id,
+                "plan_document_id": fanout.plan_document_id,
+                "plan_revision": fanout.plan_revision,
+                "planned_node_ids": [item.node_id for item in fanout.nodes],
+                "planned_binding_ids": [item.binding_id for item in fanout.bindings],
+            },
+        ),
+    )
 
 
 def _retarget_binding_metadata(
@@ -914,6 +1846,7 @@ def _retarget_binding_metadata(
 
 def _grid_node(
     *,
+    plan_document_id: str,
     workflow_id: str,
     node_id: str,
     order: int,
@@ -933,6 +1866,7 @@ def _grid_node(
         status="draft",
         summary_prompt=sequence.narrative_goal,
         generation_prompt=segment.generation_prompt,
+        prompt_presentation=_seed_presentation(segment.generation_prompt),
         structured_content=StoryboardGridContentV2(
             sequence_summary=sequence.narrative_goal,
             narrative_goal=sequence.narrative_goal,
@@ -955,7 +1889,9 @@ def _grid_node(
         ).model_dump(mode="json"),
         parameters={},
         metadata={
+            "source_agent_document_id": plan_document_id,
             "source_sequence_id": sequence.sequence_id,
+            "sequence_index": order,
             "source_plan_revision": plan_revision,
             "source_sequence_start_seconds": sequence.start_seconds,
             "source_sequence_end_seconds": sequence.end_seconds,
@@ -964,6 +1900,16 @@ def _grid_node(
         revision=1,
         created_at=now,
         updated_at=now,
+    )
+
+
+def _seed_presentation(prompt: str) -> EditablePromptProjectionV1:
+    return EditablePromptProjectionV1(
+        text=prompt,
+        locale="und",
+        source="deterministic_projection",
+        revision=1,
+        prompt_digest=f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}",
     )
 
 

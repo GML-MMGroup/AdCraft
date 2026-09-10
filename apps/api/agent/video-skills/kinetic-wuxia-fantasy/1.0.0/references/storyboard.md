@@ -1,1 +1,5 @@
-Organize shots around readable action geography, develop visual progression through fabric and weapon motion, and reserve poetic landscapes for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+先用建立镜头说明动作地理，再按中景动作、局部接触、反应和结果切换。为关键帧记录起点、攻击线、落脚点、兵器方向、衣摆惯性和换位后的关系。每次剪切都要能恢复双方位置。
+
+用同向移动、衣摆遮挡、地形线或兵器交接连接镜头。检查特效是否遮挡接触点和重心变化，避免只展示姿态。

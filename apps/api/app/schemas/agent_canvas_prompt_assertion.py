@@ -11,6 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _SHA256 = r"^sha256:[a-f0-9]{64}$"
 _HEX_SHA256 = r"^[a-f0-9]{64}$"
+_ADDITIVE_PROJECTION_DIGEST_FIELDS = frozenset(
+    {
+        "character_identity_projection_digest",
+        "scene_environment_projection_digest",
+    }
+)
 
 
 class _PromptAssertionModel(BaseModel):
@@ -63,6 +69,8 @@ class PromptAssertionEvidenceV1(_PromptAssertionModel):
     source_snapshots: tuple[PromptAssertionSourceSnapshotV1, ...] = Field(default=(), max_length=64)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     sequence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    character_identity_projection_digest: str | None = Field(default=None, pattern=_SHA256)
+    scene_environment_projection_digest: str | None = Field(default=None, pattern=_SHA256)
     engine_owned_fields_digest: str = Field(pattern=_SHA256)
     evidence_digest: str = Field(pattern=_SHA256)
 
@@ -70,13 +78,22 @@ class PromptAssertionEvidenceV1(_PromptAssertionModel):
     def validate_canonical_identity(self) -> "PromptAssertionEvidenceV1":
         if len(self.assertion_ids) != len(set(self.assertion_ids)):
             raise ValueError("Prompt assertion IDs must be unique.")
-        if self.evidence_digest != prompt_assertion_evidence_digest(self):
-            raise ValueError("Prompt assertion evidence digest does not match its payload.")
-        return self
+        if self.evidence_digest == prompt_assertion_evidence_digest(self):
+            return self
+        if _is_legacy_projection_digest_payload(self) and (
+            self.evidence_digest == _legacy_prompt_assertion_evidence_digest(self)
+        ):
+            return self
+        raise ValueError("Prompt assertion evidence digest does not match its payload.")
 
     @classmethod
     def build(cls, **values: object) -> "PromptAssertionEvidenceV1":
         payload = {"schema_version": "1", **values}
+        # Include newly additive nullable identity fields in the pre-validation
+        # digest so legacy callers and validated model dumps share one canonical
+        # representation.
+        payload.setdefault("character_identity_projection_digest", None)
+        payload.setdefault("scene_environment_projection_digest", None)
         return cls.model_validate({**payload, "evidence_digest": _prefixed_digest(payload)})
 
 
@@ -98,18 +115,44 @@ def prompt_assertion_evidence_digest(evidence: PromptAssertionEvidenceV1) -> str
     return _prefixed_digest(evidence.model_dump(mode="json", exclude={"evidence_digest"}))
 
 
+def _is_legacy_projection_digest_payload(evidence: PromptAssertionEvidenceV1) -> bool:
+    return (
+        evidence.character_identity_projection_digest is None
+        and evidence.scene_environment_projection_digest is None
+        and _ADDITIVE_PROJECTION_DIGEST_FIELDS.isdisjoint(evidence.model_fields_set)
+    )
+
+
+def _legacy_prompt_assertion_evidence_digest(evidence: PromptAssertionEvidenceV1) -> str:
+    return _prefixed_digest(
+        evidence.model_dump(
+            mode="json",
+            exclude={"evidence_digest", *_ADDITIVE_PROJECTION_DIGEST_FIELDS},
+        )
+    )
+
+
 def safe_prompt_assertion_metadata(
     evidence: PromptAssertionEvidenceV1,
 ) -> dict[str, object]:
     """Project stable prompt-policy identity without creative or source content."""
 
-    return {
+    metadata: dict[str, object] = {
         "prompt_assertion_policy_ref": evidence.policy_ref,
         "prompt_assertion_policy_digest": evidence.policy_digest,
         "prompt_assertion_assertion_ids": list(evidence.assertion_ids),
         "prompt_assertion_evidence_digest": evidence.evidence_digest,
         "prompt_assertion_block_digest": evidence.assertion_block_digest,
     }
+    if evidence.character_identity_projection_digest is not None:
+        metadata["prompt_character_identity_projection_digest"] = (
+            evidence.character_identity_projection_digest
+        )
+    if evidence.scene_environment_projection_digest is not None:
+        metadata["prompt_scene_environment_projection_digest"] = (
+            evidence.scene_environment_projection_digest
+        )
+    return metadata
 
 
 def safe_provider_prompt_assertion_metadata(

@@ -17,7 +17,7 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
     StorageAccessDescriptorV2,
 )
-from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2
+from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, ResolvedModelExecutionV1
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 
@@ -83,7 +83,6 @@ class AgentCanvasResolvedInputCompiler:
                 source_node_id=item.source_node_id,
                 source_node_revision=item.source_node_revision,
                 input_role=item.input_role,
-                required=item.required,
                 display_order=item.display_order,
                 snapshot_id=text_snapshot.snapshot_id,
                 document_kind=item.document_kind,
@@ -108,16 +107,7 @@ class AgentCanvasResolvedInputCompiler:
                     "World Setting context resolution is unavailable.",
                     stage="agent_canvas_resolved_input_compiler",
                 )
-                if item.required:
-                    raise error
-                omitted_list.append(
-                    {
-                        "binding_id": item.binding_id,
-                        "source_node_id": item.source_node_id,
-                        "reason": error.code,
-                    }
-                )
-                continue
+                raise error
             try:
                 world_setting_inputs.append(
                     self._world_settings.resolve_for_run(
@@ -125,16 +115,8 @@ class AgentCanvasResolvedInputCompiler:
                         source=item,
                     )
                 )
-            except V2PersistenceError as error:
-                if item.required:
-                    raise
-                omitted_list.append(
-                    {
-                        "binding_id": item.binding_id,
-                        "source_node_id": item.source_node_id,
-                        "reason": error.code,
-                    }
-                )
+            except V2PersistenceError:
+                raise
         if len(world_setting_inputs) > 1:
             raise V2PersistenceError(
                 "world_setting_binding_ambiguous",
@@ -150,7 +132,7 @@ class AgentCanvasResolvedInputCompiler:
                 input_role=item.input_role,
                 source_semantic_role=item.source_semantic_role,
                 binding_metadata=item.binding_metadata,
-                required=item.required,
+                source_structured_content=item.source_structured_content,
                 display_order=item.display_order,
                 asset_id=item.asset_id,
                 asset_version_id=item.asset_version_id,
@@ -212,7 +194,6 @@ class AgentCanvasResolvedInputCompiler:
                 content_hash=item.content_digest,
                 binding_id=item.binding_id,
                 input_role=item.input_role,
-                required=item.required,
                 display_order=item.display_order,
             )
             for item in manifest.text_inputs
@@ -231,6 +212,7 @@ class AgentCanvasResolvedInputCompiler:
                     binding_kind=item.input_role,
                     source_semantic_role=item.source_semantic_role,
                     binding_metadata=item.binding_metadata,
+                    source_structured_content=item.source_structured_content,
                     asset_id=item.asset_id,
                     asset_version_id=item.asset_version_id,
                     media_type=item.media_type,
@@ -242,7 +224,6 @@ class AgentCanvasResolvedInputCompiler:
                     ),
                     binding_id=item.binding_id,
                     input_role=item.input_role,
-                    required=item.required,
                     display_order=item.display_order,
                 )
             )
@@ -252,6 +233,91 @@ class AgentCanvasResolvedInputCompiler:
                 key=lambda item: (item.display_order, item.binding_id or ""),
             )
         )
+
+
+def apply_provider_reference_limits(
+    manifest: ResolvedNodeInputManifestV2,
+    model_resolution: ResolvedModelExecutionV1,
+) -> ResolvedNodeInputManifestV2:
+    """Freeze a deterministic reference subset for one resolved provider model."""
+
+    metadata = model_resolution.capability_metadata
+    raw_limits = metadata.get("reference_limits")
+    limits = raw_limits if isinstance(raw_limits, dict) else {}
+    raw_total_limit = metadata.get("max_references")
+    total_limit = (
+        raw_total_limit
+        if isinstance(raw_total_limit, int) and not isinstance(raw_total_limit, bool)
+        else None
+    )
+    typed_limits = {
+        media_type: value
+        for media_type, value in limits.items()
+        if media_type in {"image", "video", "audio"}
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+        and value >= 0
+    }
+    if total_limit is None and not typed_limits:
+        return manifest
+
+    selected: list[ResolvedMediaBindingInputV2] = []
+    omitted = list(manifest.omitted_optional_inputs)
+    selected_counts = {"image": 0, "video": 0, "audio": 0}
+    already_omitted = {item.binding_id for item in omitted}
+    for item in sorted(
+        manifest.media_inputs,
+        key=lambda candidate: (candidate.display_order, candidate.binding_id),
+    ):
+        media_limit = typed_limits.get(item.media_type)
+        over_media_limit = (
+            media_limit is not None and selected_counts[item.media_type] >= media_limit
+        )
+        over_total_limit = total_limit is not None and len(selected) >= total_limit
+        if over_media_limit or over_total_limit:
+            if item.binding_id not in already_omitted:
+                omitted.append(
+                    OmittedOptionalInputV2(
+                        binding_id=item.binding_id,
+                        source_node_id=item.source_node_id,
+                        reason_code="omitted_provider_reference_limit",
+                        asset_id=item.asset_id,
+                        asset_version_id=item.asset_version_id,
+                        media_type=item.media_type,
+                        checksum=item.checksum,
+                    )
+                )
+            continue
+        selected.append(item)
+        selected_counts[item.media_type] += 1
+
+    updated = manifest.model_copy(
+        update={
+            "media_inputs": tuple(selected),
+            "omitted_optional_inputs": tuple(omitted),
+            "delivered_asset_version_ids": tuple(
+                item.asset_version_id for item in selected if item.asset_version_id is not None
+            ),
+        }
+    )
+    identity = updated.model_dump(
+        mode="json",
+        exclude={
+            "manifest_id",
+            "manifest_digest",
+            "delivered_asset_version_ids",
+            "created_at",
+        },
+    )
+    digest = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return updated.model_copy(
+        update={
+            "manifest_id": f"input_manifest_{digest[:24]}",
+            "manifest_digest": digest,
+        }
+    )
 
 
 def _missing_binding_id(identity: str) -> str:

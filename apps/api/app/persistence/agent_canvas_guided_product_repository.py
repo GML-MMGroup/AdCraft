@@ -925,7 +925,8 @@ class AgentCanvasGuidedProductRepository:
         ).hexdigest()[:32]
         connection.execute(
             delete(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                AgentCanvasGuidanceAwaitingRow.interaction_id == request.interaction_id,
             )
         )
         interaction_id = f"interaction_product_source_{identity}"
@@ -1111,7 +1112,6 @@ class AgentCanvasGuidedProductRepository:
             source=CanvasBindingSourceNodeV2(source_node_id=str(main_row["node_id"])),
             target_node_id=str(multiview_row["node_id"]),
             input_role="image_reference",
-            required=True,
             enabled=True,
             order=0,
             label=None,

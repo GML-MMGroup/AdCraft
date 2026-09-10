@@ -9,14 +9,21 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
-from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
+from app.schemas.agent_canvas import (
+    CanvasNodeErrorV2,
+    CanvasNodeV2,
+    OmittedOptionalInputV2,
+    ResolvedInputSnapshotV2,
+    ResolvedNodeInputManifestV2,
+)
 from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
     CompiledProviderPromptV2,
@@ -32,14 +39,21 @@ from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     NodeExecutionLeaseV2,
     NodeRuntimeV2,
+    ResolvedModelExecutionV2,
     ResolvedModelExecutionV1,
 )
 from app.schemas.agent_canvas_prompt_assertion import (
     safe_provider_prompt_assertion_metadata,
 )
-from app.schemas.agent_canvas_video_parameters import CompiledVideoParametersV2
+from app.schemas.agent_canvas_video_parameters import (
+    CompiledVideoParametersV2,
+    VideoParameterCompilationSnapshotV2,
+)
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultPublicationContextV1,
+)
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingContextEnvelopeV2,
     WorldSettingResolvedInputV2,
@@ -54,6 +68,11 @@ from app.services.agent_canvas_node_execution import (
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeDecisionV2,
+    classify_canvas_execution_mode,
+    has_managed_prompt_preparation,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
 )
@@ -67,8 +86,15 @@ from app.services.agent_canvas_execution_result_commit import (
 )
 from app.services.agent_canvas_output_preparation import (
     AgentCanvasOutputPreparationService,
+    ResultPublicationContext,
 )
-from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_result_publication_recovery import (
+    AgentCanvasResultPublicationRecoveryService,
+)
+from app.services.agent_canvas_resolved_inputs import (
+    AgentCanvasResolvedInputCompiler,
+    apply_provider_reference_limits,
+)
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_prompt_assertion_policy import (
@@ -82,6 +108,7 @@ from app.services.agent_canvas_role_reference_policy import (
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_video_parameter_compiler import (
     AgentCanvasVideoParameterCompiler,
+    build_direct_video_parameter_snapshot,
 )
 from app.services.model_resolution import ModelResolutionService
 
@@ -91,7 +118,12 @@ ScriptReadyPublisher = Callable[[str, str], object]
 TextReadyPublisher = Callable[[CanvasNodeV2], object]
 MediaReadyPublisher = Callable[[CanvasNodeV2], tuple[str, ...] | None]
 MediaContextPreparer = Callable[
-    [CanvasNodeV2, WorldSettingContextEnvelopeV2 | None],
+    [
+        CanvasNodeV2,
+        WorldSettingContextEnvelopeV2 | None,
+        tuple[ResolvedInputSnapshotV2, ...],
+        tuple[OmittedOptionalInputV2, ...],
+    ],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
 TerminalMemberReconciler = Callable[..., bool]
@@ -101,6 +133,11 @@ StageTraceWriter = Callable[
 ]
 Clock = Callable[[], datetime]
 RunEligibilityValidator = Callable[[CanvasNodeV2], None]
+BlankPromptEligibilityValidator = Callable[[CanvasNodeV2], None]
+GuidedMediaContextResolver = Callable[
+    [NodeExecutionContext, int, str],
+    GuidedMediaResultPublicationContextV1 | None,
+]
 
 
 class AgentCanvasRunService:
@@ -114,6 +151,7 @@ class AgentCanvasRunService:
         *,
         run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
         eligibility_validator: RunEligibilityValidator | None = None,
+        blank_prompt_eligibility_validator: BlankPromptEligibilityValidator | None = None,
         clock: Clock = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
@@ -121,6 +159,7 @@ class AgentCanvasRunService:
         self._events = events
         self._run_snapshots = run_snapshots
         self._eligibility_validator = eligibility_validator
+        self._blank_prompt_eligibility_validator = blank_prompt_eligibility_validator
         self._clock = clock
 
     def start_or_extend(
@@ -129,52 +168,39 @@ class AgentCanvasRunService:
         request: CanvasRunRequestV2,
         *,
         idempotency_key: str,
+        expected_revision: int | None = None,
     ) -> CanvasRunAcceptedV2:
         workflow = self._workflows.get_workflow(workflow_id)
+        if expected_revision is not None and expected_revision != workflow.revision:
+            raise _run_error(
+                "workflow_state_conflict",
+                "Workflow authoring changed before Run admission.",
+            )
         nodes = {node.node_id: node for node in workflow.nodes}
         requested = (
             tuple(nodes.values())
             if request.scope == "all_drafts"
             else tuple(self._require_node(nodes, node_id) for node_id in request.node_ids)
         )
-        requested_node_ids = {node.node_id for node in requested}
         accepted: list[str] = []
         skipped: list[CanvasRunSkippedNodeV2] = []
         for node in requested:
             reason = _skip_reason(node, request)
-            if reason is None:
-                if request.scope == "selected_nodes":
-                    unready_bindings = _unready_required_bindings(
-                        workflow,
-                        node.node_id,
-                        nodes,
-                    )
-                    unready_bindings = tuple(
-                        binding
-                        for binding in unready_bindings
-                        if binding.source.source_node_id not in requested_node_ids
-                    )
-                    missing_node_ids = tuple(
-                        binding.source.source_node_id for binding in unready_bindings
-                    )
-                    if missing_node_ids:
-                        raise _run_error(
-                            "upstream_inputs_not_ready",
-                            "Required upstream inputs are not ready.",
-                            details={
-                                "missing_node_ids": list(missing_node_ids),
-                                "target_node_id": node.node_id,
-                                "bindings": [
-                                    {
-                                        "binding_id": binding.binding_id,
-                                        "source_node_id": binding.source.source_node_id,
-                                        "target_node_id": binding.target_node_id,
-                                        "required": binding.required,
-                                    }
-                                    for binding in unready_bindings
-                                ],
-                            },
+            if reason == "node_prompt_empty" and self._blank_prompt_eligibility_validator:
+                try:
+                    self._blank_prompt_eligibility_validator(node)
+                except V2PersistenceError as error:
+                    if request.scope == "selected_nodes":
+                        raise
+                    skipped.append(
+                        CanvasRunSkippedNodeV2(
+                            node_id=node.node_id,
+                            reason=error.code,
                         )
+                    )
+                    continue
+                reason = None
+            if reason is None:
                 try:
                     if self._eligibility_validator is not None:
                         self._eligibility_validator(node)
@@ -213,7 +239,9 @@ class AgentCanvasRunService:
         admission = self._runtime.start_or_join_execution(
             CanvasExecutionStartCommandV2(
                 workflow_id=workflow_id,
-                expected_workflow_revision=workflow.revision,
+                expected_workflow_revision=(
+                    workflow.revision if expected_revision is None else expected_revision
+                ),
                 scope=request.scope,
                 idempotency_key=idempotency_key,
                 request_digest=_fingerprint(request),
@@ -277,8 +305,10 @@ class DynamicCanvasScheduler:
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         output_preparer: AgentCanvasOutputPreparationService | None = None,
         result_committer: AgentCanvasExecutionResultCommitService | None = None,
+        publication_recovery: AgentCanvasResultPublicationRecoveryService | None = None,
         terminal_member_reconciler: TerminalMemberReconciler | None = None,
         prompt_preparation: NodePromptPreparationService | None = None,
+        guided_media_context_resolver: GuidedMediaContextResolver | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -309,8 +339,10 @@ class DynamicCanvasScheduler:
         self._leases = NodeLeaseService(runtime, clock=clock)
         self._output_preparer = output_preparer
         self._result_committer = result_committer
+        self._publication_recovery = publication_recovery
         self._terminal_member_reconciler = terminal_member_reconciler
         self._prompt_preparation = prompt_preparation or NodePromptPreparationService(workflows)
+        self._guided_media_context_resolver = guided_media_context_resolver
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
@@ -326,6 +358,23 @@ class DynamicCanvasScheduler:
         execution = self._runtime.get_execution(execution_id)
         if execution.status not in {"queued", "running", "waiting"}:
             return
+        if self._run_snapshots is not None:
+            missing_snapshot_node_ids = tuple(
+                member.node_id
+                for member in self._runtime.list_members(execution_id)
+                if member.state in {"queued", "waiting"} and member.run_intent_snapshot is None
+            )
+            if missing_snapshot_node_ids:
+                self._run_snapshots.freeze_members(
+                    execution_id,
+                    now=self._clock(),
+                    node_ids=missing_snapshot_node_ids,
+                )
+        if self._publication_recovery is not None:
+            self._publication_recovery.recover_execution(execution_id)
+            execution = self._runtime.get_execution(execution_id)
+            if execution.status not in {"queued", "running", "waiting"}:
+                return
         self._runtime.set_execution_status(
             execution_id,
             "running",
@@ -436,11 +485,12 @@ class DynamicCanvasScheduler:
                     )
                 for lease, context, future in prepared:
                     try:
+                        outcome, latest_lease = future.result()
                         self._complete_member(
                             current.workflow_id,
-                            lease,
+                            latest_lease,
                             context,
-                            future.result(),
+                            outcome,
                         )
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
@@ -464,16 +514,11 @@ class DynamicCanvasScheduler:
             if member.state not in {"queued", "waiting"}:
                 continue
             required_waiting = tuple(
-                dict.fromkeys(
-                    (
-                        *_frozen_unready_sources(member, nodes, required=True),
-                        *_same_wave_dependency_sources(member, members_by_node),
-                    )
-                )
+                dict.fromkeys(_same_wave_dependency_sources(member, members_by_node))
             )
             preferred_waiting = tuple(
                 source_node_id
-                for source_node_id in _frozen_unready_sources(member, nodes, required=False)
+                for source_node_id in _frozen_unready_sources(member, nodes)
                 if members_by_node.get(source_node_id) is not None
                 and members_by_node[source_node_id].state in {"queued", "waiting", "running"}
             )
@@ -590,11 +635,7 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
-        managed_prompt = bool(
-            node.prompt_preparation.role_variant
-            or node.prompt_preparation.recipe_id
-            or node.metadata.get("prompt_recipe_id")
-        )
+        managed_prompt = has_managed_prompt_preparation(node)
         if node.prompt_preparation.status == "failed":
             preparation_error = _prompt_preparation_failure(node)
             assert preparation_error is not None
@@ -666,6 +707,17 @@ class DynamicCanvasScheduler:
                     "prompt_context_snapshot_id": current_after_inputs.prompt_context_snapshot_id
                 }
             )
+        mode = (
+            classify_canvas_execution_mode(
+                node,
+                has_usable_reference_only_input=bool(manifest.media_inputs),
+            )
+            if member.run_intent_snapshot is None
+            else CanvasExecutionModeDecisionV2(
+                execution_mode=member.run_intent_snapshot.execution_mode,
+                semantic_extraction=member.run_intent_snapshot.semantic_extraction,
+            )
+        )
         self._assert_current_dependency_fence(
             workflow_id,
             execution_id,
@@ -676,6 +728,8 @@ class DynamicCanvasScheduler:
                 inputs=(),
                 input_manifest=manifest,
                 authoring_revision_observed=observed_revision,
+                execution_mode=mode.execution_mode,
+                semantic_extraction=mode.semantic_extraction,
             ),
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
@@ -688,6 +742,7 @@ class DynamicCanvasScheduler:
         world_setting = (
             manifest.world_setting_inputs[0].context if manifest.world_setting_inputs else None
         )
+        prompt_authority_node = node
         model_id = None
         provider_id = None
         resolution = None
@@ -696,6 +751,12 @@ class DynamicCanvasScheduler:
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None
         parameter_compilation_snapshot = None
         prompt_metadata: dict[str, object] = dict(member.prompt_metadata)
+        prompt_metadata.update(
+            {
+                "execution_mode": mode.execution_mode,
+                "semantic_extraction": mode.semantic_extraction,
+            }
+        )
         execution_parameter_normalizations = prompt_metadata.get(
             "execution_parameter_normalizations"
         )
@@ -717,17 +778,29 @@ class DynamicCanvasScheduler:
                 "context_digest": world_setting.context_digest,
             }
         runtime_omissions = tuple(
-            item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+            item.model_dump(mode="json", exclude_none=True)
+            for item in manifest.omitted_optional_inputs
         )
         stored_resolution = prompt_metadata.get("model_resolution")
         if isinstance(stored_resolution, dict):
-            resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
+            try:
+                resolution = ResolvedModelExecutionV2.model_validate(stored_resolution)
+            except ValidationError:
+                resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
         elif self._model_resolution is not None and node.node_type != "editing":
             resolution = self._model_resolution.resolve(node)
             prompt_metadata["model_resolution"] = resolution.model_dump(mode="json")
         if resolution is not None:
             model_id = resolution.provider_model_id
             provider_id = resolution.provider_id
+            if node.node_type in {"image", "video", "audio"}:
+                manifest = apply_provider_reference_limits(manifest, resolution)
+                inputs = self._input_compiler.materialize_inputs(manifest)
+                prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
+                runtime_omissions = tuple(
+                    item.model_dump(mode="json", exclude_none=True)
+                    for item in manifest.omitted_optional_inputs
+                )
         if node.node_type in {"image", "video", "audio"}:
             selected_node = (
                 node.model_copy(
@@ -740,12 +813,32 @@ class DynamicCanvasScheduler:
                 else node
             )
             capability = self._capabilities.resolve(selected_node, inputs)
-            if node.node_type == "video" and self._video_parameter_compiler is not None:
+            if not (node.generation_prompt or "").strip() and (
+                mode.execution_mode != "manual_prompt_direct"
+                or not capability.supports_reference_only_generation
+                or not manifest.media_inputs
+            ):
+                raise V2PersistenceError(
+                    "node_prompt_empty",
+                    "The selected model requires a generation prompt.",
+                    stage="agent_canvas_scheduler",
+                )
+            if (
+                node.node_type == "video"
+                and mode.execution_mode == "agent_assisted"
+                and self._video_parameter_compiler is not None
+            ):
                 if member.parameter_compilation_snapshot_id is not None:
                     parameter_compilation_snapshot = (
                         self._runtime.get_parameter_compilation_snapshot(
                             member.parameter_compilation_snapshot_id
                         )
+                    )
+                    prompt_authority_node = _parameter_snapshot_prompt_authority(
+                        node,
+                        parameter_compilation_snapshot,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
                     )
                     node = node.model_copy(
                         update={
@@ -796,6 +889,12 @@ class DynamicCanvasScheduler:
                             "parameter_provenance": compiled.parameter_provenance,
                         }
                     )
+                    prompt_authority_node = _parameter_snapshot_prompt_authority(
+                        node,
+                        parameter_compilation_snapshot,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                    )
                     observed_revision = current_node.revision
                 effective_parameters = EffectiveMediaParameterSnapshotV2(
                     requested=parameter_compilation_snapshot.requested_parameters,
@@ -805,6 +904,47 @@ class DynamicCanvasScheduler:
                     provider=capability.provider,
                     model_id=capability.model_id,
                     capability_revision=capability.capability_revision,
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
+                )
+                prompt_metadata["parameter_compilation_snapshot_id"] = (
+                    parameter_compilation_snapshot.snapshot_id
+                )
+            elif node.node_type == "video" and mode.execution_mode == "manual_prompt_direct":
+                direct_compiled = self._execution_parameters.resolve_direct_video(
+                    node,
+                    binding_snapshots=(
+                        member.run_intent_snapshot.binding_snapshots
+                        if member.run_intent_snapshot is not None
+                        else ()
+                    ),
+                    capability=capability,
+                    model_defaults=capability.default_parameters,
+                )
+                parameter_compilation_snapshot = build_direct_video_parameter_snapshot(
+                    node=node,
+                    selected_model_ref=(
+                        resolution.model_ref if resolution is not None else capability.model_id
+                    ),
+                    capability=capability,
+                    execution_id=execution_id,
+                    member_id=member.member_id,
+                    model_defaults=capability.default_parameters,
+                    compiled=direct_compiled,
+                    now=now,
+                )
+                self._runtime.put_parameter_compilation_snapshot(parameter_compilation_snapshot)
+                effective_parameters = EffectiveMediaParameterSnapshotV2(
+                    requested=direct_compiled.requested_parameters,
+                    effective=direct_compiled.effective_parameters,
+                    normalizations=direct_compiled.normalizations,
+                    parameter_compilation_snapshot_id=parameter_compilation_snapshot.snapshot_id,
+                    provider=capability.provider,
+                    model_id=capability.model_id,
+                    capability_revision=capability.capability_revision,
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
+                    parameter_source=direct_compiled.parameter_source,
                 )
                 prompt_metadata["parameter_compilation_snapshot_id"] = (
                     parameter_compilation_snapshot.snapshot_id
@@ -815,14 +955,22 @@ class DynamicCanvasScheduler:
                     capability,
                     normalizations=normalization_labels,
                 )
+                effective_parameters = effective_parameters.model_copy(
+                    update={
+                        "execution_mode": mode.execution_mode,
+                        "semantic_extraction": mode.semantic_extraction,
+                    }
+                )
             prompt_metadata["effective_parameters"] = effective_parameters.model_dump(mode="json")
             if resolution is None:
                 model_id = capability.model_id
                 provider_id = capability.provider
             if self._media_context_preparer is not None:
                 compiled_prompt, reference_bundle = self._media_context_preparer(
-                    node,
+                    prompt_authority_node,
                     world_setting,
+                    inputs,
+                    manifest.omitted_optional_inputs,
                 )
                 if compiled_prompt is not None:
                     prompt_metadata.update(
@@ -876,6 +1024,8 @@ class DynamicCanvasScheduler:
                 for item in manifest.omitted_optional_inputs
             ),
             world_setting=world_setting,
+            execution_mode=mode.execution_mode,
+            semantic_extraction=mode.semantic_extraction,
         )
         trace_started_at = self._clock()
         try:
@@ -990,7 +1140,8 @@ class DynamicCanvasScheduler:
                         for item in manifest.media_inputs
                     ],
                     "omitted_optional_inputs": [
-                        item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+                        item.model_dump(mode="json", exclude_none=True)
+                        for item in manifest.omitted_optional_inputs
                     ],
                     "refresh": ["workflow_nodes", "runtime"],
                 },
@@ -1004,7 +1155,7 @@ class DynamicCanvasScheduler:
                     now=now,
                     omitted_optional_inputs=runtime_omissions,
                     event_type="provider_input_omitted",
-                    event_payload=omission.model_dump(mode="json"),
+                    event_payload=omission.model_dump(mode="json", exclude_none=True),
                 )
         if prepared.seedance_input_audit is not None:
             prompt_metadata["seedance_input_manifest"] = prepared.seedance_input_audit.model_dump(
@@ -1188,9 +1339,13 @@ class DynamicCanvasScheduler:
         )
         if current_node is None:
             reasons.append("target_node_missing")
-        elif current_node.prompt_preparation.status != "ready" and (
-            current_node.prompt_preparation.operation_id is not None
-            or current_node.generation_prompt is None
+        elif (
+            current_node.prompt_preparation.status != "ready"
+            and (
+                current_node.prompt_preparation.operation_id is not None
+                or current_node.generation_prompt is None
+            )
+            and not _reference_only_direct_input_is_frozen(context)
         ):
             # A run snapshot may legitimately carry an older target revision,
             # but it can never bypass the live prompt-preparation barrier.
@@ -1350,8 +1505,10 @@ class DynamicCanvasScheduler:
         self,
         lease: NodeExecutionLeaseV2,
         context: NodeExecutionContext,
-    ) -> NodeExecutionOutcome:
-        return self._leases.guard(lease).run(lambda: self._execute_member(context))
+    ) -> tuple[NodeExecutionOutcome, NodeExecutionLeaseV2]:
+        return self._leases.guard(lease).run_with_latest_lease(
+            lambda: self._execute_member(context)
+        )
 
     def _complete_member(
         self,
@@ -1360,8 +1517,8 @@ class DynamicCanvasScheduler:
         context: NodeExecutionContext,
         outcome: NodeExecutionOutcome,
     ) -> None:
-        now = self._clock()
         self._leases.assert_current(lease)
+        now = self._clock()
         execution_id = lease.execution_id
         node_id = lease.node_id
         if outcome.provider_task_id is not None:
@@ -1434,37 +1591,103 @@ class DynamicCanvasScheduler:
             return
         if self._output_preparer is not None and self._result_committer is not None:
             fingerprint = _execution_fingerprint(context)
-            prepared = self._output_preparer.prepare(
-                context,
-                outcome,
-                fingerprint=fingerprint,
-            )
             member = next(
                 item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
             )
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    member_id=member.member_id,
-                    node_id=node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=prepared.logical_result_key,
-                    payload_digest=prepared.payload_digest,
-                    provider_task_id=outcome.provider_task_id,
-                    outcome="succeeded",
-                    prepared_result=prepared,
-                    committed_at=now,
+            if self._publication_recovery is not None and (
+                member.run_intent_snapshot_id is None or member.run_intent_snapshot_digest is None
+            ):
+                raise V2PersistenceError(
+                    "node_result_publication_source_invalid",
+                    "Result publication requires an immutable run snapshot.",
+                    stage="agent_canvas_scheduler",
                 )
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="publishing",
+                now=self._clock(),
+                expected_lease_generation=lease.generation,
             )
+            try:
+                guided_media_context = (
+                    self._guided_media_context_resolver(
+                        context,
+                        lease.generation,
+                        fingerprint,
+                    )
+                    if self._guided_media_context_resolver is not None
+                    else None
+                )
+                publication = (
+                    ResultPublicationContext(
+                        member_id=member.member_id,
+                        source_snapshot_id=member.run_intent_snapshot_id,
+                        source_snapshot_digest=member.run_intent_snapshot_digest,
+                    )
+                    if self._publication_recovery is not None
+                    and member.run_intent_snapshot_id is not None
+                    and member.run_intent_snapshot_digest is not None
+                    else None
+                )
+                prepared, lease = self._leases.guard(lease).run_with_latest_lease(
+                    lambda: self._output_preparer.prepare(
+                        context,
+                        outcome,
+                        fingerprint=fingerprint,
+                        **({"publication": publication} if publication is not None else {}),
+                        **(
+                            {"guided_media_context": guided_media_context}
+                            if guided_media_context is not None
+                            else {}
+                        ),
+                    )
+                )
+                now = self._clock()
+                self._result_committer.commit(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                        node_id=node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=prepared.logical_result_key,
+                        payload_digest=prepared.payload_digest,
+                        publication_intent_id=prepared.publication_intent_id,
+                        provider_task_id=outcome.provider_task_id,
+                        outcome="succeeded",
+                        prepared_result=prepared,
+                        guided_media_context=prepared.guided_media_context,
+                        committed_at=now,
+                    )
+                )
+            except Exception as error:
+                error_code = (
+                    error.code
+                    if isinstance(error, V2PersistenceError)
+                    else "node_result_publication_commit_failed"
+                )
+                if (
+                    self._publication_recovery is not None
+                    and self._publication_recovery.defer_member(
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                        error_code=error_code,
+                    )
+                ):
+                    return
+                raise
             return
         asset_id = None
         if outcome.media is not None:
             fingerprint = _execution_fingerprint(context)
             publication_started_at = self._clock()
             try:
-                asset_id = self._media_publisher(context, outcome.media, fingerprint)
+                asset_id, lease = self._leases.guard(lease).run_with_latest_lease(
+                    lambda: self._media_publisher(context, outcome.media, fingerprint)
+                )
             except Exception as error:
                 self._trace_stage(
                     context,
@@ -1597,6 +1820,29 @@ class DynamicCanvasScheduler:
             except V2PersistenceError as commit_error:
                 if commit_error.code != "stale_execution_lease":
                     raise
+                stale_detail = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                stale_digest = hashlib.sha256(stale_detail.model_dump_json().encode()).hexdigest()
+                self._result_committer.reconcile_stale_lease_failure(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=lease.execution_id,
+                        member_id=member.member_id,
+                        node_id=lease.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=f"{lease.execution_id}:{lease.node_id}:{lease.generation}:failed",
+                        payload_digest=stale_digest,
+                        provider_task_id=member.provider_task_id,
+                        outcome="failed",
+                        error=stale_detail,
+                        committed_at=self._clock(),
+                    )
+                )
+                return
             self._reconcile_terminal_member(
                 workflow_id,
                 member,
@@ -1843,12 +2089,19 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "source_only_node_not_runnable"
     if node.node_type == "editing":
         return "node_not_runnable"
-    if node.status == "ready":
+    if node.status == "ready" and request.scope == "all_drafts":
         return "node_already_ready"
     if node.status == "working":
         return "node_already_working"
     if node.status == "failed" and not request.retry_failed:
         return "failed_node_retry_required"
+    if (
+        node.prompt_preparation.status == "waiting_user"
+        and not (node.generation_prompt or "").strip()
+    ):
+        return "node_prompt_empty"
+    if node.prompt_preparation.status in {"queued", "working"}:
+        return "prompt_preparation_in_progress"
     if node.prompt_preparation.status != "ready":
         return "node_prompt_preparation_incomplete"
     assertion_error = prompt_assertion_admission_error(node)
@@ -1863,12 +2116,20 @@ def _skip_message(reason: str) -> str:
     return {
         "source_only_node_not_runnable": "Source-only nodes cannot be run.",
         "node_not_runnable": "Node type cannot be run.",
-        "node_already_ready": "Ready nodes are not rerun in place.",
+        "node_already_ready": "Ready nodes are excluded from Global Run.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
+        "node_prompt_empty": "A generation prompt is required before running this node.",
+        "prompt_preparation_in_progress": "Prompt preparation is still in progress.",
         "node_prompt_preparation_incomplete": "Node prompt preparation is not ready.",
         "node_prompt_assertion_evidence_missing": "Current prompt assertion evidence is required.",
         "node_prompt_assertion_contract_invalid": "Prompt assertion evidence does not match current authority.",
+        "character_parent_identity_projection_invalid": (
+            "Character identity projection does not match the current parent authority."
+        ),
+        "scene_environment_projection_invalid": (
+            "Scene environment projection does not match the current scene authority."
+        ),
     }[reason]
 
 
@@ -1911,21 +2172,15 @@ def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, o
     payload["world_setting_inputs"] = [
         _public_world_setting_input(item) for item in manifest.world_setting_inputs
     ]
+    payload["omitted_optional_inputs"] = [
+        item.model_dump(mode="json", exclude_none=True) for item in manifest.omitted_optional_inputs
+    ]
     return payload
-
-
-def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, ...]:
-    return tuple(
-        binding.source.source_node_id
-        for binding in _unready_required_bindings(workflow, target_node_id, nodes)
-    )
 
 
 def _frozen_unready_sources(
     member: CanvasExecutionMembershipV2,
     nodes: dict[str, CanvasNodeV2],
-    *,
-    required: bool,
 ) -> tuple[str, ...]:
     snapshot = member.run_intent_snapshot
     if snapshot is None:
@@ -1933,12 +2188,21 @@ def _frozen_unready_sources(
     return tuple(
         binding.source_id
         for binding in snapshot.binding_snapshots
-        if binding.required is required
-        and binding.source_kind == "node_output"
+        if binding.source_kind == "node_output"
+        and binding.input_role == "text_context"
         and not _node_output_source_is_ready(
             source=nodes.get(binding.source_id),
             input_role=binding.input_role,
         )
+    )
+
+
+def _reference_only_direct_input_is_frozen(context: NodeExecutionContext) -> bool:
+    manifest = context.input_manifest
+    return bool(
+        context.execution_mode == "manual_prompt_direct"
+        and manifest is not None
+        and manifest.media_inputs
     )
 
 
@@ -1961,28 +2225,10 @@ def _same_wave_dependency_sources(
         binding.source_id
         for binding in snapshot.binding_snapshots
         if binding.source_kind == "node_output"
+        and binding.input_role == "text_context"
         and (source_member := members_by_node.get(binding.source_id)) is not None
         and source_member.state in {"queued", "waiting", "running"}
     )
-
-
-def _unready_required_bindings(workflow, target_node_id, nodes):
-    waiting = []
-    for binding in workflow.bindings:
-        if (
-            binding.target_node_id != target_node_id
-            or not binding.required
-            or not binding.enabled
-            or binding.source.kind != "node_output"
-        ):
-            continue
-        source = nodes.get(binding.source.source_node_id)
-        if not _node_output_source_is_ready(
-            source=source,
-            input_role=binding.input_role,
-        ):
-            waiting.append(binding)
-    return tuple(waiting)
 
 
 def _node_output_source_is_ready(
@@ -2008,9 +2254,7 @@ def _prompt_preparation_pending(node: CanvasNodeV2 | None) -> bool:
     if node is None or node.node_type not in {"text", "script", "image", "video", "audio"}:
         return False
     preparation = node.prompt_preparation
-    managed = bool(
-        preparation.role_variant or preparation.recipe_id or node.metadata.get("prompt_recipe_id")
-    )
+    managed = has_managed_prompt_preparation(node)
     return managed and preparation.status in {"queued", "working"}
 
 
@@ -2072,7 +2316,6 @@ def _parameter_compilation_revision_is_current(
         "position",
         "error",
         "prompt_preparation",
-        "variation_draft",
     ):
         if getattr(current, field) != getattr(original, field):
             return False
@@ -2085,6 +2328,36 @@ def _parameter_compilation_revision_is_current(
         current.parameters == compiled.authoring_parameters
         and current.parameter_provenance == compiled.parameter_provenance
     )
+
+
+def _parameter_snapshot_prompt_authority(
+    node: CanvasNodeV2,
+    snapshot: VideoParameterCompilationSnapshotV2,
+    *,
+    execution_id: str,
+    member_id: str,
+) -> CanvasNodeV2:
+    """Restore the exact editable Prompt revision after a parameter-only refresh."""
+
+    projection = node.prompt_presentation
+    prompt = str(node.generation_prompt or "")
+    expected_digest = f"sha256:{hashlib.sha256(prompt.encode('utf-8')).hexdigest()}"
+    if not (
+        projection is not None
+        and projection.revision + 1 == node.revision
+        and projection.text == prompt
+        and projection.prompt_digest == expected_digest
+        and node.metadata.get("guided_review_node_revision") == projection.revision
+        and snapshot.workflow_id == node.workflow_id
+        and snapshot.execution_id == execution_id
+        and snapshot.member_id == member_id
+        and snapshot.node_id == node.node_id
+        and snapshot.node_revision == node.revision
+        and snapshot.requested_parameters == node.parameters
+        and snapshot.parameter_provenance == node.parameter_provenance
+    ):
+        return node
+    return node.model_copy(update={"revision": projection.revision})
 
 
 def _fingerprint(request: CanvasRunRequestV2) -> str:

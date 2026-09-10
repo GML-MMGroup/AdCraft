@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing campaign concept through silhouette and premium product reveal through surfaces and detail. Make functional features readable, and use visual anchor only where it strengthens the requested selling point.
+把新品的轮廓、比例、颜色、材质、结构、标识和关键部件当作最高优先级的视觉锚点。先区分不可改变的产品事实与可设计的展示方式，再用整体外形建立识别、细节镜头证明材质或功能、使用中景说明人与产品的关系。
+
+产品揭示要有层级：第一次出现清楚，细节出现有理由，回到全貌时仍能对上颜色、结构和光源。人物接触产品时检查手部位置、受力方向、尺度和视线；产品放入场景时检查落点、阴影、反射和空间比例。参考图不足时减少高风险旋转、遮挡和形变。
+
+正例：沿真实接触方向推进到关键部件，功能完成后以干净构图展示全貌，细节和整体互相证明。
+反例：用光晕覆盖接口或改动 Logo 位置，或者为了更“未来”凭空增加按钮、材质和结构。

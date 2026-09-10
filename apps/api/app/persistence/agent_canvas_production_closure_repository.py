@@ -6,15 +6,20 @@ from hashlib import sha256
 import json
 from typing import Literal, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import AgentCanvasGuidedProductionReceiptRow
 from app.schemas.agent_canvas_production_closure import (
+    GuidedEditingActionReconciliationReceiptV1,
     GuidedEditingPreparationReceiptV1,
+    GuidedEditingPreparationReceiptV2,
+    GuidedEditingTopologyReceiptV2,
     GuidedFinalCompletionReceiptV1,
     GuidedMediaConfirmationV1,
     StoryboardFanoutPlanV1,
@@ -25,20 +30,25 @@ ReceiptType = Literal[
     "storyboard_fanout",
     "media_confirmation",
     "editing_preparation",
+    "editing_action_reconciliation",
     "final_completion",
 ]
 ReceiptModel = (
     StoryboardFanoutPlanV1
     | GuidedMediaConfirmationV1
     | GuidedEditingPreparationReceiptV1
+    | GuidedEditingTopologyReceiptV2
+    | GuidedEditingActionReconciliationReceiptV1
     | GuidedFinalCompletionReceiptV1
 )
 ReceiptT = TypeVar("ReceiptT", bound=BaseModel)
+EditingPreparationReceipt = GuidedEditingPreparationReceiptV1 | GuidedEditingPreparationReceiptV2
 
 _MODEL_BY_TYPE: dict[ReceiptType, type[BaseModel]] = {
     "storyboard_fanout": StoryboardFanoutPlanV1,
     "media_confirmation": GuidedMediaConfirmationV1,
     "editing_preparation": GuidedEditingPreparationReceiptV1,
+    "editing_action_reconciliation": GuidedEditingActionReconciliationReceiptV1,
     "final_completion": GuidedFinalCompletionReceiptV1,
 }
 
@@ -54,11 +64,63 @@ class AgentCanvasProductionClosureRepository:
     ) -> GuidedMediaConfirmationV1:
         return self._save("media_confirmation", confirmation)
 
+    def save_confirmation_in_transaction(
+        self,
+        connection: Connection,
+        confirmation: GuidedMediaConfirmationV1,
+    ) -> GuidedMediaConfirmationV1:
+        return self._save_in_transaction(connection, "media_confirmation", confirmation)
+
     def get_confirmation(self, confirmation_id: str) -> GuidedMediaConfirmationV1:
         return self._get("media_confirmation", confirmation_id, GuidedMediaConfirmationV1)
 
+    def find_confirmation_for_source(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        node_id: str,
+        node_revision: int,
+        asset_id: str,
+        asset_version_id: str,
+        asset_digest: str,
+        connection: Connection | None = None,
+        media_role: Literal["image", "video", "audio"] | None = None,
+        sequence_id: str | None = None,
+    ) -> GuidedMediaConfirmationV1 | None:
+        """Find the immutable acceptance for one exact media source."""
+
+        return next(
+            (
+                cast(GuidedMediaConfirmationV1, item)
+                for item in reversed(
+                    self._list("media_confirmation", workflow_id, connection=connection)
+                )
+                if (
+                    item.plan_document_id == plan_document_id
+                    and item.node_id == node_id
+                    and item.node_revision == node_revision
+                    and item.asset_id == asset_id
+                    and item.asset_version_id == asset_version_id
+                    and item.asset_digest == asset_digest
+                    and (
+                        media_role is None
+                        or (item.media_role == media_role and item.sequence_id == sequence_id)
+                    )
+                )
+            ),
+            None,
+        )
+
     def save_fanout(self, plan: StoryboardFanoutPlanV1) -> StoryboardFanoutPlanV1:
         return self._save("storyboard_fanout", plan)
+
+    def save_fanout_in_transaction(
+        self,
+        connection: Connection,
+        plan: StoryboardFanoutPlanV1,
+    ) -> StoryboardFanoutPlanV1:
+        return self._save_in_transaction(connection, "storyboard_fanout", plan)
 
     def get_fanout(self, fanout_plan_id: str) -> StoryboardFanoutPlanV1:
         return self._get("storyboard_fanout", fanout_plan_id, StoryboardFanoutPlanV1)
@@ -81,27 +143,32 @@ class AgentCanvasProductionClosureRepository:
             None,
         )
 
-    def save_preparation(
-        self, receipt: GuidedEditingPreparationReceiptV1
-    ) -> GuidedEditingPreparationReceiptV1:
+    def save_preparation(self, receipt: EditingPreparationReceipt) -> EditingPreparationReceipt:
         return self._save("editing_preparation", receipt)
 
-    def get_preparation(self, receipt_id: str) -> GuidedEditingPreparationReceiptV1:
+    def get_preparation(self, receipt_id: str) -> EditingPreparationReceipt:
         return self._get(
             "editing_preparation",
             receipt_id,
             GuidedEditingPreparationReceiptV1,
         )
 
+    def save_preparation_in_transaction(
+        self,
+        connection: Connection,
+        receipt: EditingPreparationReceipt,
+    ) -> EditingPreparationReceipt:
+        return self._save_in_transaction(connection, "editing_preparation", receipt)
+
     def find_preparation(
         self,
         workflow_id: str,
         plan_document_id: str,
         plan_revision: int,
-    ) -> GuidedEditingPreparationReceiptV1 | None:
+    ) -> EditingPreparationReceipt | None:
         return next(
             (
-                cast(GuidedEditingPreparationReceiptV1, item)
+                cast(EditingPreparationReceipt, item)
                 for item in self._list("editing_preparation", workflow_id)
                 if item.plan_document_id == plan_document_id and item.plan_revision == plan_revision
             ),
@@ -112,10 +179,10 @@ class AgentCanvasProductionClosureRepository:
         self,
         workflow_id: str,
         editing_node_id: str,
-    ) -> GuidedEditingPreparationReceiptV1 | None:
+    ) -> EditingPreparationReceipt | None:
         return next(
             (
-                cast(GuidedEditingPreparationReceiptV1, item)
+                cast(EditingPreparationReceipt, item)
                 for item in reversed(self._list("editing_preparation", workflow_id))
                 if item.editing_node_id == editing_node_id
             ),
@@ -126,6 +193,60 @@ class AgentCanvasProductionClosureRepository:
         self, receipt: GuidedFinalCompletionReceiptV1
     ) -> GuidedFinalCompletionReceiptV1:
         return self._save("final_completion", receipt)
+
+    def save_completion_in_transaction(
+        self, connection: Connection, receipt: GuidedFinalCompletionReceiptV1
+    ) -> GuidedFinalCompletionReceiptV1:
+        return self._save_in_transaction(connection, "final_completion", receipt)
+
+    def save_action_reconciliation_in_transaction(
+        self,
+        connection: Connection,
+        receipt: GuidedEditingActionReconciliationReceiptV1,
+    ) -> GuidedEditingActionReconciliationReceiptV1:
+        return self._save_in_transaction(
+            connection,
+            "editing_action_reconciliation",
+            receipt,
+        )
+
+    def find_action_reconciliation(
+        self,
+        logical_identity: str,
+    ) -> GuidedEditingActionReconciliationReceiptV1 | None:
+        try:
+            with self._database.session_factory() as session:
+                row = session.scalar(
+                    select(AgentCanvasGuidedProductionReceiptRow).where(
+                        AgentCanvasGuidedProductionReceiptRow.receipt_type
+                        == "editing_action_reconciliation",
+                        AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+                    )
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "guided_production_receipt_persistence_failed",
+                "Guided production receipt storage is unavailable.",
+            ) from error
+        if row is None:
+            return None
+        return GuidedEditingActionReconciliationReceiptV1.model_validate_json(row.payload_json)
+
+    @staticmethod
+    def find_action_reconciliation_in_transaction(
+        connection: Connection,
+        logical_identity: str,
+    ) -> GuidedEditingActionReconciliationReceiptV1 | None:
+        payload_json = connection.execute(
+            select(AgentCanvasGuidedProductionReceiptRow.payload_json).where(
+                AgentCanvasGuidedProductionReceiptRow.receipt_type
+                == "editing_action_reconciliation",
+                AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+            )
+        ).scalar_one_or_none()
+        if payload_json is None:
+            return None
+        return GuidedEditingActionReconciliationReceiptV1.model_validate_json(payload_json)
 
     def get_completion(self, receipt_id: str) -> GuidedFinalCompletionReceiptV1:
         return self._get("final_completion", receipt_id, GuidedFinalCompletionReceiptV1)
@@ -200,6 +321,46 @@ class AgentCanvasProductionClosureRepository:
             ) from error
         return model
 
+    def _save_in_transaction(
+        self,
+        connection: Connection,
+        receipt_type: ReceiptType,
+        model: ReceiptT,
+    ) -> ReceiptT:
+        payload_json = _canonical_payload(model)
+        payload_digest = sha256(payload_json.encode()).hexdigest()
+        receipt_id = _receipt_id(model)
+        logical_identity = str(getattr(model, "logical_identity"))
+        workflow_id = str(getattr(model, "workflow_id"))
+        created_at = _created_at(model)
+        with Session(bind=connection) as session:
+            existing = session.scalar(
+                select(AgentCanvasGuidedProductionReceiptRow).where(
+                    AgentCanvasGuidedProductionReceiptRow.receipt_type == receipt_type,
+                    AgentCanvasGuidedProductionReceiptRow.logical_identity == logical_identity,
+                )
+            )
+        if existing is not None:
+            return self._replay_or_conflict(existing, payload_digest, type(model))
+        try:
+            connection.execute(
+                AgentCanvasGuidedProductionReceiptRow.__table__.insert().values(
+                    receipt_id=receipt_id,
+                    receipt_type=receipt_type,
+                    logical_identity=logical_identity,
+                    workflow_id=workflow_id,
+                    payload_digest=payload_digest,
+                    payload_json=payload_json,
+                    created_at=created_at,
+                )
+            )
+        except IntegrityError as error:
+            raise _error(
+                "guided_production_receipt_conflict",
+                "Guided production receipt identity was claimed concurrently.",
+            ) from error
+        return model
+
     def _get(
         self,
         receipt_type: ReceiptType,
@@ -224,11 +385,17 @@ class AgentCanvasProductionClosureRepository:
                 "guided_production_receipt_not_found",
                 "Guided production receipt was not found.",
             )
-        return model_type.model_validate_json(row.payload_json)
+        return _parse_receipt(model_type, row.payload_json)
 
-    def _list(self, receipt_type: ReceiptType, workflow_id: str) -> tuple[ReceiptModel, ...]:
+    def _list(
+        self, receipt_type: ReceiptType, workflow_id: str, *, connection: Connection | None = None
+    ) -> tuple[ReceiptModel, ...]:
         try:
-            with self._database.session_factory() as session:
+            with (
+                Session(bind=connection)
+                if connection is not None
+                else self._database.session_factory()
+            ) as session:
                 rows = session.scalars(
                     select(AgentCanvasGuidedProductionReceiptRow)
                     .where(
@@ -246,7 +413,7 @@ class AgentCanvasProductionClosureRepository:
                 "Guided production receipt storage is unavailable.",
             ) from error
         model_type = _MODEL_BY_TYPE[receipt_type]
-        return tuple(model_type.model_validate_json(row.payload_json) for row in rows)
+        return tuple(_parse_receipt(model_type, row.payload_json) for row in rows)
 
     def _get_by_identity(
         self,
@@ -287,6 +454,21 @@ def _canonical_payload(model: BaseModel) -> str:
     return json.dumps(model.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
 
 
+def _parse_receipt(model_type: type[ReceiptT], payload: str) -> ReceiptT:
+    if model_type is GuidedEditingPreparationReceiptV1:
+        return cast(ReceiptT, parse_preparation_receipt(payload))
+    return model_type.model_validate_json(payload)
+
+
+def parse_preparation_receipt(payload: str) -> EditingPreparationReceipt:
+    """Read strict historical media evidence or explicitly discriminated V2 proof."""
+
+    value = json.loads(payload)
+    if isinstance(value, dict) and "proof_kind" in value:
+        return TypeAdapter(GuidedEditingPreparationReceiptV2).validate_python(value)
+    return GuidedEditingPreparationReceiptV1.model_validate(value)
+
+
 def _receipt_id(model: BaseModel) -> str:
     for field in ("confirmation_id", "fanout_plan_id", "receipt_id"):
         value = getattr(model, field, None)
@@ -296,7 +478,13 @@ def _receipt_id(model: BaseModel) -> str:
 
 
 def _created_at(model: BaseModel) -> str:
-    for field in ("confirmed_at", "committed_at", "completed_at", "created_at"):
+    for field in (
+        "confirmed_at",
+        "committed_at",
+        "completed_at",
+        "reconciled_at",
+        "created_at",
+    ):
         value = getattr(model, field, None)
         if value is not None:
             return value.isoformat()

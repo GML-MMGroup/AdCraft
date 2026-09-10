@@ -16,6 +16,7 @@ from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
@@ -31,11 +32,13 @@ from app.schemas.agent_canvas_editing import (
     EditingPreparationResultV2,
     EditingVideoEntryV2,
 )
+from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
 from app.schemas.agent_canvas_production_closure import (
     GuidedEditingPreparationReceiptV1,
+    GuidedEditingTopologyReceiptV2,
 )
 from app.schemas.agent_working_documents import (
-    AttachEditingNodePatchV2,
+    StoryboardNodeRecordV2,
     StoryboardPlannedNodeV3,
     StoryboardProductionPlanContentV2,
     StoryboardProductionPlanContentV3,
@@ -71,7 +74,7 @@ class GuidedEditingPreparationService:
         self._events = events
         self._asset_resolver = asset_resolver
         self._closure = closure
-        self._receipts = receipts
+        self._receipts = receipts or AgentCanvasProductionClosureRepository(workflows.database)
         self._clock = clock
         self._requirements = requirements or AgentCanvasRequirementRepository(workflows.database)
         self._duration_authority = GuidedDurationAuthorityPolicy()
@@ -84,14 +87,10 @@ class GuidedEditingPreparationService:
         expected_plan_revision: int,
     ) -> EditingPreparationResultV2:
         agent_run_id = "guided_editing_preparation"
-        existing_preparation = (
-            self._receipts.find_preparation(
-                workflow_id,
-                plan_document_id,
-                expected_plan_revision,
-            )
-            if self._closure is not None and self._receipts is not None
-            else None
+        existing_preparation = self._receipts.find_preparation(
+            workflow_id,
+            plan_document_id,
+            expected_plan_revision,
         )
         plan_document = self._documents.get_document(workflow_id, plan_document_id)
         if plan_document.kind != "storyboard_production_plan" or (
@@ -118,94 +117,62 @@ class GuidedEditingPreparationService:
         )
         if existing_preparation is not None:
             return self._preparation_result(existing_preparation, replayed=True)
-        closure_plan = (
-            self._closure.freeze(
-                workflow_id,
-                plan_document_id,
-                expected_plan_revision=expected_plan_revision,
-            )
-            if self._closure is not None
-            else None
-        )
         plan_records = _plan_node_records(plan)
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
-        if closure_plan is not None:
-            available_videos = tuple(
-                nodes[item.node_id]
-                for item in closure_plan.ordered_inputs
-                if item.media_role == "video"
+        video_records = {
+            record.sequence_id: record
+            for record in plan_records
+            if record.node_role == "video_segment" and record.sequence_id is not None
+        }
+        excluded = tuple(getattr(plan, "excluded_media", ()))
+        included_segments = tuple(
+            segment
+            for segment in plan.segments
+            if not any(
+                item.node_role == "video_segment" and item.sequence_id == segment.sequence_id
+                for item in excluded
             )
-            audio_inputs = tuple(
-                nodes[item.node_id]
-                for item in closure_plan.ordered_inputs
-                if item.media_role == "audio"
+        )
+        ordered_video_nodes = tuple(
+            nodes[record.node_id]
+            for segment in included_segments
+            if (record := video_records.get(segment.sequence_id)) is not None
+            and record.node_id in nodes
+        )
+        audio_record = next((record for record in plan_records if record.node_role == "bgm"), None)
+        audio_node = nodes.get(audio_record.node_id) if audio_record is not None else None
+        if (
+            len(ordered_video_nodes) != len(included_segments)
+            or any(node.node_type != "video" for node in ordered_video_nodes)
+            or (audio_record is not None and audio_node is None)
+            or (audio_node is not None and audio_node.node_type != "audio")
+        ):
+            raise V2PersistenceError(
+                "editing_preparation_plan_invalid",
+                "Editing topology requires every current planned source Node.",
+                stage="guided_editing_preparation",
             )
-            available_audio = audio_inputs[0] if audio_inputs else None
-            omitted_node_ids: tuple[str, ...] = ()
-        else:
-            video_records = {
-                record.sequence_id: record
-                for record in plan_records
-                if record.node_role == "video_segment" and record.sequence_id is not None
-            }
-            ordered_video_nodes = tuple(
-                nodes[record.node_id]
-                for segment in plan.segments
-                if (record := video_records.get(segment.sequence_id)) is not None
-                and record.node_id in nodes
-            )
-            audio_node = next(
-                (
-                    nodes[record.node_id]
-                    for record in plan_records
-                    if record.node_role == "bgm" and record.node_id in nodes
-                ),
-                None,
-            )
-            available_videos = tuple(
-                node for node in ordered_video_nodes if self._ready_media(node, "video")
-            )
-            available_audio = (
-                audio_node
-                if audio_node is not None and self._ready_media(audio_node, "audio")
-                else None
-            )
-            omitted_node_ids = tuple(
-                node.node_id for node in ordered_video_nodes if node not in available_videos
-            )
-            if audio_node is not None and available_audio is None:
-                omitted_node_ids += (audio_node.node_id,)
-            if omitted_node_ids:
-                blocker_reasons = [
-                    (
-                        "planned_audio_not_ready"
-                        if node_id == getattr(audio_node, "node_id", None)
-                        else "planned_video_not_ready"
-                    )
-                    for node_id in omitted_node_ids
-                ]
-                raise V2PersistenceError(
-                    "guided_closure_blocked",
-                    "Guided Editing requires every planned media input to be ready.",
-                    stage="guided_editing_preparation",
-                    details={
-                        "blocker_node_ids": list(omitted_node_ids),
-                        "blocker_reasons": blocker_reasons,
-                    },
-                )
+        available_videos = ordered_video_nodes
+        available_audio = audio_node
+        omitted_node_ids = tuple(
+            node.node_id for node in ordered_video_nodes if not self._ready_media(node, "video")
+        )
+        if audio_node is not None and not self._ready_media(audio_node, "audio"):
+            omitted_node_ids += (audio_node.node_id,)
 
         prior_editing_record = next(
             (record for record in plan_records if record.node_role == "editing"),
             None,
         )
-        editing_node_id = _stable_id(
-            "node_guided_editing",
-            (
-                closure_plan.closure_plan_id
-                if closure_plan is not None
-                else plan_document.guidance_session_id
-            ),
+        editing_node_id = (
+            prior_editing_record.node_id
+            if prior_editing_record is not None
+            else _stable_id(
+                "node_guided_editing",
+                workflow_id,
+                plan_document_id,
+            )
         )
         existing_record = (
             prior_editing_record
@@ -215,27 +182,36 @@ class GuidedEditingPreparationService:
         current_bindings = {
             _binding_source_id(binding): binding
             for binding in workflow.bindings
-            if binding.target_node_id == editing_node_id
+            if binding.target_node_id == editing_node_id and _binding_source_id(binding)
         }
         desired_sources = (*available_videos, *((available_audio,) if available_audio else ()))
-        desired_bindings = tuple(
+        next_order = 1 + max(
             (
-                current_bindings[source.node_id].model_copy(
-                    update={"order": index, "updated_at": datetime.now(timezone.utc)}
-                )
-                if source.node_id in current_bindings
-                else _editing_binding(
-                    workflow_id,
-                    editing_node_id,
-                    source,
-                    order=index,
-                )
+                binding.order
+                for binding in workflow.bindings
+                if binding.target_node_id == editing_node_id
+            ),
+            default=-1,
+        )
+        additional_bindings = {
+            source.node_id: _editing_binding(
+                workflow_id, editing_node_id, source, order=next_order + index
             )
-            for index, source in enumerate(desired_sources)
+            for index, source in enumerate(
+                source for source in desired_sources if source.node_id not in current_bindings
+            )
+        }
+        desired_bindings = tuple(
+            current_bindings[source.node_id]
+            if source.node_id in current_bindings
+            else additional_bindings[source.node_id]
+            for source in desired_sources
         )
         manifest = EditingManifestV2(
             video_entries=tuple(
-                EditingVideoEntryV2(binding_id=binding.binding_id)
+                EditingVideoEntryV2(
+                    binding_id=binding.binding_id,
+                )
                 for binding in desired_bindings[: len(available_videos)]
             ),
             bgm=(
@@ -249,7 +225,8 @@ class GuidedEditingPreparationService:
             current_manifest = EditingNodeContentV2.model_validate(
                 nodes[editing_node_id].structured_content
             ).manifest
-        if self._asset_resolver is not None:
+            manifest = current_manifest
+        if self._asset_resolver is not None and current_manifest is None:
             source_durations = {
                 ("binding", binding.binding_id): asset.duration_seconds
                 for binding, source in zip(
@@ -257,7 +234,9 @@ class GuidedEditingPreparationService:
                     available_videos,
                     strict=True,
                 )
-                if (asset := self._asset_resolver(source.output_asset_id)).duration_seconds
+                if source.output_asset_id is not None
+                and self._ready_media(source, "video")
+                and (asset := self._asset_resolver(source.output_asset_id)).duration_seconds
                 is not None
             }
             if len(source_durations) == len(available_videos):
@@ -310,227 +289,185 @@ class GuidedEditingPreparationService:
                     }
                 )
                 changed = True
-            current_source_order = tuple(
-                _binding_source_id(binding)
-                for binding in sorted(
-                    current_bindings.values(),
-                    key=lambda item: (item.order, item.binding_id),
-                )
-            )
-            if current_source_order != tuple(source.node_id for source in desired_sources) or any(
-                current_bindings[source.node_id].order != index
-                for index, source in enumerate(desired_sources)
-                if source.node_id in current_bindings
-            ):
+            if additional_bindings:
                 changed = True
 
-        if changed:
-            self._workflows.upsert_guided_editing(
-                editing_node,
-                desired_bindings,
-                expected_revision=workflow.revision,
-            )
-
+        next_content = None
         if existing_record is None:
+            record_fields = {"node_role": "editing", "node_id": editing_node_id}
             if isinstance(plan, StoryboardProductionPlanContentV3):
-                next_content = plan.model_copy(
-                    update={
-                        "planned_nodes": tuple(
-                            record for record in plan.planned_nodes if record.node_role != "editing"
-                        )
-                        + (
-                            StoryboardPlannedNodeV3(
-                                node_role="editing",
-                                node_id=editing_node_id,
-                                node_revision=editing_node.revision,
-                                materialization_id=(
-                                    f"guided-editing:{closure_plan.closure_plan_id}"
-                                    if closure_plan is not None
-                                    else f"guided-editing:{editing_node_id}"
-                                ),
-                            ),
-                        )
-                    }
+                record = StoryboardPlannedNodeV3(
+                    **record_fields,
+                    node_revision=editing_node.revision,
+                    materialization_id=f"guided-editing:{editing_node_id}",
                 )
-                updated_plan = self._documents.commit_content_mutation(
-                    workflow_id=workflow_id,
-                    agent_run_id=agent_run_id,
-                    document_id=plan_document.document_id,
-                    expected_revision=plan_document.revision,
-                    operation="attach_guided_editing_node",
-                    idempotency_key=f"attach-editing:{editing_node_id}",
-                    next_content=next_content,
+                next_content = plan.model_copy(
+                    update={"planned_nodes": (*plan.planned_nodes, record)}
                 )
             else:
-                updated_plan = self._documents.apply_agent_patch(
-                    workflow_id,
-                    agent_run_id,
-                    AttachEditingNodePatchV2(
-                        operation="attach_editing_node",
-                        document_id=plan_document.document_id,
-                        expected_revision=plan_document.revision,
-                        idempotency_key=f"attach-editing:{editing_node_id}",
-                        node_id=editing_node_id,
-                    ),
-                ).document
-            plan_document = updated_plan
-            changed = True
-
-        final_node = self._workflows.get_node(workflow_id, editing_node_id)
-        final_content = EditingNodeContentV2.model_validate(final_node.structured_content)
-        preparation_receipt = None
-        if closure_plan is not None:
-            if self._receipts is None:
-                raise V2PersistenceError(
-                    "guided_preparation_receipt_unavailable",
-                    "Guided Editing preparation receipt authority is unavailable.",
-                    stage="guided_editing_preparation",
-                )
-            manifest_payload = json.dumps(
-                final_content.manifest.model_dump(mode="json"),
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            manifest_digest = hashlib.sha256(manifest_payload.encode()).hexdigest()
-            logical_identity = f"{closure_plan.closure_plan_id}:{editing_node_id}:{manifest_digest}"
-            preparation_receipt = self._receipts.save_preparation(
-                GuidedEditingPreparationReceiptV1(
-                    receipt_id=(
-                        "preparation_" + hashlib.sha256(logical_identity.encode()).hexdigest()[:32]
-                    ),
-                    logical_identity=logical_identity,
-                    workflow_id=workflow_id,
-                    closure_plan_id=closure_plan.closure_plan_id,
-                    plan_document_id=closure_plan.plan_document_id,
-                    plan_revision=closure_plan.plan_revision,
-                    confirmation_digest=closure_plan.confirmation_digest,
-                    editing_node_id=editing_node_id,
-                    editing_node_revision=final_node.revision,
-                    binding_ids=tuple(binding.binding_id for binding in desired_bindings),
-                    manifest_revision=final_content.manifest.manifest_revision,
-                    manifest_digest=manifest_digest,
-                    committed_at=now,
-                )
-            )
-
-        session = self._conversations.get_guidance_session(workflow_id)
-        if (
-            session.completion.editing_preparation != "prepared"
-            or session.completion.editing_node_id != editing_node_id
-            or (
-                preparation_receipt is not None
-                and session.completion.preparation_receipt_id != preparation_receipt.receipt_id
-            )
-        ):
-            update_completion = getattr(
-                self._conversations,
-                "update_guidance_completion",
-                None,
-            )
-            if update_completion is None:
-                update_completion = self._conversations.complete_guidance_session
-            update_completion(
-                session.session_id,
-                expected_session_revision=session.revision,
-                completion=session.completion.model_copy(
+                next_content = plan.model_copy(
                     update={
-                        "authoring": "ready",
-                        "delivery": "ready",
-                        "plan_document_id": plan_document.document_id,
-                        "plan_revision": plan_document.revision,
-                        "editing_preparation": "prepared",
-                        "editing_node_id": editing_node_id,
-                        "preparation_receipt_id": (
-                            preparation_receipt.receipt_id
-                            if preparation_receipt is not None
-                            else None
-                        ),
-                        "manifest_revision": final_content.manifest.manifest_revision,
+                        "node_records": (
+                            *plan.node_records,
+                            StoryboardNodeRecordV2(**record_fields),
+                        )
                     }
-                ),
-            )
-            changed = True
+                )
 
-        result = EditingPreparationResultV2(
+        final_content = EditingNodeContentV2.model_validate(editing_node.structured_content)
+        manifest_payload = json.dumps(
+            final_content.manifest.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        )
+        logical_identity = f"topology:{plan_document_id}:{expected_plan_revision}:{editing_node_id}"
+        receipt = GuidedEditingTopologyReceiptV2(
+            receipt_id="preparation_" + hashlib.sha256(logical_identity.encode()).hexdigest()[:32],
+            logical_identity=logical_identity,
             workflow_id=workflow_id,
-            plan_document_id=plan_document.document_id,
+            plan_document_id=plan_document_id,
+            plan_revision=expected_plan_revision,
+            editing_node_id=editing_node_id,
+            editing_node_revision=editing_node.revision,
+            binding_ids=tuple(binding.binding_id for binding in desired_bindings),
+            manifest_revision=final_content.manifest.manifest_revision,
+            manifest_digest=hashlib.sha256(manifest_payload.encode()).hexdigest(),
+            committed_at=now,
+        )
+        receipts = self._receipts
+        session = self._conversations.get_guidance_session(workflow_id)
+        replay_receipt = None
+        # Attaching Editing advances the Plan; completion binds that revision to its receipt.
+        if (
+            not changed
+            and next_content is None
+            and session.completion.plan_document_id == plan_document_id
+            and session.completion.plan_revision == plan_document.revision
+            and session.completion.editing_node_id == editing_node_id
+            and session.completion.preparation_receipt_id is not None
+        ):
+            previous = receipts.get_preparation(session.completion.preparation_receipt_id)
+            if (
+                isinstance(previous, GuidedEditingTopologyReceiptV2)
+                and previous.workflow_id == workflow_id
+                and previous.plan_document_id == plan_document_id
+                and previous.editing_node_id == editing_node_id
+                and previous.editing_node_revision == receipt.editing_node_revision
+                and previous.binding_ids == receipt.binding_ids
+                and previous.manifest_revision == receipt.manifest_revision
+                and previous.manifest_digest == receipt.manifest_digest
+            ):
+                replay_receipt = previous
+        next_plan_revision = plan_document.revision + (next_content is not None)
+        completion = GuidanceCompletionProjectionV2.model_validate(
+            session.completion.model_dump()
+            | {
+                "authoring": "ready",
+                "delivery": "not_ready",
+                "plan_document_id": plan_document_id,
+                "plan_revision": next_plan_revision,
+                "editing_preparation": "prepared",
+                "editing_node_id": editing_node_id,
+                "preparation_receipt_id": receipt.receipt_id,
+                "manifest_revision": receipt.manifest_revision,
+            }
+        )
+        try:
+            with self._workflows.database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    AgentWorkingDocumentRepository.require_revision_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        document_id=plan_document_id,
+                        expected_revision=plan_document.revision,
+                    )
+                    if changed:
+                        self._workflows.upsert_guided_editing_in_transaction(
+                            connection,
+                            editing_node,
+                            desired_bindings,
+                            expected_revision=workflow.revision,
+                        )
+                    else:
+                        self._workflows.require_node_revision_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            node_id=editing_node_id,
+                            expected_revision=editing_node.revision,
+                            expected_output_asset_id=editing_node.output_asset_id,
+                        )
+                    if replay_receipt is not None:
+                        self._workflows.require_workflow_revision_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            expected_revision=workflow.revision,
+                        )
+                        connection.commit()
+                        return self._preparation_result(replay_receipt, replayed=True)
+                    if next_content is not None:
+                        self._documents.commit_content_mutation_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            agent_run_id=agent_run_id,
+                            document_id=plan_document_id,
+                            expected_revision=plan_document.revision,
+                            operation="attach_guided_editing_node",
+                            idempotency_key=(
+                                f"attach-editing:{editing_node_id}:plan-revision:{plan_document.revision}"
+                            ),
+                            next_content=next_content,
+                        )
+                    receipt = receipts.save_preparation_in_transaction(connection, receipt)
+                    self._conversations.update_guidance_completion_in_transaction(
+                        connection,
+                        session.session_id,
+                        expected_session_revision=session.revision,
+                        completion=completion,
+                        now=now.isoformat(),
+                    )
+                    for event_type in ("editing_prepared", "guided_editing_ready"):
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                node_id=editing_node_id,
+                                event_type=event_type,
+                                transition_key=f"{event_type}:{receipt.receipt_id}",
+                                created_at=now.isoformat(),
+                                payload={
+                                    "proof_kind": "topology",
+                                    "editing_node_id": editing_node_id,
+                                    "manifest_revision": receipt.manifest_revision,
+                                    "preparation_receipt_id": receipt.receipt_id,
+                                    "plan_document_id": plan_document_id,
+                                    "plan_revision": next_plan_revision,
+                                },
+                            ),
+                        )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            replay = receipts.find_preparation(
+                workflow_id, plan_document_id, expected_plan_revision
+            )
+            if replay is not None and replay.logical_identity == logical_identity:
+                return self._preparation_result(replay, replayed=True)
+            raise
+        return EditingPreparationResultV2(
+            workflow_id=workflow_id,
+            plan_document_id=plan_document_id,
             editing_node_id=editing_node_id,
             bound_video_node_ids=tuple(node.node_id for node in available_videos),
-            bound_audio_node_ids=(
-                (available_audio.node_id,) if available_audio is not None else ()
-            ),
+            bound_audio_node_ids=(available_audio.node_id,) if available_audio is not None else (),
             omitted_node_ids=omitted_node_ids,
-            manifest_revision=final_content.manifest.manifest_revision,
-            replayed=not changed,
+            manifest_revision=receipt.manifest_revision,
+            replayed=False,
         )
-        if changed:
-            identity = ":".join(
-                (
-                    plan_document.document_id,
-                    *result.bound_video_node_ids,
-                    *result.bound_audio_node_ids,
-                    *result.omitted_node_ids,
-                )
-            )
-            self._events.append(
-                V2EventInsert(
-                    workflow_id=workflow_id,
-                    node_id=editing_node_id,
-                    event_type="editing_prepared",
-                    transition_key=f"editing_prepared:{hashlib.sha256(identity.encode()).hexdigest()}",
-                    created_at=now.isoformat(),
-                    payload={
-                        "editing_node_id": editing_node_id,
-                        "bound_video_node_ids": list(result.bound_video_node_ids),
-                        "bound_audio_node_ids": list(result.bound_audio_node_ids),
-                        "omitted_node_ids": list(result.omitted_node_ids),
-                        "manifest_revision": result.manifest_revision,
-                        "closure_plan_id": (
-                            closure_plan.closure_plan_id if closure_plan is not None else None
-                        ),
-                        "preparation_receipt_id": (
-                            preparation_receipt.receipt_id
-                            if preparation_receipt is not None
-                            else None
-                        ),
-                        "plan_document_id": plan_document.document_id,
-                        "plan_revision": plan_document.revision,
-                        "guidance_session_id": plan_document.guidance_session_id,
-                        "agent_run_id": agent_run_id,
-                    },
-                )
-            )
-            self._events.append(
-                V2EventInsert(
-                    workflow_id=workflow_id,
-                    node_id=editing_node_id,
-                    event_type="guided_editing_ready",
-                    transition_key=(
-                        "guided-editing-ready:"
-                        f"{preparation_receipt.receipt_id if preparation_receipt else identity}"
-                    ),
-                    created_at=now.isoformat(),
-                    payload={
-                        "editing_node_id": editing_node_id,
-                        "manifest_revision": result.manifest_revision,
-                        "plan_document_id": plan_document.document_id,
-                        "plan_revision": plan_document.revision,
-                        "closure_plan_id": (
-                            closure_plan.closure_plan_id if closure_plan is not None else None
-                        ),
-                        "preparation_receipt_id": (
-                            preparation_receipt.receipt_id
-                            if preparation_receipt is not None
-                            else None
-                        ),
-                    },
-                )
-            )
-        return result
 
     def _preparation_result(
         self,
-        receipt: GuidedEditingPreparationReceiptV1,
+        receipt: GuidedEditingPreparationReceiptV1 | GuidedEditingTopologyReceiptV2,
         *,
         replayed: bool,
     ) -> EditingPreparationResultV2:
@@ -558,13 +495,17 @@ class GuidedEditingPreparationService:
             bound_audio_node_ids=tuple(
                 node.node_id for node in ordered_nodes if node.node_type == "audio"
             ),
-            omitted_node_ids=(),
+            omitted_node_ids=tuple(
+                node.node_id
+                for node in ordered_nodes
+                if not self._ready_media(node, node.node_type)
+            ),
             manifest_revision=receipt.manifest_revision,
             replayed=replayed,
         )
 
     def _ready_media(self, node: CanvasNodeV2, media_type: str) -> bool:
-        if node.status != "ready" or node.output_asset_id is None:
+        if node.status != "ready" or node.output_asset_id is None or self._asset_resolver is None:
             return False
         try:
             asset: ProjectAssetSummaryV2 = self._asset_resolver(node.output_asset_id)
@@ -589,7 +530,6 @@ def _editing_binding(
         source=CanvasBindingSourceNodeV2(source_node_id=source.node_id),
         target_node_id=editing_node_id,
         input_role=input_role,
-        required=False,
         enabled=True,
         order=order,
         metadata={

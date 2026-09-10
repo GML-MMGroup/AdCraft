@@ -109,20 +109,33 @@ container_health() {
 }
 
 wait_for_services() {
-  local deadline=$((SECONDS + 120))
-  local agent_status api_status web_status
+  local timeout_seconds="${ADCRAFT_DEPLOY_WAIT_SECONDS:-1800}"
+  [[ "$timeout_seconds" =~ ^[0-9]+$ ]] && (( 10#$timeout_seconds >= 120 )) \
+    || die "ADCRAFT_DEPLOY_WAIT_SECONDS 必须是至少 120 的整数。"
+  local deadline=$((SECONDS + 10#$timeout_seconds))
+  local agent_status api_status web_status elapsed
+  local -a frames=('|' '/' '-' '\\')
+  local frame_index=0
   while (( SECONDS < deadline )); do
     agent_status="$(container_health agent)"
     api_status="$(container_health api)"
     web_status="$(container_health web)"
     if [[ "$agent_status" == healthy && "$api_status" == healthy && "$web_status" == healthy ]]; then
+      printf '\r[AdCraft] Agent/API/Web 已全部健康。%60s\n' ''
       return 0
     fi
     if [[ "$agent_status" =~ ^(exited|dead)$ || "$api_status" =~ ^(exited|dead)$ || "$web_status" =~ ^(exited|dead)$ ]]; then
+      printf '\n' >&2
       return 1
     fi
+    elapsed=$((SECONDS - (deadline - 10#$timeout_seconds)))
+    printf '\r[AdCraft] 等待服务 %s %4ds/%ds（agent=%s api=%s web=%s）' \
+      "${frames[$frame_index]}" "$elapsed" "$timeout_seconds" \
+      "$agent_status" "$api_status" "$web_status"
+    frame_index=$(( (frame_index + 1) % ${#frames[@]} ))
     sleep 2
   done
+  printf '\n' >&2
   return 1
 }
 

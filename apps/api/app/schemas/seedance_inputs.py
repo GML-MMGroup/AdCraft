@@ -13,8 +13,93 @@ class _SeedanceInputModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class StoryboardPanelReferenceV1(_SeedanceInputModel):
+    panel_index: int = Field(ge=1, le=9)
+    shot_id: str = Field(min_length=1, max_length=256)
+    beat: str = Field(min_length=1, max_length=2_048)
+
+
+class StoryboardGroundingReferenceV1(_SeedanceInputModel):
+    asset_id: str = Field(min_length=1)
+    version_id: str = Field(min_length=1)
+    checksum: str = Field(min_length=1)
+    semantic_role: str = Field(min_length=1, max_length=160)
+    binding_id: str = Field(min_length=1)
+    media_type: Literal["image"] = "image"
+    required: bool = True
+    display_order: int = Field(ge=0)
+
+
+class StoryboardReferenceIdentityAuditV1(_SeedanceInputModel):
+    asset_id: str = Field(min_length=1)
+    version_id: str = Field(min_length=1)
+    checksum: str = Field(min_length=1)
+    semantic_role: str = Field(min_length=1, max_length=160)
+    binding_id: str = Field(min_length=1)
+    display_order: int = Field(ge=0)
+    provider_input_type: str | None = Field(default=None, min_length=1)
+    omitted_payload: bool = True
+
+
+class StoryboardGridGroundingPlanV1(_SeedanceInputModel):
+    schema_version: Literal["storyboard_grid_grounding_plan_v1"] = (
+        "storyboard_grid_grounding_plan_v1"
+    )
+    node_id: str = Field(min_length=1)
+    grid_asset_id: str = Field(min_length=1)
+    grid_version_id: str = Field(min_length=1)
+    grid_checksum: str = Field(min_length=1)
+    storyboard_revision: str = Field(min_length=1)
+    grid_rows: Literal[3] = 3
+    grid_columns: Literal[3] = 3
+    panel_count: Literal[9] = 9
+    panels: tuple[StoryboardPanelReferenceV1, ...] = Field(min_length=9, max_length=9)
+    target_shot_id: str = Field(min_length=1, max_length=256)
+    target_panel_indices: tuple[int, ...] = Field(min_length=1, max_length=9)
+    ordered_references: tuple[StoryboardGroundingReferenceV1, ...] = Field(
+        min_length=1, max_length=32
+    )
+    provider_reference_limit: int = Field(ge=1, le=64)
+    prompt_snapshot_digest: str = Field(min_length=1)
+    panel_sequence_fingerprint: str = Field(min_length=1)
+    plan_fingerprint: str = Field(min_length=1)
+
+
+class StoryboardGridGroundingAuditV1(_SeedanceInputModel):
+    schema_version: Literal["storyboard_grid_grounding_audit_v1"] = (
+        "storyboard_grid_grounding_audit_v1"
+    )
+    requested: tuple[StoryboardReferenceIdentityAuditV1, ...] = ()
+    delivered: tuple[StoryboardReferenceIdentityAuditV1, ...] = ()
+    serialized: tuple[StoryboardReferenceIdentityAuditV1, ...] = ()
+    submitted: tuple[StoryboardReferenceIdentityAuditV1, ...] = ()
+    primary_reference_asset_id: str = Field(min_length=1)
+    primary_reference_version_id: str = Field(min_length=1)
+    panel_count: Literal[9] = 9
+    grid_rows: Literal[3] = 3
+    grid_columns: Literal[3] = 3
+    panel_sequence_fingerprint: str = Field(min_length=1)
+    plan_fingerprint: str = Field(min_length=1)
+    provider_request_field: str = Field(min_length=1)
+    provider_input_order: tuple[str, ...] = ()
+    prompt_reference_labels: tuple[str, ...] = ()
+    omitted_optional_references: tuple[str, ...] = ()
+    omitted_payload: bool = True
+
+    @property
+    def all_lifecycle_asset_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item.asset_id
+            for item in (*self.requested, *self.delivered, *self.serialized, *self.submitted)
+        )
+
+
 SeedanceMediaTypeV1 = Literal["image", "video", "audio"]
-SeedanceReferencePurposeV1 = Literal["storyboard_sequence", "scene_reference"]
+SeedanceReferencePurposeV1 = Literal[
+    "storyboard_grid",
+    "storyboard_sequence",
+    "scene_reference",
+]
 SeedanceProviderInputTypeV1 = Literal[
     "image_url",
     "video_url",
@@ -40,6 +125,7 @@ class SeedanceTextInputV1(_SeedanceInputModel):
 class SeedanceDeliveredMediaInputV1(_SeedanceInputModel):
     binding_id: str = Field(min_length=1)
     asset_id: str = Field(min_length=1)
+    version_id: str | None = Field(default=None, min_length=1)
     media_type: SeedanceMediaTypeV1
     input_role: CanvasInputRoleV2
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
@@ -49,6 +135,8 @@ class SeedanceDeliveredMediaInputV1(_SeedanceInputModel):
     provider_input_value: str = Field(min_length=1, exclude=True, repr=False)
     checksum: str = Field(min_length=1)
     byte_count: int | None = Field(default=None, ge=0)
+    reference_instruction: str | None = Field(default=None, min_length=1, max_length=512)
+    reference_instruction_transport: Literal["native_slot", "provider_only"] | None = None
 
 
 class SeedanceMediaInputV1(SeedanceDeliveredMediaInputV1):
@@ -71,6 +159,7 @@ class SeedanceInputManifestV1(_SeedanceInputModel):
     effective_duration_seconds: int = Field(ge=1, le=15)
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
+    grounding_plan: StoryboardGridGroundingPlanV1 | None = None
 
     @property
     def media_inputs(self) -> tuple[SeedanceMediaInputV1, ...]:
@@ -96,6 +185,7 @@ class SeedanceTextInputAuditV1(_SeedanceInputModel):
 class SeedanceMediaInputAuditV1(_SeedanceInputModel):
     binding_id: str
     asset_id: str
+    version_id: str | None = None
     media_type: SeedanceMediaTypeV1
     input_role: CanvasInputRoleV2
     source_semantic_role: str | None = None
@@ -122,3 +212,4 @@ class SeedanceInputManifestAuditV1(_SeedanceInputModel):
     effective_duration_seconds: int
     generate_audio: bool
     normalizations: tuple[str, ...] = ()
+    grounding_audit: StoryboardGridGroundingAuditV1 | None = None

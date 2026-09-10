@@ -1,8 +1,23 @@
 ---
-name: Art Deco Golden-Age Romance
-description: An advertising treatment built around geometric opulence, jewel-tone contrast, romantic decadence, and period spectacle.
+name: 几何华丽浪漫广告
+description: 以几何秩序、宝石色对比、浪漫丰盛感和舞台化时代氛围构建精致的商业叙事。
 ---
 
-Use geometric opulence, jewel-tone contrast, romantic decadence, and period spectacle as the style's creative grammar. Establish geometric opulence as the primary visual idea, reinforce it through jewel-tone contrast, and let romantic decadence shape the progression toward period spectacle.
+把 geometric opulence、jewel-tone contrast、romantic decadence、period spectacle 作为这套风格的四个创作支点。用对称、扇形、阶梯、拱门、镜面和金属边缘建立几何秩序，再以宝石色对比控制视线，让浪漫丰盛感服务于人物关系和产品揭示。时代感应来自构图、材质、服装和动作的共同语法，不依赖具体作品或人物模仿。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 几何与色彩
+
+先建立主轴、对称线、前中后景和视觉中心。geometric opulence 可以通过建筑线、舞台框景、装饰边缘或产品轮廓体现，但要留出主体呼吸空间。jewel-tone contrast 用一到两个强调色建立层级，金属、玻璃、丝绒和石材分别呈现不同的反射与吸光。
+
+浪漫场面要有关系动作：递交、等待、回望、靠近、错身或共同注视。华丽环境不能替代人物目标和产品价值。保持服装、珠宝、产品和空间轴线连续。
+
+## 舞台化叙事
+
+period spectacle 可以表现为宴会、剧场、长廊、舞池或盛大入口，但群众、道具和灯光都要围绕主动作组织。用帷幕、镜面、门框或灯光遮挡连接段落，揭示时让产品或人物在几何中心获得清楚视线。
+
+## 约束与纠偏
+
+不使用具体创作者、电影、品牌或 IP 的模仿指令。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供视觉判断。结果过度拥挤时，先减少装饰和群众，恢复主轴、色彩层级和人物关系。
+
+正例：对称长廊建立入口，人物在宝石色光线中完成递交，镜面反射扩大空间，产品在动作完成时进入几何中心。
+反例：所有表面都金色发光，人物和产品被装饰吞没，或每镜改变时代、服装和空间轴线。

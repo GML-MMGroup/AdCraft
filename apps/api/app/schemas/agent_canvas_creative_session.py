@@ -33,6 +33,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidanceAwaitingV2,
     GuidedInteractionV1,
 )
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 
 
 CreationModeV2 = Literal[
@@ -235,6 +236,7 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     )
     interaction: GuidedInteractionV1 | None = None
     awaiting: GuidanceAwaitingV2 | None = None
+    actionable_failure: ActionableFailureV1 | None = None
     journey: GuidedProductionJourneyV2
     revision: int = Field(ge=1)
     updated_at: datetime
@@ -290,6 +292,8 @@ class StyleGuidanceContextV2(_CreativeSessionModel):
     role: str | None = Field(default=None, max_length=160)
     role_guidance: str | None = Field(default=None, max_length=8_192)
     role_guidance_digest: str | None = Field(default=None, max_length=160)
+    video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
+    video_representation_source_id: str = Field(default="platform-default", max_length=160)
     source: Literal["creative_direction_snapshot"] = "creative_direction_snapshot"
     precedence: Literal["advisory"] = "advisory"
 

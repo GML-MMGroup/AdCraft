@@ -35,6 +35,7 @@ class CanvasPostReadyEffectDispositionV1(_MediaReviewAuthorityModel):
 
 
 class GuidedMediaReviewPublicationCommandV1(_MediaReviewAuthorityModel):
+    publication_scope: Literal["terminal_wait", "current_result"] = "terminal_wait"
     lineage: CanvasExecutionResultLineageV2
     session_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)
@@ -45,8 +46,8 @@ class GuidedMediaReviewPublicationCommandV1(_MediaReviewAuthorityModel):
     current_node_revision: int = Field(ge=1)
     asset_id: str = Field(min_length=1, max_length=160)
     asset_version_id: str = Field(min_length=1, max_length=160)
-    expected_awaiting_id: str = Field(min_length=1, max_length=160)
-    expected_awaiting_node_ids: tuple[str, ...] = Field(min_length=1, max_length=64)
+    expected_awaiting_id: str | None = Field(min_length=1, max_length=160)
+    expected_awaiting_node_ids: tuple[str, ...] = Field(max_length=64)
     expected_awaiting_kind: Literal["manual_node_run"] = "manual_node_run"
     expected_resume_policy: Literal["node_terminal"] = "node_terminal"
     expected_session_revision: int = Field(ge=1)
@@ -71,8 +72,14 @@ class GuidedMediaReviewPublicationCommandV1(_MediaReviewAuthorityModel):
             self.lineage.asset_version_id != self.asset_version_id
         ):
             raise ValueError("Publication Asset identity must match result lineage.")
-        if self.lineage.node_id not in self.expected_awaiting_node_ids:
-            raise ValueError("The result Node must belong to the exact terminal wait.")
+        if self.publication_scope == "terminal_wait":
+            if (
+                self.expected_awaiting_id is None
+                or self.lineage.node_id not in self.expected_awaiting_node_ids
+            ):
+                raise ValueError("The result Node must belong to the exact terminal wait.")
+        elif self.expected_awaiting_id is not None or self.expected_awaiting_node_ids:
+            raise ValueError("Current-result publication cannot consume an obsolete terminal wait.")
         if len(set(self.expected_awaiting_node_ids)) != len(self.expected_awaiting_node_ids):
             raise ValueError("Terminal wait Node identities must be distinct.")
         return self

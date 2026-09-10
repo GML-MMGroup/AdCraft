@@ -1,1 +1,5 @@
-Construct spaces that express collectible silhouette through layout and signature accessories through light, color, and material. Use material charm to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+用一个地点、一条世界规则和少量可互动道具建立 world-building hooks。背景材质、尺度和入口要服务角色轮廓与产品动作，不让复杂布景抢走主体。记录地面、光源、遮挡和可通行路径。
+
+跨镜头保持空间比例、色彩层级、道具状态和角色落脚点。

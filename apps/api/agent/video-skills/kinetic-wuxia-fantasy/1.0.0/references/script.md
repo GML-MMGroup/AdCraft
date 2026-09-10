@@ -1,1 +1,5 @@
-Build the narrative premise around readable action geography, then use fabric and weapon motion to shape escalation and rhythmic combat to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先写双方目标、地形限制和一次会改变局势的动作，再按试探、逼近、反制、停顿、结果组织 rhythmic combat。每个动作都应有目的和代价，避免只罗列招式名称。让诗性环境与人物选择发生关系。
+
+为关键交锋写清谁获得高度、距离或视线优势。正例是一次借地形完成的反制；反例是连续炫技但冲突状态不变。

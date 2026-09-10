@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -68,11 +70,13 @@ class VideoSkillManifestV2(BaseModel):
     version: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    content_locale: Literal["en-US", "zh-CN"] = "en-US"
     category: str = Field(min_length=1)
     tags: tuple[str, ...] = ()
     supported_use_cases: tuple[str, ...] = ()
     preview: VideoSkillPreviewV2 | None = None
     display_order: int = Field(ge=0)
+    video_representation_mode: Literal["illustrated", "illustration_to_live_action"] | None = None
     files: dict[str, str]
     role_guidance: dict[str, str] = Field(default_factory=dict)
 
@@ -508,6 +512,15 @@ def _package_digest(
     verified: dict[str, bytes],
 ) -> str:
     digest = hashlib.sha256()
+    digest.update(
+        json.dumps(
+            manifest.model_dump(mode="json"),
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    )
+    digest.update(b"\0")
     digest.update(f"{manifest.skill_id}\n{manifest.version}\n".encode())
     for relative_path in sorted(verified):
         digest.update(relative_path.encode())

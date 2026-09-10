@@ -1,1 +1,5 @@
-Direct camera and subject motion through time and texture, using silence for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+运动以呼吸般的微移、缓慢靠近、静止观察和自然手持为主，速度变化必须来自人物或环境。保留布料、木材、水面、皮肤、金属等材质的真实响应。silence 不是无声空洞，要保留必要的环境底噪和动作声。
+
+结果过于空泛时，先恢复主体动作、纹理和光向，再减少滤镜与运动；不要用慢速或柔焦掩盖连续性错误。

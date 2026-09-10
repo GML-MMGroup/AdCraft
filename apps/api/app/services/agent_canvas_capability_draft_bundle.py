@@ -56,10 +56,12 @@ _PROVENANCE_KEYS = {
     "normalization_mode",
     "normalization_warnings",
     "character_pair_id",
+    "occurrence_index",
     "product_pair_id",
     "character_asset_kind",
     "source_agent_document_id",
     "source_sequence_id",
+    "sequence_index",
 }
 
 
@@ -354,7 +356,7 @@ def character_turnaround_prompt(
     subject_identity: str,
     design_summary: str,
 ) -> str:
-    """Compile the canonical companion prompt for a Character Main variation."""
+    """Compile the canonical companion prompt for Character Main regeneration."""
 
     return f"{_TURNAROUND_PROMPT}\n\nIdentity: {subject_identity}. Design: {design_summary}."
 
@@ -376,6 +378,11 @@ def _normalized_character_bundle(
         "normalization_mode": normalization.mode,
         "normalization_warnings": list(normalization.warnings),
         "character_pair_id": pair_id,
+        **(
+            {"occurrence_index": envelope.occurrence_index}
+            if envelope.occurrence_index is not None
+            else {}
+        ),
     }
     main_content = result.structured_content.model_copy(
         update={"character_asset_kind": "identity_master"}
@@ -654,7 +661,6 @@ def _draft_nodes(
                     source=source,
                     target_node_id=node.node_id,
                     input_role=intent.input_role,
-                    required=intent.required,
                     enabled=True,
                     order=intent.display_order,
                     metadata=metadata,
@@ -716,7 +722,6 @@ def _pair_binding(
             source=CanvasBindingSourceNodeV2(source_node_id=envelope.parent_snapshot.node_id),
             target_node_id=nodes[0].node_id,
             input_role="image_reference",
-            required=True,
             enabled=True,
             order=0,
             label="Character identity master" if is_character else "Required main reference",

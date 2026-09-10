@@ -1,29 +1,33 @@
 {
   "skill_id": "jewelry-editorial-film",
   "version": "1.0.0",
-  "display_name": "Jewelry Editorial Film",
-  "description": "An advertising treatment built around macro detail, specular light, gesture-led display, and intimate editorial pacing.",
+  "display_name": "珠宝微距编辑片",
+  "description": "以微距细节、镜面高光、手势引导展示和亲密编辑节奏突出珠宝的材质与佩戴关系。",
+  "content_locale": "zh-CN",
   "category": "luxury-fashion",
   "tags": [
-    "luxury",
-    "editorial",
-    "material"
+    "珠宝广告",
+    "微距展示",
+    "材质光线"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "珠宝宣传",
+    "饰品展示",
+    "高端产品广告"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Jewelry Editorial Film creative treatment."
+    "kind": "image",
+    "summary": "珠宝微距编辑片视觉预览。",
+    "media_url": "/api/v2/video-skills/jewelry-editorial-film/preview?v=1.0.0"
   },
   "display_order": 120,
   "files": {
-    "SKILL.md": "396dd0d14b99ecf445fd8de603b3bcf31d8050347f18bc999578663740f99d82",
-    "references/product.md": "262ad6b71a2d8a44517b9527a9fa7c00e18318a1da305bb52a409c5426193ada",
-    "references/character.md": "18d630c29197ff2d07c9f3a3c5bf783de1472f418b7a6090da03c86522f9865b",
-    "references/scene.md": "7302cd052cbeadd7d9ff017eaf5b4635456e1801271a42c78a98e1d267069110",
-    "references/video.md": "747cf1fe360b9590c9c2755a421afa21e733d5b1f8fcd0748f5e8de0a200c4c3"
+    "SKILL.md": "4c5841ec9840a5aa63c4991707f8f34f766fa1c73f1bf1c30f1a57b64bf8a9e0",
+    "references/product.md": "ae942c52ed033229920a94a0f1d1a1df90d1124567a15ab468377628fb5fad25",
+    "references/character.md": "80b4caba99ce10b2c6fc10725a30d3985f424b331e19a8aa1245fd90e415914a",
+    "references/scene.md": "c8154ce9cd0e1df11201c95f2ec1faa04a18d4213e6c383df40cd82227470fe2",
+    "references/video.md": "af1a963fdde6ef2a5ec7ab725d1415c9ed19ab376f9ba9c5cb96e3ef18382250",
+    "previews/preview.webp": "e0433207cb10610f4cdf0f1aad931b081c4bf99aa08bf94c62266d58df72fa7c"
   },
   "role_guidance": {
     "product": "references/product.md",

@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python - <<'PY'
@@ -48,7 +48,27 @@ if not re.search(r"^\s*[.A-Z]{2,7}\s+(libx264|libopenh264)\b", encoders, re.MULT
 if not re.search(r"^\s*[.A-Z]{2,7}\s+aac\b", encoders, re.MULTILINE):
     raise SystemExit("FFmpeg is missing the AAC encoder")
 
-print(f"Verified FFmpeg toolchain: ffmpeg {ffmpeg_version}, ffprobe {ffprobe_version}")
+required_filters = {
+    "trim", "atrim", "setpts", "asetpts", "fps", "scale", "crop", "pad",
+    "rotate", "overlay", "format", "colorbalance", "colorlevels", "hue",
+    "adelay", "afade", "amix", "volume", "drawtext", "anullsrc", "color",
+}
+filters = command("ffmpeg", "-hide_banner", "-filters")
+available_filters = set(
+    re.findall(r"^\s*[.A-Z]{2,7}\s+([a-zA-Z0-9_]+)\b", filters, re.MULTILINE)
+)
+missing_filters = sorted(required_filters - available_filters)
+if missing_filters:
+    raise SystemExit(f"FFmpeg is missing required filters: {', '.join(missing_filters)}")
+
+font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+with open(font_path, "rb"):
+    pass
+
+print(
+    f"Verified FFmpeg toolchain: ffmpeg {ffmpeg_version}, "
+    f"ffprobe {ffprobe_version}, subtitle font {font_path}"
+)
 PY
 
 COPY --from=uv /uv /uvx /bin/

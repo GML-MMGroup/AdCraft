@@ -376,6 +376,7 @@ def requirement_response(
         character_occurrences=character_occurrences,
         unresolved_conflicts=ledger.unresolved_conflicts,
         updated_at=revision.updated_at,
+        identity_safety_decision=ledger.identity_safety_decision,
     )
 
 
@@ -452,6 +453,11 @@ def _apply_manual_patch(
     )
     ledger = current.ledger.model_copy(
         update={
+            "identity_safety_decision": (
+                request.identity_safety_decision
+                if request.identity_safety_decision is not None
+                else current.ledger.identity_safety_decision
+            ),
             "hard_controls": tuple(controls[key] for key in sorted(controls)),
             "active_directives": canonical.active_directives,
         }

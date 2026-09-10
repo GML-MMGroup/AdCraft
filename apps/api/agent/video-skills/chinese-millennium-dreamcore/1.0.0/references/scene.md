@@ -1,1 +1,5 @@
-Construct spaces that express nostalgic digital texture through layout and liminal familiarity through light, color, and material. Use memory fragments to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立熟悉但略显空置的空间，记录走廊、瓷砖、荧光灯、屏幕、入口、出口和反射。liminal familiarity 需要可走、可看、可回到的路径，异常只改变一个比例或状态。
+
+用 saturated night color 区分深色底、灯光焦点和反射层，保持光源方向。

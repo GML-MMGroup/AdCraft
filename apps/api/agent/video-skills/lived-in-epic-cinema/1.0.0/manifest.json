@@ -1,29 +1,33 @@
 {
   "skill_id": "lived-in-epic-cinema",
   "version": "1.0.0",
-  "display_name": "Lived-In Epic Cinema",
-  "description": "An advertising treatment built around weathered worlds, tactile production design, grounded spectacle, and layered stakes.",
+  "display_name": "生活质感史诗影像",
+  "description": "以有磨损的世界、触觉化场景设计、扎实的奇观和层层递进的利害关系构建可信的史诗商业叙事。",
+  "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
-    "cinematic",
-    "narrative",
-    "composition"
+    "史诗叙事",
+    "生活质感",
+    "场景设计"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "品牌叙事",
+    "史诗广告",
+    "世界观影片"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Lived-In Epic Cinema creative treatment."
+    "kind": "image",
+    "summary": "生活质感史诗影像视觉预览。",
+    "media_url": "/api/v2/video-skills/lived-in-epic-cinema/preview?v=1.0.0"
   },
   "display_order": 250,
   "files": {
-    "SKILL.md": "4e62f9cc9b1838039bdca5ab8bdee0acca073ac9ad3eb4e87a1f26b1f3cf53b1",
-    "references/script.md": "45f355fac1d6027630f38c37dd974e4c1dda8f6e234c65759bd9d1296a71565d",
-    "references/scene.md": "ae0800d4292d7e3a31ae163685b09ec955ef3a0c47cde106adcb725b68297f97",
-    "references/storyboard.md": "588c190c4dc54065539e7214b39ab9e7883fcdb1807a4197e0823380c02164eb",
-    "references/video.md": "de0957c296739fd6f4dca3d1410650da48b23cd41499252fb28d6cae3fab94a9"
+    "SKILL.md": "db4ccb3388ebf7c73a8fe5792e33a8bd7f993529a7d204012bdf46c77111422e",
+    "references/script.md": "3c24ec9dbbf290f7560b53f356f08c7434370b9476f5f5580e7f147c14247344",
+    "references/scene.md": "18517ed62d3dfc469ed31c808781d40280faaab2257594e02488b51d190aaac7",
+    "references/storyboard.md": "c4823867ab4881f4e798588fd8fae1948e6833f1dd5d309c0ba8c826cac32cda",
+    "references/video.md": "f9fdb0b1eb0c5bbbcb535e136e3453a9122312699d00e2d773699bad0883d687",
+    "previews/preview.webp": "5fc244a66c40a0b2b5876e3ea2a581826e92139269d2e99e2d11e469936dee02"
   },
   "role_guidance": {
     "script": "references/script.md",

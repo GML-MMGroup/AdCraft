@@ -30,7 +30,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas import CanvasNodeV2
-from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1, CanvasNodeErrorV2
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import (
     PromptPreparationDispatchV1,
@@ -42,7 +42,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 
 APPLICABLE_NODE_TYPES = frozenset({"text", "script", "image", "video", "audio"})
-NON_TERMINAL_STATUSES = ("queued", "leased")
+NON_TERMINAL_STATUSES = ("waiting_user", "queued", "leased")
 
 
 class AgentCanvasPromptPreparationDispatchRepository:
@@ -101,6 +101,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
 
         candidate = _coerce_dispatch(dispatch, fields, now=now)
         if candidate.status not in {
+            "waiting_user",
             "queued",
             "completed",
             "failed",
@@ -147,6 +148,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 connection,
                 candidate,
                 event_type={
+                    "waiting_user": "node_prompt_preparation_waiting_user",
                     "queued": "node_prompt_preparation_queued",
                     "completed": "node_prompt_preparation_dispatch_reconciled",
                     "failed": "node_prompt_preparation_dispatch_reconciled",
@@ -164,6 +166,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         bindings: Sequence[object] = (),
         context: Mapping[str, object] | None = None,
         now: datetime | None = None,
+        initial_status: str = "queued",
     ) -> PromptPreparationDispatchV1 | None:
         """Ensure one dispatch for a current Node outside a larger transaction."""
 
@@ -178,6 +181,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
                         bindings=bindings,
                         context=context,
                         now=timestamp,
+                        initial_status=initial_status,
                     )
                     connection.commit()
                     return result
@@ -199,8 +203,15 @@ class AgentCanvasPromptPreparationDispatchRepository:
         bindings: Sequence[object] = (),
         context: Mapping[str, object] | None = None,
         now: datetime | None = None,
+        initial_status: str = "queued",
     ) -> PromptPreparationDispatchV1 | None:
-        return self.ensure_for_node(node, bindings=bindings, context=context, now=now)
+        return self.ensure_for_node(
+            node,
+            bindings=bindings,
+            context=context,
+            now=now,
+            initial_status=initial_status,
+        )
 
     def ensure_prompt_preparation_dispatch_in_transaction(
         self,
@@ -210,6 +221,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         bindings: Sequence[object] = (),
         context: Mapping[str, object] | None = None,
         now: datetime | None = None,
+        initial_status: str = "queued",
     ) -> PromptPreparationDispatchV1 | None:
         return self.ensure_for_node_in_transaction(
             connection,
@@ -217,6 +229,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             bindings=bindings,
             context=context,
             now=now,
+            initial_status=initial_status,
         )
 
     def ensure_for_node_in_transaction(
@@ -228,6 +241,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
         context: Mapping[str, object] | None = None,
         now: datetime | None = None,
         emit_event: bool = True,
+        initial_status: str = "queued",
     ) -> PromptPreparationDispatchV1 | None:
         """Ensure the current queued projection has one matching dispatch.
 
@@ -236,6 +250,11 @@ class AgentCanvasPromptPreparationDispatchRepository:
         operation identity before its row is inserted.
         """
 
+        if initial_status not in {"waiting_user", "queued"}:
+            raise _error(
+                "prompt_preparation_dispatch_invalid",
+                "Prompt-preparation dispatch admission state is invalid.",
+            )
         if not _is_trackable_node(node):
             return None
         timestamp = _utc(now or datetime.now(timezone.utc))
@@ -285,7 +304,7 @@ class AgentCanvasPromptPreparationDispatchRepository:
             model_policy_revision=_model_policy_revision(normalized),
         )
         dispatch_status = {
-            "queued": "queued",
+            "queued": initial_status,
             "ready": "completed",
             "failed": "failed",
             "superseded": "superseded",
@@ -333,6 +352,156 @@ class AgentCanvasPromptPreparationDispatchRepository:
             terminal_at=terminal_at,
         )
         return self.enqueue_in_transaction(connection, dispatch, emit_event=emit_event)
+
+    def release_waiting_user_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Release one exact guided wait without changing its input identity."""
+
+        row = self.get_for_node_operation_in_transaction(
+            connection,
+            workflow_id,
+            node_id,
+            operation_id,
+        )
+        if row is None:
+            raise _error(
+                "prompt_preparation_dispatch_missing",
+                "Guided prompt-preparation dispatch was not found.",
+            )
+        if row.status == "queued":
+            return row
+        if row.status != "waiting_user":
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Guided prompt-preparation admission is no longer current.",
+            )
+        timestamp = _utc(now)
+        changed = connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.dispatch_id == row.dispatch_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "waiting_user",
+                AgentCanvasPromptPreparationOutboxRow.lease_generation == row.lease_generation,
+            )
+            .values(
+                status="queued",
+                available_at=_iso(timestamp),
+                updated_at=_iso(timestamp),
+            )
+        )
+        if changed.rowcount != 1:
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Guided prompt-preparation admission changed before release.",
+            )
+        released = row.model_copy(
+            update={
+                "status": "queued",
+                "available_at": timestamp,
+                "updated_at": timestamp,
+            }
+        )
+        self._append_event(
+            connection,
+            released,
+            event_type="node_prompt_preparation_queued",
+            transition_key=f"prompt-dispatch:{row.dispatch_id}:reference-released",
+            created_at=timestamp,
+        )
+        return released
+
+    def hold_for_waiting_user(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Fence a legacy/direct queued draft before opening its typed wait."""
+
+        timestamp = _utc(now)
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    held = self.hold_for_waiting_user_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        node_id=node_id,
+                        operation_id=operation_id,
+                        now=timestamp,
+                    )
+                    connection.commit()
+                    return held
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def hold_for_waiting_user_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        operation_id: str,
+        now: datetime,
+    ) -> PromptPreparationDispatchV1:
+        """Fence one exact dispatch inside the typed interaction transaction."""
+
+        row = self.get_for_node_operation_in_transaction(
+            connection,
+            workflow_id,
+            node_id,
+            operation_id,
+        )
+        if row is None:
+            raise _error(
+                "prompt_preparation_dispatch_missing",
+                "Guided prompt-preparation dispatch was not found.",
+            )
+        if row.status == "waiting_user":
+            return row
+        if row.status != "queued":
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Prompt preparation advanced before the guided wait opened.",
+            )
+        timestamp = _utc(now)
+        changed = connection.execute(
+            update(AgentCanvasPromptPreparationOutboxRow)
+            .where(
+                AgentCanvasPromptPreparationOutboxRow.dispatch_id == row.dispatch_id,
+                AgentCanvasPromptPreparationOutboxRow.status == "queued",
+                AgentCanvasPromptPreparationOutboxRow.lease_generation == row.lease_generation,
+            )
+            .values(status="waiting_user", updated_at=_iso(timestamp))
+        )
+        if changed.rowcount != 1:
+            raise _error(
+                "prompt_preparation_dispatch_state_conflict",
+                "Prompt preparation advanced before the guided wait opened.",
+            )
+        held = row.model_copy(update={"status": "waiting_user", "updated_at": timestamp})
+        self._append_event(
+            connection,
+            held,
+            event_type="node_prompt_preparation_waiting_user",
+            transition_key=f"prompt-dispatch:{row.dispatch_id}:reference-waiting",
+            created_at=timestamp,
+        )
+        return held
 
     def get(self, dispatch_id: str) -> PromptPreparationDispatchV1:
         try:
@@ -945,6 +1114,69 @@ class AgentCanvasPromptPreparationDispatchRepository:
         )
         return result
 
+    def supersede_for_user_authoring_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        node_id: str,
+        reason: str,
+        now: datetime,
+    ) -> int:
+        """Retire prior managed work when the visible prompt becomes user-owned."""
+
+        timestamp = _utc(now)
+        rows = (
+            connection.execute(
+                select(AgentCanvasPromptPreparationOutboxRow).where(
+                    AgentCanvasPromptPreparationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasPromptPreparationOutboxRow.node_id == node_id,
+                    AgentCanvasPromptPreparationOutboxRow.status.in_(
+                        (*NON_TERMINAL_STATUSES, "completed", "failed")
+                    ),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        for row in rows:
+            values = {
+                "status": "superseded",
+                "lease_owner": None,
+                "lease_expires_at": None,
+                "last_error_code": "prompt_preparation_superseded",
+                "last_error_message": _bounded(reason, 1_024),
+                "supersession_reason": _bounded(reason, 1_024),
+                "updated_at": _iso(timestamp),
+                "terminal_at": _iso(timestamp),
+            }
+            changed = connection.execute(
+                update(AgentCanvasPromptPreparationOutboxRow)
+                .where(
+                    AgentCanvasPromptPreparationOutboxRow.dispatch_id == row["dispatch_id"],
+                    AgentCanvasPromptPreparationOutboxRow.status.in_(
+                        (*NON_TERMINAL_STATUSES, "completed", "failed")
+                    ),
+                )
+                .values(**values)
+            )
+            if changed.rowcount != 1:
+                raise _error(
+                    "prompt_preparation_dispatch_state_conflict",
+                    "Dispatch changed before user-authoring supersession.",
+                )
+            self._append_event(
+                connection,
+                _dispatch_from_row({**row, **values}),
+                event_type="node_prompt_preparation_superseded",
+                transition_key=(
+                    f"prompt-dispatch:{row['dispatch_id']}:"
+                    f"user-authoring-superseded:{row['lease_generation']}"
+                ),
+                created_at=timestamp,
+            )
+        return len(rows)
+
     def get_for_node_operation_in_transaction(
         self,
         connection: Connection,
@@ -1144,7 +1376,9 @@ class AgentCanvasPromptPreparationDispatchRepository:
                 if status == "superseded"
                 else "node_prompt_preparation_dispatch_reconciled"
             ),
-            transition_key=f"prompt-dispatch:{result.dispatch_id}:reconcile:{status}",
+            transition_key=(
+                f"prompt-dispatch:{result.dispatch_id}:reconcile:{status}:{result.lease_generation}"
+            ),
             created_at=timestamp,
         )
         return result
@@ -1638,6 +1872,11 @@ class AgentCanvasPromptPreparationDispatchRepository:
                     code=error_code,
                     message=_bounded(error_message, 1_024) or "Prompt preparation failed.",
                     retryable=False,
+                    actionable_failure=ActionableFailureV1(
+                        failure_class="deterministic",
+                        retry_scope="none",
+                        user_action="revise",
+                    ),
                 ),
                 "attempt_stage": "failed",
                 "updated_at": _utc(now),
@@ -1932,16 +2171,6 @@ def _source_snapshot_for_node(
                         "prompt_digest": source_preparation.get("prompt_digest"),
                         "operation_id": source_preparation.get("operation_id"),
                     }
-                elif bool(row["required"]):
-                    raise _error(
-                        "node_prompt_required_reference_missing",
-                        "Required Binding references a missing source Node.",
-                    )
-            elif row["source_kind"] == "node_output" and bool(row["required"]):
-                raise _error(
-                    "node_prompt_required_reference_missing",
-                    "Required Node-output Binding has no source Node identity.",
-                )
             elif row["source_kind"] == "image_asset":
                 source = _direct_asset_snapshot_for_binding(connection, row)
             binding_values.append(
@@ -1953,7 +2182,6 @@ def _source_snapshot_for_node(
                     "source_asset_version_id": row["source_asset_version_id"],
                     "target_node_id": str(row["target_node_id"]),
                     "input_role": row["input_role"],
-                    "required": bool(row["required"]),
                     "enabled": bool(row["enabled"]),
                     "order_index": int(row["order_index"]),
                     "metadata": metadata,

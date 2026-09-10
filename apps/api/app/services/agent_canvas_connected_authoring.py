@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
 from hashlib import sha256
 from uuid import uuid4
@@ -9,6 +10,7 @@ from uuid import uuid4
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
     CanvasConnectedNodeCreateRequestV2,
@@ -30,11 +32,13 @@ class AgentCanvasConnectedAuthoringService:
         *,
         model_selection: ModelSelectionService | None = None,
         binding_capability_validator: object | None = None,
+        candidate_validator: Callable[[AgentCanvasWorkflowV2], None] | None = None,
     ) -> None:
         self._workflows = workflows
         self._connection_policy = connection_policy
         self._model_selection = model_selection
         self._binding_capability_validator = binding_capability_validator
+        self._candidate_validator = candidate_validator
         self._reference_semantics = AgentCanvasReferenceSemanticPolicy()
 
     def create_connected_node(
@@ -51,10 +55,7 @@ class AgentCanvasConnectedAuthoringService:
                 "Idempotency-Key is required.",
                 stage="agent_canvas_connected_authoring",
             )
-        if (
-            request.node.clone_inputs_from_node_id is not None
-            or request.node.source_asset_id is not None
-        ):
+        if request.node.source_asset_id is not None:
             raise V2PersistenceError(
                 "connected_node_payload_invalid",
                 "Connected node creation accepts only a new Draft node payload.",
@@ -120,7 +121,6 @@ class AgentCanvasConnectedAuthoringService:
             source=CanvasBindingSourceNodeV2(source_node_id=source.node_id),
             target_node_id=target.node_id,
             input_role=decision.input_role or "text_context",
-            required=request.binding.required,
             enabled=True,
             order=min(
                 request.binding.order if request.binding.order is not None else len(incoming),
@@ -133,6 +133,20 @@ class AgentCanvasConnectedAuthoringService:
             created_at=now,
             updated_at=now,
         )
+        if self._candidate_validator is not None:
+            candidate_nodes = (
+                (*workflow.nodes, node)
+                if node.node_id not in {item.node_id for item in workflow.nodes}
+                else workflow.nodes
+            )
+            self._candidate_validator(
+                workflow.model_copy(
+                    update={
+                        "nodes": candidate_nodes,
+                        "bindings": (*workflow.bindings, binding),
+                    }
+                )
+            )
         return self._workflows.add_connected_node(
             node=node,
             binding=binding,
