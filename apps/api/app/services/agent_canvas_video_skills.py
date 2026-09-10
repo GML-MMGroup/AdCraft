@@ -128,6 +128,16 @@ class VideoSkillDiagnosticV2:
 class VideoSkillRegistry:
     """Load only explicitly published, digest-verified content packages."""
 
+    # Process-level cache keyed by (root, catalog mtime_ns, catalog size).
+    # Skill packages ship read-only inside the deployment image, so the parsed
+    # catalog can be reused across request-scoped registry instances. The
+    # catalog.json stat (one syscall) keeps the cache correct when the
+    # catalog is rewritten in place (tests, skill updates).
+    _CATALOG_CACHE: dict[
+        tuple[str, int, int],
+        tuple[LoadedVideoSkillCatalogV2, tuple[VideoSkillDiagnosticV2, ...]],
+    ] = {}
+
     def __init__(self, root: Path = _DEFAULT_ROOT) -> None:
         self._root = root
         self._diagnostics: tuple[VideoSkillDiagnosticV2, ...] = ()
@@ -135,6 +145,14 @@ class VideoSkillRegistry:
     @property
     def diagnostics(self) -> tuple[VideoSkillDiagnosticV2, ...]:
         return self._diagnostics
+
+    def _cache_key(self) -> tuple[str, int, int] | None:
+        catalog_path = self._root / "catalog.json"
+        try:
+            stat_result = catalog_path.stat()
+        except OSError:
+            return None
+        return (str(self._root), stat_result.st_mtime_ns, stat_result.st_size)
 
     def validate_startup(self) -> None:
         try:
@@ -153,6 +171,13 @@ class VideoSkillRegistry:
             )
 
     def load_catalog(self) -> LoadedVideoSkillCatalogV2:
+        cache_key = self._cache_key()
+        if cache_key is not None:
+            cached = VideoSkillRegistry._CATALOG_CACHE.get(cache_key)
+            if cached is not None:
+                loaded_catalog, loaded_diagnostics = cached
+                self._diagnostics = loaded_diagnostics
+                return loaded_catalog
         catalog = self._read_catalog()
         categories = _ordered_categories(catalog.categories)
         category_ids = {category.category_id for category in categories}
@@ -199,11 +224,17 @@ class VideoSkillRegistry:
                 continue
             items.append(_public_detail(loaded.manifest))
         self._diagnostics = tuple(diagnostics)
-        return LoadedVideoSkillCatalogV2(
+        loaded_catalog = LoadedVideoSkillCatalogV2(
             catalog_version=catalog.catalog_version,
             categories=categories,
             items=tuple(items),
         )
+        if cache_key is not None:
+            VideoSkillRegistry._CATALOG_CACHE[cache_key] = (
+                loaded_catalog,
+                self._diagnostics,
+            )
+        return loaded_catalog
 
     def published_entries(self) -> tuple[VideoSkillCatalogEntryV2, ...]:
         """Return the validated publication identities in deterministic order."""
