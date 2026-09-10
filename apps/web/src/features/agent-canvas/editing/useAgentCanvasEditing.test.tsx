@@ -81,7 +81,6 @@ function editingNode(
     position: { x: 0, y: 0 },
     revision: options.nodeRevision ?? 2,
     error: null,
-    variation_draft: null,
     created_at: "2026-07-28T10:00:00Z",
     updated_at: "2026-07-28T10:00:00Z",
   };

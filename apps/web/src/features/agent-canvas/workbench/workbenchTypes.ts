@@ -5,8 +5,8 @@ import type {
   CanvasConnectionPolicyV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  NodeRuntimeV2,
   CanvasRuntimeModelResolutionV2,
-  CanvasVariationDraftUpsertV2,
   ProviderInputManifestAuditV2,
   SaveAgentCanvasImageToLibraryRequestV2,
   UpstreamInputReadinessIssueV2,
@@ -27,26 +27,19 @@ export type PatchBinding = (
 export interface AgentCanvasInlineWorkbenchProps {
   workflow: AgentCanvasWorkflowV2;
   node: CanvasNodeV2;
+  runtime?: NodeRuntimeV2 | null;
   patchNode: PatchNode;
   patchBinding?: PatchBinding;
   deleteBinding?: (bindingId: string) => Promise<void>;
   connectionPolicy?: CanvasConnectionPolicyV2 | null;
   providerModels?: ProviderModelSummaryV1[];
+  providerDefaultModelRef?: string | null;
   providerModelsLoading?: boolean;
   providerModelsError?: string | null;
   inputManifest?: ProviderInputManifestAuditV2 | null;
   modelResolution?: CanvasRuntimeModelResolutionV2 | null;
   inputReadinessIssue?: UpstreamInputReadinessIssueV2 | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
-  onSaveVariation: (
-    nodeId: string,
-    request: CanvasVariationDraftUpsertV2,
-  ) => Promise<void>;
-  onDiscardVariation: (nodeId: string) => Promise<void>;
-  onMaterializeVariation: (
-    node: CanvasNodeV2,
-    action: "create_draft" | "generate",
-  ) => Promise<CanvasNodeV2 | null>;
   onSaveImageToLibrary: (
     assetId: string,
     request: SaveAgentCanvasImageToLibraryRequestV2,

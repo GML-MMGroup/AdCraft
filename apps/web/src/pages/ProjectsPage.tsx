@@ -22,12 +22,10 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
   const [batchAction, setBatchAction] = useState<"favorite" | "trash" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
   const [coverTarget, setCoverTarget] = useState<ProjectListItem | null>(null);
-  const [projectOpenError, setProjectOpenError] = useState<{ projectId: string; message: string } | null>(null);
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
   const {
     savedProjects,
     startNewProject,
-    openProject,
     moveProjectToTrash,
     renameProject,
     toggleProjectFavorite,
@@ -96,29 +94,9 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
     return () => window.clearTimeout(timeout);
   }, [selectionNotice]);
 
-  const attemptOpenProject = useCallback(async (projectId: string, workflowId?: string) => {
-    setProjectOpenError(null);
-    try {
-      const opened = await openProject(projectId, workflowId);
-      if (opened) {
-        navigate("workflow", { projectId });
-        return true;
-      }
-    } catch {
-      // Keep the project list mounted so the user can retry without losing their place.
-    }
-    setProjectOpenError({ projectId, message: "Project could not be opened. Try again." });
-    return false;
-  }, [navigate, openProject]);
-
-  const openSavedProject = useCallback((projectId: string, workflowId?: string) => {
-    void attemptOpenProject(projectId, workflowId);
-  }, [attemptOpenProject]);
-
-  const retryOpeningProject = useCallback(async () => {
-    if (!projectOpenError) return false;
-    return attemptOpenProject(projectOpenError.projectId);
-  }, [attemptOpenProject, projectOpenError]);
+  const openSavedProject = useCallback((projectId: string) => {
+    navigate("workflow", { projectId });
+  }, [navigate]);
 
   const trashSavedProject = useCallback((project: ProjectListItem) => {
     void moveProjectToTrash(project.projectId);
@@ -277,9 +255,9 @@ export function ProjectsPage({ navigate }: { navigate: AppNavigate }) {
         </div>
       ) : null}
       <ProjectCatalogNotice
-        error={projectOpenError?.message ?? projectCatalogError}
+        error={projectCatalogError}
         refreshing={projectCatalogRefreshing}
-        onRetry={projectOpenError ? retryOpeningProject : refreshProjects}
+        onRetry={refreshProjects}
       />
       <ProjectList
         leading={<CreateCard title="New Project" onClick={createProject} />}

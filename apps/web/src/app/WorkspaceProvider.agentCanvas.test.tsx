@@ -10,6 +10,7 @@ const { legacyApi, v2Api } = vi.hoisted(() => ({
   },
   v2Api: {
     listProjects: vi.fn(async () => ({ items: [], next_cursor: null })),
+    listProjectsWithEtag: vi.fn(),
     createAgentCanvasProject: vi.fn(),
     projectWithEtag: vi.fn(),
     agentCanvasWorkflowWithEtag: vi.fn(),
@@ -92,6 +93,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
   v2Api.listProjects.mockResolvedValue({ items: [], next_cursor: null });
+  v2Api.listProjectsWithEtag.mockResolvedValue({
+    value: { items: [], next_cursor: null },
+    etag: '"catalog-empty"',
+    notModified: false,
+  });
   v2Api.createAgentCanvasProject.mockResolvedValue({ value: workflow, etag: '"workflow-1-r1"' });
   v2Api.projectWithEtag.mockResolvedValue({
     value: {
@@ -113,7 +119,7 @@ afterEach(() => {
 });
 
 describe("WorkspaceProvider Agent Canvas authority", () => {
-  it("renders the persisted project catalog before the refresh completes", async () => {
+  it("uses a fresh persisted catalog without starting a background request", async () => {
     saveProjectCatalogCache({
       active: [{
         project_id: "cached-project",
@@ -126,7 +132,10 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
         updated_at: "2026-08-28T00:00:00Z",
       }],
       trashed: [],
-      savedAt: Date.now(),
+      activeEtag: '"active-v1"',
+      trashedEtag: null,
+      activeSavedAt: Date.now(),
+      trashedSavedAt: Date.now(),
     });
 
     render(
@@ -137,7 +146,49 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
 
     expect(screen.getByText("projects:1")).toBeTruthy();
     await screen.findByText("hydrated");
-    expect(screen.getByText("projects:0")).toBeTruthy();
+    expect(screen.getByText("projects:1")).toBeTruthy();
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalled();
+    expect(v2Api.listProjects).not.toHaveBeenCalled();
+  });
+
+  it("conditionally revalidates a stale catalog and keeps cached items on 304", async () => {
+    saveProjectCatalogCache({
+      active: [{
+        project_id: "cached-project",
+        workflow_id: "cached-workflow",
+        name: "Cached campaign",
+        status: "active",
+        is_favorite: false,
+        cover_asset_id: null,
+        project_version: 1,
+        updated_at: "2026-08-28T00:00:00Z",
+      }],
+      trashed: [],
+      activeEtag: '"active-v1"',
+      trashedEtag: null,
+      activeSavedAt: Date.now() - 10_001,
+      trashedSavedAt: Date.now(),
+    });
+    v2Api.listProjectsWithEtag.mockResolvedValueOnce({
+      value: null,
+      etag: '"active-v1"',
+      notModified: true,
+    });
+
+    render(
+      <WorkspaceProvider restoreActiveWorkflow={false} projectCatalogScope="active">
+        <Probe />
+      </WorkspaceProvider>,
+    );
+
+    await screen.findByText("hydrated");
+    await waitFor(() => expect(v2Api.listProjectsWithEtag).toHaveBeenCalledWith(
+      "active",
+      100,
+      undefined,
+      '"active-v1"',
+    ));
+    expect(screen.getByText("projects:1")).toBeTruthy();
   });
 
   it("loads the active project catalog without restoring a workflow for a catalog-only route", async () => {
@@ -150,8 +201,8 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
     );
 
     await screen.findByText("hydrated");
-    expect(v2Api.listProjects).toHaveBeenCalledWith("active", 100, undefined);
-    expect(v2Api.listProjects).not.toHaveBeenCalledWith("trashed", 100, undefined);
+    expect(v2Api.listProjectsWithEtag).toHaveBeenCalledWith("active", 100, undefined, undefined);
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalledWith("trashed", 100, undefined, undefined);
     expect(v2Api.projectWithEtag).not.toHaveBeenCalled();
     expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
   });
@@ -216,7 +267,10 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
         updated_at: "2026-08-20T00:00:00Z",
       }],
       trashed: [],
-      savedAt: Date.now(),
+      activeEtag: null,
+      trashedEtag: null,
+      activeSavedAt: Date.now(),
+      trashedSavedAt: Date.now(),
     });
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
     const catalog = deferred<{ items: never[]; next_cursor: null }>();
@@ -245,7 +299,10 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
         updated_at: "2026-08-20T00:00:00Z",
       }],
       trashed: [],
-      savedAt: Date.now(),
+      activeEtag: null,
+      trashedEtag: null,
+      activeSavedAt: Date.now(),
+      trashedSavedAt: Date.now(),
     });
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
     v2Api.agentCanvasWorkflowWithEtag.mockImplementation(async (workflowId: string) => ({
@@ -273,9 +330,9 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
   });
 
   it("keeps a successfully created Project open when the list refresh is unavailable", async () => {
-    v2Api.listProjects
-      .mockResolvedValueOnce({ items: [], next_cursor: null })
-      .mockResolvedValueOnce({ items: [], next_cursor: null })
+    v2Api.listProjectsWithEtag
+      .mockResolvedValueOnce({ value: { items: [], next_cursor: null }, etag: '"active-empty"', notModified: false })
+      .mockResolvedValueOnce({ value: { items: [], next_cursor: null }, etag: '"trashed-empty"', notModified: false })
       .mockRejectedValue(new Error("Project list unavailable"));
 
     render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
@@ -289,25 +346,29 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
   });
 
   it("retains the last successful project catalog when a later refresh fails", async () => {
-    v2Api.listProjects.mockImplementation(async (status: string) => ({
-      items: status === "active" ? [{
-        project_id: "project-catalog-1",
-        workflow_id: "workflow-catalog-1",
-        name: "Catalog project",
-        description: "",
-        status: "active",
-        is_favorite: false,
-        cover_asset_id: null,
-        project_version: 1,
-        created_at: "2026-08-18T00:00:00Z",
-        updated_at: "2026-08-18T00:00:00Z",
-      }] : [],
-      next_cursor: null,
+    v2Api.listProjectsWithEtag.mockImplementation(async (status: string) => ({
+      value: {
+        items: status === "active" ? [{
+          project_id: "project-catalog-1",
+          workflow_id: "workflow-catalog-1",
+          name: "Catalog project",
+          description: "",
+          status: "active",
+          is_favorite: false,
+          cover_asset_id: null,
+          project_version: 1,
+          created_at: "2026-08-18T00:00:00Z",
+          updated_at: "2026-08-18T00:00:00Z",
+        }] : [],
+        next_cursor: null,
+      },
+      etag: `"${status}-v1"`,
+      notModified: false,
     }));
     render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
     await screen.findByText("projects:1");
 
-    v2Api.listProjects.mockRejectedValue(new Error("Project list unavailable"));
+    v2Api.listProjectsWithEtag.mockRejectedValue(new Error("Project list unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh projects" }));
 
     await screen.findByText(/Existing projects are still shown/);

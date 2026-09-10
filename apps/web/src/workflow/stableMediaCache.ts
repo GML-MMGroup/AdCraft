@@ -6,6 +6,7 @@ type MemoryMediaEntry = {
   objectUrl: string | null;
   promise: Promise<string> | null;
   lastAccessed: number;
+  activeConsumers: number;
 };
 
 const memoryMedia = new Map<string, MemoryMediaEntry>();
@@ -36,6 +37,26 @@ export function cachedStableMediaUrl(sourceUrl?: string | null): string | null {
   return entry.objectUrl;
 }
 
+/** Keep a resolved media object URL alive while a preview is mounted. */
+export function retainStableMedia(sourceUrl?: string | null): () => void {
+  if (!sourceUrl) return () => undefined;
+  const entry = memoryMedia.get(sourceUrl);
+  if (!entry) return () => undefined;
+  entry.activeConsumers += 1;
+  entry.lastAccessed = Date.now();
+  touchMemoryEntry(sourceUrl, entry);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const current = memoryMedia.get(sourceUrl);
+    if (!current) return;
+    current.activeConsumers = Math.max(0, current.activeConsumers - 1);
+    current.lastAccessed = Date.now();
+    touchMemoryEntry(sourceUrl, current);
+  };
+}
+
 /**
  * Resolve an image/poster to a browser-local object URL. Requests are shared by
  * URL, and Cache Storage survives page reloads without changing the backend.
@@ -60,12 +81,14 @@ export async function loadStableMedia(sourceUrl: string, signal?: AbortSignal): 
       entry.promise = null;
       entry.objectUrl = objectUrl;
       entry.lastAccessed = Date.now();
+      entry.activeConsumers = entry.activeConsumers ?? 0;
       touchMemoryEntry(sourceUrl, entry);
     } else {
       const next: MemoryMediaEntry = {
         objectUrl,
         promise: null,
         lastAccessed: Date.now(),
+        activeConsumers: 0,
       };
       memoryMedia.set(sourceUrl, next);
       trimMemoryCache();
@@ -80,6 +103,7 @@ export async function loadStableMedia(sourceUrl: string, signal?: AbortSignal): 
     objectUrl: null,
     promise,
     lastAccessed: Date.now(),
+    activeConsumers: 0,
   });
   trimMemoryCache();
   return promise;
@@ -162,7 +186,9 @@ function touchMemoryEntry(sourceUrl: string, entry: MemoryMediaEntry) {
 
 function trimMemoryCache() {
   while (memoryMedia.size > MAX_MEMORY_ENTRIES) {
-    const oldest = [...memoryMedia.entries()].sort(([, left], [, right]) => left.lastAccessed - right.lastAccessed)[0];
+    const oldest = [...memoryMedia.entries()]
+      .filter(([, entry]) => entry.activeConsumers === 0)
+      .sort(([, left], [, right]) => left.lastAccessed - right.lastAccessed)[0];
     if (!oldest) return;
     memoryMedia.delete(oldest[0]);
     revokeObjectUrl(oldest[1].objectUrl);

@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["tests/browser/home-discover-motion.spec.ts", "tests/browser/home-discover-motion-mock.tsx"]
+}

@@ -96,7 +96,51 @@ describe("ReferenceSourceDecisionDock", () => {
       asset_id: "uploaded-asset",
       asset_version_id: "uploaded-version",
     }));
-    expect(uploadFilesWithReceipts).toHaveBeenCalledTimes(1);
+    expect(uploadFilesWithReceipts).toHaveBeenCalledWith(
+      [expect.any(File)],
+      { semanticRole: "character_reference" },
+      [expect.any(String)],
+    );
+  });
+
+  it("uploads a scene reference with the canonical project candidate role", async () => {
+    useGuidedReferenceCandidates.mockReturnValue({
+      items: [], loading: false, loadingMore: false, error: null,
+      hasMore: false, retry: vi.fn(), loadMore: vi.fn(),
+    });
+    uploadFilesWithReceipts.mockResolvedValue([{
+      asset: {
+        asset_id: "uploaded-scene",
+        version_id: "uploaded-scene-version",
+        display_name: "Uploaded scene",
+        preview_url: "/uploaded-scene.png",
+        media_url: "/uploaded-scene.png",
+      },
+    }]);
+    const sceneInteraction: GuidedInteractionV1 = {
+      ...interaction,
+      interaction_id: "interaction-scene-reference-1",
+      content: {
+        ...interaction.content,
+        content_kind: "reference_source",
+        reference_kind: "scene_main",
+        occurrence_id: null,
+        target_node_id: "scene-main-1",
+      },
+    };
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(<ReferenceSourceDecisionDock interaction={sceneInteraction} pending={false} issue={null} onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText("Upload reference"), {
+      target: { files: [new File(["scene"], "scene.png", { type: "image/png" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
+
+    await waitFor(() => expect(uploadFilesWithReceipts).toHaveBeenCalledWith(
+      [expect.any(File)],
+      { semanticRole: "scene_reference" },
+      [expect.any(String)],
+    ));
   });
 
   it("selects a catalog candidate and submits its exact provenance", async () => {
@@ -139,5 +183,54 @@ describe("ReferenceSourceDecisionDock", () => {
       asset_id: "asset-scene-1",
       asset_version_id: "version-scene-1",
     }));
+  });
+
+  it("clears and reloads a library selection invalidated by a structured submit error", async () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    const candidate = {
+      entity_id: null,
+      member_id: null,
+      asset_id: "asset-character-1",
+      asset_version_id: "version-character-1",
+      media_type: "image" as const,
+      display_name: "Project character",
+      preview_url: "/api/v2/assets/asset-character-1/content",
+      content_url: "/api/v2/assets/asset-character-1/content",
+      reference_kind: "character_main" as const,
+      semantic_reference_role: "character_reference" as const,
+      reference_purpose: "identity_guidance" as const,
+      selectable: true,
+    };
+    useGuidedReferenceCandidates.mockReturnValue({
+      items: [candidate], loading: false, loadingMore: false, error: null,
+      hasMore: false, retry, loadMore: vi.fn(),
+    });
+    const onSubmit = vi.fn().mockResolvedValue(false);
+    const { rerender } = render(
+      <ReferenceSourceDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={onSubmit} />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Project character" }));
+    expect(screen.getByRole("button", { name: "Remove" })).toBeTruthy();
+
+    const invalidCandidateIssue = {
+      code: "reference_candidate_not_found",
+      summary: "The selected reference is no longer available.",
+      detail: "reference_candidate_not_found: Candidate changed",
+      fieldId: null,
+      retryable: true,
+    };
+    rerender(
+      <ReferenceSourceDecisionDock
+        interaction={interaction}
+        pending={false}
+        issue={invalidCandidateIssue}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
   });
 });

@@ -31,11 +31,11 @@ function errorState(error: unknown): { message: string; action: WorkbenchErrorAc
     };
   }
   const code = error.code ?? "";
-  const action: WorkbenchErrorAction = ["provider_credentials_missing", "provider_credentials_invalid", "model_not_configured", "model_default_not_configured", "agent_model_incompatible"].includes(code)
+  const action: WorkbenchErrorAction = ["provider_credentials_missing", "provider_credentials_invalid", "provider_gateway_unavailable", "model_not_configured", "model_default_not_configured", "agent_model_incompatible"].includes(code)
     ? "open_api_space"
-    : ["model_not_found", "model_unavailable", "model_capability_mismatch", "binding_model_incompatible", "model_selection_invalid"].includes(code)
+    : ["model_not_found", "model_unavailable", "model_capability_mismatch", "model_adapter_unavailable", "model_conformance_required", "model_conformance_revoked", "model_parameter_incompatible", "binding_model_incompatible", "model_selection_invalid"].includes(code)
       ? "choose_model"
-      : code === "model_catalog_sync_failed"
+      : ["model_catalog_sync_failed", "provider_gateway_config_stale"].includes(code)
         ? "sync_models"
         : null;
   return { message: canvasAuthoringErrorMessage(error), action };
@@ -55,9 +55,6 @@ export function useNodeWorkbenchDraft({
   node,
   patchNode,
   onRun,
-  onSaveVariation,
-  onDiscardVariation,
-  onMaterializeVariation,
   onSaveImageToLibrary,
   onWorkflowRefresh,
 }: Pick<
@@ -66,26 +63,21 @@ export function useNodeWorkbenchDraft({
   | "node"
   | "patchNode"
   | "onRun"
-  | "onSaveVariation"
-  | "onDiscardVariation"
-  | "onMaterializeVariation"
   | "onSaveImageToLibrary"
   | "onWorkflowRefresh"
 >) {
-  const [title, setTitle] = useState(node.variation_draft?.title ?? node.title);
-  const [prompt, setPrompt] = useState(
-    node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "",
-  );
+  const [title, setTitle] = useState(node.title);
+  const [prompt, setPrompt] = useState(node.generation_prompt ?? "");
   const [textContent, setTextContent] = useState(structuredText(node));
   const [modelSelectionMode, setModelSelectionMode] = useState(
-    node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default",
+    node.model_selection_mode ?? "default",
   );
   const [modelRef, setModelRef] = useState(
-    node.variation_draft?.model_ref ?? node.model_ref,
+    node.model_ref,
   );
   const initialParameterState = normalizeProviderParameters(
     node.node_type,
-    node.variation_draft?.parameters ?? node.parameters,
+    node.parameters,
   );
   const [parameters, setParameters] = useState<Record<string, unknown>>(
     initialParameterState.parameters,
@@ -119,8 +111,7 @@ export function useNodeWorkbenchDraft({
     || isRunnableText
     || ["image", "video", "audio"].includes(node.node_type);
   const canAutosavePrompt = editsGenerationPrompt
-    && !isReadyMedia
-    && (effectiveStatus === "draft" || effectiveStatus === "failed");
+    && ["draft", "failed", "ready", "working"].includes(effectiveStatus);
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
   const nodeForRun = node;
 
@@ -143,14 +134,14 @@ export function useNodeWorkbenchDraft({
   });
 
   const restoreFromNode = useCallback(() => {
-    setTitle(node.variation_draft?.title ?? node.title);
-    setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
+    setTitle(node.title);
+    setPrompt(node.generation_prompt ?? "");
     setTextContent(structuredText(node));
-    setModelSelectionMode(node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default");
-    setModelRef(node.variation_draft?.model_ref ?? node.model_ref);
+    setModelSelectionMode(node.model_selection_mode ?? "default");
+    setModelRef(node.model_ref);
     const parameterState = normalizeProviderParameters(
       node.node_type,
-      node.variation_draft?.parameters ?? node.parameters,
+      node.parameters,
     );
     setParameters(parameterState.parameters);
     setParameterMigrationRequired(parameterState.migrated);
@@ -163,7 +154,7 @@ export function useNodeWorkbenchDraft({
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
-    const authoritativePrompt = (node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "").trim() || null;
+    const authoritativePrompt = (node.generation_prompt ?? "").trim() || null;
     const waitingForPromptResponse = !changedNode
       && promptAutosave.lastSavedValue !== authoritativePrompt;
     if (!changedNode && (
@@ -217,25 +208,6 @@ export function useNodeWorkbenchDraft({
   };
 
   const save = async (): Promise<boolean> => {
-    if (isReadyMedia) {
-      if (!prompt.trim()) {
-        setError("Enter a generation prompt before creating a variation.");
-        return false;
-      }
-      const saved = await perform(() => onSaveVariation(node.node_id, {
-        title: title.trim() || `${node.title} variation`,
-        generation_prompt: prompt.trim(),
-        model_selection_mode: modelSelectionMode,
-        model_ref: modelSelectionMode === "explicit" ? modelRef : null,
-        parameters,
-      }));
-      if (saved) {
-        setDirty(false);
-        setParameterMigrationRequired(false);
-      }
-      return saved;
-    }
-
     if (isWorldSetting) {
       if (!textContent.trim()) {
         setError("World Setting content cannot be empty.");
@@ -292,18 +264,6 @@ export function useNodeWorkbenchDraft({
       ? { ...nodeForRun, generation_prompt: prompt.trim() || null }
       : nodeForRun;
     await perform(() => onRun(runNode));
-  };
-
-  const materializeVariation = async (action: "create_draft" | "generate") => {
-    if ((dirty || parameterMigrationRequired || !node.variation_draft) && !(await save())) return;
-    await perform(() => onMaterializeVariation(node, action));
-  };
-
-  const discardVariation = async () => {
-    const discarded = await perform(() => onDiscardVariation(node.node_id));
-    if (!discarded) return;
-    restoreFromNode();
-    setDirty(false);
   };
 
   const saveImageToLibrary = async () => {
@@ -378,8 +338,6 @@ export function useNodeWorkbenchDraft({
     perform,
     save,
     run,
-    materializeVariation,
-    discardVariation,
     saveImageToLibrary,
   };
 }

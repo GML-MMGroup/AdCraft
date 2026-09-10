@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
+import { failureUserAction } from "../chat/actionableFailure.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import { useAgentCanvasPresentationStreams } from "../runtime/useAgentCanvasPresentationStreams.ts";
 
@@ -17,9 +18,11 @@ const PREPARATION_LABELS = {
 export function NodePromptPreparationState({
   node,
   onWorkflowRefresh,
+  onRevise,
 }: {
   node: CanvasNodeV2;
   onWorkflowRefresh?: () => Promise<void> | void;
+  onRevise?: () => void;
 }) {
   const preparation = promptPreparationForNode(node);
   const presentationStreamId = preparation?.status === "queued" || preparation?.status === "working"
@@ -49,6 +52,7 @@ export function NodePromptPreparationState({
     : node.summary_prompt?.trim() || "Preparing the detailed generation prompt.";
   const status = preparation?.status ?? "queued";
   const error = preparation?.error ?? null;
+  const userAction = failureUserAction(error?.actionable_failure);
   const streamPreview = presentationStreamId
     ? presentationStreams[presentationStreamId]?.text.trim()
     : "";
@@ -62,10 +66,12 @@ export function NodePromptPreparationState({
       <span>{PREPARATION_LABELS[status]}</span>
       <p>{streamPreview || summary}</p>
       {error ? (
-        <small>
-          {error.message}
-          {error.retryable ? " Retryable." : ""}
-        </small>
+        <small>{error.message}</small>
+      ) : null}
+      {status === "failed" && userAction === "revise" && onRevise ? (
+        <button type="button" onClick={onRevise}>
+          Revise generation prompt
+        </button>
       ) : null}
     </section>
   );

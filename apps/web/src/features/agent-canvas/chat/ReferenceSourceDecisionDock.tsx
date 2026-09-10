@@ -11,7 +11,10 @@ import type {
 import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
 import { useAgentCanvasAssets } from "../assets/useAgentCanvasAssets.ts";
 import { DecisionDockFrame } from "./DecisionDockFrame.tsx";
-import type { DecisionDockIssue } from "./decisionDockIssue.ts";
+import {
+  isReferenceCandidateInvalidIssue,
+  type DecisionDockIssue,
+} from "./decisionDockIssue.ts";
 import { useGuidedReferenceCandidates } from "./useGuidedReferenceCandidates.ts";
 
 export interface ReferenceSourceDecisionDockProps {
@@ -42,6 +45,12 @@ function isSelectable(candidate: GuidedReferenceCandidateV2): boolean {
 
 function referenceLabel(referenceKind: GuidedReferenceKindV1): string {
   return referenceKind === "character_main" ? "Character reference" : "Scene reference";
+}
+
+function referenceSemanticRole(
+  referenceKind: GuidedReferenceKindV1,
+): "character_reference" | "scene_reference" {
+  return referenceKind === "character_main" ? "character_reference" : "scene_reference";
 }
 
 export function ReferenceSourceDecisionDock({
@@ -76,6 +85,7 @@ export function ReferenceSourceDecisionDock({
   const [localIssue, setLocalIssue] = useState<DecisionDockIssue | null>(null);
   const previewUrlsRef = useRef(new Set<string>());
   const transactionInFlightRef = useRef(false);
+  const reloadedIssueCodeRef = useRef<string | null>(null);
 
   useEffect(() => () => {
     if (typeof URL.revokeObjectURL !== "function") return;
@@ -89,10 +99,24 @@ export function ReferenceSourceDecisionDock({
     setScope("project");
   }, [interaction.interaction_id]);
 
-  if (!content) return null;
-
   const busy = pending || preparing || uploadAssets.uploading;
   const effectiveIssue = localIssue ?? issue;
+  const retryCandidates = candidates.retry;
+
+  useEffect(() => {
+    if (sourceMode !== "library" || !isReferenceCandidateInvalidIssue(effectiveIssue)) {
+      reloadedIssueCodeRef.current = null;
+      return;
+    }
+    const issueCode = effectiveIssue?.code ?? null;
+    if (!issueCode || reloadedIssueCodeRef.current === issueCode) return;
+    reloadedIssueCodeRef.current = issueCode;
+    setSelected(null);
+    void retryCandidates();
+  }, [effectiveIssue, retryCandidates, sourceMode]);
+
+  if (!content) return null;
+
   const submit = async (action: "use_reference" | "skip_reference") => {
     if (busy || transactionInFlightRef.current) return;
     if (action === "use_reference" && (!selected || !selected.versionId && !selected.file)) return;
@@ -104,7 +128,7 @@ export function ReferenceSourceDecisionDock({
       if (action === "use_reference" && selected?.file) {
         const [receipt] = await uploadAssets.uploadFilesWithReceipts(
           [selected.file],
-          { semanticRole: content.reference_kind === "character_main" ? "character_main_reference" : "scene_main_reference" },
+          { semanticRole: referenceSemanticRole(content.reference_kind) },
           [selected.uploadIdempotencyKey ?? createOperationKey("guided-reference-upload")],
         );
         if (!receipt?.asset.version_id) throw new Error("The uploaded reference did not return an immutable AssetVersion.");

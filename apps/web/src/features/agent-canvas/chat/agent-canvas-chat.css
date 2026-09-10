@@ -601,6 +601,45 @@
   color: var(--agent-chat-primary);
 }
 
+.agent-chat__failed-turn {
+  display: grid;
+  width: min(88%, 360px);
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--agent-chat-strong-line);
+  border-radius: 10px;
+  background: #202020;
+  color: var(--agent-chat-primary);
+}
+
+.agent-chat__failed-turn strong {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.agent-chat__failed-turn p {
+  margin: 0;
+  color: var(--agent-chat-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-chat__failed-turn button {
+  justify-self: start;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--agent-chat-primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.agent-chat__failed-turn button:disabled {
+  color: var(--agent-chat-muted);
+  cursor: default;
+}
+
 .agent-chat__message--user :is(p, .agent-chat__markdown) {
   padding: 0;
   border: 0;
@@ -820,6 +859,69 @@
   pointer-events: none;
 }
 
+.agent-chat__capability-identity { position: relative; }
+.agent-chat__capability-identity[data-role-identity-state="pending"] > .agent-chat__capability-icon { visibility: hidden; }
+.agent-chat__identity-skeleton {
+  position: absolute;
+  inset: 6px 0;
+  max-width: 160px;
+  border-radius: 4px;
+  background: var(--agent-chat-border);
+  opacity: .5;
+  pointer-events: none;
+}
+.agent-chat__identity-retry {
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  color: var(--agent-chat-secondary);
+  cursor: pointer;
+}
+.agent-chat__identity-retry:focus-visible { outline: 1px solid currentColor; }
+.agent-chat__role-generic {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--agent-role-accent, currentColor);
+  font-size: 18px;
+}
+
+.agent-chat__role-animation-frame {
+  position: relative;
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  pointer-events: none;
+}
+
+.agent-chat__role-animation-asset {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+  transition: opacity 120ms cubic-bezier(.23, 1, .32, 1);
+}
+
+.agent-chat__role-animation-artwork > svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+.agent-chat__role-animation-asset.is-hidden {
+  opacity: 0;
+}
+
+.agent-chat__role-animation-asset.is-visible {
+  opacity: 1;
+}
+
 .agent-chat__activity:not(.is-compact) > header strong {
   color: var(--agent-role-accent);
   font-size: 14px;
@@ -949,29 +1051,6 @@
 
 .agent-chat__working-loader {
   color: var(--agent-chat-secondary);
-}
-
-.agent-chat__presentation-stream {
-  display: grid;
-  gap: 5px;
-  max-width: 100%;
-  padding: 4px 0 5px 15px;
-  border-left: 1px solid var(--agent-chat-border);
-  color: var(--agent-chat-primary);
-  animation: agent-chat-section-in 220ms ease both;
-}
-
-.agent-chat__presentation-stream p {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.agent-chat__presentation-stream span {
-  color: var(--agent-chat-muted);
-  font-size: 10px;
 }
 
 .agent-chat__artifact {
@@ -4351,6 +4430,10 @@ button.agent-chat__node-links--related:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .agent-chat__role-animation-asset {
+    transition: none !important;
+  }
+
   .agent-chat__message,
   .agent-chat__activity,
   .agent-chat__stage-thread,

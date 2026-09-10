@@ -1,16 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
-import { createRequestQueue } from "../../collections/requestQueue.ts";
-import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
-import {
-  loadLatestProjectCoverCache,
-  projectCoverCacheKey,
-  saveProjectCoverCache,
-} from "../../projects/projectCoverCache.ts";
-import { needsV2ProjectCoverNodeAuthority, resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
+import type { V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 import { prefetchProjectCover } from "../../projects/projectCoverPrefetch.ts";
-import type { ProjectAssetSummaryV2, ProjectCoverStateV2 } from "../../types-v2.ts";
+import type { ProjectCoverStateV2 } from "../../types-v2.ts";
 import {
   getProjectGridColumnCount,
   getVirtualProjectWindow,
@@ -55,33 +47,6 @@ type ViewportMetrics = {
 };
 
 const PROJECT_DEFAULT_VIEWPORT_WIDTH = 1024;
-const PROJECT_COVER_REQUEST_LIMIT = 4;
-type ProjectCoverEntry = {
-  cover: V2ProjectCover | null;
-};
-
-type ProjectCoverLookup = {
-  cover: V2ProjectCover | null;
-  assets: readonly ProjectAssetSummaryV2[];
-  needsAuthority: boolean;
-};
-
-let projectCoverResource = createSettledQueryResource<ProjectCoverLookup>();
-let projectCoverAuthorityResource = createSettledQueryResource<V2ProjectCover | null>();
-let projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
-
-// eslint-disable-next-line react-refresh/only-export-components -- Tests reset the module-scoped cover scheduler between cases.
-export function __resetProjectCoverResourceForTests() {
-  projectCoverResource = createSettledQueryResource<ProjectCoverLookup>();
-  projectCoverAuthorityResource = createSettledQueryResource<V2ProjectCover | null>();
-  projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
-}
-
-/** Stop background cover work before a project opens without discarding settled covers. */
-export function cancelProjectCoverRequests() {
-  projectCoverResource.cancelPending();
-  projectCoverAuthorityResource.cancelPending();
-}
 
 export function ProjectList({
   projects,
@@ -248,10 +213,9 @@ const ProjectListCard = memo(function ProjectListCard({
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
   const renameProject = useCallback((trigger: HTMLButtonElement) => onRenameProject(project, trigger), [onRenameProject, project]);
   const openProject = useCallback(() => {
-    cancelProjectCoverRequests();
     onOpenProject(project.projectId, project.workflowId);
   }, [onOpenProject, project.projectId, project.workflowId]);
-  const cover = useProjectCover(project, coverPriority);
+  const cover = project.coverState === "ready" ? project.cover ?? null : null;
 
   useEffect(() => {
     prefetchProjectCover(cover, coverPriority);
@@ -278,90 +242,6 @@ const ProjectListCard = memo(function ProjectListCard({
     />
   );
 });
-
-function useProjectCover(project: ProjectListItem, coverPriority: number): V2ProjectCover | null | undefined {
-  const { workflowId, coverAssetId, coverVersionId, coverState, updatedAt, cover: summaryCover } = project;
-  const requestKey = projectCoverRequestKey({ workflowId, coverAssetId, coverVersionId, updatedAt });
-  const [entry, setEntry] = useState<ProjectCoverEntry | null>(null);
-  const coverPriorityRef = useRef(coverPriority);
-  coverPriorityRef.current = coverPriority;
-
-  useEffect(() => {
-    if (summaryCover) {
-      saveProjectCoverCache(projectCoverCacheKey(project.projectId, summaryCover), summaryCover);
-      setEntry({ cover: summaryCover });
-      return undefined;
-    }
-    if (coverState !== undefined && coverState !== "unresolved") {
-      setEntry({ cover: null });
-      return undefined;
-    }
-    const cachedCover = loadLatestProjectCoverCache(project.projectId, undefined, { allowStale: true });
-    setEntry(cachedCover ? { cover: cachedCover } : null);
-    let active = true;
-    let authoritySubscription: ReturnType<typeof projectCoverAuthorityResource.subscribe> | undefined;
-    const subscription = projectCoverResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (signal) => (
-      projectCoverQueue.schedule(
-        () => agentCanvasApi.listAgentCanvasProjectAssets(workflowId, { signal })
-          .then((response) => {
-            const preliminary = resolveV2ProjectCover(coverAssetId, response.assets);
-            return {
-              cover: preliminary,
-              assets: response.assets,
-              needsAuthority: needsV2ProjectCoverNodeAuthority(response.assets),
-            };
-          }),
-        { signal, priority: coverPriorityRef.current },
-      )
-    ));
-    void subscription.promise.then((lookup) => {
-      if (!active) return;
-      if (lookup.cover) saveProjectCoverCache(projectCoverCacheKey(project.projectId, lookup.cover), lookup.cover);
-      setEntry({ cover: lookup.cover });
-      if (!lookup.needsAuthority) return;
-
-      authoritySubscription = projectCoverAuthorityResource.subscribe(projectCoverIdentity({ workflowId, coverAssetId, updatedAt }), (authoritySignal) => (
-        projectCoverQueue.schedule(
-          () => agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId, { signal: authoritySignal })
-            .then((workflow) => resolveV2ProjectCover(coverAssetId, lookup.assets, workflow.value.nodes)),
-          { signal: authoritySignal, priority: coverPriorityRef.current },
-        )
-      ));
-      void authoritySubscription.promise.then((authoritativeCover) => {
-        const nextCover = authoritativeCover ?? lookup.cover;
-        if (nextCover) saveProjectCoverCache(projectCoverCacheKey(project.projectId, nextCover), nextCover);
-        if (active) setEntry({ cover: nextCover });
-      }).catch(() => {
-        // The preliminary cover remains usable when optional authority lookup fails.
-      });
-    }).catch(() => {
-      if (active) {
-        setEntry((current) => (current?.cover ? current : { cover: null }));
-      }
-    });
-
-    return () => {
-      active = false;
-      subscription.release();
-      authoritySubscription?.release();
-    };
-  }, [coverAssetId, coverState, coverVersionId, project.projectId, requestKey, summaryCover, updatedAt, workflowId]);
-
-  return entry?.cover;
-}
-
-function projectCoverRequestKey(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "coverVersionId" | "updatedAt">) {
-  return stableQueryKey(projectCoverIdentity(project));
-}
-
-function projectCoverIdentity(project: Pick<ProjectListItem, "workflowId" | "coverAssetId" | "coverVersionId" | "updatedAt">) {
-  return {
-    workflowId: project.workflowId,
-    coverAssetId: project.coverAssetId ?? "fallback",
-    coverVersionId: project.coverVersionId ?? "fallback",
-    updatedAt: project.updatedAt,
-  };
-}
 
 function getWindowWidth() {
   if (typeof window === "undefined") return PROJECT_DEFAULT_VIEWPORT_WIDTH;

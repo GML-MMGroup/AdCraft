@@ -6,6 +6,12 @@ import type {
   ChatCapabilityActivityV2,
 } from "../../../types-v2.ts";
 import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
+import {
+  activityActionableFailure,
+  canRetryFailureInScope,
+  failureUserAction,
+} from "./actionableFailure.ts";
+import { resolveAgentRoleMotionState } from "./agent-role-animation/resolveAgentRoleMotionState.ts";
 
 function recoveryStageLabel(stage: string | null | undefined): string | null {
   if (stage === "waiting" || stage === "waiting_provider_response" || stage === "provider_waiting") {
@@ -94,7 +100,9 @@ export function CapabilityActivityRow({
   onReviseRequest?: () => void;
 }) {
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
-  const retryable = turn?.retryable ?? activity.retryable;
+  const actionableFailure = activityActionableFailure(activity, turn);
+  const retryable = canRetryFailureInScope(actionableFailure, "turn");
+  const canRevise = failureUserAction(actionableFailure) === "revise";
   const errorCode = turn?.operation_failure?.code ?? activity.error_code;
   const errorMessage = turn?.operation_failure?.message ?? activity.message;
   const terminalActivity = activity.status === "completed"
@@ -143,6 +151,11 @@ export function CapabilityActivityRow({
             capabilityId={activity.capability_id}
             displayName={activity.capability_display_name}
             detail={stage}
+            motionState={resolveAgentRoleMotionState({
+              status: activity.status,
+              turnId: activity.turn_id,
+              turn,
+            })}
           />
         )}
         {duration ? <time>{duration}</time> : null}
@@ -185,7 +198,7 @@ export function CapabilityActivityRow({
                     {retrying ? "Retrying" : "Retry"}
                   </button>
                 ) : null}
-                {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
+                {canRevise && onReviseRequest ? (
                   <button
                     type="button"
                     aria-label={`Revise ${activity.capability_display_name} request`}

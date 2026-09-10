@@ -17,12 +17,6 @@ export function normalizeProviderParameters(
   ) {
     parameters.duration_seconds = requestedDuration;
   }
-  if (
-    typeof parameters.duration_seconds === "number"
-    && (!Number.isInteger(parameters.duration_seconds) || parameters.duration_seconds <= 0)
-  ) {
-    delete parameters.duration_seconds;
-  }
   const migrated = (
     "requested_duration_seconds" in parameters
     || "effective_duration_seconds" in parameters

@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ProviderModelSummaryV1 } from "../api/providerRegistry.ts";
+import { ModelDefaultsPanel } from "./api-space/ModelDefaultsPanel.tsx";
+import { ProviderCredentialCard } from "./api-space/ProviderCredentialCard.tsx";
 import { ApiSpacePage } from "./ApiSpacePage.tsx";
 
 const fixture = vi.hoisted(() => ({
@@ -36,7 +39,9 @@ const providers = [
 ];
 
 const glm = model("siliconflow:zai-org/GLM-5.2", "SiliconFlow", "GLM-5.2", "text");
-const arkText = model("volcengine_ark:doubao-seed-2-0-mini-260428", "Volcengine Ark", "Doubao Seed 2.0 Mini", "text");
+const arkText = model("volcengine_ark:doubao-seed-2-1-pro-260628", "Volcengine Ark", "Doubao Seed 2.1 Pro", "text");
+const arkImage = model("volcengine_ark:doubao-seedream-4-0", "Volcengine Ark", "Doubao Seedream 4.0", "image");
+const deterministicImage = model("fake:deterministic-image", "fake", "Deterministic fake", "image");
 const tianpuyueAudio = model("tianpuyue:TemPolor-i3", "Tianpuyue", "TemPolor i3", "audio");
 const tianpuyueLongAudio = model("tianpuyue:TemPolor-i3.5", "Tianpuyue", "TemPolor i3.5", "audio");
 
@@ -50,8 +55,9 @@ describe("ApiSpacePage provider registry", () => {
     });
     fixture.api.listProviderModels.mockImplementation((query: { provider?: string; purpose?: string }) => {
       if (query.provider === "siliconflow") return Promise.resolve({ items: [glm] });
-      if (query.provider === "volcengine_ark") return Promise.resolve({ items: [arkText] });
+      if (query.provider === "volcengine_ark") return Promise.resolve({ items: [arkText, arkImage] });
       if (query.purpose === "agent" || query.purpose === "text") return Promise.resolve({ items: [glm, arkText] });
+      if (query.purpose === "image") return Promise.resolve({ items: [arkImage, deterministicImage] });
       if (query.purpose === "audio" || query.provider === "tianpuyue") return Promise.resolve({ items: [tianpuyueAudio, tianpuyueLongAudio] });
       return Promise.resolve({ items: [] });
     });
@@ -104,6 +110,132 @@ describe("ApiSpacePage provider registry", () => {
     expect(screen.getByLabelText("Tianpuyue Audio API Key")).toBeTruthy();
   });
 
+  it("does not expose transport-only or test-only providers as user-configurable", async () => {
+    fixture.api.listProviders.mockResolvedValueOnce({
+      items: [
+        ...providers,
+        provider("litellm", "LiteLLM", ["text"]),
+        provider("fake", "Fake", []),
+      ],
+    });
+
+    render(<ApiSpacePage />);
+
+    expect(await screen.findByRole("region", { name: "SiliconFlow provider settings" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "LiteLLM provider settings" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Fake provider settings" })).toBeNull();
+  });
+
+  it("shows OpenRouter instead of the retired official OpenAI provider", async () => {
+    fixture.api.listProviders.mockResolvedValueOnce({
+      items: [
+        ...providers,
+        openRouterProvider(),
+        provider("openai", "OpenAI", ["image"]),
+      ],
+    });
+
+    render(<ApiSpacePage />);
+
+    expect(await screen.findByRole("region", { name: "OpenRouter provider settings" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "OpenAI provider settings" })).toBeNull();
+  });
+
+  it("uses one shared OpenRouter key for Text and Image while showing separate endpoints", async () => {
+    const onProviderUpdated = vi.fn();
+    render(
+      <ProviderCredentialCard
+        provider={openRouterProvider()}
+        models={[]}
+        onProviderUpdated={onProviderUpdated}
+        onModelsUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Text endpoint · https://openrouter.ai/api/v1")).toBeTruthy();
+    expect(screen.getByText("Image endpoint · https://openrouter.ai/api/v1")).toBeTruthy();
+    expect(screen.getAllByLabelText("OpenRouter API Key")).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("OpenRouter API Key"), { target: { value: "  shared-key  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save OpenRouter credentials" }));
+
+    await waitFor(() => expect(fixture.api.updateProviderCredentials).toHaveBeenCalledWith("openrouter", {
+      api_keys: { text: "shared-key", image: "shared-key" },
+      clear_capabilities: [],
+    }));
+  });
+
+  it("clears the shared OpenRouter key for Text and Image in one mutation", async () => {
+    const configured = openRouterProvider(true);
+    fixture.api.updateProviderCredentials.mockResolvedValueOnce({
+      provider: openRouterProvider(false),
+      updated_capabilities: [],
+      cleared_capabilities: ["text", "image"],
+      applied_at: "2026-09-04T00:00:00Z",
+    });
+    render(
+      <ProviderCredentialCard
+        provider={configured}
+        models={[]}
+        onProviderUpdated={vi.fn()}
+        onModelsUpdated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear OpenRouter key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clear" }));
+
+    await waitFor(() => expect(fixture.api.updateProviderCredentials).toHaveBeenCalledWith("openrouter", {
+      api_keys: {},
+      clear_capabilities: ["text", "image"],
+    }));
+  });
+
+  it("does not promote OpenRouter models after a successful credential probe", async () => {
+    const onModelsUpdated = vi.fn();
+    render(
+      <ProviderCredentialCard
+        provider={openRouterProvider()}
+        models={[openRouterImageModel({ availability: "unavailable", conformance_status: "unverified" })]}
+        onProviderUpdated={vi.fn()}
+        onModelsUpdated={onModelsUpdated}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("OpenRouter API Key"), { target: { value: "candidate" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test Image key" }));
+
+    await waitFor(() => expect(fixture.api.testProviderCredential).toHaveBeenCalledWith("openrouter", {
+      capability: "image",
+      api_key: "candidate",
+    }));
+    expect(screen.getByText("Image credential accepted.")).toBeTruthy();
+    expect(screen.getByText("0 available / 1 discovered models")).toBeTruthy();
+    expect(onModelsUpdated).not.toHaveBeenCalled();
+  });
+
+  it("does not count an unverified expanded model as available", () => {
+    render(
+      <ProviderCredentialCard
+        provider={provider("openai", "OpenAI", ["image"])}
+        models={[{
+          ...arkImage,
+          model_ref: "openai:gpt-image-2",
+          provider_id: "openai",
+          provider_model_id: "gpt-image-2",
+          display_name: "GPT Image 2",
+          adapter_id: "openai-image-v1",
+          transport_kind: "openai_images_native",
+          conformance_status: "unverified",
+        }]}
+        onProviderUpdated={vi.fn()}
+        onModelsUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("0 available / 1 discovered models")).toBeTruthy();
+  });
+
   it("shows only the provider-scoped fingerprint after a successful save", async () => {
     render(<ApiSpacePage />);
     const input = await screen.findByLabelText("SiliconFlow Text API Key");
@@ -140,7 +272,7 @@ describe("ApiSpacePage provider registry", () => {
       capability: "text",
       api_key: "siliconflow-candidate",
     }));
-    expect(screen.getByText("Text credential verified.")).toBeTruthy();
+    expect(screen.getByText("Text credential accepted.")).toBeTruthy();
   });
 
   it("synchronizes a provider catalog without removing its displayed models", async () => {
@@ -168,6 +300,96 @@ describe("ApiSpacePage provider registry", () => {
     await waitFor(() => expect(fixture.api.patchModelDefaults).toHaveBeenCalledWith({
       defaults: { text: arkText.model_ref },
     }));
+  });
+
+  it("excludes fake provider models from production default selectors", async () => {
+    render(<ApiSpacePage />);
+
+    const imageSelect = await screen.findByLabelText("Image default model");
+    await waitFor(() => expect(within(imageSelect).getByText("Doubao Seedream 4.0 · volcengine_ark")).toBeTruthy());
+    expect(within(imageSelect).queryByText("Deterministic fake · fake")).toBeNull();
+  });
+
+  it("excludes unverified expanded and retired models from production defaults", () => {
+    const unverified = {
+      ...arkImage,
+      model_ref: "openai:gpt-image-2",
+      provider_id: "openai",
+      display_name: "GPT Image 2",
+      adapter_id: "openai-image-v1",
+      transport_kind: "openai_images_native" as const,
+      conformance_status: "unverified" as const,
+    };
+    render(
+      <ModelDefaultsPanel
+        defaults={{ defaults: {}, modes: {}, revisions: {} }}
+        modelsByPurpose={{
+          agent: [],
+          text: [],
+          image: [arkImage, unverified, deterministicImage],
+          video: [],
+          audio: [],
+        }}
+        loading={false}
+        pending={false}
+        notice={null}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const imageSelect = screen.getByLabelText("Image default model");
+    expect(within(imageSelect).getByText("Doubao Seedream 4.0 · volcengine_ark")).toBeTruthy();
+    expect(within(imageSelect).queryByText("GPT Image 2 · openai")).toBeNull();
+    expect(within(imageSelect).queryByText("Deterministic fake · fake")).toBeNull();
+  });
+
+  it("does not expose a persisted fake default as an unavailable option", async () => {
+    render(
+      <ModelDefaultsPanel
+        defaults={{
+          defaults: { image: deterministicImage.model_ref },
+          modes: {},
+          revisions: { image: 1 },
+        }}
+        modelsByPurpose={{
+          agent: [],
+          text: [],
+          image: [arkImage, deterministicImage],
+          video: [],
+          audio: [],
+        }}
+        loading={false}
+        pending={false}
+        notice={null}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const imageSelect = screen.getByLabelText("Image default model");
+    expect((imageSelect as HTMLSelectElement).value).toBe("");
+    expect(within(imageSelect).queryByText(`${deterministicImage.model_ref} (unavailable)`)).toBeNull();
+  });
+
+  it("does not expose a persisted retired Ark Mini default as an unavailable option", () => {
+    const retiredRef = "volcengine_ark:doubao-seed-2-0-mini-260428";
+    render(
+      <ModelDefaultsPanel
+        defaults={{
+          defaults: { text: retiredRef },
+          modes: {},
+          revisions: { text: 1 },
+        }}
+        modelsByPurpose={{ agent: [], text: [], image: [], video: [], audio: [] }}
+        loading={false}
+        pending={false}
+        notice={null}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const textSelect = screen.getByLabelText("Text default model");
+    expect((textSelect as HTMLSelectElement).value).toBe("");
+    expect(within(textSelect).queryByText(`${retiredRef} (unavailable)`)).toBeNull();
   });
 
   it("shows the backend-provided Audio routing mode beside its preferred model", async () => {
@@ -223,7 +445,12 @@ function provider(provider_id: string, display_name: string, capabilities: strin
   };
 }
 
-function model(model_ref: string, provider: string, display_name: string, capability: string) {
+function model(
+  model_ref: string,
+  provider: string,
+  display_name: string,
+  capability: ProviderModelSummaryV1["capability"],
+): ProviderModelSummaryV1 {
   return {
     model_ref,
     provider_id: provider.toLocaleLowerCase().replaceAll(" ", "_"),
@@ -234,5 +461,61 @@ function model(model_ref: string, provider: string, display_name: string, capabi
     availability: "available",
     unavailable_reason: null,
     catalog_revision: 1,
+  };
+}
+
+function openRouterProvider(configured = false) {
+  return {
+    provider_id: "openrouter",
+    display_name: "OpenRouter",
+    capabilities: ["text", "image"] as const,
+    connection_state: configured ? "configured" as const : "unconfigured" as const,
+    credentials: {
+      text: {
+        configured,
+        fingerprint: configured ? "shared-key" : null,
+        source: configured ? "project_dotenv" as const : "unconfigured" as const,
+        test_capability: "minimal_request" as const,
+        endpoint: {
+          scheme: "https" as const,
+          host: "openrouter.ai",
+          path: "/api/v1",
+          fingerprint: "openrouter-text",
+        },
+      },
+      image: {
+        configured,
+        fingerprint: configured ? "shared-key" : null,
+        source: configured ? "project_dotenv" as const : "unconfigured" as const,
+        test_capability: "minimal_request" as const,
+        endpoint: {
+          scheme: "https" as const,
+          host: "openrouter.ai",
+          path: "/api/v1",
+          fingerprint: "openrouter-image",
+        },
+      },
+    },
+    credential_revision: 1,
+    updated_at: null,
+  };
+}
+
+function openRouterImageModel(overrides: Partial<ProviderModelSummaryV1> = {}): ProviderModelSummaryV1 {
+  return {
+    model_ref: "openrouter:openai/gpt-image-2",
+    provider_id: "openrouter",
+    provider_model_id: "openai/gpt-image-2",
+    display_name: "GPT Image 2",
+    capability: "image",
+    capability_metadata: {},
+    availability: "unavailable",
+    unavailable_reason: "Provider credentials are missing.",
+    catalog_revision: 1,
+    adapter_id: "openrouter-image-native-v1",
+    transport_kind: "openrouter_images_native",
+    release_tier: "optional",
+    conformance_status: "unverified",
+    ...overrides,
   };
 }

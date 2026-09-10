@@ -38,7 +38,6 @@ describe("inputManifestAuditFromEvent", () => {
         source_node_id: "node-script-1",
         snapshot_id: "snapshot-1",
         input_role: "text_context",
-        required: true,
         display_order: 0,
         content: "must not survive into frontend state",
       }],
@@ -48,7 +47,6 @@ describe("inputManifestAuditFromEvent", () => {
         source_node_revision: 3,
         source_content_digest: "a".repeat(64),
         source_core_digest: "b".repeat(64),
-        required: true,
         display_order: 1,
         target_audience: "video_director",
         compiler_id: "world-setting-context-compiler-v2",
@@ -63,7 +61,6 @@ describe("inputManifestAuditFromEvent", () => {
         media_type: "image",
         input_role: "image_reference",
         source_semantic_role: "storyboard_grid",
-        required: false,
         transport_type: "https_url",
         media_url: "https://must-not-be-retained.example/image.png",
         display_order: 2,
@@ -71,7 +68,7 @@ describe("inputManifestAuditFromEvent", () => {
       omitted_optional_inputs: [{
         binding_id: "binding-optional",
         source_node_id: "node-optional-1",
-        reason_code: "source_not_ready",
+        reason_code: "omitted_no_output",
       }],
       normalizations: [{ kind: "provider_ordering" }],
     }));
@@ -86,7 +83,6 @@ describe("inputManifestAuditFromEvent", () => {
         source_node_id: "node-script-1",
         snapshot_id: "snapshot-1",
         input_role: "text_context",
-        required: true,
         display_order: 0,
       }],
       world_setting_inputs: [{
@@ -95,7 +91,6 @@ describe("inputManifestAuditFromEvent", () => {
         source_node_revision: 3,
         source_content_digest: "a".repeat(64),
         source_core_digest: "b".repeat(64),
-        required: true,
         display_order: 1,
         target_audience: "video_director",
         compiler_id: "world-setting-context-compiler-v2",
@@ -110,13 +105,12 @@ describe("inputManifestAuditFromEvent", () => {
         input_role: "image_reference",
         source_semantic_role: "storyboard_grid",
         transport_type: "https_url",
-        required: false,
         display_order: 2,
       }],
       omitted_optional_inputs: [{
         binding_id: "binding-optional",
         source_node_id: "node-optional-1",
-        reason_code: "source_not_ready",
+        reason_code: "omitted_no_output",
       }],
     });
   });

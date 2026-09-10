@@ -1512,6 +1512,10 @@ function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").Pro
     && coverSource !== null
     && coverSource !== "manual"
     && coverSource !== "product_main"
+    && coverSource !== "scene_main"
+    && coverSource !== "character_main"
+    && coverSource !== "storyboard_grid"
+    && coverSource !== "video_poster"
     && coverSource !== "migrated"
   ) invalidProjectPayload();
   const coverUpdatedAt = record.cover_updated_at;
@@ -1542,13 +1546,15 @@ function normalizeProjectCoverV2(value: unknown): import("../types-v2.ts").Proje
   if (!record) invalidProjectPayload();
   const mediaType = record.media_type;
   if (mediaType !== "image" && mediaType !== "video") invalidProjectPayload();
+  const previewUrl = record.preview_url;
+  if (previewUrl !== null && typeof previewUrl !== "string") invalidProjectPayload();
   const posterUrl = record.poster_url;
   if (posterUrl !== null && typeof posterUrl !== "string") invalidProjectPayload();
   return {
     asset_id: requiredProjectString(record, "asset_id"),
     version_id: requiredProjectString(record, "version_id"),
     media_type: mediaType,
-    preview_url: requiredProjectString(record, "preview_url"),
+    preview_url: previewUrl,
     poster_url: posterUrl ?? null,
   };
 }

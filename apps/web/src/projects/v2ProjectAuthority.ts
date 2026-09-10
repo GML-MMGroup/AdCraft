@@ -54,6 +54,62 @@ export async function loadAllBackendProjectPages(
   return projects;
 }
 
+type ProjectCatalogPageWithEtag = {
+  value: ProjectV2ListResponse | null;
+  etag: string | null;
+  notModified: boolean;
+};
+
+type CachedProjectCatalog = {
+  projects: ProjectV2Summary[];
+  etag: string | null;
+};
+
+export async function loadAllBackendProjectPagesWithEtag(
+  loadPage: (
+    cursor?: string | null,
+    ifNoneMatch?: string | null,
+  ) => Promise<ProjectCatalogPageWithEtag>,
+  cached?: CachedProjectCatalog,
+): Promise<CachedProjectCatalog & { notModified: boolean }> {
+  const first = await loadPage(undefined, cached?.etag);
+  if (first.notModified) {
+    if (!cached) throw new Error("Project catalog returned 304 without a cached catalog.");
+    return { ...cached, notModified: true };
+  }
+  if (!first.value) throw new Error("Project catalog response is missing its page.");
+
+  const projects: ProjectV2Summary[] = [];
+  const projectIds = new Set<string>();
+  const cursors = new Set<string>();
+  let page = first.value;
+  let cursor = page.next_cursor;
+  const completeInFirstPage = cursor === null;
+
+  for (;;) {
+    for (const project of page.items) {
+      if (projectIds.has(project.project_id)) continue;
+      projectIds.add(project.project_id);
+      projects.push(project);
+    }
+    if (!cursor) break;
+    if (cursors.has(cursor)) throw new Error("Project pagination returned a repeated cursor.");
+    cursors.add(cursor);
+    const next = await loadPage(cursor);
+    if (next.notModified || !next.value) {
+      throw new Error("A paginated project catalog returned an invalid conditional response.");
+    }
+    page = next.value;
+    cursor = page.next_cursor;
+  }
+
+  return {
+    projects,
+    etag: completeInFirstPage ? first.etag : null,
+    notModified: false,
+  };
+}
+
 export function shouldPersistWorkflowAsLocalDraft(workflow: { project_id?: string | null }): boolean {
   return !workflow.project_id;
 }

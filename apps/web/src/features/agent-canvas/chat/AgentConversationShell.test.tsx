@@ -91,7 +91,6 @@ function createChatFixture() {
       continuations: [],
       turnsById: {},
       retryingSourceTurnIds: {},
-      retryableFailedTurn: null,
       messageSkillTitles: {},
       loading: false,
       sending: false,
@@ -241,6 +240,111 @@ describe("Agent Conversation Shell v2", () => {
     expect(Boolean(answer.compareDocumentPosition(followUp) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(screen.queryByText("How long should the ad be?")).toBeNull();
     expect(screen.getByText("30 seconds")).toBeTruthy();
+  });
+
+  it("places a failed message Turn directly after its source user message", () => {
+    fixture.chat.state.items = [
+      {
+        ...message("message-1", "Create a calm product film."),
+        speaker: "user",
+        metadata: { turn_id: "turn-failed-1" },
+        sequence: 1,
+      },
+      {
+        ...message("message-2", "A later Agent update."),
+        sequence: 2,
+      },
+    ];
+    fixture.chat.state.turnsById = {
+      "turn-failed-1": {
+        turn_id: "turn-failed-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        status: "failed",
+        turn_kind: "message",
+        request: {},
+        error_code: "agent_runtime_unavailable",
+        error_message: "The configured Agent runtime is unavailable.",
+        creation_mode: null,
+        guidance_session_revision: null,
+        continuation: null,
+        retry_of_turn_id: null,
+        retry_attempt_no: 0,
+        retryable: true,
+        actionable_failure: {
+          failure_class: "external",
+          retry_scope: "turn",
+          user_action: "retry",
+          retryable: true,
+        },
+        operation_stage: "failed",
+        operation_failure: null,
+        created_at: "2026-09-03T10:00:00Z",
+        updated_at: "2026-09-03T10:00:01Z",
+      },
+    };
+
+    renderPanel();
+
+    const userMessage = screen.getByText("Create a calm product film.").closest("article")!;
+    const failure = screen.getByRole("alert", { name: "Agent response failed" });
+    const laterMessage = screen.getByText("A later Agent update.").closest("article")!;
+    const follows = (left: Element, right: Element) => Boolean(
+      left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(follows(userMessage, failure)).toBe(true);
+    expect(follows(failure, laterMessage)).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry failed Agent response" }));
+    expect(fixture.chat.actions.retryTurn).toHaveBeenCalledWith(
+      fixture.chat.state.turnsById["turn-failed-1"],
+    );
+  });
+
+  it("disables duplicate retry while a failed message Turn is retrying", () => {
+    fixture.chat.state.items = [{
+      ...message("message-1", "Create a calm product film."),
+      speaker: "user",
+      metadata: { turn_id: "turn-failed-1" },
+    }];
+    fixture.chat.state.turnsById = {
+      "turn-failed-1": {
+        turn_id: "turn-failed-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        status: "failed",
+        turn_kind: "message",
+        request: {},
+        error_code: "agent_runtime_unavailable",
+        error_message: "The configured Agent runtime is unavailable.",
+        creation_mode: null,
+        guidance_session_revision: null,
+        continuation: null,
+        retry_of_turn_id: null,
+        retry_attempt_no: 0,
+        retryable: true,
+        actionable_failure: {
+          failure_class: "external",
+          retry_scope: "turn",
+          user_action: "retry",
+          retryable: true,
+        },
+        operation_stage: "failed",
+        operation_failure: null,
+        created_at: "2026-09-03T10:00:00Z",
+        updated_at: "2026-09-03T10:00:01Z",
+      },
+    };
+    fixture.chat.state.retryingSourceTurnIds = {
+      "turn-failed-1": "turn-retry-1",
+    };
+
+    renderPanel();
+
+    expect((screen.getByRole("button", {
+      name: "Retry failed Agent response",
+    }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Retrying…")).toBeTruthy();
   });
 
   it("optimistically hides the submitted interaction and restores it when submission fails", async () => {

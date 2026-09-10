@@ -32,7 +32,6 @@ function node(
     position,
     revision: 1,
     error: null,
-    variation_draft: null,
     created_at: "2026-08-28T00:00:00Z",
     updated_at: "2026-08-28T00:00:00Z",
   };
@@ -45,7 +44,6 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string):
     source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: targetNodeId,
     input_role: "text_context",
-    required: true,
     enabled: true,
     order: 0,
     label: null,

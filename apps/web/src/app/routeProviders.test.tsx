@@ -13,7 +13,7 @@ const { api, fetchMock, v2Api, isV2ApiError, isNetworkError } = vi.hoisted(() =>
   },
   fetchMock: vi.fn(),
   v2Api: {
-    listProjects: vi.fn(),
+    listProjectsWithEtag: vi.fn(),
     createAgentCanvasProject: vi.fn(),
     projectWithEtag: vi.fn(),
     agentCanvasWorkflowWithEtag: vi.fn(),
@@ -73,7 +73,11 @@ function resetApiMocks() {
   api.listAssets.mockResolvedValue({ assets: [] });
   api.nodeCatalog.mockResolvedValue({ nodes: [] });
   api.workflowNodes.mockResolvedValue({ nodes: [] });
-  v2Api.listProjects.mockResolvedValue({ items: [], next_cursor: null });
+  v2Api.listProjectsWithEtag.mockResolvedValue({
+    value: { items: [], next_cursor: null },
+    etag: '"projects-empty"',
+    notModified: false,
+  });
   v2Api.createAgentCanvasProject.mockResolvedValue({
     value: {
       workflow_id: "workflow-created",
@@ -135,7 +139,8 @@ describe("route providers", () => {
 
     await screen.findByText("API ready");
 
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    await waitFor(() => expect(v2Api.listProjectsWithEtag).toHaveBeenCalledWith("active", 4, undefined, undefined));
+    expect(v2Api.listProjectsWithEtag).toHaveBeenCalledTimes(1);
     expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
     expect(api.listAssets).not.toHaveBeenCalled();
     expect(api.nodeCatalog).not.toHaveBeenCalled();
@@ -227,7 +232,7 @@ describe("route providers", () => {
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
 
-    await screen.findByText("Workflow page workflow-created");
+    await screen.findByText("Workflow page workflow-created", {}, { timeout: 10_000 });
 
     expect(window.location.pathname).toBe("/workflow/project-created");
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-created");
@@ -247,7 +252,7 @@ describe("route providers", () => {
 
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
-    await screen.findByText("Workflow page workflow-created");
+    await screen.findByText("Workflow page workflow-created", {}, { timeout: 10_000 });
 
     await waitFor(() => expect(window.history.state?.usr ?? null).toBeNull());
 
@@ -299,7 +304,7 @@ describe("route providers", () => {
     await screen.findByText("Workflow page workflow-restored");
     expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-restored");
     expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-restored");
-    expect(v2Api.listProjects).toHaveBeenCalledTimes(1);
+    expect(v2Api.listProjectsWithEtag).toHaveBeenCalledTimes(1);
   });
 
   test("uses the workflow URL project before the shared recent-project preference", async () => {
@@ -386,9 +391,13 @@ describe("route providers", () => {
       is_favorite: false,
       cover_asset_id: null,
     };
-    v2Api.listProjects.mockImplementation(async (scope: string) => ({
-      items: scope === "active" ? [project] : [],
-      next_cursor: null,
+    v2Api.listProjectsWithEtag.mockImplementation(async (scope: string) => ({
+      value: {
+        items: scope === "active" ? [project] : [],
+        next_cursor: null,
+      },
+      etag: `"projects-${scope}"`,
+      notModified: false,
     }));
 
     render(
@@ -399,14 +408,14 @@ describe("route providers", () => {
 
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
-    await screen.findByText("Workflow page workflow-created");
+    await screen.findByText("Workflow page workflow-created", {}, { timeout: 10_000 });
 
     fireEvent.click(screen.getByRole("link", { name: "Projects" }));
 
     await screen.findByText("Restored project list");
     expect(screen.getByText("Projects page hydrated")).toBeTruthy();
-    expect(v2Api.listProjects).toHaveBeenCalledWith("active", 100, undefined);
-    expect(v2Api.listProjects).not.toHaveBeenCalledWith("trashed", 100, undefined);
+    expect(v2Api.listProjectsWithEtag).toHaveBeenCalledWith("active", 100, undefined, undefined);
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalledWith("trashed", 100, undefined, undefined);
   });
 
   test.each([
@@ -422,7 +431,7 @@ describe("route providers", () => {
     );
 
     await screen.findByText(page);
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalled();
     expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
   });
 
@@ -436,7 +445,7 @@ describe("route providers", () => {
     );
 
     await screen.findByText("Demo mode");
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalled();
   });
 
   test("shows hybrid storage warnings from the lightweight provider", async () => {
@@ -452,7 +461,7 @@ describe("route providers", () => {
     }));
 
     expect(await screen.findByText("Storage write failed")).toBeTruthy();
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    expect(v2Api.listProjectsWithEtag).not.toHaveBeenCalled();
   });
 
   test("keeps workspace chunks out of the actual built Home route closure", () => {

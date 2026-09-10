@@ -37,6 +37,9 @@ function creativeSession() {
     },
     journey: {
       policy_version: "fixed_ad_production_v2",
+      journey_policy_id: "proposal_submit_auto_result_v1",
+      journey_policy_revision: 1,
+      planning_wave_id: "planning-wave-1",
       stage: "scene",
       stage_status: "waiting_user",
       stage_revision: 4,
@@ -122,6 +125,9 @@ describe("Agent Canvas creative session client", () => {
       stage: "scene",
       stage_status: "waiting_user",
       stage_revision: 4,
+      journey_policy_id: "proposal_submit_auto_result_v1",
+      journey_policy_revision: 1,
+      planning_wave_id: "planning-wave-1",
       active_occurrence_id: "occurrence:scene:1",
       active_action: { action_id: "journey-action-1" },
     });

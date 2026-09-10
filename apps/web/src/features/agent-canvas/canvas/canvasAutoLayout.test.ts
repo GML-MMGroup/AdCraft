@@ -58,7 +58,6 @@ function binding(
     source: { kind: "node_output", source_node_id: source },
     target_node_id: target,
     input_role: "image_reference",
-    required: false,
     enabled: true,
     order: 0,
     label: null,

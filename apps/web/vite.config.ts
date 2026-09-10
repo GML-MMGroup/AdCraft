@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import type { IncomingMessage } from "node:http";
 import { API_METADATA_CACHE_CONTROL, isVersionedAgentIconRequest, isVersionedAssetContentRequest, mediaCacheControl, VERSIONED_AGENT_ICON_CACHE_CONTROL } from "./mediaCachePolicy";
 import { resolveBackendOrigin } from "./src/config/devServer.ts";
+import { agentRoleRetryPlugin } from "./agentRoleRetryPlugin.ts";
 
 const FRONTEND_PORT = 5189;
 const BACKEND_ORIGIN = resolveBackendOrigin(process.env.BACKEND_ORIGIN);
@@ -52,7 +53,7 @@ function configureAgentIconCache() {
 }
 
 export default defineConfig({
-  plugins: [react(), configureAgentIconCache()],
+  plugins: [react(), configureAgentIconCache(), agentRoleRetryPlugin()],
   build: {
     rollupOptions: {
       output: {

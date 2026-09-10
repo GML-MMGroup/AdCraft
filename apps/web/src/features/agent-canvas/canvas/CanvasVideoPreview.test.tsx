@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
@@ -39,15 +39,21 @@ function makeVideoAsset(): ProjectAssetSummaryV2 {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("CanvasVideoPreview", () => {
-  it("renders the poster rendition directly in the canvas", () => {
+  it("hydrates the poster rendition through the shared media cache", async () => {
+    const createObjectURL = vi.fn(() => "blob:canvas-poster");
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("poster", { status: 200 }));
+
     render(<CanvasVideoPreview asset={makeVideoAsset()} label="Video output" />);
 
-    const image = screen.getByRole("img", { name: "Campaign cut" });
+    const image = await waitFor(() => screen.getByRole("img", { name: "Campaign cut" }));
 
-    expect(image.getAttribute("src")).toBe("/api/v2/assets/video-asset/poster?v=version-1");
+    await waitFor(() => expect(image.getAttribute("src")).toBe("blob:canvas-poster"));
     expect(image.getAttribute("loading")).toBe("eager");
     expect(image.getAttribute("decoding")).toBe("async");
     expect(image.getAttribute("draggable")).toBe("false");

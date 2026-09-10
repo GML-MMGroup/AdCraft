@@ -455,6 +455,83 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.workflowRecovery).toBeNull();
   });
 
+  it("does not report post-Timeline projection failures as Timeline refresh failures", async () => {
+    const receiptTimeline = emptyTimeline({
+      items: [{
+        item_type: "action_receipt",
+        action_receipt: {
+          receipt_id: "receipt-1",
+          workflow_id: "workflow-1",
+          plan_id: null,
+          action_id: "turn-1",
+          proposal_id: null,
+          proposal_option_id: null,
+          proposal_action: null,
+          actor_kind: "agent",
+          occurrence_id: null,
+          character_phase: null,
+          idempotency_key: "receipt-key-1",
+          status: "applied",
+          summary: "Canvas updated.",
+          created_node_ids: [],
+          updated_node_ids: [],
+          deleted_node_ids: [],
+          created_binding_ids: [],
+          deleted_binding_ids: [],
+          queued_execution_ids: [],
+          run_queue_errors: [],
+          operation_results: [],
+          workflow_revision: 2,
+          before_workflow_revision: 1,
+          placement_hints: [],
+          continuation_turn_id: null,
+          superseded_by: null,
+          error_code: null,
+          error_message: null,
+          created_at: "2026-09-03T10:00:00Z",
+        },
+        sequence: 1,
+        created_at: "2026-09-03T10:00:00Z",
+      }],
+    });
+    api.agentCanvasChatTimeline
+      .mockRejectedValueOnce(new Error("Timeline unavailable"))
+      .mockResolvedValue(receiptTimeline);
+    const event: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_completed"),
+      event_type: "action_receipt_created",
+      payload: { receipt_id: "receipt-1" },
+    };
+    const onActionReceipt = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error("Canvas projection failed");
+      });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [event],
+      onActionReceipt,
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+    expect(result.current.state.timelineRecovery).not.toBeNull();
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+    });
+    expect(result.current.state.timelineRecovery).toBeNull();
+    expect(onActionReceipt).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+    });
+    expect(onActionReceipt).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the newer persisted journey when the timeline response is stale", async () => {
     const direct = guidedSession(6, 12);
     const staleTimelineSession = guidedSession(5, 11);
@@ -981,6 +1058,121 @@ describe("useAgentCanvasChat", () => {
     }]);
   });
 
+  it("renders one acknowledgement when raw receipt and Agent message share a key across cursor pages", async () => {
+    const fillerItems = Array.from({ length: 199 }, (_, index) => ({
+      item_type: "message" as const,
+      message_kind: "conversation" as const,
+      message_id: `raw-filler-${index}`,
+      conversation_id: "conversation-1",
+      speaker: "adcraft_video_agent" as const,
+      text: `Raw audit ${index}`,
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      capability_id: null,
+      sequence: index + 1,
+      created_at: "2026-09-03T10:00:00Z",
+    }));
+    const rawReceipt = {
+      item_type: "action_receipt" as const,
+      action_receipt: {
+        receipt_id: "receipt-guided-1",
+        workflow_id: "workflow-1",
+        plan_id: null,
+        action_id: "turn-guided-1",
+        proposal_id: null,
+        proposal_option_id: null,
+        proposal_action: null,
+        actor_kind: "user" as const,
+        occurrence_id: null,
+        character_phase: null,
+        idempotency_key: "guided-action-1",
+        status: "applied" as const,
+        summary: "Canvas updated.",
+        created_node_ids: [],
+        updated_node_ids: [],
+        deleted_node_ids: [],
+        created_binding_ids: [],
+        deleted_binding_ids: [],
+        queued_execution_ids: [],
+        run_queue_errors: [],
+        operation_results: [],
+        workflow_revision: 2,
+        before_workflow_revision: 1,
+        placement_hints: [],
+        continuation_turn_id: null,
+        superseded_by: null,
+        error_code: null,
+        error_message: null,
+        created_at: "2026-09-03T10:00:01Z",
+      },
+      sequence: 200,
+      created_at: "2026-09-03T10:00:01Z",
+    };
+    const agentAcknowledgement = {
+      item_type: "message" as const,
+      message_kind: "conversation" as const,
+      message_id: "agent-acknowledgement-1",
+      conversation_id: "conversation-1",
+      speaker: "adcraft_video_agent" as const,
+      text: "I applied your selection.",
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      capability_id: null,
+      metadata: { turn_id: "turn-guided-1" },
+      sequence: 201,
+      created_at: "2026-09-03T10:00:02Z",
+    };
+    api.agentCanvasChatTimeline.mockImplementation((_workflowId: string, cursor: number) => (
+      cursor === 0
+        ? Promise.resolve(emptyTimeline({
+            items: [...fillerItems, rawReceipt],
+            presentationItems: [{
+              presentation_key: "acknowledgement:turn-guided-1",
+              presentation_revision: 1,
+              source_entry_ids: ["receipt-entry-1"],
+              message_key: null,
+              message_args: {},
+              response_locale: "en-US",
+              item: rawReceipt,
+            }],
+            next_cursor: 200,
+          }))
+        : Promise.resolve(emptyTimeline({
+            items: [agentAcknowledgement],
+            presentationItems: [{
+              presentation_key: "acknowledgement:turn-guided-1",
+              presentation_revision: 1,
+              source_entry_ids: ["agent-message-entry-1"],
+              message_key: null,
+              message_args: {},
+              response_locale: "en-US",
+              item: agentAcknowledgement,
+            }],
+            next_cursor: 201,
+          }))
+    ));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(api.agentCanvasChatTimeline).toHaveBeenNthCalledWith(
+      2,
+      "workflow-1",
+      200,
+      200,
+      expect.any(Object),
+    );
+    expect(result.current.state.items).toEqual([agentAcknowledgement]);
+  });
+
   it("shows Timeline before proposal hydration and loads Creative Session in parallel", async () => {
     let resolveProposal!: (value: ConceptProposalV2) => void;
     let resolveSession!: (value: GuidedSessionStateV2) => void;
@@ -1042,6 +1234,36 @@ describe("useAgentCanvasChat", () => {
       { item_type: "proposal", proposal: { proposal_id: "proposal-late-hydration" } },
     ]);
     expect(result.current.state.guidanceSession).toMatchObject({ revision: 9 });
+  });
+
+  it("does not classify proposal detail hydration failure as a Timeline refresh failure", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "proposal_pointer",
+        proposal_id: "proposal-unavailable",
+        sequence: 1,
+        created_at: "2026-09-03T10:00:00Z",
+      }],
+      next_cursor: 1,
+    }));
+    api.agentCanvasProposal.mockRejectedValue(new Error("proposal detail unavailable"));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.items).toMatchObject([{
+      item_type: "proposal_pointer",
+      proposal_id: "proposal-unavailable",
+    }]);
+    expect(result.current.state.timelineRecovery).toBeNull();
   });
 
   it("coalesces chat revision bursts into one trailing refresh", async () => {
@@ -1605,14 +1827,18 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.workflowRecovery).toBeNull();
   });
 
-  it("refreshes authority after a reference source revision conflict without resubmitting it", async () => {
+  it.each([
+    "guided_reference_source_revision_conflict",
+    "guided_reference_source_kind_invalid",
+    "guided_reference_source_target_invalid",
+  ])("refreshes authority after %s without resubmitting it", async (errorCode) => {
     const interaction = guidedReferenceInteraction();
     const session = { ...guidedSession(), interaction, awaiting: null };
     api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({ guidanceSession: session }));
     api.agentCanvasCreativeSession.mockResolvedValue(session);
     api.submitAgentCanvasGuidedInteraction.mockRejectedValue({
       status: 409,
-      code: "guided_reference_source_revision_conflict",
+      code: errorCode,
       message: "The reference checkpoint is stale.",
     });
     const onWorkflowRefresh = vi.fn().mockResolvedValue(undefined);
@@ -1987,14 +2213,12 @@ describe("useAgentCanvasChat", () => {
 
     rerender({ chatEvents: [turnEvent("agent_turn_waiting", "turn-1", 2)] });
     expect(result.current.state.agentWorking).toBe(true);
-    expect(result.current.state.retryableFailedTurn).toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(300_000);
       await Promise.resolve();
     });
     expect(result.current.state.agentWorking).toBe(true);
-    expect(result.current.state.retryableFailedTurn).toBeNull();
 
     rerender({
       chatEvents: [
@@ -2047,7 +2271,6 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.agentWorking).toBe(true);
     expect(result.current.state.agentWaitingForModel).toBe(true);
     expect(result.current.state.items).toEqual([]);
-    expect(result.current.state.retryableFailedTurn).toBeNull();
   });
 
   it("removes a superseded turn from the pending working state", async () => {
@@ -2617,6 +2840,173 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.turnsById["turn-retry-1"]?.status).toBe("completed");
   });
 
+  it("hydrates an unresolved structured user message Turn without creating Timeline recovery", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "message",
+        message_kind: "conversation",
+        message_id: "user-message-failed-1",
+        conversation_id: "conversation-1",
+        speaker: "user",
+        text: "Create a calm product film.",
+        linked_node_ids: [],
+        script_node_id: null,
+        proposal_id: null,
+        capability_id: null,
+        metadata: { turn_id: "turn-message-failed-1" },
+        sequence: 1,
+        created_at: "2026-09-03T10:00:00Z",
+      }],
+      next_cursor: 1,
+    }));
+    api.agentCanvasChatTurn.mockResolvedValue({
+      turn_id: "turn-message-failed-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "failed",
+      turn_kind: "message",
+      request: {},
+      error_code: "agent_runtime_unavailable",
+      error_message: "The configured agent runtime is unavailable.",
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 0,
+      retryable: true,
+      operation_stage: "failed",
+      operation_failure: null,
+      created_at: "2026-09-03T10:00:00Z",
+      updated_at: "2026-09-03T10:00:01Z",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith(
+      "workflow-1",
+      "turn-message-failed-1",
+    );
+    expect(result.current.state.turnsById["turn-message-failed-1"]?.status).toBe("failed");
+    expect(result.current.state.timelineRecovery).toBeNull();
+  });
+
+  it("hydrates an unmatched Agent Turn so retry lineage survives Timeline reload", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [
+        {
+          item_type: "message",
+          message_kind: "conversation",
+          message_id: "user-message-original",
+          conversation_id: "conversation-1",
+          speaker: "user",
+          text: "Create a calm product film.",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          capability_id: null,
+          metadata: { turn_id: "turn-original" },
+          sequence: 1,
+          created_at: "2026-09-03T10:00:00Z",
+        },
+        {
+          item_type: "message",
+          message_kind: "conversation",
+          message_id: "agent-message-retry",
+          conversation_id: "conversation-1",
+          speaker: "adcraft_video_agent",
+          text: "The retried response completed.",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          capability_id: null,
+          metadata: { turn_id: "turn-retry" },
+          sequence: 2,
+          created_at: "2026-09-03T10:00:02Z",
+        },
+      ],
+      next_cursor: 2,
+    }));
+    api.agentCanvasChatTurn.mockImplementation((_workflowId: string, turnId: string) => Promise.resolve({
+      turn_id: turnId,
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: turnId === "turn-retry" ? "completed" : "failed",
+      turn_kind: "message",
+      request: {},
+      error_code: turnId === "turn-retry" ? null : "agent_runtime_unavailable",
+      error_message: turnId === "turn-retry" ? null : "The Agent runtime was unavailable.",
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      retry_of_turn_id: turnId === "turn-retry" ? "turn-original" : null,
+      retry_attempt_no: turnId === "turn-retry" ? 1 : 0,
+      retryable: turnId !== "turn-retry",
+      operation_stage: turnId === "turn-retry" ? "completed" : "failed",
+      operation_failure: null,
+      created_at: "2026-09-03T10:00:00Z",
+      updated_at: "2026-09-03T10:00:02Z",
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-original");
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-retry");
+    expect(result.current.state.turnsById["turn-retry"]?.retry_of_turn_id).toBe("turn-original");
+  });
+
+  it("limits concurrent historical message Turn hydration", async () => {
+    const unresolvedMessages = Array.from({ length: 10 }, (_, index) => ({
+      item_type: "message" as const,
+      message_kind: "conversation" as const,
+      message_id: `user-message-${index}`,
+      conversation_id: "conversation-1",
+      speaker: "user" as const,
+      text: `Request ${index}`,
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      capability_id: null,
+      metadata: { turn_id: `turn-message-${index}` },
+      sequence: index + 1,
+      created_at: "2026-09-03T10:00:00Z",
+    }));
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: unresolvedMessages,
+      next_cursor: unresolvedMessages.length,
+    }));
+    api.agentCanvasChatTurn.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledTimes(4);
+  });
+
   it("reuses proposal data without retaining stale pointer placement metadata", async () => {
     let pointerSequence = 1;
     api.agentCanvasChatTimeline.mockImplementation(() => Promise.resolve(emptyTimeline({
@@ -2713,7 +3103,7 @@ describe("useAgentCanvasChat", () => {
 
     await act(async () => {
       await result.current.actions.selectProposal(
-        "proposal-1",
+        { proposal_id: "proposal-1", availability: "open" },
         select,
         "option-1",
         [reference],
@@ -2737,6 +3127,42 @@ describe("useAgentCanvasChat", () => {
     expect(api.actOnAgentCanvasProposal).toHaveBeenCalledTimes(1);
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
     expect(result.current.state.agentWorking).toBe(true);
+    expect(result.current.state.submittedProposalIds).toEqual({ "proposal-1": true });
+
+    await act(async () => {
+      await result.current.actions.selectProposal(
+        { proposal_id: "proposal-1", availability: "open" },
+        select,
+        "option-1",
+        [reference],
+      );
+    });
+    expect(api.actOnAgentCanvasProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects applied and superseded proposals before issuing a selection request", async () => {
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.selectProposal(
+        { proposal_id: "proposal-applied", availability: "applied" },
+        descriptor("select_option"),
+        "option-1",
+        [],
+      );
+      await result.current.actions.selectProposal(
+        { proposal_id: "proposal-superseded", availability: "superseded" },
+        descriptor("select_option"),
+        "option-1",
+        [],
+      );
+    });
+
+    expect(api.actOnAgentCanvasProposal).not.toHaveBeenCalled();
   });
 
   it("refreshes the action turn when a proposal materialization event arrives", async () => {
@@ -2941,6 +3367,12 @@ describe("useAgentCanvasChat", () => {
         elapsed_ms: 420000,
         attempt_stage: "transport_retry",
         retryable: true,
+        actionable_failure: {
+          failure_class: "transient",
+          retry_scope: "turn",
+          user_action: "retry",
+          retryable: true,
+        },
         validation_paths: [],
         suggested_actions: ["retry", "revise_request"],
         completion_mode: null,
@@ -2988,6 +3420,12 @@ describe("useAgentCanvasChat", () => {
         error: {
           code: "capability_materialization_failed",
           message: "Draft creation failed.",
+          actionable_failure: {
+            failure_class: "transient",
+            retry_scope: "turn",
+            user_action: "retry",
+            retryable: true,
+          },
         },
         created_at: "2026-08-18T00:00:00Z",
         updated_at: "2026-08-18T00:00:01Z",
@@ -3005,6 +3443,49 @@ describe("useAgentCanvasChat", () => {
     );
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
     expect(api.actOnAgentCanvasProposal).not.toHaveBeenCalled();
+  });
+
+  it("does not route legacy retryable or non-turn scopes through Turn Retry", async () => {
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+    const activity = {
+      item_type: "expert_activity" as const,
+      activity_id: "activity-failed-scope",
+      turn_id: "turn-failed-scope",
+      capability_id: "scene_design" as const,
+      capability_display_name: "Scene Designer",
+      status: "failed" as const,
+      sequence: 4,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:07:00Z",
+      message: "Preparation failed.",
+      error_code: "node_prompt_preparation_failed",
+      elapsed_ms: 420000,
+      attempt_stage: "initial" as const,
+      retryable: true,
+      validation_paths: [],
+      suggested_actions: ["retry" as const],
+      completion_mode: null,
+      warning_code: null,
+    };
+
+    await act(async () => {
+      expect(await result.current.actions.retryCapabilityActivity(activity)).toBe(false);
+      expect(await result.current.actions.retryCapabilityActivity({
+        ...activity,
+        actionable_failure: {
+          failure_class: "transient",
+          retry_scope: "prompt_preparation",
+          user_action: "retry",
+          retryable: true,
+        },
+      })).toBe(false);
+    });
+
+    expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
   });
 
   it("refreshes the canonical workflow and session after a stale turn retry", async () => {
@@ -3036,6 +3517,12 @@ describe("useAgentCanvasChat", () => {
         elapsed_ms: 420000,
         attempt_stage: "transport_retry",
         retryable: true,
+        actionable_failure: {
+          failure_class: "transient",
+          retry_scope: "turn",
+          user_action: "retry",
+          retryable: true,
+        },
         validation_paths: [],
         suggested_actions: ["retry"],
         completion_mode: null,
@@ -3045,6 +3532,47 @@ describe("useAgentCanvasChat", () => {
 
     expect(onWorkflowRefresh).toHaveBeenCalledOnce();
     expect(result.current.state.notice).toContain("latest state");
+  });
+
+  it("keeps a Turn retry failure local instead of creating Timeline recovery", async () => {
+    api.retryAgentCanvasChatTurn.mockRejectedValue(new Error("retry service unavailable"));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.retryTurn({
+        turn_id: "turn-failed-message",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        status: "failed",
+        turn_kind: "message",
+        request: {},
+        error_code: "agent_runtime_unavailable",
+        error_message: "The Agent runtime is unavailable.",
+        creation_mode: null,
+        guidance_session_revision: null,
+        continuation: null,
+        retry_of_turn_id: null,
+        retry_attempt_no: 0,
+        retryable: true,
+        actionable_failure: {
+          failure_class: "external",
+          retry_scope: "turn",
+          user_action: "retry",
+          retryable: true,
+        },
+        operation_stage: "failed",
+        operation_failure: null,
+        created_at: "2026-09-03T10:00:00Z",
+        updated_at: "2026-09-03T10:00:01Z",
+      });
+    });
+
+    expect(result.current.state.timelineRecovery).toBeNull();
+    expect(result.current.state.notice).toBe("The failed response could not be retried. Try again when ready.");
   });
 
   it("restores an in-progress retry relationship from persisted capability turns", async () => {
@@ -3183,6 +3711,70 @@ describe("useAgentCanvasChat", () => {
     ]);
   });
 
+  it("does not let replayed SSE projections override authoritative presentation items", async () => {
+    const completedActivity = {
+      item_type: "expert_activity" as const,
+      activity_id: "activity-scene-1",
+      turn_id: "turn-scene-1",
+      capability_id: "scene_design" as const,
+      capability_display_name: "Scene Designer",
+      status: "completed" as const,
+      sequence: 12,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:01:00Z",
+      message: "The localized result is ready.",
+      error_code: null,
+      elapsed_ms: 60_000,
+      attempt_stage: "initial" as const,
+      retryable: false,
+      validation_paths: [],
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
+    };
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [completedActivity],
+      presentationItems: [{
+        presentation_key: "activity:activity-scene-1",
+        presentation_revision: 4,
+        source_entry_ids: ["activity-scene-1"],
+        message_key: "capability.completed",
+        message_args: {},
+        response_locale: "en-US",
+        item: completedActivity,
+      }],
+    }));
+    const replayedFailure: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_failed", "turn-scene-1", 999),
+      event_type: "expert_activity_failed",
+      payload: {
+        activity_id: "activity-scene-1",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
+        error_code: "stale_replay",
+        error_message: "A replayed event must not replace the Timeline winner.",
+      },
+    };
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [replayedFailure],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.items).toEqual([
+      expect.objectContaining({
+        item_type: "expert_activity",
+        status: "completed",
+        message: "The localized result is ready.",
+      }),
+    ]);
+  });
+
   it("preserves the proposal card and refreshes guidance after a revision conflict", async () => {
     api.actOnAgentCanvasProposal.mockRejectedValue({
       code: "guidance_revision_conflict",
@@ -3197,7 +3789,7 @@ describe("useAgentCanvasChat", () => {
 
     await act(async () => {
       await result.current.actions.selectProposal(
-        "proposal-1",
+        { proposal_id: "proposal-1", availability: "open" },
         descriptor("select_option"),
         "option-1",
         [],
@@ -3296,7 +3888,7 @@ describe("useAgentCanvasChat", () => {
     );
   });
 
-  it("offers Turn Retry instead of raw message resubmission after an accepted turn fails", async () => {
+  it("retains an accepted failed Turn beside its structured user message", async () => {
     api.submitAgentCanvasChatMessage.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
@@ -3351,11 +3943,13 @@ describe("useAgentCanvasChat", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.state.timelineRecovery).toMatchObject({
-      technicalDetail: "agent_runtime_unavailable: The configured agent runtime is unavailable.",
-      action: "retry",
-    });
+    expect(result.current.state.timelineRecovery).toBeNull();
     expect(result.current.state.failedDraft).toBeNull();
-    expect(result.current.state.retryableFailedTurn?.turn_id).toBe("turn-1");
+    expect(result.current.state.turnsById["turn-1"]?.status).toBe("failed");
+    expect(result.current.state.items).toContainEqual(expect.objectContaining({
+      item_type: "message",
+      message_id: "message-1",
+      metadata: { turn_id: "turn-1" },
+    }));
   });
 });

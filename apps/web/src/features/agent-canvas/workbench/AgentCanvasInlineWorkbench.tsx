@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { EditingWorkbench } from "./EditingWorkbench.tsx";
 import { MediaPromptWorkbench } from "./MediaPromptWorkbench.tsx";
@@ -20,8 +20,10 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const {
     workflow,
     node,
+    runtime = null,
     deleteBinding,
     providerModels = [],
+    providerDefaultModelRef = null,
     providerModelsLoading = false,
     providerModelsError = null,
     modelResolution = null,
@@ -32,6 +34,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     onOpenEditing,
   } = props;
   const draft = useNodeWorkbenchDraft(props);
+  const promptEditorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -73,17 +76,23 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       nodeType={node.node_type}
     >
       {references}
-      {promptPreparing ? (
-        <NodePromptPreparationState node={node} onWorkflowRefresh={onWorkflowRefresh} />
+      {promptPreparing && node.node_type !== "image" && node.node_type !== "text" ? (
+        <NodePromptPreparationState
+          node={node}
+          onWorkflowRefresh={onWorkflowRefresh}
+          onRevise={() => promptEditorRef.current?.focus()}
+        />
       ) : null}
       {node.node_type === "text" ? (
         <TextWorkbench
           node={node}
           draft={draft}
           models={providerModels}
+          defaultModelRef={providerDefaultModelRef}
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
+          promptEditorRef={promptEditorRef}
         />
       ) : null}
       {node.node_type === "script" ? (
@@ -95,18 +104,22 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
+          promptEditorRef={promptEditorRef}
         />
       ) : null}
       {["image", "video", "audio"].includes(node.node_type) ? (
         <MediaPromptWorkbench
           node={node}
+          runtime={runtime}
           draft={draft}
           models={providerModels}
+          defaultModelRef={providerDefaultModelRef}
           modelsLoading={providerModelsLoading}
           modelsError={providerModelsError}
           modelResolution={modelResolution}
           onOpenAssets={onOpenAssets}
           onUploadReferences={onUploadReferences}
+          promptEditorRef={promptEditorRef}
         />
       ) : null}
       {node.node_type === "editing" ? (

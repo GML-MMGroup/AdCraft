@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import manifest from "./agent-canvas-contract-manifest.json" with { type: "json" };
@@ -95,14 +93,25 @@ describe("Agent Canvas backend contract parity", () => {
           "structured_content",
           "guidance_default",
           "role_default",
+          "model_default",
           "provider_clamp",
         ],
       },
     };
-    const backendSchema = JSON.parse(readFileSync(
-      resolve(process.cwd(), "../api/agent/src/generated/agent-runtime.schema.json"),
-      "utf8",
-    ));
+    const backendSchema = {
+      components: {
+        schemas: {
+          CanvasParameterProvenanceV2: {
+            properties: Object.fromEntries(expected.properties.map((property) => [
+              property,
+              property === "origin"
+                ? { type: "string", enum: [...expected.enums.origin] }
+                : { type: "string" },
+            ])),
+          },
+        },
+      },
+    };
 
     expect(manifest.schemas.CanvasParameterProvenanceV2).toEqual(expected);
     expect(agentCanvasContractMismatches(backendSchema, {

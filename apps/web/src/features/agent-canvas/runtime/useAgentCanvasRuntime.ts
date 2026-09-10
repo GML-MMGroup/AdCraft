@@ -36,6 +36,8 @@ import {
   sameRuntimePresentation,
 } from "./runtimeRefreshIdentity.ts";
 
+const NON_TERMINAL_RUNTIME_REFRESH_WINDOW_MS = 120;
+
 type RuntimeCallbacks = {
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
   mergePublishedAsset: (asset: ProjectAssetSummaryV2, nodeId?: string | null) => void;
@@ -75,6 +77,7 @@ export function useAgentCanvasRuntime(
   const workflowRefreshRef = useRef<Promise<void> | null>(null);
   const assetsRefreshRef = useRef<Promise<void> | null>(null);
   const runtimeRefreshQueuedRef = useRef(false);
+  const runtimeRefreshTimerRef = useRef<number | null>(null);
   const workflowRefreshQueuedRef = useRef(false);
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
@@ -91,6 +94,10 @@ export function useAgentCanvasRuntime(
     workflowRefreshRef.current = null;
     assetsRefreshRef.current = null;
     runtimeRefreshQueuedRef.current = false;
+    if (runtimeRefreshTimerRef.current !== null) {
+      window.clearTimeout(runtimeRefreshTimerRef.current);
+      runtimeRefreshTimerRef.current = null;
+    }
     workflowRefreshQueuedRef.current = false;
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
@@ -153,6 +160,20 @@ export function useAgentCanvasRuntime(
     runtimeRefreshRef.current = request;
     return request;
   }, [workflowId]);
+
+  const clearScheduledRuntimeRefresh = useCallback(() => {
+    if (runtimeRefreshTimerRef.current === null) return;
+    window.clearTimeout(runtimeRefreshTimerRef.current);
+    runtimeRefreshTimerRef.current = null;
+  }, []);
+
+  const scheduleRuntimeRefresh = useCallback(() => {
+    if (runtimeRefreshTimerRef.current !== null) return;
+    runtimeRefreshTimerRef.current = window.setTimeout(() => {
+      runtimeRefreshTimerRef.current = null;
+      void refreshRuntime();
+    }, NON_TERMINAL_RUNTIME_REFRESH_WINDOW_MS);
+  }, [refreshRuntime]);
 
   const refreshWorkflow = useCallback(async () => {
     if (!workflowId) return;
@@ -284,9 +305,10 @@ export function useAgentCanvasRuntime(
       if (lastRuntimeRefreshIdentityRef.current !== refreshIdentity) {
         lastRuntimeRefreshIdentityRef.current = refreshIdentity;
         if (terminalRuntimeEvent) {
+          clearScheduledRuntimeRefresh();
           void reconcileTerminalEvent(event, policy);
         } else {
-          void refreshRuntime();
+          scheduleRuntimeRefresh();
         }
       }
     }
@@ -332,7 +354,7 @@ export function useAgentCanvasRuntime(
         })
         .catch(() => {});
     }
-  }, [callbacks, refreshAssets, refreshRuntime, refreshWorkflow, reconcileTerminalEvent, workflowId]);
+  }, [callbacks, clearScheduledRuntimeRefresh, refreshAssets, refreshWorkflow, reconcileTerminalEvent, scheduleRuntimeRefresh, workflowId]);
 
   useEffect(() => {
     if (!workflowId) {
@@ -489,10 +511,11 @@ export function useAgentCanvasRuntime(
       cancelled = true;
       window.clearTimeout(reconnectTimer);
       eventSource?.close();
+      clearScheduledRuntimeRefresh();
       terminalReconcileTimers.forEach((timer) => window.clearTimeout(timer));
       terminalReconcileTimers.clear();
     };
-  }, [processEvent, refreshRuntime, refreshWorkflow, workflowId]);
+  }, [clearScheduledRuntimeRefresh, processEvent, refreshRuntime, refreshWorkflow, workflowId]);
 
   const runAll = useCallback(async () => {
     if (!workflowId || !workflow) return;
@@ -527,7 +550,7 @@ export function useAgentCanvasRuntime(
     if (!workflowId) return;
     if (!["text", "script", "image", "video", "audio"].includes(node.node_type)) return;
     if (isSourceOnlyNode(node)) return;
-    if (node.status !== "draft" && node.status !== "failed") return;
+    if (!new Set(["draft", "failed", "ready"]).has(node.status)) return;
     setRunPending(true);
     try {
       const request = nodeRunRequest(node, options.retryFailed);

@@ -9,12 +9,14 @@ import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
 interface CanvasVideoPreviewProps {
   asset: ProjectAssetSummaryV2;
   label: string;
+  revealToken?: string | null;
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
 }
 
 export function CanvasVideoPreview({
   asset,
   label,
+  revealToken = null,
   onMediaDimensionsResolved,
 }: CanvasVideoPreviewProps) {
   // Canvas cards must not fetch source video just to create a thumbnail. The
@@ -36,6 +38,7 @@ export function CanvasVideoPreview({
       src={posterUrl}
       srcSet={posterSrcSet || undefined}
       alt={asset.display_name || label}
+      revealToken={revealToken}
       width={asset.width ?? undefined}
       height={asset.height ?? undefined}
       onLoad={(event) => {

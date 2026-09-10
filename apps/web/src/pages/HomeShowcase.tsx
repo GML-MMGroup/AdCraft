@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
   type RefObject,
+  type ReactNode,
 } from "react";
 import { demoProjects, images, imageSrc } from "../data";
 import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
@@ -36,7 +37,6 @@ type RevealSection = {
 
 type HomeShowcaseInteractions = {
   createProject: () => void;
-  openWorkflow: () => void;
   openPreview: () => void;
   closePreview: () => void;
 };
@@ -46,6 +46,7 @@ export type HomeShowcaseProps = {
   interactions?: HomeShowcaseInteractions;
   heroMotionReady?: boolean;
   recentReveal?: RevealSection;
+  recentContent?: ReactNode;
   discoverReveal?: RevealSection;
   hasIntroVideo?: boolean;
   productVideoUrl?: string;
@@ -53,11 +54,11 @@ export type HomeShowcaseProps = {
   previewOpen?: boolean;
 };
 
-function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="section-title">
       <h2 data-home-typography-region="sectionHeading">{title}</h2>
-      <p data-home-typography-region="sectionBody">{subtitle}</p>
+      {subtitle && <p data-home-typography-region="sectionBody">{subtitle}</p>}
     </div>
   );
 }
@@ -263,36 +264,6 @@ function CreateProjectButtonContent() {
   );
 }
 
-function InteractiveRecentCards({ openWorkflow }: { openWorkflow: () => void }) {
-  return (
-    <div className="recent-strip" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
-      <button
-        className="recent-card featured"
-        data-reveal-item
-        style={motionStyle("--home-reveal-delay", "170ms")}
-        onClick={openWorkflow}
-      >
-        <div className="featured-glass">
-          <h3 data-home-typography-region="cardTitle">New fragrance product reel</h3>
-          <p data-home-typography-region="cardMeta">Continue editing the current workflow canvas.</p>
-        </div>
-      </button>
-      {demoProjects.slice(0, 3).map((project, index) => (
-        <button
-          key={project.name}
-          className="recent-card"
-          data-reveal-item
-          style={motionStyle("--home-reveal-delay", `${240 + index * 70}ms`)}
-          onClick={openWorkflow}
-        >
-          <h3 data-home-typography-region="cardTitle">{project.name}</h3>
-          <p data-home-typography-region="cardMeta">{project.time}</p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function StaticRecentCards() {
   return (
     <div className="recent-strip" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
@@ -330,6 +301,7 @@ export function HomeShowcase({
   interactions,
   heroMotionReady = false,
   recentReveal,
+  recentContent,
   discoverReveal,
   hasIntroVideo = false,
   productVideoUrl,
@@ -429,9 +401,9 @@ export function HomeShowcase({
           aria-label="Recent Projects"
         >
           <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
-            <SectionTitle title="Recent Projects" subtitle="Pick up the latest creative thread." />
+            <SectionTitle title="Recent Projects" />
           </div>
-          {isInteractive && interactions ? <InteractiveRecentCards openWorkflow={interactions.openWorkflow} /> : <StaticRecentCards />}
+          {isInteractive ? recentContent : <StaticRecentCards />}
         </section>
 
         <section
@@ -441,7 +413,7 @@ export function HomeShowcase({
           aria-label="Discover"
         >
           <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
-            <SectionTitle title="Discover" subtitle="References, templates, and generated video ideas." />
+            <SectionTitle title="Discover" />
           </div>
           {isInteractive && interactions ? <InteractiveDiscover openPreview={interactions.openPreview} /> : <StaticDiscover />}
         </section>

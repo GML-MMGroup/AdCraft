@@ -134,6 +134,21 @@ describe("projectProductionFocus", () => {
     });
   });
 
+  it("presents publication as background result saving", () => {
+    const result = projectProductionFocus({
+      nodes,
+      runtime: runtime(nodeRuntime("video-1", { phase: "publishing" })),
+      guidanceAwaiting: null,
+    });
+
+    expect(result).toMatchObject({
+      kind: "running",
+      title: "Video 01 is generating",
+      detail: "Saving generated result",
+      nodeIds: ["video-1"],
+    });
+  });
+
   it("identifies structured upstream blockers and targets the blocker", () => {
     const result = projectProductionFocus({
       nodes,

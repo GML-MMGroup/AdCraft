@@ -9,6 +9,12 @@ import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
 import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
+import {
+  canRetryNodeExecution,
+  failureUserAction,
+  nodeActionableFailure,
+} from "../chat/actionableFailure.ts";
+import type { RefObject } from "react";
 
 export function ScriptWorkbench({
   node,
@@ -18,6 +24,7 @@ export function ScriptWorkbench({
   modelsLoading,
   modelsError,
   modelResolution,
+  promptEditorRef,
 }: {
   node: CanvasNodeV2;
   status: CanvasNodeStatusV2;
@@ -26,10 +33,14 @@ export function ScriptWorkbench({
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
+  promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
   const canRun = status === "draft" || status === "failed";
   const isWorking = status === "working";
   const editorDisabled = draft.pending || isWorking;
+  const retryingExecution = status === "failed" && canRetryNodeExecution(node);
+  const regenerating = status === "failed"
+    && failureUserAction(nodeActionableFailure(node)) === "regenerate";
 
   return (
     <div className="agent-node-workbench__body">
@@ -46,6 +57,7 @@ export function ScriptWorkbench({
             else draft.setTextContent(event.currentTarget.value);
           }}
           onBlur={() => void draft.flushPrompt()}
+          editorRef={promptEditorRef}
         />
       </label>
       <NodeWorkbenchError draft={draft} />
@@ -73,12 +85,12 @@ export function ScriptWorkbench({
             aria-label={isWorking
               ? "Script node is working"
               : canRun
-                ? status === "failed" ? "Retry script node" : "Run script node"
+                ? retryingExecution ? "Retry script node" : regenerating ? "Regenerate script node" : "Run script node"
                 : "Save script node"}
             title={isWorking
               ? "Script generation is in progress"
               : canRun
-                ? status === "failed" ? "Retry script" : "Run script"
+                ? retryingExecution ? "Retry script" : regenerating ? "Regenerate script" : "Run script"
                 : "Save script"}
             disabled={editorDisabled || (canRun && !draft.prompt.trim())}
             onClick={() => void (canRun ? draft.run() : draft.save())}

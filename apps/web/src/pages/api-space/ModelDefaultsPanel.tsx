@@ -8,6 +8,11 @@ import {
   type ModelDefaultsResponseV1,
   type ProviderModelSummaryV1,
 } from "../../api/providerRegistry.ts";
+import {
+  modelEligibility,
+  RETIRED_ARK_MINI_MODEL_REF,
+  selectableModelOptions,
+} from "../../api/providerModelPolicy.ts";
 import { type ApiSpaceNotice } from "./providerRegistryMessages.ts";
 
 export function ModelDefaultsPanel({
@@ -81,21 +86,28 @@ export function ModelDefaultsPanel({
       </p>
       <div className="api-space-default-grid">
         {MODEL_DEFAULT_PURPOSES.map((purpose) => {
-          const options = modelsByPurpose[purpose];
+          const allOptions = modelsByPurpose[purpose];
+          const options = selectableModelOptions(allOptions);
           const selected = modelDraft[purpose] ?? "";
-          const selectedMissing = Boolean(selected) && !options.some((model) => model.model_ref === selected);
+          const selectedCatalogModel = allOptions.find((model) => model.model_ref === selected);
+          const selectedIsHidden = selected.startsWith("fake:")
+            || selected === RETIRED_ARK_MINI_MODEL_REF
+            || Boolean(selectedCatalogModel && !modelEligibility(selectedCatalogModel, "diagnostic").visible);
+          const visibleSelected = selectedIsHidden ? "" : selected;
+          const selectedMissing = Boolean(visibleSelected)
+            && !options.some((model) => model.model_ref === visibleSelected);
           return (
             <div className="api-space-default-field" key={purpose}>
               <label htmlFor={`default-model-${purpose}`}>{defaultLabel(purpose)}</label>
               <select
                 id={`default-model-${purpose}`}
                 aria-label={`${defaultLabel(purpose)} default model`}
-                value={selected}
+                value={visibleSelected}
                 disabled={disabled}
                 onChange={(event) => updateModel(purpose, event.currentTarget.value)}
               >
                 <option value="">No default selected</option>
-                {selectedMissing ? <option value={selected}>{selected} (unavailable)</option> : null}
+                {selectedMissing ? <option value={visibleSelected}>{visibleSelected} (unavailable)</option> : null}
                 {options.map((model) => (
                   <option key={model.model_ref} value={model.model_ref}>
                     {model.display_name} · {model.provider_id}

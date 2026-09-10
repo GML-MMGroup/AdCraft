@@ -30,6 +30,7 @@ import {
   sameAgentCanvasAssetPresentation,
   sameAgentCanvasRuntimeCardPresentation,
 } from "./agentCanvasNodeRenderModel.ts";
+import { AGENT_CANVAS_EDGE_TYPE } from "./canvasConnectionGeometry.ts";
 
 type PlacementNode = Pick<CanvasNodeV2, "node_type" | "output_asset_id" | "position">;
 
@@ -47,6 +48,24 @@ export interface FindAvailableCanvasPositionOptions {
 export interface ToAgentCanvasFlowNodesOptions {
   previousNodes?: readonly AgentCanvasFlowNode[];
   activeWorkbenchNodeId?: string | null;
+}
+
+export function reuseCanvasArray<T>(
+  previous: readonly T[] | null | undefined,
+  next: T[],
+): T[] {
+  if (!previous || previous.length !== next.length) return next;
+  return next.every((item, index) => item === previous[index]) ? previous as T[] : next;
+}
+
+export function reconcileCanvasFlowSnapshot<T>(
+  current: readonly T[],
+  next: T[],
+): T[] {
+  if (current.length === next.length && next.every((item, index) => item === current[index])) {
+    return current as T[];
+  }
+  return next;
 }
 
 export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasBindingInputRoleV2 {
@@ -158,45 +177,98 @@ export function toAgentCanvasFlowNodes(
 ): AgentCanvasFlowNode[] {
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
   const previousNodes = new Map((options.previousNodes ?? []).map((node) => [node.id, node]));
-  return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
-    const previous = previousNodes.get(node.node_id);
-    const asset = resolveCanvasNodeAsset(
+  return workflow.nodes
+    .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
+    .map((node) => projectAgentCanvasFlowNode(
       node,
-      node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null,
-      previous?.data.asset ?? null,
-    );
-    const nodeRuntime = runtime?.node_runtime[node.node_id] ?? null;
-    const dimensions = asset ? { width: asset.width, height: asset.height } : null;
-    const size = agentCanvasNodeSize(node.node_type, dimensions);
-    const style = node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions)
-      ? size
-      : undefined;
-    const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
-    if (previous && canReuseFlowNode(
-      previous,
+      assets.get(node.output_asset_id ?? "") ?? null,
+      runtime?.node_runtime[node.node_id] ?? null,
+      callbacks,
+      previousNodes.get(node.node_id),
+      options,
+    ));
+}
+
+export function runtimeChangedCanvasNodeIds(
+  previousNodes: readonly AgentCanvasFlowNode[],
+  nextRuntime: CanvasRuntimeSnapshotV2 | null,
+): ReadonlySet<string> {
+  const changedNodeIds = new Set<string>();
+  previousNodes.forEach((previous) => {
+    const next = nextRuntime?.node_runtime[previous.id] ?? null;
+    if (!sameAgentCanvasRuntimeCardPresentation(previous.data.runtime, next)) {
+      changedNodeIds.add(previous.id);
+    }
+  });
+  return changedNodeIds;
+}
+
+export function patchAgentCanvasFlowNodes(
+  workflow: AgentCanvasWorkflowV2,
+  runtime: CanvasRuntimeSnapshotV2 | null,
+  callbacks: AgentCanvasNodeCallbacks,
+  previousNodes: readonly AgentCanvasFlowNode[],
+  changedNodeIds: ReadonlySet<string>,
+  options: ToAgentCanvasFlowNodesOptions = {},
+): AgentCanvasFlowNode[] {
+  if (!changedNodeIds.size) return previousNodes as AgentCanvasFlowNode[];
+  const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
+  const previousNodesById = new Map(previousNodes.map((node) => [node.id, node]));
+  return workflow.nodes
+    .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
+    .map((node) => {
+      const previous = previousNodesById.get(node.node_id);
+      if (previous && !changedNodeIds.has(node.node_id)) return previous;
+      return projectAgentCanvasFlowNode(
+        node,
+        assets.get(node.output_asset_id ?? "") ?? null,
+        runtime?.node_runtime[node.node_id] ?? null,
+        callbacks,
+        previous,
+        options,
+      );
+    });
+}
+
+function projectAgentCanvasFlowNode(
+  node: CanvasNodeV2,
+  currentAsset: ProjectAssetSummaryV2 | null,
+  nodeRuntime: CanvasRuntimeSnapshotV2["node_runtime"][string] | null,
+  callbacks: AgentCanvasNodeCallbacks,
+  previous: AgentCanvasFlowNode | undefined,
+  options: ToAgentCanvasFlowNodesOptions,
+): AgentCanvasFlowNode {
+  const asset = resolveCanvasNodeAsset(node, currentAsset, previous?.data.asset ?? null);
+  const dimensions = asset ? { width: asset.width, height: asset.height } : null;
+  const size = agentCanvasNodeSize(node.node_type, dimensions);
+  const style = node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions)
+    ? size
+    : undefined;
+  const workbenchActive = options.activeWorkbenchNodeId === node.node_id;
+  if (previous && canReuseFlowNode(
+    previous,
+    node,
+    asset,
+    nodeRuntime,
+    callbacks,
+    style,
+    workbenchActive,
+  )) {
+    return previous;
+  }
+  return {
+    id: node.node_id,
+    type: "agentCanvas" as const,
+    position: node.position,
+    style,
+    data: {
       node,
       asset,
-      nodeRuntime,
-      callbacks,
-      style,
+      runtime: nodeRuntime,
       workbenchActive,
-    )) {
-      return previous;
-    }
-    return {
-      id: node.node_id,
-      type: "agentCanvas" as const,
-      position: node.position,
-      style,
-      data: {
-        node,
-        asset,
-        runtime: nodeRuntime,
-        workbenchActive,
-        ...callbacks,
-      },
-    };
-  });
+      ...callbacks,
+    },
+  };
 }
 
 function resolveCanvasNodeAsset(
@@ -234,6 +306,12 @@ function canReuseFlowNode(
     && previousData.node.revision === node.revision
     && previousData.node.status === node.status
     && previousData.node.output_asset_id === node.output_asset_id
+    && previousData.node.output_asset_version_id === node.output_asset_version_id
+    && previousData.node.latest_attempt?.execution_id === node.latest_attempt?.execution_id
+    && previousData.node.latest_attempt?.status === node.latest_attempt?.status
+    && previousData.node.latest_attempt?.updated_at === node.latest_attempt?.updated_at
+    && previousData.node.latest_attempt?.error?.code === node.latest_attempt?.error?.code
+    && previousData.node.latest_attempt?.error?.message === node.latest_attempt?.error?.message
     && sameAgentCanvasAssetPresentation(previousData.asset, asset)
     && (workbenchActive
       ? previousData.runtime === runtime
@@ -315,22 +393,47 @@ function distanceFrom(position: CanvasPositionV2, origin: CanvasPositionV2): num
 export function toAgentCanvasFlowEdges(
   bindings: CanvasBindingV2[],
   nodes: CanvasNodeV2[],
+  previousEdges: readonly Edge[] = [],
 ): Edge[] {
-  const visibleNodeIds = new Set(
+  return toAgentCanvasFlowEdgesForNodeIds(
+    bindings,
     nodes
       .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
       .map((node) => node.node_id),
+    previousEdges,
   );
-  return bindings.flatMap((binding) => binding.enabled && binding.source.kind === "node_output"
-    && visibleNodeIds.has(binding.source.source_node_id)
-    && visibleNodeIds.has(binding.target_node_id)
-    ? [{
+}
+
+export function toAgentCanvasFlowEdgesForNodeIds(
+  bindings: CanvasBindingV2[],
+  visibleNodeIdsInput: readonly string[],
+  previousEdges: readonly Edge[] = [],
+): Edge[] {
+  const previousEdgesById = new Map(previousEdges.map((edge) => [edge.id, edge]));
+  const visibleNodeIds = new Set(visibleNodeIdsInput);
+  return [...bindings]
+    .sort((left, right) => left.order - right.order)
+    .flatMap((binding) => {
+    if (!binding.enabled || binding.source.kind !== "node_output"
+      || !visibleNodeIds.has(binding.source.source_node_id)
+      || !visibleNodeIds.has(binding.target_node_id)) return [];
+    const previous = previousEdgesById.get(binding.binding_id);
+    const previousBinding = previous?.data && typeof previous.data === "object"
+      ? (previous.data as { binding?: CanvasBindingV2 }).binding
+      : undefined;
+    if (
+      previous
+      && previous.source === binding.source.source_node_id
+      && previous.target === binding.target_node_id
+      && previousBinding === binding
+    ) return [previous];
+    return [{
         id: binding.binding_id,
         source: binding.source.source_node_id,
         target: binding.target_node_id,
         sourceHandle: "output",
         targetHandle: "input",
-        type: "default",
+        type: AGENT_CANVAS_EDGE_TYPE,
         markerEnd: {
           type: MarkerType.ArrowClosed,
           width: 14,
@@ -338,8 +441,8 @@ export function toAgentCanvasFlowEdges(
           color: "#686868",
         },
         data: { binding },
-      }]
-    : []);
+      }];
+    });
 }
 
 export function reconcileSelectableCanvasEdges(
@@ -349,17 +452,24 @@ export function reconcileSelectableCanvasEdges(
   const selectedEdgeIds = new Set(
     currentEdges.filter((edge) => edge.selected).map((edge) => edge.id),
   );
-  return canonicalEdges.map((edge) => ({
-    ...edge,
-    selected: selectedEdgeIds.has(edge.id),
-  }));
+  let changed = false;
+  const nextEdges = canonicalEdges.map((edge) => {
+    const selected = selectedEdgeIds.has(edge.id);
+    if (edge.selected === selected || (!selected && edge.selected === undefined)) return edge;
+    changed = true;
+    return { ...edge, selected };
+  });
+  return changed ? nextEdges : canonicalEdges;
 }
 
 export function highlightNodeRelatedCanvasEdges(
   edges: Edge[],
   selectedNodeId: string | null,
+  previousEdges: readonly Edge[] = [],
 ): Edge[] {
-  return edges.map((edge) => {
+  const previousById = new Map(previousEdges.map((edge) => [edge.id, edge]));
+  let changed = false;
+  const nextEdges = edges.map((edge) => {
     const { className: currentClassName, ...edgeWithoutClassName } = edge;
     const classNames = (currentClassName ?? "")
       .split(/\s+/)
@@ -370,9 +480,17 @@ export function highlightNodeRelatedCanvasEdges(
     ) {
       classNames.push("is-node-related");
     }
-    return {
-      ...edgeWithoutClassName,
-      ...(classNames.length ? { className: classNames.join(" ") } : {}),
-    };
+    const className = classNames.length ? classNames.join(" ") : undefined;
+    const previous = previousById.get(edge.id);
+    if (
+      previous
+      && previous.source === edge.source
+      && previous.target === edge.target
+      && previous.data === edge.data
+      && previous.className === className
+    ) return previous;
+    changed = true;
+    return className ? { ...edgeWithoutClassName, className } : edgeWithoutClassName;
   });
+  return changed ? nextEdges : edges;
 }

@@ -73,6 +73,19 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onRelocate={openCanvasContextMenu}");
   });
 
+  it("opens the shared context menu for a node and routes deletion through canonical recovery", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("onNodeContextMenu={(event, node) => {");
+    expect(source).toContain("openNodeContextMenu(event, node)");
+    expect(source).toContain("const deleteContextNode = useCallback");
+    expect(source).toContain("deleteNodes([node])");
+    expect(source).toContain("onDeleteNode={() => deleteContextNode(contextMenu.nodeId)}");
+  });
+
   it("fills the Workflow viewport below the topbar without a shell inset", () => {
     const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
     const canvasCss = readFileSync(
@@ -119,6 +132,9 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("deleteKeyCode={[\"Backspace\", \"Delete\"]}");
     expect(source).toContain("onEdgesDelete={deleteEdges}");
     expect(source).toContain("highlightNodeRelatedCanvasEdges(");
+    expect(source).toContain("toAgentCanvasFlowEdgesForNodeIds(");
+    expect(source).toMatch(/\[visibleCanonicalNodeIds, workflow\?\.bindings\]/);
+    expect(source).toContain("runtimeChangedCanvasNodeIds(");
     expect(source).toContain("session.state.selectedNodeId");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path");
@@ -139,6 +155,27 @@ describe("AgentCanvasPage chrome", () => {
     expect(progressiveRevealRule).toContain("animation: agent-canvas-progressive-reveal 420ms ease-out both");
     expect(progressiveRevealRule).not.toContain("outline");
     expect(progressiveRevealRule).not.toContain("box-shadow");
+  });
+
+  it("registers border-anchored edges and a 24px external Handle snap radius", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPageSurface.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("const edgeTypes = { [AGENT_CANVAS_EDGE_TYPE]: AgentCanvasEdge }");
+    expect(source).toContain("edgeTypes={edgeTypes}");
+    expect(source).toContain("connectionLineComponent={AgentCanvasConnectionLine}");
+    expect(source).toContain("connectionRadius={AGENT_CANVAS_CONNECTION_RADIUS}");
+    expect(source).toContain("isValidConnection={isValidCanvasConnection}");
+    expect(source).toContain("connectionRuleForPair(connectionPolicy, source.node_type, target.node_type)");
+    expect(canvasCss).toMatch(
+      /\.agent-canvas-board \.agent-canvas-connection-line\s*\{[\s\S]*?stroke: #686868;[\s\S]*?fill: none;/,
+    );
   });
 
   it("restores canonical bindings immediately when a delete mutation fails", () => {

@@ -47,6 +47,7 @@ const DAMPING = 0.085;
 const DRAG_THRESHOLD = 5;
 const AUTO_RESUME_DELAY = 3200;
 const DRAG_RESUME_DELAY = 4200;
+const COMPACT_MAX_WIDTH = 820;
 
 function wrapDelta(value: number, length: number) {
   if (length <= 1) return 0;
@@ -125,6 +126,17 @@ function distanceStyle(
 
 export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitProps) {
   const reducedMotion = useReducedMotion();
+  const [compact, setCompact] = useState(() => (
+    typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia(`(max-width: ${COMPACT_MAX_WIDTH}px)`).matches
+  ));
+  const [documentVisible, setDocumentVisible] = useState(() => (
+    typeof document === "undefined" || !document.hidden
+  ));
+  const [inViewport, setInViewport] = useState(() => (
+    typeof IntersectionObserver === "undefined"
+  ));
   const rootRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<Record<TrackId, Array<HTMLElement | null>>>({ upper: [], lower: [] });
   const targetRef = useRef(0);
@@ -141,13 +153,22 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   const dragRef = useRef<PointerDrag | null>(null);
   const didDragRef = useRef(false);
   const hoveringRef = useRef(false);
+  const activeTimeRef = useRef(0);
   const [activeIndexes, setActiveIndexes] = useState<Record<TrackId, number>>({ upper: 0, lower: 0 });
   const [selectedIndexes, setSelectedIndexes] = useState<Record<TrackId, number | null>>({ upper: null, lower: null });
   const [isInteracting, setIsInteracting] = useState(false);
   const total = items.length;
+  const motionActive = (
+    interactive
+    && total >= 2
+    && !reducedMotion
+    && !compact
+    && documentVisible
+    && inViewport
+  );
 
   const pauseAuto = (duration = AUTO_RESUME_DELAY) => {
-    pauseAutoUntilRef.current = performance.now() + duration;
+    pauseAutoUntilRef.current = activeTimeRef.current + duration;
   };
 
   const syncActiveIndexes = (current: number) => {
@@ -174,7 +195,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   const moveTo = (nextTarget: number, pauseDuration = AUTO_RESUME_DELAY) => {
     targetRef.current = nextTarget;
     inertiaRef.current = 0;
-    snapAtRef.current = performance.now() + 160;
+    snapAtRef.current = activeTimeRef.current + 160;
     pauseAuto(pauseDuration);
     syncActiveIndexes(targetRef.current);
   };
@@ -213,27 +234,48 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
 
   useLayoutEffect(() => {
     syncActiveIndexes(currentRef.current);
-    syncCards(performance.now());
+    if (!compact) syncCards(activeTimeRef.current);
     // Card references and geometry are mutable to keep the render loop outside React state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [total]);
+  }, [compact, total]);
 
   useEffect(() => {
-    if (!interactive || reducedMotion || total < 2) {
-      syncCards(performance.now());
+    if (typeof window.matchMedia !== "function") return undefined;
+    const query = window.matchMedia(`(max-width: ${COMPACT_MAX_WIDTH}px)`);
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const update = () => setDocumentVisible(!document.hidden);
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      setInViewport(entry?.isIntersecting ?? false);
+    }, { threshold: 0 });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!motionActive) {
       return undefined;
     }
 
     let frameId = 0;
     let lastTime = performance.now();
     const render = (now: number) => {
-      if (document.hidden) {
-        lastTime = now;
-        frameId = requestAnimationFrame(render);
-        return;
-      }
       const deltaTime = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
+      activeTimeRef.current += deltaTime * 1000;
+      const activeNow = activeTimeRef.current;
       const dragging = dragRef.current !== null;
 
       if (!dragging && inertiaRef.current !== 0) {
@@ -242,7 +284,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
         if (Math.abs(inertiaRef.current) < 0.025) inertiaRef.current = 0;
       }
 
-      if (!dragging && snapAtRef.current !== null && now >= snapAtRef.current) {
+      if (!dragging && snapAtRef.current !== null && activeNow >= snapAtRef.current) {
         targetRef.current = Math.round(targetRef.current);
         inertiaRef.current = 0;
         snapAtRef.current = null;
@@ -251,7 +293,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       const canAutoMove = (
         !dragging
         && !hoveringRef.current
-        && now >= pauseAutoUntilRef.current
+        && activeNow >= pauseAutoUntilRef.current
         && inertiaRef.current === 0
         && snapAtRef.current === null
       );
@@ -264,7 +306,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
         const targetOffset = trackOffsetTargetsRef.current[track.id];
         trackOffsetsRef.current[track.id] += (targetOffset - currentOffset) * smoothing;
       });
-      syncCards(now);
+      syncCards(activeNow);
       syncActiveIndexes(currentRef.current);
       frameId = requestAnimationFrame(render);
     };
@@ -273,14 +315,42 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     return () => cancelAnimationFrame(frameId);
     // The loop owns the mutable motion model and intentionally avoids render-time state updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, reducedMotion, total]);
+  }, [motionActive, total]);
+
+  useEffect(() => {
+    if (motionActive) return;
+    const root = rootRef.current;
+    const drag = dragRef.current;
+    if (root && drag && root.hasPointerCapture(drag.pointerId)) {
+      root.releasePointerCapture(drag.pointerId);
+    }
+    dragRef.current = null;
+    didDragRef.current = false;
+    hoveringRef.current = false;
+    inertiaRef.current = 0;
+    snapAtRef.current = null;
+    setIsInteracting(false);
+  }, [motionActive]);
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || !interactive) return undefined;
+    return () => {
+      const drag = dragRef.current;
+      if (root && drag && root.hasPointerCapture(drag.pointerId)) {
+        root.releasePointerCapture(drag.pointerId);
+      }
+      dragRef.current = null;
+      hoveringRef.current = false;
+      inertiaRef.current = 0;
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !interactive || reducedMotion || compact) return undefined;
 
     const onPointerDown = (event: globalThis.PointerEvent) => {
-      if (event.button !== 0) return;
+      if (!motionActive || event.button !== 0) return;
       root.setPointerCapture(event.pointerId);
       dragRef.current = {
         pointerId: event.pointerId,
@@ -318,7 +388,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       setIsInteracting(false);
       if (!cancelled && didDragRef.current) {
         inertiaRef.current = Math.min(Math.max((-drag.velocity / spacingFor()) * 1000, -4), 4);
-        snapAtRef.current = performance.now() + 260;
+        snapAtRef.current = activeTimeRef.current + 260;
       } else {
         targetRef.current = Math.round(targetRef.current);
         snapAtRef.current = null;
@@ -327,11 +397,15 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (reducedMotion) return;
-      const amount = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (amount === 0) return;
+      if (!motionActive || event.ctrlKey || event.metaKey || !event.cancelable) return;
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY) || event.deltaX === 0) return;
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? root.clientWidth
+          : 1;
       event.preventDefault();
-      moveTo(targetRef.current + amount * 0.0027);
+      moveTo(targetRef.current + event.deltaX * unit * 0.0027);
     };
 
     const onPointerCancel = (event: globalThis.PointerEvent) => finishDrag(event, true);
@@ -349,10 +423,10 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     };
     // Event listeners bind to a shared mutable motion model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, reducedMotion]);
+  }, [compact, interactive, motionActive, reducedMotion]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (!interactive) return;
+    if (!interactive || compact || !documentVisible || !inViewport) return;
     if (event.key === "ArrowRight") {
       event.preventDefault();
       moveTo(Math.round(targetRef.current) + 1);
@@ -364,6 +438,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
 
   const handleCardClick = (track: TrackConfig, index: number, event: MouseEvent<HTMLElement>) => {
     if (!interactive) return;
+    if (compact) {
+      setSelectedIndexes((current) => ({ ...current, [track.id]: index }));
+      onSelect?.();
+      return;
+    }
     if (didDragRef.current) {
       event.preventDefault();
       didDragRef.current = false;
@@ -383,12 +462,12 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   };
 
   const handleCardFocus = (track: TrackConfig, index: number) => {
-    if (!interactive) return;
+    if (!interactive || compact) return;
     moveTrackToCard(track, index);
   };
 
   const setHovering = (value: boolean) => {
-    if (!interactive) return;
+    if (!interactive || compact || !motionActive) return;
     hoveringRef.current = value;
     setIsInteracting(value || dragRef.current !== null);
     if (value) pauseAuto();
@@ -433,8 +512,8 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
                 onClick={(event) => handleCardClick(track, index, event)}
                 onFocus={() => handleCardFocus(track, index)}
                 onKeyDown={handleKeyDown}
-                onPointerEnter={() => setHovering(true)}
-                onPointerLeave={() => setHovering(false)}
+                onPointerEnter={compact ? undefined : () => setHovering(true)}
+                onPointerLeave={compact ? undefined : () => setHovering(false)}
               >
                 <DiscoverTrackCard item={item} />
               </button>

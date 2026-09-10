@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type ImgHTMLAttributes } from "react";
 
-import { cachedStableMediaUrl, isStableMediaUrl, loadStableMedia } from "./stableMediaCache.ts";
+import {
+  cachedStableMediaUrl,
+  isStableMediaUrl,
+  loadStableMedia,
+  retainStableMedia,
+} from "./stableMediaCache.ts";
 
 export type StableMediaPreviewProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
   src?: string | null;
@@ -9,14 +14,19 @@ export type StableMediaPreviewProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 
 };
 
 /** Image preview with URL-level request dedupe and persistent versioned media cache. */
-export function StableMediaPreview({ src, deferMs = 0, ...props }: StableMediaPreviewProps) {
+export function StableMediaPreview({ src, deferMs = 0, srcSet, ...props }: StableMediaPreviewProps) {
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const sourceKey = src ?? null;
   const [resolvedSource, setResolvedSource] = useState<string | null>(() => initialSource(src));
+  const [resolvedSourceKey, setResolvedSourceKey] = useState<string | null>(sourceKey);
+  const displayedSource = resolvedSourceKey === sourceKey ? resolvedSource : initialSource(src);
 
   useEffect(() => {
     let active = true;
     let started = false;
     let timerId: number | null = null;
+    let release: (() => void) | null = null;
+    setResolvedSourceKey(sourceKey);
     setResolvedSource(initialSource(src));
     if (!src) return () => { active = false; };
 
@@ -25,7 +35,11 @@ export function StableMediaPreview({ src, deferMs = 0, ...props }: StableMediaPr
       started = true;
       const load = () => loadStableMedia(src)
         .then((nextSource) => {
-          if (active) setResolvedSource(nextSource);
+          if (active) {
+            release?.();
+            release = retainStableMedia(src);
+            setResolvedSource(nextSource);
+          }
         })
         .catch(() => {
           // Keep the canonical URL as a browser-native fallback when caching fails.
@@ -54,6 +68,7 @@ export function StableMediaPreview({ src, deferMs = 0, ...props }: StableMediaPr
       observer.observe(image);
       return () => {
         active = false;
+        release?.();
         observer.disconnect();
         if (timerId !== null) window.clearTimeout(timerId);
       };
@@ -61,11 +76,19 @@ export function StableMediaPreview({ src, deferMs = 0, ...props }: StableMediaPr
     hydrate();
     return () => {
       active = false;
+      release?.();
       if (timerId !== null) window.clearTimeout(timerId);
     };
-  }, [deferMs, props.loading, src]);
+  }, [deferMs, props.loading, sourceKey, src]);
 
-  return <img {...props} ref={imageRef} src={resolvedSource ?? undefined} />;
+  return (
+    <img
+      {...props}
+      ref={imageRef}
+      src={displayedSource ?? undefined}
+      srcSet={isStableMediaUrl(sourceKey) ? undefined : srcSet}
+    />
+  );
 }
 
 function initialSource(sourceUrl?: string | null): string | null {

@@ -93,4 +93,17 @@ describe("conversationRecoveryFromError", () => {
       title: "Conversation state changed",
     });
   });
+
+  it("does not offer Refresh or Continue for an orphaned guided stall", () => {
+    const recovery = conversationRecoveryFromError(
+      "workflow",
+      apiError(409, "guidance_orphaned_stall", "The active operation no longer exists."),
+    );
+
+    expect(recovery).toMatchObject({
+      action: "none",
+      title: "Guided step requires recovery",
+    });
+    expect(`${recovery.title} ${recovery.message}`).not.toMatch(/refresh|continue/i);
+  });
 });

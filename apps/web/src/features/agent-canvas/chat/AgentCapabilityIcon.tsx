@@ -1,36 +1,26 @@
+import { useEffect } from "react";
 import type { AgentCapabilityIdV2 } from "../../../types-v2.ts";
+import { AgentRoleAnimation } from "./agent-role-animation/AgentRoleAnimation.tsx";
+import {
+  agentRoleAnimationRegistry,
+} from "./agent-role-animation/agentRoleAnimationRegistry.ts";
+import { agentRoleBitmapManifest } from "./agent-role-animation/agentRoleBitmapManifest.ts";
+import { prepareRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
+import type { AgentRoleMotionState } from "./agent-role-animation/types.ts";
 
-const AGENT_ICON_ASSET_VERSION = "2026-08-28";
-
-const AGENT_CAPABILITY_ICON_PATHS: Partial<Record<AgentCapabilityIdV2, string>> = {
-  world_setting: `/imgs/agent-role-icons/world-setting.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  product_design: `/imgs/agent-role-icons/product-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  prop_design: `/imgs/agent-role-icons/prop-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  character_design: `/imgs/agent-role-icons/character-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  scene_design: `/imgs/agent-role-icons/scene-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  script_authoring: `/imgs/agent-role-icons/script-writer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  storyboard_design: `/imgs/agent-role-icons/storyboard-artist.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  video_direction: `/imgs/agent-role-icons/video-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  bgm_direction: `/imgs/agent-role-icons/bgm-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
-  quick_media: `/imgs/agent-role-icons/quick-media.png?v=${AGENT_ICON_ASSET_VERSION}`,
-};
-
-const preloadedIconSources = new Set<string>();
 const preloadedIconLinks = new Set<string>();
 
 export function agentCapabilityIconSource(capabilityId: AgentCapabilityIdV2): string | null {
-  return AGENT_CAPABILITY_ICON_PATHS[capabilityId] ?? null;
+  return capabilityId in agentRoleAnimationRegistry
+    ? agentRoleBitmapManifest[capabilityId].source
+    : null;
 }
 
 /** Start loading an icon as soon as its capability row is about to render. */
 export function preloadAgentCapabilityIcon(capabilityId: AgentCapabilityIdV2): string | null {
   const source = agentCapabilityIconSource(capabilityId);
-  if (!source || preloadedIconSources.has(source) || typeof Image === "undefined") return source;
-
-  preloadedIconSources.add(source);
-  const image = new Image();
-  image.decoding = "async";
-  image.src = source;
+  if (!source || typeof Image === "undefined") return source;
+  prepareRoleVisual(capabilityId, "bitmap");
   return source;
 }
 
@@ -46,7 +36,7 @@ export function preloadAgentCapabilityIconLink(capabilityId: AgentCapabilityIdV2
     const link = document.createElement("link");
     link.setAttribute("rel", "preload");
     link.setAttribute("as", "image");
-    link.type = "image/png";
+    link.type = source.split("?")[0]?.endsWith(".svg") ? "image/svg+xml" : "image/png";
     link.setAttribute("fetchpriority", "high");
     link.href = source;
     document.head.appendChild(link);
@@ -57,24 +47,24 @@ export function preloadAgentCapabilityIconLink(capabilityId: AgentCapabilityIdV2
 
 export function AgentCapabilityIcon({
   capabilityId,
+  motionState = "idle",
 }: {
   capabilityId: AgentCapabilityIdV2;
+  motionState?: AgentRoleMotionState;
 }) {
-  const source = preloadAgentCapabilityIcon(capabilityId);
+  const source = agentCapabilityIconSource(capabilityId);
+  useEffect(() => {
+    preloadAgentCapabilityIcon(capabilityId);
+  }, [capabilityId]);
   if (!source) return null;
 
   return (
-    <img
+    <span
       className="agent-chat__capability-icon"
       data-testid="agent-capability-icon"
-      src={source}
-      width={32}
-      height={32}
-      decoding="async"
-      fetchPriority="high"
-      alt=""
       aria-hidden="true"
-      draggable={false}
-    />
+    >
+      <AgentRoleAnimation capabilityId={capabilityId} motionState={motionState} />
+    </span>
   );
 }

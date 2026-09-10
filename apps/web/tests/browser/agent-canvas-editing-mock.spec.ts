@@ -28,7 +28,6 @@ function importedNode() {
     revision: 1,
     error: null,
     prompt_preparation: null,
-    variation_draft: null,
     created_at: timestamp,
     updated_at: timestamp,
   };
@@ -88,7 +87,6 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string) 
     source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: targetNodeId,
     input_role: "video_reference",
-    required: true,
     enabled: true,
     order: 0,
     label: null,
@@ -280,7 +278,6 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
     source: { kind: "node_output", source_node_id: "video-export" },
     target_node_id: "editing-downstream",
     input_role: "video_reference",
-    required: true,
     enabled: true,
     order: 0,
   });

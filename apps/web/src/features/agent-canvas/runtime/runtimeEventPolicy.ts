@@ -41,6 +41,15 @@ const RUNTIME_EVENTS = new Set([
   "node_output_published",
   "runtime_snapshot_updated",
   "execution_member_skipped_dependency",
+  "node_result_publication_prepared",
+  "node_result_publication_recovery_scheduled",
+  "node_result_publication_recovered",
+  "node_result_publication_failed",
+]);
+
+const TERMINAL_PUBLICATION_EVENTS = new Set([
+  "node_result_publication_recovered",
+  "node_result_publication_failed",
 ]);
 
 const AUTHORING_EVENTS = new Set([
@@ -257,6 +266,8 @@ export function runtimeEventPolicy(
   const editingPrepared = type === "editing_prepared" || type === "guided_editing_ready";
   const projectAssetPublished = type === "project_asset_published";
   const publishesOutput = type === "node_output_published";
+  const publicationRecovered = type === "node_result_publication_recovered";
+  const terminalPublication = TERMINAL_PUBLICATION_EVENTS.has(type);
   const guidedCanonicalRefresh = GUIDED_CANONICAL_REFRESH_EVENTS.has(type);
   const terminalNode = type.startsWith("node_")
     && isTerminalRuntimeEvent(type)
@@ -272,13 +283,13 @@ export function runtimeEventPolicy(
 
   return {
     refreshRuntime: projectAssetPublished || productSource || editingImported || RUNTIME_EVENTS.has(type) || guidedCanonicalRefresh,
-    refreshWorkflow: terminalNode || editing || editingImported || (!productSourcePending && productSource) || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
-    refreshAssets: projectAssetPublished || publishesOutput || productSource || editingImported,
+    refreshWorkflow: terminalNode || terminalPublication || editing || editingImported || (!productSourcePending && productSource) || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
+    refreshAssets: projectAssetPublished || publishesOutput || publicationRecovered || productSource || editingImported,
     refreshChat: CHAT_EVENTS.has(type) || GUIDED_CHAT_EVENTS.has(type) || documentEvent,
     refreshSettings: type === "agent_settings_updated",
     refreshDocuments: documentEvent,
     refreshDocumentId: documentId,
-    refreshNodeId: NODE_DETAIL_EVENTS.has(type) || editingImported ? event.node_id : null,
+    refreshNodeId: NODE_DETAIL_EVENTS.has(type) || terminalPublication || editingImported ? event.node_id : null,
     refreshEditingNodeId: editing || editingPrepared ? event.node_id : null,
   };
 }

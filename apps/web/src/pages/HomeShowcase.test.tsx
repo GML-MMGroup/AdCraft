@@ -16,6 +16,10 @@ describe("HomeShowcase", () => {
     expect(screen.queryByRole("button", { name: /create your project/i })).toBeNull();
     expect(screen.queryByText("Preview Case")).toBeNull();
     expect(screen.queryByText("All")).toBeNull();
+    expect(screen.queryByText("Pick up the latest creative thread.")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Recent Projects" }).parentElement?.querySelector("p")).toBeNull();
+    expect(screen.queryByText("References, templates, and generated video ideas.")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Discover" }).parentElement?.querySelector("p")).toBeNull();
   });
 
   it("renders two linked Discover tracks and supports keyboard navigation", () => {
@@ -25,7 +29,6 @@ describe("HomeShowcase", () => {
         mode="interactive"
         interactions={{
           createProject: vi.fn(),
-          openWorkflow: vi.fn(),
           openPreview,
           closePreview: vi.fn(),
         }}
