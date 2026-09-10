@@ -6,6 +6,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.agent_canvas_capabilities import NextActionContextV1
+from app.schemas.language import BCP47Tag
+from app.schemas.style_skill_consultation import SkillId, StyleSkillConsultationAuditV1
+
 
 _MAX_SAFE_JSON_BYTES = 16_384
 _SENSITIVE_KEY_PARTS = (
@@ -177,9 +181,38 @@ class V2AgentConversationMessageResponse(_StrictModel):
     action: V2AgentAction
 
 
+class WorkflowConversationAnswerContextV1(_StrictModel):
+    """Revision-bound workflow state observed before a conversation reply."""
+
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=0)
+    response_locale: BCP47Tag
+    journey_stage: str | None = Field(default=None, max_length=80)
+    journey_status: str | None = Field(default=None, max_length=80)
+    awaiting_action: NextActionContextV1 | None = None
+    next_action: NextActionContextV1 | None = None
+    source_revision: int | None = Field(default=None, ge=0)
+
+
+def _require_conversation_answer_kind(schema: dict[str, Any]) -> None:
+    required = schema.setdefault("required", [])
+    if "answer_kind" not in required:
+        required.append("answer_kind")
+
+
 class WorkflowConversationReply(_StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra=_require_conversation_answer_kind,
+    )
+
     message: str = Field(min_length=1, max_length=4_000)
     clarification_required: bool = False
+    answer_kind: Literal["greeting", "progress", "clarification", "general"] = "general"
+    state_reference: WorkflowConversationAnswerContextV1 | None = None
+    referenced_skill_ids: tuple[SkillId, ...] = Field(default=(), max_length=24)
+    style_skill_audit: StyleSkillConsultationAuditV1 | None = None
 
 
 class ConversationSummaryResult(_StrictModel):

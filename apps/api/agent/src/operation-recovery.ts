@@ -43,7 +43,11 @@ export class AgentOperationFailure extends Error {
     readonly code: string,
     message: string,
     readonly retryable: boolean,
-    readonly attemptStage: "initial" | "transport_retry" | "structured_repair" =
+    readonly attemptStage:
+      | "initial"
+      | "transport_retry"
+      | "capability_fallback"
+      | "structured_repair" =
       "initial",
     readonly attemptMetadata?: AgentTransportAttemptMetadataV1,
   ) {

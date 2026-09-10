@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_prompt_assertion import (
     prompt_assertion_evidence_digest,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import ResolvedNodeParameterV2
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptCompactionDecisionV2
 from app.schemas.agent_canvas_requirements import CharacterAuthoringPhaseV1
 
 __all__ = (
@@ -29,7 +30,15 @@ __all__ = (
 class NodePromptPreparationV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["queued", "working", "ready", "failed", "superseded", "not_applicable"]
+    status: Literal[
+        "queued",
+        "working",
+        "ready",
+        "failed",
+        "superseded",
+        "not_applicable",
+        "waiting_user",
+    ]
     operation_id: str | None = Field(default=None, min_length=1, max_length=160)
     presentation_stream_id: str | None = Field(default=None, max_length=160)
     attempt_no: int = Field(ge=0)
@@ -45,12 +54,28 @@ class NodePromptPreparationV1(BaseModel):
     requirement_revision_no: int | None = Field(default=None, ge=1)
     document_revisions: dict[str, int] = Field(default_factory=dict, max_length=16)
     binding_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
+    character_identity_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    scene_environment_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     style_projection_digest: str | None = Field(
         default=None,
         pattern=r"^sha256:[a-f0-9]{64}$",
     )
     brief_digest: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     parameter_origins: tuple[ResolvedNodeParameterV2, ...] = Field(default=(), max_length=32)
+    compaction_policy_version: str | None = Field(default=None, max_length=32)
+    compaction_policy_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    compaction_decisions: tuple[RolePromptCompactionDecisionV2, ...] = Field(
+        default=(), max_length=64
+    )
     assertion_evidence: PromptAssertionEvidenceV1 | None = None
     attempt_stage: str | None = Field(default=None, max_length=80)
     error: CanvasNodeErrorV2 | None = None
@@ -58,6 +83,43 @@ class NodePromptPreparationV1(BaseModel):
 
     @model_validator(mode="after")
     def validate_state(self) -> "NodePromptPreparationV1":
+        if self.status == "waiting_user":
+            if any(
+                value is not None
+                for value in (
+                    self.operation_id,
+                    self.presentation_stream_id,
+                    self.context_snapshot_id,
+                    self.occurrence_id,
+                    self.character_phase,
+                    self.prompt_digest,
+                    self.role_variant,
+                    self.recipe_id,
+                    self.recipe_version,
+                    self.recipe_digest,
+                    self.requirement_revision_id,
+                    self.requirement_revision_no,
+                    self.binding_digest,
+                    self.character_identity_projection_digest,
+                    self.scene_environment_projection_digest,
+                    self.style_projection_digest,
+                    self.brief_digest,
+                    self.compaction_policy_version,
+                    self.compaction_policy_digest,
+                    self.assertion_evidence,
+                    self.attempt_stage,
+                    self.error,
+                )
+            ):
+                raise ValueError("Waiting-user prompt preparation cannot have work identity.")
+            if (
+                self.attempt_no != 0
+                or self.document_revisions
+                or self.parameter_origins
+                or self.compaction_decisions
+            ):
+                raise ValueError("Waiting-user prompt preparation cannot have preparation data.")
+            return self
         if self.status == "not_applicable":
             if any(
                 value is not None
@@ -72,6 +134,8 @@ class NodePromptPreparationV1(BaseModel):
                     self.recipe_digest,
                     self.requirement_revision_id,
                     self.binding_digest,
+                    self.character_identity_projection_digest,
+                    self.scene_environment_projection_digest,
                     self.style_projection_digest,
                     self.brief_digest,
                     self.assertion_evidence,
@@ -96,6 +160,16 @@ class NodePromptPreparationV1(BaseModel):
 
         return cls(
             status="not_applicable",
+            attempt_no=0,
+            updated_at=updated_at,
+        )
+
+    @classmethod
+    def waiting_user(cls, *, updated_at: datetime) -> "NodePromptPreparationV1":
+        """Return the explicit manual-prompt waiting projection."""
+
+        return cls(
+            status="waiting_user",
             attempt_no=0,
             updated_at=updated_at,
         )

@@ -71,6 +71,16 @@ class ProjectRow(Base):
             name="ck_projects_status",
         ),
         CheckConstraint("project_version > 0", name="ck_projects_positive_version"),
+        CheckConstraint(
+            "cover_state IN ('ready','unresolved','none','broken')",
+            name="ck_projects_cover_state",
+        ),
+        CheckConstraint(
+            "cover_source IS NULL OR cover_source IN "
+            "('manual','product_main','scene_main','character_main',"
+            "'storyboard_grid','video_poster','migrated')",
+            name="ck_projects_cover_source",
+        ),
     )
 
     project_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -79,6 +89,10 @@ class ProjectRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cover_asset_id: Mapped[str | None] = mapped_column(Text)
+    cover_version_id: Mapped[str | None] = mapped_column(Text)
+    cover_state: Mapped[str] = mapped_column(Text, nullable=False, default="none")
+    cover_source: Mapped[str | None] = mapped_column(Text)
+    cover_updated_at: Mapped[str | None] = mapped_column(Text)
     project_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -728,6 +742,10 @@ class AgentCanvasAutomaticRunCommandRow(Base):
     )
 
     command_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    logical_operation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    operation_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    retry_ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_automatic_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     workflow_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
     )
@@ -737,7 +755,7 @@ class AgentCanvasAutomaticRunCommandRow(Base):
     state: Mapped[str] = mapped_column(Text, nullable=False)
     execution_id: Mapped[str | None] = mapped_column(Text)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     next_attempt_at: Mapped[str | None] = mapped_column(Text)
     lease_owner: Mapped[str | None] = mapped_column(Text)
     lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -983,6 +1001,41 @@ class ProviderModelSyncRunRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class ProviderModelConformanceRunRow(Base):
+    """Secret-safe conformance evidence for one frozen model operation."""
+
+    __tablename__ = "provider_model_conformance_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('unverified', 'compatible', 'certified', 'revoked')",
+            name="ck_provider_model_conformance_status",
+        ),
+        CheckConstraint("revision > 0", name="ck_provider_model_conformance_revision"),
+        Index(
+            "ix_provider_model_conformance_model_operation",
+            "model_ref",
+            "operation",
+            "started_at",
+        ),
+    )
+
+    conformance_run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    model_ref: Mapped[str] = mapped_column(ForeignKey("provider_models.model_ref"), nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    adapter_id: Mapped[str] = mapped_column(Text, nullable=False)
+    transport_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    adapter_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    contract_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    routing_policy_id: Mapped[str | None] = mapped_column(Text)
+    routing_policy_digest: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="unverified")
+    safe_summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    started_at: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentCanvasDocumentRow(Base):
     """Typed Text or Script document attached to one canvas node."""
 
@@ -1052,7 +1105,6 @@ class AgentCanvasBindingRow(Base):
         Text,
         nullable=False,
     )
-    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     label: Mapped[str | None] = mapped_column(Text)
@@ -1234,32 +1286,6 @@ class AgentCanvasMaterializationCommitRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class AgentCanvasVariationDraftRow(Base):
-    __tablename__ = "agent_canvas_variation_drafts"
-    __table_args__ = (
-        CheckConstraint(
-            "variation_revision > 0",
-            name="ck_agent_canvas_variation_revision",
-        ),
-    )
-
-    source_node_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_nodes.node_id"), primary_key=True
-    )
-    workflow_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
-    )
-    source_node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    title: Mapped[str] = mapped_column(Text, nullable=False)
-    generation_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    model_selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="default")
-    model_ref: Mapped[str | None] = mapped_column(Text)
-    parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
-    variation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
-
-
 class AgentCanvasConversationRow(Base):
     __tablename__ = "agent_canvas_conversations"
 
@@ -1370,7 +1396,8 @@ class AgentCanvasGuidedInteractionRow(Base):
     __tablename__ = "agent_canvas_guided_interactions"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification_questionnaire','concept_choice','product_source','media_review')",
+            "kind IN ('clarification_questionnaire','concept_choice','product_source',"
+            "'reference_source','media_review')",
             name="ck_agent_canvas_guided_interactions_kind",
         ),
         CheckConstraint(
@@ -1551,12 +1578,13 @@ class AgentCanvasGuidedMediaResumeDeliveryRow(Base):
 
 
 class AgentCanvasGuidanceAwaitingRow(Base):
-    """Current typed durable wait for one Guidance session."""
+    """Typed checkpoint waits with one independent authoring cursor."""
 
     __tablename__ = "agent_canvas_guidance_awaiting"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('clarification','concept_selection','product_source','media_review',"
+            "kind IN ('clarification','concept_selection','product_source','reference_source',"
+            "'media_review',"
             "'manual_node_run','milestone_idle')",
             name="ck_agent_canvas_guidance_awaiting_kind",
         ),
@@ -1569,9 +1597,11 @@ class AgentCanvasGuidanceAwaitingRow(Base):
             "stage_revision > 0",
             name="ck_agent_canvas_guidance_awaiting_stage_revision",
         ),
-        UniqueConstraint(
+        Index(
+            "uq_agent_canvas_guidance_awaiting_authoring",
             "workflow_id",
-            name="uq_agent_canvas_guidance_awaiting_workflow",
+            unique=True,
+            sqlite_where=text("kind NOT IN ('manual_node_run','media_review')"),
         ),
         UniqueConstraint(
             "session_id",
@@ -1756,7 +1786,7 @@ class AgentCanvasPromptPreparationOutboxRow(Base):
     __tablename__ = "agent_canvas_prompt_preparation_outbox"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','leased','completed','failed','superseded')",
+            "status IN ('waiting_user','queued','leased','completed','failed','superseded')",
             name="ck_agent_canvas_prompt_preparation_dispatch_status",
         ),
         CheckConstraint(
@@ -1861,6 +1891,11 @@ class AgentCanvasConceptProposalRow(Base):
     availability: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     guidance_session_id: Mapped[str] = mapped_column(Text, nullable=False)
     guidance_session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    character_occurrence_id: Mapped[str | None] = mapped_column(Text)
+    character_occurrence_index: Mapped[int | None] = mapped_column(Integer)
+    character_occurrence_count: Mapped[int | None] = mapped_column(Integer)
+    character_phase: Mapped[str | None] = mapped_column(Text)
+    character_scope_digest: Mapped[str | None] = mapped_column(Text)
     materialization_id: Mapped[str | None] = mapped_column(Text)
     materialization_option_id: Mapped[str | None] = mapped_column(Text)
     materialization_turn_id: Mapped[str | None] = mapped_column(Text)
@@ -2237,10 +2272,68 @@ class AgentCanvasProviderSubmissionIntentRow(Base):
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
     supports_idempotency_token: Mapped[bool] = mapped_column(Boolean, nullable=False)
     supports_remote_task_lookup: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    frozen_model_resolution_json: Mapped[str | None] = mapped_column(Text)
     provider_idempotency_token: Mapped[str | None] = mapped_column(Text)
     remote_task_id: Mapped[str | None] = mapped_column(Text)
     provider_task_id: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasResultPublicationIntentRow(Base):
+    """Recoverable local-result handoff preceding terminal publication."""
+
+    __tablename__ = "agent_canvas_result_publication_intents"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('preparing','prepared','committed','abandoned')",
+            name="ck_agent_canvas_result_publication_intents_state",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND attempt_count <= 16",
+            name="ck_agent_canvas_result_publication_intents_attempt",
+        ),
+        UniqueConstraint(
+            "logical_result_key",
+            name="uq_agent_canvas_result_publication_intents_result_key",
+        ),
+        UniqueConstraint(
+            "execution_id",
+            "member_id",
+            name="uq_agent_canvas_result_publication_intents_member",
+        ),
+        Index(
+            "ix_agent_canvas_result_publication_intents_due",
+            "state",
+            "next_attempt_at",
+            "recovery_deadline",
+        ),
+    )
+
+    intent_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_members.member_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    logical_result_key: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snapshot_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snapshot_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_object_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    planned_result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    prepared_result_json: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[str] = mapped_column(Text, nullable=False)
+    recovery_deadline: Mapped[str] = mapped_column(Text, nullable=False)
+    last_error_code: Mapped[str | None] = mapped_column(Text)
+    committed_receipt_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -2421,7 +2514,7 @@ class AgentCanvasGuidedProductionReceiptRow(Base):
     __table_args__ = (
         CheckConstraint(
             "receipt_type IN ('storyboard_fanout','media_confirmation',"
-            "'editing_preparation','final_completion')",
+            "'editing_preparation','editing_action_reconciliation','final_completion')",
             name="ck_agent_canvas_guided_production_receipt_type",
         ),
         UniqueConstraint(

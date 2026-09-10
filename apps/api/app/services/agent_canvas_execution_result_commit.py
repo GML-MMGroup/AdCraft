@@ -10,6 +10,7 @@ from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitReceiptV2,
     CanvasPostReadyEffectV2,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
 
 
 class AgentCanvasExecutionResultCommitService:
@@ -22,8 +23,17 @@ class AgentCanvasExecutionResultCommitService:
     ) -> CanvasExecutionResultCommitReceiptV2:
         return self._repository.commit(command)
 
+    def reconcile_stale_lease_failure(
+        self,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> CanvasExecutionResultCommitReceiptV2 | None:
+        return self._repository.reconcile_stale_lease_failure(command)
+
     def list_receipts(self, execution_id: str) -> tuple[CanvasExecutionResultCommitReceiptV2, ...]:
         return self._repository.list_receipts(execution_id)
 
     def list_post_ready_effects(self, execution_id: str) -> tuple[CanvasPostReadyEffectV2, ...]:
         return self._repository.list_post_ready_effects(execution_id)
+
+    def get_result_evidence(self, commit_id: str) -> GuidedMediaResultEvidenceV2 | None:
+        return self._repository.get_result_evidence(commit_id)

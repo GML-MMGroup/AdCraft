@@ -1,1 +1,5 @@
-Design supporting objects around cut-paper layers and typography-aware rhythm without baked text, with a material hierarchy that reinforces tactile compositing. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
+# 道具指导
+
+把纸片、照片、印章、胶带、色块、产品和纹理拆成独立层，记录边缘、厚度、固定点、遮挡顺序和触碰方式。tactile compositing 要区分纸纤维、胶片、布面和硬质物的摩擦与阴影。
+
+保持产品轮廓与层级身份，不把文字图形当成不可编辑的最终信息。

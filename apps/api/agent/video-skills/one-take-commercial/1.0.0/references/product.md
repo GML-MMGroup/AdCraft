@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing continuous spatial choreography through silhouette and motivated transitions through surfaces and detail. Make functional features readable, and use reveal timing only where it strengthens the requested selling point.
+在一镜到底中为产品选择稳定的空间锚点：被谁持有、放在哪里、何时交接、哪一面朝向镜头。产品进入、离开和再次出现都应通过路径、手部、桌面或遮挡解释。关键功能揭示前后保持结构和材质一致。
+
+检查接触点、尺度、运动惯性、反射和光源。产品不应在交接中改变颜色、比例或部件。若摄影机绕行，提前决定观众要看到的产品面，避免为了展示所有角度而破坏空间连续。
+
+正例：产品沿真实手部路径传递，摄影机跟随交接并在落点处完成揭示。
+反例：产品在不同人物手中无过渡地改变朝向，或被光效遮住后变成另一种结构。

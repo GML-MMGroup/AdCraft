@@ -24,6 +24,10 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_working_document_repository import (
+    AgentWorkingDocumentRepository,
+)
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
 )
@@ -34,6 +38,7 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
     CanvasNodeV2,
     ProjectAssetSummaryV2,
 )
@@ -46,17 +51,22 @@ from app.schemas.agent_canvas_conversation import (
     ProposalActionRequestV2,
 )
 from app.schemas.agent_canvas_capabilities import (
+    AgentCapabilitiesOrdinaryIntentV1,
+    AgentIdentityOrdinaryIntentV1,
     CAPABILITY_RESULT_CONTRACTS,
     CapabilityCommandEnvelopeV2,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
     CompactTurnIntentDecisionV3,
+    DocumentExplanationOrdinaryIntentV1,
+    FreeformReplyOrdinaryIntentV1,
     GuidanceSourceActionV1,
     NextActionCommandV1,
     NextActionContextV1,
     PlannedCapabilityReferenceV1,
     TurnIntentContextV2,
     TurnIntentDecisionV2,
+    WorkflowStatusOrdinaryIntentV1,
     expand_compact_turn_intent,
 )
 from app.schemas.agent_canvas_decision_bundles import (
@@ -93,9 +103,17 @@ from app.schemas.agent_canvas_creative_session import (
     StyleGuidanceContextV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyEvidenceV2
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
+    WorkflowConversationAgentContext,
+    WorkflowStateCapsuleV1,
+)
+from app.schemas.v2_agent_conversations import (
+    WorkflowConversationAnswerContextV1,
+    WorkflowConversationReply,
 )
 from app.schemas.agent_runtime import (
     AgentActionEnvelopeV2,
@@ -133,6 +151,10 @@ from app.services.agent_canvas_capability_dispatch import (
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
+from app.services.agent_canvas_character_proposal_scope import (
+    resolve_character_proposal_target,
+    resolve_character_proposal_target_for_dispatch,
+)
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
@@ -158,12 +180,28 @@ from app.services.agent_canvas_requirements import (
     character_occurrences_for_authoring,
 )
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
+from app.services.authoritative_workflow_context import (
+    AuthoritativeWorkflowContextProjector,
+)
+from app.services.agent_working_documents import AgentWorkingDocumentService
+from app.services.agent_product_information_reply import (
+    AgentProductInformationReplyRenderer,
+)
+from app.services.conversation_query_documents import ConversationQueryDocumentResolver
+from app.services.workflow_status_reply import WorkflowStatusReplyRenderer
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
 from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.schemas.agent_canvas_capabilities import StyleSkillConsultationOrdinaryIntentV1
+from app.schemas.style_skill_consultation import (
+    StyleSkillConsultationAuditV1,
+    StyleSkillConsultationQueryV1,
+)
+from app.schemas.agent_operation_contexts import InteractionMessageSummary
+from app.services.style_skill_consultation import StyleSkillConsultationResolver
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import (
     AgentOperationPolicyRegistryV2,
@@ -178,6 +216,31 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 logger = logging.getLogger(__name__)
+
+
+def _answer_context_from_agent_context(
+    context: WorkflowConversationAgentContext,
+) -> WorkflowConversationAnswerContextV1 | None:
+    if context.workflow_revision is None:
+        return None
+    return WorkflowConversationAnswerContextV1(
+        workflow_id=context.workflow_id,
+        workflow_revision=context.workflow_revision,
+        response_locale=context.response_locale,
+        journey_stage=context.journey_stage,
+        journey_status=context.journey_status,
+        awaiting_action=context.awaiting_action,
+        next_action=context.next_action,
+        source_revision=context.source_revision,
+    )
+
+
+def _workflow_conversation_summary(workflow: AgentCanvasWorkflowV2) -> str:
+    status_counts: dict[str, int] = {}
+    for node in workflow.nodes:
+        status_counts[node.status] = status_counts.get(node.status, 0) + 1
+    counts = ", ".join(f"{status}={count}" for status, count in sorted(status_counts.items()))
+    return f"Canvas nodes: {len(workflow.nodes)} ({counts or 'none'})."
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +272,13 @@ class VideoAgentGateway(Protocol):
         *,
         request_identity: str,
     ) -> RoleCreativeBriefV2: ...
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply: ...
 
     def plan_storyboard_sequence_outline(
         self,
@@ -260,7 +330,12 @@ class DeterministicVideoAgentGateway:
         return TurnIntentDecisionV2(
             mode="ordinary_conversation",
             objective=context.user_input,
-            assistant_message=f"Your request is recorded for this canvas: {context.user_input}",
+            ordinary_intent={
+                "intent_kind": "freeform_reply",
+                "assistant_message": (
+                    f"Your request is recorded for this canvas: {context.user_input}"
+                ),
+            },
         )
 
     def choose_next_action(
@@ -314,7 +389,31 @@ class DeterministicVideoAgentGateway:
         request_identity: str,
     ) -> RoleCreativeBriefV2:
         del request_identity
-        return deterministic_role_brief(context)
+        brief = deterministic_role_brief(context)
+        return RoleCreativeBriefV2.model_validate(
+            {
+                **brief.root.model_dump(mode="json"),
+                "editable_prompt": context.user_prompt
+                or context.selected_direction
+                or "Current creative direction.",
+            }
+        )
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply:
+        del turn_id
+        return WorkflowConversationReply(
+            message=(
+                "I can answer questions about the current workflow without changing "
+                "its authoring state."
+            ),
+            answer_kind="general",
+            state_reference=_answer_context_from_agent_context(context),
+        )
 
     def plan_storyboard_sequence_outline(
         self,
@@ -523,7 +622,40 @@ class PiVideoAgentGateway:
                 "role_variant": context.role_variant,
             },
         )
-        return RoleCreativeBriefV2.model_validate(completed.value)
+        brief = RoleCreativeBriefV2.model_validate(completed.value)
+        if not brief.root.editable_prompt or not brief.root.editable_prompt.strip():
+            raise V2PersistenceError(
+                "agent_structured_output_invalid",
+                "Role brief must include a non-blank editable_prompt.",
+                stage="agent_canvas_conversation",
+            )
+        return brief
+
+    def answer_workflow_conversation(
+        self,
+        context: WorkflowConversationAgentContext,
+        *,
+        turn_id: str,
+    ) -> WorkflowConversationReply:
+        completed = self._run_structured(
+            operation="workflow_conversation",
+            context=context,
+            contract=WorkflowConversationReply,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "conversation_id": context.conversation_id,
+                "turn_id": turn_id,
+                "agent_name": "video_agent",
+                "operation": "workflow_conversation",
+            },
+        )
+        if "answer_kind" not in completed.value:
+            raise V2PersistenceError(
+                "agent_structured_output_invalid",
+                "Workflow conversation reply must include answer_kind.",
+                stage="agent_canvas_conversation",
+            )
+        return WorkflowConversationReply.model_validate(completed.value)
 
     def plan_storyboard_sequence_outline(
         self,
@@ -701,6 +833,17 @@ class PiVideoAgentGateway:
         if operation == "decide_turn_intent" and isinstance(turn_id, str):
             validation_profile = "agent_intake_source_quotes_v1"
             validation_context = {"source_turn_id": turn_id}
+        elif (
+            operation == "workflow_conversation"
+            and isinstance(context, WorkflowConversationAgentContext)
+            and context.style_skill_consultation is not None
+        ):
+            validation_profile = "style_skill_consultation_v1"
+            validation_context = {
+                "allowed_skill_ids": [
+                    entry.skill_id for entry in context.style_skill_consultation.entries
+                ],
+            }
         elif operation == "plan_storyboard_sequence_outline" and isinstance(
             context, CapabilityMaterializationContextV1
         ):
@@ -709,6 +852,20 @@ class PiVideoAgentGateway:
             )
             validation_profile = "storyboard_sequence_window_parity_v1"
             validation_context = authority.model_dump(mode="json")
+        elif operation == "author_role_brief" and isinstance(
+            context, RolePromptPreparationContextV2
+        ):
+            validation_context = {
+                "role_variant": context.role_variant,
+                "prompt_authority": (
+                    "user_authored" if context.user_prompt is not None else "system_generated"
+                ),
+                "scene_projection_digest": (
+                    context.scene_environment_projection.projection_digest
+                    if context.scene_environment_projection is not None
+                    else None
+                ),
+            }
         elif validation_profile == "proposal_candidate_count_v1":
             validation_context = {
                 "expected_candidate_count": getattr(context, "candidate_count", None),
@@ -739,6 +896,11 @@ class PiVideoAgentGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
+                **_workflow_context_audit(
+                    context,
+                    operation=operation_definition.operation,
+                    skill_id=operation_definition.internal_skill_id,
+                ),
                 **(
                     {
                         "model_result_contract_name": contract.__name__,
@@ -835,6 +997,42 @@ def _context_duration_seconds(context: BaseModel) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def _workflow_context_audit(
+    context: BaseModel,
+    *,
+    operation: str,
+    skill_id: str | None,
+) -> dict[str, object]:
+    """Return bounded identity-only diagnostics for an authoritative capsule."""
+
+    capsule = getattr(context, "workflow_context", None)
+    if not isinstance(capsule, WorkflowStateCapsuleV1):
+        return {}
+    document = getattr(context, "document_excerpt", None)
+    document_audit: dict[str, object] = {}
+    if isinstance(document, AgentDocumentContextExcerptV2):
+        document_audit = {
+            "conversation_query_kind": "document_explanation",
+            "document_id": document.document_id,
+            "document_kind": document.document_kind,
+            "document_revision": document.revision,
+            "document_digest": document.content_digest,
+            "document_selector": document.selector,
+        }
+    return {
+        "workflow_context": {
+            "operation": operation,
+            "skill_id": skill_id,
+            "projection_digest": capsule.projection_digest,
+            "capsule_bytes": len(capsule.model_dump_json().encode("utf-8")),
+            "workflow_revision": capsule.workflow_revision,
+            "guidance_session_revision": capsule.guidance_session_revision,
+            "truncation": capsule.truncation.model_dump(mode="json"),
+            **document_audit,
+        }
+    }
 
 
 def _deterministic_capability_result(
@@ -1260,6 +1458,24 @@ class AgentConversationService:
             workflows.database,
             EventRepository(workflows.database),
         )
+        self._workflow_context = AuthoritativeWorkflowContextProjector(
+            workflows=workflows,
+            conversations=conversations,
+        )
+        self._conversation_documents = ConversationQueryDocumentResolver(
+            workflows=workflows,
+            working_documents=AgentWorkingDocumentService(
+                workflows=workflows,
+                documents=AgentWorkingDocumentRepository(
+                    workflows.database,
+                    EventRepository(workflows.database),
+                ),
+                assets=V2AssetLibraryRepository(workflows.database),
+                conversations=conversations,
+            ),
+        )
+        self._workflow_status_reply = WorkflowStatusReplyRenderer()
+        self._product_information_reply = AgentProductInformationReplyRenderer()
 
     def submit_message(
         self,
@@ -1282,6 +1498,11 @@ class AgentConversationService:
             and current_session.awaiting.kind == "media_review"
             and current_session.awaiting.interaction_id
             == current_session.interaction.interaction_id
+            and awaiting_blocks_authoring(
+                current_session.awaiting,
+                stage=current_session.journey.stage,
+                stage_revision=current_session.journey.stage_revision,
+            )
         ):
             return self._conversations.create_media_review_wait_turn(
                 workflow_id,
@@ -1530,6 +1751,13 @@ class AgentConversationService:
             str(item) for item in turn.request.get("mentioned_image_asset_ids") or ()
         )
         requirements = self._requirements.get_current_revision(turn.workflow_id)
+        workflow_context = self._workflow_context.project(
+            turn.workflow_id,
+            conversation_id=turn.conversation_id,
+            response_locale=(
+                existing_session.response_locale if existing_session is not None else "und"
+            ),
+        )
         intent = self._turn_intents.decide(
             TurnIntentContextV2(
                 workflow_id=workflow.workflow_id,
@@ -1549,6 +1777,19 @@ class AgentConversationService:
                 ),
                 current_response_locale=(
                     existing_session.response_locale if existing_session is not None else "und"
+                ),
+                workflow_context=workflow_context,
+                style_skill_catalog=StyleSkillConsultationResolver(
+                    self._video_skills, self._conversations
+                ).resolve(
+                    turn.workflow_id,
+                    StyleSkillConsultationQueryV1(scope="catalog"),
+                ),
+                recent_messages=tuple(
+                    InteractionMessageSummary.model_validate(item)
+                    for item in self._conversations.consultation_messages(
+                        turn.turn_id, required=False
+                    )
                 ),
             ),
             turn_id=turn_id,
@@ -1581,6 +1822,10 @@ class AgentConversationService:
                 )
         if (
             existing_session is not None
+            and not isinstance(
+                getattr(intent.ordinary_intent, "root", None),
+                StyleSkillConsultationOrdinaryIntentV1,
+            )
             and intent.response_locale != existing_session.response_locale
         ):
             existing_session = self._conversations.update_guidance_response_locale(
@@ -1589,10 +1834,40 @@ class AgentConversationService:
                 response_locale=intent.response_locale,
             )
         if intent.mode == "ordinary_conversation":
+            ordinary_intent = intent.ordinary_intent
+            if ordinary_intent is None:
+                raise V2PersistenceError(
+                    "turn_intent_contract_invalid",
+                    "Ordinary conversation requires one validated intent subtype.",
+                    stage="agent_conversation_service",
+                )
+            reply = self._answer_workflow_conversation(
+                turn,
+                intent,
+                workflow_context=workflow_context,
+            )
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
-                intent.assistant_message or "Your request is recorded for this canvas.",
+                reply.message,
+                assistant_metadata={
+                    "answer_kind": reply.answer_kind,
+                    "ordinary_intent_kind": ordinary_intent.intent_kind,
+                    **(
+                        {
+                            "style_skill_consultation": reply.style_skill_audit.model_dump(
+                                mode="json"
+                            )
+                        }
+                        if reply.style_skill_audit is not None
+                        else {}
+                    ),
+                    "state_reference": (
+                        reply.state_reference.model_dump(mode="json")
+                        if reply.state_reference is not None
+                        else None
+                    ),
+                },
             )
         session = existing_session
         if session is None:
@@ -1625,6 +1900,7 @@ class AgentConversationService:
                     else None
                 ),
                 response_locale=intent.response_locale,
+                journey_policy_id="proposal_submit_auto_result_v1",
             )
         duration_questionnaire = self._duration_authority.questionnaire(
             requirements,
@@ -1764,7 +2040,11 @@ class AgentConversationService:
                 expected_session_revision=session.revision,
                 idempotency_key=f"targeted-start:{turn_id}",
             )
-        if intent.mode == "guided_production" and session.awaiting is not None:
+        if intent.mode == "guided_production" and awaiting_blocks_authoring(
+            session.awaiting,
+            stage=session.journey.stage,
+            stage_revision=session.journey.stage_revision,
+        ):
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
@@ -1949,6 +2229,14 @@ class AgentConversationService:
             objective=command.command.objective or intent.objective,
             reference_plan=reference_plan,
             requirement_revision=requirements,
+            character_target=resolve_character_proposal_target_for_dispatch(
+                action=session.journey.active_action,
+                capability_id=command.command.capability_id,
+                publication_kind=(
+                    "proposal" if intent.mode == "guided_production" else "internal_document"
+                ),
+                requirement_revision=requirements,
+            ),
             asset_resolver=self._asset_resolver,
         )
         if intent.mode == "targeted_authoring":
@@ -2041,7 +2329,6 @@ class AgentConversationService:
                         "operation_id": create_operation_id,
                     },
                     "binding_kind": binding_kind[reference.input_role],
-                    "required": reference.required,
                     "display_order": index,
                 }
             )
@@ -2249,15 +2536,311 @@ class AgentConversationService:
         turn_id: str,
         workflow_id: str,
         assistant_message: str | None,
+        *,
+        assistant_metadata: Mapping[str, object] | None = None,
     ) -> ChatTurnV2:
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         return self._conversations.complete_turn(
             turn_id,
             assistant_message=assistant_message,
+            assistant_metadata=assistant_metadata,
             guided_actions=self._session_actions.project(
                 session,
                 creating_turn_id=turn_id,
             ),
+        )
+
+    def _answer_workflow_conversation(
+        self,
+        turn: ChatTurnV2,
+        intent: TurnIntentDecisionV2,
+        *,
+        workflow_context: WorkflowStateCapsuleV1,
+    ) -> WorkflowConversationReply:
+        ordinary_intent = intent.ordinary_intent
+        if ordinary_intent is None:
+            raise V2PersistenceError(
+                "turn_intent_contract_invalid",
+                "Ordinary conversation requires one validated intent subtype.",
+                stage="workflow_conversation",
+            )
+        route = ordinary_intent.root
+        context, state_reference = self._conversation_answer_context(
+            turn,
+            response_locale=intent.response_locale,
+            workflow_context=workflow_context,
+        )
+        if isinstance(route, (AgentIdentityOrdinaryIntentV1, AgentCapabilitiesOrdinaryIntentV1)):
+            return WorkflowConversationReply(
+                message=self._product_information_reply.render(
+                    route.intent_kind,
+                    response_locale=intent.response_locale,
+                ),
+                answer_kind="general",
+                state_reference=state_reference,
+            )
+        if isinstance(route, WorkflowStatusOrdinaryIntentV1):
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                context, state_reference = self._conversation_answer_context(
+                    turn,
+                    response_locale=intent.response_locale,
+                    workflow_context=current_context,
+                )
+            else:
+                current_context = workflow_context
+            del context
+            return WorkflowConversationReply(
+                message=self._workflow_status_reply.render(current_context),
+                answer_kind="progress",
+                state_reference=state_reference,
+            )
+        document_excerpt = None
+        consultation = None
+        if isinstance(route, StyleSkillConsultationOrdinaryIntentV1):
+            consultation = StyleSkillConsultationResolver(
+                self._video_skills, self._conversations
+            ).resolve(
+                turn.workflow_id,
+                route.query,
+            )
+            context = WorkflowConversationAgentContext.model_validate(
+                context.model_dump()
+                | {
+                    "response_locale": intent.response_locale,
+                    "style_skill_consultation": consultation,
+                    "recent_messages": tuple(
+                        InteractionMessageSummary.model_validate(item)
+                        for item in self._conversations.consultation_messages(turn.turn_id)
+                    ),
+                }
+            )
+        if isinstance(route, DocumentExplanationOrdinaryIntentV1):
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                workflow_context = current_context
+            if route.requested_document_kinds:
+                _, state_reference = self._conversation_answer_context(
+                    turn,
+                    response_locale=intent.response_locale,
+                    workflow_context=workflow_context,
+                )
+                return WorkflowConversationReply(
+                    message=self._workflow_status_reply.render_document_selection(
+                        workflow_context,
+                        route.requested_document_kinds,
+                    ),
+                    answer_kind="clarification",
+                    state_reference=state_reference,
+                )
+            document_excerpt = self._conversation_documents.resolve(
+                workflow_context,
+                route.to_legacy_query(),
+            )
+            context, state_reference = self._conversation_answer_context(
+                turn,
+                response_locale=intent.response_locale,
+                workflow_context=workflow_context,
+                document_excerpt=document_excerpt,
+            )
+        if not isinstance(
+            route,
+            (
+                FreeformReplyOrdinaryIntentV1,
+                DocumentExplanationOrdinaryIntentV1,
+                StyleSkillConsultationOrdinaryIntentV1,
+            ),
+        ):
+            raise V2PersistenceError(
+                "turn_intent_contract_invalid",
+                "Ordinary conversation intent subtype is not supported.",
+                stage="workflow_conversation",
+            )
+        reply = self._gateway.answer_workflow_conversation(
+            context,
+            turn_id=turn.turn_id,
+        )
+        if consultation is not None:
+            allowed_ids = {entry.skill_id for entry in consultation.entries}
+            if (
+                not set(reply.referenced_skill_ids).issubset(allowed_ids)
+                or reply.answer_kind not in {"general", "clarification"}
+                or reply.style_skill_audit is not None
+            ):
+                raise V2PersistenceError(
+                    "agent_structured_output_invalid",
+                    "Style Skill answer must reference only supplied public facts and preserve its consultation route.",
+                    stage="workflow_conversation",
+                )
+            return reply.model_copy(
+                update={
+                    "state_reference": state_reference,
+                    "style_skill_audit": StyleSkillConsultationAuditV1(
+                        source_turn_id=turn.turn_id,
+                        scope=consultation.query.scope,
+                        catalog_version=consultation.catalog_version,
+                        selected_skill_id=consultation.selected_skill_id,
+                        selected_skill_version=consultation.selected_skill_version,
+                        focused_skill_ids=consultation.query.skill_ids,
+                        omitted_entry_count=consultation.omitted_entry_count,
+                    ),
+                }
+            )
+        if document_excerpt is not None:
+            current_context = self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            )
+            if current_context.projection_digest != workflow_context.projection_digest:
+                raise V2PersistenceError(
+                    "agent_workflow_context_stale",
+                    "Workflow context changed while the document explanation was prepared.",
+                    stage="workflow_conversation",
+                )
+        if reply.answer_kind != "progress":
+            return reply.model_copy(update={"state_reference": state_reference})
+        if state_reference is None:
+            return WorkflowConversationReply(
+                message=(
+                    "Current guided progress is unavailable. Refresh the workflow before "
+                    "choosing a next action."
+                ),
+                answer_kind="progress",
+                state_reference=None,
+            )
+        _, current_reference = self._conversation_answer_context(
+            turn,
+            response_locale=intent.response_locale,
+            workflow_context=self._workflow_context.project(
+                turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                response_locale=intent.response_locale,
+            ),
+        )
+        if current_reference != state_reference:
+            return WorkflowConversationReply(
+                message=(
+                    "Workflow state changed while this answer was prepared. Refresh the "
+                    "current guidance state before continuing."
+                ),
+                answer_kind="progress",
+                state_reference=current_reference,
+            )
+        return reply.model_copy(update={"state_reference": state_reference})
+
+    def _conversation_answer_context(
+        self,
+        turn: ChatTurnV2,
+        *,
+        response_locale: str,
+        workflow_context: WorkflowStateCapsuleV1,
+        document_excerpt: AgentDocumentContextExcerptV2 | None = None,
+    ) -> tuple[WorkflowConversationAgentContext, WorkflowConversationAnswerContextV1 | None]:
+        workflow = self._workflows.get_workflow(turn.workflow_id)
+        session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
+        if session is None:
+            return (
+                WorkflowConversationAgentContext(
+                    context_kind="workflow_conversation",
+                    user_input=str(turn.request.get("text") or ""),
+                    workflow_id=turn.workflow_id,
+                    conversation_id=turn.conversation_id,
+                    workflow_revision=workflow.revision,
+                    workflow_summary=_workflow_conversation_summary(workflow),
+                    response_locale=response_locale,
+                    workflow_context=workflow_context,
+                    document_excerpt=document_excerpt,
+                ),
+                None,
+            )
+        policy = self._capability_policy.evaluate(
+            assemble_capability_policy_context(
+                workflow=workflow,
+                session=session,
+                open_proposal_capabilities=tuple(
+                    proposal.capability_id
+                    for proposal in self._conversations.list_open_proposals(turn.workflow_id)
+                ),
+                active_materialization_capabilities=tuple(
+                    dict.fromkeys(
+                        (
+                            *self._continuation_outbox.list_nonterminal_capability_ids(
+                                turn.workflow_id
+                            ),
+                            *self._conversations.list_active_materialization_capability_ids(
+                                turn.workflow_id
+                            ),
+                        )
+                    )
+                ),
+            )
+        )
+
+        def action_context(objective: str) -> NextActionContextV1:
+            return NextActionContextV1(
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                session_revision=session.revision,
+                objective=objective,
+                policy=policy,
+                response_locale=session.response_locale,
+            )
+
+        awaiting_action = (
+            action_context(
+                f"Await {session.awaiting.kind} through {session.awaiting.resume_policy}."
+            )
+            if awaiting_blocks_authoring(
+                session.awaiting,
+                stage=session.journey.stage,
+                stage_revision=session.journey.stage_revision,
+            )
+            else None
+        )
+        next_action = (
+            action_context(
+                f"Perform the current journey action {session.journey.active_action.action_kind}."
+            )
+            if session.journey.active_action is not None
+            else None
+        )
+        state_reference = WorkflowConversationAnswerContextV1(
+            workflow_id=turn.workflow_id,
+            workflow_revision=workflow.revision,
+            response_locale=session.response_locale,
+            journey_stage=session.journey.stage,
+            journey_status=session.journey.stage_status,
+            awaiting_action=awaiting_action,
+            next_action=next_action,
+            source_revision=session.revision,
+        )
+        return (
+            WorkflowConversationAgentContext(
+                context_kind="workflow_conversation",
+                user_input=str(turn.request.get("text") or ""),
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                workflow_revision=workflow.revision,
+                workflow_summary=_workflow_conversation_summary(workflow),
+                response_locale=session.response_locale,
+                journey_stage=session.journey.stage,
+                journey_status=session.journey.stage_status,
+                awaiting_action=awaiting_action,
+                next_action=next_action,
+                source_revision=session.revision,
+                workflow_context=workflow_context,
+                document_excerpt=document_excerpt,
+            ),
+            state_reference,
         )
 
     def get_turn(self, turn_id: str) -> ChatTurnV2:
@@ -2326,6 +2909,7 @@ class AgentConversationService:
         return AgentCanvasPublicConceptProjector().project_proposal(
             proposal,
             response_locale=session.response_locale,
+            require_submit=(session.journey.journey_policy_id == "proposal_submit_auto_result_v1"),
         )
 
     def _revise_capability_proposal(
@@ -2348,6 +2932,44 @@ class AgentConversationService:
             f"Revise this capability direction according to the user instruction. "
             f"Instruction: {action.instruction}\nCurrent direction:\n{public_direction}"
         )
+        requirements = self._requirements.get_current_revision(proposal.workflow_id)
+        session = self._conversations.get_guidance_session(proposal.workflow_id)
+        character_target = None
+        if proposal.capability_id == "character_design":
+            character_target = self._conversations.get_proposal_character_target(
+                proposal.proposal_id
+            )
+            if character_target is None:
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal revision requires an occurrence target.",
+                    stage="agent_conversation_service",
+                )
+            current_target = resolve_character_proposal_target(
+                action=session.journey.active_action,
+                requirement_revision=requirements,
+            )
+            if current_target != character_target:
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal revision target is stale or mismatched.",
+                    stage="agent_conversation_service",
+                    details={
+                        "proposal_target_digest": character_target.target_digest,
+                        "current_target_digest": current_target.target_digest,
+                    },
+                )
+            if (
+                proposal.occurrence_id != character_target.occurrence_id
+                or proposal.occurrence_index != character_target.occurrence_index
+                or proposal.occurrence_count != character_target.occurrence_count
+                or proposal.character_phase != character_target.character_phase
+            ):
+                raise V2PersistenceError(
+                    "character_proposal_scope_invalid",
+                    "Character Proposal public scope differs from its persisted target.",
+                    stage="agent_conversation_service",
+                )
         snapshot_payload = {
             "workflow_id": proposal.workflow_id,
             "proposal_id": proposal.proposal_id,
@@ -2355,11 +2977,13 @@ class AgentConversationService:
             "capability_id": proposal.capability_id,
             "instruction": action.instruction,
             "source_option_ids": [option.option_id for option in source_options],
+            "character_target": (
+                character_target.model_dump(mode="json") if character_target is not None else None
+            ),
         }
         snapshot_digest = hashlib.sha256(
             json.dumps(snapshot_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         ).hexdigest()
-        requirements = self._requirements.get_current_revision(proposal.workflow_id)
         reference_plan = CapabilityReferencePlanV1(
             capability_id=proposal.capability_id,
             references=tuple(
@@ -2384,7 +3008,6 @@ class AgentConversationService:
             goal_summary=objective,
             reference_plan=reference_plan,
         )
-        session = self._conversations.get_guidance_session(proposal.workflow_id)
         invocation = CapabilityInvocationContextV2(
             context_kind="capability_operation",
             workflow_id=proposal.workflow_id,
@@ -2399,6 +3022,7 @@ class AgentConversationService:
                 reference.source_id for reference in proposal.proposed_references
             ),
             response_locale=session.response_locale,
+            character_target=character_target,
         )
         request_identity = f"proposal-revision:{snapshot_digest}"
         activity = self._conversations.start_expert_activity(
@@ -2476,6 +3100,7 @@ class AgentConversationService:
             agent_request_identity=request_identity,
             created_at=datetime.now(timezone.utc),
             response_locale=session.response_locale,
+            character_target=character_target,
         )
         return AgentCanvasCapabilityProposalRepository(
             self._workflows.database,
@@ -2528,6 +3153,11 @@ def _agent_operation_failure(
         failure_stage="provider",
         elapsed_ms=max(0, int(elapsed_ms)) if isinstance(elapsed_ms, (int, float)) else 0,
         retryable=error.retryable,
+        actionable_failure=ActionableFailureV1(
+            failure_class=("transient" if error.retryable else "external"),
+            retry_scope=("turn" if error.retryable else "none"),
+            user_action=("retry" if error.retryable else "none"),
+        ),
         validation_paths=validation_paths,
         occurred_at=datetime.now(timezone.utc),
     )

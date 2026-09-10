@@ -9,6 +9,7 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.engine import Connection, RowMapping
 
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
@@ -409,7 +410,10 @@ def _guidance_advance_blocker(
             stage="guidance_advance_service",
         )
     awaiting = session.awaiting
-    if awaiting is not None:
+    if awaiting_blocks_authoring(
+        awaiting, stage=session.journey.stage, stage_revision=session.journey.stage_revision
+    ):
+        assert awaiting is not None
         if (
             awaiting.stage != session.journey.stage
             or awaiting.stage_revision != session.journey.stage_revision
@@ -633,13 +637,16 @@ def _execution_leaf(
         )
     else:
         raise _lineage_error("Guided action execution lineage exceeds its bound.")
+    leaf_status = str(current["status"])
+    if leaf_status == "superseded":
+        leaf_status = "completed"
     return GuidedActionExecutionLeafV1(
         workflow_id=workflow_id,
         logical_action_id=action.action_id,
         root_turn_id=root_turn_id,
         leaf_turn_id=str(current["turn_id"]),
         leaf_turn_kind=str(current["turn_kind"]),
-        leaf_status=str(current["status"]),
+        leaf_status=leaf_status,
         continuation_id=(str(incoming["continuation_id"]) if incoming is not None else None),
         continuation_status=(str(incoming["status"]) if incoming is not None else None),
         operation=(str(incoming["operation"]) if incoming is not None else None),

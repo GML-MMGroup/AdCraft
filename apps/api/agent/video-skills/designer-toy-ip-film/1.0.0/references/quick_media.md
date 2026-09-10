@@ -1,1 +1,5 @@
-Apply collectible silhouette, signature accessories, and material charm as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.
+# 快媒体指导
+
+快速生成单个角色、配件或场景变体时，只改变一个实验变量，并保留 collectible silhouette、主色和材质。明确变体的用途：轮廓探索、配件探索、动作姿态或世界入口，不把探索结果自动当作最终资产。
+
+比较时优先检查身份、配件数量、材质和比例，再看装饰效果。

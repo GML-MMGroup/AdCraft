@@ -1,1 +1,5 @@
-Construct spaces that express transformation grammar through layout and symbolic props through light, color, and material. Use pastel-neon contrast to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+从日常空间到行动空间只引入必要的光源、符号和路径。pastel-neon contrast 先安排柔和底色，再用少量高亮色标记道具、角色和揭示中心。为变身留出完整轮廓和运动负空间。
+
+保持入口、光向、道具落点和背景层级。

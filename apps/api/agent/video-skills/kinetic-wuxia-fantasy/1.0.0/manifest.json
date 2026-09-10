@@ -1,29 +1,33 @@
 {
   "skill_id": "kinetic-wuxia-fantasy",
   "version": "1.0.0",
-  "display_name": "Kinetic Wuxia Fantasy",
-  "description": "An advertising treatment built around readable action geography, fabric and weapon motion, poetic landscapes, and rhythmic combat.",
+  "display_name": "流动武侠幻想影像",
+  "description": "以可读的动作地理、衣摆与兵器运动、诗性山水和节奏化交锋组织具有东方幻想气质的商业动作影像。",
+  "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
-    "cinematic",
-    "narrative",
-    "composition"
+    "武侠动作",
+    "东方幻想",
+    "动作地理"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "动作广告",
+    "幻想叙事",
+    "品牌动作片"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Kinetic Wuxia Fantasy creative treatment."
+    "kind": "image",
+    "summary": "流动武侠幻想影像视觉预览。",
+    "media_url": "/api/v2/video-skills/kinetic-wuxia-fantasy/preview?v=1.0.0"
   },
   "display_order": 270,
   "files": {
-    "SKILL.md": "2480380bed581d005144c4085c2ecfaf98dfdf8b282ce3aec65f1d24b07112b6",
-    "references/script.md": "2ae3c0488bdc1019f648c5b16d1af05253518caee8b18d3ddddd20f8f0d08f59",
-    "references/scene.md": "ce3d4d1518d8de2aabf1f05f017143f6349d0858303b67d7e141e49e5d044963",
-    "references/storyboard.md": "bb5a05051995cc1780b2e88af179d6c4333b3563f6b467c9b9094d2c7ec4ecab",
-    "references/video.md": "036860451f776d10eb7fe0a74216eedd4e1b39b3172a353ce5ed4f7abbd78887"
+    "SKILL.md": "26a9b758f139273d98515c37d4f3312ddb41254c82911cac62a89fe3fa9d3b04",
+    "references/script.md": "9e4255723d739736958401ce1f76b6b60699be33f1269e053c98f27d6d944d36",
+    "references/scene.md": "5a792e5ce39796805110acee148e0277d28fb8a8573147a60b5096c5c2e224d8",
+    "references/storyboard.md": "8c4170dae4f178f06158d37c0921f0b1a3674bd0ddda8599e7183e83b862595d",
+    "references/video.md": "b2f8e9728d63f65e3f856ab2277bcf1de4987d83e27a1fd5454093dbc3b1a965",
+    "previews/preview.webp": "74c0d36655642763b4dedfc282d58de14faaa0419983668110dae11417c87be7"
   },
   "role_guidance": {
     "script": "references/script.md",

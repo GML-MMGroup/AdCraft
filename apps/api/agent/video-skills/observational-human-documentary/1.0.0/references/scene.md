@@ -1,1 +1,5 @@
-Construct spaces that express respectful observation through layout and environmental context through light, color, and material. Use authentic action to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+记录人物实际工作的空间、工具、天气、声音、通行限制和他人关系，建立 environmental context。保留使用痕迹和真实尺度，不用漂亮背景抹去环境条件。
+
+尊重隐私与边界，跨镜头保持地点、光线、物件状态和时间线连续。

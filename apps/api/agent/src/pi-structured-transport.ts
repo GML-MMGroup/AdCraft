@@ -8,6 +8,7 @@ import {
 } from "./chat-completion-chunk-normalizer.js";
 import type {
   AgentRunRequest,
+  AgentModelTraceStreamingChunkV1,
   AgentStructuredValidationAttemptAuditV1,
   AgentTransportAttemptMetadataV1,
 } from "./generated/agent-runtime.js";
@@ -15,17 +16,33 @@ import {
   AgentOperationFailure,
   isProviderTimeoutFailure,
 } from "./operation-recovery.js";
-import type { AgentCredentialSnapshot } from "./python-internal-client.js";
+import {
+  isAcceptanceReplaySource,
+  type AgentCredentialSnapshot,
+  type AgentRuntimeTransportSource,
+} from "./python-internal-client.js";
 import { modelAttemptTimeoutMs, type ModelAttemptStage } from "./run-budget.js";
-import type { PreparedStructuredModelInput } from "./structured-model-input.js";
+import {
+  claimAgentModelTraceOutcome,
+  isAgentModelTraceFailure,
+  recordAgentModelTraceOutcome,
+  type AgentModelTraceClient,
+} from "./model-trace.js";
+import type { LoadedSkill } from "./skills.js";
 
 
 interface StructuredCompletionRequestBase {
   readonly model: string;
   readonly messages: ReadonlyArray<Readonly<Record<string, unknown>>>;
   readonly max_tokens: number;
-  readonly enable_thinking: boolean;
+  readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
+  readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
+  readonly provider?: {
+    readonly only: ReadonlyArray<"openai">;
+    readonly require_parameters: true;
+    readonly allow_fallbacks: false;
+  };
 }
 
 export interface NonStreamingStructuredCompletionRequest
@@ -43,7 +60,16 @@ export interface NonStreamingStructuredCompletionRequest
     readonly type: "function";
     readonly function: { readonly name: "submit_structured_result" };
   };
-  readonly response_format?: { readonly type: "json_object" };
+  readonly response_format?:
+    | { readonly type: "json_object" }
+    | {
+      readonly type: "json_schema";
+      readonly json_schema: {
+        readonly name: "agent_structured_result";
+        readonly strict: true;
+        readonly schema: Readonly<Record<string, unknown>>;
+      };
+    };
 }
 
 export interface StreamingJsonCompletionRequest
@@ -66,6 +92,7 @@ export interface StreamingJsonTransportMetadata {
   readonly response_bytes: number;
   readonly finish_reason: string | null;
   readonly provider_trace_id: string | null;
+  readonly normalized_chunks?: ReadonlyArray<AgentModelTraceStreamingChunkV1>;
 }
 
 export interface StructuredCompletionResponse {
@@ -108,11 +135,13 @@ interface StructuredValidationResult {
 }
 
 interface StructuredTransportRunInput {
-  readonly credential: AgentCredentialSnapshot;
+  readonly credential: AgentRuntimeTransportSource;
   readonly request: AgentRunRequest;
   readonly systemPrompt: string;
   readonly userPrompt: string;
   readonly schema: Readonly<Record<string, unknown>>;
+  readonly loadedSkills?: ReadonlyArray<LoadedSkill>;
+  readonly traceClient?: AgentModelTraceClient;
   readonly signal: AbortSignal;
   readonly submit: (
     value: Readonly<Record<string, unknown>>,
@@ -150,6 +179,7 @@ export class PiStructuredTransportRouter {
     if (
       policy.structured_transport !== "non_streaming_tool_call" &&
       policy.structured_transport !== "non_streaming_json_object" &&
+      policy.structured_transport !== "non_streaming_json_schema" &&
       policy.structured_transport !== "streaming_json_object"
     ) {
       throw new AgentOperationFailure(
@@ -183,7 +213,9 @@ export class PiStructuredTransportRouter {
     validationAttempts.push(validationAttemptAudit(validation, 1, "initial"));
     if (validation.result?.repair_allowed === false) {
       throw terminalValidationFailure(
-        validation.error_code ?? "agent_structured_output_invalid",
+        roleContractFailureCode(input.request, validation) ??
+          validation.error_code ??
+          "agent_structured_output_invalid",
         auditForAttempt(
           input,
           primary,
@@ -197,6 +229,19 @@ export class PiStructuredTransportRouter {
     if (policy.structured_repair_limit < 1 || input.signal.aborted) {
       throw structuredFailure(
         primary.attemptStage ?? "initial",
+        auditForAttempt(
+          input,
+          primary,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
+        isManualRetryableIntake(input),
+      );
+    }
+    if ((primary.capabilityFallbackCount ?? 0) > 0) {
+      throw structuredFailure(
+        "capability_fallback",
         auditForAttempt(
           input,
           primary,
@@ -249,6 +294,20 @@ export class PiStructuredTransportRouter {
       validationAttempts.push(
         validationAttemptAudit(repaired, 2, "structured_repair"),
       );
+      const roleContractCode = roleContractFailureCode(input.request, repaired);
+      if (roleContractCode) {
+        throw terminalValidationFailure(
+          roleContractCode,
+          auditForAttempt(
+            input,
+            repair,
+            startedAt,
+            structuredAttempts,
+            validationAttempts,
+          ),
+          isManualRetryableIntake(input),
+        );
+      }
       if (repaired.error_code === "agent_contract_validation_failed") {
         throw terminalValidationFailure(
           repaired.error_code,
@@ -288,6 +347,15 @@ export class PiStructuredTransportRouter {
     try {
       return await this.#executeOnce(request, input, "initial");
     } catch (error) {
+      if (isAgentModelTraceFailure(error)) throw error;
+      if (isCertifiedJsonObjectCapabilityFallback(error, input)) {
+        const fallback = await this.#executeOnce(
+          jsonObjectCapabilityFallbackRequest(request),
+          input,
+          "capability_fallback",
+        );
+        return { ...fallback, capabilityFallbackCount: 1 };
+      }
       if (
         input.credential.execution_policy.transport_retry_limit < 1 ||
         !isRetryablePreActivityFailure(error)
@@ -332,13 +400,32 @@ export class PiStructuredTransportRouter {
       );
     }
     try {
-      const response = await this.#execute(request, {
-        apiKey: input.credential.api_key,
-        baseUrl: input.credential.base_url,
-        signal: input.signal,
-        timeoutMs,
-        maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
-      });
+      const response = isAcceptanceReplaySource(input.credential)
+        ? await claimAgentModelTraceOutcome(
+          {
+            ...input,
+            loadedSkills: input.loadedSkills ?? [],
+          },
+          request,
+          stage,
+        )
+        : await this.#execute(request, {
+          apiKey: input.credential.api_key,
+          baseUrl: input.credential.base_url,
+          signal: input.signal,
+          timeoutMs,
+          maxOutputBytes: input.request.policy?.max_output_bytes ?? 262_144,
+        });
+      await recordAgentModelTraceOutcome(
+        {
+          ...input,
+          loadedSkills: input.loadedSkills ?? [],
+        },
+        request,
+        stage,
+        response,
+        true,
+      );
       const firstResponseAt =
         response.transport_metadata?.first_content_at ?? this.#now().toISOString();
       const finishedAt =
@@ -354,7 +441,8 @@ export class PiStructuredTransportRouter {
         attemptStage: stage,
       };
     } catch (error) {
-      throw normalizeTransportFailure(
+      if (isAgentModelTraceFailure(error)) throw error;
+      const normalized = normalizeTransportFailure(
         error,
         input.signal,
         stage,
@@ -368,6 +456,21 @@ export class PiStructuredTransportRouter {
         ),
         isManualRetryableIntake(input),
       );
+      try {
+        await recordAgentModelTraceOutcome(
+          {
+            ...input,
+            loadedSkills: input.loadedSkills ?? [],
+          },
+          request,
+          stage,
+          normalized,
+          false,
+        );
+      } catch {
+        // Trace capture is secondary to the owning Provider failure boundary.
+      }
+      throw normalized;
     }
   }
 }
@@ -380,6 +483,7 @@ interface CompletionAttempt {
   readonly retryCount: number;
   readonly effectiveTimeoutMs?: number;
   readonly attemptStage?: ModelAttemptStage;
+  readonly capabilityFallbackCount?: number;
 }
 
 export async function executeOpenAICompletion(
@@ -444,6 +548,7 @@ export async function aggregateStreamingJsonCompletion(
   let finishReason: string | null = null;
   let providerTraceId: string | null = null;
   let terminal = false;
+  const normalizedChunks: AgentModelTraceStreamingChunkV1[] = [];
   try {
     while (true) {
       const item = await abortableNext(iterator, options.signal);
@@ -472,6 +577,15 @@ export async function aggregateStreamingJsonCompletion(
           firstContentAt = observedAt;
         }
         content += parsed.content;
+      }
+      if (parsed.content !== null || parsed.finishReason !== null) {
+        normalizedChunks.push({
+          sequence_no: normalizedChunks.length + 1,
+          ...(parsed.content !== null ? { content: parsed.content } : {}),
+          ...(parsed.finishReason !== null
+            ? { finish_reason: parsed.finishReason }
+            : {}),
+        });
       }
       if (parsed.finishReason !== null) {
         finishReason = parsed.finishReason;
@@ -502,6 +616,7 @@ export async function aggregateStreamingJsonCompletion(
         response_bytes: responseBytes,
         finish_reason: finishReason,
         provider_trace_id: providerTraceId,
+        normalized_chunks: normalizedChunks,
       },
     };
   } catch (error) {
@@ -544,32 +659,41 @@ function boundedProviderTrace(value: unknown): string | null {
 
 export function buildPrimaryStructuredCompletionRequest(
   input: Pick<
-    PreparedStructuredModelInput,
+    StructuredTransportRunInput,
     "credential" | "systemPrompt" | "userPrompt" | "schema"
   >,
 ): StructuredCompletionRequest {
   if (
     isJsonObjectTransport(input.credential.execution_policy.structured_transport)
   ) {
-    return {
+    const openrouter = openrouterRequestProjection(input.credential);
+    const common = {
       model: input.credential.model_id,
       messages: [
         {
-          role: "system",
+          role: "system" as const,
           content: [
             input.systemPrompt,
             "Return exactly one JSON object matching the supplied schema.",
             `JSON Schema: ${JSON.stringify(input.schema)}`,
           ].join("\n\n"),
         },
-        { role: "user", content: input.userPrompt },
+        { role: "user" as const, content: input.userPrompt },
       ],
-      stream:
-        input.credential.execution_policy.structured_transport ===
-        "streaming_json_object",
       max_tokens: input.credential.execution_policy.max_output_tokens,
       ...reasoningPayload(input.credential.execution_policy),
-      response_format: { type: "json_object" },
+      ...openrouter,
+    };
+    if (
+      input.credential.execution_policy.structured_transport ===
+      "streaming_json_object"
+    ) {
+      return { ...common, stream: true, response_format: { type: "json_object" } };
+    }
+    return {
+      ...common,
+      stream: false,
+      response_format: structuredResponseFormat(input.credential, input.schema),
     };
   }
   return {
@@ -671,7 +795,7 @@ function repairPayload(
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
   const boundedInvalidValue = boundedInvalidResult(invalidValue);
-  return {
+  const common = {
     model: input.credential.model_id,
     messages: [
       {
@@ -688,19 +812,113 @@ function repairPayload(
         ].join("\n\n"),
       },
     ],
-    stream:
-      input.credential.execution_policy.structured_transport ===
-      "streaming_json_object",
     max_tokens: input.credential.execution_policy.max_output_tokens,
-    enable_thinking: false,
+    ...repairReasoningPayload(input.credential.execution_policy),
+    ...openrouterRequestProjection(input.credential),
+  };
+  if (
+    input.credential.execution_policy.structured_transport ===
+    "streaming_json_object"
+  ) {
+    return { ...common, stream: true, response_format: { type: "json_object" } };
+  }
+  return {
+    ...common,
+    stream: false,
+    response_format: structuredResponseFormat(input.credential, input.schema),
+  };
+}
+
+function openrouterRequestProjection(
+  credential: AgentRuntimeTransportSource,
+): Pick<StructuredCompletionRequestBase, "provider"> {
+  if (!credential.model_ref.startsWith("openrouter:")) return {};
+  const routing = credential.openrouter_routing;
+  if (
+    credential.model_ref !== "openrouter:openai/gpt-5.6-sol" ||
+    credential.model_id !== "openai/gpt-5.6-sol" ||
+    !routing ||
+    routing.routing_policy_id !== "openrouter-openai-only-v1" ||
+    !/^sha256:[a-f0-9]{64}$/.test(routing.routing_policy_digest) ||
+    routing.provider_only.length !== 1 ||
+    routing.provider_only[0] !== "openai" ||
+    routing.require_parameters !== true ||
+    routing.allow_fallbacks !== false
+  ) {
+    throw new Error("openrouter_routing_contract_invalid");
+  }
+  return {
+    provider: {
+      only: ["openai"],
+      require_parameters: true,
+      allow_fallbacks: false,
+    },
+  };
+}
+
+function structuredResponseFormat(
+  credential: AgentRuntimeTransportSource,
+  schema: Readonly<Record<string, unknown>>,
+): NonNullable<NonStreamingStructuredCompletionRequest["response_format"]> {
+  if (credential.execution_policy.structured_transport === "non_streaming_json_schema") {
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: "agent_structured_result",
+        strict: true,
+        schema,
+      },
+    };
+  }
+  return { type: "json_object" };
+}
+
+function jsonObjectCapabilityFallbackRequest(
+  request: StructuredCompletionRequest,
+): NonStreamingStructuredCompletionRequest {
+  if (request.stream || request.response_format?.type !== "json_schema") {
+    throw new Error("agent_model_capability_mismatch");
+  }
+  return {
+    ...request,
     response_format: { type: "json_object" },
   };
 }
 
+function isCertifiedJsonObjectCapabilityFallback(
+  error: unknown,
+  input: StructuredTransportRunInput,
+): boolean {
+  if (
+    input.credential.model_ref !== "openrouter:openai/gpt-5.6-sol" ||
+    input.credential.execution_policy.structured_transport !==
+      "non_streaming_json_schema" ||
+    input.credential.execution_policy.json_object_fallback_certified !== true ||
+    input.credential.execution_policy.max_model_submissions !== 2 ||
+    !(error instanceof AgentOperationFailure)
+  ) {
+    return false;
+  }
+  const metadata = error.attemptMetadata;
+  return (
+    metadata?.attempt_stage === "initial" &&
+    (metadata.http_status === 400 || metadata.http_status === 422) &&
+    (metadata.safe_error_code === "response_format_unsupported" ||
+      metadata.safe_error_code === "json_schema_unsupported")
+  );
+}
+
 function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): {
-  readonly enable_thinking: boolean;
+  readonly enable_thinking?: boolean;
   readonly thinking_budget?: number;
+  readonly reasoning_effort?: "minimal" | "low" | "medium" | "high";
 } {
+  if (policy.reasoning_control === "reasoning_effort") {
+    if (policy.reasoning_effort == null) {
+      throw new Error("agent_model_capability_mismatch");
+    }
+    return { reasoning_effort: policy.reasoning_effort };
+  }
   return {
     enable_thinking: policy.enable_thinking,
     ...(typeof policy.thinking_budget_tokens === "number"
@@ -709,8 +927,21 @@ function reasoningPayload(policy: AgentCredentialSnapshot["execution_policy"]): 
   };
 }
 
+function repairReasoningPayload(
+  policy: AgentCredentialSnapshot["execution_policy"],
+): {
+  readonly enable_thinking?: boolean;
+  readonly reasoning_effort?: "minimal";
+} {
+  if (policy.reasoning_control === "reasoning_effort") {
+    return { reasoning_effort: "minimal" };
+  }
+  return { enable_thinking: false };
+}
+
 function isJsonObjectTransport(transport: string): boolean {
   return transport === "non_streaming_json_object" ||
+    transport === "non_streaming_json_schema" ||
     transport === "streaming_json_object";
 }
 
@@ -798,6 +1029,8 @@ function auditForAttempt(
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
     reasoning_mode: input.credential.execution_policy.reasoning_mode,
+    reasoning_effort:
+      input.credential.execution_policy.reasoning_effort ?? null,
     enable_thinking: input.credential.execution_policy.enable_thinking,
     thinking_budget_tokens:
       input.credential.execution_policy.thinking_budget_tokens ?? null,
@@ -828,6 +1061,7 @@ function auditForAttempt(
     output_tokens: usage?.completion_tokens ?? null,
     reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens ?? null,
     transport_retry_count: attempt.retryCount,
+    capability_fallback_count: attempt.capabilityFallbackCount ?? 0,
     structured_attempt_count: structuredAttempts,
     structured_validation_attempts: validationAttempts.slice(0, 2),
   };
@@ -842,6 +1076,7 @@ function validationAttemptAudit(
   const rawViolations = Array.isArray(candidate) ? candidate.slice(0, 128) : [];
   const paths: string[] = [];
   const codes: string[] = [];
+  const categories: string[] = [];
   let pathOverflow = false;
   let codeOverflow = false;
   for (const item of rawViolations) {
@@ -849,6 +1084,7 @@ function validationAttemptAudit(
     const violation = item as Readonly<Record<string, unknown>>;
     const path = boundedViolationText(violation.path ?? violation.field_path, 512);
     const code = boundedViolationText(violation.code, 160);
+    const category = roleViolationCategory(code, violation.actual);
     if (path && !paths.includes(path)) {
       if (paths.length < 32) paths.push(path);
       else pathOverflow = true;
@@ -856,6 +1092,9 @@ function validationAttemptAudit(
     if (code && !codes.includes(code)) {
       if (codes.length < 32) codes.push(code);
       else codeOverflow = true;
+    }
+    if (category && !categories.includes(category) && categories.length < 32) {
+      categories.push(category);
     }
   }
   if (codes.length === 0) {
@@ -867,10 +1106,47 @@ function validationAttemptAudit(
     violation_count: Math.max(1, Math.min(128, rawViolations.length)),
     validation_paths: paths,
     violation_codes: codes,
+    ...(categories.length > 0 ? { violation_categories: categories } : {}),
     repair_allowed: validation.result?.repair_allowed === true,
     truncated: Array.isArray(candidate) &&
       (candidate.length > 128 || pathOverflow || codeOverflow),
   };
+}
+
+function roleContractFailureCode(
+  request: AgentRunRequest,
+  validation: StructuredValidationResult,
+): string | undefined {
+  if (request.validation_profile !== "role_prompt_contract_v1") return undefined;
+  const violations = validation.result?.violations;
+  return Array.isArray(violations) && violations.some(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      (item as Readonly<Record<string, unknown>>).code ===
+        "node_prompt_role_contract_invalid",
+  )
+    ? "node_prompt_role_contract_invalid"
+    : undefined;
+}
+
+function roleViolationCategory(
+  code: string | undefined,
+  actual: unknown,
+): string | undefined {
+  if (code !== "node_prompt_role_contract_invalid" || typeof actual !== "string") {
+    return undefined;
+  }
+  return [
+    "cross_role_content",
+    "narrative_progression",
+    "positive_character",
+    "positive_product",
+    "positive_prop",
+  ].includes(actual)
+    ? actual
+    : undefined;
 }
 
 function boundedViolations(result: Readonly<Record<string, unknown>> | undefined) {
@@ -1030,6 +1306,8 @@ function failureMetadata(
     thinking_format: input.credential.execution_policy.thinking_format,
     reasoning_control: input.credential.execution_policy.reasoning_control,
     reasoning_mode: input.credential.execution_policy.reasoning_mode,
+    reasoning_effort:
+      input.credential.execution_policy.reasoning_effort ?? null,
     enable_thinking: input.credential.execution_policy.enable_thinking,
     thinking_budget_tokens:
       input.credential.execution_policy.thinking_budget_tokens ?? null,
@@ -1049,6 +1327,7 @@ function failureMetadata(
     finished_at: finishedAt,
     duration_ms: elapsedMilliseconds(startedAt, finishedAt),
     transport_retry_count: stage === "transport_retry" ? 1 : 0,
+    capability_fallback_count: stage === "capability_fallback" ? 1 : 0,
     structured_attempt_count: stage === "structured_repair" ? 2 : 1,
     ...(shape.safeExceptionClass
       ? { safe_exception_class: shape.safeExceptionClass }

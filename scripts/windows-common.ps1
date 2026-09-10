@@ -187,21 +187,35 @@ function Get-AdCraftContainerHealth([ValidateSet('agent','api','web')][string]$S
 }
 
 function Wait-AdCraftServices {
+    $timeoutSeconds = 1800
+    if (-not [string]::IsNullOrWhiteSpace($env:ADCRAFT_DEPLOY_WAIT_SECONDS)) {
+        if (-not [int]::TryParse($env:ADCRAFT_DEPLOY_WAIT_SECONDS, [ref]$timeoutSeconds) -or $timeoutSeconds -lt 120) {
+            Stop-AdCraft 'ADCRAFT_DEPLOY_WAIT_SECONDS 必须是至少 120 的整数。'
+        }
+    }
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $frames = @('|', '/', '-', '\')
+    $frameIndex = 0
 
-    while ($stopwatch.Elapsed.TotalSeconds -lt 120) {
+    while ($stopwatch.Elapsed.TotalSeconds -lt $timeoutSeconds) {
         $agentStatus = Get-AdCraftContainerHealth 'agent'
         $apiStatus = Get-AdCraftContainerHealth 'api'
         $webStatus = Get-AdCraftContainerHealth 'web'
         if ($agentStatus -eq 'healthy' -and $apiStatus -eq 'healthy' -and $webStatus -eq 'healthy') {
+            Write-Host "`r[AdCraft] Agent/API/Web 已全部健康。                                                            "
             return
         }
         if ($agentStatus -in @('exited', 'dead') -or $apiStatus -in @('exited', 'dead') -or $webStatus -in @('exited', 'dead')) {
+            Write-Host ''
             Stop-AdCraft "服务启动失败：agent=$agentStatus，api=$apiStatus，web=$webStatus。"
         }
+        $elapsed = [math]::Floor($stopwatch.Elapsed.TotalSeconds)
+        Write-Host -NoNewline ("`r[AdCraft] 等待服务 {0} {1:D4}s/{2}s（agent={3} api={4} web={5}）" -f $frames[$frameIndex], $elapsed, $timeoutSeconds, $agentStatus, $apiStatus, $webStatus)
+        $frameIndex = ($frameIndex + 1) % $frames.Count
         Start-Sleep -Seconds 2
     }
 
+    Write-Host ''
     Stop-AdCraft '等待 agent、api 和 web 服务健康检查超时。'
 }
 

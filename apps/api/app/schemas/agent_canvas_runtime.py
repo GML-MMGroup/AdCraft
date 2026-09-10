@@ -16,6 +16,13 @@ from app.schemas.agent_canvas import (
     RoleContractVersionV2,
 )
 from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
+from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
+from app.schemas.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasParameterSourceV2,
+    CanvasSemanticExtractionModeV2,
+)
+from app.schemas.provider_models import ProviderConformanceStatusV1
 
 
 CanvasRunScopeV2 = Literal["all_drafts", "selected_nodes"]
@@ -75,6 +82,9 @@ class EffectiveMediaParameterSnapshotV2(_RuntimeModel):
     provider: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=320)
     capability_revision: int = Field(ge=1)
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
+    parameter_source: CanvasParameterSourceV2 = "mixed"
 
     @model_validator(mode="after")
     def validate_sanitized_values(self) -> "EffectiveMediaParameterSnapshotV2":
@@ -89,13 +99,14 @@ class NodeRunBindingSnapshotV2(_RuntimeModel):
     binding_id: str = Field(min_length=1, max_length=160)
     input_role: CanvasInputRoleV2
     order: int = Field(ge=0)
-    required: bool
     source_kind: Literal["node_output", "image_asset"]
     source_id: str = Field(min_length=1, max_length=160)
+    source_asset_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_asset_version_id: str | None = Field(default=None, max_length=160)
     source_node_revision: int | None = Field(default=None, ge=1)
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class NodeRunIntentSnapshotV2(_RuntimeModel):
@@ -110,6 +121,7 @@ class NodeRunIntentSnapshotV2(_RuntimeModel):
     role_contract_version: RoleContractVersionV2
     summary_prompt: str | None = Field(default=None, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
+    prompt_presentation: EditablePromptProjectionV1 | None = None
     structured_content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     model_selection_mode: Literal["default", "explicit"]
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)
@@ -117,6 +129,9 @@ class NodeRunIntentSnapshotV2(_RuntimeModel):
     binding_snapshots: tuple[NodeRunBindingSnapshotV2, ...] = ()
     snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     created_at: datetime
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
+    agent_run_id: str | None = Field(default=None, min_length=1, max_length=160)
 
     @model_validator(mode="after")
     def validate_sanitized_snapshot(self) -> "NodeRunIntentSnapshotV2":
@@ -150,6 +165,8 @@ class GeneratedAssetProvenanceV2(_RuntimeModel):
     provider: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=320)
     provider_task_id: str | None = Field(default=None, max_length=160)
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
     requested_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     effective_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     normalizations: tuple[str | VideoParameterNormalizationV2, ...] = ()
@@ -172,8 +189,8 @@ class CanvasRunRequestV2(_RuntimeModel):
     def validate_scope(self) -> "CanvasRunRequestV2":
         if self.scope == "selected_nodes" and not self.node_ids:
             raise ValueError("selected_nodes requires at least one node ID")
-        if self.scope == "all_drafts" and (self.node_ids or self.retry_failed):
-            raise ValueError("all_drafts does not accept node IDs or failed retry")
+        if self.scope == "all_drafts" and self.node_ids:
+            raise ValueError("all_drafts does not accept node IDs")
         if len(set(self.node_ids)) != len(self.node_ids):
             raise ValueError("node IDs must be unique")
         return self
@@ -260,7 +277,24 @@ class ResolvedModelExecutionV1(_RuntimeModel):
         return self
 
 
+class ResolvedModelExecutionV2(ResolvedModelExecutionV1):
+    """Frozen provider-neutral execution identity for adapter-aware attempts."""
+
+    adapter_id: str = Field(min_length=1, max_length=120)
+    transport_kind: str = Field(min_length=1, max_length=80)
+    conformance_status: ProviderConformanceStatusV1 = "compatible"
+    capability_revision: str = Field(min_length=1, max_length=80)
+    adapter_revision: str = Field(min_length=1, max_length=80)
+    requested_parameter_fingerprint: str = Field(min_length=8, max_length=128)
+    effective_parameter_fingerprint: str = Field(min_length=8, max_length=128)
+
+
 ProviderReferenceMediaTypeV1 = Literal["text", "image", "video", "audio"]
+ProviderReferenceInstructionTransportV1 = Literal[
+    "native_slot",
+    "provider_only",
+    "unsupported",
+]
 
 
 class ProviderReferenceDeliveryContextV1(_RuntimeModel):
@@ -272,6 +306,7 @@ class ProviderReferenceDeliveryContextV1(_RuntimeModel):
     target_capability: Literal["image", "video", "audio"]
     accepted_input_types: tuple[ProviderReferenceMediaTypeV1, ...]
     reference_limits: dict[str, int] = Field(default_factory=dict)
+    reference_instruction_transport: ProviderReferenceInstructionTransportV1 = "provider_only"
 
     @model_validator(mode="before")
     @classmethod
@@ -355,6 +390,7 @@ class CanvasProviderModelCapabilityV2(_RuntimeModel):
     available: bool
     unavailable_reason: str | None = None
     supports_native_audio: bool = False
+    supports_reference_only_generation: bool = False
     capability_revision: int = Field(default=1, ge=1)
 
 

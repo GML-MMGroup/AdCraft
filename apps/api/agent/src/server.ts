@@ -53,6 +53,12 @@ interface ProjectionFailureAudit {
 
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
+  "acceptance_model_trace_invalid",
+  "acceptance_model_trace_unsafe",
+  "acceptance_model_replay_forbidden",
+  "acceptance_model_replay_miss",
+  "acceptance_model_replay_mismatch",
+  "acceptance_model_replay_unused",
   "agent_model_incompatible",
   "agent_model_capability_mismatch",
   "agent_model_policy_mismatch",
@@ -422,6 +428,7 @@ function submittedModelCount(
     return Math.max(
       1,
       attempt.transport_retry_count + 1,
+      (attempt.capability_fallback_count ?? 0) + 1,
       attempt.structured_attempt_count,
     );
   }
@@ -445,6 +452,7 @@ function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
     thinking_format: attempt.thinking_format,
     reasoning_control: attempt.reasoning_control,
     reasoning_mode: attempt.reasoning_mode,
+    reasoning_effort: attempt.reasoning_effort,
     enable_thinking: attempt.enable_thinking,
     thinking_budget_tokens: attempt.thinking_budget_tokens,
     deadline_seconds: attempt.deadline_seconds,
@@ -470,6 +478,7 @@ function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
     output_tokens: attempt.output_tokens,
     reasoning_tokens: attempt.reasoning_tokens,
     transport_retry_count: attempt.transport_retry_count,
+    capability_fallback_count: attempt.capability_fallback_count ?? 0,
     structured_attempt_count: attempt.structured_attempt_count,
     structured_validation_attempts: attempt.structured_validation_attempts,
   };

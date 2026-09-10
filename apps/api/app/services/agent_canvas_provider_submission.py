@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas_runtime import ResolvedModelExecutionV1
+from app.schemas.agent_canvas_runtime import ResolvedModelExecutionV1, ResolvedModelExecutionV2
 from app.schemas.agent_canvas_runtime_authority import ProviderSubmissionIntentV2
 
 
@@ -67,6 +67,11 @@ class ProviderSubmissionIntentService:
                 attempt_no=member.attempt_no + 1,
                 supports_idempotency_token=supports_token,
                 supports_remote_task_lookup=supports_lookup,
+                frozen_model_resolution=(
+                    model_resolution
+                    if isinstance(model_resolution, ResolvedModelExecutionV2)
+                    else None
+                ),
                 provider_idempotency_token=token,
                 state="prepared",
                 created_at=now,

@@ -1,1 +1,6 @@
-Construct spaces that express geometric opulence through layout and jewel-tone contrast through light, color, and material. Use romantic decadence to direct attention toward the advertised subject while preserving the stated location and product context.
+用对称长廊、剧场、宴会厅、镜面墙、阶梯和拱门建立 geometric opulence。明确主轴、入口、出口、台面、背景层和光源，宝石色只在需要时强调人物或产品。镜面反射、金属边缘和丝绒吸光要符合材质。
+
+场景转换用帷幕遮挡、人物经过、几何形状匹配或声音桥接。保留轴线、色彩和地面关系，避免无因由换成另一个时代或地点。纯场景镜头不要添加无关人物。
+
+正例：中央楼梯与产品轮廓形成同一几何线，蓝红色场分出前后层次，灯光引导观众走向主动作。
+反例：背景充满镜面和灯光却没有空间入口，反射中出现不存在的人物或产品。

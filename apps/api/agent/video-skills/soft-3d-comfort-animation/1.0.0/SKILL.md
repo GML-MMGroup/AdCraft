@@ -1,8 +1,21 @@
 ---
-name: Soft 3D Comfort Animation
-description: An advertising treatment built around rounded proportions, tactile soft materials, warm light, and gentle emotional action.
+name: 柔软三维治愈动画
+description: 以圆润比例、触觉化柔软材质、温暖光线和轻柔情绪动作构建安全而有细节的三维动画。
 ---
 
-Use rounded proportions, tactile soft materials, warm light, and gentle emotional action as the style's creative grammar. Establish rounded proportions as the primary visual idea, reinforce it through tactile soft materials, and let warm light shape the progression toward gentle emotional action.
+把 rounded proportions、tactile soft materials、warm light、gentle emotional action 作为治愈动画的四个创作支点。舒适感来自可预测的重量、柔和的接触、清楚的表情和有节制的变化，不是把一切都模糊成一团。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 形体与触感
+
+先确定圆润形体的主轮廓、关节范围、表情区域和接触面。tactile soft materials 要区分毛绒、织物、软胶、泡沫、木质和陶瓷的压缩、摩擦、绒面与回弹。每个触碰都应产生适度的形变或停顿，不能让物体穿透或失去重量。
+
+## 光线与情绪
+
+warm light 用色温、阴影边缘和反射层次建立安全感，同时保留主体轮廓。gentle emotional action 以递交、靠近、安慰、等待、呼吸和小幅回望表达关系，避免突然夸张的肢体或表情。
+
+## 连续性与纠偏
+
+保持角色比例、材质、服装、道具、光向和接触状态。参考图锁定角色与产品事实，结果偏离时先修复形体、接触和表情，再降低动作幅度。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供治愈动画判断。
+
+正例：角色轻轻递出柔软物件，对方接住后产生可见压缩，暖光和呼吸让关系自然改变。
+反例：所有物体都像果冻一样变形，角色不停跳动，观众无法感到真实的触碰。

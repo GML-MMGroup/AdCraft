@@ -1,8 +1,21 @@
 ---
-name: Monumental Minimalist Science Fiction
-description: An advertising treatment built around vast scale, sparse geometry, atmospheric depth, and human-to-environment contrast.
+name: 宏大极简科幻影像
+description: 以广阔尺度、稀疏几何、大气深度和人与环境的对照构建克制而有方向的科幻商业画面。
 ---
 
-Use vast scale, sparse geometry, atmospheric depth, and human-to-environment contrast as the style's creative grammar. Establish vast scale as the primary visual idea, reinforce it through sparse geometry, and let atmospheric depth shape the progression toward human-to-environment contrast.
+把 vast scale、sparse geometry、atmospheric depth、human-to-environment contrast 作为极简科幻的四个创作支点。宏大感来自尺度关系、清楚的消失点和可理解的运动，不来自无休止地增加建筑、粒子或光束。空旷画面必须仍然有人的目标、产品功能或品牌问题。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 尺度与空间
+
+先建立地平线、主轴、前中后景、参照物和主体路径。vast scale 通过人物、设备、结构和远景之间的比例对照显现；sparse geometry 让少数形体承担方向和秩序。atmospheric depth 用雾、距离、光衰减和遮挡分层，但不能抹掉主体轮廓。
+
+## 人与环境
+
+human-to-environment contrast 不是把人物缩成无意义的点，而是说明人物如何观察、穿越、操作或改变环境。给产品或装置一个可检查的接口、反馈或结果，让科幻设定服务于叙事。
+
+## 连续性与纠偏
+
+保持结构比例、消失点、光源方向、服装和设备状态。参考图优先锁定主体外观，结果偏离时先修复空间锚点和尺度，再减少运动对象。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供科幻视觉判断。
+
+正例：一个人物沿稀疏平台走向远处装置，尺度变化在接近接口时转化为可理解的功能揭示。
+反例：用大量飞船、粒子和霓虹填满空旷空间，却没有主体目标或空间方向。

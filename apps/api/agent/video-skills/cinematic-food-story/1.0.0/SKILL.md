@@ -1,8 +1,37 @@
 ---
-name: Cinematic Food Story
-description: An advertising treatment built around ingredient texture, process progression, steam and sound detail, and appetite-led reveal.
+name: 电影感美食叙事广告
+description: 以食材质地、制作过程、蒸汽与声音细节和食欲揭示组织广告叙事的美食影像创作方法。
 ---
 
-Use ingredient texture, process progression, steam and sound detail, and appetite-led reveal as the style's creative grammar. Establish ingredient texture as the primary visual idea, reinforce it through process progression, and let steam and sound detail shape the progression toward appetite-led reveal.
+把 ingredient texture、process progression、steam and sound detail、appetite-led reveal 作为四个创作支点。不要只把食物拍得漂亮，而要让观众看懂它从原始状态到可感知结果的变化，并在最有说服力的时刻理解产品、产地、工艺或品牌承诺。镜头、色彩、声音和剪辑共同服务于这条感知路径。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 核心创作判断
+
+- 先确定要证明的命题：食材新鲜、工艺耐心、口感层次、人与食物的关系，或品牌价值。把“好吃”“传统”“高级”等抽象词翻译成可看见、听见或感受到的证据；再选择食材溯源、制作过程或人文关系作为主线，交叉时仍保持主次。
+- 观察成熟度、油脂、组织纤维、水分张力、表面粗糙度和温度变化，决定哪些细节适合微距，哪些关系需要中景，哪些结果需要完整环境承托。蒸汽、雾气、液体、火焰、油光和反射都应有方向、重量和光学后果，不能只是装饰。
+
+## 视觉与连续性底线
+
+使用温暖、深邃、有机的总体感受，让主色来自食材本身，以木、石、金属或中性灰建立环境层次，暖色光源在需要时强调热度与食欲。对比关系随主体和素材调整，不把亮暗比例当成硬规则；高光说明湿润、油脂或汤汁，阴影仍保留纹理。
+
+跨镜头检查食材数量、切面、摆放、容器、工具、手部接触、受力方向、温度和熟度。蒸汽方向、火焰形态、液体流向、屏幕方向和光源也要前后一致。原料变成成品时给出可解释的中间动作，不让状态凭空跳变。先建立“细节证据—动作关系—环境意义”，再让完整菜品、人物或地点承接品牌信息。
+
+纯场景镜头保持场景纯度，不无故加入人物；人物出现时，明确其动作如何证明食物或产品价值。风格化不能改变用户指定的产品事实、品牌信息、人物身份、服装、道具、地点和受众承诺。
+
+## 镜头、声音与转场
+
+用观察、积累、转折、揭示和回味等相对段落组织节奏。每段记录视觉重点、主体动作、摄影机意图、声音事件和下一个锚点。高潮不一定更快，热气升起、刀面停住、汤汁流动、摆盘完成或人物反应都可以成为注意力高点。
+
+优先使用动势匹配、形状或色彩呼应、蒸汽或器具遮挡、环境声桥接连接镜头，避免装饰性转场掩盖动作因果。关键镜头检查开始、变化和结束三个状态，确认主体可辨认、接触关系成立、焦点变化有理由。处理动作保持连续、轻柔而有力量，不用无依据的破碎或剧烈飞散制造刺激。
+
+声音分工要清楚：旁白承载事实与人文语气，环境声建立地点，动作声证明接触与重量，音乐承担情绪和段落能量。滋滋声、处理声、沸腾声和器皿声应与动作对应，并为对白、旁白和重要物理声留出空间。
+
+## 约束与纠偏
+
+- 参考图锁定已知的食材、器具、产品结构、人物和环境；参考不足时减少高风险遮挡、快速翻转和无法解释的状态变化。
+- 节奏、景别、段落和媒介格式由用户与系统其他权威决定。本 Skill 只提供创作判断，不规定工具、Provider、模型、时长、分辨率、格式或流程步骤，也不创建节点或调用工具。
+- 结果偏离时，指出具体的主体、物理状态、光线、声音或动作相位问题，再减少同时变化的因素，不用烟雾、滤镜或形容词掩盖不连续。
+
+正例：先观察食材切面与水分，再用手部动作说明处理方法；声音在接触完成时出现，蒸汽自然带入成品，最后回到菜品与品牌承诺。
+
+反例：只写“极致食欲、电影感、震撼慢动作”，没有状态、动作因果或声音关系；或在相邻镜头同时替换原料、器具、光源和人物，导致变化无法解释。

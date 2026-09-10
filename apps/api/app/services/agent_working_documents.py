@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Callable, cast
 
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.agent_canvas_conversation_repository import (
@@ -351,6 +353,39 @@ class AgentWorkingDocumentService:
             request_digest=mutation.request_digest,
         )
 
+    def commit_content_mutation_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        workflow_id: str,
+        agent_run_id: str,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        idempotency_key: str,
+        next_content: AgentWorkingDocumentContentV2,
+    ) -> AgentWorkingDocumentV2:
+        """Apply a validated document mutation without taking ownership of the transaction."""
+
+        request_digest = self._documents.digest_mutation(
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            content=next_content,
+            agent_run_id=agent_run_id,
+        )
+        return self._documents.apply_content_in_transaction(
+            connection,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            content=next_content,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            now=self._clock(),
+            request_digest=request_digest,
+        )
+
     def build_bounded_context(
         self,
         document_id: str,
@@ -362,7 +397,17 @@ class AgentWorkingDocumentService:
                 "agent_document_not_found",
                 "Agent working document was not found.",
             )
-        if document.kind == "anchor_registry":
+        return self.bounded_context_from_document(document, selector)
+
+    @staticmethod
+    def bounded_context_from_document(
+        document: AgentWorkingDocumentV2,
+        selector: str,
+    ) -> AgentDocumentContextExcerptV2:
+        """Use the same bounded projection for persisted and pre-commit documents."""
+        if selector == "overview":
+            excerpt = _document_overview(document)
+        elif document.kind == "anchor_registry":
             if not selector.startswith("anchors:"):
                 raise _patch_error("Anchor context requires an anchors selector.")
             aliases = tuple(
@@ -437,7 +482,7 @@ class AgentWorkingDocumentService:
                     if record.sequence_id in (None, sequence_id)
                 ],
             }
-        return AgentDocumentContextExcerptV2(
+        result = AgentDocumentContextExcerptV2(
             document_id=document.document_id,
             document_kind=document.kind,
             revision=document.revision,
@@ -445,6 +490,12 @@ class AgentWorkingDocumentService:
             selector=selector,
             content=excerpt,
         )
+        if len(result.model_dump_json().encode("utf-8")) > 16_384:
+            raise _error(
+                "agent_document_context_too_large",
+                "Agent document context exceeds the bounded explanation limit.",
+            )
+        return result
 
     def _require_scope(self, workflow_id: str, guidance_session_id: str) -> None:
         self._require_agent_canvas(workflow_id)
@@ -922,6 +973,84 @@ def _with_computed_cursor(
             break
         contiguous_sequences += 1
     return content.model_copy(update={"materialized_panel_cursor": contiguous_sequences * 9})
+
+
+def _document_overview(document: AgentWorkingDocumentV2) -> dict[str, object]:
+    """Return one deterministic summary without exposing an unrestricted document."""
+
+    if document.kind == "anchor_registry":
+        content = cast(AnchorRegistryContentV2 | AnchorRegistryContentV3, document.content)
+        anchors = [
+            anchor.model_dump(mode="json")
+            for anchor in sorted(content.anchors, key=lambda item: item.alias)
+            if not isinstance(content, AnchorRegistryContentV3)
+            or anchor.lifecycle in {"planned", "active"}
+        ]
+        omitted = 0
+        while len(_overview_json({"anchors": anchors, "omitted_anchors": omitted})) > 14_000:
+            if not anchors:
+                raise _error(
+                    "agent_document_context_too_large",
+                    "Anchor Registry overview exceeds the bounded explanation limit.",
+                )
+            anchors.pop()
+            omitted += 1
+        return {"anchors": anchors, "omitted_anchors": omitted}
+
+    content = cast(StoryboardProductionPlanContentV2, document.content)
+    segments = [
+        item.model_dump(mode="json")
+        for item in sorted(content.segments, key=lambda item: (item.order, item.sequence_id))
+    ]
+    records = (
+        content.planned_nodes
+        if isinstance(content, StoryboardProductionPlanContentV3)
+        else content.node_records
+    )
+    planned_nodes = [
+        item.model_dump(mode="json")
+        for item in sorted(
+            records,
+            key=lambda item: (
+                str(item.sequence_id or ""),
+                str(getattr(item, "node_role", "")),
+                str(getattr(item, "node_id", "")),
+            ),
+        )
+    ]
+    omitted_segments = 0
+    omitted_nodes = 0
+    while True:
+        overview = {
+            "global_parameters": content.global_parameters.model_dump(mode="json"),
+            "segments": segments,
+            "planned_nodes": planned_nodes,
+            "omitted_segments": omitted_segments,
+            "omitted_planned_nodes": omitted_nodes,
+        }
+        if len(_overview_json(overview)) <= 14_000:
+            return overview
+        if planned_nodes:
+            planned_nodes.pop()
+            omitted_nodes += 1
+            continue
+        if segments:
+            segments.pop()
+            omitted_segments += 1
+            continue
+        raise _error(
+            "agent_document_context_too_large",
+            "Storyboard Plan overview exceeds the bounded explanation limit.",
+        )
+
+
+def _overview_json(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
 
 
 def _require_kind(

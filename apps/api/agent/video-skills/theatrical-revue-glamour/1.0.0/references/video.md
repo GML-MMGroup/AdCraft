@@ -1,1 +1,6 @@
-Direct camera and subject motion through stage blocking and chorus geometry, using spotlight glamour for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把舞台运动拆成进入、站位、队形变化、聚光转移、产品揭示和收束。说明摄影机是观察全局还是跟随主角，人物怎样移动，群体如何响应，产品何时进入视觉中心。每个动作都要有节拍和停顿依据，但不写死节奏参数。
+
+提示中保留 stage blocking、服装、道具、光线、队形和声音关系。镜头运动要服务队形几何，避免无理由旋转或快速穿行。结果失控时先减少群体和灯光，再恢复主角路径。
+
+正例：摄影机从侧面跟随主角进入，横移展示队形打开，聚光收拢到产品，结尾固定观察全景。
+反例：镜头穿过人群、人物瞬移，或所有灯光和动作同时达到最高强度。

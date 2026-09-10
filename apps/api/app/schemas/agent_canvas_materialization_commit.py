@@ -100,6 +100,7 @@ class NodePromptPreparationIntentV1(_MaterializationCommitModel):
     # is optional only for historical hand-built plans; canonical publication
     # supplies it for every applicable Draft.
     context: StageAuthoringContextV1 | None = None
+    dispatch_admission: Literal["immediate", "reference_source"] = "immediate"
 
 
 class MaterializationDocumentWriteV1(_MaterializationCommitModel):

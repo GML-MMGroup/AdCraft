@@ -1,6 +1,7 @@
 """Activate persisted Storyboard fan-out Drafts through declared Run authority."""
 
 from __future__ import annotations
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,6 +10,8 @@ from typing import Callable
 
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_stage_authoring_context import combined_style_guidance
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,8 @@ class StoryboardFanoutActivationService:
         fanout = self._receipts.find_fanout_for_confirmation(confirmation_id)
         if fanout is None:
             return StoryboardFanoutActivationResult((), None, ())
+        execution_settings = self._execution_settings(fanout.workflow_id)
+        media_execution_mode = getattr(execution_settings, "media_execution_mode", "manual")
 
         prepared_node_ids: list[str] = []
         for plan, operation_id in zip(
@@ -105,6 +110,7 @@ class StoryboardFanoutActivationService:
         next_node_id = self._next_runnable_node_id(
             workflow,
             tuple(plan.node_id for plan in fanout.nodes),
+            require_available_inputs=media_execution_mode == "automatic",
         )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(
@@ -115,6 +121,9 @@ class StoryboardFanoutActivationService:
         return self._activate_runnable_node(
             workflow_id=fanout.workflow_id,
             node_id=next_node_id,
+            node_revision=next(
+                node.revision for node in workflow.nodes if node.node_id == next_node_id
+            ),
             source_action_id=_run_identity(fanout.fanout_plan_id, next_node_id),
             prepared_node_ids=tuple(prepared_node_ids),
         )
@@ -129,12 +138,45 @@ class StoryboardFanoutActivationService:
         """Publish Run authority for newly prompt-ready planned media."""
 
         workflow = self._workflows.get_workflow(workflow_id)
-        next_node_id = self._next_runnable_node_id(workflow, node_ids)
+        execution_settings = self._execution_settings(workflow_id)
+        media_execution_mode = getattr(execution_settings, "media_execution_mode", "manual")
+        if execution_settings.media_execution_mode == "automatic":
+            # Recovery callbacks can reach this service without the endpoint
+            # wrapper. Keep automatic admission Storyboard-only so a ready
+            # Character/Scene/Product node cannot be mistaken for the current
+            # Storyboard dependency wave. Manual mode remains unchanged for
+            # existing non-Storyboard callers such as BGM.
+            nodes_by_id = {node.node_id: node for node in workflow.nodes}
+            if any(
+                nodes_by_id.get(node_id) is None
+                or nodes_by_id[node_id].creative_role
+                not in {"storyboard_sequence", "storyboard_video"}
+                for node_id in node_ids
+            ):
+                return StoryboardFanoutActivationResult(node_ids, None, ())
+        next_node_id = self._next_runnable_node_id(
+            workflow,
+            node_ids,
+            require_available_inputs=media_execution_mode == "automatic",
+        )
         if next_node_id is None:
             return StoryboardFanoutActivationResult(node_ids, None, ())
+        node = next(node for node in workflow.nodes if node.node_id == next_node_id)
+        if (
+            execution_settings.media_execution_mode == "manual"
+            and node.creative_role == "bgm"
+            and self._conversations.get_guidance_session(workflow_id).journey.stage == "editing"
+        ):
+            # BGM publication already advanced authoring. Retain an existing
+            # scoped wait, but do not make media a prerequisite of Editing.
+            owned = self._awaiting.inspect(workflow_id, node_id=next_node_id)
+            return StoryboardFanoutActivationResult(
+                node_ids, owned.awaiting_id if owned is not None else None, ()
+            )
         return self._activate_runnable_node(
             workflow_id=workflow_id,
             node_id=next_node_id,
+            node_revision=node.revision,
             source_action_id=f"planned-media:{source_id}:{next_node_id}",
             prepared_node_ids=node_ids,
         )
@@ -144,6 +186,7 @@ class StoryboardFanoutActivationService:
         *,
         workflow_id: str,
         node_id: str,
+        node_revision: int,
         source_action_id: str,
         prepared_node_ids: tuple[str, ...],
     ) -> StoryboardFanoutActivationResult:
@@ -165,23 +208,29 @@ class StoryboardFanoutActivationService:
 
         current = self._awaiting.inspect(workflow_id)
         if current is not None:
-            if current.kind == "manual_node_run" and current.node_ids == (node_id,):
+            owned = (
+                current
+                if current.kind == "manual_node_run" and node_id in current.node_ids
+                else self._awaiting.inspect(workflow_id, node_id=node_id)
+            )
+            if owned is not None:
                 return StoryboardFanoutActivationResult(
                     prepared_node_ids,
-                    current.awaiting_id,
+                    owned.awaiting_id,
                     (),
                 )
-            return StoryboardFanoutActivationResult(
-                prepared_node_ids,
-                None,
-                (),
-            )
+            if awaiting_blocks_authoring(
+                current, stage=session.journey.stage, stage_revision=session.journey.stage_revision
+            ):
+                return StoryboardFanoutActivationResult(prepared_node_ids, None, ())
 
+        # A consumed wait cannot own a later result from a re-prepared Draft.
+        manual_identity = _digest(f"{source_action_id}:node-revision:{node_revision}")
         manual_wait = GuidanceAwaitingV2(
-            awaiting_id=f"awaiting_{_digest(source_action_id)}",
+            awaiting_id=f"awaiting_{manual_identity}",
             workflow_id=workflow_id,
             session_id=session.session_id,
-            checkpoint_id=f"checkpoint_{_digest(source_action_id)}",
+            checkpoint_id=f"checkpoint_{manual_identity}",
             kind="manual_node_run",
             requires_user_action=True,
             resume_policy="node_terminal",
@@ -217,6 +266,12 @@ class StoryboardFanoutActivationService:
         requirement_facts = {
             item.control: item.value for item in controls if item.control != "duration_seconds"
         }
+        requirement_facts["response_locale"] = session.response_locale
+        if node_role == "video_segment":
+            ledger = getattr(requirement_revision, "ledger", requirement_revision)
+            decision = getattr(ledger, "identity_safety_decision", None)
+            if decision is not None:
+                requirement_facts["identity_safety_decision"] = decision.model_dump(mode="json")
         excerpts = ()
         build_context = getattr(self._documents, "build_bounded_context", None)
         if build_context is not None:
@@ -231,6 +286,33 @@ class StoryboardFanoutActivationService:
             fanout.visual_anchor_node_id,
         )
         style = anchor.structured_content.get("style")
+        get_document = getattr(self._documents, "get_document", None)
+        document = (
+            get_document(fanout.workflow_id, fanout.plan_document_id)
+            if get_document is not None
+            else None
+        )
+        snapshot_id = getattr(
+            getattr(document, "content", None), "creative_direction_snapshot_id", None
+        )
+        snapshot = (
+            self._conversations.get_creative_direction_snapshot(snapshot_id)
+            if snapshot_id is not None
+            else None
+        )
+        guidance = (
+            CreativeDirectionService().resolve_style_context(
+                snapshot, "storyboard" if node_role == "storyboard_grid" else "video"
+            )
+            if snapshot is not None and snapshot.global_direction.get("global_guidance")
+            else None
+        )
+        public_skill = snapshot.global_direction.get("public_skill") if snapshot else None
+        representation_mode = (
+            public_skill.get("video_representation_mode")
+            if isinstance(public_skill, dict)
+            else None
+        )
         return StageAuthoringContextV1(
             workflow_id=fanout.workflow_id,
             session_id=session.session_id,
@@ -243,7 +325,27 @@ class StoryboardFanoutActivationService:
                 if node_role == "storyboard_grid"
                 else "agent/skills/video_agent_video_direction/SKILL.md"
             ),
-            style_projection=str(style)[:8192] if style is not None else None,
+            style_snapshot_id=snapshot_id,
+            style_projection=(
+                combined_style_guidance(guidance.model_dump())
+                if guidance is not None
+                else combined_style_guidance(snapshot.global_direction)
+                if snapshot is not None
+                else str(style)[:8192]
+                if style is not None
+                else None
+            ),
+            video_representation_mode=(
+                representation_mode
+                if representation_mode in {"illustrated", "illustration_to_live_action"}
+                else None
+            ),
+            video_representation_source_id=(
+                f"{snapshot.source_skill_id}:{snapshot.source_skill_version}"
+                if snapshot
+                and representation_mode in {"illustrated", "illustration_to_live_action"}
+                else None
+            ),
             working_document_excerpts=excerpts,
         )
 
@@ -251,6 +353,8 @@ class StoryboardFanoutActivationService:
     def _next_runnable_node_id(
         workflow,
         node_ids: tuple[str, ...],
+        *,
+        require_available_inputs: bool = False,
     ) -> str | None:
         nodes = {node.node_id: node for node in workflow.nodes}
         for node_id in node_ids:
@@ -259,16 +363,9 @@ class StoryboardFanoutActivationService:
                 continue
             if node.prompt_preparation.status != "ready":
                 continue
-            required_bindings = tuple(
-                binding
-                for binding in workflow.bindings
-                if binding.target_node_id == node.node_id
-                and binding.enabled
-                and binding.required
-                and binding.source.kind == "node_output"
-            )
-            if all(_binding_source_is_ready(binding, nodes) for binding in required_bindings):
-                return node.node_id
+            if require_available_inputs and not _has_available_inputs(workflow, node_id, nodes):
+                continue
+            return node.node_id
         return None
 
 
@@ -276,18 +373,29 @@ def _run_identity(fanout_plan_id: str, node_id: str) -> str:
     return f"storyboard-fanout:{fanout_plan_id}:{node_id}"
 
 
-def _binding_source_is_ready(binding, nodes: dict[str, object]) -> bool:
-    source = nodes.get(binding.source.source_node_id)
-    if source is None:
-        return False
-    if source.status == "ready":
-        return True
-    return (
-        binding.input_role == "text_context"
-        and source.node_type in {"text", "script"}
-        and source.status == "draft"
-        and bool(source.structured_content)
-    )
+def _has_available_inputs(workflow, node_id: str, nodes: dict[str, object]) -> bool:
+    """Keep automatic admission behind the same persisted source outputs as Run."""
+
+    for binding in workflow.bindings:
+        if (
+            binding.target_node_id != node_id
+            or not binding.enabled
+            or binding.input_role not in {"image_reference", "video_reference", "audio_reference"}
+        ):
+            continue
+        source_node_id = getattr(
+            binding.source,
+            "source_node_id",
+            getattr(binding.source, "node_id", None),
+        )
+        if source_node_id is None:
+            continue
+        source = nodes.get(source_node_id)
+        if source is None:
+            return False
+        if getattr(source, "output_asset_id", None) is None:
+            return False
+    return True
 
 
 def _digest(value: str) -> str:

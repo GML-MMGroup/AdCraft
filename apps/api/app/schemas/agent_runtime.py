@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_materialization import CapabilityMaterializationCo
 from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardSegmentAuthoringContextV2
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
+from app.schemas.provider_models import ProviderConformanceTargetV1
 
 
 AgentName = Literal["video_agent"]
@@ -244,7 +245,7 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     model_ref: str = Field(min_length=1, max_length=320)
     operation: str = Field(min_length=1, max_length=120)
     operation_class: Literal["routing", "proposal", "materialization", "long_form"]
-    thinking_format: Literal["zai", "qwen", "none"]
+    thinking_format: Literal["zai", "qwen", "openai", "none"]
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
@@ -252,12 +253,14 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "none",
     ]
     reasoning_mode: Literal["low", "deep"]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     enable_thinking: bool
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     structured_transport: Literal[
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "non_streaming_json_schema",
         "streaming_json_object",
         "json_object",
     ]
@@ -276,9 +279,25 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: int = Field(ge=0, le=1)
     structured_repair_limit: int = Field(ge=0, le=1)
+    json_object_fallback_certified: bool = False
 
     @model_validator(mode="after")
     def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if self.json_object_fallback_certified and (
+            not self.model_ref.startswith("openrouter:")
+            or self.structured_transport != "non_streaming_json_schema"
+            or self.max_model_submissions != 2
+        ):
+            raise ValueError(
+                "JSON Object capability fallback requires a two-submission OpenRouter JSON Schema policy."
+            )
+        if self.reasoning_control == "reasoning_effort":
+            if self.reasoning_effort is None or self.enable_thinking:
+                raise ValueError("Reasoning-effort policy cannot use legacy thinking fields.")
+            if self.thinking_budget_tokens is not None:
+                raise ValueError("Reasoning-effort policy cannot use a thinking budget.")
+        elif self.reasoning_effort is not None:
+            raise ValueError("Reasoning effort is only valid for its matching control.")
         if (
             self.primary_timeout_seconds
             + self.recovery_timeout_seconds
@@ -315,6 +334,9 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
     violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
         min_length=1, max_length=32
     )
+    violation_categories: tuple[Annotated[str, Field(min_length=1, max_length=80)], ...] = Field(
+        default=(), max_length=32
+    )
     repair_allowed: bool
     truncated: bool
 
@@ -324,6 +346,8 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
             raise ValueError("Validation paths must be ordered and unique.")
         if len(self.violation_codes) != len(set(self.violation_codes)):
             raise ValueError("Violation codes must be ordered and unique.")
+        if len(self.violation_categories) != len(set(self.violation_categories)):
+            raise ValueError("Violation categories must be ordered and unique.")
         expected_stage = "initial" if self.attempt == 1 else "structured_repair"
         if self.attempt_stage != expected_stage:
             raise ValueError("Validation attempt stage must match its attempt number.")
@@ -339,10 +363,11 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "streamed_tool_call",
         "non_streaming_tool_call",
         "non_streaming_json_object",
+        "non_streaming_json_schema",
         "streaming_json_object",
         "json_object",
     ]
-    thinking_format: Literal["zai", "qwen", "none"]
+    thinking_format: Literal["zai", "qwen", "openai", "none"]
     reasoning_control: Literal[
         "provider_default",
         "enable_thinking",
@@ -350,6 +375,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "none",
     ]
     reasoning_mode: Literal["low", "deep"]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     enable_thinking: bool
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     deadline_seconds: int = Field(ge=1, le=900)
@@ -361,7 +387,12 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     schema_bytes: int = Field(ge=0, le=4_194_304)
     response_bytes: int | None = Field(default=None, ge=0, le=4_194_304)
     response_activity_observed: bool
-    attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
+    attempt_stage: Literal[
+        "initial",
+        "transport_retry",
+        "capability_fallback",
+        "structured_repair",
+    ]
     started_at: datetime
     first_response_at: datetime | None = None
     last_activity_at: datetime | None = None
@@ -376,6 +407,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     output_tokens: int | None = Field(default=None, ge=0)
     reasoning_tokens: int | None = Field(default=None, ge=0)
     transport_retry_count: int = Field(ge=0, le=1)
+    capability_fallback_count: int = Field(default=0, ge=0, le=1)
     structured_attempt_count: int = Field(ge=1, le=2)
     structured_validation_attempts: tuple[AgentStructuredValidationAttemptAuditV1, ...] = Field(
         default=(), max_length=2
@@ -466,6 +498,7 @@ class AgentProviderConformanceInputV2(_StrictModel):
     schema_version: Literal["2"] = "2"
     frozen_agent_request: AgentRunRequest
     frozen_agent_request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    target: ProviderConformanceTargetV1
     budget_plan: AgentProviderConformanceBudgetPlanV1
     evidence_destination_id: str = Field(min_length=1, max_length=160)
 
@@ -475,6 +508,14 @@ class AgentProviderConformanceInputV2(_StrictModel):
             self.frozen_agent_request
         ):
             raise ValueError("Frozen Agent request digest does not match the request.")
+        request = self.frozen_agent_request
+        if (
+            self.target.model_ref != request.model_ref
+            or self.target.operation != request.operation
+            or self.target.contract_digest != request.contract_digest
+            or self.target.capability != "text"
+        ):
+            raise ValueError("conformance_target_mismatch")
 
         from app.services.agent_provider_conformance_budget import (
             AgentProviderConformanceBudgetError,
@@ -762,20 +803,18 @@ class AgentCreateBindingOperationV2(_AgentCommandOperationV2):
         "video_reference",
         "audio_reference",
     ]
-    required: bool = True
     display_order: int = Field(default=0, ge=0)
 
 
 class AgentPatchBindingOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["patch_binding"] = "patch_binding"
     binding_id: str = Field(min_length=1, max_length=160)
-    required: bool | None = None
     enabled: bool | None = None
     display_order: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_changes(self) -> "AgentPatchBindingOperationV2":
-        if self.required is None and self.enabled is None and self.display_order is None:
+        if self.enabled is None and self.display_order is None:
             raise ValueError("Binding patch requires at least one change.")
         return self
 
@@ -790,22 +829,6 @@ class AgentDeleteNodeOperationV2(_AgentCommandOperationV2):
     node: AgentNodeRefV2
 
 
-class AgentMaterializeSiblingDraftOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["materialize_sibling_draft"] = "materialize_sibling_draft"
-    source_node: AgentNodeRefV2
-    title: str = Field(min_length=1, max_length=256)
-    generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_selection_mode: ModelSelectionModeV1 = "default"
-    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
-    parameters: dict[str, Any] = Field(default_factory=dict)
-    placement_hint: AgentPlacementHintV2
-
-    @model_validator(mode="after")
-    def validate_model_selection(self) -> "AgentMaterializeSiblingDraftOperationV2":
-        _validate_model_selection(self.model_selection_mode, self.model_ref)
-        return self
-
-
 class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["request_node_run"] = "request_node_run"
     node: AgentNodeRefV2
@@ -818,7 +841,6 @@ AgentCommandOperationDraftV2 = Annotated[
     | AgentPatchBindingOperationV2
     | AgentDeleteBindingOperationV2
     | AgentDeleteNodeOperationV2
-    | AgentMaterializeSiblingDraftOperationV2
     | AgentRequestNodeRunOperationV2,
     Field(discriminator="operation_type"),
 ]
@@ -826,7 +848,6 @@ AgentCommandOperationDraftV2 = Annotated[
 
 _NODE_RESULT_OPERATIONS = {
     "create_draft_node",
-    "materialize_sibling_draft",
 }
 
 

@@ -1,8 +1,23 @@
 ---
-name: Theatrical Revue Glamour
-description: An advertising treatment built around stage blocking, chorus geometry, spotlight glamour, and escalating theatrical reveal.
+name: 舞台歌舞华彩广告
+description: 以舞台调度、群体几何、聚光魅力和递进式舞台揭示组织具有表演感的商业影像。
 ---
 
-Use stage blocking, chorus geometry, spotlight glamour, and escalating theatrical reveal as the style's creative grammar. Establish stage blocking as the primary visual idea, reinforce it through chorus geometry, and let spotlight glamour shape the progression toward escalating theatrical reveal.
+把 stage blocking、chorus geometry、spotlight glamour、escalating theatrical reveal 作为舞台广告的四个创作支点。舞台感来自谁在什么位置、何时进入、如何看向中心，以及群体如何为主角和产品让出视线。华彩应当逐步升级，每次增加灯光、队形或动作都要推进商业信息。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 调度与队形
+
+先画出舞台前中后景、主轴、入口、出口和主角落点。stage blocking 记录每个人的站位、移动方向、停顿和视线；chorus geometry 通过横列、扇形、阶梯、环形或对称队形形成画面秩序。群体动作要简洁同步，避免每个人各自表演。
+
+聚光灯用来建立层级，不是把所有区域照亮。主角或产品获得最清楚的光线和负空间，背景队形和装饰降低对比。服装、道具和产品在舞台上要有明确的交接和接触。
+
+## 递进与揭示
+
+从空舞台、单个动作或小队形开始，逐步扩大群体、音乐和灯光，最后完成 escalating theatrical reveal。高潮之后保留稳定构图，让产品、品牌或人物关系被看清。舞台变化要保留轴线、服装、道具和屏幕方向。
+
+## 约束与纠偏
+
+不把舞台 Skill 当作固定流程或固定编制。工具、Provider、模型、时长、分辨率、格式和流程由其他权威决定。本 Skill 只提供调度判断。结果混乱时减少人数和动作，先恢复主轴、站位和揭示顺序。
+
+正例：单人动作建立卖点，后方队形逐步展开，聚光在产品揭示时收拢，最终全体退后留出品牌空间。
+反例：所有人同时跑动、灯光全亮、产品被遮挡，高潮没有信息落点。

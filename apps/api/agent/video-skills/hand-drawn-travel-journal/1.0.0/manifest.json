@@ -1,30 +1,34 @@
 {
   "skill_id": "hand-drawn-travel-journal",
   "version": "1.0.0",
-  "display_name": "Hand-Drawn Travel Journal",
-  "description": "An advertising treatment built around drawn overlays, travel observation, location rhythm, and scrapbook continuity.",
+  "display_name": "手绘旅行日志影像",
+  "description": "以手绘叠加、旅行观察、地点节奏和剪贴簿连续性组织具有个人记录感的生活方式影像。",
+  "content_locale": "zh-CN",
   "category": "lifestyle-documentary",
   "tags": [
-    "lifestyle",
-    "documentary",
-    "observational"
+    "旅行日志",
+    "手绘叠加",
+    "生活方式"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "旅拍内容",
+    "生活方式广告",
+    "地点叙事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Hand-Drawn Travel Journal creative treatment."
+    "kind": "image",
+    "summary": "手绘旅行日志影像视觉预览。",
+    "media_url": "/api/v2/video-skills/hand-drawn-travel-journal/preview?v=1.0.0"
   },
   "display_order": 510,
   "files": {
-    "SKILL.md": "0a89b1d8d8b6afab7c8a7329ff5ef2fd0730ff3362c843d7e2a5030eff4c8901",
-    "references/script.md": "3008640de4c1d89801213002cae62bb44bd4cbdb288a1ba97f719be996798455",
-    "references/scene.md": "9417421ed2f398efd3d534e8b0668da0868243b2221abf4bcb84e0aff7855f42",
-    "references/storyboard.md": "174aaa90d0ba1668389c100daded2045559bf42fdc0c2c9f1dc6c6517f244bd1",
-    "references/video.md": "0256e28f9a79878c4f933fd6ff796c4b724b27e829b8e55201e34857609096e5",
-    "references/bgm.md": "0bfec64d45415e163873f91066c50d1bba038b1d81e3c7cc11a3a1c8a57ee1ce"
+    "SKILL.md": "453278653ab8d233dfa62aef3e7e74ec126595c8827dbde29241a35bd430b041",
+    "references/script.md": "179d6692bec882a313b4ee1417d25071724245b61bdf7f13e21ebf61094fd6e0",
+    "references/scene.md": "08a0ea4266cf7ca68b3fa1a521dfb49861a008bfb9b06cc7ef8f37f01afc104c",
+    "references/storyboard.md": "d46a77047b10290c5e087fb163b72de9243e58d829b01126fbda796c9c3f320f",
+    "references/video.md": "9982ba41b128f6e8f48b672ff7c979e434d5cfe4fd783bd3ee272524f9ff73a6",
+    "references/bgm.md": "625ba73bea1dc12732a74594852877654f9bacecd2e1fb5a3ed0bf3e01675993",
+    "previews/preview.webp": "34e4f939c9f38e887915bd27f30c648b7f6069fff36cdaa25a66b40914c3ad0a"
   },
   "role_guidance": {
     "script": "references/script.md",

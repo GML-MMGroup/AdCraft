@@ -413,6 +413,23 @@ def prompt_assertion_admission_error(node) -> str | None:
         or node.metadata.get("prompt_assertion_evidence_digest") != evidence.evidence_digest
     ):
         return "node_prompt_assertion_contract_invalid"
+    if preparation.role_variant == "character_turnaround":
+        projection_digest = preparation.character_identity_projection_digest
+        if (
+            projection_digest is None
+            or evidence.character_identity_projection_digest != projection_digest
+            or node.structured_content.get("identity_projection_digest") != projection_digest
+            or node.structured_content.get("parent_source_node_revision") is None
+        ):
+            return "character_parent_identity_projection_invalid"
+    if preparation.role_variant == "scene_board":
+        projection_digest = preparation.scene_environment_projection_digest
+        if (
+            projection_digest is None
+            or evidence.scene_environment_projection_digest != projection_digest
+            or node.structured_content.get("environment_projection_digest") != projection_digest
+        ):
+            return "scene_environment_projection_invalid"
     return None
 
 

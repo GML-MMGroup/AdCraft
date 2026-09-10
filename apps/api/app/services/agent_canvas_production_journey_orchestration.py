@@ -19,10 +19,10 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyContextV2,
     JourneyPolicyResultV2,
 )
-from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV2
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.schemas.agent_canvas_guided_interactions import awaiting_blocks_authoring
 from app.services.agent_canvas_guided_duration import GuidedDurationAuthorityPolicy
 from app.services.agent_canvas_guided_character import GuidedCharacterAuthorityPolicy
 from app.services.agent_canvas_production_journey import (
@@ -32,6 +32,13 @@ from app.services.agent_canvas_production_journey import (
 from app.services.agent_canvas_requirements import (
     character_occurrence_authority_for_authoring,
 )
+
+
+def _character_checkpoint_matches_source(checkpoint_id: str, source_turn_id: str) -> bool:
+    """Match the persisted Character checkpoint to its exact source Turn."""
+
+    parts = checkpoint_id.split(":")
+    return len(parts) >= 2 and parts[0] == "character-count" and parts[-1] == source_turn_id
 
 
 class GuidedProductionJourneyService:
@@ -76,6 +83,20 @@ class GuidedProductionJourneyService:
         )
         if questionnaire is None:
             return None
+        if (
+            session.journey.stage_status == "waiting_user"
+            and session.interaction is not None
+            and session.awaiting is not None
+            and session.awaiting.kind == "clarification"
+            and session.awaiting.interaction_id == session.interaction.interaction_id
+            and _character_checkpoint_matches_source(
+                session.interaction.checkpoint_id,
+                source_turn_id,
+            )
+        ):
+            existing_turn = self._conversations.get_turn(source_turn_id)
+            if existing_turn.status == "completed":
+                return existing_turn
         if session.journey.stage_status == "waiting_user" and session.awaiting is not None:
             target = session.journey
         else:
@@ -142,7 +163,26 @@ class GuidedProductionJourneyService:
     ) -> tuple[GuidedSessionStateV2, JourneyPolicyResultV2]:
         session = self._conversations.get_guidance_session(workflow_id)
         self._require_stage_duration(workflow_id, session.journey.stage)
-        if session.journey.stage == "product" and session.awaiting is None:
+        if session.journey.stage == "editing" and session.journey.stage_status == "failed":
+            raise V2PersistenceError(
+                "guided_editing_not_retryable",
+                "Editing preparation is terminally failed and cannot be requeued.",
+                stage="guided_production_journey_service",
+                details={"retryable": False, "user_action": "none"},
+            )
+        active_action = session.journey.active_action
+        if (
+            session.journey.stage == "editing"
+            and active_action is not None
+            and active_action.action_kind == "prepare_editing"
+            and active_action.status == "reserved"
+        ):
+            return session, JourneyPolicyResultV2(
+                action="prepare_editing",
+                expected_stage_revision=active_action.stage_revision,
+                requires_model_call=False,
+            )
+        if session.journey.stage == "product":
             entered = self._ensure_product_source_stage_entry(
                 session,
                 turn_id=turn_id,
@@ -254,7 +294,11 @@ class GuidedProductionJourneyService:
         # it during a continuation would create a duplicate interaction.
         if session.journey.stage_status != "ready":
             return None
-        if session.interaction is not None or session.awaiting is not None:
+        if awaiting_blocks_authoring(
+            session.awaiting,
+            stage=session.journey.stage,
+            stage_revision=session.journey.stage_revision,
+        ) or (session.interaction is not None and session.interaction.kind != "media_review"):
             return None
         interactions = AgentCanvasGuidedInteractionRepository(
             self._conversations.database,
@@ -419,20 +463,14 @@ class GuidedProductionJourneyService:
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         if session is None:
             return None
-        current_awaiting = session.awaiting
-        if current_awaiting is not None and current_awaiting.kind == "manual_node_run":
-            if self._awaiting is None:
-                raise ValueError("Guidance awaiting authority is required to resume Node work.")
-            self._awaiting.resume(
-                workflow_id,
-                GuidanceAwaitingResumeProofV2(
-                    awaiting_id=current_awaiting.awaiting_id,
-                    expected_session_revision=session.revision,
-                    evidence_kind="node_terminal",
-                    node_ids=current_awaiting.node_ids,
-                ),
-            )
-            session = self._conversations.get_guidance_session(workflow_id)
+        if session.status != "active":
+            return session
+        if session.awaiting is not None and session.awaiting.kind not in {
+            "manual_node_run",
+            "media_review",
+        }:
+            return session
+        # Draft topology advances authorship, not the media wait's completion.
         evidence_by_stage = {
             "storyboard_grids": "storyboard_grids_prepared",
             "videos": "videos_prepared",

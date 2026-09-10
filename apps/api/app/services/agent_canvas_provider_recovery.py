@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
 
+from pydantic import ValidationError
+
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_runtime_repository import (
@@ -17,10 +19,12 @@ from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
+    ResolvedModelExecutionV2,
     ResolvedModelExecutionV1,
     EffectiveMediaParameterSnapshotV2,
 )
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
+from app.schemas.seedance_inputs import SeedanceInputManifestAuditV1
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
     NodeExecutionContext,
@@ -110,6 +114,9 @@ class ProviderTaskRecoveryService:
         return tuple(reconciled)
 
     def _recover_one(self, task: CanvasProviderTaskV2) -> bool:
+        task = self._runtime.get_provider_task(task.task_id)
+        if task.status in {"succeeded", "failed", "cancelled"}:
+            return False
         now = self._clock()
         lease = self._runtime.claim_lease(
             task.execution_id,
@@ -120,8 +127,23 @@ class ProviderTaskRecoveryService:
         )
         if lease is None:
             return False
+        task = self._runtime.get_provider_task(task.task_id)
+        if task.status in {"succeeded", "failed", "cancelled"}:
+            self._runtime.complete_lease(lease, now=now)
+            return False
+        if task.status == "recovering" and task.recovery_deadline <= now:
+            self._fail_task(
+                task,
+                lease,
+                status="failed",
+                remote_task_id=task.remote_task_id,
+                code="provider_recovery_exhausted",
+                message="Provider task recovery deadline was exhausted.",
+            )
+            return True
         guard = self._leases.guard(lease)
-        poll = guard.run(lambda: self._poller(task))
+        poll, lease = guard.run_with_latest_lease(lambda: self._poller(task))
+        now = self._clock()
         remote_task_id = poll.remote_task_id or task.remote_task_id
         result_descriptor = _merge_result_descriptor(task, poll)
         if poll.status in {"submitted", "waiting", "running"}:
@@ -190,9 +212,13 @@ class ProviderTaskRecoveryService:
             payload={"status": "recovering"},
         )
         try:
-            payload = guard.run(lambda: self._downloader(current))
+            payload, lease = self._leases.guard(lease).run_with_latest_lease(
+                lambda: self._downloader(current)
+            )
         except Exception as error:
             source_code = getattr(error, "code", None)
+            if source_code == "stale_execution_lease":
+                raise
             code = "provider_result_download_failed"
             if isinstance(error, TimeoutError) or source_code == (
                 "provider_result_download_timeout"
@@ -210,18 +236,34 @@ class ProviderTaskRecoveryService:
             for item in self._runtime.list_members(task.execution_id)
             if item.node_id == task.node_id
         )
+        intent_resolution = None
+        if task.submission_intent_id is not None:
+            intent_resolution = self._runtime.get_submission_intent(
+                task.submission_intent_id
+            ).frozen_model_resolution
         stored_resolution = current.result_descriptor.get("model_resolution")
-        resolution = (
-            ResolvedModelExecutionV1.model_validate(stored_resolution)
-            if isinstance(stored_resolution, dict)
-            else None
-        )
+        resolution = None
+        if isinstance(stored_resolution, dict):
+            try:
+                resolution = ResolvedModelExecutionV2.model_validate(stored_resolution)
+            except ValidationError:
+                resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
+        if intent_resolution is not None:
+            if resolution is not None and resolution != intent_resolution:
+                raise V2PersistenceError(
+                    "provider_model_resolution_conflict",
+                    "Provider recovery identity does not match the frozen submission intent.",
+                    stage="provider_recovery",
+                )
+            resolution = intent_resolution
         effective_parameters = member.effective_parameters
         snapshot_id = (
             member.parameter_compilation_snapshot_id
             or str(current.result_descriptor.get("parameter_compilation_snapshot_id") or "")
             or None
         )
+        execution_mode = "agent_assisted"
+        semantic_extraction = "agent"
         if effective_parameters is None and snapshot_id is not None:
             snapshot = self._runtime.get_parameter_compilation_snapshot(snapshot_id)
             effective_parameters = EffectiveMediaParameterSnapshotV2(
@@ -234,9 +276,15 @@ class ProviderTaskRecoveryService:
                     resolution.provider_model_id if resolution is not None else snapshot.model_ref
                 ),
                 capability_revision=snapshot.capability_revision,
+                execution_mode=snapshot.execution_mode,
+                semantic_extraction=snapshot.semantic_extraction,
+                parameter_source=snapshot.parameter_source,
             )
         if effective_parameters is not None:
             node = node.model_copy(update={"parameters": effective_parameters.requested})
+            execution_mode = effective_parameters.execution_mode
+            semantic_extraction = effective_parameters.semantic_extraction
+        seedance_input_audit = _seedance_manifest_audit(current.result_descriptor)
         context = NodeExecutionContext(
             execution_id=task.execution_id,
             node=node,
@@ -245,46 +293,99 @@ class ProviderTaskRecoveryService:
             provider_id=resolution.provider_id if resolution is not None else None,
             model_resolution=resolution,
             effective_parameters=effective_parameters,
+            seedance_input_audit=seedance_input_audit,
+            execution_mode=execution_mode,
+            semantic_extraction=semantic_extraction,
         )
         fingerprint = f"provider-task:{task.task_id}"
         if self._output_preparer is not None and self._result_committer is not None:
-            prepared = guard.run(
-                lambda: self._output_preparer.prepare(
-                    context,
-                    NodeExecutionOutcome(
-                        media=payload,
+            preparation_guard = self._leases.guard(lease)
+            try:
+                prepared, lease = preparation_guard.run_with_latest_lease(
+                    lambda: self._output_preparer.prepare(
+                        context,
+                        NodeExecutionOutcome(
+                            media=payload,
+                            provider_task_id=task.task_id,
+                            remote_task_id=remote_task_id,
+                            provider=task.provider,
+                            result_descriptor=result_descriptor,
+                            submission_intent_id=task.submission_intent_id,
+                        ),
+                        fingerprint=fingerprint,
+                    )
+                )
+            except V2PersistenceError as error:
+                if error.code not in {
+                    "node_result_publication_metadata_invalid",
+                    "node_result_publication_failed",
+                }:
+                    raise
+                # Keep the failed attempt's fence; never claim a successor's lease.
+                detail = safe_execution_error(error, default_code="node_result_publication_failed")
+                self._fail_task(
+                    current,
+                    preparation_guard.lease,
+                    status="failed",
+                    remote_task_id=remote_task_id,
+                    code=detail.code,
+                    message=detail.message,
+                    error=detail,
+                )
+                return True
+            try:
+                self._result_committer.commit(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=task.workflow_id,
+                        execution_id=task.execution_id,
+                        member_id=member.member_id,
+                        node_id=task.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=prepared.logical_result_key,
+                        payload_digest=prepared.payload_digest,
                         provider_task_id=task.task_id,
-                        remote_task_id=remote_task_id,
-                        provider=task.provider,
-                        result_descriptor=result_descriptor,
-                        submission_intent_id=task.submission_intent_id,
-                    ),
-                    fingerprint=fingerprint,
+                        outcome="succeeded",
+                        prepared_result=prepared,
+                        committed_at=self._clock(),
+                    )
                 )
-            )
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=task.workflow_id,
-                    execution_id=task.execution_id,
-                    member_id=member.member_id,
-                    node_id=task.node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=prepared.logical_result_key,
-                    payload_digest=prepared.payload_digest,
-                    provider_task_id=task.task_id,
-                    outcome="succeeded",
-                    prepared_result=prepared,
-                    committed_at=now,
+            except V2PersistenceError as commit_error:
+                if commit_error.code != "stale_execution_lease":
+                    raise
+                error = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
                 )
-            )
+                self._result_committer.reconcile_stale_lease_failure(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=task.workflow_id,
+                        execution_id=task.execution_id,
+                        member_id=member.member_id,
+                        node_id=task.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=(
+                            f"{task.execution_id}:{task.node_id}:{lease.generation}:failed"
+                        ),
+                        payload_digest=hashlib.sha256(error.model_dump_json().encode()).hexdigest(),
+                        provider_task_id=task.task_id,
+                        outcome="failed",
+                        error=error,
+                        committed_at=self._clock(),
+                    )
+                )
+                return True
             if task.submission_intent_id is not None:
                 self._submission_intents.complete(
                     self._runtime.get_submission_intent(task.submission_intent_id),
                     now=now,
                 )
             return True
-        asset_id = guard.run(lambda: self._media_publisher(context, payload, fingerprint))
+        asset_id, lease = self._leases.guard(lease).run_with_latest_lease(
+            lambda: self._media_publisher(context, payload, fingerprint)
+        )
         if not self._state_machine.transition_member(
             self._runtime,
             member,
@@ -339,9 +440,10 @@ class ProviderTaskRecoveryService:
         remote_task_id: str | None,
         code: str,
         message: str,
+        error: CanvasNodeErrorV2 | None = None,
     ) -> None:
         now = self._clock()
-        error = CanvasNodeErrorV2(
+        error = error or CanvasNodeErrorV2(
             code=code,
             message=message,
             retryable=False,
@@ -353,24 +455,46 @@ class ProviderTaskRecoveryService:
         )
         if self._result_committer is not None:
             digest = hashlib.sha256(error.model_dump_json().encode()).hexdigest()
-            self._result_committer.commit(
-                CanvasExecutionResultCommitCommandV2(
-                    workflow_id=task.workflow_id,
-                    execution_id=task.execution_id,
-                    member_id=member.member_id,
-                    node_id=task.node_id,
-                    lease_owner_id=lease.owner_id,
-                    lease_generation=lease.generation,
-                    logical_result_key=(
-                        f"provider-task:{task.task_id}:{lease.generation}:{status}"
-                    ),
-                    payload_digest=digest,
-                    provider_task_id=task.task_id,
-                    outcome=("cancelled" if status == "cancelled" else "failed"),
-                    error=error,
-                    committed_at=now,
-                )
+            command = CanvasExecutionResultCommitCommandV2(
+                workflow_id=task.workflow_id,
+                execution_id=task.execution_id,
+                member_id=member.member_id,
+                node_id=task.node_id,
+                lease_owner_id=lease.owner_id,
+                lease_generation=lease.generation,
+                logical_result_key=(f"provider-task:{task.task_id}:{lease.generation}:{status}"),
+                payload_digest=digest,
+                provider_task_id=task.task_id,
+                outcome=("cancelled" if status == "cancelled" else "failed"),
+                error=error,
+                committed_at=now,
             )
+            try:
+                self._result_committer.commit(command)
+            except V2PersistenceError as commit_error:
+                if commit_error.code != "stale_execution_lease":
+                    raise
+                stale_error = CanvasNodeErrorV2(
+                    code="node_result_publication_lease_lost",
+                    message="The media result lease expired before publication.",
+                    retryable=True,
+                )
+                self._result_committer.reconcile_stale_lease_failure(
+                    command.model_copy(
+                        update={
+                            "logical_result_key": (
+                                f"{task.execution_id}:{task.node_id}:{lease.generation}:failed"
+                            ),
+                            "payload_digest": hashlib.sha256(
+                                stale_error.model_dump_json().encode()
+                            ).hexdigest(),
+                            "outcome": "failed",
+                            "error": stale_error,
+                            "committed_at": self._clock(),
+                        }
+                    )
+                )
+                return
             if task.submission_intent_id is not None:
                 self._submission_intents.complete(
                     self._runtime.get_submission_intent(task.submission_intent_id),
@@ -418,6 +542,8 @@ class ProviderTaskRecoveryService:
         task: CanvasProviderTaskV2,
         error: Exception,
     ) -> None:
+        if getattr(error, "code", None) == "stale_execution_lease":
+            return
         now = self._clock()
         current = self._runtime.get_provider_task(task.task_id)
         if current.status in {"succeeded", "failed", "cancelled"}:
@@ -453,6 +579,21 @@ class ProviderTaskRecoveryService:
             event_type="provider_task_recovering",
             event_payload={"code": detail.code},
         )
+
+
+def _seedance_manifest_audit(
+    result_descriptor: dict[str, object],
+) -> SeedanceInputManifestAuditV1 | None:
+    provider_payload = result_descriptor.get("provider_payload")
+    if not isinstance(provider_payload, dict):
+        return None
+    manifest = provider_payload.get("seedance_input_manifest")
+    if not isinstance(manifest, dict):
+        return None
+    try:
+        return SeedanceInputManifestAuditV1.model_validate(manifest)
+    except ValueError:
+        return None
 
 
 def _merge_result_descriptor(

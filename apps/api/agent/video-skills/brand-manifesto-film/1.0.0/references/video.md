@@ -1,1 +1,6 @@
-Direct camera and subject motion through belief-led narration and symbolic imagery, using emotional escalation for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把宣言中的情绪和信念翻译成可观察动作。说明人物从什么状态开始，如何与产品或环境发生关系，镜头如何扩大或收紧，哪个声音或视觉锚点承接下一镜，结尾怎样让品牌落点可读。
+
+提示中保留人物身份、关键道具、真实场景、动作因果和象征元素的对应关系。不要用宏大形容词替代动作，也不要添加未经确认的群体、灾难或社会场景。输出偏空时，先恢复一个具体人物和一个具体动作。
+
+正例：镜头从人物手部的犹豫开始，随着选择完成逐步拉开空间，环境声和动作方向连续，最后回到品牌标识与承诺。
+反例：镜头只展示抽象光线和人群剪影，人物目标、动作和品牌关系都不清楚。

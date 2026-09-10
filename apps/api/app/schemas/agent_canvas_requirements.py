@@ -8,6 +8,7 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_identity_safety import IdentitySafetyDecisionV1
 
 
 RequirementSourceKindV1: TypeAlias = Literal[
@@ -50,6 +51,7 @@ RequirementControlNameV1: TypeAlias = Literal[
     "scene_count",
     "storyboard_sequence_count",
     "video_segment_count",
+    "video_representation_mode",
 ]
 DurationSecondsValueV1: TypeAlias = Annotated[float, Field(ge=1, le=3_600)]
 AspectRatioValueV1: TypeAlias = Annotated[str, Field(min_length=1, max_length=32)]
@@ -63,6 +65,7 @@ CharacterCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
 SceneCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
 StoryboardSequenceCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
 VideoSegmentCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
+VideoRepresentationModeValueV1: TypeAlias = Literal["illustrated", "illustration_to_live_action"]
 
 
 class _StrictModel(BaseModel):
@@ -145,6 +148,11 @@ class VideoSegmentCountControlV1(_StoredControlBase):
     value: VideoSegmentCountValueV1
 
 
+class VideoRepresentationModeControlV1(_StoredControlBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 RequirementControlV1: TypeAlias = Annotated[
     DurationSecondsControlV1
     | AspectRatioControlV1
@@ -157,7 +165,8 @@ RequirementControlV1: TypeAlias = Annotated[
     | CharacterCountControlV1
     | SceneCountControlV1
     | StoryboardSequenceCountControlV1
-    | VideoSegmentCountControlV1,
+    | VideoSegmentCountControlV1
+    | VideoRepresentationModeControlV1,
     Field(discriminator="control"),
 ]
 
@@ -226,6 +235,11 @@ class VideoSegmentCountControlPatchV1(_ControlPatchBase):
     value: VideoSegmentCountValueV1
 
 
+class VideoRepresentationModeControlPatchV1(_ControlPatchBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 RequirementControlPatchV1: TypeAlias = Annotated[
     DurationSecondsControlPatchV1
     | AspectRatioControlPatchV1
@@ -238,7 +252,8 @@ RequirementControlPatchV1: TypeAlias = Annotated[
     | CharacterCountControlPatchV1
     | SceneCountControlPatchV1
     | StoryboardSequenceCountControlPatchV1
-    | VideoSegmentCountControlPatchV1,
+    | VideoSegmentCountControlPatchV1
+    | VideoRepresentationModeControlPatchV1,
     Field(discriminator="control"),
 ]
 
@@ -307,6 +322,11 @@ class ManualVideoSegmentCountControlPatchV1(_ManualControlPatchBase):
     value: VideoSegmentCountValueV1
 
 
+class ManualVideoRepresentationModeControlPatchV1(_ManualControlPatchBase):
+    control: Literal["video_representation_mode"] = "video_representation_mode"
+    value: VideoRepresentationModeValueV1
+
+
 ManualRequirementControlPatchV1: TypeAlias = Annotated[
     ManualDurationSecondsControlPatchV1
     | ManualAspectRatioControlPatchV1
@@ -319,7 +339,8 @@ ManualRequirementControlPatchV1: TypeAlias = Annotated[
     | ManualCharacterCountControlPatchV1
     | ManualSceneCountControlPatchV1
     | ManualStoryboardSequenceCountControlPatchV1
-    | ManualVideoSegmentCountControlPatchV1,
+    | ManualVideoSegmentCountControlPatchV1
+    | ManualVideoRepresentationModeControlPatchV1,
     Field(discriminator="control"),
 ]
 
@@ -470,6 +491,7 @@ class RequirementPatchV1(_StrictModel):
 
 
 class RequirementLedgerPatchRequestV1(_StrictModel):
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
     controls_to_set: tuple[ManualRequirementControlPatchV1, ...] = Field(default=(), max_length=16)
     directives_to_add: tuple[ManualRequirementDirectivePatchV1, ...] = Field(
         default=(), max_length=16
@@ -486,6 +508,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
             and not self.directives_to_add
             and not self.directive_ids_to_supersede
             and self.character_occurrences_to_set is None
+            and self.identity_safety_decision is None
         ):
             raise ValueError("Requirement patches must contain at least one change.")
         control_names = tuple(item.control for item in self.controls_to_set)
@@ -499,6 +522,7 @@ class RequirementLedgerPatchRequestV1(_StrictModel):
 
 class RequirementLedgerV1(_FrozenModel):
     schema_version: Literal["1"] = "1"
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
     hard_controls: tuple[RequirementControlV1, ...] = Field(default=(), max_length=16)
     active_directives: tuple[RequirementDirectiveV1, ...] = Field(default=(), max_length=256)
     element_presence: tuple[RequirementElementPresenceV1, ...] = Field(default=(), max_length=9)
@@ -541,6 +565,7 @@ class RequirementLedgerResponseV1(_FrozenModel):
     character_occurrences: tuple[CharacterOccurrenceV1, ...] = Field(default=(), max_length=32)
     unresolved_conflicts: tuple[RequirementConflictV1, ...] = Field(default=(), max_length=32)
     updated_at: datetime
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
 
 
 class EditableRequirementDirectiveV1(_FrozenModel):
@@ -571,6 +596,7 @@ class CapabilityRequirementProjectionV1(_FrozenModel):
     omitted_directives: tuple[OmittedRequirementDirectiveV1, ...] = Field(
         default=(), max_length=256
     )
+    identity_safety_decision: IdentitySafetyDecisionV1 | None = None
 
 
 class RequirementApplicationDeltaV1(_FrozenModel):

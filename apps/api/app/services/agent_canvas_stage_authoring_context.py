@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.schemas.agent_canvas_conversation import ConceptOptionRecordV2
-from app.schemas.agent_canvas_creative_session import CreativeGoalV2, ProposedDraftReferenceV2
+from app.schemas.agent_canvas_creative_session import (
+    CreativeGoalV2,
+    ProposedDraftReferenceV2,
+    StyleGuidanceContextV2,
+)
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
 from app.schemas.agent_canvas_production_journey import JourneyStageV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
@@ -48,14 +54,7 @@ def stage_authoring_context_from_materialization(
     """Drop private capability context fields before preparing one visible Draft."""
 
     style = context.style_projection
-    style_projection = next(
-        (
-            value.strip()
-            for key in ("role_guidance", "global_guidance", "summary")
-            if isinstance((value := style.get(key)), str) and value.strip()
-        ),
-        None,
-    )
+    style_projection = combined_style_guidance(style)
     style_snapshot_id = style.get("creative_direction_snapshot_id")
     if not isinstance(style_snapshot_id, str) or not style_snapshot_id.strip():
         style_snapshot_id = None
@@ -75,6 +74,11 @@ def stage_authoring_context_from_materialization(
         requirement_facts={
             **context.explicit_constraints,
             **context.capability_facts,
+            **(
+                {"response_locale": context.response_locale}
+                if context.response_locale != "und"
+                else {}
+            ),
         },
         selected_concept=ConceptOptionRecordV2(
             option_id=selected.option_id,
@@ -85,5 +89,37 @@ def stage_authoring_context_from_materialization(
         style_snapshot_id=style_snapshot_id,
         internal_skill_ref=_SKILL_REFS[context.capability_id],
         style_projection=style_projection,
+        style_guidance=(
+            StyleGuidanceContextV2.model_validate(style)
+            if style.get("source") == "creative_direction_snapshot"
+            else None
+        ),
+        video_representation_mode=(
+            style.get("video_representation_mode")
+            if style.get("video_representation_mode")
+            in {
+                "illustrated",
+                "illustration_to_live_action",
+            }
+            else None
+        ),
+        video_representation_source_id=(
+            style.get("video_representation_source_id")
+            if isinstance(style.get("video_representation_source_id"), str)
+            else None
+        ),
         references=references,
     )
+
+
+def combined_style_guidance(style: Mapping[str, object]) -> str | None:
+    """Keep global and current-role advice together; the consumer enforces its budget."""
+    blocks = [
+        value.strip()
+        for key in ("global_guidance", "role_guidance")
+        if isinstance((value := style.get(key)), str) and value.strip()
+    ]
+    if blocks:
+        return "\n\n".join(dict.fromkeys(blocks))
+    summary = style.get("summary")
+    return summary.strip() if isinstance(summary, str) and summary.strip() else None

@@ -79,6 +79,7 @@ const metadata = new Map<string, OperationMetadata>([
     result_contract_name: "RoleCreativeBriefV2",
     required_skill: "video_agent_role_prompt_authoring",
     display_name: "Role Prompt Author",
+    validation_profile: "role_prompt_contract_v1",
   }],
 ]);
 

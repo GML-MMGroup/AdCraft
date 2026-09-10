@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing silhouette through silhouette and fabric motion through surfaces and detail. Make functional features readable, and use editorial posing only where it strengthens the requested selling point.
+把服装的廓形、剪裁、层次、面料、缝线、饰件、颜色和穿着方式作为产品事实。先用全身或中远景建立 silhouette，再用有动机的动作展示领口、袖口、褶皱、光泽、透明度或垂坠。细节镜头不能让观众失去服装整体身份。
+
+面料 motion 要服从重量、弹性、风和人物动作。检查衣摆、袖口、围巾、裙摆与身体的连接，避免织物穿过身体或在没有动因时飘动。参考图中的图案、颜色和结构不可随意替换。
+
+正例：模特缓慢转身，衣摆延迟跟随并回落，镜头在褶皱稳定时切入材质细节。
+反例：用无来源的飘带覆盖服装，或把同一件衣服的长度、领口和图案改掉。

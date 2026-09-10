@@ -197,7 +197,7 @@ class WorldSettingContextResolverV2:
             source_node_revision=context.source_node_revision,
             source_content_digest=context.source_content_digest,
             source_core_digest=context.source_core_digest,
-            required=source.required,
+            required=True,
             display_order=source.display_order,
             target_audience=context.target_audience,
             compiler_id=context.compiler_id,

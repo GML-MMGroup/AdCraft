@@ -1,1 +1,6 @@
-Organize shots around continuous spatial choreography, develop visual progression through motivated transitions, and reserve reveal timing for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+用一张空间地图和一条动作线组织分镜。即使是一镜到底，也要记录每个关键节点的起始位置、主体动作、摄影机路线、遮挡点、焦点、声音和 reveal timing。连续镜头中的每次转向都应有可解释的动机。
+
+为门框、手部交接、桌面边缘、人物视线、光线或声音设置继承锚点。检查屏幕方向、步伐、道具位置和光源变化。可以有节奏变化，但不要同时改变地理、主体和镜头轴线。
+
+正例：摄影机从走廊跟随人物，经过一个有意义的遮挡后转向产品落点，揭示发生在动作完成时。
+反例：只写“长镜头穿梭全场”，没有路线、障碍、焦点和信息节点。

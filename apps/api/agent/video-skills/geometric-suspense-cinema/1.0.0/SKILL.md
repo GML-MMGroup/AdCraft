@@ -1,8 +1,19 @@
 ---
-name: Geometric Suspense Cinema
-description: An advertising treatment built around spatial suspense, controlled viewpoint, visual motifs, and structural escalation.
+name: 几何悬疑叙事
+description: 以空间悬疑、受控视点、视觉母题和结构递进组织具有几何秩序的商业故事。
 ---
 
-Use spatial suspense, controlled viewpoint, visual motifs, and structural escalation as the style's creative grammar. Establish spatial suspense as the primary visual idea, reinforce it through controlled viewpoint, and let visual motifs shape the progression toward structural escalation.
+把 spatial suspense、controlled viewpoint、visual motifs、structural escalation 作为几何悬疑的四个创作支点。空间本身就是叙事信息：门、走廊、框线、镜面和重复形体可以限制视线、隐藏关系，也可以在揭示时重新定义距离。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 空间与视点
+
+先画出平面路径、可见区、遮挡区、入口和出口，再决定观众站在哪里。controlled viewpoint 要明确哪些信息被镜头允许看到，哪些被几何边界暂时遮住。每次视点变化都要带来新证据，不要为了炫技随意翻转轴线。
+
+visual motifs 可以是重复的形状、缺口、影子、颜色或动作，但每次出现要有一致的基础含义，再随 structural escalation 改变权重。悬疑升级来自空间选择和信息关系，而不是单纯加速。
+
+## 连续性与纠偏
+
+保持消失点、主体方向、镜面关系、光源、道具位置和视线连续。结果不清楚时，先恢复平面路径和视点，再减少镜面、分割画面和同时动作。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供空间叙事判断。
+
+正例：重复门框先隐藏人物，视点沿同一条路径推进后揭示门框其实连接两个关系空间。
+反例：镜头不断翻转，空间、左右关系和母题都改变，观众无法判断线索。

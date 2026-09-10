@@ -158,6 +158,11 @@ class AgentCanvasRequirementProjectionService:
             warnings=text_warnings,
             included_directive_ids=tuple(item.directive_id for item in included),
             omitted_directives=omitted,
+            identity_safety_decision=(
+                revision.ledger.identity_safety_decision
+                if capability_id == "video_direction"
+                else None
+            ),
         )
 
 

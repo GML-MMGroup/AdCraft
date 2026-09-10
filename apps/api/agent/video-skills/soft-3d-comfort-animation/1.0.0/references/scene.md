@@ -1,1 +1,5 @@
-Construct spaces that express rounded proportions through layout and tactile soft materials through light, color, and material. Use warm light to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+选择能承载触碰和休息的空间，记录地面软硬、家具接触面、光源、阴影和温暖色层。背景留出安全负空间，让角色的圆润轮廓和动作清楚可见。道具应有可抓握、可放置或可拥抱的关系。
+
+保持光向、尺度、材质和物件位置连续。

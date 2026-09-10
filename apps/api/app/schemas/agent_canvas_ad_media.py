@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 from app.schemas.agent_canvas_prompt_assertion import ProviderPromptAssertionEvidenceV1
+from app.schemas.agent_canvas_role_prompt_preparation import CharacterGenderPresentationV1
 
 
 AdMediaSemanticRoleV2 = Literal[
@@ -28,16 +29,21 @@ AdMediaSemanticRoleV2 = Literal[
     "general_audio",
     "editing",
 ]
+VideoRepresentationModeV2 = Literal["illustrated", "illustration_to_live_action"]
 SemanticReferenceRoleV2 = Literal[
     "world_setting_reference",
     "subject_reference",
     "environment_reference",
+    "character_reference",
+    "scene_reference",
     "product_reference",
     "prop_reference",
     "style_reference",
     "style_composition_reference",
     "storyboard_visual_reference",
 ]
+GuidedReferenceKindV1 = Literal["character_main", "scene_main"]
+GuidedReferencePurposeV1 = Literal["identity_guidance", "environment_guidance"]
 
 
 class _AdMediaModel(BaseModel):
@@ -48,6 +54,14 @@ class VisualStyleContractV2(_AdMediaModel):
     style_prompt: str = Field(min_length=1, max_length=8_192)
     source: Literal["user", "video_skill", "references", "platform_default"]
     negative_style_constraints: tuple[str, ...] = Field(default=(), max_length=64)
+
+
+class ProviderReferenceInstructionV1(_AdMediaModel):
+    """Provider-only semantics for one explicitly selected guided reference."""
+
+    reference_kind: GuidedReferenceKindV1
+    semantic_purpose: GuidedReferencePurposeV1
+    instruction: str = Field(min_length=1, max_length=512)
 
 
 class DesignAssetContentV2(_AdMediaModel):
@@ -64,9 +78,23 @@ CharacterReferenceRenderingModeV2 = Literal["detailed_semi_realistic_illustratio
 
 
 class CharacterDesignAssetContentV2(DesignAssetContentV2):
+    # None denotes absent historical proof, not an authored unspecified value.
+    face_and_hair: str | None = Field(default=None, min_length=1, max_length=2_048)
+    silhouette_and_proportions: str | None = Field(default=None, min_length=1, max_length=2_048)
+    wardrobe: str | None = Field(default=None, min_length=1, max_length=2_048)
+    accessories: str | None = Field(default=None, max_length=1_024)
+    gender_presentation: CharacterGenderPresentationV1 | None = None
     character_asset_kind: CharacterAssetKindV2 = "identity_master"
     reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
         "detailed_semi_realistic_illustration"
+    )
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    parent_source_node_id: str | None = Field(default=None, min_length=1, max_length=160)
+    parent_source_node_revision: int | None = Field(default=None, ge=1)
+    parent_asset_version_id: str | None = Field(default=None, min_length=1, max_length=160)
+    identity_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
     )
 
 
@@ -89,6 +117,10 @@ class SceneDesignBoardContentV2(_AdMediaModel):
     explicit_entity_reference_ids: tuple[str, ...] = Field(default=(), max_length=32)
     exclude_unreferenced_entities: Literal[True] = True
     no_narrative_progression: Literal[True] = True
+    environment_projection_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
 
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "SceneDesignBoardContentV2":
@@ -137,6 +169,7 @@ class VideoSegmentContentV2(_AdMediaModel):
     segment_summary: str = Field(min_length=1, max_length=8_192)
     duration_seconds: float = Field(gt=0, le=3_600)
     storyboard_content: str = Field(min_length=1, max_length=16_384)
+    representation_mode: VideoRepresentationModeV2 = "illustrated"
     style: VisualStyleContractV2 | None = None
     dialogue: str = Field(default="", max_length=8_192)
     voice_style: str = Field(default="", max_length=2_048)
@@ -190,6 +223,9 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     occurrence_id: str | None = Field(default=None, min_length=1)
     character_phase: Literal["main", "turnaround"] | None = None
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    reference_kind: GuidedReferenceKindV1 | None = None
+    reference_purpose: GuidedReferencePurposeV1 | None = None
+    reference_instruction: ProviderReferenceInstructionV1 | None = None
     storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
     asset_version_id: str = Field(min_length=1)
@@ -229,6 +265,7 @@ class CompiledProviderPromptV2(_AdMediaModel):
     prompt: str
     negative_prompt: str
     provider_parameters: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    reference_instructions: tuple[ProviderReferenceInstructionV1, ...] = ()
     assertion_evidence: ProviderPromptAssertionEvidenceV1 | None = None
 
 

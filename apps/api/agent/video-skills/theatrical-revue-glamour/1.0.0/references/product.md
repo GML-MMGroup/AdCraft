@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing stage blocking through silhouette and chorus geometry through surfaces and detail. Make functional features readable, and use spotlight glamour only where it strengthens the requested selling point.
+产品或服装配件在舞台上要有清楚的交接、落点和光线。用完整轮廓建立身份，再以聚光或队形留白突出一个关键部件，揭示完成后回到全貌。群体动作不能遮挡 Logo、材质和产品结构。
+
+检查产品与手部、台面、人物和舞台地面的接触与尺度。spotlight glamour 应勾勒真实边缘和材质，不把反射变成漂浮光球。结果偏离时减少队形和光效，先锁定产品位置。
+
+正例：队形向两侧退开，人物在中央举起产品，聚光沿轮廓移动，结尾稳定收束。
+反例：产品在队形中复制、变色或悬浮，灯光把关键部件完全洗掉。

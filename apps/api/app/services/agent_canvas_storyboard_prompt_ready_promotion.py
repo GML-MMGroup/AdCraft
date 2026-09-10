@@ -14,7 +14,11 @@ from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository i
 )
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import AgentCanvasWorkflowV2, CanvasBindingSourceNodeV2
+from app.schemas.agent_canvas import AgentCanvasWorkflowV2, CanvasNodeV2
+from app.schemas.agent_canvas_guided_checkpoint import (
+    GuidedCheckpointOriginV1,
+    guided_checkpoint_id,
+)
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptPreparationPairV1,
@@ -124,7 +128,9 @@ class StoryboardPromptReadyPromotionService:
             action_turn_id=action_turn_id,
             expected_workflow_revision=workflow.revision,
             expected_session_revision=(self._session_revision(outcome.workflow_id, session_id)),
-            expected_stage_revision=self._stage_revision(outcome.workflow_id, session_id),
+            expected_stage_revision=self._stage_revision(
+                outcome.workflow_id, session_id, tuple(nodes[item.node_id] for item in pairs)
+            ),
             preparations=tuple(pairs),
             execution_preparations=execution_preparations,
             production_plan_document_id=document.document_id,
@@ -143,16 +149,6 @@ class StoryboardPromptReadyPromotionService:
         """Return the deterministic transitive Node-output dependency closure."""
 
         nodes = {node.node_id: node for node in workflow.nodes}
-        required_sources: dict[str, list[str]] = {}
-        for binding in workflow.bindings:
-            if (
-                binding.enabled
-                and binding.required
-                and isinstance(binding.source, CanvasBindingSourceNodeV2)
-            ):
-                required_sources.setdefault(binding.target_node_id, []).append(
-                    binding.source.node_id
-                )
         pending = list(dict.fromkeys((*target_node_ids, *sorted(guided_anchor_node_ids))))
         discovered: set[str] = set()
         while pending:
@@ -162,11 +158,6 @@ class StoryboardPromptReadyPromotionService:
             if target_node_id not in nodes:
                 raise _invalid("dependency_node")
             discovered.add(target_node_id)
-            pending.extend(
-                source_id
-                for source_id in sorted(required_sources.get(target_node_id, ()), reverse=True)
-                if source_id not in discovered
-            )
         return tuple(sorted(discovered))
 
     @staticmethod
@@ -179,16 +170,6 @@ class StoryboardPromptReadyPromotionService:
     ) -> tuple[StoryboardPromptPreparationPairV1, ...]:
         del execution_mode
         nodes = {node.node_id: node for node in workflow.nodes}
-        required_sources: dict[str, list[str]] = {}
-        for binding in workflow.bindings:
-            if (
-                binding.enabled
-                and binding.required
-                and isinstance(binding.source, CanvasBindingSourceNodeV2)
-            ):
-                required_sources.setdefault(binding.target_node_id, []).append(
-                    binding.source.node_id
-                )
         selected = {item.node_id: item for item in storyboard_preparations}
         for node_id in sorted(guided_anchor_node_ids):
             node = nodes.get(node_id)
@@ -204,28 +185,6 @@ class StoryboardPromptReadyPromotionService:
                 operation_id=preparation.operation_id,
                 expected_node_revision=node.revision,
             )
-        pending = list(selected)
-        while pending:
-            target_node_id = pending.pop()
-            for source_node_id in sorted(required_sources.get(target_node_id, ())):
-                if source_node_id in selected:
-                    continue
-                source = nodes.get(source_node_id)
-                if source is None:
-                    raise _invalid("required_source_node")
-                if source.status == "ready":
-                    continue
-                if source.status != "draft":
-                    raise _invalid("required_source_status")
-                preparation = source.prompt_preparation
-                if preparation.status != "ready" or not preparation.operation_id:
-                    raise _invalid("required_source_prompt_ready")
-                selected[source_node_id] = StoryboardPromptPreparationPairV1(
-                    node_id=source_node_id,
-                    operation_id=preparation.operation_id,
-                    expected_node_revision=source.revision,
-                )
-                pending.append(source_node_id)
         return tuple(sorted(selected.values(), key=lambda item: (item.node_id, item.operation_id)))
 
     def _guided_anchor_node_ids(
@@ -268,8 +227,28 @@ class StoryboardPromptReadyPromotionService:
         session = self._session(workflow_id, session_id)
         return session.revision
 
-    def _stage_revision(self, workflow_id: str, session_id: str) -> int:
+    def _stage_revision(
+        self, workflow_id: str, session_id: str, nodes: tuple[CanvasNodeV2, ...]
+    ) -> int:
         session = self._session(workflow_id, session_id)
+        origins = tuple(
+            GuidedCheckpointOriginV1.model_validate(node.metadata["guided_checkpoint"])
+            for node in nodes
+            if node.metadata.get("guided_checkpoint") is not None
+        )
+        if origins:
+            first = origins[0]
+            if (
+                len(origins) != len(nodes)
+                or any(origin != first for origin in origins)
+                or first.guidance_session_id != session_id
+                or first.checkpoint_id
+                != guided_checkpoint_id(
+                    workflow_id, session_id, stage_revision=first.stage_revision
+                )
+            ):
+                raise _invalid("replay_checkpoint_origin")
+            return first.stage_revision
         return session.journey.stage_revision
 
     def _session(self, workflow_id: str, session_id: str):

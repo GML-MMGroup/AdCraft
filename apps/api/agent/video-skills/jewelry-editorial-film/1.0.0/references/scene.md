@@ -1,1 +1,6 @@
-Construct spaces that express macro detail through layout and specular light through light, color, and material. Use gesture-led display to direct attention toward the advertised subject while preserving the stated location and product context.
+场景以光线和尺度服务珠宝。选择能控制反射的桌面、织物、皮肤、镜面或简洁空间，明确主光方向、背景层次、接触面和反射来源。背景可以有编辑感，但不能生成无关的闪片、宝石或 Logo。
+
+检查珠宝落点、盒子与手的关系，保持阴影和反射与材质一致。换场时用相同高光方向、手势、色彩或声音连接，避免珠宝在不同空间中失去身份。
+
+正例：柔和侧光沿盒盖边缘延续到佩戴场景，背景退后，珠宝轮廓始终清楚。
+反例：背景镜面产生没有来源的第二件珠宝，或强光让金属、皮肤和宝石混成一片。

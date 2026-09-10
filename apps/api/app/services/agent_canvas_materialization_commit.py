@@ -17,6 +17,9 @@ from app.services.agent_canvas_production_journey_reducer import (
 from app.services.agent_canvas_role_reference_policy import (
     AgentCanvasRoleReferencePolicyService,
 )
+from app.services.agent_canvas_storyboard_terminal_convergence import (
+    AgentCanvasStoryboardTerminalConvergenceService,
+)
 
 
 class AgentCanvasMaterializationCommitService:
@@ -29,6 +32,10 @@ class AgentCanvasMaterializationCommitService:
     ) -> None:
         self._repository = repository
         self._reducer = reducer
+        self._storyboard_convergence = AgentCanvasStoryboardTerminalConvergenceService(
+            repository.database,
+            repository.events,
+        )
 
     def commit(self, plan: MaterializationPlanV1) -> MaterializationOutcomeV1:
         if materialization_plan_digest(plan) != plan.payload_digest:
@@ -43,7 +50,9 @@ class AgentCanvasMaterializationCommitService:
                 plan.nodes,
                 plan.bindings,
             )
-        return self._repository.commit(plan, reducer=self._reducer)
+        outcome = self._repository.commit(plan, reducer=self._reducer)
+        self._storyboard_convergence.reconcile_commit(plan, outcome)
+        return outcome
 
     def get_completed_outcome(
         self,

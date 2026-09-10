@@ -1,1 +1,6 @@
-Direct camera and subject motion through engineering form and material precision, using functional demonstration for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把工业动作写成有受力依据的连续过程：说明设备从什么状态开始，哪个部件移动，接触或阻力如何变化，反馈何时出现，动作在哪里停止。摄影机可用克制的推进、横移或跟随强调精度，但运动要服从设备尺度和机械惯性。
+
+提示中明确结构、材料、工作环境、输入、动作、反馈、光线和声音。不要用“科幻机械”替代真实部件，也不要让金属、液体、粉尘和蒸汽违反空间逻辑。结果偏离时优先锁定静态结构，再减少运动和粒子层。
+
+正例：沿导轨方向平稳跟随工件进入，夹具闭合后保留短暂稳定状态，让卡合声与指示反馈对应。
+反例：设备无支撑地旋转、部件穿模，或用快速镜头运动掩盖接口和受力错误。

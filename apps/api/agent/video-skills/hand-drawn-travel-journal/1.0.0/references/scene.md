@@ -1,1 +1,5 @@
-Construct spaces that express drawn overlays through layout and travel observation through light, color, and material. Use location rhythm to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+记录地点的地面、建筑边缘、天气、光向、声音源、可行走路径和一个识别锚点。drawn overlays 只补充路线、方向或观察标记，不能遮盖真实标识、人物动作和产品事实。
+
+保持地点顺序、色彩、天气和叠加层的纸张语汇连续。

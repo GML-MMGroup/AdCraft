@@ -18,6 +18,9 @@ from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import 
 from app.persistence.agent_canvas_repository import (
     invalidate_prompt_preparations_for_source_in_transaction,
 )
+from app.persistence.agent_canvas_result_publication_repository import (
+    AgentCanvasResultPublicationIntentRepository,
+)
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -35,6 +38,7 @@ from app.schemas.agent_canvas_runtime_authority import (
     CanvasExecutionResultCommitReceiptV2,
     CanvasPostReadyEffectV2,
 )
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
 from app.schemas.agent_canvas_media_review_authority import (
     CanvasExecutionResultLineageV2,
 )
@@ -44,6 +48,7 @@ from app.schemas.v2_persistence import V2EventInsert
 
 FaultInjector = Callable[[str], None]
 _TERMINAL_MEMBER_STATES = ("succeeded", "failed", "cancelled")
+_TERMINAL_EXECUTION_STATES = ("completed", "partial_completed", "failed", "cancelled")
 
 
 class AgentCanvasResultCommitRepository:
@@ -55,6 +60,7 @@ class AgentCanvasResultCommitRepository:
         assets: V2AssetLibraryRepository,
         events: EventRepository,
         *,
+        publication_intents: AgentCanvasResultPublicationIntentRepository | None = None,
         fault_injector: FaultInjector | None = None,
     ) -> None:
         if assets.database is not database or events.database is not database:
@@ -62,6 +68,9 @@ class AgentCanvasResultCommitRepository:
         self._database = database
         self._assets = assets
         self._events = events
+        if publication_intents is not None and publication_intents.database is not database:
+            raise ValueError("Publication and result authorities must share one database.")
+        self._publication_intents = publication_intents
         self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(
             database,
             events,
@@ -99,8 +108,49 @@ class AgentCanvasResultCommitRepository:
                             command,
                             commit_id=receipt.commit_id,
                         )
+                        expected_evidence = _guided_result_evidence(
+                            command,
+                            commit_id=receipt.commit_id,
+                            asset_id=receipt.asset_id,
+                            version_id=receipt.version_id,
+                            node_revision=_stored_node_revision(connection, command),
+                        )
+                        if receipt.guided_media_result_evidence != expected_evidence:
+                            raise _error(
+                                "execution_result_payload_conflict",
+                                "Execution result publication evidence is immutable.",
+                            )
+                        if command.publication_intent_id is not None:
+                            self._require_publication_intent(connection, command)
+                            self._publication_intents.mark_committed_in_transaction(
+                                connection,
+                                intent_id=command.publication_intent_id,
+                                receipt_id=receipt.commit_id,
+                                now=command.committed_at,
+                            )
                         connection.commit()
                         return receipt
+                    execution = (
+                        connection.execute(
+                            select(AgentCanvasExecutionRow).where(
+                                AgentCanvasExecutionRow.execution_id == command.execution_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if execution is None:
+                        raise _error(
+                            "execution_not_found",
+                            "Execution was not found.",
+                        )
+                    if str(execution["status"]) in _TERMINAL_EXECUTION_STATES or bool(
+                        execution["cancel_requested"]
+                    ):
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Execution is no longer accepting worker results.",
+                        )
                     self._assert_current_lease(connection, command)
                     member = (
                         connection.execute(
@@ -123,16 +173,50 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Execution member already has a terminal result.",
                         )
-                    asset_id, version_id = self._register_asset(connection, command)
+                    node = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                                AgentCanvasNodeRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if node is None:
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Canvas Node no longer accepts this result.",
+                        )
+                    node_metadata = json.loads(str(node["metadata_json"]))
+                    if isinstance(node_metadata, dict) and isinstance(
+                        node_metadata.get("_deleted_at"), str
+                    ):
+                        raise _error(
+                            "execution_result_terminal_conflict",
+                            "Canvas Node no longer accepts this result.",
+                        )
+                    prior_asset_id = cast(str | None, node["output_asset_id"])
+                    commit_id = _commit_id(command.logical_result_key)
+                    self._require_publication_intent(connection, command)
+                    asset_id, version_id = self._register_asset(
+                        connection,
+                        command,
+                        stable_asset_id=prior_asset_id,
+                    )
                     self._fault("after_asset")
                     node_status = {
                         "succeeded": "ready",
-                        "failed": "failed",
-                        "cancelled": "draft",
+                        "failed": "ready" if prior_asset_id is not None else "failed",
+                        "cancelled": "ready" if prior_asset_id is not None else "draft",
                     }[command.outcome]
                     node_values: dict[str, object] = {
                         "status": node_status,
-                        "error_json": command.error.model_dump_json() if command.error else None,
+                        "error_json": (
+                            command.error.model_dump_json()
+                            if command.error and prior_asset_id is None
+                            else None
+                        ),
                         "updated_at": timestamp,
                     }
                     prepared = command.prepared_result
@@ -150,7 +234,6 @@ class AgentCanvasResultCommitRepository:
                         .where(
                             AgentCanvasNodeRow.workflow_id == command.workflow_id,
                             AgentCanvasNodeRow.node_id == command.node_id,
-                            AgentCanvasNodeRow.status != "ready",
                         )
                         .values(**node_values)
                     )
@@ -159,14 +242,16 @@ class AgentCanvasResultCommitRepository:
                             "execution_result_terminal_conflict",
                             "Canvas Node already has a terminal Ready result.",
                         )
-                    invalidate_prompt_preparations_for_source_in_transaction(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=command.workflow_id,
-                        source_node_id=command.node_id,
-                        updated_at=timestamp,
-                    )
+                    if command.outcome == "succeeded":
+                        invalidate_prompt_preparations_for_source_in_transaction(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=command.workflow_id,
+                            source_node_id=command.node_id,
+                            updated_at=timestamp,
+                            frozen_execution_id=command.execution_id,
+                        )
                     self._fault("after_node")
                     connection.execute(
                         update(AgentCanvasExecutionMemberRow)
@@ -220,18 +305,19 @@ class AgentCanvasResultCommitRepository:
                         .values(state="completed", heartbeat_at=timestamp)
                     )
                     self._fault("after_runtime")
+                    evidence = _guided_result_evidence(
+                        command,
+                        commit_id=commit_id,
+                        asset_id=asset_id,
+                        version_id=version_id,
+                        node_revision=int(node["revision"]),
+                    )
                     event_cursor = self._append_events(
                         connection,
                         command,
                         asset_id=asset_id,
                         version_id=version_id,
                         execution_status=aggregate,
-                    )
-                    commit_id = (
-                        "result_commit_"
-                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[
-                            :32
-                        ]
                     )
                     receipt = CanvasExecutionResultCommitReceiptV2(
                         commit_id=commit_id,
@@ -240,6 +326,7 @@ class AgentCanvasResultCommitRepository:
                         outcome=command.outcome,
                         asset_id=asset_id,
                         version_id=version_id,
+                        guided_media_result_evidence=evidence,
                         event_cursor=event_cursor,
                         committed_at=command.committed_at,
                     )
@@ -261,6 +348,13 @@ class AgentCanvasResultCommitRepository:
                         )
                     )
                     self._insert_effects(connection, command, commit_id=commit_id)
+                    if command.publication_intent_id is not None:
+                        self._publication_intents.mark_committed_in_transaction(
+                            connection,
+                            intent_id=command.publication_intent_id,
+                            receipt_id=commit_id,
+                            now=command.committed_at,
+                        )
                     self._fault("before_commit")
                     connection.commit()
                     return receipt
@@ -273,6 +367,201 @@ class AgentCanvasResultCommitRepository:
             raise _error(
                 "execution_result_commit_failed",
                 "Execution result could not be committed.",
+            ) from error
+
+    def _require_publication_intent(
+        self,
+        connection,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> None:
+        if command.publication_intent_id is None:
+            return
+        if self._publication_intents is None:
+            raise _error(
+                "node_result_publication_intent_not_configured",
+                "Result publication authority is unavailable.",
+            )
+        self._publication_intents.require_prepared_in_transaction(connection, command)
+
+    def reconcile_stale_lease_failure(
+        self,
+        command: CanvasExecutionResultCommitCommandV2,
+    ) -> CanvasExecutionResultCommitReceiptV2 | None:
+        """Terminalize the exact expired publication generation once.
+
+        A publication callback that loses its lease cannot use ``commit`` because
+        that method deliberately rejects expired ownership.  This authority path
+        records the typed failure only when the persisted lease still matches the
+        callback's exact generation and is expired; a newer generation or an
+        already-terminal result is a safe no-op.
+        """
+
+        if command.outcome != "failed":
+            raise ValueError("Stale lease reconciliation requires a failed result.")
+        timestamp = command.committed_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasExecutionResultCommitRow).where(
+                                AgentCanvasExecutionResultCommitRow.logical_result_key
+                                == command.logical_result_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is not None:
+                        receipt = _receipt(existing)
+                        if receipt.payload_digest != command.payload_digest:
+                            raise _error(
+                                "execution_result_payload_conflict",
+                                "Execution result identity is immutable.",
+                            )
+                        connection.commit()
+                        return receipt
+
+                    lease = (
+                        connection.execute(
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == command.execution_id,
+                                AgentCanvasNodeLeaseRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if lease is None or (
+                        str(lease["owner_id"]) != command.lease_owner_id
+                        or int(lease["generation"]) != command.lease_generation
+                        or str(lease["state"]) != "claimed"
+                        or str(lease["expires_at"]) > timestamp
+                    ):
+                        connection.rollback()
+                        return None
+
+                    member = (
+                        connection.execute(
+                            select(AgentCanvasExecutionMemberRow).where(
+                                AgentCanvasExecutionMemberRow.member_id == command.member_id,
+                                AgentCanvasExecutionMemberRow.execution_id == command.execution_id,
+                                AgentCanvasExecutionMemberRow.node_id == command.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if member is None or str(member["state"]) in _TERMINAL_MEMBER_STATES:
+                        connection.rollback()
+                        return None
+
+                    error_json = command.error.model_dump_json() if command.error else None
+                    changed = connection.execute(
+                        update(AgentCanvasNodeRow)
+                        .where(
+                            AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                            AgentCanvasNodeRow.node_id == command.node_id,
+                            AgentCanvasNodeRow.status != "ready",
+                        )
+                        .values(status="failed", error_json=error_json, updated_at=timestamp)
+                    )
+                    if changed.rowcount != 1:
+                        connection.rollback()
+                        return None
+                    connection.execute(
+                        update(AgentCanvasExecutionMemberRow)
+                        .where(AgentCanvasExecutionMemberRow.member_id == command.member_id)
+                        .values(
+                            state="failed",
+                            phase=None,
+                            error_json=error_json,
+                            updated_at=timestamp,
+                        )
+                    )
+                    if command.provider_task_id is not None:
+                        connection.execute(
+                            update(AgentCanvasProviderTaskRow)
+                            .where(
+                                AgentCanvasProviderTaskRow.task_id == command.provider_task_id,
+                                AgentCanvasProviderTaskRow.lease_generation
+                                <= command.lease_generation,
+                            )
+                            .values(
+                                status="failed",
+                                lease_generation=command.lease_generation,
+                                next_poll_at=None,
+                                error_json=error_json,
+                                updated_at=timestamp,
+                            )
+                        )
+                    connection.execute(
+                        update(AgentCanvasNodeLeaseRow)
+                        .where(
+                            AgentCanvasNodeLeaseRow.execution_id == command.execution_id,
+                            AgentCanvasNodeLeaseRow.node_id == command.node_id,
+                            AgentCanvasNodeLeaseRow.owner_id == command.lease_owner_id,
+                            AgentCanvasNodeLeaseRow.generation == command.lease_generation,
+                            AgentCanvasNodeLeaseRow.state == "claimed",
+                        )
+                        .values(state="expired", heartbeat_at=timestamp)
+                    )
+                    aggregate = self._derive_execution_status(connection, command.execution_id)
+                    connection.execute(
+                        update(AgentCanvasExecutionRow)
+                        .where(AgentCanvasExecutionRow.execution_id == command.execution_id)
+                        .values(status=aggregate, updated_at=timestamp)
+                    )
+                    commit_id = (
+                        "result_commit_"
+                        + hashlib.sha256(command.logical_result_key.encode("utf-8")).hexdigest()[
+                            :32
+                        ]
+                    )
+                    event_cursor = self._append_stale_failure_events(
+                        connection,
+                        command,
+                        execution_status=aggregate,
+                    )
+                    receipt = CanvasExecutionResultCommitReceiptV2(
+                        commit_id=commit_id,
+                        logical_result_key=command.logical_result_key,
+                        payload_digest=command.payload_digest,
+                        outcome="failed",
+                        asset_id=None,
+                        version_id=None,
+                        event_cursor=event_cursor,
+                        committed_at=command.committed_at,
+                    )
+                    connection.execute(
+                        insert(AgentCanvasExecutionResultCommitRow).values(
+                            commit_id=commit_id,
+                            logical_result_key=command.logical_result_key,
+                            payload_digest=command.payload_digest,
+                            workflow_id=command.workflow_id,
+                            execution_id=command.execution_id,
+                            member_id=command.member_id,
+                            node_id=command.node_id,
+                            outcome="failed",
+                            asset_id=None,
+                            version_id=None,
+                            event_cursor=event_cursor,
+                            receipt_json=receipt.model_dump_json(),
+                            committed_at=timestamp,
+                        )
+                    )
+                    connection.commit()
+                    return receipt
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_commit_failed",
+                "Stale execution result could not be reconciled.",
             ) from error
 
     def list_receipts(self, execution_id: str) -> tuple[CanvasExecutionResultCommitReceiptV2, ...]:
@@ -382,6 +671,29 @@ class AgentCanvasResultCommitRepository:
             committed_at=str(row["committed_at"]),
         )
 
+    def get_result_evidence(self, source_commit_id: str) -> GuidedMediaResultEvidenceV2 | None:
+        """Read publication evidence committed with one terminal result."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    select(AgentCanvasExecutionResultCommitRow.receipt_json).where(
+                        AgentCanvasExecutionResultCommitRow.commit_id == source_commit_id
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_result_lineage_unavailable",
+                "Execution result lineage is temporarily unavailable.",
+            ) from error
+        if row is None:
+            raise _error(
+                "execution_result_lineage_not_found",
+                "Execution result lineage was not found.",
+            )
+        receipt = CanvasExecutionResultCommitReceiptV2.model_validate_json(str(row))
+        return receipt.guided_media_result_evidence
+
     def find_latest_execution_id(self, *, workflow_id: str, node_id: str) -> str | None:
         """Return the newest successful result execution for one immutable Ready Node."""
 
@@ -421,7 +733,7 @@ class AgentCanvasResultCommitRepository:
         if lease is None:
             raise _error("stale_execution_lease", "Execution lease ownership was lost.")
 
-    def _register_asset(self, connection, command):
+    def _register_asset(self, connection, command, *, stable_asset_id: str | None):
         prepared = command.prepared_result
         if prepared is None or prepared.prepared_object is None:
             return None, None
@@ -430,19 +742,20 @@ class AgentCanvasResultCommitRepository:
                 "prepared_asset_identity_missing",
                 "Prepared media is missing Asset identity.",
             )
+        asset_id = stable_asset_id or prepared.asset_id
         content = prepared.prepared_object
         facts = content.media_facts
         version = self._assets.register_asset_version_in_transaction(
             connection,
             AssetRecordCreate(
-                asset_id=prepared.asset_id,
+                asset_id=asset_id,
                 media_type=content.media_type,
                 source_type=prepared.asset_source_type,
                 display_name=prepared.asset_display_name or content.filename,
             ),
             AssetVersionCreate(
                 version_id=prepared.version_id,
-                asset_id=prepared.asset_id,
+                asset_id=asset_id,
                 storage_key=content.storage_key,
                 sha256=content.sha256,
                 size_bytes=content.size_bytes,
@@ -494,6 +807,28 @@ class AgentCanvasResultCommitRepository:
                     payload={"asset_id": asset_id, "version_id": version_id},
                 ),
             )
+        if command.publication_recovery_attempt is not None:
+            last = self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=command.workflow_id,
+                    execution_id=command.execution_id,
+                    node_id=command.node_id,
+                    asset_id=asset_id,
+                    version_id=version_id,
+                    transition_key=f"publication:{command.publication_intent_id}:recovered",
+                    event_type="node_result_publication_recovered",
+                    created_at=command.committed_at.isoformat(),
+                    payload={
+                        "publication_intent_id": command.publication_intent_id,
+                        "node_id": command.node_id,
+                        "execution_id": command.execution_id,
+                        "attempt": command.publication_recovery_attempt,
+                        "retryable": False,
+                        "reason_code": "prepared_result_committed",
+                    },
+                ),
+            )
         last = self._events.append_in_transaction(
             connection,
             V2EventInsert(
@@ -526,6 +861,41 @@ class AgentCanvasResultCommitRepository:
                     event_type=terminal_event,
                     created_at=command.committed_at.isoformat(),
                     payload={"execution_status": execution_status},
+                ),
+            )
+        return last.seq
+
+    def _append_stale_failure_events(self, connection, command, *, execution_status: str) -> int:
+        """Append deterministic diagnostics and terminal runtime events."""
+
+        last = None
+        events = (
+            (
+                "node_result_publication_lease_lost",
+                {"error": command.error.model_dump() if command.error else {}},
+            ),
+            ("node_failed", {"error": command.error.model_dump() if command.error else {}}),
+            ("runtime_snapshot_updated", {"execution_status": execution_status}),
+        )
+        terminal_event = {
+            "completed": "execution_completed",
+            "partial_completed": "execution_partial_completed",
+            "failed": "execution_failed",
+            "cancelled": "execution_cancelled",
+        }.get(execution_status)
+        if terminal_event is not None:
+            events += ((terminal_event, {"execution_status": execution_status}),)
+        for ordinal, (event_type, payload) in enumerate(events):
+            last = self._events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=command.workflow_id,
+                    execution_id=command.execution_id,
+                    node_id=command.node_id,
+                    transition_key=f"result:{command.logical_result_key}:stale:{ordinal}:{event_type}",
+                    event_type=event_type,
+                    created_at=command.committed_at.isoformat(),
+                    payload=payload,
                 ),
             )
         return last.seq
@@ -658,3 +1028,55 @@ def _digest(value: object) -> str:
 
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_canvas_result_commit_repository")
+
+
+def _commit_id(logical_result_key: str) -> str:
+    return "result_commit_" + hashlib.sha256(logical_result_key.encode("utf-8")).hexdigest()[:32]
+
+
+def _stored_node_revision(connection, command: CanvasExecutionResultCommitCommandV2) -> int:
+    revision = connection.execute(
+        select(AgentCanvasNodeRow.revision).where(
+            AgentCanvasNodeRow.workflow_id == command.workflow_id,
+            AgentCanvasNodeRow.node_id == command.node_id,
+        )
+    ).scalar_one_or_none()
+    return int(revision) if revision is not None else 1
+
+
+def _guided_result_evidence(
+    command: CanvasExecutionResultCommitCommandV2,
+    *,
+    commit_id: str,
+    asset_id: str | None,
+    version_id: str | None,
+    node_revision: int,
+) -> GuidedMediaResultEvidenceV2 | None:
+    context = command.guided_media_context
+    prepared = command.prepared_result
+    if (
+        command.outcome != "succeeded"
+        or context is None
+        or prepared is None
+        or prepared.prepared_object is None
+        or asset_id is None
+        or version_id is None
+    ):
+        return None
+    publication_digest = f"sha256:{prepared.prepared_object.sha256}"
+    return GuidedMediaResultEvidenceV2(
+        evidence_id=f"guided-result:{commit_id}",
+        planning_wave_id=context.planning_wave_id,
+        workflow_id=command.workflow_id,
+        node_id=command.node_id,
+        node_revision=node_revision,
+        operation_id=context.operation_id,
+        asset_id=asset_id,
+        asset_version_id=version_id,
+        publication_digest=publication_digest,
+        plan_document_id=context.plan_document_id,
+        plan_revision=context.plan_revision,
+        publication_receipt_id=commit_id,
+        source_generation=context.source_generation,
+        recorded_at=command.committed_at,
+    )

@@ -1,1 +1,5 @@
-Direct camera and subject motion through material transformation and hand detail, using process causality for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+# 视频指导
+
+镜头优先呈现手部握持、工具角度、受力、材料响应和检查动作。material transformation 要有连续输入与输出，保持碎屑、划痕、温度、湿度和光线状态；不要用加速或模糊遮盖断裂。
+
+声音使用切削、敲击、摩擦、机器、呼吸和工作室底噪，节奏跟随 maker-focused pacing。

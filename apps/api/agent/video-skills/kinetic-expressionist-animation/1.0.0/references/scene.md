@@ -1,1 +1,5 @@
-Construct spaces that express elastic drawing through layout and expressive distortion through light, color, and material. Use energetic staging to direct attention toward the advertised subject while preserving the stated location and product context.
+# 场景指导
+
+建立主运动线、前中后景、可被拉伸的背景形体和稳定参照。energetic staging 让背景变形支持角色路径，不让所有元素同时抢动。color-driven motion 先定义色块层级与流向。
+
+保持场景锚点、光源和色彩关系，避免背景每拍都重置。

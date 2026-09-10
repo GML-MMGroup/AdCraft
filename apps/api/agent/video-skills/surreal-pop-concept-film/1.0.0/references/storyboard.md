@@ -1,1 +1,5 @@
-Organize shots around impossible scale, develop visual progression through pop color, and reserve visual metaphor for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按日常建立、异常触发、尺度或形体变化、人物反应、功能回收组织画面。关键帧记录参照物、变形阶段、接触关系、视线和 visual metaphor 的回收位置。
+
+用形状匹配、颜色擦过、物体遮挡或视线转场连接段落，检查变化是否仍可解释。

@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing geometric opulence through silhouette and jewel-tone contrast through surfaces and detail. Make functional features readable, and use romantic decadence only where it strengthens the requested selling point.
+把产品或珠宝放在几何构图的视觉中心，但用轮廓、材质和真实结构建立识别。镜面、金属、玻璃和宝石色光可以增强 product reveal，但不能改变产品颜色、比例、部件或标识。先给全貌，再以一个细节证明质感，最后回到完整形态。
+
+检查产品与手部、桌面、人物和镜面之间的尺度、落点、阴影和反射。几何背景只做框景，不要生成重复产品或虚假 Logo。结果过度华丽时减少反射层和装饰，保留主轴与产品边缘。
+
+正例：产品置于对称台面，暖色边缘光勾勒轮廓，人物递交完成后镜头靠近关键材质。
+反例：用镜面复制产品、把高光变成无结构光团，或让产品随时代场景变化而改形。

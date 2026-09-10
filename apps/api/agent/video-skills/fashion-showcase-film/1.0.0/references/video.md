@@ -1,1 +1,6 @@
-Direct camera and subject motion through silhouette and fabric motion, using editorial posing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.
+把服装展示写成“起始廓形—动作响应—面料变化—姿态结束”的连续过程。说明摄影机如何读全身轮廓、何时靠近细节、人物如何转身或行走、面料怎样延迟或回弹，以及下一镜保留什么锚点。
+
+提示中锁定人物身份、服装结构、材质行为、场景、光线和动作方向。参考图用于保持服装事实；不要用“高级时尚”替代剪裁和面料描述。结果出现衣服变形时，减少旋转和风力，先恢复肩线、衣摆和接触关系。
+
+正例：镜头从全身侧面跟随人物步行，焦点在衣摆展开时转到织物纹理，停步后回到完整造型。
+反例：人物高速旋转导致面料、脸和饰件同时改变，或只写“时装大片”没有可观察动作。

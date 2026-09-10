@@ -1,8 +1,21 @@
 ---
-name: Mixed-Media Collage Motion
-description: An advertising treatment built around cut-paper layers, typography-aware rhythm without baked text, and tactile compositing.
+name: 混合媒介拼贴动效
+description: 以剪纸层次、无烘焙文字的排版节奏和触觉合成组织具有平面设计秩序的动态广告。
 ---
 
-Use cut-paper layers, typography-aware rhythm without baked text, and tactile compositing as the style's creative grammar. Establish cut-paper layers as the primary visual idea, reinforce it through typography-aware rhythm without baked text, and let tactile compositing shape the progression toward tactile compositing.
+把 cut-paper layers、typography-aware rhythm without baked text、tactile compositing 作为混合媒介拼贴的三个创作支点。拼贴的魅力来自不同材料的边缘、厚度、遮挡和时间关系；动态排版可以引导视线和节奏，但不应把无法编辑的文字直接烙进画面。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 层次与材料
+
+先拆分纸张、照片、纹理、物件、色块和透明层，记录每层的边缘、厚度、阴影、固定点和运动方式。cut-paper layers 可以滑入、折叠、撕开、重叠或被手部推动；每次层级变化都要让空间或信息更清楚。tactile compositing 区分纸纤维、胶片颗粒、墨迹、布面和硬质物的摩擦与遮挡。
+
+## 节奏与信息
+
+typography-aware rhythm without baked text 只描述文字出现的节拍、留白、对齐、遮挡和视线关系，实际可编辑文案由其他权威处理。把色块、图形、产品或人物安排在可读的层级中，避免贴纸式堆满画面。声音和剪切可以共同形成翻页、撕开、盖章或拼合的节奏。
+
+## 连续性与纠偏
+
+保持层级顺序、边缘方向、纹理、产品事实和视觉中心。结果混乱时先减少材料层，恢复主轮廓和遮挡关系，再增加装饰。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供拼贴与动效判断。
+
+正例：纸片沿同一方向展开，色块露出产品轮廓，节奏暗示文案位置但不把文字烙死。
+反例：所有纹理同时移动，文字变形不可编辑，主体被贴纸和噪点完全覆盖。

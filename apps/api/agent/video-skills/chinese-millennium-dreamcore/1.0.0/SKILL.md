@@ -1,8 +1,21 @@
 ---
-name: Chinese Millennium Dreamcore
-description: An advertising treatment built around nostalgic digital texture, liminal familiarity, memory fragments, and saturated night color.
+name: 千禧中式梦核影像
+description: 以怀旧数字质感、似曾相识的临界空间、记忆碎片和饱和夜色组织具有地方感的梦境广告。
 ---
 
-Use nostalgic digital texture, liminal familiarity, memory fragments, and saturated night color as the style's creative grammar. Establish nostalgic digital texture as the primary visual idea, reinforce it through liminal familiarity, and let memory fragments shape the progression toward saturated night color.
+把 nostalgic digital texture、liminal familiarity、memory fragments、saturated night color 作为中式梦核影像的四个创作支点。怀旧来自具体的材质、空间和使用痕迹，不是简单套用低清噪点；梦核需要熟悉与不安同时存在，但人物、产品和动作仍要可追踪。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 质感与空间
+
+nostalgic digital texture 可以来自旧屏幕、塑料、瓷砖、荧光灯、压缩痕迹、褪色印刷和家用物件。liminal familiarity 选择熟悉却空置或比例略有异常的走廊、商场、住宅、车站和公共空间，保留真实可走的路径与光源。
+
+## 记忆与色彩
+
+memory fragments 用重复物件、缺失动作、声音回声、局部画面和不完整视线拼接，不把所有信息都解释完。saturated night color 以深色底、局部高饱和灯光和反射建立层级，颜色变化要跟记忆或产品触点有关。
+
+## 连续性与纠偏
+
+保持时间线、人物身份、服装、道具、空间方向和核心色彩。结果只剩怀旧滤镜时，先补回具体空间和动作；结果过度混乱时，减少碎片和色彩。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供氛围与叙事判断。
+
+正例：空置的熟悉楼道保留旧屏幕和回声，人物沿重复路径找到一个物件，夜色回到真实选择。
+反例：每镜都叠满噪点、乱码和霓虹，空间与人物不断变化，没有可追踪的记忆线索。

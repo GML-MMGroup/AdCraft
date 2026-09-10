@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around rounded proportions and tactile soft materials. Use warm light to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+记录 rounded proportions、脸部可读区域、关节限制、服装层次和接触面。tactile soft materials 要分别说明毛绒、织物、软胶或硬质配件的压缩与回弹。表情用眼神、嘴角、呼吸和小幅姿态变化表达，不靠夸张变形。
+
+跨镜头保持比例、材质、服装颜色和身份特征。

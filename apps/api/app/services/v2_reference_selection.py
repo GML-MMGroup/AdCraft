@@ -35,6 +35,7 @@ class _BindingCandidate:
     asset_id: str
     version_id: str
     source_entity_id: str | None
+    source_scope: str
 
 
 class V2ReferenceSelectionService:
@@ -86,7 +87,11 @@ class V2ReferenceSelectionService:
                 reference_role=request.reference_role,
                 use_as_prompt=request.use_as_prompt,
                 sort_order=start_order + index,
-                metadata={"source": "v2_reference_selection"},
+                metadata={
+                    "source": "v2_reference_selection",
+                    "reference_source": "asset_library",
+                    "source_scope": candidate.source_scope,
+                },
             )
             for index, candidate in enumerate(new_candidates)
         )
@@ -288,6 +293,7 @@ class V2ReferenceSelectionService:
                             asset_id=member.asset_id,
                             version_id=member.version_id,
                             source_entity_id=entity.entity_id,
+                            source_scope=("recommended" if entity.scope == "recommended" else "my"),
                         )
                         for member in members
                     )
@@ -305,6 +311,11 @@ class V2ReferenceSelectionService:
                             asset_id=selection.asset_id,
                             version_id=selection.version_id,
                             source_entity_id=None,
+                            source_scope=(
+                                "recommended"
+                                if version.metadata.get("source_scope") == "recommended"
+                                else "my"
+                            ),
                         )
                     )
         except V2PersistenceError as error:
@@ -357,10 +368,16 @@ def _binding_exists(
 
 
 def _deduplicate_candidates(candidates: list[_BindingCandidate]) -> tuple[_BindingCandidate, ...]:
-    unique: dict[tuple[str, str, str | None], _BindingCandidate] = {}
+    unique: dict[tuple[str, str, str | None, str], _BindingCandidate] = {}
     for candidate in candidates:
         unique.setdefault(
-            (candidate.asset_id, candidate.version_id, candidate.source_entity_id), candidate
+            (
+                candidate.asset_id,
+                candidate.version_id,
+                candidate.source_entity_id,
+                candidate.source_scope,
+            ),
+            candidate,
         )
     return tuple(unique.values())
 

@@ -12,7 +12,7 @@ from time import monotonic
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
-from app.schemas.agent_canvas_errors import CanvasNodeErrorV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1, CanvasNodeErrorV2
 from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_prompt_preparation_dispatch import canonical_context_bytes
@@ -21,20 +21,30 @@ from app.schemas.agent_canvas_prompt_assertion import (
     safe_prompt_assertion_metadata,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import (
+    EditablePromptProjectionV1,
     RoleBindingSnapshotV2,
     RoleBoundTextControlV2,
     RoleCreativeBriefV2,
     RolePromptPreparationContextV2,
 )
-from app.services.agent_canvas_role_prompt_compiler import AgentCanvasRolePromptCompiler
+from app.services.agent_canvas_role_prompt_compiler import (
+    AgentCanvasRolePromptCompiler,
+    role_prompt_failure_disposition,
+)
 from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_role_prompt_context import (
     ROLE_PARAMETER_CONTROL_NAMES,
     RolePromptContextProjector,
     RolePromptParameterResolver,
+    character_identity_projection_from_node,
+    scene_environment_projection_from_node,
 )
 from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_authoring_validation import require_node_runnable
+from app.services.agent_canvas_nodes import _validate_inherited_prompt_projection
+from app.services.agent_structured_validation_audit import (
+    safe_structured_validation_attempts,
+)
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_presentation import PresentationStreamPublisher
 
@@ -60,13 +70,14 @@ class NodePromptPreparationService:
         role_brief_author: RoleBriefAuthor | None = None,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         presentation_publisher: PresentationStreamPublisher | None = None,
+        recipe_registry: RolePromptRecipeRegistry | None = None,
     ) -> None:
         self._workflows = workflows
         self._role_brief_author = role_brief_author
         self._asset_resolver = asset_resolver
         self._presentation_publisher = presentation_publisher
         self._projector = RolePromptContextProjector()
-        self._recipes = RolePromptRecipeRegistry()
+        self._recipes = recipe_registry or RolePromptRecipeRegistry()
         self._parameter_resolver = RolePromptParameterResolver()
         self._compiler = AgentCanvasRolePromptCompiler(self._recipes)
 
@@ -84,10 +95,27 @@ class NodePromptPreparationService:
         require_node_runnable(current)
         if (
             current.prompt_preparation.status == "ready"
+            and current.prompt_presentation is not None
+            and current.prompt_presentation.source == "user_edited"
+        ):
+            _validate_inherited_prompt_projection(current)
+            return current
+        if (
+            current.prompt_preparation.status == "ready"
             and current.prompt_preparation.operation_id == operation_id
         ):
             return current
         snapshot_digest = context_digest(context)
+        preserve_storyboard_text = (
+            current.creative_role in {"storyboard_sequence", "storyboard_video"}
+            and current.metadata.get("prepared_authoring_context_digest") == snapshot_digest
+            and current.prompt_presentation is not None
+            and current.prompt_presentation.brief_digest is not None
+            and current.prompt_presentation.source in {"agent_authored", "deterministic_projection"}
+            and current.prompt_presentation.text == current.generation_prompt
+            and current.prompt_presentation.prompt_digest
+            == f"sha256:{sha256(current.generation_prompt.encode('utf-8')).hexdigest()}"
+        )
         presentation_stream = None
         if self._presentation_publisher is not None:
             presentation_stream = self._presentation_publisher.create_prompt_stream(
@@ -122,7 +150,11 @@ class NodePromptPreparationService:
         role_context: RolePromptPreparationContextV2 | None = None
         try:
             role_context = self._project_context(working, context)
-            if self._role_brief_author is not None:
+            if (
+                self._role_brief_author is not None
+                and role_context.user_prompt is None
+                and not preserve_storyboard_text
+            ):
                 brief = self._role_brief_author(role_context, operation_id)
                 compiled_prompt = self._compiler.compile(
                     brief,
@@ -131,6 +163,7 @@ class NodePromptPreparationService:
                         role_context,
                         self._recipes.resolve(role_context.role_variant),
                     ),
+                    editable_prompt_override=role_context.user_prompt,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
@@ -142,9 +175,34 @@ class NodePromptPreparationService:
                         role_context,
                         self._recipes.resolve(role_context.role_variant),
                     ),
+                    editable_prompt_override=(
+                        current.generation_prompt
+                        if preserve_storyboard_text
+                        else role_context.user_prompt
+                    ),
+                    preserved_node=current if preserve_storyboard_text else None,
                 )
                 prompt = compiled_prompt.prompt
                 structured_content = compiled_prompt.structured_content
+            editable_text = compiled_prompt.prompt
+            prompt_presentation = EditablePromptProjectionV1(
+                text=editable_text,
+                locale=role_context.response_locale,
+                source=(
+                    current.prompt_presentation.source
+                    if preserve_storyboard_text
+                    else "user_edited"
+                    if role_context.user_prompt is not None
+                    else (
+                        "agent_authored"
+                        if compiled_prompt.editable_prompt is not None
+                        else "deterministic_projection"
+                    )
+                ),
+                revision=working.revision + 1,
+                brief_digest=compiled_prompt.brief_digest,
+                prompt_digest=f"sha256:{sha256(editable_text.encode('utf-8')).hexdigest()}",
+            )
             if role_context.role_variant == "world_view":
                 provenance = dict(structured_content.get("authoring_provenance", {}))
                 provenance.update(
@@ -168,6 +226,7 @@ class NodePromptPreparationService:
             ready = working.model_copy(
                 update={
                     "generation_prompt": prompt,
+                    "prompt_presentation": prompt_presentation,
                     "structured_content": structured_content,
                     "status": "ready" if working.node_type == "text" else working.status,
                     "metadata": {
@@ -178,11 +237,26 @@ class NodePromptPreparationService:
                             else {}
                         ),
                         "prompt_context_digest": snapshot_digest,
+                        **(
+                            {"prepared_authoring_context_digest": snapshot_digest}
+                            if working.creative_role in {"storyboard_sequence", "storyboard_video"}
+                            else {}
+                        ),
                         "prompt_digest": digest,
                         "prompt_recipe_id": recipe.recipe_id,
                         "prompt_recipe_version": recipe.recipe_version,
                         "prompt_recipe_digest": recipe.recipe_digest,
                         "prompt_reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
+                        "prompt_character_identity_projection_digest": (
+                            role_context.character_identity_projection.projection_digest
+                            if role_context.character_identity_projection is not None
+                            else None
+                        ),
+                        "prompt_scene_environment_projection_digest": (
+                            role_context.scene_environment_projection.projection_digest
+                            if role_context.scene_environment_projection is not None
+                            else None
+                        ),
                         "role_reference_policy_version": (
                             compiled_prompt.role_reference_policy_version
                         ),
@@ -195,6 +269,27 @@ class NodePromptPreparationService:
                         ),
                         "prompt_assertion_evidence_digest": (
                             compiled_prompt.assertion_evidence.evidence_digest
+                        ),
+                        "prompt_compaction_policy_version": (
+                            compiled_prompt.compaction_policy_version
+                        ),
+                        "prompt_compaction_policy_digest": (
+                            compiled_prompt.compaction_policy_digest
+                        ),
+                        "prompt_compaction_decisions": [
+                            item.model_dump(mode="json")
+                            for item in compiled_prompt.compaction_decisions
+                        ],
+                        **(
+                            {
+                                "prompt_reference_conditioning_plan": (
+                                    compiled_prompt.reference_conditioning_plan.model_dump(
+                                        mode="json"
+                                    )
+                                )
+                            }
+                            if compiled_prompt.reference_conditioning_plan is not None
+                            else {}
                         ),
                         "prepared_reference_snapshots": [
                             item.model_dump(mode="json") for item in role_context.bindings
@@ -237,9 +332,22 @@ class NodePromptPreparationService:
                         character_phase=role_context.character_phase,
                         document_revisions=role_context.document_revisions,
                         binding_digest=compiled_prompt.reference_bundle_digest,
+                        character_identity_projection_digest=(
+                            role_context.character_identity_projection.projection_digest
+                            if role_context.character_identity_projection is not None
+                            else None
+                        ),
+                        scene_environment_projection_digest=(
+                            role_context.scene_environment_projection.projection_digest
+                            if role_context.scene_environment_projection is not None
+                            else None
+                        ),
                         style_projection_digest=compiled_prompt.style_projection_digest,
                         brief_digest=compiled_prompt.brief_digest,
                         parameter_origins=compiled_prompt.parameters,
+                        compaction_policy_version=compiled_prompt.compaction_policy_version,
+                        compaction_policy_digest=compiled_prompt.compaction_policy_digest,
+                        compaction_decisions=compiled_prompt.compaction_decisions,
                         assertion_evidence=compiled_prompt.assertion_evidence,
                         attempt_stage="completed",
                         updated_at=_now(),
@@ -264,9 +372,11 @@ class NodePromptPreparationService:
                 )
             return persisted
         except Exception as error:
-            error_code = (
-                error.code if isinstance(error, V2PersistenceError) else "prompt_preparation_failed"
-            )
+            error_code = str(getattr(error, "code", "prompt_preparation_failed"))
+            error_details = _prompt_preparation_error_details(error, role_context)
+            actionable_failure = error_details.get("actionable_failure")
+            if not isinstance(actionable_failure, ActionableFailureV1):
+                actionable_failure = None
             failed_recipe = (
                 self._recipes.resolve(role_context.role_variant)
                 if role_context is not None
@@ -306,10 +416,28 @@ class NodePromptPreparationService:
                             if role_context is not None
                             else None
                         ),
+                        compaction_policy_version=(
+                            failed_recipe.compaction_policy.policy_version
+                            if failed_recipe is not None
+                            else None
+                        ),
+                        compaction_policy_digest=(
+                            failed_recipe.compaction_policy.digest
+                            if failed_recipe is not None
+                            else None
+                        ),
                         error=CanvasNodeErrorV2(
                             code=error_code,
                             message="Node prompt preparation failed.",
-                            retryable=not isinstance(error, V2PersistenceError),
+                            retryable=(
+                                actionable_failure.retryable
+                                if actionable_failure is not None
+                                else bool(error_details.get("retryable", False))
+                            ),
+                            actionable_failure=actionable_failure,
+                            role_variant=error_details.get("role_variant"),
+                            violation_category=error_details.get("violation_category"),
+                            field_path=error_details.get("field_path"),
                         ),
                         attempt_stage="failed",
                         updated_at=_now(),
@@ -467,6 +595,11 @@ class NodePromptPreparationService:
                 "style_projection_digest": preparation.style_projection_digest,
                 "brief_digest": preparation.brief_digest,
                 "prompt_digest": preparation.prompt_digest,
+                "compaction_policy_version": preparation.compaction_policy_version,
+                "compaction_policy_digest": preparation.compaction_policy_digest,
+                "compaction_decisions": [
+                    item.model_dump(mode="json") for item in preparation.compaction_decisions
+                ],
                 "parameter_origins": [
                     item.model_dump(mode="json") for item in preparation.parameter_origins
                 ],
@@ -496,6 +629,55 @@ class NodePromptPreparationService:
             else context.session_revision
         )
         bindings = self._binding_snapshots(node)
+        character_projection = None
+        scene_projection = None
+        if (
+            node.creative_role == "character"
+            and node.metadata.get("character_phase") == "turnaround"
+        ):
+            workflow = self._workflows.get_workflow(node.workflow_id)
+            nodes = {item.node_id: item for item in workflow.nodes}
+            parents = tuple(
+                item
+                for item in bindings
+                if item.reference_purpose == "character_main_identity"
+                and item.source_node_id is not None
+                and item.occurrence_id == node.metadata.get("occurrence_id")
+                and item.character_phase == "main"
+            )
+            if len(parents) != 1:
+                raise V2PersistenceError(
+                    "character_parent_identity_projection_invalid",
+                    "Character Turnaround requires one exact same-occurrence Main authority.",
+                    stage="node_prompt_preparation",
+                )
+            parent = parents[0]
+            source = nodes.get(parent.source_node_id)
+            if source is None:
+                raise V2PersistenceError(
+                    "character_parent_identity_projection_invalid",
+                    "Character Main authority is unavailable.",
+                    stage="node_prompt_preparation",
+                )
+            character_projection = character_identity_projection_from_node(
+                source,
+                occurrence_id=str(node.metadata.get("occurrence_id")),
+                source_asset_id=parent.asset_id,
+                source_asset_version_id=parent.asset_version_id,
+            )
+        elif node.creative_role == "character":
+            asset_version_id = None
+            if node.output_asset_id is not None and self._asset_resolver is not None:
+                asset_version_id = self._asset_resolver(node.output_asset_id).version_id
+            character_projection = character_identity_projection_from_node(
+                node,
+                occurrence_id=str(node.metadata.get("occurrence_id")),
+                source_asset_id=node.output_asset_id,
+                source_asset_version_id=asset_version_id,
+                allow_uninitialized_main=True,
+            )
+        elif node.creative_role == "scene":
+            scene_projection = scene_environment_projection_from_node(node)
         controls = {
             key: value
             for key, value in context.requirement_facts.items()
@@ -507,6 +689,7 @@ class NodePromptPreparationService:
                 "output_resolution",
                 "resolution",
                 "size",
+                "video_representation_mode",
             }
         }
         return self._projector.project(
@@ -530,6 +713,8 @@ class NodePromptPreparationService:
             if node.metadata.get("source_sequence_id")
             else {},
             world_view_projection=self._world_view_projection(node),
+            character_identity_projection=character_projection,
+            scene_environment_projection=scene_projection,
         )
 
     def _world_view_projection(self, node: CanvasNodeV2) -> str | None:
@@ -709,6 +894,32 @@ class NodePromptPreparationService:
             expected_workflow_revision=workflow.revision,
             dispatch_context=(context.model_dump(mode="json") if context is not None else None),
         )
+
+
+def _prompt_preparation_error_details(
+    error: Exception,
+    context: RolePromptPreparationContextV2 | None,
+) -> dict[str, object]:
+    raw_details = getattr(error, "details", {})
+    details = dict(raw_details) if isinstance(raw_details, dict) else {}
+    if getattr(error, "code", None) != "node_prompt_role_contract_invalid":
+        return {"retryable": bool(getattr(error, "retryable", False))}
+    attempts = safe_structured_validation_attempts(details.get("structured_validation_attempts"))
+    terminal_attempt = attempts[-1] if attempts else {}
+    categories = terminal_attempt.get("violation_categories", [])
+    paths = terminal_attempt.get("validation_paths", [])
+    disposition = role_prompt_failure_disposition(
+        user_authored=context is not None and context.user_prompt is not None
+    )
+    return {
+        "retryable": disposition.retryable,
+        "actionable_failure": disposition,
+        "role_variant": details.get("role_variant")
+        or (context.role_variant if context is not None else None),
+        "violation_category": details.get("violation_category")
+        or (categories[0] if categories else None),
+        "field_path": details.get("field_path") or (paths[0] if paths else None),
+    }
 
 
 def context_digest(context: StageAuthoringContextV1) -> str:

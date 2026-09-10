@@ -1,1 +1,5 @@
-Organize shots around nostalgic digital texture, develop visual progression through liminal familiarity, and reserve memory fragments for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+按熟悉空间、重复路径、记忆碎片、异常发现和现实回收组织镜头。关键帧记录物件、视线、路径、屏幕状态、色彩和声音回声；碎片之间至少保留一个身份或空间锚点。
+
+用反射、屏幕擦除、重复构图、局部遮挡或声音桥接转场，避免随机闪断。

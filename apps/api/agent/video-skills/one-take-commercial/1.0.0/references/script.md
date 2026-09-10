@@ -1,1 +1,6 @@
-Build the narrative premise around continuous spatial choreography, then use motivated transitions to shape escalation and reveal timing to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+脚本先写空间路径和信息顺序，再写对白与动作。每个段落说明主体从哪里来、要到哪里去、途中遇到什么触发点、产品或品牌信息如何被揭示。对话要短而有动作目的，不能让人物停在原地解释空间。
+
+把一条连续行动拆成可验证的交接点：进入、发现、接触、传递、转向、揭示、离开。每个交接点都保留前后动作方向和情绪状态。若需要隐藏剪辑，脚本应指出遮挡或动作依据。
+
+正例：人物寻找目标，沿路径遇到产品并完成一次交接，交接改变下一个人的行动，结尾自然抵达品牌空间。
+反例：用旁白跳过所有空间过程，下一句对白却把人物放到无法到达的位置。

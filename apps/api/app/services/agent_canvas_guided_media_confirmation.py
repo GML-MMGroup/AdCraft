@@ -161,45 +161,74 @@ class GuidedMediaConfirmationService:
                 "Media Asset bytes are not readable through canonical storage.",
             )
 
-        logical_identity = ":".join(
-            (
-                plan.document_id,
-                str(plan.revision),
-                node.node_id,
-                str(node.revision),
-                asset.version_id or "",
-            )
+        confirmation = self._receipts.find_confirmation_for_source(
+            workflow_id=workflow_id,
+            plan_document_id=plan.document_id,
+            node_id=node.node_id,
+            node_revision=node.revision,
+            asset_id=asset.asset_id,
+            asset_version_id=asset.version_id or "",
+            asset_digest=asset.checksum,
         )
-        confirmation_id = "confirmation_" + sha256(logical_identity.encode()).hexdigest()[:32]
-        confirmation: GuidedMediaConfirmationV1 | None = None
-        try:
-            confirmation = self._receipts.get_confirmation(confirmation_id)
-        except V2PersistenceError as error:
-            if error.code != "guided_production_receipt_not_found":
-                raise
-
         created = confirmation is None
         if confirmation is None:
-            confirmation = self._receipts.save_confirmation(
-                GuidedMediaConfirmationV1(
-                    confirmation_id=confirmation_id,
-                    logical_identity=logical_identity,
-                    workflow_id=workflow_id,
-                    plan_document_id=plan.document_id,
-                    plan_revision=plan.revision,
-                    media_role=media_role,
-                    sequence_id=record.sequence_id,
-                    node_id=node.node_id,
-                    node_revision=node.revision,
-                    asset_id=asset.asset_id,
-                    asset_version_id=asset.version_id or "",
-                    asset_digest=asset.checksum,
-                    accepted_by=accepted_by,
-                    action_id=action_id,
-                    decision_id=decision_id,
-                    confirmed_at=self._clock(),
+            logical_identity = ":".join(
+                (
+                    plan.document_id,
+                    str(plan.revision),
+                    node.node_id,
+                    str(node.revision),
+                    asset.version_id or "",
                 )
             )
+            confirmation_id = "confirmation_" + sha256(logical_identity.encode()).hexdigest()[:32]
+            candidate = GuidedMediaConfirmationV1(
+                confirmation_id=confirmation_id,
+                logical_identity=logical_identity,
+                workflow_id=workflow_id,
+                plan_document_id=plan.document_id,
+                plan_revision=plan.revision,
+                media_role=media_role,
+                sequence_id=record.sequence_id,
+                node_id=node.node_id,
+                node_revision=node.revision,
+                asset_id=asset.asset_id,
+                asset_version_id=asset.version_id or "",
+                asset_digest=asset.checksum,
+                accepted_by=accepted_by,
+                action_id=action_id,
+                decision_id=decision_id,
+                confirmed_at=self._clock(),
+            )
+            if (
+                self._progression is not None
+                and record.node_role == "storyboard_grid"
+                and record.sequence_id == _first_sequence_id(plan.content.segments)
+                and getattr(plan.content, "visual_anchor", None) is None
+            ):
+                publish = getattr(
+                    self._progression,
+                    "publish_confirmation_and_fanout",
+                    None,
+                )
+                if callable(publish):
+                    confirmation, created_node_ids = publish(
+                        source_grid=node,
+                        confirmation=candidate,
+                    )
+                    return GuidedMediaConfirmationResult(
+                        confirmation=confirmation,
+                        created_node_ids=created_node_ids,
+                    )
+                preflight = getattr(self._progression, "preflight_fanout", None)
+                if callable(preflight):
+                    preflight(
+                        workflow_id=workflow_id,
+                        plan_document_id=plan.document_id,
+                        source_grid=node,
+                        confirmation=candidate,
+                    )
+            confirmation = self._receipts.save_confirmation(candidate)
         if created:
             self._events.append(
                 V2EventInsert(
@@ -223,11 +252,14 @@ class GuidedMediaConfirmationService:
                     },
                 )
             )
+        if not created:
+            return GuidedMediaConfirmationResult(confirmation=confirmation)
         created_node_ids: tuple[str, ...] = ()
         if (
             self._progression is not None
             and record.node_role == "storyboard_grid"
             and record.sequence_id == _first_sequence_id(plan.content.segments)
+            and getattr(plan.content, "visual_anchor", None) is None
         ):
             created_node_ids = self._progression.on_node_ready(
                 node,

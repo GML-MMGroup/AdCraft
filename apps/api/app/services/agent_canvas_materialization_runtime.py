@@ -15,6 +15,8 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
+from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
@@ -27,6 +29,7 @@ from app.services.agent_canvas_materialization_normalizer import (
     CapabilityMaterializationNormalizer,
 )
 from app.services.agent_canvas_references import canonical_node_reference_facts
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
@@ -83,6 +86,7 @@ class CapabilityMaterializationContextAssembler:
             "requirement_revision_no": envelope.requirement_revision_no,
             "selected_option": envelope.selected_option,
             "creative_goal": raw.get("creative_goal") or envelope.selected_option.public_summary,
+            "response_locale": raw.get("response_locale", "und"),
             "explicit_constraints": raw.get("explicit_constraints") or {},
             "shared_summary": raw.get("shared_summary") or "",
             "capability_facts": raw.get("capability_facts") or {},
@@ -269,6 +273,10 @@ def materialization_context_from_state(
     requirement_controls = {
         control.control: control.value for control in requirement_head.ledger.hard_controls
     }
+    if requirement_head.ledger.identity_safety_decision is not None:
+        requirement_controls["identity_safety_decision"] = (
+            requirement_head.ledger.identity_safety_decision.model_dump(mode="json")
+        )
     bound_reference_ids: dict[str, tuple[str, ...]] = {}
     if envelope.target_node_id is not None:
         for binding in workflow.bindings:
@@ -326,18 +334,32 @@ def materialization_context_from_state(
             )
         reference_summaries.append(summary)
     style_projection: dict[str, object] = {}
-    if proposal.creative_direction_snapshot_id is not None:
-        snapshot = conversations.get_creative_direction_snapshot(
-            proposal.creative_direction_snapshot_id
-        )
+    snapshot_id = proposal.creative_direction_snapshot_id
+    if envelope.capability_id in {"storyboard_design", "video_direction", "bgm_direction"}:
+        plan = AgentWorkingDocumentRepository(
+            workflows.database, EventRepository(workflows.database)
+        ).get_by_kind(envelope.workflow_id, session.session_id, "storyboard_production_plan")
+        if plan is not None:
+            snapshot_id = getattr(plan.content, "creative_direction_snapshot_id", None)
+    if snapshot_id is not None:
+        snapshot = conversations.get_creative_direction_snapshot(snapshot_id)
         role = (
             VideoAgentOperationRegistry()
             .for_capability(envelope.capability_id)
             .style_projection_role
         )
-        candidate = snapshot.role_projections.get(role) if role is not None else None
-        if isinstance(candidate, dict):
-            style_projection = dict(candidate)
+        if snapshot.global_direction.get("global_guidance"):
+            style_projection = (
+                CreativeDirectionService()
+                .resolve_style_context(snapshot, role or "director")
+                .model_dump(mode="json")
+            )
+        else:
+            # Historical summary-only snapshots have no role package to disclose.
+            style_projection = {
+                "creative_direction_snapshot_id": snapshot.snapshot_id,
+                "summary": snapshot.global_direction.get("summary", ""),
+            }
     target_summary = None
     if envelope.target_node_id is not None:
         target = workflows.get_node(envelope.workflow_id, envelope.target_node_id)

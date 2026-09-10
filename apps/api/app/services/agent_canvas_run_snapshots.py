@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
+from typing import Protocol
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
@@ -14,15 +15,63 @@ from app.schemas.agent_canvas import (
     CanvasBindingSourceImageAssetV2,
     CanvasBindingSourceNodeV2,
     CanvasNodeV2,
+    ProjectAssetSummaryV2,
 )
 from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, NodeRunIntentSnapshotV2
 from app.schemas.agent_canvas_runtime_authority import CanvasExecutionMemberIntentV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_execution_mode import classify_canvas_execution_mode
+
+
+_BOUND_ASSET_REVISE_ERROR_CODES = frozenset(
+    {
+        "asset_version_not_found",
+        "binding_source_workflow_mismatch",
+        "canvas_asset_reference_media_type_invalid",
+        "canvas_asset_reference_version_required",
+    }
+)
+
+
+def _bound_asset_revise_error(error: V2PersistenceError) -> V2PersistenceError:
+    disposition = ActionableFailureV1(
+        failure_class="stale",
+        retry_scope="none",
+        user_action="revise",
+    )
+    return V2PersistenceError(
+        error.code,
+        str(error),
+        stage=error.stage,
+        details={
+            **error.details,
+            "actionable_failure": disposition.model_dump(mode="json"),
+            "retryable": disposition.retryable,
+        },
+    )
+
+
+class BoundAssetVersionResolver(Protocol):
+    """Resolve one exact immutable Binding asset for a Workflow."""
+
+    def resolve_bound_asset_version(
+        self,
+        workflow_id: str,
+        asset_id: str,
+        version_id: str,
+    ) -> ProjectAssetSummaryV2: ...
+
+    def resolve_bound_asset_versions(
+        self,
+        workflow_id: str,
+        pairs: tuple[tuple[str, str], ...],
+    ) -> dict[tuple[str, str], ProjectAssetSummaryV2]: ...
 
 
 class AgentCanvasRunIntentSnapshotService:
@@ -35,11 +84,13 @@ class AgentCanvasRunIntentSnapshotService:
         execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
         *,
         bindings: AgentCanvasBindingService | None = None,
+        bound_assets: BoundAssetVersionResolver | None = None,
     ) -> None:
         self._workflows = workflows
         self._runtime = runtime
         self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
         self._bindings = bindings
+        self._bound_assets = bound_assets or bindings
 
     def prepare_member_intents(
         self,
@@ -49,21 +100,65 @@ class AgentCanvasRunIntentSnapshotService:
         """Build immutable snapshot bodies before the admission transaction."""
 
         workflow_nodes = {node.node_id: node for node in workflow.nodes}
-        workflow_assets = {asset.asset_id: asset for asset in workflow.assets}
+        binding_snapshots_by_node = {
+            node.node_id: _binding_snapshots(workflow, node, workflow_nodes) for node in nodes
+        }
+        exact_asset_pairs = tuple(
+            dict.fromkeys(
+                (binding.source_id, binding.source_asset_version_id)
+                for snapshots in binding_snapshots_by_node.values()
+                for binding in snapshots
+                if binding.source_kind == "image_asset"
+                and binding.source_asset_version_id is not None
+            )
+        )
+        if exact_asset_pairs and self._bound_assets is None:
+            raise V2PersistenceError(
+                "run_intent_asset_resolver_unavailable",
+                "Run-bound asset resolution is unavailable.",
+                stage="agent_canvas_run_snapshots",
+            )
+        try:
+            resolved_assets = (
+                self._bound_assets.resolve_bound_asset_versions(
+                    workflow.workflow_id,
+                    exact_asset_pairs,
+                )
+                if self._bound_assets is not None and exact_asset_pairs
+                else {}
+            )
+        except V2PersistenceError as error:
+            if error.code not in _BOUND_ASSET_REVISE_ERROR_CODES:
+                raise
+            raise _bound_asset_revise_error(error) from error
         intents: list[CanvasExecutionMemberIntentV2] = []
         for member_order, node in enumerate(nodes):
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
-            binding_snapshots = _binding_snapshots(workflow, frozen_node, workflow_nodes)
+            binding_snapshots = binding_snapshots_by_node[node.node_id]
+            mode = classify_canvas_execution_mode(
+                frozen_node,
+                has_usable_reference_only_input=_has_available_media_input(binding_snapshots),
+            )
             source_asset_digests: dict[str, str] = {}
             for binding in binding_snapshots:
                 if binding.source_kind != "image_asset":
                     continue
-                asset = workflow_assets.get(binding.source_id)
+                if binding.source_asset_version_id is None:
+                    raise _bound_asset_revise_error(
+                        V2PersistenceError(
+                            "canvas_asset_reference_version_required",
+                            "Direct asset bindings require an immutable asset version.",
+                            stage="agent_canvas_run_snapshots",
+                        )
+                    )
+                asset = resolved_assets.get((binding.source_id, binding.source_asset_version_id))
                 if asset is None:
-                    raise V2PersistenceError(
-                        "run_intent_stale",
-                        "A bound source Asset is unavailable.",
-                        stage="agent_canvas_run_snapshots",
+                    raise _bound_asset_revise_error(
+                        V2PersistenceError(
+                            "asset_version_not_found",
+                            "Asset version was not found.",
+                            stage="agent_canvas_run_snapshots",
+                        )
                     )
                 source_asset_digests[asset.asset_id] = asset.checksum
             semantic = {
@@ -85,6 +180,8 @@ class AgentCanvasRunIntentSnapshotService:
                     snapshot_digest=digest,
                     expected_source_asset_digests=source_asset_digests,
                     parameter_normalizations=tuple(str(item) for item in normalizations),
+                    execution_mode=mode.execution_mode,
+                    semantic_extraction=mode.semantic_extraction,
                 )
             )
         return tuple(intents)
@@ -139,17 +236,35 @@ class AgentCanvasRunIntentSnapshotService:
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
                     order=binding.order,
-                    required=binding.required,
                     source_kind=binding.source.kind,
                     source_id=(
                         binding.source.source_node_id
                         if isinstance(binding.source, CanvasBindingSourceNodeV2)
                         else binding.source.source_asset_id
                     ),
+                    source_asset_id=(
+                        binding.source.source_asset_id
+                        if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                        else next(
+                            (
+                                source.output_asset_id
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            None,
+                        )
+                    ),
                     source_asset_version_id=(
                         binding.source.source_asset_version_id
                         if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
-                        else None
+                        else next(
+                            (
+                                source.output_asset_version_id
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            None,
+                        )
                     ),
                     source_node_revision=(
                         next(
@@ -176,10 +291,26 @@ class AgentCanvasRunIntentSnapshotService:
                         else None
                     ),
                     binding_metadata=binding.metadata,
+                    source_structured_content=(
+                        next(
+                            (
+                                source.structured_content
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            {},
+                        )
+                        if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                        else {}
+                    ),
                 )
                 for binding in bindings
             )
             structured_content_digest = _digest(frozen_node.structured_content)
+            mode = classify_canvas_execution_mode(
+                frozen_node,
+                has_usable_reference_only_input=_has_available_media_input(binding_snapshots),
+            )
             identity = {
                 "workflow_id": frozen_node.workflow_id,
                 "execution_id": execution_id,
@@ -191,11 +322,18 @@ class AgentCanvasRunIntentSnapshotService:
                 "role_contract_version": frozen_node.role_contract_version,
                 "summary_prompt": frozen_node.summary_prompt,
                 "generation_prompt": frozen_node.generation_prompt,
+                "prompt_presentation": (
+                    frozen_node.prompt_presentation.model_dump(mode="json")
+                    if frozen_node.prompt_presentation is not None
+                    else None
+                ),
                 "structured_content_digest": structured_content_digest,
                 "model_selection_mode": frozen_node.model_selection_mode,
                 "model_ref": frozen_node.model_ref,
                 "requested_parameters": frozen_node.parameters,
                 "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
+                "execution_mode": mode.execution_mode,
+                "semantic_extraction": mode.semantic_extraction,
             }
             snapshot = NodeRunIntentSnapshotV2(
                 snapshot_id=f"run_intent_{_digest(identity)[:24]}",
@@ -314,6 +452,7 @@ class AgentCanvasRunIntentSnapshotService:
             role_contract_version=node.role_contract_version,
             summary_prompt=node.summary_prompt,
             generation_prompt=node.generation_prompt,
+            prompt_presentation=node.prompt_presentation,
             structured_content_digest=_digest(node.structured_content),
             model_selection_mode=node.model_selection_mode,
             model_ref=node.model_ref,
@@ -321,6 +460,8 @@ class AgentCanvasRunIntentSnapshotService:
             binding_snapshots=intent.binding_snapshots,
             snapshot_digest=intent.snapshot_digest,
             created_at=now,
+            execution_mode=intent.execution_mode,
+            semantic_extraction=intent.semantic_extraction,
         )
         self._runtime.update_member(
             execution_id,
@@ -352,6 +493,14 @@ def _digest(value: object) -> str:
     ).hexdigest()
 
 
+def _has_available_media_input(bindings: tuple[NodeRunBindingSnapshotV2, ...]) -> bool:
+    return any(
+        binding.input_role in {"image_reference", "video_reference", "audio_reference"}
+        and binding.source_asset_version_id is not None
+        for binding in bindings
+    )
+
+
 def _binding_snapshots(
     workflow: AgentCanvasWorkflowV2,
     node: CanvasNodeV2,
@@ -372,17 +521,29 @@ def _binding_snapshots(
             binding_id=binding.binding_id,
             input_role=binding.input_role,
             order=binding.order,
-            required=binding.required,
             source_kind=binding.source.kind,
             source_id=(
                 binding.source.source_node_id
                 if isinstance(binding.source, CanvasBindingSourceNodeV2)
                 else binding.source.source_asset_id
             ),
+            source_asset_id=(
+                binding.source.source_asset_id
+                if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
+                else (
+                    workflow_nodes[binding.source.source_node_id].output_asset_id
+                    if binding.source.source_node_id in workflow_nodes
+                    else None
+                )
+            ),
             source_asset_version_id=(
                 binding.source.source_asset_version_id
                 if isinstance(binding.source, CanvasBindingSourceImageAssetV2)
-                else None
+                else (
+                    workflow_nodes[binding.source.source_node_id].output_asset_version_id
+                    if binding.source.source_node_id in workflow_nodes
+                    else None
+                )
             ),
             source_node_revision=(
                 workflow_nodes[binding.source.source_node_id].revision
@@ -397,6 +558,12 @@ def _binding_snapshots(
                 else None
             ),
             binding_metadata=binding.metadata,
+            source_structured_content=(
+                workflow_nodes[binding.source.source_node_id].structured_content
+                if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                and binding.source.source_node_id in workflow_nodes
+                else {}
+            ),
         )
         for binding in bindings
         if isinstance(

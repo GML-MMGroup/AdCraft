@@ -1,1 +1,5 @@
-Design supporting objects around impossible scale and pop color, with a material hierarchy that reinforces visual metaphor. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
+# 道具指导
+
+为核心物体记录原始轮廓、材质、接触面、变形触发点和结果用途。bold object transformation 要保留变形前后的身份锚点，impossible scale 需要手、桌面、门或人物等参照物证明尺度。
+
+不要同时改变形状、颜色、材质和功能，除非叙事明确需要。

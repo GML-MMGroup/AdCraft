@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal, Mapping, cast
 from uuid import uuid4
@@ -36,8 +37,9 @@ from app.persistence.agent_canvas_expert_activity_terminal_publication import (
     publish_expert_activity_terminal_in_transaction,
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
-    guidance_awaiting_from_row,
-    guided_interaction_from_row,
+    _awaiting_for_workflow,
+    current_guided_interaction_row,
+    project_guided_interaction,
 )
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
@@ -56,6 +58,7 @@ from app.persistence.models import (
     AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
+    AgentCanvasMaterializationCommitRow,
     AgentCanvasRequirementLedgerRow,
     AgentCanvasNodeRow,
     AgentCanvasSkillRunRow,
@@ -98,6 +101,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
+    CharacterProposalTargetV1,
     NextActionEnvelopeV1,
 )
 from app.schemas.agent_canvas_capability_identity import (
@@ -116,9 +120,11 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionV1,
     GuidedQuestionnaireV1,
     GuidedQuestionV1,
+    awaiting_blocks_authoring,
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
@@ -127,6 +133,17 @@ from app.services.agent_canvas_production_journey import (
     initial_production_journey,
     parse_production_journey,
 )
+
+
+@dataclass(frozen=True)
+class GuidedActionTerminalDisposition:
+    """Private receipt for one failed Guided Action reconciliation."""
+
+    action_id: str
+    workflow_id: str
+    state: Literal["failed"]
+    error_code: str
+    disposition_key: str
 
 
 class AgentCanvasConversationRepository:
@@ -148,6 +165,26 @@ class AgentCanvasConversationRepository:
     @property
     def events(self) -> EventRepository:
         return self._events
+
+    def has_committed_storyboard_materialization(self, turn_id: str) -> bool:
+        """Return whether a Turn is immutable accepted Storyboard authority."""
+
+        with self._database.engine.connect() as connection:
+            return (
+                connection.execute(
+                    select(AgentCanvasMaterializationCommitRow.materialization_id)
+                    .join(
+                        AgentCanvasConceptProposalRow,
+                        AgentCanvasConceptProposalRow.proposal_id
+                        == AgentCanvasMaterializationCommitRow.proposal_id,
+                    )
+                    .where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                        AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                    )
+                ).scalar_one_or_none()
+                is not None
+            )
 
     def get_guidance_session(self, workflow_id: str) -> GuidedSessionStateV2:
         session = self.get_guidance_session_or_none(workflow_id)
@@ -193,6 +230,7 @@ class AgentCanvasConversationRepository:
         character_occurrences: tuple[CharacterOccurrenceV1, ...] | None = None,
         active_style_skill_run_id: str | None,
         response_locale: BCP47Tag = "und",
+        journey_policy_id: Literal["proposal_submit_auto_result_v1"] | None = None,
     ) -> GuidedSessionStateV2:
         now = _now()
         locale = canonicalize_bcp47_tag(response_locale)
@@ -233,10 +271,21 @@ class AgentCanvasConversationRepository:
                             active_proposal_id=None,
                             active_style_skill_run_id=active_style_skill_run_id,
                             completion_json=completion.model_dump_json(),
-                            journey_state_json=initial_production_journey(
-                                element_decisions,
-                                character_occurrences=character_occurrences,
-                            ).model_dump_json(),
+                            journey_state_json=(
+                                initial_production_journey(
+                                    element_decisions,
+                                    character_occurrences=character_occurrences,
+                                )
+                                .model_copy(
+                                    update={
+                                        "journey_policy_id": journey_policy_id,
+                                        "journey_policy_revision": (
+                                            1 if journey_policy_id is not None else None
+                                        ),
+                                    }
+                                )
+                                .model_dump_json()
+                            ),
                             revision=1,
                             created_at=now,
                             updated_at=now,
@@ -585,7 +634,10 @@ class AgentCanvasConversationRepository:
                     awaiting_row = (
                         connection.execute(
                             select(AgentCanvasGuidanceAwaitingRow).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.kind.not_in(
+                                    ("manual_node_run", "media_review")
+                                ),
                             )
                         )
                         .mappings()
@@ -875,24 +927,48 @@ class AgentCanvasConversationRepository:
     ) -> GuidedSessionStateV2:
         now = _now()
         with self._database.engine.begin() as connection:
-            row = _require_guidance_session_row(connection, session_id)
-            _require_guidance_revision(row, expected_session_revision)
-            values: dict[str, object] = {
-                "status": "completed",
-                "completion_json": completion.model_dump_json(),
-                "current_topic_id": None,
-                "active_proposal_id": None,
-                "revision": expected_session_revision + 1,
-                "updated_at": now,
-            }
-            if journey is not None:
-                values["journey_state_json"] = journey.model_dump_json()
-            connection.execute(
-                update(AgentCanvasGuidanceSessionRow)
-                .where(AgentCanvasGuidanceSessionRow.session_id == session_id)
-                .values(**values)
+            workflow_id = self.complete_guidance_session_in_transaction(
+                connection,
+                session_id,
+                expected_session_revision=expected_session_revision,
+                completion=completion,
+                journey=journey,
+                now=now,
             )
-        return self.get_guidance_session(str(row["workflow_id"]))
+        return self.get_guidance_session(workflow_id)
+
+    def complete_guidance_session_in_transaction(
+        self,
+        connection: Connection,
+        session_id: str,
+        *,
+        expected_session_revision: int,
+        completion: GuidanceCompletionProjectionV2,
+        journey: GuidedProductionJourneyV2 | None,
+        now: str,
+    ) -> str:
+        """Complete Guidance inside its terminal proof transaction."""
+        row = _require_guidance_session_row(connection, session_id)
+        _require_guidance_revision(row, expected_session_revision)
+        values: dict[str, object] = {
+            "status": "completed",
+            "completion_json": completion.model_dump_json(),
+            "current_topic_id": None,
+            "active_proposal_id": None,
+            "revision": expected_session_revision + 1,
+            "updated_at": now,
+        }
+        if journey is not None:
+            values["journey_state_json"] = journey.model_dump_json()
+        connection.execute(
+            update(AgentCanvasGuidanceSessionRow)
+            .where(
+                AgentCanvasGuidanceSessionRow.session_id == session_id,
+                AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+            )
+            .values(**values)
+        )
+        return str(row["workflow_id"])
 
     def update_guidance_completion(
         self,
@@ -905,21 +981,41 @@ class AgentCanvasConversationRepository:
 
         now = _now()
         with self._database.engine.begin() as connection:
-            row = _require_guidance_session_row(connection, session_id)
-            _require_guidance_revision(row, expected_session_revision)
-            connection.execute(
-                update(AgentCanvasGuidanceSessionRow)
-                .where(
-                    AgentCanvasGuidanceSessionRow.session_id == session_id,
-                    AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
-                )
-                .values(
-                    completion_json=completion.model_dump_json(),
-                    revision=expected_session_revision + 1,
-                    updated_at=now,
-                )
+            workflow_id = self.update_guidance_completion_in_transaction(
+                connection,
+                session_id,
+                expected_session_revision=expected_session_revision,
+                completion=completion,
+                now=now,
             )
-        return self.get_guidance_session(str(row["workflow_id"]))
+        return self.get_guidance_session(workflow_id)
+
+    def update_guidance_completion_in_transaction(
+        self,
+        connection: Connection,
+        session_id: str,
+        *,
+        expected_session_revision: int,
+        completion: GuidanceCompletionProjectionV2,
+        now: str,
+    ) -> str:
+        """Update only completion projection inside an owning authoring transaction."""
+        completion = GuidanceCompletionProjectionV2.model_validate(completion.model_dump())
+        row = _require_guidance_session_row(connection, session_id)
+        _require_guidance_revision(row, expected_session_revision)
+        connection.execute(
+            update(AgentCanvasGuidanceSessionRow)
+            .where(
+                AgentCanvasGuidanceSessionRow.session_id == session_id,
+                AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+            )
+            .values(
+                completion_json=completion.model_dump_json(),
+                revision=expected_session_revision + 1,
+                updated_at=now,
+            )
+        )
+        return str(row["workflow_id"])
 
     def set_guidance_checkpoint(
         self,
@@ -1650,6 +1746,8 @@ class AgentCanvasConversationRepository:
                         connection.execute(
                             select(AgentCanvasGuidedInteractionRow).where(
                                 AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == interaction.interaction_id,
                                 AgentCanvasGuidedInteractionRow.status == "open",
                             )
                         )
@@ -1659,7 +1757,8 @@ class AgentCanvasConversationRepository:
                     current_awaiting = (
                         connection.execute(
                             select(AgentCanvasGuidanceAwaitingRow).where(
-                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                                AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting.awaiting_id,
                             )
                         )
                         .mappings()
@@ -2376,6 +2475,7 @@ class AgentCanvasConversationRepository:
         turn_id: str,
         *,
         assistant_message: str | None = None,
+        assistant_metadata: Mapping[str, object] | None = None,
         guided_actions: tuple[GuidanceSessionActionV2, ...] = (),
     ) -> ChatTurnV2:
         now = _now()
@@ -2512,6 +2612,7 @@ class AgentCanvasConversationRepository:
                         events=self._events,
                         turn=turn,
                         assistant_message=assistant_message,
+                        assistant_metadata=assistant_metadata,
                         now=now,
                     )
                     connection.commit()
@@ -2525,6 +2626,112 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         return self.get_turn(turn_id)
+
+    def reconcile_completed_continuation_turn(
+        self,
+        turn_id: str,
+        *,
+        expected_status: Literal["queued", "running"],
+        expected_guidance_session_revision: int,
+        expected_updated_at: str,
+        inbound_continuation_id: str,
+        outbound_continuation_id: str,
+        downstream_turn_id: str,
+        disposition_key: str,
+    ) -> ChatTurnV2:
+        """Complete one internal Turn only from an exact terminal continuation chain."""
+
+        transition_key = f"runtime-reconciliation:chat-turn:{disposition_key}"
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    turn = _require_turn(connection, turn_id)
+                    existing_event = connection.execute(
+                        select(WorkflowEventRow.id).where(
+                            WorkflowEventRow.transition_key == transition_key
+                        )
+                    ).scalar_one_or_none()
+                    if str(turn["status"]) == "completed" and existing_event is not None:
+                        connection.commit()
+                        return _turn(turn)
+                    if (
+                        str(turn["turn_kind"]) != "next_action"
+                        or str(turn["status"]) != expected_status
+                        or int(turn["guidance_session_revision"] or 0)
+                        != expected_guidance_session_revision
+                        or str(turn["updated_at"]) != expected_updated_at
+                        or turn["operation_failure_json"] is not None
+                        or turn["error_code"] is not None
+                    ):
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Chat Turn changed before terminal reconciliation.",
+                        )
+                    inbound = _require_terminal_continuation(
+                        connection,
+                        continuation_id=inbound_continuation_id,
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        continuation_turn_id=turn_id,
+                    )
+                    outbound = _require_terminal_continuation(
+                        connection,
+                        continuation_id=outbound_continuation_id,
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        source_turn_id=turn_id,
+                        continuation_turn_id=downstream_turn_id,
+                    )
+                    downstream = _require_turn(connection, downstream_turn_id)
+                    if (
+                        str(downstream["workflow_id"]) != str(turn["workflow_id"])
+                        or str(downstream["conversation_id"]) != str(turn["conversation_id"])
+                        or str(downstream["status"]) != "completed"
+                    ):
+                        raise _error(
+                            "runtime_disposition_source_invalid",
+                            "Downstream Turn does not prove terminal continuation completion.",
+                        )
+                    _complete_turn_state_in_transaction(
+                        connection,
+                        events=self._events,
+                        turn=turn,
+                        now=now,
+                        owned_events=True,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(turn["workflow_id"]),
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type="chat_turn_reconciled",
+                            transition_key=transition_key,
+                            created_at=now,
+                            payload={
+                                "turn_id": turn_id,
+                                "inbound_continuation_id": str(inbound["continuation_id"]),
+                                "outbound_continuation_id": str(outbound["continuation_id"]),
+                                "downstream_turn_id": downstream_turn_id,
+                                "disposition_key": disposition_key,
+                            },
+                        ),
+                    )
+                    updated = _require_turn(connection, turn_id)
+                    connection.commit()
+                    return _turn(updated)
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
 
     def get_guided_action(self, action_id: str) -> GuidanceSessionActionV2:
         try:
@@ -2708,6 +2915,146 @@ class AgentCanvasConversationRepository:
                 "Conversation storage failed.",
             ) from error
         return self.get_guided_action(action_id)
+
+    def reconcile_failed_guided_action(
+        self,
+        action_id: str,
+        *,
+        expected_updated_at: str,
+        expected_session_revision: int,
+        expected_current_session_revision: int,
+        apply_turn_id: str,
+        source_error_code: str,
+        disposition_key: str,
+    ) -> GuidedActionTerminalDisposition:
+        """Fail one applying action only from its exact terminal source proof."""
+
+        transition_key = f"runtime-reconciliation:guided-action:{disposition_key}"
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    action = (
+                        connection.execute(
+                            select(AgentCanvasGuidedActionRow).where(
+                                AgentCanvasGuidedActionRow.action_id == action_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if action is None:
+                        raise _error("guided_action_not_found", "Guided action was not found.")
+                    existing_event = connection.execute(
+                        select(WorkflowEventRow.id).where(
+                            WorkflowEventRow.transition_key == transition_key
+                        )
+                    ).scalar_one_or_none()
+                    if (
+                        str(action["state"]) == "failed"
+                        and str(action["error_code"]) == source_error_code
+                        and existing_event is not None
+                    ):
+                        connection.commit()
+                        return GuidedActionTerminalDisposition(
+                            action_id=action_id,
+                            workflow_id=str(action["workflow_id"]),
+                            state="failed",
+                            error_code=source_error_code,
+                            disposition_key=disposition_key,
+                        )
+                    if (
+                        str(action["state"]) != "applying"
+                        or str(action["apply_turn_id"] or "") != apply_turn_id
+                        or int(action["expected_session_revision"]) != expected_session_revision
+                        or str(action["updated_at"]) != expected_updated_at
+                        or action["receipt_id"] is not None
+                    ):
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guided Action changed before terminal reconciliation.",
+                        )
+                    source_turn = _require_turn(connection, apply_turn_id)
+                    if (
+                        str(source_turn["workflow_id"]) != str(action["workflow_id"])
+                        or str(source_turn["status"]) != "failed"
+                        or str(source_turn["error_code"] or "") != source_error_code
+                    ):
+                        raise _error(
+                            "runtime_disposition_source_invalid",
+                            "Guided Action source Turn does not prove terminal failure.",
+                        )
+                    session = _require_guidance_session_row_by_workflow(
+                        connection, str(action["workflow_id"])
+                    )
+                    if int(session["revision"]) != expected_current_session_revision:
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guidance session changed before terminal reconciliation.",
+                        )
+                    failed_action = _guidance_session_action(action).model_copy(
+                        update={"state": "failed"}
+                    )
+                    changed = connection.execute(
+                        update(AgentCanvasGuidedActionRow)
+                        .where(
+                            AgentCanvasGuidedActionRow.action_id == action_id,
+                            AgentCanvasGuidedActionRow.state == "applying",
+                            AgentCanvasGuidedActionRow.apply_turn_id == apply_turn_id,
+                            AgentCanvasGuidedActionRow.expected_session_revision
+                            == expected_session_revision,
+                            AgentCanvasGuidedActionRow.updated_at == expected_updated_at,
+                        )
+                        .values(
+                            state="failed",
+                            error_code=source_error_code,
+                            action_json=failed_action.model_dump_json(),
+                            updated_at=now,
+                        )
+                    )
+                    if changed.rowcount != 1:
+                        raise _error(
+                            "runtime_disposition_conflict",
+                            "Guided Action changed before terminal reconciliation.",
+                        )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(action["workflow_id"]),
+                            conversation_id=str(source_turn["conversation_id"]),
+                            turn_id=apply_turn_id,
+                            event_type="guided_action_failed",
+                            transition_key=transition_key,
+                            created_at=now,
+                            payload={
+                                "action_id": action_id,
+                                "turn_id": apply_turn_id,
+                                "error_code": source_error_code,
+                                "expected_session_revision": expected_session_revision,
+                                "current_session_revision": expected_current_session_revision,
+                                "disposition_key": disposition_key,
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return GuidedActionTerminalDisposition(
+                        action_id=action_id,
+                        workflow_id=str(action["workflow_id"]),
+                        state="failed",
+                        error_code=source_error_code,
+                        disposition_key=disposition_key,
+                    )
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
 
     def apply_guidance_session_action(
         self,
@@ -3228,6 +3575,30 @@ class AgentCanvasConversationRepository:
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
+                committed_storyboard = connection.execute(
+                    select(AgentCanvasMaterializationCommitRow.materialization_id)
+                    .join(
+                        AgentCanvasConceptProposalRow,
+                        AgentCanvasConceptProposalRow.proposal_id
+                        == AgentCanvasMaterializationCommitRow.proposal_id,
+                    )
+                    .where(
+                        AgentCanvasMaterializationCommitRow.action_turn_id == turn_id,
+                        AgentCanvasConceptProposalRow.proposal_kind == "storyboard",
+                    )
+                ).scalar_one_or_none()
+                if committed_storyboard is not None:
+                    return _turn(turn)
+                actionable_failure = (
+                    operation_failure.actionable_failure
+                    if operation_failure is not None
+                    and operation_failure.actionable_failure is not None
+                    else ActionableFailureV1(
+                        failure_class=("transient" if retryable else "deterministic"),
+                        retry_scope=("turn" if retryable else "none"),
+                        user_action=("retry" if retryable else "none"),
+                    )
+                )
                 retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
                 is_typed_continuation_snapshot = retry_snapshot.get(
                     "schema_version"
@@ -3293,6 +3664,9 @@ class AgentCanvasConversationRepository:
                                         operation_failure.model_dump(mode="json")
                                         if operation_failure is not None
                                         else None
+                                    ),
+                                    "actionable_failure": actionable_failure.model_dump(
+                                        mode="json"
                                     ),
                                 }
                             )
@@ -3379,6 +3753,7 @@ class AgentCanvasConversationRepository:
                             "code": code,
                             "retryable": retryable,
                             "operation_stage": operation_stage,
+                            "actionable_failure": actionable_failure.model_dump(mode="json"),
                         },
                     ),
                 )
@@ -3476,6 +3851,11 @@ class AgentCanvasConversationRepository:
                         AgentCanvasGuidanceSessionRow.session_id == proposal["guidance_session_id"]
                     )
                 ).scalar_one()
+                session_journey = connection.execute(
+                    select(AgentCanvasGuidanceSessionRow.journey_state_json).where(
+                        AgentCanvasGuidanceSessionRow.session_id == proposal["guidance_session_id"]
+                    )
+                ).scalar_one()
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -3487,12 +3867,43 @@ class AgentCanvasConversationRepository:
             options,
             applications,
             current_session_revision=int(current_session_revision),
+            require_submit=(
+                parse_production_journey(str(session_journey)).journey_policy_id
+                == "proposal_submit_auto_result_v1"
+            ),
         )
 
     def get_private_proposal(self, proposal_id: str) -> ConceptProposalV2:
         """Read the complete private Proposal authority for materialization paths."""
 
         return self.get_proposal(proposal_id)
+
+    def get_proposal_character_target(
+        self,
+        proposal_id: str,
+    ) -> CharacterProposalTargetV1 | None:
+        """Read the immutable Character scope stored with one Proposal."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasConceptProposalRow).where(
+                            AgentCanvasConceptProposalRow.proposal_id == proposal_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        if row is None:
+            raise _error("proposal_not_found", "Concept proposal was not found.")
+        return _proposal_character_target(row)
 
     def list_open_proposals(self, workflow_id: str) -> tuple[ConceptProposalV2, ...]:
         try:
@@ -3585,6 +3996,7 @@ class AgentCanvasConversationRepository:
             context_snapshot_digest=context_digest,
             occurrence_id=continuation.occurrence_id,
             character_phase=continuation.character_phase,
+            resume_materialization_envelope_id=(continuation.resume_materialization_envelope_id),
             action_owner=continuation.action_owner,
             created_at=timestamp,
         )
@@ -4274,6 +4686,69 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
 
+    def consultation_messages(
+        self, source_turn_id: str, *, required: bool = True
+    ) -> tuple[dict[str, object], ...]:
+        """Read bounded visible history strictly before the source user message."""
+        with self._database.engine.connect() as connection:
+            turn = _require_turn(connection, source_turn_id)
+            retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
+            source_identity = (
+                AgentCanvasChatEntryRow.entry_id == retry_snapshot.get("source_message_id")
+                if turn["retry_of_turn_id"] is not None
+                else func.json_extract(AgentCanvasChatEntryRow.metadata_json, "$.turn_id")
+                == source_turn_id
+            )
+            source_sequence = connection.execute(
+                select(AgentCanvasChatEntryRow.sequence_no).where(
+                    AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+                    AgentCanvasChatEntryRow.speaker == "user",
+                    source_identity,
+                )
+            ).scalar_one_or_none()
+            if source_sequence is None:
+                # Intake also handles durable commands without a new user message.
+                # Only consultation answers require the exact user-message cursor.
+                if not required:
+                    return ()
+                raise _error(
+                    "agent_conversation_unavailable",
+                    "The source conversation message is unavailable.",
+                )
+            rows = (
+                connection.execute(
+                    select(AgentCanvasChatEntryRow)
+                    .where(
+                        AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"],
+                        AgentCanvasChatEntryRow.entry_type == "message",
+                        AgentCanvasChatEntryRow.speaker.in_(("user", "adcraft_video_agent")),
+                        AgentCanvasChatEntryRow.sequence_no < source_sequence,
+                    )
+                    .order_by(AgentCanvasChatEntryRow.sequence_no.desc())
+                    .limit(12)
+                )
+                .mappings()
+                .all()
+            )
+        messages: list[dict[str, object]] = []
+        remaining_bytes = 16_384
+        for row in rows:
+            content = str(row["content"])[:4_096]
+            if not content:
+                continue
+            bounded = content.encode("utf-8")[:remaining_bytes].decode("utf-8", errors="ignore")
+            if not bounded:
+                break
+            messages.append(
+                {
+                    "sequence_no": row["sequence_no"],
+                    "role": "user" if row["speaker"] == "user" else "assistant",
+                    "content": bounded,
+                }
+            )
+            remaining_bytes -= len(bounded.encode("utf-8"))
+        return tuple(reversed(messages))
+
     def list_timeline(
         self,
         workflow_id: str,
@@ -4350,6 +4825,11 @@ class AgentCanvasConversationRepository:
             if authority.session is not None
             and authority.session.awaiting is not None
             and authority.session.awaiting.requires_user_action
+            and awaiting_blocks_authoring(
+                authority.session.awaiting,
+                stage=authority.session.journey.stage,
+                stage_revision=authority.session.journey.stage_revision,
+            )
             else tuple(
                 sorted(
                     (_guidance_session_action(row) for row in current_action_rows),
@@ -4696,6 +5176,37 @@ def _require_turn(connection: Connection, turn_id: str) -> RowMapping:
     return row
 
 
+def _require_terminal_continuation(
+    connection: Connection,
+    *,
+    continuation_id: str,
+    workflow_id: str,
+    conversation_id: str,
+    source_turn_id: str | None = None,
+    continuation_turn_id: str,
+) -> RowMapping:
+    predicates = [
+        AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+        AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+        AgentCanvasContinuationOutboxRow.conversation_id == conversation_id,
+        AgentCanvasContinuationOutboxRow.continuation_turn_id == continuation_turn_id,
+        AgentCanvasContinuationOutboxRow.status == "completed",
+    ]
+    if source_turn_id is not None:
+        predicates.append(AgentCanvasContinuationOutboxRow.source_turn_id == source_turn_id)
+    row = (
+        connection.execute(select(AgentCanvasContinuationOutboxRow).where(*predicates))
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _error(
+            "runtime_disposition_source_invalid",
+            "Continuation does not prove the requested terminal transition.",
+        )
+    return row
+
+
 def _validate_clarification_target(
     *,
     current: GuidedProductionJourneyV2,
@@ -4781,6 +5292,7 @@ def _upsert_clarification_authority(
         connection.execute(
             select(AgentCanvasGuidedInteractionRow).where(
                 AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                AgentCanvasGuidedInteractionRow.kind != "media_review",
                 AgentCanvasGuidedInteractionRow.status == "open",
             )
         )
@@ -4790,7 +5302,8 @@ def _upsert_clarification_authority(
     awaiting_row = (
         connection.execute(
             select(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id,
+                AgentCanvasGuidanceAwaitingRow.kind.not_in(("manual_node_run", "media_review")),
             )
         )
         .mappings()
@@ -4958,6 +5471,7 @@ def _complete_turn_in_transaction(
     events: EventRepository,
     turn: RowMapping,
     assistant_message: str | None,
+    assistant_metadata: Mapping[str, object] | None = None,
     now: str,
 ) -> None:
     if assistant_message:
@@ -4966,6 +5480,7 @@ def _complete_turn_in_transaction(
             events=events,
             turn=turn,
             assistant_message=assistant_message,
+            metadata=assistant_metadata,
             now=now,
         )
     _complete_turn_state_in_transaction(
@@ -5221,6 +5736,9 @@ def _skill_run_with_public(
     public_payload = global_direction.get("public_skill")
     if not isinstance(public_payload, dict):
         return _skill_run(row)
+    public_payload = {
+        key: value for key, value in public_payload.items() if key != "video_representation_mode"
+    }
     return _skill_run(
         row,
         public_skill=VideoSkillPublicDetailV2.model_validate(public_payload),
@@ -5421,6 +5939,24 @@ def _turn(
     *,
     continuation: ContinuationDeliveryV2 | None = None,
 ) -> ChatTurnV2:
+    operation_failure = (
+        AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
+        if row["operation_failure_json"]
+        else None
+    )
+    actionable_failure = (
+        operation_failure.actionable_failure
+        if operation_failure is not None and operation_failure.actionable_failure is not None
+        else (
+            ActionableFailureV1(
+                failure_class=("transient" if bool(row["retryable"]) else "deterministic"),
+                retry_scope=("turn" if bool(row["retryable"]) else "none"),
+                user_action=("retry" if bool(row["retryable"]) else "none"),
+            )
+            if str(row["status"]) == "failed"
+            else None
+        )
+    )
     return ChatTurnV2(
         turn_id=str(row["turn_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -5442,12 +5978,9 @@ def _turn(
         retry_of_turn_id=(str(row["retry_of_turn_id"]) if row["retry_of_turn_id"] else None),
         retry_attempt_no=int(row["retry_attempt_no"]),
         retryable=bool(row["retryable"]),
+        actionable_failure=actionable_failure,
         operation_stage=(str(row["operation_stage"]) if row["operation_stage"] else None),
-        operation_failure=(
-            AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
-            if row["operation_failure_json"]
-            else None
-        ),
+        operation_failure=operation_failure,
         error_code=str(row["error_code"]) if row["error_code"] else None,
         error_message=str(row["error_message"]) if row["error_message"] else None,
         created_at=str(row["created_at"]),
@@ -5492,6 +6025,7 @@ def _proposal(
     applications: list[RowMapping] | None = None,
     *,
     current_session_revision: int | None = None,
+    require_submit: bool = False,
 ) -> ConceptProposalV2:
     applications = applications or []
     latest_application = None
@@ -5519,6 +6053,7 @@ def _proposal(
             "The persisted Proposal Card schema version is unsupported.",
         )
     availability = cast(str, row["availability"])
+    character_target = _proposal_character_target(row)
     materialization = (
         ProposalMaterializationProjectionV2(
             materialization_id=str(row["materialization_id"]),
@@ -5531,6 +6066,7 @@ def _proposal(
                 ProposalMaterializationErrorV2(
                     code=str(row["materialization_error_code"]),
                     message=str(row["materialization_error_message"]),
+                    actionable_failure=_materialization_actionable_failure(row),
                 )
                 if row["materialization_error_code"] is not None
                 and row["materialization_error_message"] is not None
@@ -5548,7 +6084,7 @@ def _proposal(
             expected_session_revision=int(row["guidance_session_revision"]),
             proposal_kind=str(row["proposal_kind"]),
         )
-        if availability == "open" and len(options) == 3
+        if availability == "open" and (len(options) == 3 or require_submit)
         else (
             _historical_proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),
@@ -5604,6 +6140,16 @@ def _proposal(
         materialization=materialization,
         guidance_session_id=str(row["guidance_session_id"]),
         guidance_session_revision=int(row["guidance_session_revision"]),
+        occurrence_id=(character_target.occurrence_id if character_target is not None else None),
+        occurrence_index=(
+            character_target.occurrence_index if character_target is not None else None
+        ),
+        occurrence_count=(
+            character_target.occurrence_count if character_target is not None else None
+        ),
+        character_phase=(
+            character_target.character_phase if character_target is not None else None
+        ),
         actions=actions,
         proposed_references=tuple(
             ProposedDraftReferenceV2.model_validate(item)
@@ -5627,6 +6173,47 @@ def _proposal(
     )
 
 
+def _proposal_character_target(row: RowMapping) -> CharacterProposalTargetV1 | None:
+    """Read and validate the immutable scope stored with a Character Proposal."""
+
+    values = (
+        row.get("character_occurrence_id"),
+        row.get("character_occurrence_index"),
+        row.get("character_occurrence_count"),
+        row.get("character_phase"),
+        row.get("character_scope_digest"),
+    )
+    if not any(value is not None for value in values):
+        return None
+    if not all(value is not None for value in values):
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Persisted Character Proposal scope is incomplete.",
+        )
+    if str(row["capability_id"]) != "character_design":
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Only Character Proposals may carry occurrence scope.",
+        )
+    try:
+        return CharacterProposalTargetV1.model_validate(
+            {
+                "occurrence_id": values[0],
+                "occurrence_index": values[1],
+                "occurrence_count": values[2],
+                "character_phase": values[3],
+                "requirement_revision_id": row["requirement_revision_id"],
+                "requirement_revision_no": row["requirement_revision_no"],
+                "target_digest": values[4],
+            }
+        )
+    except ValueError as error:
+        raise _error(
+            "character_proposal_scope_invalid",
+            "Persisted Character Proposal scope is invalid.",
+        ) from error
+
+
 def _timeline_entry(row: RowMapping) -> ChatTimelineEntryV2:
     metadata = json.loads(str(row["metadata_json"]))
     return ChatTimelineEntryV2(
@@ -5640,6 +6227,7 @@ def _timeline_entry(row: RowMapping) -> ChatTimelineEntryV2:
         metadata=metadata,
         command_plan=metadata.get("command_plan"),
         action_receipt=metadata.get("action_receipt"),
+        actionable_failure=metadata.get("actionable_failure"),
         created_at=str(row["created_at"]),
     )
 
@@ -5746,34 +6334,29 @@ def _guidance_session(
         .mappings()
         .all()
     )
-    interaction_row = (
-        connection.execute(
-            select(AgentCanvasGuidedInteractionRow)
-            .where(
-                AgentCanvasGuidedInteractionRow.workflow_id == row["workflow_id"],
-                AgentCanvasGuidedInteractionRow.status == "open",
-            )
-            .order_by(
-                AgentCanvasGuidedInteractionRow.updated_at.desc(),
-                AgentCanvasGuidedInteractionRow.interaction_id.asc(),
-            )
-        )
-        .mappings()
-        .first()
-    )
-    awaiting_row = (
-        connection.execute(
-            select(AgentCanvasGuidanceAwaitingRow).where(
-                AgentCanvasGuidanceAwaitingRow.workflow_id == row["workflow_id"]
-            )
-        )
-        .mappings()
-        .one_or_none()
-    )
+    interaction_row = current_guided_interaction_row(connection, str(row["workflow_id"]))
+    persisted_awaiting = _awaiting_for_workflow(connection, str(row["workflow_id"]))
     journey = parse_production_journey(str(row["journey_state_json"]))
+    actionable_failure = None
+    if row["active_proposal_id"] is not None:
+        active_proposal = (
+            connection.execute(
+                select(AgentCanvasConceptProposalRow).where(
+                    AgentCanvasConceptProposalRow.proposal_id == row["active_proposal_id"],
+                    AgentCanvasConceptProposalRow.workflow_id == row["workflow_id"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if (
+            active_proposal is not None
+            and str(active_proposal["materialization_status"]) == "failed"
+        ):
+            actionable_failure = _materialization_actionable_failure(active_proposal)
     awaiting = (
-        guidance_awaiting_from_row(awaiting_row)
-        if awaiting_row is not None
+        persisted_awaiting
+        if persisted_awaiting is not None
         else _derive_historical_manual_awaiting(connection, row, journey)
     )
     return GuidedSessionStateV2(
@@ -5831,12 +6414,29 @@ def _guidance_session(
         ),
         completion=GuidanceCompletionProjectionV2.model_validate_json(str(row["completion_json"])),
         interaction=(
-            guided_interaction_from_row(interaction_row) if interaction_row is not None else None
+            project_guided_interaction(connection, interaction_row)
+            if interaction_row is not None
+            else None
         ),
         awaiting=awaiting,
+        actionable_failure=actionable_failure,
         journey=journey,
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
+    )
+
+
+def _materialization_actionable_failure(row: RowMapping) -> ActionableFailureV1:
+    if bool(row["materialization_retryable"]):
+        return ActionableFailureV1(
+            failure_class="transient",
+            retry_scope="turn",
+            user_action="retry",
+        )
+    return ActionableFailureV1(
+        failure_class="deterministic",
+        retry_scope="none",
+        user_action=("redesign" if str(row["proposal_kind"]) == "storyboard" else "revise"),
     )
 
 

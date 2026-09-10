@@ -1,1 +1,5 @@
-Shape an adaptable instrumental arc around material transformation and hand detail. Let texture and energy support process causality without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.
+# 音乐指导
+
+工艺片的核心节奏来自工具、材料和制作者的呼吸，音乐只在段落转换或情绪回收处提供支持。让手部细节和过程因果保持可听，不用持续鼓点把每个动作压成表演。
+
+在材料完成、检查和成品出现时安排适度的和声或留白，避免音乐替代工作声。

@@ -1,1 +1,6 @@
-Preserve exact product identity while expressing flowing ornamental line through silhouette and silk material behavior through surfaces and detail. Make functional features readable, and use refined color fields only where it strengthens the requested selling point.
+把产品轮廓、比例、材质和品牌事实嵌入丝绸的流动关系，而不是让布料完全覆盖产品。先以清楚轮廓建立识别，再让丝绸包裹、滑过或展开，最后露出关键部件和完整形态。产品与布料的接触点、遮挡边界、阴影和反射要合理。
+
+丝绸的光泽沿褶皱和边缘移动，颜色在高光和背光处保持材质逻辑。参考图锁定产品结构；装饰线可以改变构图，不可以改写产品。结果偏离时先静止产品和布料，再逐步增加流动。
+
+正例：布料从产品底部展开形成一条装饰线，露出轮廓和材质细节，收束时仍能认出同一产品。
+反例：布料穿过产品、遮挡所有关键部件，或借装饰图案添加未确认的 Logo。

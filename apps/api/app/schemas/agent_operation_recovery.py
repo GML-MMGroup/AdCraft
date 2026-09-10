@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 
 
 AgentOperationPolicyClassV2 = Literal[
@@ -119,5 +120,15 @@ class AgentOperationFailureV2(_RecoveryModel):
     failure_stage: AgentOperationFailureStageV2
     elapsed_ms: int = Field(ge=0)
     retryable: bool = False
+    actionable_failure: ActionableFailureV1 | None = None
     validation_paths: tuple[str, ...] = Field(default=(), max_length=32)
     occurred_at: datetime
+
+    @model_validator(mode="after")
+    def validate_retryable_projection(self) -> "AgentOperationFailureV2":
+        if (
+            self.actionable_failure is not None
+            and self.retryable != self.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
+        return self

@@ -37,8 +37,21 @@ class AgentExecutionSettingsPatchV2(_ExecutionSettingsModel):
         return value
 
 
+class AutomaticRunRetryPolicyV1(_ExecutionSettingsModel):
+    """Validated policy for newly authorized automatic operations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy_id: Literal["transient_once_v1"] = "transient_once_v1"
+    max_attempts: int = Field(default=2, ge=1, le=2, strict=True)
+
+
 class AutomaticRunCommandV2(_ExecutionSettingsModel):
     command_id: str = Field(min_length=1, max_length=160)
+    logical_operation_id: str = Field(min_length=1, max_length=160)
+    operation_generation: int = Field(ge=1)
+    retry_ordinal: int = Field(ge=0)
+    max_automatic_retries: int = Field(ge=0)
     workflow_id: str = Field(min_length=1, max_length=160)
     source_action_id: str = Field(min_length=1, max_length=160)
     node_id: str = Field(min_length=1, max_length=160)

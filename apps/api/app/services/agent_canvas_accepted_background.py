@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class AcceptedBackgroundOperation(str, Enum):
-    VARIATION_EXECUTION_RESUME = "variation_execution_resume"
     EDITING_EXPORT_RESUME = "editing_export_resume"
     CHAT_TURN_PROCESS = "chat_turn_process"
     GUIDANCE_RETRY_TURN_PROCESS = "guidance_retry_turn_process"

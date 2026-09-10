@@ -4,14 +4,24 @@
   "display_name": "Platform Default",
   "description": "Balanced commercial video direction.",
   "category": "commercial-craft",
-  "tags": ["commercial", "balanced"],
-  "supported_use_cases": ["general advertising"],
-  "preview": {"kind": "none"},
+  "tags": [
+    "commercial",
+    "balanced"
+  ],
+  "supported_use_cases": [
+    "general advertising"
+  ],
+  "preview": {
+    "kind": "image",
+    "summary": "Platform Default visual preview.",
+    "media_url": "/api/v2/video-skills/platform-default/preview?v=1.0.0"
+  },
   "display_order": 10,
   "files": {
     "SKILL.md": "130745d8dfd802fd773c44a28382557b6aaff8a968579052c0ea4f4211f1dc77",
     "references/bgm.md": "8f8f60e2eedc9de2ec85ce5d169567db5b199b1f8da857b5d52c15152832dc0e",
-    "references/video.md": "1971b6544d044564377915686c40ec2a4f21587861ec27aab3851865200e3b9b"
+    "references/video.md": "1971b6544d044564377915686c40ec2a4f21587861ec27aab3851865200e3b9b",
+    "previews/preview.webp": "3a00c12b6ea941e94bf978f669d749813db6c931bfde3a8c578408bb2244e7dd"
   },
   "role_guidance": {
     "bgm": "references/bgm.md",

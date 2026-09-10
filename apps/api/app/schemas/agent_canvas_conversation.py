@@ -26,6 +26,7 @@ from app.schemas.agent_runtime import (
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_errors import ActionableFailureV1
 from app.schemas.agent_canvas_guidance import GuidanceAdvancePreconditionV1
 
 
@@ -108,6 +109,11 @@ class ContinuationCommitV2(_ConversationModel):
     video_skill_run_id: str | None = None
     occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
     character_phase: Literal["main", "turnaround"] | None = None
+    resume_materialization_envelope_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
     action_owner: Literal["guided_journey", "targeted_authoring", "quick_media"] = "guided_journey"
     max_attempts: int = Field(default=5, ge=1)
 
@@ -139,6 +145,7 @@ class ChatTurnV2(_ConversationModel):
     retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     retry_attempt_no: int = Field(default=1, ge=1)
     retryable: bool = False
+    actionable_failure: ActionableFailureV1 | None = None
     operation_stage: str | None = Field(default=None, min_length=1, max_length=120)
     operation_failure: AgentOperationFailureV2 | None = None
     error_code: str | None = None
@@ -150,6 +157,11 @@ class ChatTurnV2(_ConversationModel):
     def validate_terminal_retryability(self) -> "ChatTurnV2":
         if self.status == "superseded" and self.retryable:
             raise ValueError("Superseded turns are terminal and non-retryable.")
+        if (
+            self.actionable_failure is not None
+            and self.retryable != self.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
         return self
 
 
@@ -174,6 +186,7 @@ class ChatTimelineEntryV2(_ConversationModel):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     command_plan: AgentCommandPlanV2 | None = None
     action_receipt: "AgentActionReceiptV2 | None" = None
+    actionable_failure: ActionableFailureV1 | None = None
     created_at: datetime
 
 
@@ -215,6 +228,7 @@ class ConceptOptionRecordV2(_ConversationModel):
 class ProposalMaterializationErrorV2(_ConversationModel):
     code: str = Field(min_length=1, max_length=160)
     message: str = Field(min_length=1, max_length=2_048)
+    actionable_failure: ActionableFailureV1 | None = None
 
 
 class ProposalMaterializationProjectionV2(_ConversationModel):
@@ -227,6 +241,16 @@ class ProposalMaterializationProjectionV2(_ConversationModel):
     error: ProposalMaterializationErrorV2 | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_retryable_projection(self) -> "ProposalMaterializationProjectionV2":
+        if (
+            self.error is not None
+            and self.error.actionable_failure is not None
+            and self.retryable != self.error.actionable_failure.retryable
+        ):
+            raise ValueError("Retryable must match the actionable failure disposition.")
+        return self
 
 
 class _ConceptProposalBaseV2(_ConversationModel):
@@ -249,6 +273,10 @@ class _ConceptProposalBaseV2(_ConversationModel):
         max_length=64,
     )
     topic_id: str | None = Field(default=None, max_length=160)
+    occurrence_id: str | None = Field(default=None, min_length=1, max_length=160)
+    occurrence_index: int | None = Field(default=None, ge=1, le=32)
+    occurrence_count: int | None = Field(default=None, ge=1, le=32)
+    character_phase: Literal["main"] | None = None
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
     proposal_purpose: str | None = Field(default=None, max_length=4_096)
@@ -270,6 +298,29 @@ class _ConceptProposalBaseV2(_ConversationModel):
             raise ValueError("Concept option IDs must be unique within a proposal.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
+        scope_values = (
+            self.occurrence_id,
+            self.occurrence_index,
+            self.occurrence_count,
+            self.character_phase,
+        )
+        if any(value is not None for value in scope_values) and not all(
+            value is not None for value in scope_values
+        ):
+            raise ValueError("Character Proposal scope must be complete when present.")
+        if self.capability_id != "character_design" and any(
+            value is not None for value in scope_values
+        ):
+            raise ValueError("Non-Character Proposals cannot carry occurrence scope.")
+        if (
+            self.capability_id == "character_design"
+            and self.proposal_card_schema_version >= 4
+            and not all(value is not None for value in scope_values)
+        ):
+            raise ValueError("Current Character Proposals require occurrence scope.")
+        if self.occurrence_index is not None and self.occurrence_count is not None:
+            if self.occurrence_index > self.occurrence_count:
+                raise ValueError("Character occurrence index exceeds the Proposal count.")
         return self
 
 

@@ -27,8 +27,8 @@ class GuidanceAwaitingService:
             raise ValueError("Guidance awaiting repositories must share one database.")
         self._interactions = interactions
 
-    def inspect(self, workflow_id: str) -> GuidanceAwaitingV2 | None:
-        return self._interactions.get_awaiting(workflow_id)
+    def inspect(self, workflow_id: str, *, node_id: str | None = None) -> GuidanceAwaitingV2 | None:
+        return self._interactions.get_awaiting(workflow_id, node_id=node_id)
 
     def enter(
         self,

@@ -147,11 +147,24 @@ class CapabilityDispatchService:
             raise ValueError("Capability dispatch requires an invoke-capability command.")
         capability_id = command.command.capability_id
         objective = command.command.objective or ""
+        character_target = context_snapshot.character_target
+        if (
+            publication_kind == "proposal"
+            and capability_id == "character_design"
+            and session_id is not None
+            and character_target is None
+        ):
+            raise V2PersistenceError(
+                "character_proposal_scope_invalid",
+                "Guided Character Proposal dispatch requires an occurrence target.",
+                stage="capability_dispatch",
+            )
         identity = _digest(
             source_turn.turn_id,
             capability_id,
             objective,
             context_snapshot.digest,
+            character_target.target_digest if character_target is not None else "",
             str(expected_session_revision or source_turn.guidance_session_revision or ""),
             publication_kind,
             journey_stage or "",
@@ -202,6 +215,7 @@ class CapabilityDispatchService:
             agent_request_identity=f"capability:{identity}",
             created_at=now,
             response_locale=context_snapshot.response_locale,
+            character_target=character_target,
         )
         timestamp = now.isoformat()
         with self._database.engine.connect() as connection:

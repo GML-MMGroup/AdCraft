@@ -13,6 +13,7 @@ class BindingValidationState:
     source_node_id: str | None
     target_node_id: str
     binding_kind: str
+    semantic_reference_role: str | None = None
 
 
 def require_node_runnable(node: object) -> None:
@@ -33,35 +34,10 @@ def validate_node_patch(
     current: Mapping[str, object],
     changes: Mapping[str, object],
 ) -> str:
-    immutable_fields = {
-        "generation_prompt",
-        "model_selection_mode",
-        "model_ref",
-        "parameters",
-        "structured_content",
-    }
-    if status == "ready" and node_type in {"image", "video", "audio", "editing"}:
-        if any(
-            field in changes and changes[field] != current.get(field) for field in immutable_fields
-        ):
-            raise V2PersistenceError(
-                "ready_node_immutable",
-                "Create a sibling variation to change generated media.",
-                stage="agent_canvas_authoring_validation",
-            )
     if node_type not in {"text", "script"}:
         return status
     content = changes.get("structured_content", current.get("structured_content", {}))
     return "ready" if content else "draft"
-
-
-def validate_ready_node_input_history(*, status: str, node_type: str) -> None:
-    if status == "ready" and node_type in {"image", "video", "audio"}:
-        raise V2PersistenceError(
-            "ready_node_inputs_immutable",
-            "Create a sibling variation to change generated media inputs.",
-            stage="agent_canvas_authoring_validation",
-        )
 
 
 def validate_node_binding(
@@ -73,9 +49,13 @@ def validate_node_binding(
     target_node_id: str,
     target_node_type: str,
     binding_kind: str,
+    semantic_reference_role: str | None = None,
 ) -> None:
     if any(
-        binding.source_node_id == source_node_id and binding.target_node_id == target_node_id
+        binding.source_node_id == source_node_id
+        and binding.target_node_id == target_node_id
+        and binding.binding_kind == binding_kind
+        and binding.semantic_reference_role == semantic_reference_role
         for binding in bindings
     ):
         raise V2PersistenceError(

@@ -1,1 +1,6 @@
-Build the narrative premise around engineering form, then use material precision to shape escalation and controlled light to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+围绕一个可验证的工程命题写脚本，例如稳定、精度、效率、耐用或易维护。用“工作环境—问题输入—设备动作—可观察反馈—结果价值”组织叙事，避免把规格表朗读成旁白。
+
+为每个段落写清操作者或工件的状态、设备做什么、观众应看到什么证据，以及声音如何支持触感和重量。术语只在能帮助理解时出现；不能确认的性能不要擅自承诺。结尾回到设备整体形态和使用场景，让功能结果与品牌可信度相连。
+
+正例：工件在真实位置出现，设备完成一个清楚的加工动作，表面或测量结果给出反馈，旁白只解释受众关心的价值。
+反例：连续罗列“强大、智能、精准”，却没有输入、受力过程或结果。

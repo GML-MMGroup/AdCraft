@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingV2
+from app.schemas.agent_canvas_execution_settings import MediaExecutionModeV2
 
 
 MediaRoleV1 = Literal["image", "video", "audio"]
@@ -121,7 +124,20 @@ class GuidedClosureInputV1(_ClosureModel):
     asset_id: str = Field(min_length=1, max_length=160)
     asset_version_id: str = Field(min_length=1, max_length=160)
     asset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    confirmation_id: str = Field(min_length=1, max_length=160)
+    confirmation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    result_evidence_id: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_result_authority(self) -> "GuidedClosureInputV1":
+        if (self.confirmation_id is None) == (self.result_evidence_id is None):
+            raise ValueError(
+                "Guided closure inputs require one confirmation or result evidence identity."
+            )
+        return self
+
+    @property
+    def result_authority_id(self) -> str:
+        return self.confirmation_id or self.result_evidence_id or ""
 
 
 class GuidedClosurePlanV1(_ClosureModel):
@@ -141,26 +157,173 @@ class GuidedClosurePlanV1(_ClosureModel):
         orders = [item.order for item in self.ordered_inputs]
         if orders != sorted(orders) or len(orders) != len(set(orders)):
             raise ValueError("Closure inputs must have unique ascending order.")
-        confirmation_ids = [item.confirmation_id for item in self.ordered_inputs]
-        if len(confirmation_ids) != len(set(confirmation_ids)):
-            raise ValueError("Closure confirmations must be unique.")
+        authority_ids = [item.result_authority_id for item in self.ordered_inputs]
+        if len(authority_ids) != len(set(authority_ids)):
+            raise ValueError("Closure result authorities must be unique.")
         return self
 
 
-class GuidedEditingPreparationReceiptV1(_ClosureModel):
+class _GuidedEditingPreparationFields(_ClosureModel):
     receipt_id: str = Field(min_length=1, max_length=160)
     logical_identity: str = Field(min_length=1, max_length=640)
     workflow_id: str = Field(min_length=1, max_length=160)
-    closure_plan_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)
     plan_revision: int = Field(ge=1)
-    confirmation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     editing_node_id: str = Field(min_length=1, max_length=160)
     editing_node_revision: int = Field(ge=1)
     binding_ids: tuple[str, ...]
     manifest_revision: int = Field(ge=1)
     manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     committed_at: datetime
+
+
+class GuidedEditingPreparationReceiptV1(_GuidedEditingPreparationFields):
+    closure_plan_id: str = Field(min_length=1, max_length=160)
+    confirmation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GuidedEditingTopologyReceiptV2(_GuidedEditingPreparationFields):
+    proof_kind: Literal["topology"] = "topology"
+
+
+class GuidedEditingMediaClosureReceiptV2(GuidedEditingPreparationReceiptV1):
+    proof_kind: Literal["media_closure"] = "media_closure"
+
+
+GuidedEditingPreparationReceiptV2 = Annotated[
+    GuidedEditingTopologyReceiptV2 | GuidedEditingMediaClosureReceiptV2,
+    Field(discriminator="proof_kind"),
+]
+
+
+EditingActionReconciliationOutcomeV1 = Literal[
+    "prepared",
+    "waiting_user",
+    "system_deferred",
+    "failed",
+    "superseded",
+]
+EditingActionSystemOwnerKindV1 = Literal[
+    "execution_member",
+    "automatic_run",
+    "post_ready_effect",
+    "guided_media_resume",
+]
+
+
+class GuidedEditingActionReconciliationCommandV1(_ClosureModel):
+    logical_identity: str = Field(min_length=1, max_length=640)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    action_id: str = Field(min_length=1, max_length=160)
+    action_turn_id: str = Field(min_length=1, max_length=160)
+    action_stage_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    outcome: EditingActionReconciliationOutcomeV1
+    reason_code: str = Field(min_length=1, max_length=120)
+    evidence_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    plan_document_id: str | None = Field(default=None, max_length=160)
+    plan_revision: int | None = Field(default=None, ge=1)
+    media_execution_mode: MediaExecutionModeV2 | None = None
+    awaiting: GuidanceAwaitingV2 | None = None
+    awaiting_id: str | None = Field(default=None, max_length=160)
+    awaiting_kind: Literal["media_review", "manual_node_run"] | None = None
+    system_owner_kind: EditingActionSystemOwnerKindV1 | None = None
+    system_owner_id: str | None = Field(default=None, max_length=160)
+    system_owner_node_id: str | None = Field(default=None, max_length=160)
+    system_owner_generation: int | None = Field(default=None, ge=0)
+    error_code: str | None = Field(default=None, max_length=120)
+    reconciled_at: datetime
+
+    @model_validator(mode="after")
+    def validate_outcome_evidence(self) -> "GuidedEditingActionReconciliationCommandV1":
+        has_preparation = self.preparation_receipt_id is not None
+        has_plan = self.plan_document_id is not None or self.plan_revision is not None
+        has_wait = (
+            self.awaiting is not None
+            or self.awaiting_id is not None
+            or self.awaiting_kind is not None
+        )
+        has_system_owner = any(
+            value is not None
+            for value in (
+                self.system_owner_kind,
+                self.system_owner_id,
+                self.system_owner_node_id,
+                self.system_owner_generation,
+            )
+        )
+        has_execution_mode = self.media_execution_mode is not None
+        has_error = self.error_code is not None
+        if self.outcome == "prepared":
+            if (
+                not has_preparation
+                or self.plan_document_id is None
+                or self.plan_revision is None
+                or has_wait
+                or has_system_owner
+                or has_execution_mode
+                or has_error
+            ):
+                raise ValueError("prepared requires a preparation receipt and current Plan")
+        elif self.outcome == "waiting_user":
+            if (
+                self.awaiting_id is None
+                or self.awaiting_kind is None
+                or self.awaiting is None
+                or self.awaiting.awaiting_id != self.awaiting_id
+                or self.awaiting.kind != self.awaiting_kind
+                or self.awaiting.workflow_id != self.workflow_id
+                or self.awaiting.session_id != self.session_id
+                or self.awaiting.stage != "editing"
+                or self.awaiting.stage_revision != self.action_stage_revision
+                or has_preparation
+                or has_plan
+                or has_system_owner
+                or has_execution_mode
+                or has_error
+            ):
+                raise ValueError("waiting_user requires only typed awaiting authority")
+        elif self.outcome == "system_deferred":
+            if (
+                self.system_owner_kind is None
+                or self.system_owner_id is None
+                or self.system_owner_node_id is None
+                or self.system_owner_generation is None
+                or self.plan_document_id is None
+                or self.plan_revision is None
+                or self.media_execution_mode is None
+                or has_preparation
+                or has_wait
+                or has_error
+            ):
+                raise ValueError("system_deferred requires only exact system ownership")
+        elif self.outcome == "failed":
+            if (
+                not has_error
+                or has_preparation
+                or has_plan
+                or has_wait
+                or has_system_owner
+                or has_execution_mode
+            ):
+                raise ValueError("failed requires only a stable error code")
+        elif (
+            has_preparation
+            or has_plan
+            or has_wait
+            or has_system_owner
+            or has_execution_mode
+            or has_error
+        ):
+            raise ValueError("superseded cannot claim current outcome authority")
+        return self
+
+
+class GuidedEditingActionReconciliationReceiptV1(GuidedEditingActionReconciliationCommandV1):
+    receipt_id: str = Field(min_length=1, max_length=160)
+    resulting_session_revision: int = Field(ge=1)
 
 
 class GuidedFinalCompletionReceiptV1(_ClosureModel):

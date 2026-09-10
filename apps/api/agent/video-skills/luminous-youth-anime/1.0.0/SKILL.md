@@ -1,8 +1,21 @@
 ---
-name: Luminous Youth Anime
-description: An advertising treatment built around luminous atmosphere, weather detail, youthful longing, and sky and city transitions.
+name: 青春流光动画
+description: 以发光氛围、天气细节、青春牵挂和天空到城市的转换组织具有成长感的动画叙事。
 ---
 
-Use luminous atmosphere, weather detail, youthful longing, and sky and city transitions as the style's creative grammar. Establish luminous atmosphere as the primary visual idea, reinforce it through weather detail, and let youthful longing shape the progression toward sky and city transitions.
+把 luminous atmosphere、weather detail、youthful longing、sky and city transitions 作为青春动画的四个创作支点。光和天空不是滤镜，而是人物正在经历的情绪与空间变化；青春感来自未说完的愿望、等待、错过和重新靠近。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 人物与情绪
+
+先写清人物关系、想抵达的地方和没有说出口的愿望。用视线、步伐、书包、车票、耳机、窗户或一件反复出现的物件承载 youthful longing。人物设计保持发型、服装层次、身高关系和表情边界连续。
+
+## 天气与空间
+
+weather detail 通过雨滴附着、湿地反光、风吹衣物、云层变化、雾气和阳光间隙建立触感。sky and city transitions 可以从仰视天空、玻璃反射、楼群间隙、站台或街灯自然完成，不要用无因果的闪白切换。
+
+## 连续性与纠偏
+
+保持时间线、天气、光向、服装湿度、道具和空间轴线。参考图优先锁定角色和关键物，结果偏离时先恢复人物关系与天气证据，再减少粒子和背景细节。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供青春叙事判断。
+
+正例：雨停后角色从站台抬头，云隙光连接到城市屋顶，等待的物件完成一次交接。
+反例：天空颜色和天气每镜随机变化，人物只站在发光背景前没有愿望或行动。

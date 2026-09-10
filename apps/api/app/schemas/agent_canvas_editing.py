@@ -98,9 +98,11 @@ class EditingManifestV2(_EditingModel):
 EditingSkippedReasonV2 = Literal[
     "source_not_ready",
     "source_failed",
+    "omitted_no_output",
     "source_output_unavailable",
     "source_media_invalid",
 ]
+EditingSourceAvailabilityV2 = Literal["pending", "available", "failed"]
 
 
 class EditingSkippedInputV2(_EditingModel):
@@ -116,10 +118,29 @@ class EditingPreviewClipV2(_EditingModel):
     node_id: str | None = None
     asset_id: str | None = None
     status: CanvasNodeStatusV2
+    availability: EditingSourceAvailabilityV2
     display_order: int = Field(ge=0)
     preview_url: str | None = None
     duration_seconds: float | None = Field(default=None, ge=0)
     warning: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def restore_legacy_availability(cls, value: object) -> object:
+        """Derive the added field only for legacy persisted preview clips."""
+        if not isinstance(value, dict) or "availability" in value:
+            return value
+        status = value.get("status")
+        warning = value.get("warning")
+        if status == "failed":
+            availability = "failed"
+        elif status == "ready" and warning != "source_media_invalid":
+            availability = "available"
+        else:
+            availability = "pending"
+        restored = dict(value)
+        restored["availability"] = availability
+        return restored
 
 
 class EditingPreviewV2(_EditingModel):
@@ -127,6 +148,7 @@ class EditingPreviewV2(_EditingModel):
     bgm_binding_id: str | None = None
     bgm_node_id: str | None = None
     bgm_asset_id: str | None = None
+    bgm_availability: EditingSourceAvailabilityV2 | None = None
     estimated_duration_seconds: float = Field(default=0, ge=0)
     warnings: tuple[str, ...] = ()
 

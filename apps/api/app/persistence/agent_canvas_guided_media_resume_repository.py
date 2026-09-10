@@ -99,48 +99,9 @@ class AgentCanvasGuidedMediaResumeRepository:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
                 try:
-                    submission = (
-                        connection.execute(
-                            select(AgentCanvasGuidedInteractionSubmissionRow).where(
-                                AgentCanvasGuidedInteractionSubmissionRow.submission_id
-                                == submission_id
-                            )
-                        )
-                        .mappings()
-                        .one_or_none()
+                    persisted = self.ensure_for_submission_in_transaction(
+                        connection, submission_id, now=timestamp
                     )
-                    if submission is None:
-                        raise _error(
-                            "guided_media_resume_delivery_unavailable",
-                            "Accepted guided interaction submission was not found.",
-                        )
-                    request = TypeAdapter(GuidedInteractionSubmitRequestV1).validate_json(
-                        str(submission["request_json"])
-                    )
-                    result_json = submission["result_json"]
-                    if not isinstance(request, GuidedMediaReviewSubmitV1) or (
-                        request.action != "accept"
-                    ):
-                        connection.rollback()
-                        return None
-                    if result_json is None:
-                        raise _error(
-                            "guided_media_resume_delivery_conflict",
-                            "Accepted media submission has no durable result.",
-                        )
-                    result = GuidedInteractionAcceptedV1.model_validate_json(str(result_json))
-                    if result.submission_id != submission_id or not result.receipt_id:
-                        raise _error(
-                            "guided_media_resume_delivery_conflict",
-                            "Accepted media submission result has conflicting evidence.",
-                        )
-                    delivery = queued_guided_media_resume_delivery(
-                        workflow_id=str(submission["workflow_id"]),
-                        submission_id=submission_id,
-                        confirmation_id=result.receipt_id,
-                        now=timestamp,
-                    )
-                    persisted = self.enqueue_in_transaction(connection, delivery)
                     connection.commit()
                     return persisted
                 except BaseException:
@@ -153,6 +114,65 @@ class AgentCanvasGuidedMediaResumeRepository:
                 "guided_media_resume_delivery_unavailable",
                 "Guided media resume delivery is temporarily unavailable.",
             ) from error
+
+    def ensure_for_submission_in_transaction(
+        self,
+        connection: Connection,
+        submission_id: str,
+        *,
+        now: datetime,
+        expected_confirmation_id: str | None = None,
+    ) -> GuidedMediaConfirmationResumeDeliveryV1 | None:
+        """Reuse accepted submission proof in the caller's authority transaction."""
+
+        submission = (
+            connection.execute(
+                select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                    AgentCanvasGuidedInteractionSubmissionRow.submission_id == submission_id
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if submission is None:
+            raise _error(
+                "guided_media_resume_delivery_unavailable",
+                "Accepted guided interaction submission was not found.",
+            )
+        request = TypeAdapter(GuidedInteractionSubmitRequestV1).validate_json(
+            str(submission["request_json"])
+        )
+        if not isinstance(request, GuidedMediaReviewSubmitV1) or request.action != "accept":
+            return None
+        result_json = submission["result_json"]
+        if result_json is None:
+            raise _error(
+                "guided_media_resume_delivery_conflict",
+                "Accepted media submission has no durable result.",
+            )
+        result = GuidedInteractionAcceptedV1.model_validate_json(str(result_json))
+        if (
+            result.submission_id != submission_id
+            or not result.receipt_id
+            or result.workflow_id != submission["workflow_id"]
+            or (
+                expected_confirmation_id is not None
+                and result.receipt_id != expected_confirmation_id
+            )
+        ):
+            raise _error(
+                "guided_media_resume_delivery_conflict",
+                "Accepted media submission result has conflicting evidence.",
+            )
+        return self.enqueue_in_transaction(
+            connection,
+            queued_guided_media_resume_delivery(
+                workflow_id=str(submission["workflow_id"]),
+                submission_id=submission_id,
+                confirmation_id=result.receipt_id,
+                now=_utc(now),
+            ),
+        )
 
     def get(self, delivery_id: str) -> GuidedMediaConfirmationResumeDeliveryV1:
         try:
@@ -174,6 +194,30 @@ class AgentCanvasGuidedMediaResumeRepository:
                 "Guided media resume delivery was not found.",
             )
         return _delivery(row)
+
+    def list_for_workflow(
+        self,
+        workflow_id: str,
+    ) -> tuple[GuidedMediaConfirmationResumeDeliveryV1, ...]:
+        """Return durable resume deliveries in stable creation order."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasGuidedMediaResumeDeliveryRow)
+                        .where(AgentCanvasGuidedMediaResumeDeliveryRow.workflow_id == workflow_id)
+                        .order_by(
+                            AgentCanvasGuidedMediaResumeDeliveryRow.created_at.asc(),
+                            AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _unavailable() from error
+        return tuple(_delivery(row) for row in rows)
 
     def get_for_submission(
         self,

@@ -1,8 +1,27 @@
 ---
-name: New Product TVC Campaign
-description: An advertising treatment built around campaign concept, premium product reveal, visual anchor, and brand arc.
+name: 新品视觉TVC广告
+description: 以广告概念、产品高级感揭示、视觉锚点和品牌弧线组织新品商业影像。
 ---
 
-Use campaign concept, premium product reveal, visual anchor, and brand arc as the style's creative grammar. Establish campaign concept as the primary visual idea, reinforce it through premium product reveal, and let visual anchor shape the progression toward brand arc.
+把 campaign concept、premium product reveal、visual anchor、brand arc 作为新品广告的四个创作支点。先回答“新品为什么值得被记住”，再让产品在一个清楚的视觉事件中出现，并用可持续的视觉锚点把人物、产品、场景和品牌情绪连成一条弧线。高级感来自选择、秩序和证据，不来自空泛的奢华形容词。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 需求与概念
+
+先区分产品事实、品牌主张、受众情绪和可设计的呈现方式。把“创新”“高端”“突破”等词翻译成结构、材质、使用动作、空间关系或人物反应。创意方向可以从产品解决问题、人物生活转变、品牌价值宣言或产品作为视觉符号等路径中选择，但每条路径都要能说明产品在故事中的角色。
+
+建立一条视觉锚点：可以是产品的轮廓、关键接口、材质反光、人物动作、空间线条或反复出现的色彩。锚点第一次出现时要易于识别，后续每次变化都要有意义。产品揭示不应被场景、特效或人物表演遮住；人物和场景只能帮助观众理解产品价值。
+
+## 叙事与连续性
+
+用引入、积累、揭示、验证和品牌回响等相对段落组织 brand arc。每段记录信息目的、主体动作、情绪变化、镜头意图和声音关系。新品第一次完整出现时保留足够的辨识信息，功能或材质揭示之后回到整体，让观众形成“细节证据—使用结果—品牌记忆”的闭环。
+
+跨镜头保持产品轮廓、比例、颜色、结构、标识、接触关系和光源逻辑；人物身份、服装和动作方向也要稳定。参考图是身份和结构的证据，不是可以随意改写的装饰。需要跳跃时，用遮挡、动作、声音或构图呼应解释跳跃。
+
+## 执行判断
+
+镜头、场景、产品和视频指导应把抽象创意转成可观察的起始状态、变化过程和结束状态。声音可以强化材质、速度和情绪，但不能掩盖事实或对白。文字和 Logo 只有在信息需要时加入，并保持可读、可控和不遮挡主体。
+
+工具、Provider、模型、时长、分辨率、格式和流程由用户与系统其他权威决定。本 Skill 只提供创作判断，不创建节点或调用工具。结果偏离时，指出具体的产品事实、视觉锚点或动作连续性问题，再减少歧义，不用更多特效掩盖问题。
+
+正例：先用人物的真实使用动作建立需求，再以材质细节揭示新品优势，最后沿同一轮廓回到完整产品和品牌主张。
+反例：先堆叠城市、光束和口号，直到结尾才出现产品；或每次出现都改变产品颜色、结构和光线，使所谓“高级感”无法被验证。

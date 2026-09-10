@@ -21,6 +21,10 @@ from app.persistence.database import create_v2_database
 from app.services.v2_asset_catalog import V2AssetCatalogService
 from app.services.v2_asset_catalog_coordinator import V2AssetCatalogCoordinator
 from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
+from app.services.agent_model_trace_sessions import (
+    agent_model_trace_session_from_environment,
+)
+from app.services.agent_model_replay_policy import AgentModelReplayPolicyService
 
 logger = logging.getLogger(__name__)
 AgentCanvasRuntimeFactory = Callable[[Settings], AgentCanvasRuntime]
@@ -42,6 +46,9 @@ def create_app(
             runtime_factory=agent_canvas_runtime_factory,
         ),
     )
+    trace_session = agent_model_trace_session_from_environment()
+    if trace_session is not None:
+        application.state.agent_model_trace_session = trace_session
 
     application.add_middleware(
         CORSMiddleware,
@@ -79,6 +86,14 @@ def _lifespan(
             application.state.v2_persistence_state = PersistenceBootstrapService(
                 settings
             ).bootstrap()
+            trace_session = getattr(application.state, "agent_model_trace_session", None)
+            if getattr(trace_session, "mode", None) == "replay":
+                bundle = getattr(trace_session, "replay_bundle", None)
+                if bundle is None:
+                    raise RuntimeError("acceptance_model_trace_invalid")
+                application.state.agent_model_replay_policy = AgentModelReplayPolicyService(
+                    settings
+                ).prepare(bundle)
         except V2PersistenceError as error:
             application.state.v2_persistence_state = PersistenceBootstrapFailure(
                 code=error.code,
@@ -170,7 +185,7 @@ def _recover_agent_canvas_executions(
         runtime.provider_recovery.recover_due_tasks()
         runtime.post_ready_effects.run_once()
         state_machine = AgentCanvasExecutionStateMachine()
-        for execution in runtime.runtime_repository.list_executions():
+        for execution in runtime.runtime_repository.list_active_executions():
             state_machine.reconcile(
                 runtime.runtime_repository,
                 execution.execution_id,

@@ -1,29 +1,33 @@
 {
   "skill_id": "product-promotional-film",
   "version": "1.0.0",
-  "display_name": "Product Promotional Film",
-  "description": "An advertising treatment built around selling-point hierarchy, use context, benefit reveal, and clean packshot logic.",
+  "display_name": "商品卖点宣传片",
+  "description": "以卖点层级、使用情境、利益揭示和清晰收束组织可理解、可转化的商品广告。",
+  "content_locale": "zh-CN",
   "category": "commercial-craft",
   "tags": [
-    "commercial",
-    "campaign",
-    "product"
+    "商品广告",
+    "卖点展示",
+    "使用场景"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "电商宣传",
+    "产品广告",
+    "转化型内容"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Product Promotional Film creative treatment."
+    "kind": "image",
+    "summary": "商品卖点宣传片视觉预览。",
+    "media_url": "/api/v2/video-skills/product-promotional-film/preview?v=1.0.0"
   },
   "display_order": 30,
   "files": {
-    "SKILL.md": "20794967a8644dad1e50e54d0cfb7558eb3170ef1547978809c8807b8094567f",
-    "references/script.md": "1d6673db06e51a554ebdb546f381af4863437253ad3d2639b21127bf9f54ceb7",
-    "references/product.md": "d6017971d60557febaf551ea468adf5247af431c1d4cc281ad81fad569c34714",
-    "references/storyboard.md": "4f6242d43e510d7ab325c5fe8033c3c9e6be7540994900009491ec9d2b165d2a",
-    "references/video.md": "faacf736cbc6d50bc97a4621adc3833875b5c5f4306cde5dacea9e0a595a6e06"
+    "SKILL.md": "4e273f5a1a5a1ffbb01cfb0b9d53726e10fabb84e77c6ac35aa7964544860f3b",
+    "references/script.md": "f3c484fdc0823d39f794c037cae0622efb675a4374572ea565ff732f8213fed8",
+    "references/product.md": "b43ae0e4d5e26a4fc5774b7277e9ba1ad3bde1651d7a89c85005c6156f97b10c",
+    "references/storyboard.md": "62f28b8f175d2cf97febb783a2b376dc4eaf8d055472bf364bf08927d0849762",
+    "references/video.md": "99ec712b92a3509282e4582ba578d431e8431ca958de90633b510a8afcfec9fe",
+    "previews/preview.webp": "8bf2f5943990aac744d930481edd615f0db4be7bcfbbf4cf183de8f85e21ba17"
   },
   "role_guidance": {
     "script": "references/script.md",

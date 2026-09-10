@@ -33,6 +33,7 @@ from app.persistence.agent_canvas_conversation_repository import (
     _creative_memory_values,
     _dump,
     _ensure_conversation,
+    _materialization_actionable_failure,
     _next_chat_sequence,
     _now,
     _require_guidance_revision,
@@ -175,6 +176,14 @@ class AgentCanvasMaterializationRepository:
         self._prompt_dispatch = AgentCanvasPromptPreparationDispatchRepository(database, events)
         self._fault_injector = fault_injector
 
+    @property
+    def database(self) -> V2Database:
+        return self._database
+
+    @property
+    def events(self) -> EventRepository:
+        return self._events
+
     def storyboard_identity_exists(self, identity_digest: str) -> bool:
         """Return whether one canonical Storyboard selection claim is persisted.
 
@@ -300,6 +309,10 @@ class AgentCanvasMaterializationRepository:
         primary_node = nodes[0] if nodes else None
         preparation_contexts = {
             item.node_id: item.context for item in materialization_plan.prompt_preparations
+        }
+        preparation_admissions = {
+            item.node_id: item.dispatch_admission
+            for item in materialization_plan.prompt_preparations
         }
         node_ids = tuple(item.node_id for item in nodes)
         if len(set(node_ids)) != len(node_ids) or any(
@@ -573,6 +586,10 @@ class AgentCanvasMaterializationRepository:
                             now=now,
                             prompt_dispatch=self._prompt_dispatch,
                             prompt_context=preparation_contexts.get(bundle_node.node_id),
+                            prompt_dispatch_admission=preparation_admissions.get(
+                                bundle_node.node_id,
+                                "immediate",
+                            ),
                         )
                         if bundle_node.node_id in planned_preparation_node_ids:
                             persisted_preparation_json = connection.execute(
@@ -968,7 +985,9 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance state changed before Proposal materialization.",
                         )
-                    if guided_submission is not None:
+                    if guided_submission is not None and not bool(
+                        guided_submission["submission_already_committed"]
+                    ):
                         interaction_update = connection.execute(
                             update(AgentCanvasGuidedInteractionRow)
                             .where(
@@ -1511,7 +1530,9 @@ class AgentCanvasMaterializationRepository:
                                 payload={"entry_id": entry_id, **metadata},
                             ),
                         )
-                    if guided_submission is not None:
+                    if guided_submission is not None and not bool(
+                        guided_submission["submission_already_committed"]
+                    ):
                         for event_type, payload in (
                             (
                                 "guided_interaction_submitted",
@@ -2202,10 +2223,83 @@ class AgentCanvasMaterializationRepository:
                         .mappings()
                         .one()
                     )
+                    journey = parse_production_journey(str(session_row["journey_state_json"]))
                     if int(session_row["revision"]) != envelope.expected_session_revision:
                         raise _error(
                             "guidance_revision_conflict",
                             "Guidance session revision is stale.",
+                        )
+                    queued_guided_submission: dict[str, object] | None = None
+                    planning_wave_id: str | None = None
+                    if (
+                        journey.journey_policy_id == "proposal_submit_auto_result_v1"
+                        and action_request is not None
+                    ):
+                        queued_guided_submission = _guided_submission_context(
+                            connection,
+                            source_turn_id=envelope.action_turn_id,
+                            workflow_id=envelope.workflow_id,
+                            proposal_id=envelope.proposal_id,
+                            option_id=envelope.selected_option.option_id,
+                            expected_session_revision=envelope.expected_session_revision,
+                        )
+                        if queued_guided_submission is None:
+                            raise _error(
+                                "guided_interaction_incomplete",
+                                "Proposal submission is missing guided interaction authority.",
+                            )
+                        wave_digest = sha256(
+                            f"{envelope.workflow_id}:{session_row['session_id']}:"
+                            f"{envelope.proposal_id}:{envelope.proposal_revision}:"
+                            f"{envelope.expected_session_revision}".encode("utf-8")
+                        ).hexdigest()[:32]
+                        planning_wave_id = f"wave:{envelope.workflow_id}:{wave_digest}"
+                        session_update = connection.execute(
+                            update(AgentCanvasGuidanceSessionRow)
+                            .where(
+                                AgentCanvasGuidanceSessionRow.session_id
+                                == session_row["session_id"],
+                                AgentCanvasGuidanceSessionRow.revision
+                                == envelope.expected_session_revision,
+                            )
+                            .values(
+                                revision=envelope.expected_session_revision + 1,
+                                updated_at=timestamp,
+                                journey_state_json=journey.model_copy(
+                                    update={"planning_wave_id": (planning_wave_id)}
+                                ).model_dump_json(),
+                            )
+                        )
+                        if session_update.rowcount != 1:
+                            raise _error(
+                                "guidance_revision_conflict",
+                                "Guidance session revision is stale.",
+                            )
+                        interaction_update = connection.execute(
+                            update(AgentCanvasGuidedInteractionRow)
+                            .where(
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == queued_guided_submission["interaction_id"],
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                                AgentCanvasGuidedInteractionRow.revision
+                                == queued_guided_submission["interaction_revision"],
+                            )
+                            .values(
+                                status="closed",
+                                revision=int(queued_guided_submission["interaction_revision"]) + 1,
+                                updated_at=timestamp,
+                            )
+                        )
+                        if interaction_update.rowcount != 1:
+                            raise _error(
+                                "guided_interaction_stale",
+                                "Guided interaction changed before Proposal submission.",
+                            )
+                        connection.execute(
+                            delete(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == queued_guided_submission["interaction_id"]
+                            )
                         )
                     if envelope.capability_id == "character_design":
                         journey = parse_production_journey(str(session_row["journey_state_json"]))
@@ -2395,6 +2489,81 @@ class AgentCanvasMaterializationRepository:
                             },
                         ),
                     )
+                    if queued_guided_submission is not None:
+                        for event_type, payload in (
+                            (
+                                "guided_interaction_submitted",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "proposal_id": envelope.proposal_id,
+                                    "option_id": envelope.selected_option.option_id,
+                                    "planning_wave_id": planning_wave_id,
+                                },
+                            ),
+                            (
+                                "guided_interaction_closed",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "receipt_id": f"receipt_{envelope.action_turn_id}",
+                                },
+                            ),
+                            (
+                                "guidance_awaiting_resumed",
+                                {
+                                    "interaction_id": queued_guided_submission["interaction_id"],
+                                    "submission_id": queued_guided_submission["submission_id"],
+                                    "resume_evidence": "proposal_submit",
+                                },
+                            ),
+                        ):
+                            self._events.append_in_transaction(
+                                connection,
+                                V2EventInsert(
+                                    workflow_id=envelope.workflow_id,
+                                    conversation_id=envelope.conversation_id,
+                                    turn_id=envelope.action_turn_id,
+                                    action_id=str(queued_guided_submission["interaction_id"]),
+                                    event_type=event_type,
+                                    transition_key=(
+                                        f"guided-submission:"
+                                        f"{queued_guided_submission['submission_id']}:{event_type}"
+                                    ),
+                                    created_at=timestamp,
+                                    payload=payload,
+                                ),
+                            )
+                        events_cursor = int(
+                            connection.execute(
+                                select(func.coalesce(func.max(WorkflowEventRow.seq), 0)).where(
+                                    WorkflowEventRow.workflow_id == envelope.workflow_id
+                                )
+                            ).scalar_one()
+                        )
+                        accepted_result = GuidedInteractionAcceptedV1(
+                            workflow_id=envelope.workflow_id,
+                            interaction_id=str(queued_guided_submission["interaction_id"]),
+                            submission_id=str(queued_guided_submission["submission_id"]),
+                            receipt_id=f"receipt_{envelope.action_turn_id}",
+                            continuation_id=continuation_id,
+                            resulting_session_revision=envelope.expected_session_revision + 1,
+                            events_cursor=events_cursor,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                                submission_id=queued_guided_submission["submission_id"],
+                                workflow_id=envelope.workflow_id,
+                                interaction_id=queued_guided_submission["interaction_id"],
+                                idempotency_key=queued_guided_submission["idempotency_key"],
+                                request_digest=queued_guided_submission["request_digest"],
+                                request_json=queued_guided_submission["request_json"],
+                                result_json=accepted_result.model_dump_json(),
+                                created_at=timestamp,
+                            )
+                        )
+                        if self._fault_injector is not None:
+                            self._fault_injector("proposal_submission")
                     connection.commit()
                 except BaseException:
                     connection.rollback()
@@ -3121,6 +3290,7 @@ def _insert_materialized_node(
     now: str,
     prompt_dispatch: AgentCanvasPromptPreparationDispatchRepository | None = None,
     prompt_context: object | None = None,
+    prompt_dispatch_admission: str = "immediate",
 ) -> str:
     # Bind the Node operation identity to the exact immutable context that is
     # persisted in the dispatch envelope.  Without this digest, two
@@ -3216,7 +3386,6 @@ def _insert_materialized_node(
                 ),
                 target_node_id=binding.target_node_id,
                 input_role=binding.input_role,
-                required=binding.required,
                 enabled=binding.enabled,
                 order_index=binding.order,
                 label=binding.label,
@@ -3256,6 +3425,9 @@ def _insert_materialized_node(
             bindings=bindings,
             context=context_payload,
             now=datetime.fromisoformat(now),
+            initial_status=(
+                "waiting_user" if prompt_dispatch_admission == "reference_source" else "queued"
+            ),
         )
     return snapshot_id
 
@@ -3340,7 +3512,6 @@ def _materialization_text_snapshots(
             source_structured_content=structured_content,
             binding_id=binding.binding_id,
             input_role="text_context",
-            required=binding.required,
             display_order=binding.display_order,
         )
         snapshots.append(snapshot.model_dump(mode="json"))
@@ -3455,16 +3626,6 @@ def _guided_submission_context(
     request = TypeAdapter(GuidedInteractionSubmitRequestV1).validate_python(payload.get("request"))
     content = json.loads(str(interaction["content_json"]))
     if (
-        str(interaction["status"]) != "open"
-        or int(interaction["revision"]) != request.expected_interaction_revision
-        or int(interaction["expected_session_revision"]) != request.expected_session_revision
-        or request.expected_session_revision != expected_session_revision
-    ):
-        raise _error(
-            "guided_interaction_stale",
-            "Guided interaction changed before Materialization.",
-        )
-    if (
         not isinstance(request, GuidedConceptSubmitV2)
         or content.get("proposal_id") != proposal_id
         or (request.action == "select" and request.option_id != option_id)
@@ -3479,13 +3640,51 @@ def _guided_submission_context(
         separators=(",", ":"),
         sort_keys=True,
     )
+    request_digest = hashlib.sha256(request_json.encode("utf-8")).hexdigest()
+    submission = (
+        connection.execute(
+            select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                AgentCanvasGuidedInteractionSubmissionRow.submission_id == submission_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    submission_already_committed = submission is not None
+    if submission_already_committed:
+        if (
+            str(submission["workflow_id"]) != workflow_id
+            or str(submission["interaction_id"]) != interaction_id
+            or str(submission["idempotency_key"]) != idempotency_key
+            or str(submission["request_digest"]) != request_digest
+            or str(submission["request_json"]) != request_json
+            or submission["result_json"] is None
+            or str(interaction["status"]) != "closed"
+            or int(interaction["revision"]) != request.expected_interaction_revision + 1
+            or int(interaction["expected_session_revision"]) != request.expected_session_revision
+        ):
+            raise _error(
+                "guided_interaction_stale",
+                "Committed guided interaction does not match Materialization authority.",
+            )
+    elif (
+        str(interaction["status"]) != "open"
+        or int(interaction["revision"]) != request.expected_interaction_revision
+        or int(interaction["expected_session_revision"]) != request.expected_session_revision
+        or request.expected_session_revision != expected_session_revision
+    ):
+        raise _error(
+            "guided_interaction_stale",
+            "Guided interaction changed before Materialization.",
+        )
     return {
         "interaction_id": interaction_id,
         "interaction_revision": int(interaction["revision"]),
         "submission_id": submission_id,
         "idempotency_key": idempotency_key,
-        "request_digest": hashlib.sha256(request_json.encode("utf-8")).hexdigest(),
+        "request_digest": request_digest,
         "request_json": request_json,
+        "submission_already_committed": submission_already_committed,
     }
 
 
@@ -3495,6 +3694,7 @@ def _projection(row) -> ProposalMaterializationProjectionV2:
         error = {
             "code": str(row["materialization_error_code"]),
             "message": str(row["materialization_error_message"]),
+            "actionable_failure": _materialization_actionable_failure(row).model_dump(mode="json"),
         }
     return ProposalMaterializationProjectionV2(
         materialization_id=str(row["materialization_id"]),

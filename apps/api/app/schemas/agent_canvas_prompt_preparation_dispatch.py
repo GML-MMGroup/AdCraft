@@ -16,6 +16,7 @@ from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContext
 MAX_CONTEXT_BYTES = 64 * 1024
 
 PromptPreparationDispatchStatusV1 = Literal[
+    "waiting_user",
     "queued",
     "leased",
     "completed",
@@ -73,11 +74,11 @@ class PromptPreparationDispatchV1(BaseModel):
     def validate_identity_and_state(self) -> "PromptPreparationDispatchV1":
         if (self.occurrence_id is None) != (self.character_phase is None):
             raise ValueError("Occurrence and Character phase must be provided together.")
-        if self.status == "queued":
+        if self.status in {"waiting_user", "queued"}:
             if self.lease_owner is not None or self.lease_expires_at is not None:
-                raise ValueError("Queued dispatch cannot have a lease owner.")
+                raise ValueError("Unleased dispatch cannot have a lease owner.")
             if self.terminal_at is not None:
-                raise ValueError("Queued dispatch cannot have a terminal timestamp.")
+                raise ValueError("Unleased dispatch cannot have a terminal timestamp.")
         elif self.status == "leased":
             if not self.lease_owner or self.lease_expires_at is None:
                 raise ValueError("Leased dispatch requires an owner and expiry.")

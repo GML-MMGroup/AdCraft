@@ -1,1 +1,5 @@
-Build the narrative premise around vast scale, then use sparse geometry to shape escalation and human-to-environment contrast to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+先写清人物在宏大环境中的目标、阻碍和一个可验证的结果，再安排远景建立、接近、操作和回望。把 vast scale 变成关系信息，不要只写“震撼”。产品或装置应通过接口、反馈或状态改变承担叙事。
+
+每段只引入一个新尺度或功能。正例是人物接近装置后理解环境；反例是连续旁白介绍世界，却没有行动和结果。

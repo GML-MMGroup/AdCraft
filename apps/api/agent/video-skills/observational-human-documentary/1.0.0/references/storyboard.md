@@ -1,1 +1,5 @@
-Organize shots around respectful observation, develop visual progression through environmental context, and reserve authentic action for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
+# 分镜指导
+
+先用环境建立人物处境，再观察完整行动、停顿、调整和结果。关键帧记录人物边界、动作起止、工具、空间关系和声音来源；不要只截取最戏剧化的表情。
+
+用环境声、视线、动作匹配和空间转向连接段落。检查每个旁白落点是否有事实依据。

@@ -164,6 +164,11 @@ class JourneyEvidenceV2(_JourneyModel):
 
 class GuidedProductionJourneyV2(_JourneyModel):
     policy_version: Literal["fixed_ad_production_v2"] = "fixed_ad_production_v2"
+    # None preserves the legacy policy for historical sessions. New guided
+    # sessions opt into the proposal-submit policy at their creation boundary.
+    journey_policy_id: Literal["proposal_submit_auto_result_v1"] | None = None
+    journey_policy_revision: int | None = Field(default=None, ge=1, le=32)
+    planning_wave_id: str | None = Field(default=None, min_length=1, max_length=160)
     stage: JourneyStageV2 = "intake"
     stage_status: JourneyStageStatusV2 = "ready"
     stage_revision: int = Field(default=1, ge=1)

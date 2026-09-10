@@ -14,6 +14,7 @@ from app.persistence.agent_canvas_production_closure_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas import CanvasNodeV2, ProjectAssetSummaryV2
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
 from app.schemas.agent_canvas_production_closure import (
     GuidedClosureBlockerV1,
     GuidedClosureInputV1,
@@ -47,6 +48,8 @@ class GuidedProductionClosureService:
         receipts: AgentCanvasProductionClosureRepository,
         has_active_work: Callable[[str, tuple[str, ...]], bool],
         events: EventRepository,
+        journey_policy_id: Callable[[str], str | None] | None = None,
+        result_evidence: Callable[[str, str], GuidedMediaResultEvidenceV2 | None] | None = None,
         clock: Clock = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
@@ -56,6 +59,8 @@ class GuidedProductionClosureService:
         self._receipts = receipts
         self._has_active_work = has_active_work
         self._events = events
+        self._journey_policy_id = journey_policy_id or (lambda _workflow_id: None)
+        self._result_evidence = result_evidence or (lambda _workflow_id, _node_id: None)
         self._clock = clock
 
     def freeze(
@@ -102,7 +107,12 @@ class GuidedProductionClosureService:
         if bgm is not None and not bgm_excluded:
             planned.append((bgm, "audio", len(planned), ""))
 
-        confirmations = self._receipts.list_confirmations(workflow_id)
+        uses_publication_evidence = (
+            self._journey_policy_id(workflow_id) == "proposal_submit_auto_result_v1"
+        )
+        confirmations = (
+            () if uses_publication_evidence else self._receipts.list_confirmations(workflow_id)
+        )
         blockers: list[GuidedClosureBlockerV1] = []
         inputs: list[GuidedClosureInputV1] = []
         planned_node_ids = tuple(
@@ -193,15 +203,39 @@ class GuidedProductionClosureService:
                     )
                 )
                 continue
-            confirmation = _current_confirmation(
-                confirmations,
+            evidence = (
+                self._result_evidence(workflow_id, node.node_id)
+                if uses_publication_evidence
+                else None
+            )
+            confirmation = None
+            if evidence is None and not uses_publication_evidence:
+                confirmation = _current_confirmation(
+                    confirmations,
+                    document=document,
+                    node=node,
+                    asset=asset,
+                    media_role=media_role,
+                    sequence_id=sequence_id or None,
+                )
+            if uses_publication_evidence and not _matches_result_evidence(
+                evidence,
                 document=document,
                 node=node,
                 asset=asset,
-                media_role=media_role,
-                sequence_id=sequence_id or None,
-            )
-            if confirmation is None:
+            ):
+                blockers.append(
+                    _blocker(
+                        "unconfirmed",
+                        media_role,
+                        node.node_id,
+                        sequence_id,
+                        node.status,
+                        "guided_media_result_evidence_missing",
+                    )
+                )
+                continue
+            if not uses_publication_evidence and confirmation is None:
                 blockers.append(
                     _blocker(
                         "unconfirmed",
@@ -223,7 +257,10 @@ class GuidedProductionClosureService:
                     asset_id=asset.asset_id,
                     asset_version_id=asset.version_id,
                     asset_digest=asset.checksum,
-                    confirmation_id=confirmation.confirmation_id,
+                    confirmation_id=(
+                        confirmation.confirmation_id if confirmation is not None else None
+                    ),
+                    result_evidence_id=(evidence.evidence_id if evidence is not None else None),
                 )
             )
 
@@ -240,7 +277,7 @@ class GuidedProductionClosureService:
                 },
             )
 
-        confirmation_digest = _digest([item.confirmation_id for item in inputs])
+        confirmation_digest = _digest([item.result_authority_id for item in inputs])
         logical_identity = f"{document.document_id}:{document.revision}:{confirmation_digest}"
         return GuidedClosurePlanV1(
             closure_plan_id="closure_" + sha256(logical_identity.encode()).hexdigest()[:32],
@@ -254,6 +291,11 @@ class GuidedProductionClosureService:
             no_active_work=True,
             created_at=self._clock(),
         )
+
+    def require_no_active_work(self, workflow_id: str, node_ids: tuple[str, ...]) -> None:
+        """Recheck existing execution ownership while the caller holds its write fence."""
+        if self._has_active_work(workflow_id, node_ids):
+            raise _error("guided_closure_blocked", "Guided source media still has active work.")
 
     def _record_blocked(self, workflow_id: str, document, blockers) -> None:
         digest = _digest([item.model_dump(mode="json") for item in blockers])
@@ -288,7 +330,7 @@ def _current_confirmation(
             item
             for item in confirmations
             if item.plan_document_id == document.document_id
-            and item.plan_revision == document.revision
+            and item.plan_revision <= document.revision
             and item.node_id == node.node_id
             and item.node_revision == node.revision
             and item.asset_id == asset.asset_id
@@ -298,6 +340,26 @@ def _current_confirmation(
             and item.sequence_id == sequence_id
         ),
         None,
+    )
+
+
+def _matches_result_evidence(
+    evidence: GuidedMediaResultEvidenceV2 | None,
+    *,
+    document,
+    node: CanvasNodeV2,
+    asset: ProjectAssetSummaryV2,
+) -> bool:
+    return bool(
+        evidence is not None
+        and evidence.workflow_id == document.workflow_id
+        and evidence.plan_document_id == document.document_id
+        and evidence.plan_revision <= document.revision
+        and evidence.node_id == node.node_id
+        and evidence.node_revision == node.revision
+        and evidence.asset_id == asset.asset_id
+        and evidence.asset_version_id == asset.version_id
+        and evidence.publication_digest == f"sha256:{asset.checksum}"
     )
 
 

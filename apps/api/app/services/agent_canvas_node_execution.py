@@ -31,15 +31,26 @@ from app.schemas.agent_canvas_ad_media import (
 from app.schemas.agent_canvas_runtime import (
     EffectiveMediaParameterSnapshotV2,
     ResolvedModelExecutionV1,
+    ResolvedModelExecutionV2,
 )
 from app.schemas.workflow_v2 import V2ProviderResult
 from app.schemas.seedance_inputs import (
     SeedanceDeliveredMediaInputV1,
     SeedanceInputManifestAuditV1,
     SeedanceInputManifestV1,
+    StoryboardGridGroundingPlanV1,
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
+from app.services.agent_canvas_execution_mode import (
+    CanvasExecutionModeV2,
+    CanvasSemanticExtractionModeV2,
+)
+from app.services.agent_canvas_storyboard_grounding import (
+    GroundingPlanError,
+    build_storyboard_grid_grounding_plan,
+)
+from app.services.agent_canvas_grounding_roles import canonical_storyboard_reference_role
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
@@ -58,6 +69,7 @@ from app.tools.mock_media_fixtures import (
     MockMediaFixtureError,
     deterministic_mock_media_bytes,
 )
+from app.tools.seedance_adapter import VolcengineSeedanceAdapter
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +106,8 @@ class NodeExecutionContext:
     input_manifest: ResolvedNodeInputManifestV2 | None = None
     optional_input_omissions: tuple[dict[str, str], ...] = ()
     world_setting: WorldSettingContextEnvelopeV2 | None = None
+    execution_mode: CanvasExecutionModeV2 = "agent_assisted"
+    semantic_extraction: CanvasSemanticExtractionModeV2 = "agent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +201,8 @@ def generated_asset_publication_metadata(
             if context.effective_parameters is not None
             else []
         ),
+        "execution_mode": context.execution_mode,
+        "semantic_extraction": context.semantic_extraction,
     }
     if context.world_setting is not None:
         metadata["world_setting_context"] = {
@@ -253,6 +269,10 @@ def generated_asset_publication_metadata(
                 ),
             }
         )
+    if context.seedance_input_audit is not None:
+        grounding_audit = context.seedance_input_audit.grounding_audit
+        if grounding_audit is not None:
+            metadata["storyboard_grid_grounding"] = grounding_audit.model_dump(mode="json")
     return {key: value for key, value in metadata.items() if value is not None}
 
 
@@ -418,11 +438,20 @@ class MediaNodeExecutor:
         AgentCanvasRoleReferencePolicyService().require_derivative_runtime_inputs(
             context.node,
             media_inputs,
+            (
+                context.input_manifest.omitted_optional_inputs
+                if context.input_manifest is not None
+                else ()
+            ),
         )
         if context.node.node_type == "video" and context.seedance_manifest is not None:
             return context
         if context.node.node_type != "video" and context.delivered_references:
             return context
+        try:
+            grounding_plan = _seedance_grounding_plan(context, media_inputs)
+        except GroundingPlanError as error:
+            raise _error(error.code, str(error)) from error
         delivery = None
         if media_inputs:
             if context.model_resolution is None:
@@ -432,7 +461,11 @@ class MediaNodeExecutor:
                 )
             delivery = self._reference_delivery.deliver_canvas_inputs(
                 model_resolution=context.model_resolution,
-                inputs=media_inputs,
+                inputs=_delivery_inputs_with_validated_character_identity_semantics(
+                    context.node,
+                    media_inputs,
+                ),
+                grounding_plan=grounding_plan,
             )
             try:
                 delivery.raise_for_canvas_failures()
@@ -471,10 +504,17 @@ class MediaNodeExecutor:
                 delivered_references=delivered_references,
                 optional_input_omissions=optional_input_omissions,
             )
+        if getattr(context.model_resolution, "transport_kind", "") == "minimax_video_native":
+            return replace(
+                context,
+                delivered_references=delivered_references,
+                optional_input_omissions=optional_input_omissions,
+            )
         delivered_media = tuple(
             SeedanceDeliveredMediaInputV1(
                 binding_id=reference.binding_id or f"asset_{reference.asset_id}",
                 asset_id=reference.asset_id,
+                version_id=reference.version_id,
                 media_type=reference.media_type,  # type: ignore[arg-type]
                 input_role=reference.input_role,  # type: ignore[arg-type]
                 source_semantic_role=reference.source_semantic_role,
@@ -510,10 +550,15 @@ class MediaNodeExecutor:
                     context.compiled_prompt.prompt if context.compiled_prompt is not None else None
                 ),
                 effective_parameters=context.effective_parameters,
+                grounding_plan=grounding_plan,
             )
-        except ValueError as error:
+        except (GroundingPlanError, ValueError) as error:
             code = str(error)
-            if code != "v2_video_prompt_empty":
+            if isinstance(error, GroundingPlanError):
+                pass
+            elif code != "v2_video_prompt_empty" and not code.startswith(
+                "v2_storyboard_reference_"
+            ):
                 code = "provider_inputs_unsupported"
             raise _error(code, str(error)) from error
         return replace(
@@ -534,7 +579,11 @@ class MediaNodeExecutor:
                 "model_resolution_missing",
                 "Media execution requires a frozen model resolution.",
             )
-        if media_type == "video":
+        if media_type == "video" and getattr(
+            context.model_resolution, "transport_kind", ""
+        ) not in {
+            "minimax_video_native",
+        }:
             return self._execute_seedance_video(self.prepare(context))
         effective_parameters = (
             context.effective_parameters.effective
@@ -544,9 +593,22 @@ class MediaNodeExecutor:
         if context.node.semantic_role == "bgm":
             _require_bgm_duration(effective_parameters)
         prompt = _saved_prompt(context)
+        prepared = self.prepare(context)
+        provider_only_instructions = tuple(
+            reference.reference_instruction
+            for reference in prepared.delivered_references
+            if (
+                reference.reference_instruction is not None
+                and reference.reference_instruction_transport == "provider_only"
+            )
+        )
+        provider_prompt = _provider_prompt_with_reference_instructions(
+            prompt,
+            provider_only_instructions,
+        )
         provider_payload: dict[str, Any] = {
-            "provider_prompt": prompt,
-            "prompt": prompt,
+            "provider_prompt": provider_prompt,
+            "prompt": provider_prompt,
             "node_id": context.node.node_id,
             "semantic_role": context.node.semantic_role,
             "model_id": context.model_resolution.provider_model_id,
@@ -559,7 +621,7 @@ class MediaNodeExecutor:
                 "provider_model_id": context.model_resolution.provider_model_id,
             }
         )
-        prepared = self.prepare(context)
+        provider_payload.update(_frozen_adapter_identity_payload(context.model_resolution))
         if prepared.delivered_references:
             provider_payload["reference_assets"] = [
                 reference.provider_asset() for reference in prepared.delivered_references
@@ -567,6 +629,10 @@ class MediaNodeExecutor:
             provider_payload["reference_asset_ids"] = [
                 reference.asset_id for reference in prepared.delivered_references
             ]
+            if provider_only_instructions:
+                provider_payload["provider_only_reference_instructions"] = list(
+                    provider_only_instructions
+                )
         intent = self._prepare_submission_intent(context, provider_payload)
         if intent is not None and intent.provider_idempotency_token is not None:
             provider_payload["idempotency_token"] = intent.provider_idempotency_token
@@ -650,6 +716,10 @@ class MediaNodeExecutor:
                 "provider_reference_delivery_unavailable",
                 "The configured provider does not support Agent Canvas Seedance manifests.",
             )
+        try:
+            VolcengineSeedanceAdapter(self._settings).payload_for_manifest(manifest)
+        except ValueError as error:
+            raise _error(str(error), str(error)) from error
         intent = self._prepare_submission_intent(
             context,
             {
@@ -766,6 +836,24 @@ def _require_bgm_duration(parameters: dict[str, object]) -> None:
             "model_parameter_unsupported",
             "BGM execution requires a positive integer duration_seconds.",
         )
+
+
+def _frozen_adapter_identity_payload(
+    resolution: ResolvedModelExecutionV1,
+) -> dict[str, object]:
+    """Expose only adapter identity already frozen in the V2 resolution."""
+
+    if not isinstance(resolution, ResolvedModelExecutionV2):
+        return {}
+    return {
+        "adapter_id": resolution.adapter_id,
+        "transport_kind": resolution.transport_kind,
+        "conformance_status": resolution.conformance_status,
+        "capability_revision": resolution.capability_revision,
+        "adapter_revision": resolution.adapter_revision,
+        "requested_parameter_fingerprint": resolution.requested_parameter_fingerprint,
+        "effective_parameter_fingerprint": resolution.effective_parameter_fingerprint,
+    }
 
 
 def _generated_media_identity(media_type: str, content: bytes) -> tuple[str, str]:
@@ -1053,6 +1141,101 @@ def _saved_prompt(context: NodeExecutionContext) -> str:
     return "\n\n".join(parts)
 
 
+def _seedance_grounding_plan(
+    context: NodeExecutionContext,
+    media_inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+) -> StoryboardGridGroundingPlanV1 | None:
+    """Build grounding only for persisted sequence video nodes with a grid binding."""
+
+    if context.node.creative_role != "storyboard_video":
+        return None
+    sequence_id = context.node.metadata.get("source_sequence_id")
+    if not isinstance(sequence_id, str) or not sequence_id.strip():
+        return None
+    grid_input = next(
+        (
+            item
+            for item in media_inputs
+            if item.media_type == "image"
+            and (
+                item.source_semantic_role in {"storyboard_grid", "storyboard_sequence"}
+                or item.binding_metadata.get("semantic_reference_role")
+                == "storyboard_visual_reference"
+            )
+        ),
+        None,
+    )
+    if context.model_resolution is None:
+        raise GroundingPlanError("v2_storyboard_grid_provider_payload_invalid")
+    limits = context.model_resolution.capability_metadata.get("reference_limits")
+    provider_reference_limit = limits.get("image") if isinstance(limits, dict) else None
+    if not isinstance(provider_reference_limit, int):
+        raise GroundingPlanError("v2_storyboard_grid_provider_payload_invalid")
+    if grid_input is None:
+        return build_storyboard_grid_grounding_plan(
+            node=context.node,
+            grid_input=None,
+            storyboard_content={},
+            target_shot_id=sequence_id,
+            prompt_snapshot=context.node.generation_prompt or "",
+            ordered_references=(),
+            provider_reference_limit=provider_reference_limit,
+        )
+    revision = context.node.metadata.get("source_plan_revision")
+    grid_with_revision = grid_input.model_copy(
+        update={
+            "binding_metadata": {
+                **grid_input.binding_metadata,
+                "storyboard_revision": str(revision) if revision is not None else "",
+            }
+        }
+    )
+    try:
+        ordered_references = tuple(
+            {
+                "asset_id": item.asset_id,
+                "version_id": item.asset_version_id,
+                "checksum": item.asset_checksum,
+                "semantic_role": canonical_storyboard_reference_role(
+                    binding_role=item.binding_metadata.get("semantic_reference_role"),
+                    source_role=item.source_semantic_role,
+                ),
+                "binding_id": item.binding_id or f"asset:{item.asset_id}",
+                "media_type": item.media_type,
+                "required": True,
+                "display_order": item.display_order,
+            }
+            for item in media_inputs
+            if item is not grid_input and item.media_type == "image"
+        )
+    except ValueError as error:
+        raise GroundingPlanError(str(error)) from error
+    return build_storyboard_grid_grounding_plan(
+        node=context.node,
+        grid_input=grid_with_revision,
+        storyboard_content=grid_input.source_structured_content,
+        target_shot_id=sequence_id,
+        prompt_snapshot=context.node.generation_prompt or "",
+        ordered_references=ordered_references,
+        provider_reference_limit=provider_reference_limit,
+        expected_storyboard_revision=(str(revision) if revision is not None else None),
+    )
+
+
+def _provider_prompt_with_reference_instructions(
+    prompt: str,
+    instructions: tuple[str, ...],
+) -> str:
+    """Append bounded provider-only semantics without changing Node prompt authority."""
+
+    if not instructions:
+        return prompt
+    section = "Provider-only reference instructions:\n" + "\n".join(
+        f"{index}. {instruction}" for index, instruction in enumerate(instructions, start=1)
+    )
+    return f"{prompt}\n\n{section}"
+
+
 def _json_input(value: object) -> object:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
@@ -1087,7 +1270,7 @@ def _delivery_failure_identity(
             failure.node_id or (source.source_node_id if source is not None else None)
         ),
         "asset_id": failure.asset_id,
-        "required": source.required if source is not None else True,
+        "required": True,
         "reason": failure.reason,
     }
 
@@ -1099,6 +1282,9 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         and context.node.structured_content.get("character_asset_kind") == "turnaround"
     ):
         return
+    target_pair_id = context.node.metadata.get("character_pair_id")
+    target_occurrence_id = context.node.metadata.get("occurrence_id")
+    target_phase = context.node.metadata.get("character_phase")
     candidates = tuple(
         item
         for item in context.inputs
@@ -1107,16 +1293,63 @@ def _require_character_identity_master_input(context: NodeExecutionContext) -> N
         and item.source_semantic_role == "character"
         and item.media_type == "image"
         and item.input_role == "image_reference"
-        and item.required
         and item.binding_metadata.get("reference_purpose") == "identity_master"
         and item.binding_metadata.get("semantic_reference_role") == "subject_reference"
+        and (
+            not isinstance(target_pair_id, str)
+            or item.binding_metadata.get("character_pair_id") == target_pair_id
+        )
+        and (
+            not isinstance(target_occurrence_id, str)
+            or item.binding_metadata.get("occurrence_id") == target_occurrence_id
+        )
+        and (
+            not isinstance(target_phase, str)
+            or item.binding_metadata.get("character_phase") == target_phase
+        )
     )
     if len(candidates) != 1:
+        omissions = (
+            context.input_manifest.omitted_optional_inputs
+            if context.input_manifest is not None
+            else ()
+        )
+        if AgentCanvasRoleReferencePolicyService.has_valid_derivative_no_output_omission(
+            context.node,
+            omissions,
+        ):
+            return
         raise _error(
             "character_identity_master_binding_invalid",
             "Character Turnaround requires exactly one Ready Character Main image Binding.",
             details={"target_node_id": context.node.node_id},
         )
+
+
+def _delivery_inputs_with_validated_character_identity_semantics(
+    node: CanvasNodeV2,
+    inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+) -> tuple[ResolvedMediaInputSnapshotV2, ...]:
+    """Project validated Character identity semantics into the delivery compiler."""
+
+    if not (
+        node.node_type == "image"
+        and node.creative_role == "character"
+        and node.structured_content.get("character_asset_kind") == "turnaround"
+    ):
+        return inputs
+    return tuple(
+        item.model_copy(
+            update={
+                "binding_metadata": {
+                    **item.binding_metadata,
+                    "reference_kind": "character_main",
+                    "reference_purpose": "identity_guidance",
+                }
+            }
+        )
+        for item in inputs
+    )
 
 
 def _seedance_checksum(asset_id: str, version_id: str | None) -> str:

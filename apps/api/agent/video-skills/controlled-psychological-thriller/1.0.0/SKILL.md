@@ -1,8 +1,21 @@
 ---
-name: Controlled Psychological Thriller
-description: An advertising treatment built around restrained tension, motivated darkness, exact blocking, and procedural visual detail.
+name: 克制心理悬疑广告
+description: 以受控张力、有动机的暗部、精确调度和程序性视觉细节构建不喧闹却持续加压的商业叙事。
 ---
 
-Use restrained tension, motivated darkness, exact blocking, and procedural visual detail as the style's creative grammar. Establish restrained tension as the primary visual idea, reinforce it through motivated darkness, and let exact blocking shape the progression toward procedural visual detail.
+把 restrained tension、motivated darkness、exact blocking、procedural visual detail 作为心理悬疑广告的四个创作支点。悬疑来自观众知道某件事正在发生，却暂时不能完整解释；不要用无意义的黑暗、抖动或突然惊吓代替信息控制。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 张力与信息
+
+先定义观众知道什么、人物知道什么、产品或品牌解决什么问题。用延迟揭示、重复路径、缺失物件、微小状态变化和反应差异递进张力。每次隐藏都要有回收计划，高潮之后让关键证据可见。
+
+## 光线与调度
+
+motivated darkness 必须有遮挡、时间、空间或光源理由；暗部仍保留人物身份、产品轮廓和动作方向。exact blocking 记录进入、停留、转身、视线、手部和退场位置，避免角色在相邻镜头无原因换位。procedural visual detail 可以是门锁、指示、文件、仪表或重复操作，但要服务于因果。
+
+## 纠偏边界
+
+参考图优先锁定人物、产品和关键空间。结果过度戏剧化时，先恢复可追踪的动作和证据，再降低阴影、镜头抖动和装饰。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供悬疑表达判断。
+
+正例：人物按顺序检查三个状态，最后一个细节改变观众对前两个动作的理解。
+反例：全片都在黑暗中快速切换，既看不见主体，也没有可回收的线索。

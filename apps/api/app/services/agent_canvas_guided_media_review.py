@@ -24,11 +24,13 @@ from app.schemas.agent_canvas_media_review_authority import (
     CanvasExecutionResultLineageV2,
     GuidedMediaReviewPublicationCommandV1,
 )
-from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
-from app.schemas.agent_canvas import (
-    CanvasVariationDraftUpsertV2,
-    CanvasVariationMaterializeRequestV2,
+from app.schemas.agent_canvas_guided_authoring_policy import GuidedMediaResultEvidenceV2
+from app.schemas.agent_canvas_guided_authoring_policy import (
+    GuidedMediaResultPublicationContextV1,
 )
+from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
+from app.schemas.agent_canvas import CanvasNodePatchRequestV2
+from app.schemas.agent_canvas_runtime import CanvasRunRequestV2
 from app.schemas.agent_working_documents import (
     StoryboardExcludedMediaV3,
     StoryboardPlannedNodeV3,
@@ -53,6 +55,56 @@ MediaAction = Callable[
     GuidedMediaActionOutcome,
 ]
 
+_STORYBOARD_PLAN_CREATIVE_ROLES = frozenset({"storyboard_sequence", "storyboard_video", "bgm"})
+
+
+class GuidedMediaResultPublicationContextResolver:
+    """Resolve current proposal-authorized publication identity without mutation."""
+
+    def __init__(self, *, conversations, plans) -> None:
+        self._conversations = conversations
+        self._plans = plans
+
+    def resolve(
+        self,
+        context,
+        source_generation: int,
+        operation_id: str,
+    ) -> GuidedMediaResultPublicationContextV1 | None:
+        session = self._conversations.get_guidance_session_or_none(context.node.workflow_id)
+        journey = getattr(session, "journey", None)
+        if (
+            session is None
+            or getattr(journey, "journey_policy_id", None) != "proposal_submit_auto_result_v1"
+        ):
+            return None
+        planning_wave_id = getattr(journey, "planning_wave_id", None)
+        if not planning_wave_id:
+            raise _error(
+                "guided_planning_wave_missing",
+                "Guided result publication requires a persisted planning wave.",
+            )
+        creative_role = getattr(context.node, "creative_role", None)
+        if creative_role is not None and creative_role not in _STORYBOARD_PLAN_CREATIVE_ROLES:
+            return None
+        plan, record = _find_plan_record(
+            self._plans,
+            context.node.workflow_id,
+            context.node.node_id,
+        )
+        if plan is None or record is None:
+            raise _error(
+                "guided_media_result_plan_stale",
+                "Guided result publication requires the current owning Plan.",
+            )
+        return GuidedMediaResultPublicationContextV1(
+            planning_wave_id=planning_wave_id,
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            operation_id=operation_id,
+            source_generation=source_generation,
+        )
+
 
 class GuidedMediaReviewCoordinator:
     """Open user review or apply delegated structural acceptance for Ready media."""
@@ -71,6 +123,7 @@ class GuidedMediaReviewCoordinator:
         resume_media_confirmation: Callable[[str], None] | None = None,
         node_resolver: Callable[[str, str], object] | None = None,
         execution_settings: Callable[[str], object] | None = None,
+        prompt_ready_activation: Callable[..., object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -83,6 +136,7 @@ class GuidedMediaReviewCoordinator:
         self._resume_media_confirmation = resume_media_confirmation
         self._node_resolver = node_resolver
         self._execution_settings = execution_settings
+        self._prompt_ready_activation = prompt_ready_activation
 
     def on_node_ready(self, node) -> tuple[str, ...]:
         return self._on_node_ready(
@@ -119,13 +173,68 @@ class GuidedMediaReviewCoordinator:
         )
         session = self._conversations.get_guidance_session_or_none(effect.workflow_id)
         plan, record = _find_plan_record(self._plans, effect.workflow_id, effect.node_id)
-        if node is None or session is None or plan is None or record is None:
+        if node is None or session is None:
             return CanvasPostReadyEffectDispositionV1(
                 outcome="superseded",
                 reason_code="not_current_guided_media",
             )
-        awaiting = getattr(session, "awaiting", None)
-        if (
+        automatic_result_policy = (
+            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+            == "proposal_submit_auto_result_v1"
+        )
+        if plan is None or record is None:
+            resumed = (
+                automatic_result_policy
+                and node.status == "ready"
+                and node.output_asset_id == lineage.asset_id
+                and self._resume_ready_manual_node_wait(
+                    workflow_id=effect.workflow_id,
+                    session=session,
+                    node_id=lineage.node_id,
+                )
+            )
+            return CanvasPostReadyEffectDispositionV1(
+                outcome="applied" if resumed else "superseded",
+                reason_code="guided_manual_node_wait_resumed"
+                if resumed
+                else "not_current_guided_media",
+            )
+        if automatic_result_policy:
+            return self._publish_automatic_result_evidence(
+                effect=effect,
+                lineage=lineage,
+                node=node,
+                session=session,
+                plan=plan,
+                record=record,
+            )
+        review_id, checkpoint_id, awaiting_id = _review_identity(
+            effect.source_commit_id,
+            plan.document_id,
+            plan.revision,
+            node.node_id,
+            lineage.asset_version_id,
+        )
+        node_review_id = "interaction_media_" + _node_review_digest(
+            plan.document_id, plan.revision, node.node_id, node.revision, lineage.asset_version_id
+        )
+        awaiting = (
+            self._interactions.get_awaiting(effect.workflow_id, interaction_id=review_id)
+            or self._interactions.get_awaiting(effect.workflow_id, interaction_id=node_review_id)
+            or self._interactions.get_awaiting(effect.workflow_id, node_id=effect.node_id)
+        )
+        reconcile_grid = (
+            (
+                awaiting is None
+                or (
+                    awaiting.kind == "media_review"
+                    and awaiting.interaction_id in {review_id, node_review_id}
+                )
+            )
+            and record.node_role == "storyboard_grid"
+            and not self._is_automatic_mode(effect.workflow_id)
+        )
+        if not reconcile_grid and (
             awaiting is None
             or awaiting.kind != "manual_node_run"
             or awaiting.resume_policy != "node_terminal"
@@ -134,34 +243,83 @@ class GuidedMediaReviewCoordinator:
             if (
                 awaiting is not None
                 and awaiting.kind == "media_review"
-                and awaiting.interaction_id
-                == _review_identity(
-                    effect.source_commit_id,
-                    plan.document_id,
-                    plan.revision,
-                    node.node_id,
-                    lineage.asset_version_id,
-                )[0]
+                and awaiting.interaction_id in {review_id, node_review_id}
             ):
                 return CanvasPostReadyEffectDispositionV1(
                     outcome="already_applied",
                     reason_code="media_review_already_published",
                     interaction_id=awaiting.interaction_id,
                 )
-            if awaiting is None and self._is_automatic_mode(effect.workflow_id):
+            if awaiting is None:
                 if node.output_asset_id != lineage.asset_id or node.status != "ready":
                     return CanvasPostReadyEffectDispositionV1(
                         outcome="superseded",
                         reason_code="current_output_replaced",
                     )
-                return self._delegate_result_confirmation(
-                    effect=effect,
-                    lineage=lineage,
-                    node=node,
-                    session=session,
-                    plan=plan,
-                    record=record,
-                )
+                automatic = self._is_automatic_mode(effect.workflow_id)
+                current_wait = getattr(session, "awaiting", None)
+                if (
+                    automatic
+                    and record.node_role == "storyboard_grid"
+                    and (
+                        current_wait is not None
+                        or session.status != "active"
+                        or session.journey.active_action is not None
+                    )
+                ):
+                    return CanvasPostReadyEffectDispositionV1(
+                        outcome="deferred", reason_code="guided_interaction_conflict"
+                    )
+                if automatic and current_wait is None:
+                    return self._delegate_result_confirmation(
+                        effect=effect,
+                        lineage=lineage,
+                        node=node,
+                        session=session,
+                        plan=plan,
+                        record=record,
+                    )
+                completion = getattr(session, "completion", None)
+                if (
+                    getattr(completion, "editing_preparation", None) == "prepared"
+                    and record.node_role in {"video_segment", "bgm"}
+                    and not automatic
+                ):
+                    if current_wait is None:
+                        self.reconcile_current_plan(effect.workflow_id)
+                        review = self._interactions.get_awaiting(effect.workflow_id)
+                    elif (
+                        current_wait.kind not in {"manual_node_run", "media_review"}
+                        and getattr(getattr(session, "creative_authority", None), "authority", None)
+                        != "director"
+                    ):
+                        try:
+                            self._on_node_ready(
+                                node,
+                                reconcile_current=False,
+                                require_terminal_wait=False,
+                                allow_result_revision_advance=True,
+                            )
+                        except V2PersistenceError as error:
+                            if error.code not in {
+                                "guided_interaction_conflict",
+                                "guidance_revision_conflict",
+                            }:
+                                raise
+                            return CanvasPostReadyEffectDispositionV1(
+                                outcome="deferred", reason_code="guided_interaction_conflict"
+                            )
+                        review = self._interactions.get_awaiting(
+                            effect.workflow_id, interaction_id=node_review_id
+                        )
+                    else:
+                        review = None
+                    if review is not None and review.kind == "media_review":
+                        return CanvasPostReadyEffectDispositionV1(
+                            outcome="applied",
+                            reason_code="current_plan_media_review_published",
+                            interaction_id=review.interaction_id,
+                        )
             return CanvasPostReadyEffectDispositionV1(
                 outcome="superseded",
                 reason_code="current_wait_replaced",
@@ -171,19 +329,13 @@ class GuidedMediaReviewCoordinator:
                 outcome="superseded",
                 reason_code="current_output_replaced",
             )
-        review_id, checkpoint_id, awaiting_id = _review_identity(
-            effect.source_commit_id,
-            plan.document_id,
-            plan.revision,
-            node.node_id,
-            lineage.asset_version_id,
-        )
         actions = (
             ("accept", "retry", "replace")
             if record.node_role == "storyboard_grid"
             else ("accept", "retry", "replace", "exclude")
         )
         command = GuidedMediaReviewPublicationCommandV1(
+            publication_scope="current_result" if reconcile_grid else "terminal_wait",
             lineage=lineage,
             session_id=session.session_id,
             plan_document_id=plan.document_id,
@@ -194,12 +346,14 @@ class GuidedMediaReviewCoordinator:
             current_node_revision=node.revision,
             asset_id=lineage.asset_id,
             asset_version_id=lineage.asset_version_id,
-            expected_awaiting_id=awaiting.awaiting_id,
-            expected_awaiting_node_ids=awaiting.node_ids,
+            expected_awaiting_id=awaiting.awaiting_id if awaiting and not reconcile_grid else None,
+            expected_awaiting_node_ids=awaiting.node_ids if awaiting and not reconcile_grid else (),
             expected_session_revision=session.revision,
-            expected_stage=session.journey.stage,
-            expected_stage_revision=session.journey.stage_revision,
-            interaction_id=review_id,
+            expected_stage=awaiting.stage if awaiting else session.journey.stage,
+            expected_stage_revision=awaiting.stage_revision
+            if awaiting
+            else session.journey.stage_revision,
+            interaction_id=awaiting.interaction_id if reconcile_grid and awaiting else review_id,
             checkpoint_id=checkpoint_id,
             review_awaiting_id=awaiting_id,
             response_locale=session.response_locale,
@@ -224,6 +378,95 @@ class GuidedMediaReviewCoordinator:
                     "Current Guided media result lineage could not be resolved.",
                 ) from error
             raise
+
+    def _publish_automatic_result_evidence(
+        self,
+        *,
+        effect: CanvasPostReadyEffectV2,
+        lineage: CanvasExecutionResultLineageV2,
+        node,
+        session,
+        plan,
+        record,
+    ) -> CanvasPostReadyEffectDispositionV1:
+        """Keep new-policy publication free of a synthetic user review."""
+
+        planning_wave_id = getattr(getattr(session, "journey", None), "planning_wave_id", None)
+        if not planning_wave_id:
+            raise _error(
+                "guided_planning_wave_missing",
+                "Guided result publication requires a persisted planning wave.",
+            )
+        evidence = GuidedMediaResultEvidenceV2(
+            evidence_id=f"guided-result:{lineage.commit_id}",
+            planning_wave_id=planning_wave_id,
+            workflow_id=lineage.workflow_id,
+            node_id=lineage.node_id,
+            node_revision=getattr(node, "revision", 1),
+            operation_id=lineage.commit_id,
+            asset_id=lineage.asset_id or "",
+            asset_version_id=lineage.asset_version_id or "",
+            publication_digest=f"sha256:{effect.payload_digest}",
+            plan_document_id=plan.document_id,
+            plan_revision=plan.revision,
+            publication_receipt_id=lineage.commit_id,
+            source_generation=effect.attempt_no,
+            recorded_at=lineage.committed_at,
+        )
+        if self._events is not None:
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=lineage.workflow_id,
+                    node_id=lineage.node_id,
+                    event_type="guided_media_result_published",
+                    transition_key=f"guided-media-result:{lineage.commit_id}",
+                    created_at=lineage.committed_at.isoformat(),
+                    payload=evidence.model_dump(mode="json"),
+                )
+            )
+        self._resume_ready_manual_node_wait(
+            workflow_id=effect.workflow_id,
+            session=session,
+            node_id=lineage.node_id,
+        )
+        if self._prompt_ready_activation is not None:
+            planned_node_ids = tuple(
+                record.node_id
+                for record in (
+                    getattr(plan.content, "planned_nodes", None)
+                    or getattr(plan.content, "node_records", ())
+                )
+                if getattr(record, "node_role", None) in {"storyboard_grid", "video_segment", "bgm"}
+            )
+            self._prompt_ready_activation(
+                effect.workflow_id,
+                planned_node_ids,
+                source_id=f"guided-result:{lineage.commit_id}",
+            )
+        return CanvasPostReadyEffectDispositionV1(
+            outcome="applied",
+            reason_code="guided_media_result_published",
+        )
+
+    def _resume_ready_manual_node_wait(self, *, workflow_id: str, session, node_id: str) -> bool:
+        awaiting = self._interactions.get_awaiting(workflow_id, node_id=node_id)
+        if (
+            awaiting is None
+            or awaiting.kind != "manual_node_run"
+            or awaiting.resume_policy != "node_terminal"
+            or not self._manual_wait_is_ready(workflow_id, tuple(awaiting.node_ids))
+        ):
+            return False
+        self._interactions.resume_awaiting(
+            workflow_id,
+            GuidanceAwaitingResumeProofV2(
+                awaiting_id=awaiting.awaiting_id,
+                expected_session_revision=session.revision,
+                evidence_kind="node_terminal",
+                node_ids=tuple(awaiting.node_ids),
+            ),
+        )
+        return True
 
     def _is_automatic_mode(self, workflow_id: str) -> bool:
         if self._execution_settings is None:
@@ -278,6 +521,13 @@ class GuidedMediaReviewCoordinator:
         session = self._conversations.get_guidance_session_or_none(node.workflow_id)
         if session is None or node.output_asset_id is None:
             return ()
+        if (
+            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+            == "proposal_submit_auto_result_v1"
+        ):
+            # New-policy publication is driven by the typed post-ready evidence
+            # effect. A node-ready projection must never recreate legacy review.
+            return ()
         plan, record = _find_plan_record(self._plans, node.workflow_id, node.node_id)
         if plan is None or record.node_role not in {
             "storyboard_grid",
@@ -317,16 +567,9 @@ class GuidedMediaReviewCoordinator:
             )
             session = self._conversations.get_guidance_session(node.workflow_id)
         asset = self._assets(node.output_asset_id)
-        logical_identity = ":".join(
-            (
-                plan.document_id,
-                str(plan.revision),
-                node.node_id,
-                str(node.revision),
-                asset.version_id or "",
-            )
+        review_id = _node_review_digest(
+            plan.document_id, plan.revision, node.node_id, node.revision, asset.version_id or ""
         )
-        review_id = sha256(logical_identity.encode()).hexdigest()[:32]
         if (
             session.creative_authority is not None
             and session.creative_authority.authority == "director"
@@ -433,7 +676,7 @@ class GuidedMediaReviewCoordinator:
         if self._receipts is None or self._node_resolver is None:
             return ()
         session = self._conversations.get_guidance_session_or_none(workflow_id)
-        if session is None or getattr(session, "awaiting", None) is not None:
+        if session is None:
             return ()
         confirmations = self._receipts.list_confirmations(workflow_id)
         created_node_ids: list[str] = []
@@ -443,7 +686,24 @@ class GuidedMediaReviewCoordinator:
                 or getattr(plan.content, "node_records", ())
             )
             for record in records:
-                if record.node_role not in {"video_segment", "bgm"}:
+                if record.node_role == "storyboard_grid" and self._result_commits is not None:
+                    if self._is_automatic_mode(workflow_id):
+                        node = self._node_resolver(workflow_id, record.node_id)
+                        if node.status == "ready" and node.output_asset_id is not None:
+                            asset = self._assets(node.output_asset_id)
+                            if _has_current_confirmation(
+                                confirmations, plan=plan, record=record, node=node, asset=asset
+                            ):
+                                continue
+                    effect = self._result_commits.find_latest_post_ready_effect(
+                        workflow_id=workflow_id, node_id=record.node_id
+                    )
+                    if effect is not None:
+                        outcome = self.publish_from_effect(effect)
+                        if outcome.outcome in {"applied", "deferred"}:
+                            return tuple(created_node_ids)
+                    continue
+                if session.awaiting is not None or record.node_role not in {"video_segment", "bgm"}:
                     continue
                 node = self._node_resolver(workflow_id, record.node_id)
                 if node.status != "ready" or node.output_asset_id is None:
@@ -467,6 +727,12 @@ class GuidedMediaReviewCoordinator:
                         and self._is_automatic_mode(workflow_id)
                         and record.node_role in {"video_segment", "bgm"}
                     ):
+                        if (
+                            getattr(getattr(session, "journey", None), "journey_policy_id", None)
+                            == "proposal_submit_auto_result_v1"
+                        ):
+                            self.publish_from_effect(effect)
+                            continue
                         self._confirmations.confirm_result(
                             workflow_id=workflow_id,
                             plan_document_id=plan.document_id,
@@ -635,11 +901,12 @@ class GuidedMediaReviewActionService:
 class GuidedMediaPlanActionService:
     """Apply retry, replacement, and exclusion to current Plan authority."""
 
-    def __init__(self, *, workflows, plan_reader, plan_writer, variations) -> None:
+    def __init__(self, *, workflows, plan_reader, plan_writer, nodes, run_service) -> None:
         self._workflows = workflows
         self._plan_reader = plan_reader
         self._plan_writer = plan_writer
-        self._variations = variations
+        self._nodes = nodes
+        self._run_service = run_service
 
     def retry(
         self,
@@ -662,7 +929,7 @@ class GuidedMediaPlanActionService:
         if request.instruction is None:
             raise _error(
                 "guided_media_replacement_instruction_required",
-                "A sibling replacement requires an explicit instruction.",
+                "A media replacement requires an explicit instruction.",
             )
         return self._replace(
             interaction,
@@ -728,11 +995,10 @@ class GuidedMediaPlanActionService:
         plan, record = self._current_plan_record(interaction)
         source = self._workflows.get_node(interaction.workflow_id, record.node_id)
         workflow = self._workflows.get_workflow(interaction.workflow_id)
-        saved = self._variations.save(
+        updated = self._nodes.patch(
             interaction.workflow_id,
             source.node_id,
-            CanvasVariationDraftUpsertV2(
-                title=f"{source.title} Alternative",
+            CanvasNodePatchRequestV2(
                 generation_prompt=f"{source.generation_prompt}\n\nRevision direction: {instruction}",
                 model_selection_mode=source.model_selection_mode,
                 model_ref=source.model_ref,
@@ -740,19 +1006,22 @@ class GuidedMediaPlanActionService:
             ),
             expected_revision=workflow.revision,
         )
-        materialized = self._variations.materialize(
+        accepted = self._run_service.start_or_extend(
             interaction.workflow_id,
-            source.node_id,
-            CanvasVariationMaterializeRequestV2(action="generate"),
-            expected_revision=saved.workflow_revision,
-            idempotency_key=idempotency_key,
+            CanvasRunRequestV2(
+                scope="selected_nodes",
+                node_ids=(source.node_id,),
+                source_action="agent_command",
+            ),
+            idempotency_key=f"guided-media-replace:{idempotency_key}",
+            expected_revision=workflow.revision + 1,
         )
         content = _v3_plan(plan.content)
         replacement = StoryboardPlannedNodeV3(
             sequence_id=record.sequence_id,
             node_role=record.node_role,
-            node_id=materialized.sibling_node.node_id,
-            node_revision=materialized.sibling_node.revision,
+            node_id=updated.node_id,
+            node_revision=updated.revision,
             materialization_id=receipt_id,
         )
         next_content = content.model_copy(
@@ -782,13 +1051,7 @@ class GuidedMediaPlanActionService:
         )
         return GuidedMediaActionOutcome(
             receipt_id=replacement.materialization_id,
-            created_node_ids=materialized.created_node_ids or (materialized.sibling_node.node_id,),
-            created_binding_ids=materialized.created_binding_ids or materialized.copied_binding_ids,
-            automatic_run_command_ids=(
-                (str(materialized.run.get("execution_id")),)
-                if materialized.run and materialized.run.get("execution_id")
-                else ()
-            ),
+            automatic_run_command_ids=(accepted.execution_id,),
         )
 
     def _current_plan_record(self, interaction: GuidedInteractionV1):
@@ -834,7 +1097,6 @@ class GuidedMediaPlanActionService:
             if record is not None:
                 return GuidedMediaActionOutcome(
                     receipt_id=receipt_id,
-                    created_node_ids=(record.node_id,),
                 )
         return None
 
@@ -862,6 +1124,17 @@ def _review_identity(
     )
 
 
+def _node_review_digest(
+    plan_document_id: str,
+    plan_revision: int,
+    node_id: str,
+    node_revision: int,
+    asset_version_id: str,
+) -> str:
+    identity = f"{plan_document_id}:{plan_revision}:{node_id}:{node_revision}:{asset_version_id}"
+    return sha256(identity.encode()).hexdigest()[:32]
+
+
 def _v3_plan(content) -> StoryboardProductionPlanContentV3:
     if not isinstance(content, StoryboardProductionPlanContentV3):
         raise _error(
@@ -884,10 +1157,12 @@ def _find_plan_record(plans, workflow_id: str, node_id: str):
 
 
 def _has_current_confirmation(confirmations, *, plan, record, node, asset) -> bool:
-    media_role = "audio" if record.node_role == "bgm" else "video"
+    media_role = {"bgm": "audio", "video_segment": "video", "storyboard_grid": "image"}[
+        record.node_role
+    ]
     return any(
         confirmation.plan_document_id == plan.document_id
-        and confirmation.plan_revision == plan.revision
+        and confirmation.plan_revision <= plan.revision
         and confirmation.media_role == media_role
         and confirmation.sequence_id == record.sequence_id
         and confirmation.node_id == node.node_id

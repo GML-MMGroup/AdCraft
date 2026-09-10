@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
 from app.persistence.provider_model_repository import (
     ModelDefaultRecord,
+    ProviderModelConformanceRunRecord,
     ProviderModelRecord,
     ProviderModelRepository,
 )
+from app.schemas.provider_models import ProviderAdapterProfileV1
+from app.services.openrouter_policy import build_openrouter_routing_policy
+from app.services.provider_credentials import ProviderHttpTransport, UrllibProviderHttpTransport
 
 
 class ProviderCatalogAdapter(Protocol):
@@ -28,6 +33,7 @@ class TrustedModelManifest:
     display_name: str
     capability: str
     capability_metadata: Mapping[str, Any]
+    adapter_profile: Mapping[str, Any] | None = None
 
     @property
     def model_ref(self) -> str:
@@ -49,6 +55,360 @@ GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
     "4:3": "2304x1728",
     "3:4": "1728x2304",
 }
+
+
+def _adapter_profile(
+    *,
+    model_ref: str,
+    adapter_id: str,
+    transport_kind: str,
+    capability: str,
+    request_mode: str,
+    accepted_input_modes: tuple[str, ...],
+    max_images: int,
+    allowed_roles: tuple[str, ...],
+    parameter_schema_id: str,
+    result_protocol: str,
+    supports_remote_task_lookup: bool,
+    supports_provider_idempotency: bool,
+    conformance_status: str,
+    adapter_revision: str,
+    capability_revision: str,
+    release_tier: str = "optional",
+    parameter_matrix: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    profile: dict[str, Any] = {
+        "model_ref": model_ref,
+        "adapter_id": adapter_id,
+        "transport_kind": transport_kind,
+        "capability": capability,
+        "request_mode": request_mode,
+        "accepted_input_modes": list(accepted_input_modes),
+        "reference_policy": {
+            "modes": [
+                {
+                    "mode": mode,
+                    "max_references": max_images if mode != "text_only" else 0,
+                    "allowed_roles": list(allowed_roles) if mode != "text_only" else [],
+                }
+                for mode in accepted_input_modes
+            ],
+            "max_images": max_images,
+        },
+        "parameter_schema_id": parameter_schema_id,
+        "result_protocol": result_protocol,
+        "supports_remote_task_lookup": supports_remote_task_lookup,
+        "supports_provider_idempotency": supports_provider_idempotency,
+        "release_tier": release_tier,
+        "conformance_status": conformance_status,
+        "adapter_revision": adapter_revision,
+        "capability_revision": capability_revision,
+    }
+    if parameter_matrix is not None:
+        profile["parameter_matrix"] = dict(parameter_matrix)
+    return profile
+
+
+def _parameter_matrix(
+    *,
+    schema_id: str,
+    descriptors: tuple[Mapping[str, Any], ...],
+    legal_combinations: tuple[Mapping[str, Any], ...] = (),
+) -> dict[str, Any]:
+    return {
+        "schema_id": schema_id,
+        "revision": f"{schema_id}-v1",
+        "descriptors": [dict(descriptor) for descriptor in descriptors],
+        "legal_combinations": [dict(combination) for combination in legal_combinations],
+    }
+
+
+def _image_profile(
+    model_ref: str,
+    *,
+    adapter_id: str,
+    transport_kind: str,
+    conformance_status: str = "compatible",
+    parameter_matrix: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id=adapter_id,
+        transport_kind=transport_kind,
+        capability="image",
+        request_mode="image_generation",
+        accepted_input_modes=("text_only", "native_reference_slots"),
+        max_images=4,
+        allowed_roles=("product_reference", "scene_reference", "character_reference"),
+        parameter_schema_id=(
+            str(parameter_matrix["schema_id"])
+            if parameter_matrix is not None
+            else "image-generation-v1"
+        ),
+        result_protocol="image_data",
+        supports_remote_task_lookup=False,
+        supports_provider_idempotency=False,
+        conformance_status=conformance_status,
+        adapter_revision=f"{adapter_id}-v1",
+        capability_revision=f"{model_ref.replace(':', '-')}-v1",
+        parameter_matrix=parameter_matrix,
+    )
+
+
+def _ark_video_profile(
+    model_ref: str,
+    *,
+    release_tier: str = "optional",
+) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id="ark-video-native",
+        transport_kind="ark_video_native",
+        capability="video",
+        request_mode="video_generation",
+        accepted_input_modes=("text_only", "native_reference_slots"),
+        max_images=15,
+        allowed_roles=(
+            "character_turnaround",
+            "product_reference",
+            "scene_reference",
+            "storyboard",
+        ),
+        parameter_schema_id="ark-video-generation-v1",
+        result_protocol="async_file",
+        supports_remote_task_lookup=True,
+        supports_provider_idempotency=False,
+        conformance_status="compatible",
+        adapter_revision="ark-video-native-v1",
+        capability_revision=f"{model_ref.replace(':', '-')}-v1",
+        release_tier=release_tier,
+        parameter_matrix=_parameter_matrix(
+            schema_id="ark-video-generation-v1",
+            descriptors=(
+                {
+                    "name": "duration_seconds",
+                    "value_type": "integer",
+                    "minimum": 1,
+                    "maximum": 15,
+                    "default": 5,
+                },
+                {
+                    "name": "resolution",
+                    "value_type": "enum",
+                    "allowed_values": ("480p", "720p", "1080p"),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": ("16:9", "9:16", "1:1"),
+                },
+                {"name": "generate_audio", "value_type": "boolean", "default": False},
+            ),
+        ),
+    )
+
+
+def _minimax_video_profile(model_ref: str, provider_model_id: str) -> dict[str, Any]:
+    return _adapter_profile(
+        model_ref=model_ref,
+        adapter_id="minimax-video-native",
+        transport_kind="minimax_video_native",
+        capability="video",
+        request_mode="video_generation",
+        accepted_input_modes=("text_only", "text_plus_single_first_frame_image"),
+        max_images=1,
+        allowed_roles=("storyboard", "scene_reference", "character_turnaround"),
+        parameter_schema_id="minimax-hailuo-i2v-v1",
+        result_protocol="async_file",
+        supports_remote_task_lookup=True,
+        supports_provider_idempotency=True,
+        conformance_status="unverified",
+        adapter_revision="minimax-video-native-v1",
+        capability_revision=f"minimax-{provider_model_id}-i2v-v1",
+        parameter_matrix=_parameter_matrix(
+            schema_id="minimax-hailuo-i2v-v1",
+            descriptors=(
+                {
+                    "name": "duration",
+                    "value_type": "integer",
+                    "minimum": 6,
+                    "maximum": 10,
+                },
+                {
+                    "name": "resolution",
+                    "value_type": "enum",
+                    "allowed_values": ("768P", "1080P"),
+                },
+                {
+                    "name": "aspect_ratio",
+                    "value_type": "enum",
+                    "allowed_values": ("16:9", "9:16", "1:1"),
+                },
+                {"name": "generate_audio", "value_type": "boolean"},
+            ),
+            legal_combinations=(
+                {"duration": 6, "resolution": "768P"},
+                {"duration": 6, "resolution": "1080P"},
+                {"duration": 10, "resolution": "768P"},
+                {"duration": 10, "resolution": "1080P"},
+            ),
+        ),
+    )
+
+
+_HISTORICAL_OPENAI_IMAGE_PROFILE = _image_profile(
+    "openai:gpt-image-2",
+    adapter_id="openai-image-native",
+    transport_kind="openai_images_native",
+    conformance_status="unverified",
+    parameter_matrix=_parameter_matrix(
+        schema_id="openai-gpt-image-2-v1",
+        descriptors=(
+            {
+                "name": "size",
+                "value_type": "enum",
+                "allowed_values": ("1024x1024", "1536x1024", "1024x1536", "auto"),
+            },
+            {
+                "name": "quality",
+                "value_type": "enum",
+                "allowed_values": ("low", "medium", "high", "auto"),
+            },
+            {
+                "name": "background",
+                "value_type": "enum",
+                "allowed_values": ("transparent", "opaque", "auto"),
+            },
+            {
+                "name": "output_format",
+                "value_type": "enum",
+                "allowed_values": ("png", "jpeg", "webp"),
+            },
+            {
+                "name": "moderation",
+                "value_type": "enum",
+                "allowed_values": ("low", "auto"),
+            },
+        ),
+    ),
+)
+_OPENROUTER_IMAGE_ADAPTER_REVISION = "openrouter-image-native-v1"
+_OPENROUTER_IMAGE_CAPABILITY_REVISION = "openrouter-openai/gpt-image-2-v1"
+_OPENROUTER_IMAGE_PROFILE = _image_profile(
+    "openrouter:openai/gpt-image-2",
+    adapter_id="openrouter-image-native",
+    transport_kind="openrouter_images_native",
+    conformance_status="unverified",
+    parameter_matrix=_parameter_matrix(
+        schema_id="openrouter-gpt-image-2-v1",
+        descriptors=(
+            {
+                "name": "size",
+                "value_type": "enum",
+                "allowed_values": ["1024x1024", "1536x1024", "1024x1536", "auto"],
+            },
+            {
+                "name": "quality",
+                "value_type": "enum",
+                "allowed_values": ["low", "medium", "high", "auto"],
+            },
+            {
+                "name": "background",
+                "value_type": "enum",
+                "allowed_values": ["transparent", "opaque", "auto"],
+            },
+            {
+                "name": "output_format",
+                "value_type": "enum",
+                "allowed_values": ["png", "jpeg", "webp"],
+            },
+            {
+                "name": "output_compression",
+                "value_type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+            },
+            {
+                "name": "resolution",
+                "value_type": "enum",
+                "allowed_values": ["1K", "2K", "4K"],
+            },
+            {
+                "name": "aspect_ratio",
+                "value_type": "enum",
+                "allowed_values": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            },
+        ),
+    ),
+)
+_OPENROUTER_IMAGE_ROUTING = build_openrouter_routing_policy(
+    model_ref="openrouter:openai/gpt-image-2",
+    adapter_revision=_OPENROUTER_IMAGE_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_IMAGE_CAPABILITY_REVISION,
+    operation_contract="openrouter-gpt-image-2-v1",
+)
+
+_OPENROUTER_TEXT_ADAPTER_REVISION = "openrouter-pi-agent-v1"
+_OPENROUTER_TEXT_CAPABILITY_REVISION = "openrouter-openai-gpt-5-6-sol-agent-v1"
+_OPENROUTER_TEXT_PROFILE = _adapter_profile(
+    model_ref="openrouter:openai/gpt-5.6-sol",
+    adapter_id="openrouter-pi-agent-v1",
+    transport_kind="pi_native_openai_compatible",
+    capability="text",
+    request_mode="agent_structured",
+    accepted_input_modes=("text_only",),
+    max_images=0,
+    allowed_roles=(),
+    parameter_schema_id="openrouter-agent-text-v1",
+    result_protocol="structured_agent_result",
+    supports_remote_task_lookup=False,
+    supports_provider_idempotency=False,
+    conformance_status="unverified",
+    adapter_revision=_OPENROUTER_TEXT_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_TEXT_CAPABILITY_REVISION,
+)
+_OPENROUTER_TEXT_ROUTING = build_openrouter_routing_policy(
+    model_ref="openrouter:openai/gpt-5.6-sol",
+    adapter_revision=_OPENROUTER_TEXT_ADAPTER_REVISION,
+    capability_revision=_OPENROUTER_TEXT_CAPABILITY_REVISION,
+    operation_contract="openrouter-agent-text-v1",
+)
+_MINIMAX_VIDEO_PROFILES = {
+    model_id: _minimax_video_profile(f"minimax:{model_id}", model_id)
+    for model_id in (
+        "MiniMax-Hailuo-2.3",
+        "MiniMax-Hailuo-2.3-Fast",
+        "MiniMax-Hailuo-02",
+    )
+}
+
+
+def _video_capability_metadata(
+    profile: Mapping[str, Any],
+    *,
+    duration_range_seconds: tuple[int, int] = (1, 15),
+    max_references: int = 15,
+    provider_protocol: str = "ark_video",
+) -> dict[str, Any]:
+    return {
+        "accepted_input_types": ["text", "image", "video", "audio"],
+        "max_references": max_references,
+        "reference_limits": {"image": min(max_references, 9), "video": 3, "audio": 3},
+        "supported_parameters": [
+            "aspect_ratio",
+            "resolution",
+            "duration_seconds",
+            "generate_audio",
+        ],
+        "supported_aspect_ratios": ["16:9", "9:16", "1:1"],
+        "supported_resolutions": ["480p", "720p", "1080p"],
+        "duration_range_seconds": list(duration_range_seconds),
+        "supports_native_audio": True,
+        "provider_protocol": provider_protocol,
+        "supports_provider_idempotency_token": False,
+        "supports_remote_task_lookup": True,
+        "adapter_profile": dict(profile),
+    }
 
 
 _TRUSTED_MANIFESTS = (
@@ -79,6 +439,10 @@ _TRUSTED_MANIFESTS = (
         capability="text",
         capability_metadata={
             "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": ("volcengine-ark-doubao-seed-2-0-mini-260428-agent-v1"),
             "provider_protocol": "openai_compatible",
             "accepted_input_types": ["text"],
             "supports_structured_output": True,
@@ -89,6 +453,30 @@ _TRUSTED_MANIFESTS = (
             "thinking_format": "none",
             "reasoning_control": "none",
             "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seed-2-1-pro-260628",
+        display_name="Doubao Seed 2.1 Pro",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "adapter_id": "volcengine_ark-pi-agent-v1",
+            "adapter_revision": "volcengine_ark-pi-agent-v1",
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": "volcengine-ark-doubao-seed-2-1-pro-260628-agent-v1",
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": False,
+            "supports_streaming": False,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "thinking_format": "none",
+            "reasoning_control": "reasoning_effort",
+            "structured_transport": "non_streaming_json_object",
             "default_max_output_tokens": 8192,
         },
     ),
@@ -108,6 +496,11 @@ _TRUSTED_MANIFESTS = (
             "provider_protocol": "ark_image",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-5-0-lite-260128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
         },
     ),
     TrustedModelManifest(
@@ -138,6 +531,200 @@ _TRUSTED_MANIFESTS = (
             "provider_protocol": "ark_video",
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": True,
+            "adapter_profile": _ark_video_profile(
+                "volcengine_ark:doubao-seedance-2-0-fast-260128",
+                release_tier="default",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-5-0-250128",
+        display_name="Doubao Seedream 5.0 Pro",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-5-0-250128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-4-5-251128",
+        display_name="Doubao Seedream 4.5",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-4-5-251128",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedream-4-0-250828",
+        display_name="Doubao Seedream 4.0",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": ["aspect_ratio", "size"],
+            "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": _image_profile(
+                "volcengine_ark:doubao-seedream-4-0-250828",
+                adapter_id="ark-image-native",
+                transport_kind="ark_image_native",
+            ),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-260128",
+        display_name="Doubao Seedance 2.0",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-mini-260128",
+        display_name="Doubao Seedance 2.0 Mini",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-5-260128",
+        display_name="Doubao Seedance 2.5",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260128")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="openrouter",
+        provider_model_id="openai/gpt-image-2",
+        display_name="GPT Image 2",
+        capability="image",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 4,
+            "reference_limits": {"image": 4, "video": 0, "audio": 0},
+            "supported_parameters": [
+                "size",
+                "quality",
+                "background",
+                "output_format",
+                "output_compression",
+                "resolution",
+                "aspect_ratio",
+            ],
+            "provider_protocol": "openrouter_images",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
+            "adapter_profile": dict(_OPENROUTER_IMAGE_PROFILE),
+            "openrouter_routing": _OPENROUTER_IMAGE_ROUTING.model_dump(mode="json"),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="openrouter",
+        provider_model_id="openai/gpt-5.6-sol",
+        display_name="GPT-5.6 Sol",
+        capability="text",
+        capability_metadata={
+            "agent_compatible": True,
+            "provider_protocol": "openai_compatible",
+            "accepted_input_types": ["text"],
+            "supports_structured_output": True,
+            "supports_tool_calls": True,
+            "supports_streaming": True,
+            "supports_streamed_tool_calls": False,
+            "supports_reasoning_controls": True,
+            "thinking_format": "openai",
+            "reasoning_control": "reasoning_effort",
+            "structured_transport": "non_streaming_json_schema",
+            "default_max_output_tokens": 8192,
+            "adapter_id": _OPENROUTER_TEXT_ADAPTER_REVISION,
+            "adapter_revision": _OPENROUTER_TEXT_ADAPTER_REVISION,
+            "transport_kind": "pi_native_openai_compatible",
+            "capability_revision": _OPENROUTER_TEXT_CAPABILITY_REVISION,
+            "conformance_status": "unverified",
+            "adapter_profile": dict(_OPENROUTER_TEXT_PROFILE),
+            "openrouter_routing": _OPENROUTER_TEXT_ROUTING.model_dump(mode="json"),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-2.3",
+        display_name="MiniMax Hailuo 2.3",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-2.3"]),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-2.3-Fast",
+        display_name="MiniMax Hailuo 2.3 Fast",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-2.3-Fast"]),
+        },
+    ),
+    TrustedModelManifest(
+        provider_id="minimax",
+        provider_model_id="MiniMax-Hailuo-02",
+        display_name="MiniMax Hailuo 02",
+        capability="video",
+        capability_metadata={
+            "accepted_input_types": ["text", "image"],
+            "max_references": 1,
+            "reference_limits": {"image": 1, "video": 0, "audio": 0},
+            "supported_parameters": ["duration", "resolution", "aspect_ratio", "generate_audio"],
+            "duration_seconds": [6, 10],
+            "provider_protocol": "minimax_video_generation",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
+            "adapter_profile": dict(_MINIMAX_VIDEO_PROFILES["MiniMax-Hailuo-02"]),
         },
     ),
     TrustedModelManifest(
@@ -208,6 +795,7 @@ _TRUSTED_MANIFESTS = (
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "fake",
+            "supports_reference_only_generation": True,
             "supports_provider_idempotency_token": True,
             "supports_remote_task_lookup": True,
         },
@@ -260,6 +848,14 @@ _TRUSTED_MANIFESTS = (
     ),
 )
 
+_RETIRED_MODEL_REFS = frozenset(
+    {
+        "volcengine_ark:doubao-seed-2-0-mini-260428",
+        "openai:gpt-image-2",
+    }
+)
+_BLOCKING_RETIRED_DEFAULT_REFS = frozenset({"openai:gpt-image-2"})
+
 
 class StaticProviderCatalogAdapter:
     """Default deterministic adapter used until a provider implements discovery."""
@@ -275,6 +871,94 @@ class StaticProviderCatalogAdapter:
         )
 
 
+class OpenRouterCatalogAdapter:
+    """Confirm the two trusted OpenRouter slugs from bounded metadata reads."""
+
+    provider_id = "openrouter"
+    _APPROVED_BASE_URL = "https://openrouter.ai/api/v1"
+    _TEXT_MODEL_ID = "openai/gpt-5.6-sol"
+    _IMAGE_MODEL_ID = "openai/gpt-image-2"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        text_base_url: str = _APPROVED_BASE_URL,
+        image_base_url: str = _APPROVED_BASE_URL,
+        transport: ProviderHttpTransport | None = None,
+        timeout_seconds: float = 5.0,
+        max_response_bytes: int = 256 * 1024,
+    ) -> None:
+        normalized_key = api_key.strip()
+        if not normalized_key or any(char in normalized_key for char in ("\r", "\n", "\x00")):
+            raise ValueError("model_catalog_sync_failed")
+        self._api_key = normalized_key
+        self._text_base_url = self._approved_base_url(text_base_url)
+        self._image_base_url = self._approved_base_url(image_base_url)
+        self._transport = transport or UrllibProviderHttpTransport()
+        self._timeout_seconds = timeout_seconds
+        self._max_response_bytes = max_response_bytes
+
+    def discover_model_ids(self) -> tuple[str, ...]:
+        discovered: list[str] = []
+        if self._endpoint_has_model(
+            url=f"{self._text_base_url}/models",
+            model_id=self._TEXT_MODEL_ID,
+            output_modality="text",
+        ):
+            discovered.append(self._TEXT_MODEL_ID)
+        if self._endpoint_has_model(
+            url=f"{self._image_base_url}/models?output_modalities=image",
+            model_id=self._IMAGE_MODEL_ID,
+            output_modality="image",
+        ):
+            discovered.append(self._IMAGE_MODEL_ID)
+        return tuple(sorted(discovered))
+
+    @classmethod
+    def _approved_base_url(cls, value: str) -> str:
+        normalized = value.rstrip("/")
+        if normalized != cls._APPROVED_BASE_URL:
+            raise ValueError("model_catalog_sync_failed")
+        return normalized
+
+    def _endpoint_has_model(
+        self,
+        *,
+        url: str,
+        model_id: str,
+        output_modality: str,
+    ) -> bool:
+        try:
+            response = self._transport.get(
+                url=url,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                timeout_seconds=self._timeout_seconds,
+                max_response_bytes=self._max_response_bytes,
+            )
+        except (OSError, TimeoutError) as exc:
+            raise ValueError("model_catalog_sync_failed") from exc
+        if not 200 <= response.status_code < 300:
+            raise ValueError("model_catalog_sync_failed")
+        try:
+            payload = json.loads(response.body)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("model_catalog_sync_failed") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise ValueError("model_catalog_sync_failed")
+        for item in payload["data"]:
+            if not isinstance(item, dict) or item.get("id") != model_id:
+                continue
+            architecture = item.get("architecture")
+            modalities = (
+                architecture.get("output_modalities") if isinstance(architecture, dict) else None
+            )
+            if not isinstance(modalities, list) or output_modality not in modalities:
+                raise ValueError("model_catalog_sync_failed")
+            return True
+        return False
+
+
 class ProviderModelCatalogService:
     """Own trusted model metadata, availability, query filtering, and defaults."""
 
@@ -283,17 +967,31 @@ class ProviderModelCatalogService:
         repository: ProviderModelRepository,
         *,
         adapters: tuple[ProviderCatalogAdapter, ...] | None = None,
+        openrouter_adapter: ProviderCatalogAdapter | None = None,
         capability_available: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._repository = repository
         configured_adapters = adapters or tuple(
             StaticProviderCatalogAdapter(provider_id)
-            for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake")
+            for provider_id in (
+                "siliconflow",
+                "volcengine_ark",
+                "tianpuyue",
+                "openrouter",
+                "minimax",
+                "fake",
+            )
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
+        if openrouter_adapter is not None:
+            if openrouter_adapter.provider_id != "openrouter":
+                raise ValueError("provider_not_supported")
+            self._adapters["openrouter"] = openrouter_adapter
         self._capability_available = capability_available or self._repository_capability_available
 
     def sync(self, provider_id: str, *, now: str) -> CatalogSyncResult:
+        if provider_id not in self._adapters:
+            raise ValueError("provider_not_supported")
         sync_run_id = f"sync_{uuid4().hex}"
         try:
             visible_model_ids = self._visible_model_ids(provider_id)
@@ -363,6 +1061,47 @@ class ProviderModelCatalogService:
             updated_at=now,
         )
 
+    def reconcile_retired_models(self, *, now: str) -> tuple[ProviderModelRecord, ...]:
+        """Preserve retired built-ins while removing them from active provider sync."""
+
+        model_ref = "openai:gpt-image-2"
+        try:
+            existing = self._repository.get_model(model_ref)
+        except ValueError:
+            existing = None
+        metadata = (
+            existing.capability_metadata
+            if existing is not None
+            else {
+                "historical": True,
+                "adapter_profile": dict(_HISTORICAL_OPENAI_IMAGE_PROFILE),
+            }
+        )
+        projected = {
+            "model_ref": model_ref,
+            "provider_model_id": "gpt-image-2",
+            "display_name": "GPT Image 2",
+            "capability": "image",
+            "capability_metadata": metadata,
+            "source": "built_in",
+            "availability": "deprecated",
+            "unavailable_reason": "provider_model_retired",
+        }
+        if not _trusted_projection_changed(existing, projected):
+            return ()
+        return self._repository.upsert_models(
+            provider_id="openai",
+            models=(projected,),
+            updated_at=now,
+        )
+
+    def ensure_no_retired_defaults(self) -> None:
+        if any(
+            default.model_ref in _BLOCKING_RETIRED_DEFAULT_REFS
+            for default in self._repository.get_defaults().values()
+        ):
+            raise ValueError("retired_model_default_conflict")
+
     def _visible_model_ids(self, provider_id: str) -> set[str]:
         adapter = self._adapters.get(provider_id)
         if adapter is None:
@@ -396,6 +1135,15 @@ class ProviderModelCatalogService:
                     }
                 )
                 continue
+            if manifest.model_ref in _RETIRED_MODEL_REFS:
+                models.append(
+                    {
+                        **_trusted_projection(manifest, available=False),
+                        "availability": "deprecated",
+                        "unavailable_reason": "model_retired",
+                    }
+                )
+                continue
             models.append(
                 _trusted_projection(
                     manifest,
@@ -413,6 +1161,15 @@ class ProviderModelCatalogService:
         for provider_model_id in sorted(previously_known.difference(visible_model_ids)):
             manifest = trusted.get(provider_model_id)
             if manifest is None:
+                continue
+            if manifest.model_ref in _RETIRED_MODEL_REFS:
+                models.append(
+                    {
+                        **_trusted_projection(manifest, available=False),
+                        "availability": "deprecated",
+                        "unavailable_reason": "model_retired",
+                    }
+                )
                 continue
             models.append(
                 _trusted_projection(
@@ -444,7 +1201,11 @@ class ProviderModelCatalogService:
         )
         models = tuple(self._with_current_credential_availability(model) for model in models)
         if not include_unavailable:
-            models = tuple(model for model in models if model.availability == "available")
+            models = tuple(
+                model
+                for model in models
+                if model.availability == "available" and _is_execution_conformant(model)
+            )
         if node_type == "script" or purpose == "agent":
             models = tuple(
                 model for model in models if bool(model.capability_metadata.get("agent_compatible"))
@@ -455,6 +1216,17 @@ class ProviderModelCatalogService:
         """Return one model with current capability credential availability."""
 
         return self._with_current_credential_availability(self._repository.get_model(model_ref))
+
+    def current_conformance(
+        self,
+        *,
+        model_ref: str,
+        operation: str,
+    ) -> ProviderModelConformanceRunRecord | None:
+        return self._repository.current_conformance(
+            model_ref=model_ref,
+            operation=operation,
+        )
 
     def set_defaults(
         self,
@@ -530,6 +1302,17 @@ class ProviderModelCatalogService:
         )
 
 
+def _is_execution_conformant(model: ProviderModelRecord) -> bool:
+    raw_profile = model.capability_metadata.get("adapter_profile")
+    if raw_profile is None:
+        return True
+    try:
+        profile = ProviderAdapterProfileV1.model_validate(raw_profile)
+    except Exception:
+        return False
+    return profile.conformance_status in {"compatible", "certified"}
+
+
 def _required_capability(
     *,
     node_type: str | None,
@@ -561,12 +1344,15 @@ def _trusted_projection(
     available: bool,
     unavailable_reason: str | None = None,
 ) -> dict[str, Any]:
+    capability_metadata = dict(manifest.capability_metadata)
+    if manifest.adapter_profile is not None:
+        capability_metadata["adapter_profile"] = dict(manifest.adapter_profile)
     return {
         "model_ref": manifest.model_ref,
         "provider_model_id": manifest.provider_model_id,
         "display_name": manifest.display_name,
         "capability": manifest.capability,
-        "capability_metadata": dict(manifest.capability_metadata),
+        "capability_metadata": capability_metadata,
         "source": "built_in",
         "availability": "available" if available else "unavailable",
         "unavailable_reason": (

@@ -1,8 +1,21 @@
 ---
-name: Craft Process Film
-description: An advertising treatment built around material transformation, hand detail, process causality, and maker-focused pacing.
+name: 匠人工艺过程片
+description: 以材料变形、手部细节、过程因果和以制作者为中心的节奏呈现可信的制作故事。
 ---
 
-Use material transformation, hand detail, process causality, and maker-focused pacing as the style's creative grammar. Establish material transformation as the primary visual idea, reinforce it through hand detail, and let process causality shape the progression toward maker-focused pacing.
+把 material transformation、hand detail、process causality、maker-focused pacing 作为工艺过程片的四个创作支点。观众要看到材料怎样被判断、处理和改变，而不是只看成品摆拍；手部、工具、声音和表面痕迹共同证明过程真实。
 
-Preserve the advertised product, brand facts, audience promise, and every explicit user setting. Adapt the treatment to the available subjects and media rather than imposing a fixed sequence. Keep visible text optional, maintain readable continuity, and prefer concrete visual decisions over references to named creators or properties.
+## 材料与因果
+
+先写材料的来源、状态、限制和目标结果。material transformation 按准备、切削、加热、编织、打磨、上色、组装或修整等实际动作展开，每一步都说明输入、作用和可观察变化。不同材料的硬度、湿度、纤维、温度和回弹要符合行为。
+
+## 手部与制作者
+
+hand detail 关注握持、受力、工具角度、保护动作、停顿和检查。maker-focused pacing 让制作者的判断成为节奏中心：看、试、修、比较、重复和确认都可以是有价值的镜头。不要把手部剪成无身份的装饰特写。
+
+## 连续性与纠偏
+
+保持材料状态、工具、手部、工作台、光线、碎屑和成品比例。结果像快速教程时，补回判断和触感；结果看不懂时，先恢复输入与输出关系。工具、Provider、模型、时长、分辨率、格式和工作流由其他权威决定，本 Skill 只提供工艺叙事判断。
+
+正例：制作者检查木纹后调整刀具角度，碎屑和边缘变化证明材料被逐步改变。
+反例：材料瞬间从原料变成成品，工具和手部位置跳变，只用成品旋转声称展示工艺。

@@ -36,7 +36,7 @@ def resolve_agent_model_execution_policy(
     thinking_format = _enum(
         capability_metadata,
         "thinking_format",
-        {"zai", "qwen", "none"},
+        {"zai", "qwen", "openai", "none"},
     )
     reasoning_control = _enum(
         capability_metadata,
@@ -50,6 +50,7 @@ def resolve_agent_model_execution_policy(
             "streamed_tool_call",
             "non_streaming_tool_call",
             "non_streaming_json_object",
+            "non_streaming_json_schema",
             "streaming_json_object",
             "json_object",
         },
@@ -77,14 +78,28 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("A disabled reasoning policy cannot select a thinking format.")
     if reasoning_control == "enable_thinking" and not supports_reasoning_controls:
         raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
-    if reasoning_control not in {"none", "enable_thinking"}:
+    if reasoning_control == "reasoning_effort" and not supports_reasoning_controls:
+        raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
+    if reasoning_control not in {"none", "enable_thinking", "reasoning_effort"}:
         raise _mismatch("The selected model uses an unsupported reasoning control.")
+    if reasoning_control == "reasoning_effort" and (
+        capability_metadata.get("enable_thinking") is not None
+        or capability_metadata.get("thinking_budget_tokens") is not None
+    ):
+        raise _mismatch("Reasoning-effort models cannot declare legacy thinking fields.")
 
     enable_thinking = (
         operation_policy.enable_thinking if reasoning_control == "enable_thinking" else False
     )
     thinking_budget_tokens = operation_policy.thinking_budget_tokens if enable_thinking else None
-    reasoning_mode = operation_policy.reasoning_mode if enable_thinking else "low"
+    reasoning_mode = (
+        operation_policy.reasoning_mode
+        if reasoning_control in {"enable_thinking", "reasoning_effort"}
+        else "low"
+    )
+    reasoning_effort = None
+    if reasoning_control == "reasoning_effort":
+        reasoning_effort = "low" if operation_policy.reasoning_mode == "low" else "medium"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,
@@ -93,6 +108,7 @@ def resolve_agent_model_execution_policy(
         thinking_format=thinking_format,
         reasoning_control=reasoning_control,
         reasoning_mode=reasoning_mode,
+        reasoning_effort=reasoning_effort,
         enable_thinking=enable_thinking,
         thinking_budget_tokens=thinking_budget_tokens,
         structured_transport=structured_transport,

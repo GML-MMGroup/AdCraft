@@ -1,1 +1,5 @@
-Build the narrative premise around intimate handheld observation, then use soft routine to shape escalation and warm ambient detail to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
+# 剧本指导
+
+选择一个具体日常目的和一个微小变化，按准备、尝试、停顿、完成、分享组织 soft routine。让 natural gestures 和物件状态承担叙事，避免为普通动作添加夸张冲突或虚构对白。
+
+每段写清人物在做什么、为何做和结果是什么。正例是一次寻找改变了日常顺序；反例是只有“起床、喝咖啡”的流水账。

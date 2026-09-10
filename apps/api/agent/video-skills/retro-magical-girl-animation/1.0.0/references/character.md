@@ -1,1 +1,5 @@
-Shape wardrobe, pose, and expression around transformation grammar and symbolic props. Use pastel-neon contrast to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.
+# 角色指导
+
+建立日常与行动状态的轮廓、发型、服装层次、配色和身份锚点。记录每个 symbolic prop 的形状、握持、位置和意义；transformation grammar 的变化应从同一身体和道具关系生长，不能凭空换人。
+
+保持配件数量、服装结构、脸部和动作边界连续。

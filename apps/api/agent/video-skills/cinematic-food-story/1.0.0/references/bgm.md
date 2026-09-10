@@ -1,1 +1,9 @@
-Shape an adaptable instrumental arc around ingredient texture and process progression. Let texture and energy support steam and sound detail without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.
+先根据广告命题确定音乐的情绪、质感和能量曲线，再让它支持 ingredient texture、process progression 与 appetite-led reveal。音乐可以从克制的观察进入，随工艺积累增加层次，在成品或品牌信息出现前后形成清楚的抬升与回收；段落长度随素材和剪辑而变，不把每次切换都绑定到鼓点。
+
+让低频、打击、纹理、和声、留白和动态变化承担不同职责。动作完成、锅具接触、蒸汽升起或摆盘落定可以得到轻微重音，但关键物理声、对白和旁白必须保有空间。不要让音乐持续在最高密度，否则食材的滋响、环境位置和人文语气都会消失。
+
+为重要声音事件标出进入、持续、衰减以及与画面和下一镜的关系。环境声建立地点，动作声证明重量和触感，旁白传达事实或记忆，音乐负责情绪和段落；尾音、自然声、短暂留白或音色延续可以帮助换场。
+
+正例：处理动作逐渐稳定时音乐只增加一层纹理，成品揭示前留出短暂空间，让汤汁声和旁白清楚出现，品牌信息落下后再收束。
+
+反例：从头到尾保持同样的强低频和密度，或把每个剪辑点都强行卡在鼓点上，结果节奏机械，关键声音和广告信息被覆盖。

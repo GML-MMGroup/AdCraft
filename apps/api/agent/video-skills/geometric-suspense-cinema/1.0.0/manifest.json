@@ -1,29 +1,33 @@
 {
   "skill_id": "geometric-suspense-cinema",
   "version": "1.0.0",
-  "display_name": "Geometric Suspense Cinema",
-  "description": "An advertising treatment built around spatial suspense, controlled viewpoint, visual motifs, and structural escalation.",
+  "display_name": "几何悬疑叙事",
+  "description": "以空间悬疑、受控视点、视觉母题和结构递进组织具有几何秩序的商业故事。",
+  "content_locale": "zh-CN",
   "category": "cinematic-narrative",
   "tags": [
-    "cinematic",
-    "narrative",
-    "composition"
+    "几何悬疑",
+    "空间叙事",
+    "视点控制"
   ],
   "supported_use_cases": [
-    "brand campaigns",
-    "product advertising"
+    "悬疑广告",
+    "空间概念片",
+    "品牌叙事"
   ],
   "preview": {
-    "kind": "none",
-    "summary": "Geometric Suspense Cinema creative treatment."
+    "kind": "image",
+    "summary": "几何悬疑叙事视觉预览。",
+    "media_url": "/api/v2/video-skills/geometric-suspense-cinema/preview?v=1.0.0"
   },
   "display_order": 260,
   "files": {
-    "SKILL.md": "f80916d97b0fa2c1d404aa20a1a56f9d7358e9162e74457627d2d40905cbe4ba",
-    "references/script.md": "07f9b1aa0b6b916c8833441ac586a14b59d53112efd7313bb311532877cd3423",
-    "references/scene.md": "b0ba6ed9d225489f347e789300c38e14e0a3d012a82e9ae784e156f1c487baea",
-    "references/storyboard.md": "68aca23a62127b684edb0e0cb754589857f6f530cd03f81e3c335c8d4c5869a1",
-    "references/video.md": "25e29a6583baaee22a994225eea83f6a4b3d58d5f879cf0c1618bba4cdfbe6fc"
+    "SKILL.md": "67e2f971de862aedad8ce7a564c105613e86dc7b6c3c48aac0fe820b249c1500",
+    "references/script.md": "21408efa8a43bda23c440d793114989a2982a2ce17f27f1c4b9365125af8d878",
+    "references/scene.md": "cb628a68cbef28697c058279f5f92a769f5b4ae6d304bc4de5c342f769d479b8",
+    "references/storyboard.md": "1295c23b42dd83ec6734b7a9bad0e9ba764760bb4ccbb27ee33aef7eeb384428",
+    "references/video.md": "9a018854021e5da95e3607d380c33c4fcef2722669e30bafe4ad2a2f8a9b070e",
+    "previews/preview.webp": "50d1f30ffd2672a57adad5d05a125e7a9e5cdc1e0ceda84667cdaa80a0caebae"
   },
   "role_guidance": {
     "script": "references/script.md",
