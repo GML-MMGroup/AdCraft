@@ -208,15 +208,11 @@ class GuidedEditingPreparationService:
             for source in desired_sources
         )
         manifest = EditingManifestV2(
-            timeline_duration_seconds=plan.global_parameters.total_duration_seconds,
             video_entries=tuple(
                 EditingVideoEntryV2(
                     binding_id=binding.binding_id,
-                    timeline_start_seconds=segment.start_seconds,
                 )
-                for binding, segment in zip(
-                    desired_bindings[: len(available_videos)], included_segments, strict=True
-                )
+                for binding in desired_bindings[: len(available_videos)]
             ),
             bgm=(
                 EditingBgmEntryV2(binding_id=desired_bindings[-1].binding_id)
