@@ -70,7 +70,7 @@ function textInput(value: unknown): ProviderResolvedTextInputAuditV2 | null {
   const bindingId = string(item.binding_id);
   const sourceNodeId = string(item.source_node_id);
   const order = nonNegativeInteger(item.display_order);
-  if (!bindingId || !sourceNodeId || order === null || item.input_role !== "text_context" || typeof item.required !== "boolean") {
+  if (!bindingId || !sourceNodeId || order === null || item.input_role !== "text_context") {
     return null;
   }
   return {
@@ -78,7 +78,6 @@ function textInput(value: unknown): ProviderResolvedTextInputAuditV2 | null {
     source_node_id: sourceNodeId,
     snapshot_id: optionalString(item.snapshot_id),
     input_role: "text_context",
-    required: item.required,
     display_order: order,
   };
 }
@@ -91,7 +90,7 @@ function mediaInput(value: unknown): ProviderResolvedMediaInputAuditV2 | null {
   const role = inputRole(item.input_role);
   const type = mediaType(item.media_type);
   const order = nonNegativeInteger(item.display_order);
-  if (!bindingId || !assetId || !role || !type || order === null || typeof item.required !== "boolean") return null;
+  if (!bindingId || !assetId || !role || !type || order === null) return null;
   return {
     binding_id: bindingId,
     source_node_id: optionalString(item.source_node_id),
@@ -100,7 +99,6 @@ function mediaInput(value: unknown): ProviderResolvedMediaInputAuditV2 | null {
     input_role: role,
     source_semantic_role: optionalString(item.source_semantic_role),
     transport_type: optionalString(item.transport_type),
-    required: item.required,
     display_order: order,
   };
 }
@@ -131,7 +129,6 @@ function worldSettingInput(value: unknown): ProviderResolvedWorldSettingInputAud
     || !compilerId
     || !compilerDigest
     || !contextDigest
-    || typeof item.required !== "boolean"
   ) return null;
   return {
     binding_id: bindingId,
@@ -139,7 +136,6 @@ function worldSettingInput(value: unknown): ProviderResolvedWorldSettingInputAud
     source_node_revision: sourceNodeRevision,
     source_content_digest: sourceContentDigest,
     source_core_digest: sourceCoreDigest,
-    required: item.required,
     display_order: order,
     target_audience: audience,
     compiler_id: compilerId,
@@ -152,12 +148,11 @@ function omittedOptionalInput(value: unknown): ProviderOmittedOptionalInputAudit
   const item = record(value);
   if (!item) return null;
   const bindingId = string(item.binding_id);
-  const reasonCode = string(item.reason_code);
-  if (!bindingId || !reasonCode) return null;
+  if (!bindingId || item.reason_code !== "omitted_no_output") return null;
   return {
     binding_id: bindingId,
     source_node_id: optionalString(item.source_node_id),
-    reason_code: reasonCode,
+    reason_code: "omitted_no_output",
   };
 }
 

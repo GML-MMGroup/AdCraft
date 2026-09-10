@@ -71,12 +71,14 @@ describe("ProductSourceDecisionDock", () => {
 
   it("uploads one main Product source and submits the exact immutable handoff", async () => {
     const submit = vi.fn().mockResolvedValue(true);
+    const refreshProjects = vi.fn().mockResolvedValue(true);
     render(
       <ProductSourceDecisionDock
         interaction={interaction}
         pending={false}
         issue={null}
         onSubmit={submit}
+        onProjectsRefresh={refreshProjects}
       />,
     );
     const file = new File(["product"], "product.png", { type: "image/png" });
@@ -105,6 +107,7 @@ describe("ProductSourceDecisionDock", () => {
         question_id: "product_main_source",
       },
     });
+    expect(refreshProjects).toHaveBeenCalledTimes(1);
   });
 
   it("submits Generate without upload identities", async () => {

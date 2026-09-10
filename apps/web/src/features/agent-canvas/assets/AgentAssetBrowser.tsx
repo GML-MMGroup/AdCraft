@@ -205,9 +205,9 @@ export function AgentAssetBrowser({
   };
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.currentTarget.files;
+    const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
-    if (!files?.length) return;
+    if (!files.length) return;
     try {
       await uploadFiles(files, {
         semanticRole: uploadSemanticRole,

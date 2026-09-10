@@ -28,7 +28,6 @@ function importedNode() {
     revision: 1,
     error: null,
     prompt_preparation: null,
-    variation_draft: null,
     created_at: timestamp,
     updated_at: timestamp,
   };
@@ -62,7 +61,7 @@ function exportedAsset() {
     status: "ready",
     size_bytes: 1024,
     storage_key: null,
-    preview_url: "/api/v2/assets/asset-export/content",
+    preview_url: "/api/v2/assets/asset-export/preview.webp",
     media_url: "/api/v2/assets/asset-export/content",
     width: 1920,
     height: 1080,
@@ -88,7 +87,6 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string) 
     source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: targetNodeId,
     input_role: "video_reference",
-    required: true,
     enabled: true,
     order: 0,
     label: null,
@@ -101,6 +99,8 @@ function binding(bindingId: string, sourceNodeId: string, targetNodeId: string) 
 test("exports, downloads, and imports a 30 second Editing result without creating Provider work", async ({ page }) => {
   const providerRequests: string[] = [];
   const downloadRequests: string[] = [];
+  const previewRequests: string[] = [];
+  const canvasSourceContentRequests: string[] = [];
   const exportRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const importRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
   const bindingRequests: Array<{ headers: Record<string, string>; body: unknown }> = [];
@@ -108,7 +108,19 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
   await page.route("**/api/v2/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.pathname === "/api/v2/assets/asset-export/preview.webp") {
+      previewRequests.push(request.url());
+    }
     if (/provider|run|execution/i.test(url.pathname)) providerRequests.push(url.pathname);
+
+    if (url.pathname === "/api/v2/assets/asset-export/preview.webp") {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/webp",
+        body: "mock-preview-bytes",
+      });
+      return;
+    }
 
     if (url.pathname === "/api/v2/assets/asset-export/content" && url.searchParams.get("download") === "true") {
       downloadRequests.push("asset-export");
@@ -122,6 +134,7 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
     }
 
     if (url.pathname === "/api/v2/assets/asset-export/content") {
+      canvasSourceContentRequests.push(request.url());
       await route.fulfill({
         status: 200,
         contentType: "video/mp4",
@@ -238,8 +251,14 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
   await expect.poll(() => downloadRequests.length).toBe(1);
   expect(downloadRequests).toEqual(["asset-export"]);
 
+  const sourceContentRequestsBeforeCanvasImport = canvasSourceContentRequests.length;
   await page.getByRole("button", { name: "Add exported video to canvas" }).click();
   await expect(page.getByTestId("agent-canvas-node-video-export")).toBeVisible();
+  const importedNodeCard = page.getByTestId("agent-canvas-node-video-export");
+  await expect(importedNodeCard.locator("video")).toHaveCount(0);
+  await expect.poll(() => previewRequests.length).toBe(1);
+  expect(new URL(previewRequests[0]).searchParams.get("v")).toBe("version-asset-export");
+  expect(canvasSourceContentRequests).toHaveLength(sourceContentRequestsBeforeCanvasImport);
   await expect(page.getByTestId("import-binding")).toContainText("node_output:video-export");
   const importedWorkbench = page.getByTestId("imported-workbench");
   await expect(importedWorkbench.locator("button, input, select, textarea")).toHaveCount(0);
@@ -259,7 +278,6 @@ test("exports, downloads, and imports a 30 second Editing result without creatin
     source: { kind: "node_output", source_node_id: "video-export" },
     target_node_id: "editing-downstream",
     input_role: "video_reference",
-    required: true,
     enabled: true,
     order: 0,
   });

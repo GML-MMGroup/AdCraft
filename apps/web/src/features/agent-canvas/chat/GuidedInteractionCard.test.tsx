@@ -34,6 +34,31 @@ vi.mock("../assets/useAgentCanvasAssets.ts", () => ({
   }),
 }));
 
+vi.mock("./useGuidedReferenceCandidates.ts", () => ({
+  useGuidedReferenceCandidates: () => ({
+    items: [{
+      entity_id: null,
+      member_id: null,
+      asset_id: "asset-front",
+      asset_version_id: "version-front",
+      media_type: "image",
+      display_name: "Existing Front",
+      preview_url: "/asset-front.png",
+      content_url: "/asset-front.png",
+      reference_kind: "character_main",
+      semantic_reference_role: "character_reference",
+      reference_purpose: "identity_guidance",
+      selectable: true,
+    }],
+    loading: false,
+    loadingMore: false,
+    error: null,
+    hasMore: false,
+    retry: vi.fn(),
+    loadMore: vi.fn(),
+  }),
+}));
+
 const conceptInteraction: GuidedInteractionV1 = {
   interaction_id: "interaction-concept",
   workflow_id: "workflow-1",
@@ -121,6 +146,26 @@ const productSourceInteraction: GuidedInteractionV1 = {
   allowed_actions: ["select_source"],
 };
 
+const referenceSourceInteraction: GuidedInteractionV1 = {
+  ...conceptInteraction,
+  interaction_id: "interaction-reference-character-2",
+  kind: "reference_source",
+  title: "Choose a reference",
+  context: "Character 2",
+  content: {
+    content_kind: "reference_source",
+    reference_kind: "character_main",
+    target_node_id: "character-main-draft-2",
+    target_node_revision: 4,
+    occurrence_id: "character-occurrence-2",
+    question: "Use a reference for Character 2?",
+    use_reference_label: "Use reference",
+    skip_reference_label: "Skip reference",
+    expected_guidance_revision: 9,
+  },
+  allowed_actions: ["use_reference", "skip_reference"],
+};
+
 afterEach(cleanup);
 
 describe("GuidedInteractionCard", () => {
@@ -177,6 +222,81 @@ describe("GuidedInteractionCard", () => {
     expect(screen.getByText("Use uploaded Product source")).toBeTruthy();
     expect(screen.queryByText("Accept")).toBeNull();
     expect(screen.queryByText("Retry")).toBeNull();
+  });
+
+  it("renders a typed reference source dock with separate use and skip actions", () => {
+    render(
+      <GuidedInteractionCard
+        interaction={referenceSourceInteraction}
+        referenceOccurrenceLabel="Character 2"
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "Use a reference for Character 2?" })).toBeTruthy();
+    expect(screen.getByText("Character 2 · Main")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use reference" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Skip reference" })).toBeTruthy();
+    expect(screen.queryByText("Continue")).toBeNull();
+  });
+
+  it("submits exact AssetVersion identity for use_reference and omits it for skip_reference", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    const { rerender } = render(
+      <GuidedInteractionCard
+        interaction={referenceSourceInteraction}
+        referenceOccurrenceLabel="Character 2"
+        pending={false}
+        issue={null}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Asset Library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Existing Front" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use reference" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      submission_kind: "reference_source",
+      expected_interaction_revision: 2,
+      expected_session_revision: 4,
+      action: "use_reference",
+      reference_kind: "character_main",
+      source_scope: "project",
+      asset_id: "asset-front",
+      asset_version_id: "version-front",
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    onSubmit.mockClear();
+    rerender(
+      <GuidedInteractionCard
+        interaction={{
+          ...referenceSourceInteraction,
+          interaction_id: "interaction-reference-scene",
+          content: {
+            ...referenceSourceInteraction.content,
+            content_kind: "reference_source",
+            reference_kind: "scene_main",
+            occurrence_id: null,
+            question: "Use a Scene reference?",
+          },
+        }}
+        pending={false}
+        issue={null}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Skip reference" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      submission_kind: "reference_source",
+      expected_interaction_revision: 2,
+      expected_session_revision: 4,
+      action: "skip_reference",
+      reference_kind: "scene_main",
+      source_scope: "project",
+    });
   });
 
   it("does not render a closed interaction", () => {

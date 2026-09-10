@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*.d.ts",
+    "tests/browser/agent-role-*.spec.ts",
+    "tests/browser/agent-role-*-mock.tsx"
+  ]
+}

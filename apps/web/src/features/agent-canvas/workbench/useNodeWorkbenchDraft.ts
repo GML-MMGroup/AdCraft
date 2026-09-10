@@ -12,6 +12,7 @@ import type {
 import { normalizeProviderParameters } from "../model/providerModels.ts";
 import { canvasAuthoringErrorMessage } from "../canvas/canvasErrorMessage.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
+import { useNodePromptAutosave } from "./useNodePromptAutosave.ts";
 
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
   const role = node.creative_role.toLocaleLowerCase();
@@ -30,11 +31,11 @@ function errorState(error: unknown): { message: string; action: WorkbenchErrorAc
     };
   }
   const code = error.code ?? "";
-  const action: WorkbenchErrorAction = ["provider_credentials_missing", "provider_credentials_invalid", "model_not_configured", "model_default_not_configured", "agent_model_incompatible"].includes(code)
+  const action: WorkbenchErrorAction = ["provider_credentials_missing", "provider_credentials_invalid", "provider_gateway_unavailable", "model_not_configured", "model_default_not_configured", "agent_model_incompatible"].includes(code)
     ? "open_api_space"
-    : ["model_not_found", "model_unavailable", "model_capability_mismatch", "binding_model_incompatible", "model_selection_invalid"].includes(code)
+    : ["model_not_found", "model_unavailable", "model_capability_mismatch", "model_adapter_unavailable", "model_conformance_required", "model_conformance_revoked", "model_parameter_incompatible", "binding_model_incompatible", "model_selection_invalid"].includes(code)
       ? "choose_model"
-      : code === "model_catalog_sync_failed"
+      : ["model_catalog_sync_failed", "provider_gateway_config_stale"].includes(code)
         ? "sync_models"
         : null;
   return { message: canvasAuthoringErrorMessage(error), action };
@@ -52,39 +53,31 @@ function structuredText(node: CanvasNodeV2): string {
 export function useNodeWorkbenchDraft({
   workflow,
   node,
-  visibleStatus,
   patchNode,
   onRun,
-  onSaveVariation,
-  onDiscardVariation,
-  onMaterializeVariation,
   onSaveImageToLibrary,
+  onWorkflowRefresh,
 }: Pick<
   AgentCanvasInlineWorkbenchProps,
   | "workflow"
   | "node"
-  | "visibleStatus"
   | "patchNode"
   | "onRun"
-  | "onSaveVariation"
-  | "onDiscardVariation"
-  | "onMaterializeVariation"
   | "onSaveImageToLibrary"
+  | "onWorkflowRefresh"
 >) {
-  const [title, setTitle] = useState(node.variation_draft?.title ?? node.title);
-  const [prompt, setPrompt] = useState(
-    node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "",
-  );
+  const [title, setTitle] = useState(node.title);
+  const [prompt, setPrompt] = useState(node.generation_prompt ?? "");
   const [textContent, setTextContent] = useState(structuredText(node));
   const [modelSelectionMode, setModelSelectionMode] = useState(
-    node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default",
+    node.model_selection_mode ?? "default",
   );
   const [modelRef, setModelRef] = useState(
-    node.variation_draft?.model_ref ?? node.model_ref,
+    node.model_ref,
   );
   const initialParameterState = normalizeProviderParameters(
     node.node_type,
-    node.variation_draft?.parameters ?? node.parameters,
+    node.parameters,
   );
   const [parameters, setParameters] = useState<Record<string, unknown>>(
     initialParameterState.parameters,
@@ -105,27 +98,50 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
-  const effectiveStatus = visibleStatus ?? node.status;
+  const effectiveStatus = node.status;
   const isRunnableScript = node.node_type === "script"
     && (effectiveStatus === "draft" || effectiveStatus === "failed");
-  const editsTextContent = node.node_type === "text"
-    || (node.node_type === "script" && !isRunnableScript);
+  const isRunnableText = node.node_type === "text"
+    && !isWorldSetting
+    && (effectiveStatus === "draft" || effectiveStatus === "failed");
+  const editsTextContent = (node.node_type === "text" && isWorldSetting)
+    || (node.node_type === "script" && !isRunnableScript)
+    || (node.node_type === "text" && !isRunnableText);
   const editsGenerationPrompt = isRunnableScript
+    || isRunnableText
     || ["image", "video", "audio"].includes(node.node_type);
+  const canAutosavePrompt = editsGenerationPrompt
+    && ["draft", "failed", "ready", "working"].includes(effectiveStatus);
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
-  const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
-    ? { ...node, status: effectiveStatus }
-    : node;
+  const nodeForRun = node;
+
+  const handlePromptConflict = useCallback(async () => {
+    setError("This prompt was changed elsewhere. Review the refreshed workflow, then retry or discard your local text.");
+    await onWorkflowRefresh?.();
+  }, [onWorkflowRefresh]);
+  const handlePromptError = useCallback((promptError: unknown) => {
+    const nextError = errorState(promptError);
+    setError(nextError.message);
+    setErrorAction(nextError.action);
+  }, []);
+  const promptAutosave = useNodePromptAutosave({
+    nodeId: node.node_id,
+    value: prompt,
+    enabled: canAutosavePrompt,
+    patchNode,
+    onConflict: handlePromptConflict,
+    onError: handlePromptError,
+  });
 
   const restoreFromNode = useCallback(() => {
-    setTitle(node.variation_draft?.title ?? node.title);
-    setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
+    setTitle(node.title);
+    setPrompt(node.generation_prompt ?? "");
     setTextContent(structuredText(node));
-    setModelSelectionMode(node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default");
-    setModelRef(node.variation_draft?.model_ref ?? node.model_ref);
+    setModelSelectionMode(node.model_selection_mode ?? "default");
+    setModelRef(node.model_ref);
     const parameterState = normalizeProviderParameters(
       node.node_type,
-      node.variation_draft?.parameters ?? node.parameters,
+      node.parameters,
     );
     setParameters(parameterState.parameters);
     setParameterMigrationRequired(parameterState.migrated);
@@ -138,11 +154,21 @@ export function useNodeWorkbenchDraft({
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
-    if (!changedNode && dirty) return;
+    const authoritativePrompt = (node.generation_prompt ?? "").trim() || null;
+    const waitingForPromptResponse = !changedNode
+      && promptAutosave.lastSavedValue !== authoritativePrompt;
+    if (!changedNode && (
+      dirty
+      || promptAutosave.status === "dirty"
+      || promptAutosave.status === "saving"
+      || promptAutosave.status === "conflict"
+      || promptAutosave.hasLocalChanges
+      || waitingForPromptResponse
+    )) return;
     draftNodeIdRef.current = node.node_id;
     restoreFromNode();
     if (changedNode) setDirty(false);
-  }, [dirty, node, restoreFromNode]);
+  }, [dirty, node, promptAutosave.hasLocalChanges, promptAutosave.lastSavedValue, promptAutosave.status, restoreFromNode]);
 
   useEffect(() => {
     const discardConflictDraft = (event: Event) => {
@@ -182,25 +208,6 @@ export function useNodeWorkbenchDraft({
   };
 
   const save = async (): Promise<boolean> => {
-    if (isReadyMedia) {
-      if (!prompt.trim()) {
-        setError("Enter a generation prompt before creating a variation.");
-        return false;
-      }
-      const saved = await perform(() => onSaveVariation(node.node_id, {
-        title: title.trim() || `${node.title} variation`,
-        generation_prompt: prompt.trim(),
-        model_selection_mode: modelSelectionMode,
-        model_ref: modelSelectionMode === "explicit" ? modelRef : null,
-        parameters,
-      }));
-      if (saved) {
-        setDirty(false);
-        setParameterMigrationRequired(false);
-      }
-      return saved;
-    }
-
     if (isWorldSetting) {
       if (!textContent.trim()) {
         setError("World Setting content cannot be empty.");
@@ -216,14 +223,15 @@ export function useNodeWorkbenchDraft({
       return saved;
     }
 
+    if (canAutosavePrompt && !(await promptAutosave.flush())) return false;
+
     if (isRunnableScript && !prompt.trim()) {
-      setError("Enter a script direction before running.");
+      setError("Enter a prompt before running this node.");
       return false;
     }
 
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
-      ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
       ...(usesProvider ? {
         model_selection_mode: modelSelectionMode,
         model_ref: modelSelectionMode === "explicit" ? modelRef : null,
@@ -244,20 +252,18 @@ export function useNodeWorkbenchDraft({
   };
 
   const run = async () => {
+    if (canAutosavePrompt) {
+      if (!(await promptAutosave.flush())) return;
+      if (!prompt.trim()) {
+        setError("Enter a prompt before running this node.");
+        return;
+      }
+    }
     if ((dirty || parameterMigrationRequired) && !(await save())) return;
-    await perform(() => onRun(nodeForRun));
-  };
-
-  const materializeVariation = async (action: "create_draft" | "generate") => {
-    if ((dirty || parameterMigrationRequired || !node.variation_draft) && !(await save())) return;
-    await perform(() => onMaterializeVariation(node, action));
-  };
-
-  const discardVariation = async () => {
-    const discarded = await perform(() => onDiscardVariation(node.node_id));
-    if (!discarded) return;
-    restoreFromNode();
-    setDirty(false);
+    const runNode = editsGenerationPrompt
+      ? { ...nodeForRun, generation_prompt: prompt.trim() || null }
+      : nodeForRun;
+    await perform(() => onRun(runNode));
   };
 
   const saveImageToLibrary = async () => {
@@ -278,7 +284,11 @@ export function useNodeWorkbenchDraft({
     title,
     setTitle: (value: string) => { setTitle(value); setDirty(true); },
     prompt,
-    setPrompt: (value: string) => { setPrompt(value); setDirty(true); },
+    setPrompt: (value: string) => {
+      setPrompt(value);
+      if (canAutosavePrompt) promptAutosave.schedule(value);
+      else setDirty(true);
+    },
     textContent,
     setTextContent: (value: string) => { setTextContent(value); setDirty(true); },
     modelSelectionMode,
@@ -307,6 +317,19 @@ export function useNodeWorkbenchDraft({
     error,
     errorAction,
     dirty,
+    promptSaveStatus: promptAutosave.status,
+    promptSaveError: promptAutosave.status === "conflict" ? "Prompt conflict needs your decision." : null,
+    flushPrompt: promptAutosave.flush,
+    retryPromptSave: promptAutosave.retry,
+    discardPromptChanges: () => {
+      const discarded = promptAutosave.discard();
+      restoreFromNode();
+      setPrompt(discarded);
+      setDirty(false);
+      setError(null);
+      return discarded;
+    },
+    refreshWorkflow: onWorkflowRefresh,
     isReadyMedia,
     isWorldSetting,
     editsTextContent,
@@ -315,8 +338,6 @@ export function useNodeWorkbenchDraft({
     perform,
     save,
     run,
-    materializeVariation,
-    discardVariation,
     saveImageToLibrary,
   };
 }

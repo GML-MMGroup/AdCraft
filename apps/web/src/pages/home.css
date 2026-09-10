@@ -412,7 +412,7 @@
   text-align: left;
 }
 
-.recent-card.featured {
+article.recent-card.featured {
   display: flex;
   align-items: flex-end;
   border: 0;
@@ -460,6 +460,101 @@
 
 .recent-card.featured p {
   color: rgba(255, 255, 255, 0.82);
+}
+
+.recent-card--project {
+  min-width: 0;
+  height: 208px;
+  padding: 0;
+  color: #f5f5f5;
+  background: #191a1d;
+}
+
+.recent-card__cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recent-card__caption {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 30px 16px 16px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+}
+
+.recent-card__caption h3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.recent-card__caption p {
+  color: #ccc;
+}
+
+.recent-card__missing {
+  position: absolute;
+  inset: 24px 16px auto;
+  font-size: 12px;
+  color: #a4a4a4;
+}
+
+.home-recent-action {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  border-radius: 6px;
+}
+
+.home-recent-action:hover,
+.home-recent-action:focus-visible {
+  border-color: #aaa;
+}
+
+.home-recent-action:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.recent-card--project:focus-visible {
+  outline: 2px solid #eee;
+  outline-offset: 3px;
+}
+
+.home-recent-state {
+  grid-column: 1 / -1;
+  min-height: 208px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.home-recent-state[role="alert"] {
+  min-height: 72px;
+}
+
+.home-recent-loading {
+  color: var(--muted);
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.recent-card--skeleton {
+  height: 208px;
+}
+
+.home-recent-loading__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .discover-orbit {

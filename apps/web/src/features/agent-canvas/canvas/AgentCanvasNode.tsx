@@ -6,7 +6,15 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
 import type {
@@ -20,19 +28,26 @@ import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasMediaGenerationLoader } from "./AgentCanvasMediaGenerationLoader.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { AgentCanvasNodeHeader } from "./AgentCanvasNodeHeader.tsx";
+import { CanvasVideoPreview } from "./CanvasVideoPreview.tsx";
 import { EditingNodeSurface } from "./EditingNodeSurface.tsx";
 import { creativeRoleDisplayName } from "./creativeRoleDisplayName.ts";
 import { areAgentCanvasNodePropsEqual } from "./agentCanvasNodeRenderModel.ts";
-import { requestNativeVideoFirstFrame } from "./nativeVideoFirstFrame.ts";
-import { mediaAssetContentPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
-import { StableMediaPreview } from "../../../workflow/StableMediaPreview.tsx";
+import {
+  mediaAssetCanvasPreviewRenditionPath,
+  mediaAssetCanvasPreviewSrcSet,
+} from "../../../workflow/mediaPreview.ts";
 import {
   agentCanvasNodeSize,
   scriptNodeHeightForContent,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
-import { useAgentCanvasVideoPoster } from "./useAgentCanvasVideoPoster.ts";
+import { CanvasMediaPreview } from "./CanvasMediaPreview.tsx";
+import {
+  AGENT_CANVAS_HANDLE_CENTER_OFFSET,
+  AGENT_CANVAS_HANDLE_HIT_SIZE,
+  AGENT_CANVAS_HANDLE_RING_SIZE,
+} from "./canvasConnectionGeometry.ts";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -79,6 +94,12 @@ export type AgentCanvasFlowNode = Node<AgentCanvasNodeData, "agentCanvas">;
 
 type AgentCanvasNodeRendererProps = NodeProps<AgentCanvasFlowNode>;
 
+type AgentCanvasNodeShellStyle = CSSProperties & {
+  "--agent-canvas-handle-center-offset": string;
+  "--agent-canvas-handle-hit-size": string;
+  "--agent-canvas-handle-ring-size": string;
+};
+
 interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
@@ -96,35 +117,29 @@ function MediaSurface({
   onOpenVideoPreview,
   onMediaDimensionsResolved,
   label,
+  revealToken,
 }: {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
   onOpenVideoPreview?: AgentCanvasNodeCallbacks["onOpenVideoPreview"];
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
   label: string;
+  revealToken?: string | null;
 }) {
-  const mediaUrl = asset
-    ? asset.media_type === "image" ? mediaAssetContentPath(asset) : mediaAssetPreviewPath(asset)
-    : null;
-  const videoUrl = asset?.media_type === "video" ? mediaAssetContentPath(asset) : null;
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoPosterUrl = useAgentCanvasVideoPoster(asset, videoRef);
-  if (node.node_type === "video" && videoUrl && asset) {
+  const mediaUrl = asset && node.node_type === "image"
+    ? mediaAssetCanvasPreviewRenditionPath(asset)
+    : "";
+  const mediaSrcSet = asset && node.node_type === "image"
+    ? mediaAssetCanvasPreviewSrcSet(asset)
+    : undefined;
+  if (node.node_type === "video" && asset) {
     return (
       <div className="agent-canvas-node__video-stage">
-        <video
-          ref={videoRef}
-          className="agent-canvas-node__media agent-canvas-node__media--cover"
-          src={videoUrl}
-          poster={videoPosterUrl ?? undefined}
-          aria-label={asset.display_name || "Video output"}
-          muted
-          playsInline
-          preload="metadata"
-          onLoadedMetadata={({ currentTarget }) => {
-            if (!Number.isFinite(currentTarget.duration) || currentTarget.duration <= 0) return;
-            void requestNativeVideoFirstFrame(currentTarget);
-          }}
+        <CanvasVideoPreview
+          asset={asset}
+          label={label}
+          revealToken={revealToken}
+          onMediaDimensionsResolved={onMediaDimensionsResolved}
         />
         {onOpenVideoPreview ? (
           <button
@@ -151,13 +166,14 @@ function MediaSurface({
   }
 
   return (
-    <StableMediaPreview
+    <CanvasMediaPreview
       className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
+      srcSet={mediaSrcSet || undefined}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
-      draggable={false}
-      loading="lazy"
-      decoding="async"
+      revealToken={revealToken}
+      width={asset?.width ?? undefined}
+      height={asset?.height ?? undefined}
       onLoad={(event) => {
         const { naturalWidth, naturalHeight } = event.currentTarget;
         if (naturalWidth > 0 && naturalHeight > 0) {
@@ -176,7 +192,8 @@ function NodeSurface({
   onMediaDimensionsResolved,
   onScriptContentHeightResolved,
   label,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onOpenEditing" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
+  revealToken,
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onOpenEditing" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string; revealToken?: string | null }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <AgentCanvasNodeContent
@@ -196,6 +213,7 @@ function NodeSurface({
       node={node}
       asset={asset}
       label={label}
+      revealToken={revealToken}
       onOpenVideoPreview={onOpenVideoPreview}
       onMediaDimensionsResolved={onMediaDimensionsResolved}
     />
@@ -205,7 +223,6 @@ function NodeSurface({
 export function AgentCanvasNodeCard({
   node,
   asset,
-  runtime,
   selected = false,
   onOpenVideoPreview,
   onOpenEditing,
@@ -213,14 +230,38 @@ export function AgentCanvasNodeCard({
   onScriptContentHeightResolved,
   mediaDimensions,
 }: AgentCanvasNodeCardProps) {
-  const status = runtime?.visible_status ?? node.status;
+  const status = node.status;
+  const previousNodeRef = useRef({ nodeId: node.node_id, status });
+  const [generationRevealNodeId, setGenerationRevealNodeId] = useState<string | null>(null);
   const label = creativeRoleDisplayName(node.creative_role);
   const resolvedMediaDimensions = mediaDimensions
     ?? (validAgentCanvasMediaDimensions(asset)
       ? { width: asset.width, height: asset.height }
       : null);
+  const generatingMediaType = status === "working"
+    && (node.node_type === "image" || node.node_type === "video")
+    ? node.node_type
+    : null;
+  const hasPriorMediaOutput = Boolean(node.output_asset_id && asset);
+  const generationRevealToken = generationRevealNodeId === node.node_id && status === "ready"
+    ? `${node.node_id}:${node.output_asset_id ?? "pending-output"}`
+    : null;
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
+
+  useLayoutEffect(() => {
+    const previous = previousNodeRef.current;
+    previousNodeRef.current = { nodeId: node.node_id, status };
+    if (previous.nodeId !== node.node_id) {
+      setGenerationRevealNodeId(null);
+      return;
+    }
+    if (previous.status === "working" && status === "ready") {
+      setGenerationRevealNodeId(node.node_id);
+    } else if (status !== "ready") {
+      setGenerationRevealNodeId(null);
+    }
+  }, [node.node_id, status]);
 
   return (
     <article
@@ -237,18 +278,25 @@ export function AgentCanvasNodeCard({
     >
       <AgentCanvasNodeHeader node={node} status={status} dimensions={resolvedMediaDimensions} />
       <div className="agent-canvas-node__surface">
-        <NodeSurface
-          node={node}
-          asset={asset}
-          status={status}
-          label={label}
-          onOpenVideoPreview={onOpenVideoPreview}
-          onOpenEditing={onOpenEditing}
-          onMediaDimensionsResolved={onMediaDimensionsResolved}
-          onScriptContentHeightResolved={onScriptContentHeightResolved}
-        />
-        {status === "working" && (node.node_type === "image" || node.node_type === "video") ? (
-          <AgentCanvasMediaGenerationLoader mediaType={node.node_type} />
+        {(!generatingMediaType || hasPriorMediaOutput) ? (
+          <NodeSurface
+            node={node}
+            asset={asset}
+            status={status}
+            label={label}
+            revealToken={generationRevealToken}
+            onOpenVideoPreview={onOpenVideoPreview}
+            onOpenEditing={onOpenEditing}
+            onMediaDimensionsResolved={onMediaDimensionsResolved}
+            onScriptContentHeightResolved={onScriptContentHeightResolved}
+          />
+        ) : null}
+        {generatingMediaType ? (
+          <AgentCanvasMediaGenerationLoader
+            mediaType={generatingMediaType}
+            nodeId={node.node_id}
+            overMedia={hasPriorMediaOutput}
+          />
         ) : status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
@@ -294,6 +342,13 @@ function AgentCanvasNodeRendererComponent({
   const handleScriptContentHeightResolved = useCallback((height: number) => {
     setScriptContentHeight((current) => current === height ? current : height);
   }, []);
+  const shellStyle: AgentCanvasNodeShellStyle = {
+    width: nodeSize.width,
+    height: nodeSize.height,
+    "--agent-canvas-handle-center-offset": `${AGENT_CANVAS_HANDLE_CENTER_OFFSET}px`,
+    "--agent-canvas-handle-hit-size": `${AGENT_CANVAS_HANDLE_HIT_SIZE}px`,
+    "--agent-canvas-handle-ring-size": `${AGENT_CANVAS_HANDLE_RING_SIZE}px`,
+  };
 
   useLayoutEffect(() => {
     updateNodeInternals(id);
@@ -302,7 +357,7 @@ function AgentCanvasNodeRendererComponent({
   return (
     <div
       className="agent-canvas-node-shell"
-      style={{ width: nodeSize.width, height: nodeSize.height }}
+      style={shellStyle}
     >
       {data.showInputHandle !== false ? (
         <Handle

@@ -92,25 +92,15 @@ describe("ProjectsPage project rename", () => {
     expect(virtualCreateRule).toContain("width: 100%");
   });
 
-  it("shows a visible error when opening a project fails", async () => {
-    fixture.openProject.mockRejectedValueOnce(new Error("Workflow contract mismatch."));
-    render(<ProjectsPage navigate={vi.fn()} />);
-
-    fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
-
-    expect((await screen.findByRole("status")).textContent).toContain(
-      "Project could not be opened. Try again.",
-    );
-  });
-
-  it("passes the catalog workflow identity to the open operation", async () => {
+  it("navigates immediately without waiting for the complete workflow", () => {
     const navigate = vi.fn();
+    fixture.openProject.mockReturnValueOnce(new Promise(() => {}));
     render(<ProjectsPage navigate={navigate} />);
 
     fireEvent.click(document.querySelector(".project-card-open") as HTMLElement);
 
-    await waitFor(() => expect(fixture.openProject).toHaveBeenCalledWith("project-1", "workflow-1"));
     expect(navigate).toHaveBeenCalledWith("workflow", { projectId: "project-1" });
+    expect(fixture.openProject).not.toHaveBeenCalled();
   });
 
   it("opens an accessible custom dialog from an icon-only rename action", () => {

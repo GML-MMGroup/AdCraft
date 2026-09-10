@@ -54,15 +54,14 @@ describe("Agent Canvas node defaults", () => {
     });
   });
 
-  it("creates an empty Script as a runnable draft", () => {
-    const request = createDefaultCanvasNodeRequest("script", { x: 0, y: 0 });
+  it.each(["text", "script", "image", "video", "audio"] as const)(
+    "creates an empty %s without an empty-string generation prompt",
+    (nodeType) => {
+      const request = createDefaultCanvasNodeRequest(nodeType, { x: 0, y: 0 });
 
-    expect(request).toMatchObject({
-      node_type: "script",
-      creative_role: "script",
-      generation_prompt: "",
-    });
-    expect(request.structured_content).toBeUndefined();
-  });
+      expect(request.generation_prompt).not.toBe("");
+      expect(request.generation_prompt ?? null).toBeNull();
+    },
+  );
 
 });

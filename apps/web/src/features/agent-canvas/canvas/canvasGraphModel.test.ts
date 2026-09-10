@@ -11,8 +11,13 @@ import {
   highlightNodeRelatedCanvasEdges,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
+  patchAgentCanvasFlowNodes,
   reconcileSelectableCanvasEdges,
+  reconcileCanvasFlowSnapshot,
+  runtimeChangedCanvasNodeIds,
+  reuseCanvasArray,
   toAgentCanvasFlowEdges,
+  toAgentCanvasFlowEdgesForNodeIds,
   toAgentCanvasFlowNodes,
 } from "./canvasGraphModel.ts";
 
@@ -35,7 +40,6 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     position: { x: 40, y: 60 },
     revision: 1,
     error: null,
-    variation_draft: null,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
@@ -72,7 +76,6 @@ const workflow: AgentCanvasWorkflowV2 = {
     source: { kind: "node_output", source_node_id: "image-1" },
     target_node_id: "video-1",
     input_role: "image_reference",
-    required: true,
     enabled: true,
     order: 0,
     label: null,
@@ -136,6 +139,15 @@ const runtime: CanvasRuntimeSnapshotV2 = {
 };
 
 describe("canvasGraphModel", () => {
+  it("reuses an array when every projected item is unchanged", () => {
+    const first = [{ id: "a" }, { id: "b" }];
+    const next = [first[0]!, first[1]!];
+
+    expect(reuseCanvasArray(first, next)).toBe(first);
+    const changed = [{ id: "a" }, first[1]!];
+    expect(reuseCanvasArray(first, changed)).toBe(changed);
+  });
+
   it("detects collapsed persisted positions without rearranging a single or already separated node", () => {
     expect(needsInitialCanvasLayout([
       { ...node("first", "image"), position: { x: 0, y: 0 } },
@@ -201,6 +213,51 @@ describe("canvasGraphModel", () => {
     expect(refreshed[0]).toBe(first[0]);
     expect(refreshed[0]?.data).toBe(first[0]?.data);
     expect(refreshed[1]).toBe(first[1]);
+  });
+
+  it("patches only nodes whose runtime presentation changed", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const changedRuntime = {
+      ...runtime,
+      node_runtime: {
+        ...runtime.node_runtime,
+        "image-1": {
+          ...runtime.node_runtime["image-1"]!,
+          visible_status: "ready" as const,
+          updated_at: "2026-07-28T00:00:02Z",
+        },
+      },
+    };
+    const changedNodeIds = runtimeChangedCanvasNodeIds(first, changedRuntime);
+    const patched = patchAgentCanvasFlowNodes(
+      workflow,
+      changedRuntime,
+      {},
+      first,
+      changedNodeIds,
+    );
+
+    expect(changedNodeIds).toEqual(new Set(["image-1"]));
+    expect(patched[0]).not.toBe(first[0]);
+    expect(patched[1]).toBe(first[1]);
+  });
+
+  it("does not mark nodes changed when only execution-level runtime metadata changes", () => {
+    const first = toAgentCanvasFlowNodes(workflow, runtime, {});
+    const refreshedRuntime = {
+      ...runtime,
+      events_cursor: runtime.events_cursor + 1,
+      updated_at: "2026-07-28T00:00:02Z",
+    };
+
+    expect(runtimeChangedCanvasNodeIds(first, refreshedRuntime)).toEqual(new Set());
+  });
+
+  it("keeps the same snapshot when every item reference is unchanged", () => {
+    const current = [{ id: "a" }, { id: "b" }];
+
+    expect(reconcileCanvasFlowSnapshot(current, [current[0]!, current[1]!])).toBe(current);
+    expect(reconcileCanvasFlowSnapshot(current, [{ id: "a" }, current[1]!])).not.toBe(current);
   });
 
   it("keeps the last media asset while a canonical refresh temporarily omits it", () => {
@@ -355,12 +412,51 @@ describe("canvasGraphModel", () => {
       id: "binding-1",
       source: "image-1",
       target: "video-1",
-      type: "default",
+      type: "agentCanvasEdge",
     })]);
     expect(edges[0]?.style).toBeUndefined();
     expect(edges[0]?.markerEnd).toMatchObject({
-      color: "rgba(229, 231, 238, 0.72)",
+      color: "#686868",
     });
+  });
+
+  it("preserves same-pair bindings with distinct semantic roles and stable order", () => {
+    const bindings = [
+      {
+        ...workflow.bindings[0]!,
+        binding_id: "binding-product",
+        order: 1,
+        metadata: { semantic_reference_role: "product_reference" },
+      },
+      {
+        ...workflow.bindings[0]!,
+        binding_id: "binding-first-frame",
+        order: 0,
+        metadata: { semantic_reference_role: "first_frame_reference" },
+      },
+    ];
+
+    expect(toAgentCanvasFlowEdges(bindings, workflow.nodes).map((edge) => edge.id)).toEqual([
+      "binding-first-frame",
+      "binding-product",
+    ]);
+  });
+
+  it("reuses unchanged edge objects across runtime-only projections", () => {
+    const first = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+    const refreshed = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes, first);
+
+    expect(refreshed[0]).toBe(first[0]);
+  });
+
+  it("projects edge topology from stable visible node ids", () => {
+    const edges = toAgentCanvasFlowEdgesForNodeIds(
+      workflow.bindings,
+      ["image-1", "video-1"],
+    );
+
+    expect(edges).toEqual([expect.objectContaining({ id: "binding-1" })]);
+    expect(toAgentCanvasFlowEdgesForNodeIds(workflow.bindings, ["image-1"])).toEqual([]);
   });
 
   it("preserves selected bindings while reconciling canonical backend edges", () => {
@@ -370,6 +466,13 @@ describe("canvasGraphModel", () => {
     expect(reconcileSelectableCanvasEdges(canonical, selected)).toEqual([
       expect.objectContaining({ id: "binding-1", selected: true }),
     ]);
+  });
+
+  it("does not allocate a new edge snapshot when selection is already reconciled", () => {
+    const canonical = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+    const reconciled = reconcileSelectableCanvasEdges(canonical, canonical);
+
+    expect(reconciled).toBe(canonical);
   });
 
   it("drops selection state for bindings that no longer exist", () => {
@@ -404,6 +507,27 @@ describe("canvasGraphModel", () => {
 
     expect(related[0]?.selected).not.toBe(true);
     expect(highlightNodeRelatedCanvasEdges(related, null)[0]).not.toHaveProperty("className");
+  });
+
+  it("preserves unrelated edge objects when the selected node changes", () => {
+    const baseEdges = [
+      { id: "incoming", source: "image-1", target: "video-1" },
+      { id: "outgoing", source: "video-1", target: "editing-1" },
+      { id: "unrelated", source: "audio-1", target: "editing-1" },
+    ];
+    const selectedVideo = highlightNodeRelatedCanvasEdges(baseEdges, "video-1");
+    const selectedImage = highlightNodeRelatedCanvasEdges(selectedVideo, "image-1", selectedVideo);
+
+    expect(selectedImage[0]).toBe(selectedVideo[0]);
+    expect(selectedImage[1]).not.toBe(selectedVideo[1]);
+    expect(selectedImage[2]).toBe(selectedVideo[2]);
+  });
+
+  it("reuses the presented edge snapshot when the highlight does not change", () => {
+    const baseEdges = [{ id: "binding-1", source: "image-1", target: "video-1" }];
+    const highlighted = highlightNodeRelatedCanvasEdges(baseEdges, "video-1");
+
+    expect(highlightNodeRelatedCanvasEdges(highlighted, "video-1", highlighted)).toBe(highlighted);
   });
 
   it("does not render disabled or asset-backed bindings as inferred edges", () => {

@@ -4,6 +4,7 @@ import { V2ApiError } from "../../../api/agentCanvasApi.ts";
 import {
   decisionDockIssueFromError,
   isDecisionDockStaleError,
+  isReferenceCandidateInvalidIssue,
   productSourceDecisionDockIssueFromCode,
   productSourceDecisionDockIssueFromError,
 } from "./decisionDockIssue.ts";
@@ -29,6 +30,7 @@ describe("decisionDockIssueFromError", () => {
     ));
 
     expect(issue).toEqual({
+      code: "guided_duration_value_invalid",
       summary: "Choose one of the supported duration values.",
       detail: "guided_duration_value_invalid: Invalid questionnaire.answers[0].value",
       fieldId: "production_duration_seconds",
@@ -58,7 +60,27 @@ describe("decisionDockIssueFromError", () => {
   it("classifies stale Guided Interaction authority", () => {
     expect(isDecisionDockStaleError(apiError(409, "guided_interaction_stale", "Stale"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(409, "guidance_revision_conflict", "Conflict"))).toBe(true);
+    expect(isDecisionDockStaleError(apiError(409, "guided_reference_source_revision_conflict", "Conflict"))).toBe(true);
+    expect(isDecisionDockStaleError(apiError(409, "guided_reference_source_kind_invalid", "Conflict"))).toBe(true);
+    expect(isDecisionDockStaleError(apiError(409, "guided_reference_source_target_invalid", "Conflict"))).toBe(true);
     expect(isDecisionDockStaleError(apiError(422, "guided_interaction_invalid", "Invalid"))).toBe(false);
+  });
+
+  it("identifies structured errors that invalidate a selected reference candidate", () => {
+    for (const code of [
+      "guided_reference_source_asset_not_found",
+      "guided_reference_source_asset_foreign_workflow",
+      "reference_candidate_not_found",
+      "guided_reference_source_asset_unreadable",
+      "guided_reference_source_asset_not_image",
+    ]) {
+      expect(isReferenceCandidateInvalidIssue(decisionDockIssueFromError(
+        apiError(code.endsWith("not_found") ? 404 : 422, code, "Candidate changed"),
+      ))).toBe(true);
+    }
+    expect(isReferenceCandidateInvalidIssue(decisionDockIssueFromError(
+      apiError(409, "guided_reference_source_target_invalid", "Target changed"),
+    ))).toBe(false);
   });
 
   it("maps Product count and unreadable AssetVersion errors inside the Product Dock", () => {

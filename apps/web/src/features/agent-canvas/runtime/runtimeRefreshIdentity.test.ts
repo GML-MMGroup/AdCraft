@@ -5,6 +5,7 @@ import type {
   CanvasRuntimeSnapshotV2,
 } from "../../../types-v2.ts";
 import {
+  runtimeReflectsTerminalEvent,
   runtimeRefreshIdentity,
   sameRuntimePresentation,
 } from "./runtimeRefreshIdentity.ts";
@@ -102,5 +103,27 @@ describe("sameRuntimePresentation", () => {
       working_node_ids: [],
       ready_node_ids: ["node-1"],
     }))).toBe(false);
+  });
+});
+
+describe("runtimeReflectsTerminalEvent", () => {
+  it("requires the affected node to be ready or failed, not only a newer cursor", () => {
+    expect(runtimeReflectsTerminalEvent(runtime({ events_cursor: 14 }), event("node_ready", 14))).toBe(false);
+    expect(runtimeReflectsTerminalEvent(runtime({
+      events_cursor: 14,
+      ready_node_ids: ["node-1"],
+      working_node_ids: [],
+    }), event("node_ready", 14))).toBe(true);
+    expect(runtimeReflectsTerminalEvent(runtime({
+      events_cursor: 14,
+      failed_node_ids: ["node-1"],
+      working_node_ids: [],
+    }), event("node_failed", 14))).toBe(true);
+  });
+
+  it("does not treat an older runtime cursor as terminal state", () => {
+    expect(runtimeReflectsTerminalEvent(runtime({
+      ready_node_ids: ["node-1"],
+    }), event("node_ready", 14))).toBe(false);
   });
 });

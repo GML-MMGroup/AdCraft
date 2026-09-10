@@ -60,6 +60,59 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes canonical Workflow state for terminal node transitions", () => {
+    for (const eventType of [
+      "node_ready",
+      "node_failed",
+      "node_blocked",
+      "node_skipped",
+      "node_cancelled",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshRuntime: true,
+        refreshWorkflow: true,
+        refreshNodeId: "node-1",
+      });
+    }
+  });
+
+  it("refreshes the canonical node when media generation starts", () => {
+    expect(runtimeEventPolicy(event("node_generation_started"))).toMatchObject({
+      refreshRuntime: true,
+      refreshWorkflow: false,
+      refreshNodeId: "node-1",
+    });
+  });
+
+  it("routes publication recovery events through canonical read models", () => {
+    for (const eventType of [
+      "node_result_publication_prepared",
+      "node_result_publication_recovery_scheduled",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshRuntime: true,
+        refreshWorkflow: false,
+        refreshAssets: false,
+        refreshNodeId: null,
+      });
+    }
+
+    expect(runtimeEventPolicy(event("node_result_publication_recovered", {
+      asset_id: "asset-1",
+    }))).toMatchObject({
+      refreshRuntime: true,
+      refreshWorkflow: true,
+      refreshAssets: true,
+      refreshNodeId: "node-1",
+    });
+    expect(runtimeEventPolicy(event("node_result_publication_failed"))).toMatchObject({
+      refreshRuntime: true,
+      refreshWorkflow: true,
+      refreshAssets: false,
+      refreshNodeId: "node-1",
+    });
+  });
+
   it("routes progressive guidance and Draft publication events without obsolete aliases", () => {
     expect(runtimeEventPolicy(event("node_created"))).toMatchObject({
       refreshWorkflow: true,

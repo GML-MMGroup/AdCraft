@@ -8,6 +8,13 @@ type GeneratedPosterState = {
   url: string;
 };
 
+type GeneratedPosterCacheEntry = GeneratedPosterState & {
+  lastAccessed: number;
+};
+
+const generatedPosterUrls = new Map<string, GeneratedPosterCacheEntry>();
+const MAX_GENERATED_POSTER_URLS = 100;
+
 function fallbackPosterKey(asset?: ProjectAssetSummaryV2 | null) {
   if (
     !asset
@@ -39,10 +46,35 @@ export function useAgentCanvasVideoPoster(
   });
 
   useEffect(() => {
+    // A poster generated in an earlier session can be reused without
+    // reactivating the source video. Only the explicit preview dialog passes a
+    // video ref and is allowed to generate a missing poster.
+    if (!fallbackKey || videoRef) return;
+
+    let cancelled = false;
+    void import("../../../workflow/videoPosterCache.ts")
+      .then(({ loadVideoPosterRecordForAsset }) => loadVideoPosterRecordForAsset(projectId, workflowId, {
+        asset_id: assetId,
+        asset_type: "video",
+        version: versionId ?? checksum,
+      }))
+      .then((record) => {
+        if (cancelled || !record?.poster_blob) return;
+        setGeneratedPoster(getGeneratedPosterState(fallbackKey, record.poster_blob));
+      })
+      .catch(() => {
+        // A missing cache entry is expected for a newly generated video.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, checksum, fallbackKey, projectId, versionId, videoRef, workflowId]);
+
+  useEffect(() => {
     if (!fallbackKey || !assetId || !mediaUrl || !videoRef) return;
 
     let cancelled = false;
-    let objectUrl = "";
     const video = videoRef.current;
     if (!video) return;
     let captureRequested = false;
@@ -70,8 +102,7 @@ export function useAgentCanvasVideoPoster(
         }))
         .then((record) => {
           if (cancelled || !record?.poster_blob) return;
-          objectUrl = URL.createObjectURL(record.poster_blob);
-          setGeneratedPoster({ key: fallbackKey, url: objectUrl });
+          setGeneratedPoster(getGeneratedPosterState(fallbackKey, record.poster_blob));
         })
         .catch(() => {
           // The native video remains the visible first-frame fallback.
@@ -85,7 +116,6 @@ export function useAgentCanvasVideoPoster(
       cancelled = true;
       video.removeEventListener("loadeddata", capture);
       video.removeEventListener("seeked", capture);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [
     assetId,
@@ -103,4 +133,28 @@ export function useAgentCanvasVideoPoster(
 
   if (previewUrl) return previewUrl;
   return generatedPoster.key === fallbackKey ? generatedPoster.url : null;
+}
+
+function getGeneratedPosterState(key: string, blob: Blob): GeneratedPosterState {
+  const existing = generatedPosterUrls.get(key);
+  if (existing) {
+    existing.lastAccessed = Date.now();
+    generatedPosterUrls.delete(key);
+    generatedPosterUrls.set(key, existing);
+    return existing;
+  }
+  const next = {
+    key,
+    url: URL.createObjectURL(blob),
+    lastAccessed: Date.now(),
+  };
+  generatedPosterUrls.set(key, next);
+  while (generatedPosterUrls.size > MAX_GENERATED_POSTER_URLS) {
+    const oldestKey = generatedPosterUrls.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    const oldest = generatedPosterUrls.get(oldestKey);
+    generatedPosterUrls.delete(oldestKey);
+    if (oldest) URL.revokeObjectURL(oldest.url);
+  }
+  return next;
 }

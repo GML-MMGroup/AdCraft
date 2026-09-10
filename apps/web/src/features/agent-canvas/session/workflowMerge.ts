@@ -35,6 +35,24 @@ export function mergeAgentCanvasNode(
   };
 }
 
+export function mergeExistingAgentCanvasNode(
+  workflow: AgentCanvasWorkflowV2,
+  incoming: CanvasNodeV2,
+): AgentCanvasWorkflowV2 {
+  if (
+    workflow.workflow_id !== incoming.workflow_id
+    || !workflow.nodes.some((node) => node.node_id === incoming.node_id)
+  ) {
+    return workflow;
+  }
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((node) => node.node_id === incoming.node_id
+      ? mergeAgentCanvasNode(node, incoming)
+      : node),
+  };
+}
+
 export function mergeAgentCanvasLayout(
   current: AgentCanvasWorkflowV2,
   response: CanvasLayoutPatchResponseV2,

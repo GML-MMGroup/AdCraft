@@ -27,7 +27,7 @@
         "updated_at"
       ],
       "enums": {
-        "status": ["queued", "working", "ready", "failed", "superseded", "not_applicable"],
+        "status": ["queued", "working", "waiting_user", "ready", "failed", "superseded", "not_applicable"],
         "character_phase": ["main", "turnaround"]
       }
     },
@@ -78,6 +78,7 @@
         "retry_of_turn_id",
         "retry_attempt_no",
         "retryable",
+        "actionable_failure",
         "operation_stage",
         "operation_failure",
         "error_code",
@@ -117,6 +118,7 @@
           "structured_content",
           "guidance_default",
           "role_default",
+          "model_default",
           "provider_clamp"
         ]
       }

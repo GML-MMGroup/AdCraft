@@ -93,6 +93,23 @@ export interface PersistedWorkflowV2 extends WorkflowV2 {
 }
 
 export type ProjectV2Status = "active" | "archived" | "trashed";
+export type ProjectCoverStateV2 = "ready" | "unresolved" | "none" | "broken";
+export type ProjectCoverSourceV2 =
+  | "manual"
+  | "product_main"
+  | "scene_main"
+  | "character_main"
+  | "storyboard_grid"
+  | "video_poster"
+  | "migrated";
+
+export interface ProjectCoverV2 {
+  asset_id: string;
+  version_id: string;
+  media_type: "image" | "video";
+  preview_url: string | null;
+  poster_url: string | null;
+}
 
 export interface ProjectV2Summary {
   project_id: string;
@@ -101,6 +118,11 @@ export interface ProjectV2Summary {
   status: ProjectV2Status;
   is_favorite: boolean;
   cover_asset_id: string | null;
+  cover_version_id?: string | null;
+  cover_state?: ProjectCoverStateV2;
+  cover_source?: ProjectCoverSourceV2 | null;
+  cover_updated_at?: string | null;
+  cover?: ProjectCoverV2 | null;
   project_version: number;
   updated_at: string;
 }
@@ -122,6 +144,7 @@ export interface ProjectV2UpdateRequest {
   description?: string;
   is_favorite?: boolean;
   cover_asset_id?: string | null;
+  cover_version_id?: string | null;
   status?: "active" | "archived";
 }
 
@@ -1551,13 +1574,53 @@ export interface AgentPlacementHintV2 {
   group_key: string | null;
 }
 
+export type ActionableFailureClassV1 =
+  | "transient"
+  | "deterministic"
+  | "stale"
+  | "conflict"
+  | "external";
+
+export type ActionableRetryScopeV1 =
+  | "none"
+  | "prompt_preparation"
+  | "turn"
+  | "execution"
+  | "provider_delivery";
+
+export type ActionableUserActionV1 =
+  | "none"
+  | "retry"
+  | "revise"
+  | "regenerate"
+  | "redesign";
+
+export interface ActionableFailureV1 {
+  failure_class: ActionableFailureClassV1;
+  retry_scope: ActionableRetryScopeV1;
+  user_action: ActionableUserActionV1;
+  /** Compatibility projection; authority remains user_action + retry_scope. */
+  retryable: boolean;
+}
+
 export interface CanvasNodeErrorV2 {
   code: string;
   message: string;
   retryable: boolean;
+  actionable_failure?: ActionableFailureV1 | null;
+  role_variant?: string | null;
+  violation_category?: string | null;
+  field_path?: string | null;
 }
 
-export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded" | "not_applicable";
+export type NodePromptPreparationStatusV1 =
+  | "queued"
+  | "working"
+  | "waiting_user"
+  | "ready"
+  | "failed"
+  | "superseded"
+  | "not_applicable";
 
 export interface ResolvedNodeParameterV2 {
   name: string;
@@ -1601,8 +1664,27 @@ export interface PromptAssertionEvidenceV1 {
   source_snapshots: PromptAssertionSourceSnapshotV1[];
   document_revisions: Record<string, number>;
   sequence_id: string | null;
+  character_identity_projection_digest: string | null;
+  scene_environment_projection_digest: string | null;
   engine_owned_fields_digest: string;
   evidence_digest: string;
+}
+
+export interface RolePromptCompactionDecisionV2 {
+  block_id: string;
+  source_id: string;
+  source_digest: string;
+  precedence: number;
+  outcome: "compacted" | "preserved";
+  retained_block_id: string | null;
+  retained_precedence: number | null;
+  reason:
+    | "policy_disabled"
+    | "not_eligible"
+    | "ownership_unknown"
+    | "identity_unproven"
+    | "exact_duplicate"
+    | "preserved_authority";
 }
 
 /**
@@ -1626,13 +1708,28 @@ export interface NodePromptPreparationV1 {
   requirement_revision_no: number | null;
   document_revisions: Record<string, number>;
   binding_digest: string | null;
+  character_identity_projection_digest: string | null;
+  scene_environment_projection_digest: string | null;
   style_projection_digest: string | null;
   brief_digest: string | null;
   parameter_origins: ResolvedNodeParameterV2[];
+  compaction_policy_version: string | null;
+  compaction_policy_digest: string | null;
+  compaction_decisions: RolePromptCompactionDecisionV2[];
   assertion_evidence: PromptAssertionEvidenceV1 | null;
   attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
   updated_at: string;
+}
+
+/** Revision-bound, user-editable prompt projection returned by the backend. */
+export interface EditablePromptProjectionV1 {
+  text: string;
+  locale: string;
+  source: "agent_authored" | "deterministic_projection" | "user_edited";
+  revision: number;
+  brief_digest: string | null;
+  prompt_digest: string;
 }
 
 export type CanvasModelSelectionModeV2 = "default" | "explicit";
@@ -1656,6 +1753,7 @@ export type CanvasParameterOriginV2 =
   | "structured_content"
   | "guidance_default"
   | "role_default"
+  | "model_default"
   | "provider_clamp";
 export type CanvasParameterScalarV2 = string | number | boolean;
 
@@ -1679,18 +1777,24 @@ export interface CanvasRuntimeModelResolutionV2 {
   catalog_revision: number;
 }
 
-export interface CanvasVariationDraftV2 {
-  source_node_id: string;
-  source_node_revision: number;
-  title: string;
-  generation_prompt: string;
-  model_id: string | null;
-  model_selection_mode: CanvasModelSelectionModeV2;
-  model_ref: string | null;
-  parameters: Record<string, unknown>;
-  variation_revision: number;
+export type CanvasNodeLatestAttemptStatusV2 =
+  | "queued"
+  | "waiting"
+  | "blocked"
+  | "skipped_dependency"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface CanvasNodeLatestAttemptV2 {
+  execution_id: string;
+  member_id: string;
+  run_intent_snapshot_id: string | null;
+  status: CanvasNodeLatestAttemptStatusV2;
   created_at: string;
   updated_at: string;
+  error: CanvasNodeErrorV2 | null;
 }
 
 export interface CanvasNodeV2 {
@@ -1714,11 +1818,13 @@ export interface CanvasNodeV2 {
   parameter_provenance: Record<string, CanvasParameterProvenanceV2>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
+  output_asset_version_id: string | null;
+  latest_attempt: CanvasNodeLatestAttemptV2 | null;
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
+  prompt_presentation: EditablePromptProjectionV1 | null;
   prompt_preparation: NodePromptPreparationV1 | null;
-  variation_draft: CanvasVariationDraftV2 | null;
   created_at: string;
   updated_at: string;
 }
@@ -1751,7 +1857,6 @@ export interface CanvasBindingV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
   input_role: CanvasBindingInputRoleV2;
-  required: boolean;
   enabled: boolean;
   order: number;
   label: string | null;
@@ -2000,6 +2105,13 @@ export interface StoryboardSegmentMaterializationV2 {
   generation_prompt: string | null;
 }
 
+export interface StoryboardSegmentMaterializationV3 {
+  sequence_id: string;
+  materialization_id: string;
+  status: "pending" | "materialized";
+  generation_prompt: string | null;
+}
+
 export interface StoryboardVisualAnchorV2 {
   node_id: string;
   asset_id: string;
@@ -2045,12 +2157,14 @@ export interface StoryboardProductionPlanContentV2 {
 
 export interface StoryboardProductionPlanContentV3 {
   schema_version: "3";
+  creative_direction_snapshot_id: string | null;
   narrative_outline: string;
   requirement_revision_id: string;
   requirement_revision_no: number;
   global_parameters: StoryboardPlanGlobalParametersV2;
   segments: StoryboardNarrativeSegmentV2[];
   rows: StoryboardPlanRowV2[];
+  segment_materializations: StoryboardSegmentMaterializationV3[];
   planned_nodes: StoryboardPlannedNodeV3[];
   excluded_media: StoryboardExcludedMediaV3[];
   visual_anchor: StoryboardVisualAnchorV3 | null;
@@ -2114,7 +2228,6 @@ export interface ResolvedTextInputSnapshotV2 {
   content_hash: string;
   binding_id: string | null;
   input_role: "text_context";
-  required: boolean;
   display_order: number;
 }
 
@@ -2131,7 +2244,6 @@ export interface ResolvedMediaInputSnapshotV2 {
   access_descriptor: StorageAccessDescriptorV2;
   binding_id: string | null;
   input_role: CanvasBindingInputRoleV2;
-  required: boolean;
   display_order: number;
 }
 
@@ -2304,7 +2416,6 @@ export interface ProviderResolvedTextInputAuditV2 {
   source_node_id: string;
   snapshot_id: string | null;
   input_role: "text_context";
-  required: boolean;
   display_order: number;
 }
 
@@ -2324,7 +2435,6 @@ export interface ProviderResolvedWorldSettingInputAuditV2 {
   source_node_revision: number;
   source_content_digest: string;
   source_core_digest: string;
-  required: boolean;
   display_order: number;
   target_audience: WorldSettingContextAudienceV2;
   compiler_id: string;
@@ -2340,14 +2450,13 @@ export interface ProviderResolvedMediaInputAuditV2 {
   input_role: CanvasBindingInputRoleV2;
   source_semantic_role: string | null;
   transport_type: string | null;
-  required: boolean;
   display_order: number;
 }
 
 export interface ProviderOmittedOptionalInputAuditV2 {
   binding_id: string;
   source_node_id: string | null;
-  reason_code: string;
+  reason_code: "omitted_no_output";
 }
 
 /** A browser-safe projection of one backend-resolved provider input manifest. */
@@ -2457,6 +2566,7 @@ export type ProposalMaterializationStatusV2 = "queued" | "working" | "failed" | 
 export interface ProposalMaterializationErrorV2 {
   code: string;
   message: string;
+  actionable_failure?: ActionableFailureV1 | null;
 }
 
 export interface ProposalMaterializationProjectionV2 {
@@ -2546,6 +2656,10 @@ export interface ConceptProposalV2 extends CapabilityIdentityV2 {
   turn_id: string;
   video_skill_run_id: string | null;
   topic_id: string | null;
+  occurrence_id: string | null;
+  occurrence_index: number | null;
+  occurrence_count: number | null;
+  character_phase: "main" | "turnaround" | null;
   creative_direction_snapshot_id: string | null;
   proposal_revision: number;
   source_proposal_id: string | null;
@@ -2594,6 +2708,7 @@ export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   elapsed_ms: number | null;
   attempt_stage: "initial" | "transport_retry" | "structured_repair" | "fallback" | null;
   retryable: boolean;
+  actionable_failure?: ActionableFailureV1 | null;
   validation_paths: string[];
   suggested_actions: Array<"retry" | "revise_request">;
   completion_mode: "deterministic_fallback" | null;
@@ -2661,14 +2776,12 @@ export interface AgentCreateBindingOperationV2 extends AgentCommandOperationBase
   source: AgentNodeRefV2 | AgentImageAssetRefV2;
   target: AgentNodeRefV2;
   binding_kind: AgentCommandBindingKindV2;
-  required: boolean;
   display_order: number;
 }
 
 export interface AgentPatchBindingOperationV2 extends AgentCommandOperationBaseV2 {
   operation_type: "patch_binding";
   binding_id: string;
-  required: boolean | null;
   enabled: boolean | null;
   display_order: number | null;
 }
@@ -2681,17 +2794,6 @@ export interface AgentDeleteBindingOperationV2 extends AgentCommandOperationBase
 export interface AgentDeleteNodeOperationV2 extends AgentCommandOperationBaseV2 {
   operation_type: "delete_node";
   node: AgentNodeRefV2;
-}
-
-export interface AgentForkReadyMediaOperationV2 extends AgentCommandOperationBaseV2 {
-  operation_type: "materialize_sibling_draft";
-  source_node: AgentNodeRefV2;
-  title: string;
-  generation_prompt: string;
-  model_selection_mode: CanvasModelSelectionModeV2;
-  model_ref: string | null;
-  parameters: Record<string, unknown>;
-  placement_hint: AgentPlacementHintV2;
 }
 
 export interface AgentRequestNodeRunOperationV2 extends AgentCommandOperationBaseV2 {
@@ -2714,7 +2816,6 @@ export type AgentCommandOperationV2 =
   | AgentPatchBindingOperationV2
   | AgentDeleteBindingOperationV2
   | AgentDeleteNodeOperationV2
-  | AgentForkReadyMediaOperationV2
   | AgentRequestNodeRunOperationV2
   | AgentUpdatePlanningTopicOperationV2;
 
@@ -3072,7 +3173,6 @@ export interface CanvasNodeCreateRequestV2 {
   model_ref?: string | null;
   parameters?: Record<string, unknown>;
   position: CanvasPositionV2;
-  clone_inputs_from_node_id?: string | null;
   source_asset_id?: string | null;
 }
 
@@ -3085,40 +3185,6 @@ export interface CanvasNodePatchRequestV2 {
   model_ref?: string | null;
   parameters?: Record<string, unknown> | null;
   position?: CanvasPositionV2 | null;
-}
-
-export interface CanvasVariationDraftUpsertV2 {
-  title: string;
-  generation_prompt: string;
-  model_selection_mode?: CanvasModelSelectionModeV2;
-  model_ref?: string | null;
-  parameters?: Record<string, unknown>;
-}
-
-export interface CanvasVariationDraftResponseV2 {
-  workflow_id: string;
-  workflow_revision: number;
-  node_id: string;
-  variation_draft: CanvasVariationDraftV2;
-}
-
-export interface CanvasVariationMaterializeRequestV2 {
-  action: "create_draft" | "generate";
-  position?: CanvasPositionV2 | null;
-}
-
-export interface CanvasVariationMaterializeResponseV2 {
-  workflow_id: string;
-  workflow_revision: number;
-  source_node_id: string;
-  sibling_node: CanvasNodeV2;
-  copied_binding_ids: string[];
-  run: Record<string, unknown> | null;
-  run_error: CanvasNodeErrorV2 | null;
-  placement_hint: AgentPlacementHintV2;
-  created_node_ids: string[];
-  created_binding_ids: string[];
-  placement_hints: AgentPlacementHintV2[];
 }
 
 export interface CanvasLayoutPositionV2 extends CanvasPositionV2 {
@@ -3141,7 +3207,6 @@ export interface CanvasBindingCreateRequestV2 {
   source: CanvasBindingSourceWriteV2;
   target_node_id: string;
   input_role: CanvasBindingInputRoleV2;
-  required?: boolean;
   enabled?: boolean;
   order?: number | null;
   label?: string | null;
@@ -3150,7 +3215,6 @@ export interface CanvasBindingCreateRequestV2 {
 
 export interface CanvasBindingPatchRequestV2 {
   input_role?: CanvasBindingInputRoleV2 | null;
-  required?: boolean | null;
   enabled?: boolean | null;
   order?: number | null;
   label?: string | null;
@@ -3175,7 +3239,6 @@ export interface CanvasConnectionPolicyV2 {
 
 export interface CanvasConnectedNodeBindingRequestV2 {
   input_role: CanvasBindingInputRoleV2;
-  required?: boolean;
   order?: number | null;
 }
 
@@ -3445,6 +3508,9 @@ export interface JourneyTransitionEvidenceV2 {
 
 export interface GuidedProductionJourneyV2 {
   policy_version: "fixed_ad_production_v2";
+  journey_policy_id?: "proposal_submit_auto_result_v1" | null;
+  journey_policy_revision?: number | null;
+  planning_wave_id?: string | null;
   stage: GuidedJourneyStageV2;
   stage_status: GuidedJourneyStageStatusV2;
   stage_revision: number;
@@ -3459,11 +3525,14 @@ export type GuidedInteractionKindV1 =
   | "clarification_questionnaire"
   | "product_source"
   | "concept_choice"
-  | "media_review";
+  | "media_review"
+  | "reference_source";
 export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
 export type GuidedInteractionActionV1 =
   | "answer"
   | "select_source"
+  | "use_reference"
+  | "skip_reference"
   | "select"
   | "custom"
   | "skip"
@@ -3526,6 +3595,45 @@ export interface GuidedProductSourceActionV1 {
   question_id: string;
 }
 
+export type GuidedReferenceKindV1 = "character_main" | "scene_main";
+export type GuidedReferenceActionV1 = "use_reference" | "skip_reference";
+export type GuidedReferenceCandidateScopeV2 = "project" | "mine" | "recommended";
+
+export interface GuidedReferenceCandidateV2 {
+  entity_id: string | null;
+  member_id: string | null;
+  asset_id: string;
+  asset_version_id: string;
+  media_type: "image";
+  display_name: string;
+  preview_url: string;
+  content_url: string;
+  reference_kind: GuidedReferenceKindV1;
+  semantic_reference_role: "character_reference" | "scene_reference";
+  reference_purpose: "identity_guidance" | "environment_guidance";
+  selectable: boolean;
+}
+
+export interface GuidedReferenceCandidateListResponseV2 {
+  workflow_id: string;
+  reference_kind: GuidedReferenceKindV1;
+  scope: GuidedReferenceCandidateScopeV2;
+  items: GuidedReferenceCandidateV2[];
+  next_cursor: string | null;
+}
+
+export interface GuidedReferenceSourceQuestionV1 {
+  content_kind: "reference_source";
+  reference_kind: GuidedReferenceKindV1;
+  target_node_id: string;
+  target_node_revision: number;
+  occurrence_id: string | null;
+  question: string;
+  use_reference_label: string;
+  skip_reference_label: string;
+  expected_guidance_revision: number;
+}
+
 export type GuidedInteractionContentV1 =
   | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
   | {
@@ -3544,6 +3652,9 @@ export type GuidedInteractionContentV1 =
       stage_revision: number;
       action_id: string;
       occurrence_id: string | null;
+      occurrence_index?: number | null;
+      occurrence_count?: number | null;
+      character_phase?: "main" | null;
       capability_id: string;
       options: GuidedChoiceOptionV1[];
       allow_custom: true;
@@ -3556,7 +3667,8 @@ export type GuidedInteractionContentV1 =
       asset_id: string;
       asset_version_id: string;
       summary: string;
-    };
+    }
+  | GuidedReferenceSourceQuestionV1;
 
 export interface GuidedInteractionV1 {
   interaction_id: string;
@@ -3609,6 +3721,18 @@ export type GuidedInteractionSubmitRequestV1 =
       expected_session_revision: number;
       action: "accept" | "retry" | "replace" | "exclude";
       instruction?: string | null;
+    }
+  | {
+      submission_kind: "reference_source";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: GuidedReferenceActionV1;
+      reference_kind: GuidedReferenceKindV1;
+      source_scope: GuidedReferenceCandidateScopeV2;
+      entity_id?: string | null;
+      member_id?: string | null;
+      asset_id?: string | null;
+      asset_version_id?: string | null;
     };
 
 export interface GuidedInteractionAcceptedV1 {
@@ -3631,7 +3755,7 @@ export interface GuidanceAwaitingV1 {
   workflow_id: string;
   session_id: string;
   checkpoint_id: string;
-  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "manual_node_run" | "milestone_idle";
+  kind: "clarification" | "concept_selection" | "product_source" | "media_review" | "reference_source" | "manual_node_run" | "milestone_idle";
   requires_user_action: boolean;
   resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
   interaction_id: string | null;
@@ -3686,6 +3810,7 @@ export interface GuidedSessionStateV2 {
   journey: GuidedProductionJourneyV2;
   interaction: GuidedInteractionV1 | null;
   awaiting: GuidanceAwaitingV1 | null;
+  actionable_failure?: ActionableFailureV1 | null;
   revision: number;
   updated_at: string;
 }
@@ -3747,6 +3872,7 @@ export interface AgentCanvasChatTimelineEntryV2 {
   metadata: Record<string, unknown>;
   command_plan: AgentCommandPlanV2 | null;
   action_receipt: AgentActionReceiptV2 | null;
+  actionable_failure?: ActionableFailureV1 | null;
   created_at: string;
 }
 
@@ -3794,6 +3920,7 @@ export interface AgentCanvasChatTurnV2 {
   retry_of_turn_id: string | null;
   retry_attempt_no: number;
   retryable: boolean;
+  actionable_failure?: ActionableFailureV1 | null;
   operation_stage: string | null;
   operation_failure: AgentOperationFailureV2 | null;
   created_at: string;
@@ -3817,6 +3944,7 @@ export interface AgentOperationFailureV2 {
     | "revision";
   elapsed_ms: number;
   retryable: boolean;
+  actionable_failure?: ActionableFailureV1 | null;
   validation_paths: string[];
   occurred_at: string;
 }

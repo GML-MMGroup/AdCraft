@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -58,6 +60,16 @@ function libraryAsset(scope: "my" | "recommended", entityId: string) {
 }
 
 describe("AgentAssetBrowser", () => {
+  it("uses a solid monochrome surface and stable focus/scroll styling", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/agent-canvas/assets/AgentAssetBrowser.css"), "utf8");
+    expect(css).not.toMatch(/var\(--accent|color-mix|backdrop-filter|translateY/);
+    expect(css).toContain("background: #202020;");
+    expect(css).toContain("flex-direction: column;");
+    expect(css).toContain("outline: 2px solid #f5f5f5;");
+    expect(css).toContain("input:disabled + span");
+    expect(css).toContain("grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));");
+  });
+
   beforeEach(() => {
     fixture.listAgentCanvasProjectAssets.mockReset();
     fixture.listAgentCanvasMyAssets.mockReset();
@@ -81,6 +93,20 @@ describe("AgentAssetBrowser", () => {
   });
 
   afterEach(() => cleanup());
+
+  it("copies selected files before resetting the native upload input", async () => {
+    fixture.uploadAgentCanvasAsset.mockResolvedValue({ workflow_id: "workflow-1", asset: projectAsset("uploaded", "image") });
+    render(<AgentAssetBrowser workflowId="workflow-1" onAddReferences={vi.fn()} onCreateReadySourceNode={vi.fn()} />);
+    await screen.findByText("image image-a");
+    const input = screen.getByLabelText("Upload project media") as HTMLInputElement;
+    const file = new File(["image"], "reference.png", { type: "image/png" });
+    const liveFiles = [file];
+    Object.defineProperty(input, "files", { configurable: true, value: liveFiles });
+    Object.defineProperty(input, "value", { configurable: true, set: () => { liveFiles.length = 0; } });
+    fireEvent.change(input);
+    await waitFor(() => expect(fixture.uploadAgentCanvasAsset).toHaveBeenCalledTimes(1));
+    expect(fixture.uploadAgentCanvasAsset.mock.calls[0][1].get("file")).toBe(file);
+  });
 
   it("offers three scopes, project media filters, search, and project-only upload", async () => {
     render(

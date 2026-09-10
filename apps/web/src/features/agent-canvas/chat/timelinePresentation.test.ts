@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChatTimelinePresentationViewItemV2 } from "../../../types-v2.ts";
-import { localizeTimelinePresentationItem } from "./timelinePresentation.ts";
+import {
+  localizeTimelinePresentationItem,
+  mergeTimelinePresentationItems,
+  visibleTimelinePresentationItems,
+} from "./timelinePresentation.ts";
 
 function mediaReviewPresentation(
   responseLocale: string,
@@ -102,6 +106,43 @@ function completedActivityPresentation(
   };
 }
 
+function acknowledgementPresentation({
+  key = "acknowledgement:turn-guided-1",
+  revision = 1,
+  sequence,
+  sourceEntryIds,
+  messageId,
+  text,
+}: {
+  key?: string;
+  revision?: number;
+  sequence: number;
+  sourceEntryIds: string[];
+  messageId: string;
+  text: string;
+}): ChatTimelinePresentationViewItemV2 {
+  return {
+    presentation_key: key,
+    presentation_revision: revision,
+    source_entry_ids: sourceEntryIds,
+    message_key: null,
+    message_args: {},
+    response_locale: "en-US",
+    item: {
+      item_type: "message",
+      message_id: messageId,
+      conversation_id: "conversation-1",
+      speaker: "adcraft_video_agent",
+      text,
+      linked_node_ids: [],
+      script_node_id: null,
+      proposal_id: null,
+      sequence,
+      created_at: "2026-09-03T10:00:00Z",
+    },
+  };
+}
+
 describe("media review timeline presentation", () => {
   it("localizes the pending review title and canonical actions in English", () => {
     expect(localizeTimelinePresentationItem(
@@ -148,5 +189,82 @@ describe("expert activity timeline presentation", () => {
       status: "superseded",
       presentation_text: "Storyboard Artist 任务已被后续进度取代。",
     });
+  });
+});
+
+describe("timeline presentation reconciliation", () => {
+  it("uses the later sequence when the same key has the same revision", () => {
+    const earlier = acknowledgementPresentation({
+      sequence: 20,
+      sourceEntryIds: ["receipt-entry"],
+      messageId: "receipt-projection",
+      text: "Canvas updated.",
+    });
+    const later = acknowledgementPresentation({
+      sequence: 21,
+      sourceEntryIds: ["agent-message-entry"],
+      messageId: "agent-acknowledgement",
+      text: "I applied your selection.",
+    });
+
+    const merged = mergeTimelinePresentationItems(
+      new Map([[earlier.presentation_key, earlier]]),
+      [later],
+    );
+
+    expect(merged.get(earlier.presentation_key)).toMatchObject({
+      item: {
+        message_id: "agent-acknowledgement",
+        sequence: 21,
+      },
+      source_entry_ids: ["receipt-entry", "agent-message-entry"],
+    });
+  });
+
+  it("keeps the source identity union when an older record is replayed", () => {
+    const later = acknowledgementPresentation({
+      sequence: 21,
+      sourceEntryIds: ["agent-message-entry"],
+      messageId: "agent-acknowledgement",
+      text: "I applied your selection.",
+    });
+    const replayedEarlier = acknowledgementPresentation({
+      sequence: 20,
+      sourceEntryIds: ["receipt-entry", "agent-message-entry"],
+      messageId: "receipt-projection",
+      text: "Canvas updated.",
+    });
+
+    const merged = mergeTimelinePresentationItems(
+      new Map([[later.presentation_key, later]]),
+      [replayedEarlier, replayedEarlier],
+    );
+
+    expect(merged.get(later.presentation_key)).toMatchObject({
+      item: { message_id: "agent-acknowledgement" },
+      source_entry_ids: ["agent-message-entry", "receipt-entry"],
+    });
+    expect(merged).toHaveLength(1);
+  });
+
+  it("does not coalesce identical prose from different presentation keys", () => {
+    const first = acknowledgementPresentation({
+      key: "acknowledgement:turn-1",
+      sequence: 30,
+      sourceEntryIds: ["message-entry-1"],
+      messageId: "message-1",
+      text: "The workflow is ready.",
+    });
+    const second = acknowledgementPresentation({
+      key: "acknowledgement:turn-2",
+      sequence: 31,
+      sourceEntryIds: ["message-entry-2"],
+      messageId: "message-2",
+      text: "The workflow is ready.",
+    });
+
+    const merged = mergeTimelinePresentationItems(new Map(), [first, second]);
+
+    expect(visibleTimelinePresentationItems(merged)).toHaveLength(2);
   });
 });

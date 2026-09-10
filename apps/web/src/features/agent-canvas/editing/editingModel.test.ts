@@ -42,7 +42,6 @@ function node(
     position: { x: 0, y: 0 },
     revision: 1,
     error: null,
-    variation_draft: null,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
@@ -60,7 +59,6 @@ function binding(
     source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: "editing-1",
     input_role: inputRole,
-    required: false,
     enabled: true,
     order,
     label: null,

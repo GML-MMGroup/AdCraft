@@ -12,11 +12,16 @@ import {
 import { AppContext, type AppContextValue } from "../AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "../api/workflowNormalizers";
 import { clearNewProjectStorage, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, type ProjectSessionState, type SavedWorkflowProject } from "../projects/newProject";
-import { loadProjectCatalogCache, saveProjectCatalogCache } from "../projects/projectCatalogCache.ts";
+import {
+  isProjectCatalogCacheFresh,
+  loadProjectCatalogCache,
+  saveProjectCatalogCache,
+  type ProjectCatalogCache,
+} from "../projects/projectCatalogCache.ts";
 import { shouldApplyWorkflowScopedResult } from "../workflow/sessionGuards";
 import { isWorkflowV2Graph } from "../workflowSchema";
 import type { AgentCanvasWorkflowV2, ProjectV2Summary } from "../types-v2";
-import { loadAllBackendProjectPages, projectTrashClearsActiveWorkflow } from "../projects/v2ProjectAuthority";
+import { loadAllBackendProjectPagesWithEtag, projectTrashClearsActiveWorkflow } from "../projects/v2ProjectAuthority";
 import type {
   AssetLibraryEntitySummary,
   AssetLibraryUploadKind,
@@ -62,8 +67,9 @@ export function WorkspaceProvider({
   const [agentCanvasWorkflow, setAgentCanvasWorkflow] = useState<AgentCanvasWorkflowV2 | null>(null);
   const [nodeCatalog, setNodeCatalog] = useState<NodeCatalogItem[]>([]);
   const [nodeRuns, setNodeRuns] = useState<NodeRunResult[]>([]);
-  const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.active ?? []);
-  const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>(() => loadProjectCatalogCache()?.trashed ?? []);
+  const [initialProjectCatalogCache] = useState(() => loadProjectCatalogCache());
+  const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>(() => initialProjectCatalogCache?.active ?? []);
+  const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>(() => initialProjectCatalogCache?.trashed ?? []);
   const [demoProjectFavorites, setDemoProjectFavorites] = useState<Record<string, boolean>>(() => loadDemoProjectFavorites(window.localStorage));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => (
     routeProjectId ?? loadActiveProjectId(window.localStorage)
@@ -78,6 +84,8 @@ export function WorkspaceProvider({
   const newProjectRequestRef = useRef<Promise<string | null> | null>(null);
   const routeProjectCreationStartedRef = useRef(false);
   const projectCatalogGenerationRef = useRef(0);
+  const projectCatalogCacheRef = useRef<ProjectCatalogCache | null>(initialProjectCatalogCache);
+  const projectCatalogRefreshRequestRef = useRef<Promise<boolean> | null>(null);
   const savedProjectsRef = useRef(savedProjects);
   const trashedProjectsRef = useRef(trashedProjects);
   savedProjectsRef.current = savedProjects;
@@ -171,44 +179,83 @@ export function WorkspaceProvider({
     return null;
   }, [currentProjectState]);
 
-  const refreshProjects = useCallback(async (): Promise<boolean> => {
-    const generation = ++projectCatalogGenerationRef.current;
-    setProjectCatalogRefreshing(true);
-    const { v2Api } = await import("../api/v2Client");
-    const [active, trashed] = await Promise.allSettled([
-      projectCatalogScope === "trashed"
-        ? Promise.resolve(null)
-        : loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
-      projectCatalogScope === "active"
-        ? Promise.resolve(null)
-        : loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
-    ]);
-    if (generation !== projectCatalogGenerationRef.current) return false;
-    const activeSucceeded = projectCatalogScope === "trashed" || (active.status === "fulfilled" && Boolean(active.value));
-    const trashedSucceeded = projectCatalogScope === "active" || (trashed.status === "fulfilled" && Boolean(trashed.value));
-    const nextActive = activeSucceeded && projectCatalogScope !== "trashed"
-      ? active.status === "fulfilled" && active.value ? active.value : savedProjectsRef.current
-      : savedProjectsRef.current;
-    const nextTrashed = trashedSucceeded && projectCatalogScope !== "active"
-      ? trashed.status === "fulfilled" && trashed.value ? trashed.value : trashedProjectsRef.current
-      : trashedProjectsRef.current;
-    if (projectCatalogScope !== "trashed" && active.status === "fulfilled" && active.value) {
-      savedProjectsRef.current = active.value;
-      setSavedProjects(active.value);
-    }
-    if (projectCatalogScope !== "active" && trashed.status === "fulfilled" && trashed.value) {
-      trashedProjectsRef.current = trashed.value;
-      setTrashedProjects(trashed.value);
-    }
-    const succeeded = activeSucceeded && trashedSucceeded;
-    if (activeSucceeded || trashedSucceeded) {
-      saveProjectCatalogCache({ active: nextActive, trashed: nextTrashed, savedAt: Date.now() });
-    }
-    setProjectCatalogError(succeeded
-      ? null
-      : "Projects could not be refreshed. Existing projects are still shown.");
-    setProjectCatalogRefreshing(false);
-    return succeeded;
+  const refreshProjects = useCallback((): Promise<boolean> => {
+    if (projectCatalogRefreshRequestRef.current) return projectCatalogRefreshRequestRef.current;
+    const request = (async () => {
+      const generation = ++projectCatalogGenerationRef.current;
+      setProjectCatalogRefreshing(true);
+      try {
+        const { v2Api } = await import("../api/v2Client");
+        const currentCache = projectCatalogCacheRef.current;
+        const [active, trashed] = await Promise.allSettled([
+          projectCatalogScope === "trashed"
+            ? Promise.resolve(null)
+            : loadAllBackendProjectPagesWithEtag(
+              (cursor, etag) => v2Api.listProjectsWithEtag("active", 100, cursor, etag),
+              currentCache ? { projects: savedProjectsRef.current, etag: currentCache.activeEtag } : undefined,
+            ),
+          projectCatalogScope === "active"
+            ? Promise.resolve(null)
+            : loadAllBackendProjectPagesWithEtag(
+              (cursor, etag) => v2Api.listProjectsWithEtag("trashed", 100, cursor, etag),
+              currentCache ? { projects: trashedProjectsRef.current, etag: currentCache.trashedEtag } : undefined,
+            ),
+        ]);
+        if (generation !== projectCatalogGenerationRef.current) return false;
+        const activeSucceeded = projectCatalogScope === "trashed" || (active.status === "fulfilled" && Boolean(active.value));
+        const trashedSucceeded = projectCatalogScope === "active" || (trashed.status === "fulfilled" && Boolean(trashed.value));
+        const activeResult = active.status === "fulfilled" ? active.value : null;
+        const trashedResult = trashed.status === "fulfilled" ? trashed.value : null;
+        const nextActive = activeSucceeded && projectCatalogScope !== "trashed" && activeResult
+          ? activeResult.projects
+          : savedProjectsRef.current;
+        const nextTrashed = trashedSucceeded && projectCatalogScope !== "active" && trashedResult
+          ? trashedResult.projects
+          : trashedProjectsRef.current;
+        if (projectCatalogScope !== "trashed" && activeResult) {
+          savedProjectsRef.current = nextActive;
+          setSavedProjects(nextActive);
+        }
+        if (projectCatalogScope !== "active" && trashedResult) {
+          trashedProjectsRef.current = nextTrashed;
+          setTrashedProjects(nextTrashed);
+        }
+        const succeeded = activeSucceeded && trashedSucceeded;
+        if (activeSucceeded || trashedSucceeded) {
+          const now = Date.now();
+          const nextCache: ProjectCatalogCache = {
+            active: nextActive,
+            trashed: nextTrashed,
+            activeEtag: activeResult?.etag ?? currentCache?.activeEtag ?? null,
+            trashedEtag: trashedResult?.etag ?? currentCache?.trashedEtag ?? null,
+            activeSavedAt: activeResult ? now : currentCache?.activeSavedAt ?? 0,
+            trashedSavedAt: trashedResult ? now : currentCache?.trashedSavedAt ?? 0,
+          };
+          projectCatalogCacheRef.current = nextCache;
+          saveProjectCatalogCache(nextCache);
+        }
+        setProjectCatalogError(succeeded
+          ? null
+          : "Projects could not be refreshed. Existing projects are still shown.");
+        return succeeded;
+      } catch {
+        if (generation === projectCatalogGenerationRef.current) {
+          setProjectCatalogError("Projects could not be refreshed. Existing projects are still shown.");
+        }
+        return false;
+      } finally {
+        if (generation === projectCatalogGenerationRef.current) {
+          setProjectCatalogRefreshing(false);
+        }
+      }
+    })();
+    projectCatalogRefreshRequestRef.current = request;
+    void request.then(() => {
+      if (projectCatalogRefreshRequestRef.current === request) {
+        projectCatalogRefreshRequestRef.current = null;
+      }
+    });
+    return request;
   }, [projectCatalogScope]);
 
   const beginWorkspaceRestoreRequest = useCallback((): WorkspaceRestoreRequest => {
@@ -325,11 +372,18 @@ export function WorkspaceProvider({
     ));
     savedProjectsRef.current = nextProjects;
     setSavedProjects(nextProjects);
-    saveProjectCatalogCache({
+    const now = Date.now();
+    const currentCache = projectCatalogCacheRef.current;
+    const nextCache: ProjectCatalogCache = {
       active: nextProjects,
       trashed: trashedProjectsRef.current,
-      savedAt: Date.now(),
-    });
+      activeEtag: null,
+      trashedEtag: currentCache?.trashedEtag ?? null,
+      activeSavedAt: now,
+      trashedSavedAt: currentCache?.trashedSavedAt ?? 0,
+    };
+    projectCatalogCacheRef.current = nextCache;
+    saveProjectCatalogCache(nextCache);
     return true;
   }, []);
 
@@ -392,7 +446,12 @@ export function WorkspaceProvider({
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
         const { v2Api, isV2ApiError, isNetworkError } = await import("../api/v2Client");
-        await refreshProjects();
+        // The catalog is useful for the Projects page but is not required to
+        // restore the routed workflow. Start it in the background so a slow
+        // catalog response cannot delay the canvas's critical path.
+        if (!isProjectCatalogCacheFresh(projectCatalogCacheRef.current, projectCatalogScope)) {
+          void refreshProjects().catch(() => undefined);
+        }
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
         if (!restoreActiveWorkflow) {
           activeWorkflowIdRef.current = null;
@@ -406,8 +465,24 @@ export function WorkspaceProvider({
         const restoreProjectId = restoreRequest.projectId;
         if (restoreProjectId) {
           try {
-            const project = await v2Api.projectWithEtag(restoreProjectId);
-            const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+            const cachedWorkflowId = savedProjectsRef.current.find(
+              (project) => project.project_id === restoreProjectId,
+            )?.workflow_id;
+            let response;
+            if (cachedWorkflowId) {
+              try {
+                response = await v2Api.agentCanvasWorkflowWithEtag(cachedWorkflowId);
+                if (response.value.project_id !== restoreProjectId) {
+                  throw new Error("Cached workflow identity is stale.");
+                }
+              } catch {
+                const project = await v2Api.projectWithEtag(restoreProjectId);
+                response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+              }
+            } else {
+              const project = await v2Api.projectWithEtag(restoreProjectId);
+              response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
+            }
             if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
             const nextWorkflow = response.value;
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
@@ -455,6 +530,7 @@ export function WorkspaceProvider({
     };
   }, [
     beginWorkspaceRestoreRequest,
+    projectCatalogScope,
     refreshProjects,
     restoreActiveWorkflow,
     shouldApplyWorkspaceRestoreRequest,

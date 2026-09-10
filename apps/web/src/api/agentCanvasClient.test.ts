@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { v2Api } from "./v2Client.ts";
+import { v2AuthoringConflictStore } from "./v2AuthoringConflictStore.ts";
 import { v2EtagStore } from "./v2EtagStore.ts";
 
 const emptyWorkflow = {
@@ -30,10 +31,11 @@ const draftNode = {
   parameters: {},
   prompt_context_snapshot_id: null,
   output_asset_id: null,
+  output_asset_version_id: null,
+  latest_attempt: null,
   position: { x: 120, y: 80 },
   revision: 1,
   error: null,
-  variation_draft: null,
   created_at: "2026-07-28T00:00:00Z",
   updated_at: "2026-07-28T00:00:00Z",
 };
@@ -54,11 +56,18 @@ const asset = {
 };
 
 afterEach(() => {
+  v2AuthoringConflictStore.clear();
   v2EtagStore.clear();
   vi.unstubAllGlobals();
 });
 
 describe("Agent Canvas client", () => {
+  it("does not expose retired variation-draft operations", () => {
+    expect("saveAgentCanvasVariationDraft" in v2Api).toBe(false);
+    expect("discardAgentCanvasVariationDraft" in v2Api).toBe(false);
+    expect("materializeAgentCanvasVariationDraft" in v2Api).toBe(false);
+  });
+
   it("opens a workflow-owned presentation stream from the supplied cursor", () => {
     class EventSourceStub {
       constructor(readonly url: string) {}
@@ -113,7 +122,6 @@ describe("Agent Canvas client", () => {
       source: { kind: "node_output", source_node_id: "node-script-1" },
       target_node_id: "node-image-1",
       input_role: "text_context",
-      required: true,
       enabled: true,
       order: 0,
       label: null,
@@ -159,7 +167,6 @@ describe("Agent Canvas client", () => {
         source: { kind: "node_output", source_node_id: "node-script-1" },
         target_node_id: "node-image-1",
         input_role: "text_context",
-        required: true,
         enabled: true,
         order: 0,
         label: null,
@@ -170,12 +177,14 @@ describe("Agent Canvas client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps upload, chat, run, and export operational requests free of If-Match", async () => {
+  it("keeps upload, chat, and export operational requests free of If-Match while protecting Run", async () => {
     v2EtagStore.set("workflow", "workflow-1", '"workflow-workflow-1-r7"');
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const headers = new Headers(init?.headers);
-      expect(headers.get("If-Match")).toBeNull();
+      expect(headers.get("If-Match")).toBe(
+        url.endsWith("/runs") ? '"workflow-workflow-1-r7"' : null,
+      );
       expect(headers.get("Idempotency-Key")).toBeTruthy();
       if (url.endsWith("/assets/upload")) {
         expect(init?.body).toBeInstanceOf(FormData);
@@ -254,119 +263,133 @@ describe("Agent Canvas client", () => {
     });
   });
 
-  it("uses semantic ETags for command actions and Ready variation authoring", async () => {
+  it("uses the ETag returned by the final same-node PATCH for Run", async () => {
     v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
     const readyNode = {
       ...draftNode,
       status: "ready",
       output_asset_id: "asset-1",
-    };
-    const variationDraft = {
-      source_node_id: readyNode.node_id,
-      source_node_revision: readyNode.revision,
-      title: "Product image variation",
-      generation_prompt: "A warmer studio portrait.",
-      model_id: null,
-      parameters: {},
-      variation_revision: 1,
-      created_at: "2026-07-29T01:00:00Z",
-      updated_at: "2026-07-29T01:00:00Z",
+      output_asset_version_id: "version-1",
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const headers = new Headers(init?.headers);
-      expect(headers.get("If-Match")).toMatch(/^"workflow:workflow-1:revision:/);
-      if (url.endsWith("/command-plans/plan-1/actions")) {
-        expect(headers.get("Idempotency-Key")).toBe("command-key");
-        expect(JSON.parse(String(init?.body))).toEqual({ action: "confirm" });
+      if (url.endsWith(`/nodes/${readyNode.node_id}`)) {
+        expect(headers.get("If-Match")).toBe('"workflow:workflow-1:revision:7"');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          generation_prompt: "A warmer studio portrait.",
+        });
+        const patchedNode = {
+          ...readyNode,
+          generation_prompt: "A warmer studio portrait.",
+          revision: 2,
+        };
         return jsonResponse({
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          message_id: null,
-          turn_id: "turn-command-1",
-          status: "queued",
-          events_cursor: 20,
-        }, { status: 202 });
-      }
-      if (url.endsWith("/variation-draft") && init?.method === "PUT") {
-        return jsonResponse({
-          workflow_id: "workflow-1",
-          workflow_revision: 8,
-          node_id: readyNode.node_id,
-          variation_draft: variationDraft,
+          workflow: {
+            ...emptyWorkflow,
+            revision: 8,
+            nodes: [patchedNode],
+          },
+          node: patchedNode,
         }, { etag: '"workflow:workflow-1:revision:8"' });
       }
-      if (url.endsWith("/variation-draft/materialize")) {
-        expect(headers.get("Idempotency-Key")).toBe("materialize-key");
-        expect(JSON.parse(String(init?.body))).toEqual({ action: "create_draft" });
+      if (url.endsWith("/runs")) {
+        expect(headers.get("If-Match")).toBe('"workflow:workflow-1:revision:8"');
+        expect(headers.get("Idempotency-Key")).toBe("run-ready-key");
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          scope: "selected_nodes",
+          node_ids: [readyNode.node_id],
+        });
         return jsonResponse({
           workflow_id: "workflow-1",
-          workflow_revision: 9,
-          source_node_id: readyNode.node_id,
-          sibling_node: {
-            ...draftNode,
-            node_id: "node-image-sibling",
-            revision: 1,
-          },
-          copied_binding_ids: [],
-          run: null,
-          run_error: null,
-          placement_hint: {
-            intent: "right_sibling",
-            anchor_node_id: readyNode.node_id,
-            group_key: null,
-          },
-          created_node_ids: ["node-image-sibling", "node-image-sibling-detail"],
-          created_binding_ids: ["binding-sibling-detail"],
-          placement_hints: [{
-            intent: "right_sibling",
-            anchor_node_id: readyNode.node_id,
-            group_key: "variation-pair-1",
-          }, {
-            intent: "right_sibling",
-            anchor_node_id: "node-image-sibling",
-            group_key: "variation-pair-1",
-          }],
-        }, { status: 202, etag: '"workflow:workflow-1:revision:9"' });
+          execution_id: "execution-ready-1",
+          status: "queued",
+          accepted_node_ids: [readyNode.node_id],
+          joined_node_ids: [],
+          skipped: [],
+          waiting_node_ids: [],
+          run_intent_snapshot_ids: { [readyNode.node_id]: "snapshot-ready-1" },
+          events_cursor: 21,
+        }, { status: 202 });
       }
-      if (url.endsWith("/variation-draft") && init?.method === "DELETE") {
-        return new Response(null, {
-          status: 204,
-          headers: { ETag: '"workflow:workflow-1:revision:10"' },
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await v2Api.patchAgentCanvasNode("workflow-1", readyNode.node_id, {
+      generation_prompt: "A warmer studio portrait.",
+    });
+    await v2Api.runAgentCanvas("workflow-1", {
+      scope: "selected_nodes",
+      node_ids: [readyNode.node_id],
+      retry_failed: false,
+      source_action: "node_run",
+    }, "run-ready-key");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:8"');
+  });
+
+  it("keeps the same Run idempotency key when a 412 is retried with the refreshed Workflow ETag", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    let runAttempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      if (url.endsWith("/runs")) {
+        runAttempts += 1;
+        expect(headers.get("Idempotency-Key")).toBe("stable-rerun-key");
+        expect(headers.get("If-Match")).toBe(
+          runAttempts === 1
+            ? '"workflow:workflow-1:revision:7"'
+            : '"workflow:workflow-1:revision:8"',
+        );
+        if (runAttempts === 1) {
+          return jsonResponse({
+            detail: {
+              code: "workflow_state_conflict",
+              message: "The Workflow changed before this Run was accepted.",
+            },
+          }, { status: 412 });
+        }
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          execution_id: "execution-retry-1",
+          status: "queued",
+          accepted_node_ids: [draftNode.node_id],
+          joined_node_ids: [],
+          skipped: [],
+          waiting_node_ids: [],
+          run_intent_snapshot_ids: { [draftNode.node_id]: "snapshot-retry-1" },
+          events_cursor: 22,
+        }, { status: 202 });
+      }
+      if (url.endsWith("/workflows/workflow-1")) {
+        return jsonResponse({ ...emptyWorkflow, revision: 8 }, {
+          etag: '"workflow:workflow-1:revision:8"',
         });
       }
       throw new Error(`Unexpected request ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await v2Api.actOnAgentCanvasCommandPlan(
-      "workflow-1",
-      "plan-1",
-      { action: "confirm" },
-      "command-key",
-    );
-    await v2Api.saveAgentCanvasVariationDraft("workflow-1", readyNode.node_id, {
-      title: variationDraft.title,
-      generation_prompt: variationDraft.generation_prompt,
-      model_id: null,
-      parameters: {},
-    });
-    const materialized = await v2Api.materializeAgentCanvasVariationDraft(
-      "workflow-1",
-      readyNode.node_id,
-      { action: "create_draft" },
-      "materialize-key",
-    );
-    await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);
+    await expect(v2Api.runAgentCanvas("workflow-1", {
+      scope: "selected_nodes",
+      node_ids: [draftNode.node_id],
+      retry_failed: true,
+      source_action: "retry_failed",
+    }, "stable-rerun-key")).rejects.toMatchObject({ status: 412 });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(materialized.created_node_ids).toEqual([
-      "node-image-sibling",
-      "node-image-sibling-detail",
-    ]);
-    expect(materialized.created_binding_ids).toEqual(["binding-sibling-detail"]);
-    expect(materialized.placement_hints).toHaveLength(2);
-    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:10"');
+    expect(runAttempts).toBe(1);
+    expect(v2AuthoringConflictStore.current()?.target).toEqual({
+      resource: "workflow",
+      id: "workflow-1",
+    });
+
+    await v2AuthoringConflictStore.retry();
+
+    expect(runAttempts).toBe(2);
+    expect(v2AuthoringConflictStore.current()).toBeNull();
   });
 
   it("reads the frozen connection policy and proposal detail contracts", async () => {
@@ -505,7 +528,6 @@ describe("Agent Canvas client", () => {
       source: { kind: "node_output", source_node_id: "node-image-1" },
       target_node_id: "node-video-1",
       input_role: "image_reference",
-      required: true,
       enabled: true,
       order: 0,
       label: null,
@@ -524,7 +546,6 @@ describe("Agent Canvas client", () => {
           direction: "downstream",
           binding: {
             input_role: "image_reference",
-            required: true,
           },
         });
         return jsonResponse({
@@ -538,15 +559,14 @@ describe("Agent Canvas client", () => {
       }
       expect(JSON.parse(String(init?.body))).toEqual({
         input_role: "image_reference",
-        required: false,
         enabled: false,
         order: 2,
       });
       return jsonResponse({
         workflow_id: "workflow-1",
         revision: 9,
-        binding: { ...binding, required: false, enabled: false, order: 2 },
-        incoming_bindings: [{ ...binding, required: false, enabled: false, order: 2 }],
+        binding: { ...binding, enabled: false, order: 2 },
+        incoming_bindings: [{ ...binding, enabled: false, order: 2 }],
         events_cursor: 21,
       }, { etag: '"workflow:workflow-1:revision:9"' });
     });
@@ -566,7 +586,6 @@ describe("Agent Canvas client", () => {
         },
         binding: {
           input_role: "image_reference",
-          required: true,
         },
       },
       "connected-key",
@@ -577,7 +596,6 @@ describe("Agent Canvas client", () => {
       "binding-1",
       {
         input_role: "image_reference",
-        required: false,
         enabled: false,
         order: 2,
       },
@@ -878,7 +896,6 @@ describe("Agent Canvas settings and working document client", () => {
       source: { kind: "node_output", source_node_id: "editing-1" },
       target_node_id: "video-export",
       input_role: "video_reference",
-      required: true,
       enabled: true,
       order: 0,
       label: null,

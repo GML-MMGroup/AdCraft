@@ -1,15 +1,50 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const panelMocks = vi.hoisted(() => ({
+  prepareRoleVisual: vi.fn(),
+  getRoleVisualSnapshot: vi.fn(),
+  useAgentCanvasChat: vi.fn(),
+}));
+
+vi.mock("./useAgentCanvasChat.ts", () => ({
+  useAgentCanvasChat: panelMocks.useAgentCanvasChat,
+}));
+
+vi.mock("./agent-role-animation/agentRoleVisualResource.ts", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./agent-role-animation/agentRoleVisualResource.ts")>(),
+  prepareRoleVisual: panelMocks.prepareRoleVisual,
+  getRoleVisualSnapshot: panelMocks.getRoleVisualSnapshot,
+  subscribeRoleVisual: () => () => undefined,
+}));
+
+vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
+  AgentRoleAnimation: ({
+    capabilityId,
+    motionState,
+  }: {
+    capabilityId: string;
+    motionState: string;
+  }) => (
+    <span
+      data-testid="agent-role-animation-double"
+      data-capability-id={capabilityId}
+      data-motion-state={motionState}
+    />
+  ),
+}));
 
 import type {
+  AgentCanvasChatTurnV2,
   ChatActionReceiptCardV2,
   AgentCanvasWorkflowV2,
   ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
+  ChatTimelineItemV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -17,7 +52,6 @@ import {
   ActionReceiptCard,
   AgentCanvasChatPanel,
   AgentWorkingRow,
-  PresentationStreamRow,
   TimelineHydrationSkeleton,
   CapabilityActivityRow,
   CommandPlanCard,
@@ -29,6 +63,88 @@ import {
   resizeChatComposerTextarea,
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
+
+function mockChatResult(
+  items: ChatTimelineItemV2[] = [],
+  agentWaitingForModel = false,
+  turnsById: Record<string, AgentCanvasChatTurnV2> = {},
+) {
+  const hydratedTurns = Object.fromEntries(items.flatMap((item) => {
+    if (item.item_type !== "expert_activity") return [];
+    const turn: AgentCanvasChatTurnV2 = {
+      turn_id: item.turn_id, workflow_id: roleMotionWorkflow.workflow_id, conversation_id: "conversation-1",
+      status: item.status === "working" ? "running" : item.status,
+      turn_kind: "capability", request: { capability_id: item.capability_id },
+      error_code: null, error_message: null, creation_mode: null,
+      guidance_session_revision: null, continuation: null, retry_of_turn_id: null,
+      retry_attempt_no: 0, retryable: false, operation_stage: null, operation_failure: null,
+      created_at: "2026-09-03T00:00:00Z", updated_at: "2026-09-03T00:00:00Z",
+    };
+    return [[item.turn_id, turn]];
+  }));
+  return {
+    state: {
+      items,
+      guidedAnswerBubbles: [],
+      messageSkillTitles: {},
+      guidanceSession: null,
+      guidedInteraction: null,
+      guidanceAwaiting: null,
+      currentSessionActions: [],
+      continuations: [],
+      turnsById: { ...hydratedTurns, ...turnsById },
+      retryingSourceTurnIds: {},
+      presentationStreams: [],
+      loading: false,
+      sending: false,
+      agentWorking: items.some((item) => (
+        item.item_type === "expert_activity" && item.status === "working"
+      )),
+      postReadyCheckpoint: null,
+      agentWaitingForModel,
+      actingProposalId: null,
+      actingDecisionBundleId: null,
+      actingCommandPlanId: null,
+      actingGuidedActionId: null,
+      actingInteractionId: null,
+      composerRecovery: null,
+      timelineRecovery: null,
+      workflowRecovery: null,
+      guidedInteractionIssue: null,
+      notice: null,
+      proposalIssues: {},
+      failedDraft: null,
+    },
+    actions: {
+      refresh: vi.fn(),
+      submit: vi.fn(),
+      selectProposal: vi.fn(),
+      reviseProposal: vi.fn(),
+      applyProposalAction: vi.fn(),
+      actOnCommandPlan: vi.fn(),
+      applyGuidedAction: vi.fn(),
+      actOnDecisionBundle: vi.fn(),
+      submitGuidedInteraction: vi.fn(),
+      retryCapabilityActivity: vi.fn(),
+      retryProposalMaterialization: vi.fn(),
+      retryTurn: vi.fn(),
+      clearFailedDraft: vi.fn(),
+      clearComposerRecovery: vi.fn(),
+      clearTimelineRecovery: vi.fn(),
+      clearWorkflowRecovery: vi.fn(),
+      clearNotice: vi.fn(),
+    },
+  };
+}
+
+beforeEach(() => {
+  panelMocks.useAgentCanvasChat.mockReset();
+  panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult());
+  panelMocks.prepareRoleVisual.mockReset();
+  panelMocks.getRoleVisualSnapshot.mockReturnValue({
+    status: "ready", source: "/role.png", Artwork: null, error: null, generation: 1, fallbackKind: "none",
+  });
+});
 
 describe("chat composer textarea", () => {
   it("grows with its content and only scrolls after reaching its height limit", () => {
@@ -85,28 +201,19 @@ describe("AgentWorkingRow", () => {
   });
 });
 
-describe("PresentationStreamRow", () => {
+describe("assistant presentation streams", () => {
   afterEach(() => cleanup());
 
-  it("renders only the safe incremental assistant text while the stream is open", () => {
-    render(<PresentationStreamRow stream={{
-      stream_id: "stream-1",
-      status: "open",
-      text: "The next production step is ready.",
-      last_sequence_no: 2,
-      stream_kind: "assistant",
-      turn_id: "turn-1",
-      node_id: null,
-      authoritative_id: null,
-      error_code: null,
-      protocol_error: null,
-      last_event_type: "delta",
-      last_event: null,
-    }} />);
+  it("does not project assistant presentation streams into the visible timeline", () => {
+    const panelPath = resolve(process.cwd(), "src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx");
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const panelSource = readFileSync(panelPath, "utf8");
+    const css = readFileSync(cssPath, "utf8");
 
-    expect(screen.getByRole("status", { name: "AdCraft Video Agent is generating a response" })).toBeTruthy();
-    expect(screen.getByText("The next production step is ready.")).toBeTruthy();
-    expect(screen.getByText("Generating response")).toBeTruthy();
+    expect(panelSource).not.toContain("PresentationStreamRow");
+    expect(panelSource).not.toContain("activePresentationStreams");
+    expect(panelSource).not.toContain("presentationVersion");
+    expect(css).not.toContain(".agent-chat__presentation-stream");
   });
 });
 
@@ -183,6 +290,218 @@ const proposalCard: ChatProposalCardV2 = {
   sequence: 4,
   created_at: "2026-08-04T00:00:00Z",
 };
+
+const roleMotionWorkflow: AgentCanvasWorkflowV2 = {
+  workflow_id: "workflow-role-motion",
+  project_id: "project-role-motion",
+  workflow_schema_version: 2,
+  canvas_model: "agent_canvas_v1",
+  revision: 1,
+  layout_revision: 1,
+  nodes: [],
+  bindings: [],
+  assets: [],
+};
+
+function capabilityActivity(
+  overrides: Partial<ChatCapabilityActivityV2> = {},
+): ChatCapabilityActivityV2 {
+  return {
+    item_type: "expert_activity",
+    activity_id: "activity-world",
+    turn_id: "turn-world",
+    capability_id: "world_setting",
+    capability_display_name: "World Setting Designer",
+    status: "working",
+    sequence: 1,
+    started_at: "2026-08-04T00:00:00Z",
+    finished_at: null,
+    message: null,
+    error_code: null,
+    elapsed_ms: null,
+    attempt_stage: null,
+    retryable: false,
+    validation_paths: [],
+    suggested_actions: [],
+    completion_mode: null,
+    warning_code: null,
+    ...overrides,
+  };
+}
+
+function renderedRoleMotionStates(): Record<string, string> {
+  return Object.fromEntries([...document.querySelectorAll<HTMLElement>(
+    '[data-testid="agent-role-animation-double"]',
+  )].map((animation) => [
+    animation.dataset.capabilityId ?? "",
+    animation.dataset.motionState ?? "",
+  ]));
+}
+
+describe("AgentCanvasChatPanel role motion integration", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not animate a working activity before its exact turn is hydrated", () => {
+    const chat = mockChatResult([capabilityActivity()]);
+    chat.state.turnsById = {};
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "idle" });
+  });
+
+  it("animates all ten concurrently working roles", () => {
+    const roles = [
+      "world_setting", "product_design", "prop_design", "character_design", "scene_design",
+      "script_authoring", "storyboard_design", "video_direction", "bgm_direction", "quick_media",
+    ] as const;
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(roles.map((capabilityId, index) => (
+      capabilityActivity({
+        activity_id: `activity-${capabilityId}`,
+        turn_id: `turn-${capabilityId}`,
+        capability_id: capabilityId,
+        capability_display_name: capabilityId,
+        sequence: index + 1,
+      })
+    ))));
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(renderedRoleMotionStates()).toEqual(Object.fromEntries(roles.map((role) => [role, "working"])));
+  });
+
+  it("lets concurrent role-owned working stages animate independently of global model wait", async () => {
+    const items: ChatTimelineItemV2[] = [
+      capabilityActivity(),
+      capabilityActivity({
+        activity_id: "activity-scene",
+        turn_id: "turn-scene",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
+        sequence: 2,
+      }),
+    ];
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(items));
+
+    const { rerender } = render(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(renderedRoleMotionStates()).toEqual({
+      world_setting: "working",
+      scene_design: "working",
+    });
+    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
+    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("scene_design", "animated");
+
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(items, true));
+    rerender(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={1}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(renderedRoleMotionStates()).toEqual({
+      world_setting: "working",
+      scene_design: "working",
+    });
+    await waitFor(() => {
+      expect(panelMocks.prepareRoleVisual.mock.calls.filter(([, mode]) => mode === "animated")
+        .map(([capabilityId]) => capabilityId)).toEqual(expect.arrayContaining(["world_setting", "scene_design"]));
+    });
+  });
+
+  it("stops only the role whose owning turn became terminal", () => {
+    const items = [capabilityActivity(), capabilityActivity({
+      activity_id: "activity-scene",
+      turn_id: "turn-scene",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      sequence: 2,
+    })];
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult(items, false, {
+      "turn-world": {
+        turn_id: "turn-world", workflow_id: roleMotionWorkflow.workflow_id, conversation_id: "conversation-1",
+        status: "failed", turn_kind: "capability", request: {}, error_code: null, error_message: null,
+        creation_mode: null, guidance_session_revision: null, continuation: null, retry_of_turn_id: null,
+        retry_attempt_no: 0, retryable: false, operation_stage: "failed", operation_failure: null,
+        created_at: "2026-09-03T00:00:00Z", updated_at: "2026-09-03T00:00:00Z",
+      },
+    }));
+    render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "idle", scene_design: "working" });
+  });
+
+  it("animates standalone working activity identity, stops terminal identity, and omits compact identity", () => {
+    const { rerender } = render(<CapabilityActivityRow activity={capabilityActivity()} />);
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
+
+    rerender(<CapabilityActivityRow activity={capabilityActivity({ status: "failed" })} />);
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "idle" });
+
+    rerender(<CapabilityActivityRow activity={capabilityActivity()} compact />);
+    expect(renderedRoleMotionStates()).toEqual({});
+  });
+
+  it.each([
+    [
+      "completed",
+      [capabilityActivity({
+        status: "completed",
+        finished_at: "2026-08-04T00:01:00Z",
+      })],
+      "world_setting",
+    ],
+    ["waiting-user", [proposalCard], "character_design"],
+  ] as const)("keeps a %s current stage idle", (_label, items, capabilityId) => {
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([...items], true));
+
+    render(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: "idle" });
+  });
+
+  it("keeps the panel usable when the visual resource reports a module failure", async () => {
+    panelMocks.getRoleVisualSnapshot.mockReturnValue({
+      status: "fallback", source: "/role.png", Artwork: null, error: "role chunk unavailable",
+      generation: 1, fallbackKind: "bitmap", retryAvailable: true,
+    });
+    panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([
+      capabilityActivity(),
+    ]));
+
+    render(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" }))
+        .toBeTruthy();
+    });
+    expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
+    expect(screen.getByRole("button", { name: "Retry World Setting Designer icon" })).toBeTruthy();
+  });
+});
 
 describe("ProposalCard", () => {
   afterEach(() => cleanup());
@@ -414,6 +733,12 @@ describe("ProposalCard", () => {
               error: {
                 code: "capability_materialization_failed",
                 message: "The selected direction could not be prepared.",
+                actionable_failure: {
+                  failure_class: "transient",
+                  retry_scope: "turn",
+                  user_action: "retry",
+                  retryable: true,
+                },
               },
               created_at: "2026-08-08T00:00:00Z",
               updated_at: "2026-08-08T00:00:01Z",
@@ -470,6 +795,57 @@ describe("ProposalCard", () => {
     expect(screen.getByText("A required reference is no longer available.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry draft creation" })).toBeNull();
     expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("redesigns a failed Proposal only through its returned revise descriptor", () => {
+    const onRevise = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            proposal_kind: "storyboard",
+            materialization: {
+              materialization_id: "materialization-storyboard-1",
+              option_id: "option-1",
+              turn_id: "turn-materialization-storyboard-1",
+              status: "failed",
+              attempt_no: 1,
+              retryable: false,
+              error: {
+                code: "storyboard_materialization_invalid",
+                message: "The Storyboard direction must be redesigned.",
+                actionable_failure: {
+                  failure_class: "deterministic",
+                  retry_scope: "none",
+                  user_action: "redesign",
+                  retryable: false,
+                },
+              },
+              created_at: "2026-08-08T00:00:00Z",
+              updated_at: "2026-08-08T00:00:01Z",
+            },
+          },
+        }}
+        pending={false}
+        readOnly
+        onRevise={onRevise}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Redesign proposal" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposal revision" }), {
+      target: { value: "Use a clearer three-shot progression." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit proposal revision" }));
+
+    expect(onRevise).toHaveBeenCalledWith(
+      "proposal-1",
+      expect.objectContaining({ action: "revise_options" }),
+      "Use a clearer three-shot progression.",
+    );
   });
 
   it("dispatches revise, defer, exclude, and delegate through their structured descriptors", () => {
@@ -907,8 +1283,9 @@ describe("command and receipt cards", () => {
     expect(screen.getByRole("status", { name: "Scene Designer is working" })).toBeTruthy();
     expect(screen.getByText("Scene Designer")).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
-      .toBe("/imgs/agent-role-icons/scene-designer.png?v=2026-08-28");
+    expect(document.querySelector<HTMLElement>(
+      '[data-testid="agent-role-animation-double"]',
+    )?.dataset.capabilityId).toBe("scene_design");
     expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
@@ -987,8 +1364,9 @@ describe("command and receipt cards", () => {
       />,
     );
 
-    expect(document.querySelector<HTMLImageElement>('[data-testid="agent-capability-icon"]')?.getAttribute("src"))
-      .toBe("/imgs/agent-role-icons/character-designer.png?v=2026-08-28");
+    expect(document.querySelector<HTMLElement>(
+      '[data-testid="agent-role-animation-double"]',
+    )?.dataset.capabilityId).toBe("character_design");
   });
 
   it("renders nested proposal history without repeating the capability identity icon", () => {
@@ -1041,7 +1419,7 @@ describe("command and receipt cards", () => {
       item_type: "expert_activity",
       activity_id: "activity-completed",
       turn_id: "turn-completed",
-      capability_id: "creative_direction",
+      capability_id: "world_setting",
       capability_display_name: "Creative Direction",
       status: "completed",
       sequence: 8,
@@ -1126,6 +1504,12 @@ describe("command and receipt cards", () => {
       elapsed_ms: 60000,
       attempt_stage: "initial",
       retryable: true,
+      actionable_failure: {
+        failure_class: "transient",
+        retry_scope: "turn",
+        user_action: "retry",
+        retryable: true,
+      },
       validation_paths: [],
       suggested_actions: ["retry", "revise_request"],
       completion_mode: null,
@@ -1155,6 +1539,12 @@ describe("command and receipt cards", () => {
       elapsed_ms: 420000,
       attempt_stage: "transport_retry",
       retryable: true,
+      actionable_failure: {
+        failure_class: "external",
+        retry_scope: "turn",
+        user_action: "retry",
+        retryable: true,
+      },
       validation_paths: [],
       suggested_actions: ["retry", "revise_request"],
       completion_mode: null,
@@ -1165,9 +1555,45 @@ describe("command and receipt cards", () => {
     fireEvent.click(screen.getByText("Technical details"));
     expect(screen.getByText(/agent_deadline_exceeded/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry Scene Designer activity" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revise Scene Designer request" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Revise Scene Designer request" })).toBeNull();
+    expect(onReviseRequest).not.toHaveBeenCalled();
+  });
+
+  it("offers request revision only for the typed revise action", () => {
+    const onReviseRequest = vi.fn();
+    const activity = {
+      item_type: "expert_activity" as const,
+      activity_id: "activity-revise",
+      turn_id: "turn-revise",
+      capability_id: "scene_design" as const,
+      capability_display_name: "Scene Designer",
+      status: "failed" as const,
+      sequence: 5,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:07:00Z",
+      message: "The request must be revised.",
+      error_code: "request_invalid",
+      elapsed_ms: 420000,
+      attempt_stage: "initial" as const,
+      retryable: false,
+      actionable_failure: {
+        failure_class: "deterministic" as const,
+        retry_scope: "none" as const,
+        user_action: "revise" as const,
+        retryable: false,
+      },
+      validation_paths: [],
+      suggested_actions: ["retry" as const],
+      completion_mode: null,
+      warning_code: null,
+    };
+
+    render(<CapabilityActivityRow activity={activity} onRetry={vi.fn()} onReviseRequest={onReviseRequest} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Revise Scene Designer request" }));
     expect(onReviseRequest).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Retry Scene Designer activity" })).toBeNull();
   });
 
   it("disables a failed activity retry while its recovery turn is working", () => {
@@ -1186,6 +1612,12 @@ describe("command and receipt cards", () => {
       elapsed_ms: 420000,
       attempt_stage: "transport_retry",
       retryable: true,
+      actionable_failure: {
+        failure_class: "transient",
+        retry_scope: "turn",
+        user_action: "retry",
+        retryable: true,
+      },
       validation_paths: [],
       suggested_actions: ["retry"],
       completion_mode: null,

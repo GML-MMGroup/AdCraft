@@ -174,9 +174,24 @@ export function mergeTimelinePresentationItems(
   const merged = new Map(current);
   incoming.forEach((item) => {
     const previous = merged.get(item.presentation_key);
-    if (!previous || item.presentation_revision > previous.presentation_revision) {
+    if (!previous) {
       merged.set(item.presentation_key, item);
+      return;
     }
+    const incomingIsNewer = item.presentation_revision > previous.presentation_revision
+      || (
+        item.presentation_revision === previous.presentation_revision
+        && item.item.sequence > previous.item.sequence
+      );
+    const retained = incomingIsNewer ? item : previous;
+    const sourceEntryIds = [...new Set([
+      ...previous.source_entry_ids,
+      ...item.source_entry_ids,
+    ])];
+    merged.set(item.presentation_key, {
+      ...retained,
+      source_entry_ids: sourceEntryIds,
+    });
   });
   return merged;
 }

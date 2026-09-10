@@ -39,9 +39,141 @@ afterEach(() => {
 });
 
 describe("CanvasModelPicker", () => {
+  it("omits status details from compact image controls but keeps catalog errors in the menu", () => {
+    renderPicker({
+      showStatusDetails: false,
+      selectionMode: "explicit",
+      modelRef: model.model_ref,
+      error: "Catalog could not be refreshed",
+    });
+    const trigger = screen.getByLabelText("Choose model");
+    expect(trigger.textContent).toBe("GLM Image");
+    expect(trigger.querySelector("small")).toBeNull();
+    expect(screen.queryByText("Catalog could not be refreshed")).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("listbox").textContent).toContain("Catalog could not be refreshed");
+  });
+  it("shows the current default name without using a previous node model or pinning the default", () => {
+    const onChange = vi.fn();
+    renderPicker({ defaultModelRef: model.model_ref, showOptionDetails: false, onChange });
+    expect(screen.getByLabelText("Choose model").textContent).toBe("Default model · GLM Image");
+    fireEvent.click(screen.getByLabelText("Choose model"));
+    fireEvent.click(screen.getByRole("option", { name: "Default model · GLM Image" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("default", null);
+  });
+
+  it.each([
+    [null, null, "Not configured"],
+    ["missing:model", null, "Name unavailable"],
+    [null, "Catalog request failed", "Unavailable"],
+  ])("does not guess the default name for %s / %s", (defaultModelRef, error, label) => {
+    renderPicker({ defaultModelRef, error });
+    expect(screen.getByLabelText("Choose model").textContent).toBe(`Default model · ${label}`);
+  });
+
+  it("renders name-only options while preserving disabled models and exact selection", () => {
+    const onChange = vi.fn();
+    renderPicker({
+      showOptionDetails: false,
+      onChange,
+      models: [
+        { ...model, conformance_status: "certified" },
+        { ...model, model_ref: "mock:unverified", display_name: "Unverified image", adapter_id: "mock-image-v1", conformance_status: "unverified" },
+      ],
+    });
+    fireEvent.click(screen.getByLabelText("Choose model"));
+    const menu = screen.getByRole("listbox");
+    expect(menu.querySelectorAll("small, em")).toHaveLength(0);
+    expect(menu.textContent).toBe("Default modelGLM ImageUnverified image");
+    const disabledOption = screen.getByRole("option", { name: "Unverified image" }) as HTMLButtonElement;
+    expect(disabledOption.disabled).toBe(true);
+    fireEvent.click(disabledOption);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("option", { name: "GLM Image" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("explicit", model.model_ref);
+  });
+
+  it("applies opt-in monochrome appearance to the trigger and portaled menu", () => {
+    const onChange = vi.fn();
+    renderPicker({ appearance: "monochrome", models: [{ ...model, conformance_status: "certified" }], onChange });
+    const trigger = screen.getByLabelText("Choose model");
+    expect(trigger.closest(".agent-node-workbench__model-picker--monochrome")).toBeTruthy();
+    const chevrons = trigger.querySelector(".agent-node-workbench__model-chevron");
+    expect(chevrons?.getAttribute("aria-hidden")).toBe("true");
+    expect(chevrons?.querySelectorAll("svg")).toHaveLength(1);
+    expect(chevrons?.querySelector("path")?.getAttribute("d")).toBe("m7 14.5 5-5 5 5");
+    fireEvent.click(trigger);
+    expect(chevrons?.querySelectorAll("svg")).toHaveLength(1);
+    expect(chevrons?.querySelector("path")?.getAttribute("d")).toBe("m7 9.5 5 5 5-5");
+    const menu = screen.getByRole("listbox", { name: "Compatible models" });
+    expect(menu.classList.contains("agent-node-workbench__model-menu--monochrome")).toBe(true);
+    expect(menu.parentElement).toBe(document.body);
+    fireEvent.click(screen.getByRole("option", { name: /GLM Image/ }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("explicit", model.model_ref);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(chevrons?.querySelector("path")?.getAttribute("d")).toBe("m7 14.5 5-5 5 5");
+  });
+
+  it("shows an unverified catalog model as disabled with its conformance reason", () => {
+    const unverified: ProviderModelSummaryV1 = {
+      ...model,
+      model_ref: "openrouter:openai/gpt-image-2",
+      provider_id: "openrouter",
+      provider_model_id: "openai/gpt-image-2",
+      display_name: "GPT Image 2",
+      adapter_id: "openrouter-image-native-v1",
+      transport_kind: "openrouter_images_native",
+      release_tier: "optional",
+      conformance_status: "unverified",
+    };
+    renderPicker({ models: [unverified] });
+
+    fireEvent.click(screen.getByLabelText("Choose model"));
+
+    const option = screen.getByText("GPT Image 2").closest("button");
+    expect(option?.disabled).toBe(true);
+    expect(screen.getByText("Model conformance has not been verified.")).toBeTruthy();
+    expect(screen.getByText("openrouter-image-native-v1 · openrouter images native · optional")).toBeTruthy();
+  });
+
+  it("does not render fake, deprecated, or retired Ark Mini catalog rows", () => {
+    renderPicker({
+      models: [
+        model,
+        { ...model, model_ref: "fake:image", provider_id: "fake", display_name: "Fake image" },
+        { ...model, model_ref: "vendor:old", availability: "deprecated", display_name: "Old image" },
+        {
+          ...model,
+          model_ref: "volcengine_ark:doubao-seed-2-0-mini-260428",
+          provider_id: "volcengine_ark",
+          display_name: "Doubao Seed 2.0 Mini",
+        },
+        {
+          ...model,
+          model_ref: "openai:gpt-image-2",
+          provider_id: "openai",
+          provider_model_id: "gpt-image-2",
+          display_name: "Retired OpenAI GPT Image 2",
+          adapter_id: "openai-image-v1",
+          transport_kind: "openai_images_native",
+          conformance_status: "certified",
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByLabelText("Choose model"));
+
+    expect(screen.getByText("GLM Image")).toBeTruthy();
+    expect(screen.queryByText("Fake image")).toBeNull();
+    expect(screen.queryByText("Old image")).toBeNull();
+    expect(screen.queryByText("Doubao Seed 2.0 Mini")).toBeNull();
+    expect(screen.queryByText("Retired OpenAI GPT Image 2")).toBeNull();
+  });
+
   it("renders the menu in document.body and places it below the trigger", () => {
     renderPicker();
     const trigger = screen.getByLabelText("Choose model");
+    expect(trigger.querySelector(".agent-node-workbench__model-chevron")).toBeNull();
     vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
       left: 100,
       right: 280,

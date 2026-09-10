@@ -52,6 +52,12 @@ export function areAgentCanvasNodePropsEqual(
     && previousData.node.revision === nextData.node.revision
     && previousData.node.status === nextData.node.status
     && previousData.node.output_asset_id === nextData.node.output_asset_id
+    && previousData.node.output_asset_version_id === nextData.node.output_asset_version_id
+    && previousData.node.latest_attempt?.execution_id === nextData.node.latest_attempt?.execution_id
+    && previousData.node.latest_attempt?.status === nextData.node.latest_attempt?.status
+    && previousData.node.latest_attempt?.updated_at === nextData.node.latest_attempt?.updated_at
+    && previousData.node.latest_attempt?.error?.code === nextData.node.latest_attempt?.error?.code
+    && previousData.node.latest_attempt?.error?.message === nextData.node.latest_attempt?.error?.message
     && previousData.node.prompt_preparation?.occurrence_id === nextData.node.prompt_preparation?.occurrence_id
     && previousData.node.prompt_preparation?.character_phase === nextData.node.prompt_preparation?.character_phase
     && previousData.node.prompt_preparation?.role_variant === nextData.node.prompt_preparation?.role_variant

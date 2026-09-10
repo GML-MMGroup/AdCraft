@@ -9,12 +9,39 @@ export type ProviderConnectionState = "configured" | "unconfigured" | "invalid";
 export type ProviderCredentialSource = "project_dotenv" | "process_environment" | "unconfigured";
 export type ProviderCredentialTestCapability = "minimal_request" | "unsupported";
 export type ProviderModelAvailability = "available" | "unavailable" | "unauthorized" | "unsupported" | "deprecated";
+export type ProviderTransportKindV1 =
+  | "pi_native_openai_compatible"
+  | "litellm_chat"
+  | "litellm_openai_image"
+  | "openai_images_native"
+  | "openrouter_images_native"
+  | "ark_image_native"
+  | "ark_video_native"
+  | "minimax_video_native"
+  | "tianpuyue_audio_native"
+  | "fake";
+export type ProviderReleaseTierV1 = "default" | "optional" | "compatible" | "experimental";
+export type ProviderConformanceStatusV1 = "unverified" | "compatible" | "certified" | "revoked";
+export type ProviderParameterValueTypeV1 = "integer" | "number" | "string" | "boolean" | "enum";
+export type ReferenceInputModeNameV1 =
+  | "text_only"
+  | "native_reference_slots"
+  | "text_plus_single_first_frame_image"
+  | "provider_only_instructions";
+
+export interface ProviderEndpointMetadataV1 {
+  scheme: "https" | "http";
+  host: string;
+  path: string;
+  fingerprint: string;
+}
 
 export interface ProviderCredentialCapabilityStatusV1 {
   configured: boolean;
   fingerprint: string | null;
   source: ProviderCredentialSource;
   test_capability: ProviderCredentialTestCapability;
+  endpoint?: ProviderEndpointMetadataV1 | null;
 }
 
 export interface ProviderConnectionStatusV1 {
@@ -33,6 +60,7 @@ export interface ProviderListResponseV1 {
 
 export interface ProviderCredentialUpdateRequestV1 {
   api_keys: Partial<Record<ProviderCapability, string>>;
+  base_urls?: Partial<Record<ProviderCapability, string>>;
   clear_capabilities: ProviderCapability[];
 }
 
@@ -67,6 +95,35 @@ export interface ProviderModelSummaryV1 {
   availability: ProviderModelAvailability;
   unavailable_reason?: string | null;
   catalog_revision: number;
+  adapter_id?: string | null;
+  transport_kind?: ProviderTransportKindV1 | null;
+  release_tier?: ProviderReleaseTierV1 | null;
+  conformance_status?: ProviderConformanceStatusV1;
+  accepted_input_modes?: string[];
+  parameter_schema_id?: string | null;
+  parameter_descriptors?: ModelParameterDescriptorV1[];
+  reference_policy?: ReferenceInputPolicyV1 | null;
+}
+
+export interface ModelParameterDescriptorV1 {
+  name: string;
+  value_type: ProviderParameterValueTypeV1;
+  required: boolean;
+  allowed_values: string[];
+  minimum: number | null;
+  maximum: number | null;
+  default: unknown;
+}
+
+export interface ReferenceInputModeV1 {
+  mode: ReferenceInputModeNameV1;
+  max_references: number;
+  allowed_roles: string[];
+}
+
+export interface ReferenceInputPolicyV1 {
+  modes: ReferenceInputModeV1[];
+  max_images: number;
 }
 
 export interface ProviderModelListResponseV1 {
@@ -107,6 +164,7 @@ export function emptyProviderCredentialDraft(
 
 export function credentialUpdateFromDraft(
   draft: Partial<Record<ProviderCapability, string>>,
+  baseUrlDraft: Partial<Record<ProviderCapability, string>> = {},
 ): ProviderCredentialUpdateRequestV1 | null {
   const api_keys = Object.fromEntries(
     Object.entries(draft)
@@ -115,7 +173,19 @@ export function credentialUpdateFromDraft(
         PROVIDER_CAPABILITIES.includes(entry[0] as ProviderCapability) && Boolean(entry[1])
       )),
   ) as Partial<Record<ProviderCapability, string>>;
-  return Object.keys(api_keys).length ? { api_keys, clear_capabilities: [] } : null;
+  const base_urls = Object.fromEntries(
+    Object.entries(baseUrlDraft)
+      .map(([capability, value]) => [capability, value?.trim()] as const)
+      .filter((entry): entry is [ProviderCapability, string] => (
+        PROVIDER_CAPABILITIES.includes(entry[0] as ProviderCapability) && Boolean(entry[1])
+      )),
+  ) as Partial<Record<ProviderCapability, string>>;
+  if (!Object.keys(api_keys).length && !Object.keys(base_urls).length) return null;
+  return {
+    api_keys,
+    ...(Object.keys(base_urls).length ? { base_urls } : {}),
+    clear_capabilities: [],
+  };
 }
 
 export function supportsCredentialTest(

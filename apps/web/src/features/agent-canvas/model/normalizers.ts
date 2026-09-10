@@ -1,4 +1,5 @@
 import type {
+  ActionableFailureV1,
   AgentActionReceiptV2,
   AgentCanvasContinuationV2,
   AgentCanvasCreationModeV2,
@@ -52,7 +53,9 @@ import type {
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
   CanvasNodeExecutionModeV2,
+  EditablePromptProjectionV1,
   NodePromptPreparationV1,
+  RolePromptCompactionDecisionV2,
   PromptAssertionEvidenceV1,
   PromptAssertionSourceSnapshotV1,
   ResolvedNodeParameterV2,
@@ -63,9 +66,6 @@ import type {
   CanvasNodeV2,
   CanvasParameterProvenanceV2,
   CanvasPositionV2,
-  CanvasVariationDraftResponseV2,
-  CanvasVariationDraftV2,
-  CanvasVariationMaterializeResponseV2,
   CanvasRuntimeEventV2,
   CanvasRuntimeEventsResponseV2,
   CanvasRuntimeSnapshotV2,
@@ -129,6 +129,8 @@ import type {
   GuidedInteractionAcceptedV1,
   GuidedInteractionContentV1,
   GuidedInteractionActionV1,
+  GuidedReferenceCandidateListResponseV2,
+  GuidedReferenceCandidateV2,
   GuidanceAwaitingV1,
   GuidanceAdvancePreconditionV1,
   JourneyElementDecisionV2,
@@ -149,6 +151,7 @@ import type {
   StoryboardExcludedMediaV3,
   StoryboardVisualAnchorV3,
   StoryboardSegmentMaterializationV2,
+  StoryboardSegmentMaterializationV3,
   StoryboardVisualAnchorV2,
   VideoParameterNormalizationV2,
   VideoSkillCatalogResponseV2,
@@ -167,10 +170,23 @@ const CANVAS_NODE_EXECUTION_MODES = new Set<CanvasNodeExecutionModeV2>(["generat
 const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status"]>([
   "queued",
   "working",
+  "waiting_user",
   "ready",
   "failed",
   "superseded",
   "not_applicable",
+]);
+const ROLE_PROMPT_COMPACTION_OUTCOMES = new Set<RolePromptCompactionDecisionV2["outcome"]>([
+  "compacted",
+  "preserved",
+]);
+const ROLE_PROMPT_COMPACTION_REASONS = new Set<RolePromptCompactionDecisionV2["reason"]>([
+  "policy_disabled",
+  "not_eligible",
+  "ownership_unknown",
+  "identity_unproven",
+  "exact_duplicate",
+  "preserved_authority",
 ]);
 const PRESENTATION_STREAM_KINDS = new Set<PresentationStreamKindV1>(["assistant", "node_prompt"]);
 const PRESENTATION_STREAM_EVENT_TYPES = new Set<PresentationStreamEventTypeV1>([
@@ -191,6 +207,7 @@ const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>(
   "structured_content",
   "guidance_default",
   "role_default",
+  "model_default",
   "provider_clamp",
 ]);
 const CANVAS_MODEL_CAPABILITIES = new Set<CanvasModelSummaryV2["capability"]>(["text", "image", "video", "audio"]);
@@ -695,48 +712,135 @@ export function normalizeAgentPlacementHintV2(
   };
 }
 
-export function normalizeCanvasVariationDraftV2(
+const ACTIONABLE_FAILURE_CLASSES = new Set<ActionableFailureV1["failure_class"]>([
+  "transient",
+  "deterministic",
+  "stale",
+  "conflict",
+  "external",
+]);
+const ACTIONABLE_RETRY_SCOPES = new Set<ActionableFailureV1["retry_scope"]>([
+  "none",
+  "prompt_preparation",
+  "turn",
+  "execution",
+  "provider_delivery",
+]);
+const ACTIONABLE_USER_ACTIONS = new Set<ActionableFailureV1["user_action"]>([
+  "none",
+  "retry",
+  "revise",
+  "regenerate",
+  "redesign",
+]);
+
+export function normalizeActionableFailureV1(
   value: unknown,
-  path = "variationDraft",
-): CanvasVariationDraftV2 {
+  path = "actionableFailure",
+): ActionableFailureV1 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, [
-    "source_node_id",
-    "source_node_revision",
-    "title",
-    "generation_prompt",
-    "model_id",
-    "model_selection_mode",
-    "model_ref",
-    "parameters",
-    "variation_revision",
-    "created_at",
-    "updated_at",
-  ], path);
+  forbidUnknownFields(record, ["failure_class", "retry_scope", "user_action", "retryable"], path);
+  const failureClass = expectLiteral(record.failure_class, ACTIONABLE_FAILURE_CLASSES, `${path}.failure_class`);
+  const retryScope = expectLiteral(record.retry_scope, ACTIONABLE_RETRY_SCOPES, `${path}.retry_scope`);
+  const userAction = expectLiteral(record.user_action, ACTIONABLE_USER_ACTIONS, `${path}.user_action`);
+  const derivedRetryable = userAction === "retry" && retryScope !== "none";
+  if (record.retryable !== undefined && expectBoolean(record.retryable, `${path}.retryable`) !== derivedRetryable) {
+    fail(`${path}.retryable`, "must match the actionable disposition");
+  }
+  if (userAction === "retry") {
+    if (retryScope === "none") fail(`${path}.retry_scope`, "retry requires one exact operation scope");
+    if (failureClass !== "transient" && failureClass !== "external") {
+      fail(`${path}.failure_class`, "only transient or external failures may be retried");
+    }
+  } else if (retryScope !== "none") {
+    fail(`${path}.retry_scope`, "non-retry actions cannot carry a retry scope");
+  }
   return {
-    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
-    source_node_revision: expectPositiveInteger(record.source_node_revision, `${path}.source_node_revision`),
-    title: expectNonEmptyString(record.title, `${path}.title`),
-    generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
-    model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
-    model_selection_mode: record.model_selection_mode === undefined
-      ? "default"
-      : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
-    model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
-    parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
-    variation_revision: expectPositiveInteger(record.variation_revision, `${path}.variation_revision`),
-    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
-    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+    failure_class: failureClass,
+    retry_scope: retryScope,
+    user_action: userAction,
+    retryable: derivedRetryable,
   };
+}
+
+function normalizeOptionalActionableFailureV1(
+  value: unknown,
+  path: string,
+): ActionableFailureV1 | null {
+  return value === undefined || value === null
+    ? null
+    : normalizeActionableFailureV1(value, path);
+}
+
+function assertRetryableMatchesDisposition(
+  retryable: boolean,
+  actionableFailure: ActionableFailureV1 | null,
+  path: string,
+) {
+  if (actionableFailure && retryable !== actionableFailure.retryable) {
+    fail(path, "retryable must match the actionable failure disposition");
+  }
 }
 
 export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): CanvasNodeErrorV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["code", "message", "retryable"], path);
+  forbidUnknownFields(record, [
+    "code", "message", "retryable", "actionable_failure", "role_variant", "violation_category", "field_path",
+  ], path);
+  const retryable = expectBoolean(record.retryable, `${path}.retryable`);
+  const actionableFailure = normalizeOptionalActionableFailureV1(
+    record.actionable_failure,
+    `${path}.actionable_failure`,
+  );
+  assertRetryableMatchesDisposition(retryable, actionableFailure, `${path}.retryable`);
   return {
     code: expectNonEmptyString(record.code, `${path}.code`),
     message: expectNonEmptyString(record.message, `${path}.message`),
-    retryable: expectBoolean(record.retryable, `${path}.retryable`),
+    retryable,
+    actionable_failure: actionableFailure,
+    role_variant: nullableStringWithDefault(record.role_variant, `${path}.role_variant`),
+    violation_category: nullableStringWithDefault(record.violation_category, `${path}.violation_category`),
+    field_path: nullableStringWithDefault(record.field_path, `${path}.field_path`),
+  };
+}
+
+function normalizeCanvasNodeLatestAttemptV2(
+  value: unknown,
+  path: string,
+): NonNullable<CanvasNodeV2["latest_attempt"]> {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "execution_id",
+    "member_id",
+    "run_intent_snapshot_id",
+    "status",
+    "created_at",
+    "updated_at",
+    "error",
+  ], path);
+  return {
+    execution_id: expectNonEmptyString(record.execution_id, `${path}.execution_id`),
+    member_id: expectNonEmptyString(record.member_id, `${path}.member_id`),
+    run_intent_snapshot_id: nullableString(record.run_intent_snapshot_id, `${path}.run_intent_snapshot_id`),
+    status: expectLiteral(
+      record.status,
+      new Set<NonNullable<CanvasNodeV2["latest_attempt"]>["status"]>([
+        "queued",
+        "waiting",
+        "blocked",
+        "skipped_dependency",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+      ]),
+      `${path}.status`,
+    ),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+    error: record.error === null
+      ? null
+      : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
   };
 }
 
@@ -754,9 +858,16 @@ function normalizeAgentOperationFailureV2(
     "failure_stage",
     "elapsed_ms",
     "retryable",
+    "actionable_failure",
     "validation_paths",
     "occurred_at",
   ], path);
+  const retryable = record.retryable === undefined ? false : expectBoolean(record.retryable, `${path}.retryable`);
+  const actionableFailure = normalizeOptionalActionableFailureV1(
+    record.actionable_failure,
+    `${path}.actionable_failure`,
+  );
+  assertRetryableMatchesDisposition(retryable, actionableFailure, `${path}.retryable`);
   return {
     code: expectNonEmptyString(record.code, `${path}.code`),
     message: expectNonEmptyString(record.message, `${path}.message`),
@@ -789,7 +900,8 @@ function normalizeAgentOperationFailureV2(
       `${path}.failure_stage`,
     ),
     elapsed_ms: expectNonNegativeInteger(record.elapsed_ms, `${path}.elapsed_ms`),
-    retryable: expectBoolean(record.retryable, `${path}.retryable`),
+    retryable,
+    actionable_failure: actionableFailure,
     validation_paths: expectStringArray(record.validation_paths, `${path}.validation_paths`),
     occurred_at: expectIsoDateTimeString(record.occurred_at, `${path}.occurred_at`),
   };
@@ -857,6 +969,8 @@ function normalizePromptAssertionEvidenceV1(
     "source_snapshots",
     "document_revisions",
     "sequence_id",
+    "character_identity_projection_digest",
+    "scene_environment_projection_digest",
     "engine_owned_fields_digest",
     "evidence_digest",
   ], path);
@@ -892,11 +1006,56 @@ function normalizePromptAssertionEvidenceV1(
       `${path}.document_revisions`,
     ),
     sequence_id: nullableStringWithDefault(record.sequence_id, `${path}.sequence_id`),
+    character_identity_projection_digest: nullableDigest(
+      record.character_identity_projection_digest,
+      `${path}.character_identity_projection_digest`,
+    ),
+    scene_environment_projection_digest: nullableDigest(
+      record.scene_environment_projection_digest,
+      `${path}.scene_environment_projection_digest`,
+    ),
     engine_owned_fields_digest: requiredDigest(
       record.engine_owned_fields_digest,
       `${path}.engine_owned_fields_digest`,
     ),
     evidence_digest: requiredDigest(record.evidence_digest, `${path}.evidence_digest`),
+  };
+}
+
+function normalizeRolePromptCompactionDecisionV2(
+  value: unknown,
+  path: string,
+): RolePromptCompactionDecisionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "block_id",
+    "source_id",
+    "source_digest",
+    "precedence",
+    "outcome",
+    "retained_block_id",
+    "retained_precedence",
+    "reason",
+  ], path);
+  const precedence = expectNonNegativeInteger(record.precedence, `${path}.precedence`);
+  if (precedence > 128) fail(`${path}.precedence`, "expected precedence at most 128");
+  const retainedPrecedence = record.retained_precedence === undefined || record.retained_precedence === null
+    ? null
+    : expectNonNegativeInteger(record.retained_precedence, `${path}.retained_precedence`);
+  if (retainedPrecedence !== null && retainedPrecedence > 128) {
+    fail(`${path}.retained_precedence`, "expected precedence at most 128");
+  }
+  return {
+    block_id: expectNonEmptyString(record.block_id, `${path}.block_id`),
+    source_id: expectNonEmptyString(record.source_id, `${path}.source_id`),
+    source_digest: requiredDigest(record.source_digest, `${path}.source_digest`),
+    precedence,
+    outcome: expectLiteral(record.outcome, ROLE_PROMPT_COMPACTION_OUTCOMES, `${path}.outcome`),
+    retained_block_id: record.retained_block_id === undefined || record.retained_block_id === null
+      ? null
+      : expectNonEmptyString(record.retained_block_id, `${path}.retained_block_id`),
+    retained_precedence: retainedPrecedence,
+    reason: expectLiteral(record.reason, ROLE_PROMPT_COMPACTION_REASONS, `${path}.reason`),
   };
 }
 
@@ -924,9 +1083,14 @@ function normalizeNodePromptPreparationV1(
       "requirement_revision_no",
       "document_revisions",
       "binding_digest",
+      "character_identity_projection_digest",
+      "scene_environment_projection_digest",
       "style_projection_digest",
       "brief_digest",
       "parameter_origins",
+      "compaction_policy_version",
+      "compaction_policy_digest",
+      "compaction_decisions",
       "assertion_evidence",
       "attempt_stage",
       "error",
@@ -935,6 +1099,7 @@ function normalizeNodePromptPreparationV1(
     path,
   );
   const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
+  const attemptNo = expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`);
   const operationId = nullableStringWithDefault(record.operation_id, `${path}.operation_id`);
   const presentationStreamId = nullableStringWithDefault(
     record.presentation_stream_id,
@@ -960,27 +1125,106 @@ function normalizeNodePromptPreparationV1(
   const parameterOrigins = expectArray(record.parameter_origins ?? [], `${path}.parameter_origins`).map((item, index) => (
     normalizeResolvedNodeParameterV2(item, `${path}.parameter_origins[${index}]`)
   ));
+  const compactionPolicyVersion = nullableStringWithDefault(
+    record.compaction_policy_version,
+    `${path}.compaction_policy_version`,
+  );
+  if (compactionPolicyVersion !== null && !compactionPolicyVersion.trim()) {
+    fail(`${path}.compaction_policy_version`, "expected non-empty string");
+  }
+  const compactionPolicyDigest = nullableDigest(
+    record.compaction_policy_digest,
+    `${path}.compaction_policy_digest`,
+  );
+  const compactionDecisions = expectArray(
+    record.compaction_decisions ?? [],
+    `${path}.compaction_decisions`,
+  ).map((item, index) => normalizeRolePromptCompactionDecisionV2(
+    item,
+    `${path}.compaction_decisions[${index}]`,
+  ));
+  const roleVariant = nullableStringWithDefault(record.role_variant, `${path}.role_variant`);
+  const recipeId = nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`);
+  const recipeVersion = nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`);
+  const recipeDigest = nullableDigest(record.recipe_digest, `${path}.recipe_digest`);
+  const requirementRevisionId = nullableStringWithDefault(
+    record.requirement_revision_id,
+    `${path}.requirement_revision_id`,
+  );
+  const requirementRevisionNo = record.requirement_revision_no === undefined || record.requirement_revision_no === null
+    ? null
+    : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`);
+  const bindingDigest = nullableDigest(record.binding_digest, `${path}.binding_digest`);
+  const characterIdentityProjectionDigest = nullableDigest(
+    record.character_identity_projection_digest,
+    `${path}.character_identity_projection_digest`,
+  );
+  const sceneEnvironmentProjectionDigest = nullableDigest(
+    record.scene_environment_projection_digest,
+    `${path}.scene_environment_projection_digest`,
+  );
+  const styleProjectionDigest = nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`);
+  const briefDigest = nullableDigest(record.brief_digest, `${path}.brief_digest`);
+  const assertionEvidence = record.assertion_evidence === undefined || record.assertion_evidence === null
+    ? null
+    : normalizePromptAssertionEvidenceV1(record.assertion_evidence, `${path}.assertion_evidence`);
+  const attemptStage = nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`);
   if (status === "not_applicable" && (
     [
       operationId,
       presentationStreamId,
       contextSnapshotId,
       promptDigest,
-      record.role_variant,
-      record.recipe_id,
-      record.recipe_version,
-      record.recipe_digest,
-      record.requirement_revision_id,
-      record.binding_digest,
-      record.style_projection_digest,
-      record.brief_digest,
-      record.assertion_evidence,
+      roleVariant,
+      recipeId,
+      recipeVersion,
+      recipeDigest,
+      requirementRevisionId,
+      bindingDigest,
+      characterIdentityProjectionDigest,
+      sceneEnvironmentProjectionDigest,
+      styleProjectionDigest,
+      briefDigest,
+      compactionPolicyVersion,
+      compactionPolicyDigest,
+      assertionEvidence,
       error,
     ].some((value) => value !== null && value !== undefined)
     || Object.keys(documentRevisions).length > 0
     || parameterOrigins.length > 0
+    || compactionDecisions.length > 0
   )) {
     fail(`${path}.status`, "not_applicable prompt preparation cannot have preparation data");
+  }
+  if (status === "waiting_user" && (
+    operationId !== null
+    || presentationStreamId !== null
+    || contextSnapshotId !== null
+    || occurrenceId !== null
+    || characterPhase !== null
+    || promptDigest !== null
+    || roleVariant !== null
+    || recipeId !== null
+    || recipeVersion !== null
+    || recipeDigest !== null
+    || requirementRevisionId !== null
+    || requirementRevisionNo !== null
+    || Object.keys(documentRevisions).length > 0
+    || bindingDigest !== null
+    || characterIdentityProjectionDigest !== null
+    || sceneEnvironmentProjectionDigest !== null
+    || styleProjectionDigest !== null
+    || briefDigest !== null
+    || parameterOrigins.length > 0
+    || compactionPolicyVersion !== null
+    || compactionPolicyDigest !== null
+    || compactionDecisions.length > 0
+    || assertionEvidence !== null
+    || attemptStage !== null
+    || error !== null
+    || attemptNo !== 0
+  )) {
+    fail(`${path}.status`, "waiting_user prompt preparation cannot have preparation context");
   }
   if (status === "failed" && !error) fail(`${path}.error`, "failed prompt preparation requires a safe error");
   if (status !== "failed" && status !== "superseded" && error) {
@@ -993,34 +1237,29 @@ function normalizeNodePromptPreparationV1(
     status,
     operation_id: operationId,
     presentation_stream_id: presentationStreamId,
-    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    attempt_no: attemptNo,
     context_snapshot_id: contextSnapshotId,
     occurrence_id: occurrenceId,
     character_phase: characterPhase,
     prompt_digest: promptDigest,
-    role_variant: nullableStringWithDefault(record.role_variant, `${path}.role_variant`),
-    recipe_id: nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`),
-    recipe_version: nullableStringWithDefault(record.recipe_version, `${path}.recipe_version`),
-    recipe_digest: nullableDigest(record.recipe_digest, `${path}.recipe_digest`),
-    requirement_revision_id: nullableStringWithDefault(
-      record.requirement_revision_id,
-      `${path}.requirement_revision_id`,
-    ),
-    requirement_revision_no: record.requirement_revision_no === undefined || record.requirement_revision_no === null
-      ? null
-      : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
+    role_variant: roleVariant,
+    recipe_id: recipeId,
+    recipe_version: recipeVersion,
+    recipe_digest: recipeDigest,
+    requirement_revision_id: requirementRevisionId,
+    requirement_revision_no: requirementRevisionNo,
     document_revisions: documentRevisions,
-    binding_digest: nullableDigest(record.binding_digest, `${path}.binding_digest`),
-    style_projection_digest: nullableDigest(record.style_projection_digest, `${path}.style_projection_digest`),
-    brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
+    binding_digest: bindingDigest,
+    character_identity_projection_digest: characterIdentityProjectionDigest,
+    scene_environment_projection_digest: sceneEnvironmentProjectionDigest,
+    style_projection_digest: styleProjectionDigest,
+    brief_digest: briefDigest,
     parameter_origins: parameterOrigins,
-    assertion_evidence: record.assertion_evidence === undefined || record.assertion_evidence === null
-      ? null
-      : normalizePromptAssertionEvidenceV1(
-          record.assertion_evidence,
-          `${path}.assertion_evidence`,
-        ),
-    attempt_stage: nullableStringWithDefault(record.attempt_stage, `${path}.attempt_stage`),
+    compaction_policy_version: compactionPolicyVersion,
+    compaction_policy_digest: compactionPolicyDigest,
+    compaction_decisions: compactionDecisions,
+    assertion_evidence: assertionEvidence,
+    attempt_stage: attemptStage,
     error,
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -1288,6 +1527,34 @@ function normalizeCanvasParameterProvenanceMapV2(
   );
 }
 
+function normalizeEditablePromptProjectionV1(
+  value: unknown,
+  path: string,
+): EditablePromptProjectionV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["text", "locale", "source", "revision", "brief_digest", "prompt_digest"],
+    path,
+  );
+  return {
+    text: expectNonEmptyString(record.text, `${path}.text`),
+    locale: expectNonEmptyString(record.locale, `${path}.locale`),
+    source: expectLiteral(
+      record.source,
+      new Set<EditablePromptProjectionV1["source"]>([
+        "agent_authored",
+        "deterministic_projection",
+        "user_edited",
+      ]),
+      `${path}.source`,
+    ),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    brief_digest: nullableDigest(record.brief_digest, `${path}.brief_digest`),
+    prompt_digest: requiredDigest(record.prompt_digest, `${path}.prompt_digest`),
+  };
+}
+
 export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNodeV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(
@@ -1313,11 +1580,13 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "parameter_provenance",
       "prompt_context_snapshot_id",
       "output_asset_id",
+      "output_asset_version_id",
+      "latest_attempt",
       "position",
       "revision",
       "error",
+      "prompt_presentation",
       "prompt_preparation",
-      "variation_draft",
       "created_at",
       "updated_at",
     ],
@@ -1371,15 +1640,22 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     ),
     prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
     output_asset_id: outputAssetId,
+    output_asset_version_id: nullableStringWithDefault(
+      record.output_asset_version_id,
+      `${path}.output_asset_version_id`,
+    ),
+    latest_attempt: record.latest_attempt === null || record.latest_attempt === undefined
+      ? null
+      : normalizeCanvasNodeLatestAttemptV2(record.latest_attempt, `${path}.latest_attempt`),
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    prompt_presentation: record.prompt_presentation === undefined || record.prompt_presentation === null
+      ? null
+      : normalizeEditablePromptProjectionV1(record.prompt_presentation, `${path}.prompt_presentation`),
     prompt_preparation: record.prompt_preparation === undefined || record.prompt_preparation === null
       ? null
       : normalizeNodePromptPreparationV1(record.prompt_preparation, `${path}.prompt_preparation`),
-    variation_draft: record.variation_draft === null || record.variation_draft === undefined
-      ? null
-      : normalizeCanvasVariationDraftV2(record.variation_draft, `${path}.variation_draft`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: updatedAt,
   };
@@ -1425,7 +1701,6 @@ export function normalizeCanvasBindingV2(value: unknown, path = "binding"): Canv
       "source",
       "target_node_id",
       "input_role",
-      "required",
       "enabled",
       "order",
       "label",
@@ -1441,7 +1716,6 @@ export function normalizeCanvasBindingV2(value: unknown, path = "binding"): Canv
     source: normalizeCanvasBindingSourceV2(record.source, `${path}.source`),
     target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
     input_role: expectLiteral(record.input_role, CANVAS_BINDING_ROLES, `${path}.input_role`),
-    required: expectBoolean(record.required, `${path}.required`),
     enabled: expectBoolean(record.enabled, `${path}.enabled`),
     order: expectNonNegativeInteger(record.order, `${path}.order`),
     label: nullableString(record.label, `${path}.label`),
@@ -1910,6 +2184,25 @@ function normalizeStoryboardSegmentMaterializationV2(
   };
 }
 
+function normalizeStoryboardSegmentMaterializationV3(
+  value: unknown,
+  path: string,
+): StoryboardSegmentMaterializationV3 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["sequence_id", "materialization_id", "status", "generation_prompt"], path);
+  return {
+    sequence_id: expectNonEmptyString(record.sequence_id, `${path}.sequence_id`),
+    materialization_id: expectNonEmptyString(record.materialization_id, `${path}.materialization_id`),
+    status: record.status === undefined
+      ? "pending"
+      : expectLiteral(record.status, STORYBOARD_SEGMENT_MATERIALIZATION_STATUSES, `${path}.status`),
+    generation_prompt: nullableStringWithDefault(
+      record.generation_prompt,
+      `${path}.generation_prompt`,
+    ),
+  };
+}
+
 function normalizeStoryboardVisualAnchorV2(
   value: unknown,
   path: string,
@@ -2093,16 +2386,31 @@ function normalizeAnchorAcceptanceEvidenceV1(value: unknown, path: string): Anch
 
 function normalizeStoryboardProductionPlanContentV3(value: unknown, path: string): StoryboardProductionPlanContentV3 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["schema_version", "narrative_outline", "requirement_revision_id", "requirement_revision_no", "global_parameters", "segments", "rows", "planned_nodes", "excluded_media", "visual_anchor"], path);
+  forbidUnknownFields(record, ["schema_version", "creative_direction_snapshot_id", "narrative_outline", "requirement_revision_id", "requirement_revision_no", "global_parameters", "segments", "rows", "segment_materializations", "planned_nodes", "excluded_media", "visual_anchor"], path);
+  const creativeDirectionSnapshotId = record.creative_direction_snapshot_id == null
+    ? null
+    : expectString(record.creative_direction_snapshot_id, `${path}.creative_direction_snapshot_id`);
+  if (creativeDirectionSnapshotId !== null && (creativeDirectionSnapshotId.length < 1 || creativeDirectionSnapshotId.length > 160)) {
+    fail(`${path}.creative_direction_snapshot_id`, "expected 1 to 160 characters");
+  }
   if (record.schema_version !== undefined && record.schema_version !== "3") fail(`${path}.schema_version`, "expected 3");
+  const segmentMaterializations = expectArray(
+    record.segment_materializations ?? [],
+    `${path}.segment_materializations`,
+  );
+  if (segmentMaterializations.length > 128) {
+    fail(`${path}.segment_materializations`, "expected at most 128 materializations");
+  }
   return {
     schema_version: "3",
+    creative_direction_snapshot_id: creativeDirectionSnapshotId,
     narrative_outline: expectNonEmptyString(record.narrative_outline, `${path}.narrative_outline`),
     requirement_revision_id: expectNonEmptyString(record.requirement_revision_id, `${path}.requirement_revision_id`),
     requirement_revision_no: expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
     global_parameters: normalizeStoryboardPlanGlobalParametersV2(record.global_parameters, `${path}.global_parameters`),
     segments: expectArray(record.segments, `${path}.segments`).map((item, index) => normalizeStoryboardNarrativeSegmentV2(item, `${path}.segments[${index}]`)),
     rows: expectArray(record.rows, `${path}.rows`).map((item, index) => normalizeStoryboardPlanRowV2(item, `${path}.rows[${index}]`)),
+    segment_materializations: segmentMaterializations.map((item, index) => normalizeStoryboardSegmentMaterializationV3(item, `${path}.segment_materializations[${index}]`)),
     planned_nodes: expectArray(record.planned_nodes ?? [], `${path}.planned_nodes`).map((item, index) => normalizeStoryboardPlannedNodeV3(item, `${path}.planned_nodes[${index}]`)),
     excluded_media: expectArray(record.excluded_media ?? [], `${path}.excluded_media`).map((item, index) => normalizeStoryboardExcludedMediaV3(item, `${path}.excluded_media[${index}]`)),
     visual_anchor: record.visual_anchor === null || record.visual_anchor === undefined ? null : normalizeStoryboardVisualAnchorV3(record.visual_anchor, `${path}.visual_anchor`),
@@ -2377,7 +2685,6 @@ export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "res
       "content_hash",
       "binding_id",
       "input_role",
-      "required",
       "display_order",
     ],
     path,
@@ -2397,7 +2704,6 @@ export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "res
       new Set<ResolvedTextInputSnapshotV2["input_role"]>(["text_context"]),
       `${path}.input_role`,
     ),
-    required: expectBoolean(record.required, `${path}.required`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
   };
 }
@@ -2437,7 +2743,6 @@ export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "re
       "access_descriptor",
       "binding_id",
       "input_role",
-      "required",
       "display_order",
     ],
     path,
@@ -2470,7 +2775,6 @@ export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "re
     access_descriptor: normalizeStorageAccessDescriptorV2(record.access_descriptor, `${path}.access_descriptor`),
     binding_id: nullableString(record.binding_id, `${path}.binding_id`),
     input_role: expectLiteral(record.input_role, CANVAS_BINDING_ROLES, `${path}.input_role`),
-    required: expectBoolean(record.required, `${path}.required`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
   };
 }
@@ -2849,15 +3153,19 @@ function normalizeCapabilityProposalOptionV2(
   };
 }
 
-function normalizeProposalMaterializationErrorV2(
+export function normalizeProposalMaterializationErrorV2(
   value: unknown,
   path: string,
 ): ProposalMaterializationErrorV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["code", "message"], path);
+  forbidUnknownFields(record, ["code", "message", "actionable_failure"], path);
   return {
     code: expectNonEmptyString(record.code, `${path}.code`),
     message: expectNonEmptyString(record.message, `${path}.message`),
+    actionable_failure: normalizeOptionalActionableFailureV1(
+      record.actionable_failure,
+      `${path}.actionable_failure`,
+    ),
   };
 }
 
@@ -2877,6 +3185,11 @@ function normalizeProposalMaterializationProjectionV2(
     "created_at",
     "updated_at",
   ], path);
+  const retryable = expectBoolean(record.retryable, `${path}.retryable`);
+  const error = record.error === null
+    ? null
+    : normalizeProposalMaterializationErrorV2(record.error, `${path}.error`);
+  assertRetryableMatchesDisposition(retryable, error?.actionable_failure ?? null, `${path}.retryable`);
   return {
     materialization_id: expectNonEmptyString(record.materialization_id, `${path}.materialization_id`),
     option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
@@ -2887,10 +3200,8 @@ function normalizeProposalMaterializationProjectionV2(
       `${path}.status`,
     ),
     attempt_no: expectPositiveInteger(record.attempt_no, `${path}.attempt_no`),
-    retryable: expectBoolean(record.retryable, `${path}.retryable`),
-    error: record.error === null
-      ? null
-      : normalizeProposalMaterializationErrorV2(record.error, `${path}.error`),
+    retryable,
+    error,
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -3006,6 +3317,10 @@ export function normalizeConceptProposalV2(
       "turn_id",
       "video_skill_run_id",
       "topic_id",
+      "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
+      "character_phase",
       "creative_direction_snapshot_id",
       "proposal_revision",
       "source_proposal_id",
@@ -3039,6 +3354,20 @@ export function normalizeConceptProposalV2(
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     video_skill_run_id: nullableStringWithDefault(record.video_skill_run_id, `${path}.video_skill_run_id`),
     topic_id: nullableStringWithDefault(record.topic_id, `${path}.topic_id`),
+    occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+    occurrence_index: record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`),
+    occurrence_count: record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`),
+    character_phase: record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(
+        record.character_phase,
+        new Set<NonNullable<ConceptProposalV2["character_phase"]>>(["main", "turnaround"]),
+        `${path}.character_phase`,
+      ),
     creative_direction_snapshot_id: nullableStringWithDefault(
       record.creative_direction_snapshot_id,
       `${path}.creative_direction_snapshot_id`,
@@ -3190,7 +3519,14 @@ function normalizeChatCapabilityActivityV2(value: unknown, path: string): ChatCa
     "item_type", "activity_id", "turn_id", "capability_id", "capability_display_name", "operation", "status",
     "sequence", "started_at", "finished_at", "message", "error_code", "elapsed_ms", "attempt_stage",
     "retryable", "validation_paths", "operation_policy_id", "suggested_actions", "completion_mode", "warning_code",
+    "actionable_failure",
   ], path);
+  const retryable = record.retryable === undefined ? false : expectBoolean(record.retryable, `${path}.retryable`);
+  const actionableFailure = normalizeOptionalActionableFailureV1(
+    record.actionable_failure,
+    `${path}.actionable_failure`,
+  );
+  assertRetryableMatchesDisposition(retryable, actionableFailure, `${path}.retryable`);
   return {
     item_type: expectLiteral(record.item_type, new Set<ChatCapabilityActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
     activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
@@ -3218,7 +3554,8 @@ function normalizeChatCapabilityActivityV2(value: unknown, path: string): ChatCa
         ]),
         `${path}.attempt_stage`,
       ),
-    retryable: record.retryable === undefined ? false : expectBoolean(record.retryable, `${path}.retryable`),
+    retryable,
+    actionable_failure: actionableFailure,
     validation_paths: optionalStringArray(record.validation_paths, `${path}.validation_paths`, []),
     suggested_actions: expectArray(record.suggested_actions ?? [], `${path}.suggested_actions`).map((action, index) => (
       expectLiteral(action, new Set<ChatCapabilityActivityV2["suggested_actions"][number]>(["retry", "revise_request"]), `${path}.suggested_actions[${index}]`)
@@ -3334,7 +3671,6 @@ function normalizeAgentCommandOperationV2(
       "source",
       "target",
       "binding_kind",
-      "required",
       "display_order",
     ], path);
     const source = expectRecord(record.source, `${path}.source`);
@@ -3349,9 +3685,6 @@ function normalizeAgentCommandOperationV2(
         : normalizeAgentNodeRefV2(source, `${path}.source`),
       target: normalizeAgentNodeRefV2(record.target, `${path}.target`),
       binding_kind: expectLiteral(record.binding_kind, AGENT_COMMAND_BINDING_KINDS, `${path}.binding_kind`),
-      required: record.required === undefined
-        ? true
-        : expectBoolean(record.required, `${path}.required`),
       display_order: record.display_order === undefined
         ? 0
         : expectNonNegativeInteger(record.display_order, `${path}.display_order`),
@@ -3362,7 +3695,6 @@ function normalizeAgentCommandOperationV2(
       "operation_type",
       "operation_id",
       "binding_id",
-      "required",
       "enabled",
       "display_order",
     ], path);
@@ -3370,7 +3702,6 @@ function normalizeAgentCommandOperationV2(
       operation_type: operationType,
       operation_id: operationId,
       binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
-      required: record.required === undefined ? null : nullableBoolean(record.required, `${path}.required`),
       enabled: record.enabled === undefined ? null : nullableBoolean(record.enabled, `${path}.enabled`),
       display_order: record.display_order === undefined || record.display_order === null
         ? null
@@ -3391,32 +3722,6 @@ function normalizeAgentCommandOperationV2(
       operation_type: operationType,
       operation_id: operationId,
       node: normalizeAgentNodeRefV2(record.node, `${path}.node`),
-    };
-  }
-  if (operationType === "materialize_sibling_draft") {
-    forbidUnknownFields(record, [
-      "operation_type",
-      "operation_id",
-      "source_node",
-      "title",
-      "generation_prompt",
-      "model_selection_mode",
-      "model_ref",
-      "parameters",
-      "placement_hint",
-    ], path);
-    return {
-      operation_type: operationType,
-      operation_id: operationId,
-      source_node: normalizeAgentNodeRefV2(record.source_node, `${path}.source_node`),
-      title: expectNonEmptyString(record.title, `${path}.title`),
-      generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
-      model_selection_mode: record.model_selection_mode === undefined
-        ? "default"
-        : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
-      model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
-      parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
-      placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
     };
   }
   if (operationType === "request_node_run") {
@@ -3930,6 +4235,12 @@ export function normalizeAgentCanvasChatTimelineV2(
             : entry.content.trim() && entry.content.trim() !== capabilityDisplayName
               ? entry.content
               : null;
+        const retryable = entry.metadata.retryable === true;
+        assertRetryableMatchesDisposition(
+          retryable,
+          entry.actionable_failure ?? null,
+          `${path}.items.metadata.retryable`,
+        );
         return [{
           item_type: "expert_activity",
           activity_id: typeof entry.metadata.activity_id === "string"
@@ -3954,7 +4265,8 @@ export function normalizeAgentCanvasChatTimelineV2(
             : null,
           elapsed_ms: elapsedMs,
           attempt_stage: attemptStage,
-          retryable: entry.metadata.retryable === true,
+          retryable,
+          actionable_failure: entry.actionable_failure ?? null,
           validation_paths: optionalStringArray(
             entry.metadata.validation_paths,
             `${path}.items.metadata.validation_paths`,
@@ -4387,70 +4699,6 @@ export function normalizeCanvasEditingExportImportResponseV2(
   };
 }
 
-export function normalizeCanvasVariationDraftResponseV2(
-  value: unknown,
-  path = "variationDraftResponse",
-): CanvasVariationDraftResponseV2 {
-  const record = expectRecord(value, path);
-  forbidUnknownFields(record, [
-    "workflow_id",
-    "workflow_revision",
-    "node_id",
-    "variation_draft",
-  ], path);
-  return {
-    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
-    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
-    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
-    variation_draft: normalizeCanvasVariationDraftV2(record.variation_draft, `${path}.variation_draft`),
-  };
-}
-
-export function normalizeCanvasVariationMaterializeResponseV2(
-  value: unknown,
-  path = "variationMaterialize",
-): CanvasVariationMaterializeResponseV2 {
-  const record = expectRecord(value, path);
-  forbidUnknownFields(record, [
-    "workflow_id",
-    "workflow_revision",
-    "source_node_id",
-    "sibling_node",
-    "copied_binding_ids",
-    "run",
-    "run_error",
-    "placement_hint",
-    "created_node_ids",
-    "created_binding_ids",
-    "placement_hints",
-  ], path);
-  return {
-    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
-    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
-    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
-    sibling_node: normalizeCanvasNodeV2(record.sibling_node, `${path}.sibling_node`),
-    copied_binding_ids: optionalStringArray(record.copied_binding_ids, `${path}.copied_binding_ids`, []),
-    run: record.run === null || record.run === undefined
-      ? null
-      : expectUnknownRecord(record.run, `${path}.run`),
-    run_error: record.run_error === null || record.run_error === undefined
-      ? null
-      : normalizeCanvasNodeErrorV2(record.run_error, `${path}.run_error`),
-    placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
-    created_node_ids: optionalStringArray(record.created_node_ids, `${path}.created_node_ids`, []),
-    created_binding_ids: optionalStringArray(
-      record.created_binding_ids,
-      `${path}.created_binding_ids`,
-      [],
-    ),
-    placement_hints: expectArray(record.placement_hints ?? [], `${path}.placement_hints`)
-      .map((item, index) => normalizeAgentPlacementHintV2(
-        item,
-        `${path}.placement_hints[${index}]`,
-      )),
-  };
-}
-
 export function normalizeCanvasLayoutPatchResponseV2(
   value: unknown,
   path = "layoutPatch",
@@ -4841,6 +5089,7 @@ export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSe
     "journey",
     "interaction",
     "awaiting",
+    "actionable_failure",
     "revision",
     "updated_at",
   ], path);
@@ -4882,6 +5131,10 @@ export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSe
     awaiting: record.awaiting === undefined || record.awaiting === null
       ? null
       : normalizeGuidanceAwaitingV1(record.awaiting, `${path}.awaiting`),
+    actionable_failure: normalizeOptionalActionableFailureV1(
+      record.actionable_failure,
+      `${path}.actionable_failure`,
+    ),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -4951,12 +5204,20 @@ export function normalizeGuidanceAdvancePreconditionV1(
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidedInteractionV1["kind"]>(["clarification_questionnaire", "product_source", "concept_choice", "media_review", "reference_source"]), `${path}.kind`);
   const content = normalizeGuidedInteractionContentV1(record.content, kind, `${path}.content`);
+  const allowedActions = expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "use_reference", "skip_reference", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`));
+  if (kind === "reference_source" && (
+    allowedActions.length !== 2
+    || !allowedActions.includes("use_reference")
+    || !allowedActions.includes("skip_reference")
+  )) {
+    fail(`${path}.allowed_actions`, "reference source requires use_reference and skip_reference actions");
+  }
   return {
     interaction_id: expectNonEmptyString(record.interaction_id, `${path}.interaction_id`), workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`), session_id: expectNonEmptyString(record.session_id, `${path}.session_id`), checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`), kind,
     status: expectLiteral(record.status, new Set<GuidedInteractionV1["status"]>(["open", "submitted", "closed", "superseded"]), `${path}.status`), response_locale: expectNonEmptyString(record.response_locale, `${path}.response_locale`), expected_session_revision: expectPositiveInteger(record.expected_session_revision, `${path}.expected_session_revision`), revision: expectPositiveInteger(record.revision, `${path}.revision`), title: expectNonEmptyString(record.title, `${path}.title`), context: expectNonEmptyString(record.context, `${path}.context`), content,
-    allowed_actions: expectArray(record.allowed_actions, `${path}.allowed_actions`).map((action, index) => expectLiteral(action, new Set<GuidedInteractionActionV1>(["answer", "select_source", "select", "custom", "skip", "revise", "defer", "exclude", "delegate", "accept", "retry", "replace"]), `${path}.allowed_actions[${index}]`)),
+    allowed_actions: allowedActions,
     submit_path: expectNonEmptyString(record.submit_path, `${path}.submit_path`), created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`), updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
@@ -5011,6 +5272,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       "stage_revision",
       "action_id",
       "occurrence_id",
+      "occurrence_index",
+      "occurrence_count",
+      "character_phase",
       "capability_id",
       "options",
       "allow_custom",
@@ -5031,6 +5295,17 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     if (allowExclusion && !new Set<GuidedJourneyStageV2>(["world_view", "props", "character", "bgm"]).has(stage)) {
       fail(`${path}.allow_exclusion`, "exclusion is not allowed for this journey stage");
     }
+    const occurrenceIndex = record.occurrence_index === undefined || record.occurrence_index === null
+      ? null
+      : expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`);
+    const occurrenceCount = record.occurrence_count === undefined || record.occurrence_count === null
+      ? null
+      : expectPositiveInteger(record.occurrence_count, `${path}.occurrence_count`);
+    if (occurrenceIndex !== null && occurrenceIndex > 32) fail(`${path}.occurrence_index`, "expected at most 32");
+    if (occurrenceCount !== null && occurrenceCount > 32) fail(`${path}.occurrence_count`, "expected at most 32");
+    const characterPhase = record.character_phase === undefined || record.character_phase === null
+      ? null
+      : expectLiteral(record.character_phase, new Set(["main"] as const), `${path}.character_phase`);
     return {
       content_kind: "concept_choice",
       proposal_id: nullableStringWithDefault(record.proposal_id, `${path}.proposal_id`),
@@ -5038,6 +5313,9 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
       stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
       action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
       occurrence_id: nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`),
+      occurrence_index: occurrenceIndex,
+      occurrence_count: occurrenceCount,
+      character_phase: characterPhase,
       capability_id: expectNonEmptyString(record.capability_id, `${path}.capability_id`),
       options,
       allow_custom: true,
@@ -5048,6 +5326,46 @@ function normalizeGuidedInteractionContentV1(value: unknown, kind: GuidedInterac
     forbidUnknownFields(record, ["content_kind", "node_id", "node_revision", "asset_id", "asset_version_id", "summary"], path);
     if (kind !== "media_review") fail(path, "invalid media review interaction content");
     return { content_kind: "media_review", node_id: expectNonEmptyString(record.node_id, `${path}.node_id`), node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`), asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`), asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`), summary: expectNonEmptyString(record.summary, `${path}.summary`) };
+  }
+  if (contentKind === "reference_source") {
+    forbidUnknownFields(record, [
+      "content_kind",
+      "reference_kind",
+      "target_node_id",
+      "target_node_revision",
+      "occurrence_id",
+      "question",
+      "use_reference_label",
+      "skip_reference_label",
+      "expected_guidance_revision",
+    ], path);
+    if (kind !== "reference_source") fail(path, "invalid reference source interaction content");
+    const referenceKind = expectLiteral(
+      record.reference_kind,
+      new Set(["character_main", "scene_main"] as const),
+      `${path}.reference_kind`,
+    );
+    const occurrenceId = nullableStringWithDefault(record.occurrence_id, `${path}.occurrence_id`);
+    if (referenceKind === "character_main" && occurrenceId === null) {
+      fail(path, "Character reference checkpoints require an occurrence identity.");
+    }
+    if (referenceKind === "scene_main" && occurrenceId !== null) {
+      fail(path, "Scene reference checkpoints cannot carry character scope.");
+    }
+    return {
+      content_kind: "reference_source",
+      reference_kind: referenceKind,
+      target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
+      target_node_revision: expectPositiveInteger(record.target_node_revision, `${path}.target_node_revision`),
+      occurrence_id: occurrenceId,
+      question: expectNonEmptyString(record.question, `${path}.question`),
+      use_reference_label: expectNonEmptyString(record.use_reference_label, `${path}.use_reference_label`),
+      skip_reference_label: expectNonEmptyString(record.skip_reference_label, `${path}.skip_reference_label`),
+      expected_guidance_revision: expectPositiveInteger(
+        record.expected_guidance_revision,
+        `${path}.expected_guidance_revision`,
+      ),
+    };
   }
   fail(`${path}.content_kind`, "unknown guided interaction content");
 }
@@ -5072,10 +5390,105 @@ function normalizeGuidedReferencePreviewV1(value: unknown, path: string) {
   return { source_kind: expectLiteral(record.source_kind, new Set(["node", "image_asset"] as const), `${path}.source_kind`), source_id: expectNonEmptyString(record.source_id, `${path}.source_id`), display_name: expectNonEmptyString(record.display_name, `${path}.display_name`), media_type: expectLiteral(record.media_type, new Set(["text", "image", "video", "audio"] as const), `${path}.media_type`) };
 }
 
+function normalizeGuidedReferenceCandidateV2(value: unknown, path: string): GuidedReferenceCandidateV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "entity_id",
+    "member_id",
+    "asset_id",
+    "asset_version_id",
+    "media_type",
+    "display_name",
+    "preview_url",
+    "content_url",
+    "reference_kind",
+    "semantic_reference_role",
+    "reference_purpose",
+    "selectable",
+  ], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const semanticReferenceRole = expectLiteral(
+    record.semantic_reference_role,
+    new Set(["character_reference", "scene_reference"] as const),
+    `${path}.semantic_reference_role`,
+  );
+  const referencePurpose = expectLiteral(
+    record.reference_purpose,
+    new Set(["identity_guidance", "environment_guidance"] as const),
+    `${path}.reference_purpose`,
+  );
+  const expectedRole = referenceKind === "character_main" ? "character_reference" : "scene_reference";
+  const expectedPurpose = referenceKind === "character_main" ? "identity_guidance" : "environment_guidance";
+  if (semanticReferenceRole !== expectedRole || referencePurpose !== expectedPurpose) {
+    fail(path, "reference candidate role and purpose do not match its kind");
+  }
+  const previewUrl = nullableBrowserSafeUrl(record.preview_url, `${path}.preview_url`);
+  const contentUrl = nullableBrowserSafeUrl(record.content_url, `${path}.content_url`);
+  if (!previewUrl || !contentUrl) fail(path, "reference candidate requires browser-safe preview and content URLs");
+  return {
+    entity_id: nullableStringWithDefault(record.entity_id, `${path}.entity_id`),
+    member_id: nullableStringWithDefault(record.member_id, `${path}.member_id`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    asset_version_id: expectNonEmptyString(record.asset_version_id, `${path}.asset_version_id`),
+    media_type: expectLiteral(record.media_type, new Set(["image"] as const), `${path}.media_type`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    preview_url: previewUrl,
+    content_url: contentUrl,
+    reference_kind: referenceKind,
+    semantic_reference_role: semanticReferenceRole,
+    reference_purpose: referencePurpose,
+    selectable: expectBoolean(record.selectable, `${path}.selectable`),
+  };
+}
+
+export function normalizeGuidedReferenceCandidateListResponseV2(
+  value: unknown,
+  path = "referenceCandidates",
+): GuidedReferenceCandidateListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "reference_kind", "scope", "items", "next_cursor"], path);
+  const referenceKind = expectLiteral(
+    record.reference_kind,
+    new Set(["character_main", "scene_main"] as const),
+    `${path}.reference_kind`,
+  );
+  const scope = expectLiteral(
+    record.scope,
+    new Set(["project", "mine", "recommended"] as const),
+    `${path}.scope`,
+  );
+  const items = expectArray(record.items, `${path}.items`).map((item, index) => {
+    const candidate = normalizeGuidedReferenceCandidateV2(item, `${path}.items[${index}]`);
+    if (candidate.reference_kind !== referenceKind) {
+      fail(`${path}.items[${index}].reference_kind`, "does not match response reference_kind");
+    }
+    if (scope === "project" && (candidate.entity_id !== null || candidate.member_id !== null)) {
+      fail(`${path}.items[${index}]`, "project candidates cannot carry catalog provenance");
+    }
+    if (scope !== "project" && (!candidate.entity_id || !candidate.member_id)) {
+      fail(`${path}.items[${index}]`, "catalog candidates require entity and member provenance");
+    }
+    return candidate;
+  });
+  const identityKeys = new Set(items.map((item) => `${item.asset_id}:${item.asset_version_id}`));
+  if (identityKeys.size !== items.length) fail(`${path}.items`, "candidate AssetVersions must be unique");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    reference_kind: referenceKind,
+    scope,
+    items,
+    next_cursor: nullableStringWithDefault(record.next_cursor, `${path}.next_cursor`),
+  };
+}
+
 function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwaitingV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["awaiting_id", "workflow_id", "session_id", "checkpoint_id", "kind", "requires_user_action", "resume_policy", "interaction_id", "node_ids", "stage", "stage_revision", "created_at"], path);
-  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "manual_node_run", "milestone_idle"]), `${path}.kind`);
+  const kind = expectLiteral(record.kind, new Set<GuidanceAwaitingV1["kind"]>(["clarification", "concept_selection", "product_source", "media_review", "reference_source", "manual_node_run", "milestone_idle"]), `${path}.kind`);
   const requiresUserAction = expectBoolean(record.requires_user_action, `${path}.requires_user_action`);
   const resumePolicy = expectLiteral(record.resume_policy, new Set<GuidanceAwaitingV1["resume_policy"]>(["submit_interaction", "node_terminal", "next_user_message", "explicit_resume"]), `${path}.resume_policy`);
   const interactionId = nullableStringWithDefault(record.interaction_id, `${path}.interaction_id`);
@@ -5085,6 +5498,12 @@ function normalizeGuidanceAwaitingV1(value: unknown, path: string): GuidanceAwai
     && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
   ) {
     fail(path, "invalid Product source awaiting authority");
+  }
+  if (
+    kind === "reference_source"
+    && (!requiresUserAction || resumePolicy !== "submit_interaction" || !interactionId || nodeIds.length !== 0)
+  ) {
+    fail(path, "invalid reference source awaiting authority");
   }
   return {
     awaiting_id: expectNonEmptyString(record.awaiting_id, `${path}.awaiting_id`),
@@ -5115,6 +5534,9 @@ function normalizeGuidedProductionJourneyV2(
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
     "policy_version",
+    "journey_policy_id",
+    "journey_policy_revision",
+    "planning_wave_id",
     "stage",
     "stage_status",
     "stage_revision",
@@ -5131,6 +5553,28 @@ function normalizeGuidedProductionJourneyV2(
   }
   if (new Set(decisions.map((item) => item.occurrence_id)).size !== decisions.length) {
     fail(`${path}.decisions`, "occurrence IDs must be unique");
+  }
+  const journeyPolicyId = record.journey_policy_id === undefined
+    ? undefined
+    : record.journey_policy_id === null
+      ? null
+      : expectLiteral(
+        record.journey_policy_id,
+        new Set(["proposal_submit_auto_result_v1"] as const),
+        `${path}.journey_policy_id`,
+      );
+  const journeyPolicyRevision = record.journey_policy_revision === undefined
+    ? undefined
+    : record.journey_policy_revision === null
+      ? null
+      : boundedInteger(record.journey_policy_revision, `${path}.journey_policy_revision`, 1, 32);
+  const planningWaveId = record.planning_wave_id === undefined
+    ? undefined
+    : record.planning_wave_id === null
+      ? null
+      : expectNonEmptyString(record.planning_wave_id, `${path}.planning_wave_id`);
+  if (planningWaveId !== undefined && planningWaveId !== null && planningWaveId.length > 160) {
+    fail(`${path}.planning_wave_id`, "expected at most 160 characters");
   }
   const stage = expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`);
   const stageRevision = expectPositiveInteger(record.stage_revision, `${path}.stage_revision`);
@@ -5151,6 +5595,9 @@ function normalizeGuidedProductionJourneyV2(
       new Set(["fixed_ad_production_v2"] as const),
       `${path}.policy_version`,
     ),
+    ...(journeyPolicyId === undefined ? {} : { journey_policy_id: journeyPolicyId }),
+    ...(journeyPolicyRevision === undefined ? {} : { journey_policy_revision: journeyPolicyRevision }),
+    ...(planningWaveId === undefined ? {} : { planning_wave_id: planningWaveId }),
     stage,
     stage_status: expectLiteral(record.stage_status, GUIDED_JOURNEY_STAGE_STATUSES, `${path}.stage_status`),
     stage_revision: stageRevision,
@@ -5401,6 +5848,7 @@ function normalizeAgentCanvasChatTimelineEntryV2(
       "metadata",
       "command_plan",
       "action_receipt",
+      "actionable_failure",
       "created_at",
       ...additionalAllowedFields,
     ],
@@ -5441,6 +5889,10 @@ function normalizeAgentCanvasChatTimelineEntryV2(
     action_receipt: entry.action_receipt === null || entry.action_receipt === undefined
       ? null
       : normalizeAgentActionReceiptV2(entry.action_receipt, `${path}.action_receipt`),
+    actionable_failure: normalizeOptionalActionableFailureV1(
+      entry.actionable_failure,
+      `${path}.actionable_failure`,
+    ),
     created_at: expectIsoDateTimeString(entry.created_at, `${path}.created_at`),
   };
 }
@@ -5608,6 +6060,7 @@ export function normalizeAgentCanvasChatTurnV2(
       "retry_of_turn_id",
       "retry_attempt_no",
       "retryable",
+      "actionable_failure",
       "operation_stage",
       "operation_failure",
       "created_at",
@@ -5637,6 +6090,14 @@ export function normalizeAgentCanvasChatTurnV2(
   if (status === "superseded" && retryable) {
     fail(`${path}.retryable`, "superseded turns are terminal and non-retryable");
   }
+  const actionableFailure = normalizeOptionalActionableFailureV1(
+    record.actionable_failure,
+    `${path}.actionable_failure`,
+  );
+  assertRetryableMatchesDisposition(retryable, actionableFailure, `${path}.retryable`);
+  const operationFailure = record.operation_failure === undefined || record.operation_failure === null
+    ? null
+    : normalizeAgentOperationFailureV2(record.operation_failure, `${path}.operation_failure`);
   return {
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -5663,12 +6124,11 @@ export function normalizeAgentCanvasChatTurnV2(
       ? 1
       : expectPositiveInteger(record.retry_attempt_no, `${path}.retry_attempt_no`),
     retryable,
+    actionable_failure: actionableFailure,
     operation_stage: record.operation_stage === undefined
       ? null
       : nullableString(record.operation_stage, `${path}.operation_stage`),
-    operation_failure: record.operation_failure === undefined || record.operation_failure === null
-      ? null
-      : normalizeAgentOperationFailureV2(record.operation_failure, `${path}.operation_failure`),
+    operation_failure: operationFailure,
     created_at: expectNonEmptyString(record.created_at, `${path}.created_at`),
     updated_at: expectNonEmptyString(record.updated_at, `${path}.updated_at`),
   };

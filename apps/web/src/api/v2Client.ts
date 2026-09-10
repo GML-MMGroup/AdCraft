@@ -8,6 +8,9 @@ import type {
   AgentCanvasGuidedActionApplyRequestV2,
   GuidedInteractionAcceptedV1,
   GuidedInteractionSubmitRequestV1,
+  GuidedReferenceCandidateListResponseV2,
+  GuidedReferenceCandidateScopeV2,
+  GuidedReferenceKindV1,
   GuidanceAdvanceRequestV1,
   GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
@@ -43,10 +46,6 @@ import type {
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
   ConceptProposalV2,
-  CanvasVariationDraftResponseV2,
-  CanvasVariationDraftUpsertV2,
-  CanvasVariationMaterializeRequestV2,
-  CanvasVariationMaterializeResponseV2,
   CanvasRunAcceptedV2,
   CanvasRunCancelRequestV2,
   CanvasRunCancelResponseV2,
@@ -174,6 +173,7 @@ import {
   normalizeDecisionBundleV2,
   normalizeGuidedSessionStateV2,
   normalizeGuidedInteractionAcceptedV1,
+  normalizeGuidedReferenceCandidateListResponseV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
@@ -191,8 +191,6 @@ import {
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
   normalizeCanvasPostReadyCheckpointV2,
-  normalizeCanvasVariationDraftResponseV2,
-  normalizeCanvasVariationMaterializeResponseV2,
   normalizeCanvasRunAcceptedV2,
   normalizeCanvasRunCancelResponseV2,
   normalizeCanvasRuntimeEventsResponseV2,
@@ -212,9 +210,17 @@ const inFlightMetadataReads = new Map<string, Promise<unknown>>();
 
 type V2PreconditionTarget = { resource: V2AuthoringResource; id: string };
 type V2RequestBehavior = {
+  conflictHandling?: "global" | "caller";
   captureAuthoringEtag?: boolean;
   explicitAuthoringPrecondition?: V2PreconditionTarget;
   allowMissingAuthoringEtag?: boolean;
+  allowNotModified?: boolean;
+};
+
+export type V2ConditionalEtaggedResponse<T> = {
+  value: T | null;
+  etag: string | null;
+  notModified: boolean;
 };
 
 export class V2ApiError extends Error {
@@ -346,7 +352,7 @@ async function requestV2Response(
   path: string,
   options: RequestInit = {},
   optionsByBehavior: V2RequestBehavior = {},
-): Promise<{ payload: unknown; etag: string | null }> {
+): Promise<{ payload: unknown; etag: string | null; notModified: boolean }> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const method = (options.method ?? "GET").toUpperCase();
   const headers = new Headers(options.headers);
@@ -371,8 +377,9 @@ async function requestV2Response(
   } catch (error) {
     throw new V2NetworkError(error);
   }
-  const payload = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) {
+  const notModified = response.status === 304 && optionsByBehavior.allowNotModified === true;
+  const payload = response.status === 204 || notModified ? null : await response.json().catch(() => null);
+  if (!response.ok && !notModified) {
     const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : payload;
     const detailRecord = asRecord(detail);
     const code = typeof detailRecord?.code === "string" ? detailRecord.code : undefined;
@@ -390,26 +397,28 @@ async function requestV2Response(
     const suggestedActions = recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions);
     const stage = firstString(detailRecord?.stage, details.stage);
     if (precondition && (response.status === 412 || response.status === 428)) {
-      const { v2AuthoringConflictStore } = await import("./v2AuthoringConflictStore.ts");
-      const retryOptions = { ...options, headers: new Headers(options.headers) };
-      retryOptions.headers.delete("If-Match");
       try {
         await fetchCurrentAuthoringEtag(precondition);
       } catch {
         // Keep the original precondition error actionable even when the refresh cannot complete.
       }
-      v2AuthoringConflictStore.raise({
-        target: precondition,
-        operationPath: path,
-        message,
-        retry: async () => {
-          await requestV2Response(path, retryOptions, {
-            ...optionsByBehavior,
-            allowMissingAuthoringEtag: false,
-          });
-        },
-        discard: async () => {},
-      });
+      if (optionsByBehavior.conflictHandling !== "caller") {
+        const { v2AuthoringConflictStore } = await import("./v2AuthoringConflictStore.ts");
+        const retryOptions = { ...options, headers: new Headers(options.headers) };
+        retryOptions.headers.delete("If-Match");
+        v2AuthoringConflictStore.raise({
+          target: precondition,
+          operationPath: path,
+          message,
+          retry: async () => {
+            await requestV2Response(path, retryOptions, {
+              ...optionsByBehavior,
+              allowMissingAuthoringEtag: false,
+            });
+          },
+          discard: async () => {},
+        });
+      }
     }
     throw new V2ApiError({
       status: response.status,
@@ -423,10 +432,10 @@ async function requestV2Response(
     });
   }
   const etag = response.headers.get("etag");
-  if (optionsByBehavior.captureAuthoringEtag !== false) {
+  if (!notModified && optionsByBehavior.captureAuthoringEtag !== false) {
     captureAuthoringEtag(path, payload, etag, precondition);
   }
-  return { payload, etag };
+  return { payload, etag, notModified };
 }
 
 export function v2AuthoringPreconditionTarget(path: string, method: string): V2PreconditionTarget | null {
@@ -443,7 +452,6 @@ export function v2AuthoringPreconditionTarget(path: string, method: string): V2P
     suffix === "/layout"
     || suffix === "/agent-settings"
     || suffix === "/run"
-    || suffix === "/runs"
     || suffix === "/chat-target"
     || suffix.startsWith("/chat/")
     || suffix === "/skill-runs"
@@ -528,6 +536,22 @@ async function requestV2WithEtag<T>(
   return {
     value: normalize ? normalize(response.payload) : (response.payload as T),
     etag: response.etag,
+  };
+}
+
+async function requestV2ConditionalWithEtag<T>(
+  path: string,
+  options: RequestInit,
+  normalize: (value: unknown) => T,
+): Promise<V2ConditionalEtaggedResponse<T>> {
+  const response = await requestV2Response(path, options, {
+    captureAuthoringEtag: false,
+    allowNotModified: true,
+  });
+  return {
+    value: response.notModified ? null : normalize(response.payload),
+    etag: response.etag,
+    notModified: response.notModified,
   };
 }
 
@@ -657,48 +681,6 @@ export const v2Api = {
     );
   },
 
-  saveAgentCanvasVariationDraft(
-    workflowId: string,
-    nodeId: string,
-    request: CanvasVariationDraftUpsertV2,
-  ): Promise<CanvasVariationDraftResponseV2> {
-    return requestV2WithEtag(
-      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
-      {
-        method: "PUT",
-        body: JSON.stringify(request),
-      },
-      normalizeCanvasVariationDraftResponseV2,
-    ).then((response) => response.value);
-  },
-
-  discardAgentCanvasVariationDraft(
-    workflowId: string,
-    nodeId: string,
-  ): Promise<void> {
-    return requestV2WithEtag<void>(
-      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
-      { method: "DELETE" },
-    ).then(() => undefined);
-  },
-
-  materializeAgentCanvasVariationDraft(
-    workflowId: string,
-    nodeId: string,
-    request: CanvasVariationMaterializeRequestV2,
-    idempotencyKey: string,
-  ): Promise<CanvasVariationMaterializeResponseV2> {
-    return requestV2WithEtag(
-      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft/materialize`,
-      {
-        method: "POST",
-        headers: idempotencyHeaders(idempotencyKey),
-        body: JSON.stringify(request),
-      },
-      normalizeCanvasVariationMaterializeResponseV2,
-    ).then((response) => response.value);
-  },
-
   deleteAgentCanvasNode(
     workflowId: string,
     nodeId: string,
@@ -713,11 +695,13 @@ export const v2Api = {
   createAgentCanvasBinding(
     workflowId: string,
     request: CanvasBindingCreateRequestV2,
+    behavior: Pick<V2RequestBehavior, "conflictHandling"> = {},
   ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/bindings`,
       { method: "POST", body: JSON.stringify(request) },
       normalizeCanvasMutationResponseV2,
+      behavior,
     );
   },
 
@@ -797,6 +781,29 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/assets`,
       { signal: options.signal },
       normalizeProjectAssetListResponseV2,
+    );
+  },
+
+  listAgentCanvasReferenceCandidates(
+    workflowId: string,
+    options: {
+      referenceKind: GuidedReferenceKindV1;
+      scope: GuidedReferenceCandidateScopeV2;
+      cursor?: string | null;
+      query?: string | null;
+      signal?: AbortSignal;
+    },
+  ): Promise<GuidedReferenceCandidateListResponseV2> {
+    const params = new URLSearchParams({
+      reference_kind: options.referenceKind,
+      scope: options.scope,
+    });
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query?.trim()) params.set("query", options.query.trim());
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/reference-candidates?${params.toString()}`,
+      { signal: options.signal },
+      normalizeGuidedReferenceCandidateListResponseV2,
     );
   },
 
@@ -1304,6 +1311,23 @@ export const v2Api = {
     const query = new URLSearchParams({ status, limit: String(limit) });
     if (cursor) query.set("cursor", cursor);
     return requestV2(`/projects?${query.toString()}`, {}, normalizeProjectV2ListResponse);
+  },
+
+  listProjectsWithEtag(
+    status: ProjectV2Status = "active",
+    limit = 100,
+    cursor?: string | null,
+    ifNoneMatch?: string | null,
+  ): Promise<V2ConditionalEtaggedResponse<ProjectV2ListResponse>> {
+    const query = new URLSearchParams({ status, limit: String(limit) });
+    if (cursor) query.set("cursor", cursor);
+    const headers = new Headers();
+    if (ifNoneMatch) headers.set("If-None-Match", ifNoneMatch);
+    return requestV2ConditionalWithEtag(
+      `/projects?${query.toString()}`,
+      { headers },
+      normalizeProjectV2ListResponse,
+    );
   },
 
   projectWithEtag(projectId: string): Promise<V2EtaggedResponse<ProjectV2>> {

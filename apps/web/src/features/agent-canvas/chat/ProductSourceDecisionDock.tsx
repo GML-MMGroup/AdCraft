@@ -29,6 +29,7 @@ export interface ProductSourceDecisionDockProps {
   onSubmit: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   pendingProductMainHandoff?: ProductMainHandoff | null;
   onClearProductMainHandoff?: () => void;
+  onProjectsRefresh?: () => Promise<boolean> | void;
 }
 
 type ProductChoice = "upload" | "generate";
@@ -40,6 +41,7 @@ export function ProductSourceDecisionDock({
   onSubmit,
   pendingProductMainHandoff = null,
   onClearProductMainHandoff,
+  onProjectsRefresh,
 }: ProductSourceDecisionDockProps) {
   const content = interaction.content.content_kind === "product_source"
     ? interaction.content
@@ -161,6 +163,7 @@ export function ProductSourceDecisionDock({
       if (accepted) {
         onClearProductMainHandoff?.();
         await assets.retry();
+        await onProjectsRefresh?.();
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to prepare the Product source.";
