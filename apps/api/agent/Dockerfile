@@ -19,7 +19,7 @@ COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/skills ./skills
-COPY --from=build /app/dist/src/generated/*.json ./dist/src/generated/
+COPY --from=build /app/src/generated/*.json ./dist/src/generated/
 COPY --from=build /app/skills ./dist/skills
 ENV AGENT_RUNTIME_HOST=0.0.0.0 NODE_ENV=production
 EXPOSE 8765
