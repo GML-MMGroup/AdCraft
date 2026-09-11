@@ -29,12 +29,41 @@ export function Layout({ children, workflowControls }: LayoutProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
   const [resolvingConflict, setResolvingConflict] = useState(false);
-  const { apiOnline, apiMessage, storageWarning } = useHealth();
+  const { apiOnline, apiMessage, apiConfig, storageWarning } = useHealth();
   const location = useLocation();
   const navigate = useNavigate();
   const isWorkflowRoute = useMatch("/workflow/*") !== null;
   const usesClearGlassRail = ["/", "/projects", "/assets", "/trash"].includes(location.pathname)
     || location.pathname.startsWith("/workflow");
+
+  const configReady = apiConfig !== null && apiConfig.coreMissing.length === 0;
+  const badgeState = apiOnline === false
+    ? "offline"
+    : apiOnline === null
+      ? "checking"
+      : apiConfig === null
+        ? "online"
+        : configReady
+          ? "online"
+          : apiConfig.configured.length > 0
+            ? "partial"
+            : "unconfigured";
+  const badgeLabel = badgeState === "offline"
+    ? "Demo mode"
+    : badgeState === "checking"
+      ? "Checking"
+      : badgeState === "online"
+        ? "API ready"
+        : badgeState === "partial"
+          ? `API config ${apiConfig.configured.length}/${apiConfig.configured.length + apiConfig.coreMissing.length}`
+          : "API not configured";
+  const badgeTitle = apiOnline === false || apiConfig === null
+    ? apiMessage
+    : [
+        apiMessage,
+        `已配置能力: ${apiConfig.configured.join(", ") || "无"}`,
+        apiConfig.coreMissing.length ? `缺少: ${apiConfig.coreMissing.join(", ")}` : null,
+      ].filter(Boolean).join("\n");
 
   useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
 
@@ -93,8 +122,8 @@ export function Layout({ children, workflowControls }: LayoutProps) {
               <img className="brand-logo" src="/brand/adcraft-logo-wordmark.webp" alt="AdCraft" />
             </picture>
           </Link>
-          <div className={`api-chip ${apiOnline ? "is-online" : apiOnline === false ? "is-offline" : ""}`} title={apiMessage}>
-            {apiOnline ? "API ready" : apiOnline === false ? "Demo mode" : "Checking"}
+          <div className={`api-chip ${badgeState === "online" ? "is-online" : badgeState === "offline" || badgeState === "unconfigured" ? "is-offline" : badgeState === "partial" ? "is-partial" : ""}`} title={badgeTitle}>
+            {badgeLabel}
           </div>
           {storageWarning ? (
             <div className="storage-warning" role="alert" title={storageWarning}>

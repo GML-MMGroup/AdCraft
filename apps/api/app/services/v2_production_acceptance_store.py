@@ -396,7 +396,9 @@ class V2ProductionAcceptanceStore:
 
 
 def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
+    if not hasattr(os, "O_DIRECTORY"):
+        return  # Windows cannot open directory handles for fsync.
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(descriptor)
     finally:

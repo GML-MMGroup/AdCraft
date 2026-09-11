@@ -289,7 +289,8 @@ class DotenvCredentialStore:
         )
         temporary_path = Path(temporary_path_string)
         try:
-            os.fchmod(descriptor, mode)
+            if hasattr(os, "fchmod"):
+                os.fchmod(descriptor, mode)
             with os.fdopen(descriptor, "wb") as temporary_file:
                 temporary_file.write(content)
                 temporary_file.flush()
@@ -344,8 +345,9 @@ def _dotenv_assignment(field: str, value: str, line_ending: str) -> str:
 
 
 def _fsync_directory(directory: Path) -> None:
-    directory_flag = getattr(os, "O_DIRECTORY", 0)
-    descriptor = os.open(directory, os.O_RDONLY | directory_flag)
+    if not hasattr(os, "O_DIRECTORY"):
+        return  # Windows cannot open directory handles for fsync.
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(descriptor)
     finally:
