@@ -141,8 +141,12 @@ def _sha256(path: Path) -> str:
 
 
 def _fsync_file(path: Path) -> None:
-    with path.open("rb") as source:
-        os.fsync(source.fileno())
+    # Open with write access: Windows FlushFileBuffers rejects read-only handles.
+    descriptor = os.open(path, os.O_RDWR)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _storage_error(code: str, message: str) -> V2PersistenceError:

@@ -241,7 +241,8 @@ class V2FinalCompositionPublicationService:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.name}.tmp")
         shutil.copyfile(publish_source, temporary)
-        with temporary.open("rb") as handle:
+        # r+b: Windows FlushFileBuffers rejects read-only handles.
+        with temporary.open("r+b") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, target)
         accepted_timeline = provider_payload.get("accepted_timeline")
