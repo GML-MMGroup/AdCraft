@@ -617,11 +617,11 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
-        provider_model_id="doubao-seedance-2-5-260128",
+        provider_model_id="doubao-seedance-2-5-260628",
         display_name="Doubao Seedance 2.5",
         capability="video",
         capability_metadata=_video_capability_metadata(
-            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260128")
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260628")
         ),
     ),
     TrustedModelManifest(

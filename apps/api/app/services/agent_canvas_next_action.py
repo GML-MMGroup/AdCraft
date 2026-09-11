@@ -382,26 +382,11 @@ class DurableNextActionExecutionService:
                     ),
                 )
                 message = command.message
-                if self._latest_agent_message_equals(envelope.workflow_id, message):
-                    # The same notice is already the newest chat message;
-                    # republishing it on every next_action poll spams the
-                    # timeline while the user works on the failing nodes.
-                    message = None
             self._conversations.complete_turn(
                 envelope.next_action_turn_id,
                 assistant_message=message,
             )
             return ValidatedNextActionV1(command=command)
-
-    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
-        """Return whether the newest chat message is exactly this agent notice."""
-
-        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
-        for entry in reversed(timeline.items):
-            if entry.entry_type == "message" and entry.speaker == "adcraft_video_agent":
-                return entry.content.strip() == message.strip()
-        return False
-
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         policy = self._policy.evaluate(
             assemble_capability_policy_context(
