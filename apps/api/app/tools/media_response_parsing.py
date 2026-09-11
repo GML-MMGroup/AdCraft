@@ -26,6 +26,11 @@ def _media_api_error(
     message = "\n".join(
         [
             "media_api_failed:",
+            *(
+                [f"user_action={hint}"]
+                if (hint := _provider_user_action_hint(response_body, exc.code)) is not None
+                else []
+            ),
             "provider=volcengine",
             f"endpoint={endpoint}",
             f"status={exc.code}",
@@ -34,6 +39,34 @@ def _media_api_error(
         ]
     )
     return MediaApiError(message=message, metadata=metadata)
+
+
+def _provider_user_action_hint(response_body: str, status: int) -> str | None:
+    """Return a short English fix-it hint for well-known provider rejections."""
+
+    lowered = response_body.lower()
+    if "modelnotopen" in lowered or "has not activated the model" in lowered:
+        return (
+            "This model is not activated on your Volcengine Ark account. "
+            "Open the Ark Console -> Activation Management, activate this model, "
+            "then retry. Alternatively, pick a model that is already activated."
+        )
+    if "invalidendpointormodel" in lowered:
+        return (
+            "This model id does not exist on Volcengine Ark (it may be deprecated "
+            "or a wrong version). Select a different model and retry."
+        )
+    if "invalid api key" in lowered or (status == 401 and "unauthorized" in lowered):
+        return (
+            "The provider rejected the API key. "
+            "Check the API key configured in the API Space."
+        )
+    if status == 429:
+        return (
+            "The provider rate limit or quota was hit. "
+            "Wait a moment and retry, or check your plan quota."
+        )
+    return None
 
 
 def _sanitize_secret_values(value: Any) -> Any:
