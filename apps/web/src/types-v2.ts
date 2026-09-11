@@ -3117,6 +3117,7 @@ export interface EditingPreviewClipV2 {
   node_id: string | null;
   asset_id: string | null;
   status: CanvasNodeStatusV2;
+  availability: "pending" | "available" | "failed";
   display_order: number;
   preview_url: string | null;
   duration_seconds: number | null;
@@ -3128,6 +3129,7 @@ export interface EditingPreviewV2 {
   bgm_binding_id: string | null;
   bgm_node_id: string | null;
   bgm_asset_id: string | null;
+  bgm_availability: "pending" | "available" | "failed" | null;
   estimated_duration_seconds: number;
   warnings: string[];
 }

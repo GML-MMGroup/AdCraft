@@ -453,6 +453,7 @@ const EDITING_AUDIO_CODEC = new Set<EditingOutputSettingsV2["audio_codec"]>(["aa
 const EDITING_CONTAINER = new Set<EditingOutputSettingsV2["container"]>(["mp4"]);
 const EDITING_TRANSITIONS = new Set<EditingVideoEntryV2["transition"]>(["cut", "fade"]);
 const EDITING_FIT_MODES = new Set<EditingVideoEntryV2["fit_mode"]>(["fit", "fill"]);
+const EDITING_SOURCE_AVAILABILITIES = new Set<"pending" | "available" | "failed">(["pending", "available", "failed"]);
 const RESOLVED_TEXT_BINDING_KINDS = new Set<ResolvedTextInputSnapshotV2["binding_kind"]>(["text_context"]);
 const RESOLVED_DOCUMENT_KINDS = new Set<ResolvedTextInputSnapshotV2["document_kind"]>(["text", "script"]);
 const RESOLVED_MEDIA_BINDING_KINDS = new Set<ResolvedMediaInputSnapshotV2["binding_kind"]>([
@@ -4586,13 +4587,16 @@ export function normalizeEditingSkippedInputV2(value: unknown, path = "editing.s
 
 export function normalizeEditingPreviewClipV2(value: unknown, path = "editing.previewClip"): EditingPreviewClipV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["reference_id", "binding_id", "node_id", "asset_id", "status", "display_order", "preview_url", "duration_seconds", "warning"], path);
+  forbidUnknownFields(record, ["reference_id", "binding_id", "node_id", "asset_id", "status", "availability", "display_order", "preview_url", "duration_seconds", "warning"], path);
   return {
     reference_id: expectNonEmptyString(record.reference_id, `${path}.reference_id`),
     binding_id: record.binding_id === undefined ? null : nullableString(record.binding_id, `${path}.binding_id`),
     node_id: record.node_id === undefined ? null : nullableString(record.node_id, `${path}.node_id`),
     asset_id: record.asset_id === undefined ? null : nullableString(record.asset_id, `${path}.asset_id`),
     status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
+    availability: record.availability === undefined
+      ? "pending"
+      : expectLiteral(record.availability, EDITING_SOURCE_AVAILABILITIES, `${path}.availability`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
     preview_url: nullableString(record.preview_url, `${path}.preview_url`),
     duration_seconds: nullableFiniteNumber(record.duration_seconds, `${path}.duration_seconds`),
@@ -4602,12 +4606,15 @@ export function normalizeEditingPreviewClipV2(value: unknown, path = "editing.pr
 
 export function normalizeEditingPreviewV2(value: unknown, path = "editing.preview"): EditingPreviewV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["clips", "bgm_binding_id", "bgm_node_id", "bgm_asset_id", "estimated_duration_seconds", "warnings"], path);
+  forbidUnknownFields(record, ["clips", "bgm_binding_id", "bgm_node_id", "bgm_asset_id", "bgm_availability", "estimated_duration_seconds", "warnings"], path);
   return {
     clips: expectArray(record.clips, `${path}.clips`).map((item, index) => normalizeEditingPreviewClipV2(item, `${path}.clips[${index}]`)),
     bgm_binding_id: record.bgm_binding_id === undefined ? null : nullableString(record.bgm_binding_id, `${path}.bgm_binding_id`),
     bgm_node_id: record.bgm_node_id === undefined ? null : nullableString(record.bgm_node_id, `${path}.bgm_node_id`),
     bgm_asset_id: record.bgm_asset_id === undefined ? null : nullableString(record.bgm_asset_id, `${path}.bgm_asset_id`),
+    bgm_availability: record.bgm_availability === undefined
+      ? null
+      : expectLiteral(record.bgm_availability, EDITING_SOURCE_AVAILABILITIES, `${path}.bgm_availability`),
     estimated_duration_seconds: expectFiniteNumber(record.estimated_duration_seconds, `${path}.estimated_duration_seconds`),
     warnings: optionalStringArray(record.warnings, `${path}.warnings`, []),
   };
