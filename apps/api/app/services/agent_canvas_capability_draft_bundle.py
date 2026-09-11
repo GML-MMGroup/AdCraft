@@ -868,7 +868,10 @@ def _stage_parameters(
                 duration = float(total_duration) / segment_count
         if duration is None:
             duration = 5
-        parameters["duration_seconds"] = min(15.0, max(1.0, float(duration)))
+        # Provider parameter matrices declare duration_seconds as an integer
+        # (value_type=integer); round here so divided segment durations
+        # (e.g. 30s / 7 segments) never produce non-integral values.
+        parameters["duration_seconds"] = max(1, min(15, round(float(duration))))
         aspect_ratio = _explicit_constraint(context, "aspect_ratio")
         if isinstance(aspect_ratio, str) and aspect_ratio.strip():
             parameters["aspect_ratio"] = aspect_ratio.strip()
@@ -880,7 +883,7 @@ def _stage_parameters(
             parameters["generate_audio"] = generate_audio
     elif capability_id == "bgm_direction":
         duration = context.capability_facts.get("duration_seconds", 30)
-        parameters["duration_seconds"] = max(1.0, float(duration))
+        parameters["duration_seconds"] = max(1, round(float(duration)))
     return parameters
 
 
