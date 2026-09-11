@@ -417,6 +417,41 @@ shasum -a 256 -c adcraft-recommended-assets-v1.0.0.zip.sha256
 
 Windows 用户可在 PowerShell 中运行 `Get-FileHash .\adcraft-recommended-assets-v1.0.0.zip -Algorithm SHA256`，将结果与 `.sha256` 文件中的哈希值对比。校验不一致时不要使用该资源包。
 
+### 🌐 Docker 代理与国内网络配置
+
+国内用户通常会使用代理来加速 Docker 镜像拉取。可以在 **Docker Desktop → Settings → Resources → Proxies** 中启用代理，镜像下载速度会有明显提升。
+
+但请注意：AdCraft 使用的 AI 服务商（SiliconFlow、火山方舟、天谱乐等）均为**国内服务**，如果让容器的全部流量都经过代理链路，会出现连接被中断、延迟剧烈抖动等问题，workflow 运行时可能报 `APIConnectionError` 或 `Agent provider transport failed`。因此需要把国内服务商域名加入代理配置的**绕过列表（No Proxy）**，让它们直连：
+
+1. Docker Desktop → **Settings → Resources → Proxies**，将代理模式切换为 **Manual proxy configuration**（System Proxy 模式下没有绕过列表）。
+2. 按下表填写（端口以你的代理软件实际监听端口为准，例如 FlClash 默认 `7897`）：
+
+| 配置项 | 值 |
+| --- | --- |
+| Web Server (HTTP) | `http://127.0.0.1:7897` |
+| Secure Web Server (HTTPS) | `http://127.0.0.1:7897` |
+| No Proxy（绕过列表） | `siliconflow.cn,volces.com,tianpuyue.cn,minimaxi.chat,webhook.site,localhost,127.0.0.1` |
+
+3. 点击 **Apply & Restart**，等待 Docker 与容器重启完成。
+
+绕过列表中各域名的用途：
+
+| 域名 | 用途 |
+| --- | --- |
+| `siliconflow.cn` | SiliconFlow 文本大模型（GLM 等） |
+| `volces.com` | 火山方舟 API 与图片/视频结果下载（根域名覆盖全部子域） |
+| `tianpuyue.cn` | 天谱乐 BGM 生成 |
+| `minimaxi.chat` | MiniMax（可选） |
+| `webhook.site` | BGM 异步生成回调中转 |
+
+配置完成后的路由效果：国内 AI 服务全部**直连**（稳定、低延迟），Docker 镜像拉取与 GitHub 等外网访问**继续走代理**。
+
+注意事项：
+
+- 切换为手动模式后，**代理软件必须保持运行**，否则容器访问 GitHub、Docker Hub 等外网资源会失败。
+- 如果 workflow 中出现 `SSL: UNEXPECTED_EOF`、`APIConnectionError` 等传输类错误，通常是新的服务商域名没有加入绕过列表，把对应域名补充进去即可。
+- OpenRouter 等海外模型服务需要继续走代理，不要加入绕过列表。
+
 ---
 
 ## 🤝 贡献
