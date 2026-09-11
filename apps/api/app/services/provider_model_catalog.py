@@ -539,8 +539,8 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
-        provider_model_id="doubao-seedream-5-0-250128",
-        display_name="Doubao Seedream 5.0 Pro",
+        provider_model_id="doubao-seedream-5-0-260128",
+        display_name="Doubao Seedream 5.0",
         capability="image",
         capability_metadata={
             "accepted_input_types": ["text", "image"],
@@ -551,7 +551,7 @@ _TRUSTED_MANIFESTS = (
             "supports_provider_idempotency_token": False,
             "supports_remote_task_lookup": False,
             "adapter_profile": _image_profile(
-                "volcengine_ark:doubao-seedream-5-0-250128",
+                "volcengine_ark:doubao-seedream-5-0-260128",
                 adapter_id="ark-image-native",
                 transport_kind="ark_image_native",
             ),
@@ -617,11 +617,11 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
-        provider_model_id="doubao-seedance-2-5-260128",
+        provider_model_id="doubao-seedance-2-5-260628",
         display_name="Doubao Seedance 2.5",
         capability="video",
         capability_metadata=_video_capability_metadata(
-            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260128")
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-5-260628")
         ),
     ),
     TrustedModelManifest(

@@ -2097,6 +2097,14 @@ class AgentConversationService:
                     if journey_action.action == "prepare_editing"
                     else "Please provide the information required for the current stage."
                 )
+                if journey_action.action == "prepare_editing" and (
+                    self._latest_agent_message_equals(turn.workflow_id, message)
+                ):
+                    # Failing Editing nodes keep every next_action poll answering
+                    # with the same notice. Re-publishing it on each poll only
+                    # spams the timeline; finish this poll silently until the
+                    # user resolves the nodes or sends a new message.
+                    return self._complete_turn(turn_id, turn.workflow_id, None)
                 return self._complete_turn(turn_id, turn.workflow_id, message)
             if journey_action.action == "complete":
                 return self._complete_turn(
@@ -2530,6 +2538,22 @@ class AgentConversationService:
             continuation=None,
         )
         return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
+
+    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
+        """Return whether this exact agent notice was already published once.
+
+        Journey stage notices must fire once per stage, not once per poll: a
+        repeat would re-enter the poll loop every time the user sends any
+        message, so any historical copy of the notice suppresses a new one.
+        """
+
+        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
+        return any(
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.content.strip() == message.strip()
+            for entry in timeline.items
+        )
 
     def _complete_turn(
         self,

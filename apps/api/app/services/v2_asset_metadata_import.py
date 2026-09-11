@@ -215,7 +215,8 @@ class V2AssetMetadataImportService:
                 json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
                 encoding="utf-8",
             )
-            with temporary.open("rb") as handle:
+            # r+b: Windows FlushFileBuffers rejects read-only handles.
+            with temporary.open("r+b") as handle:
                 os.fsync(handle.fileno())
             os.replace(temporary, destination)
         except OSError as write_error:

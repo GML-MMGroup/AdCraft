@@ -214,6 +214,26 @@ class CapabilityReferencePlanner:
                 )
             )
 
+        if capability_id == "product_design" and role_policy is None:
+            # Auto-attach the user's uploaded Product source node so the generated
+            # Product main image keeps the uploaded product's identity. Only applies
+            # when no closed role policy owns this capability (product_main): the
+            # product_multiview derivative keeps its own product_main-only policy.
+            for node in workflow.nodes:
+                if node.creative_role != "product":
+                    continue
+                if node.metadata.get("source_input_kind") != "main":
+                    continue
+                reference = self._node_reference(
+                    node=node,
+                    target_type=target_type,
+                    priority=50,
+                    explicit=False,
+                    required=False,
+                )
+                if reference is not None:
+                    candidates.append(reference)
+
         if capability_id != "quick_media":
             priorities = _AUTO_ROLE_PRIORITY.get(capability_id, {})
             for node_id in selected_node_ids:
