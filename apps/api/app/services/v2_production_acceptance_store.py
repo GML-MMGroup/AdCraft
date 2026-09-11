@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import json
 import os
@@ -16,6 +15,7 @@ from app.schemas.workflow_v2_production_acceptance import (
     V2ProductionAcceptanceRunState,
 )
 from app.services.agent_trace import utc_now
+from app.services._file_lock_compat import lock_exclusive, unlock
 from app.services.v2_data_boundary import V2DataBoundaryError, validate_v2_data_path
 
 
@@ -318,11 +318,11 @@ class V2ProductionAcceptanceStore:
         lock_path = self._validated(self._control / "store.lock")
         try:
             with lock_path.open("a+b") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                lock_exclusive(lock_file)
                 try:
                     yield
                 finally:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    unlock(lock_file)
         except V2ProductionAcceptanceStoreError:
             raise
         except OSError as exc:

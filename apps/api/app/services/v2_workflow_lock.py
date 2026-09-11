@@ -5,8 +5,7 @@ from pathlib import Path
 import threading
 from typing import Iterator, TextIO
 
-import fcntl
-
+from app.services._file_lock_compat import lock_exclusive, unlock
 from app.services.v2_data_boundary import validate_v2_data_path
 
 
@@ -48,11 +47,11 @@ def v2_workflow_lock(data_dir: Path, workflow_id: str) -> Iterator[None]:
         workflow_root.mkdir(parents=True, exist_ok=True)
         lock_path = workflow_root / ".workflow.lock"
         handle = lock_path.open("a+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        lock_exclusive(handle)
         held[key] = (1, handle)
         try:
             yield
         finally:
             _, outer_handle = held.pop(key)
-            fcntl.flock(outer_handle.fileno(), fcntl.LOCK_UN)
+            unlock(outer_handle)
             outer_handle.close()
