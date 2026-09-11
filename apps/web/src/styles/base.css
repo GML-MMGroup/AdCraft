@@ -403,6 +403,14 @@ a {
   color: #8e6d3b;
 }
 
+.api-chip.is-partial {
+  color: #8e6d3b;
+}
+
+.api-chip.is-unconfigured {
+  color: #a64350;
+}
+
 .storage-warning {
   max-width: min(320px, 24vw);
   margin-right: 12px;
