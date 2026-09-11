@@ -599,20 +599,20 @@ _TRUSTED_MANIFESTS = (
     ),
     TrustedModelManifest(
         provider_id="volcengine_ark",
+        provider_model_id="doubao-seedance-2-0-mini-260615",
+        display_name="Doubao Seedance 2.0 Mini",
+        capability="video",
+        capability_metadata=_video_capability_metadata(
+            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260615")
+        ),
+    ),
+    TrustedModelManifest(
+        provider_id="volcengine_ark",
         provider_model_id="doubao-seedance-2-0-260128",
         display_name="Doubao Seedance 2.0",
         capability="video",
         capability_metadata=_video_capability_metadata(
             _ark_video_profile("volcengine_ark:doubao-seedance-2-0-260128")
-        ),
-    ),
-    TrustedModelManifest(
-        provider_id="volcengine_ark",
-        provider_model_id="doubao-seedance-2-0-mini-260128",
-        display_name="Doubao Seedance 2.0 Mini",
-        capability="video",
-        capability_metadata=_video_capability_metadata(
-            _ark_video_profile("volcengine_ark:doubao-seedance-2-0-mini-260128")
         ),
     ),
     TrustedModelManifest(
