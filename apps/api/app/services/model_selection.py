@@ -289,8 +289,16 @@ class ModelSelectionService:
 
 def _parameter_value_matches(descriptor: object, value: object) -> bool:
     value_type = getattr(descriptor, "value_type")
-    if value_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
-        return False
+    if value_type == "integer":
+        # Accept integral floats (e.g. 15.0) produced by clamping helpers;
+        # reject non-integral floats and booleans.
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, float):
+            if not value.is_integer():
+                return False
+        elif not isinstance(value, int):
+            return False
     if value_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
         return False
     if value_type in {"string", "enum"} and not isinstance(value, str):
