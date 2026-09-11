@@ -29,8 +29,6 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    env_file:
-      - ./apps/api/.env
     environment:
       HOME: /tmp
       MEDIA_DATA_DIR: /app/data
