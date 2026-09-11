@@ -2097,6 +2097,14 @@ class AgentConversationService:
                     if journey_action.action == "prepare_editing"
                     else "Please provide the information required for the current stage."
                 )
+                if journey_action.action == "prepare_editing" and (
+                    self._latest_agent_message_equals(turn.workflow_id, message)
+                ):
+                    # Failing Editing nodes keep every next_action poll answering
+                    # with the same notice. Re-publishing it on each poll only
+                    # spams the timeline; finish this poll silently until the
+                    # user resolves the nodes or sends a new message.
+                    return self._complete_turn(turn_id, turn.workflow_id, None)
                 return self._complete_turn(turn_id, turn.workflow_id, message)
             if journey_action.action == "complete":
                 return self._complete_turn(
@@ -2530,6 +2538,15 @@ class AgentConversationService:
             continuation=None,
         )
         return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
+
+    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
+        """Return whether the newest chat message is exactly this agent notice."""
+
+        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
+        for entry in reversed(timeline.items):
+            if entry.entry_type == "message" and entry.speaker == "adcraft_video_agent":
+                return entry.content.strip() == message.strip()
+        return False
 
     def _complete_turn(
         self,
