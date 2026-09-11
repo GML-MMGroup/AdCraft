@@ -2540,13 +2540,20 @@ class AgentConversationService:
         return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
 
     def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
-        """Return whether the newest chat message is exactly this agent notice."""
+        """Return whether this exact agent notice was already published once.
+
+        Journey stage notices must fire once per stage, not once per poll: a
+        repeat would re-enter the poll loop every time the user sends any
+        message, so any historical copy of the notice suppresses a new one.
+        """
 
         timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
-        for entry in reversed(timeline.items):
-            if entry.entry_type == "message" and entry.speaker == "adcraft_video_agent":
-                return entry.content.strip() == message.strip()
-        return False
+        return any(
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.content.strip() == message.strip()
+            for entry in timeline.items
+        )
 
     def _complete_turn(
         self,
