@@ -53,6 +53,56 @@ const interaction: GuidedInteractionV1 = {
 afterEach(cleanup);
 
 describe("QuestionnaireDecisionDock", () => {
+  it("compacts the production duration question without removing its choices", () => {
+    render(
+      <QuestionnaireDecisionDock
+        interaction={{
+          ...interaction,
+          content: {
+            content_kind: "questionnaire",
+            questions: [interaction.content.content_kind === "questionnaire"
+              ? interaction.content.questions[0]!
+              : (() => { throw new Error("Expected questionnaire fixture."); })()],
+          },
+        }}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.queryByText("Answer the questions to continue.")).toBeNull();
+    expect(screen.getByText("How long should the final ad be?").classList.contains("sr-only")).toBe(true);
+    expect(screen.queryByText("A concise cut.")).toBeNull();
+    expect(screen.queryByText("A balanced cut.")).toBeNull();
+    expect(screen.getByRole("radio", { name: "15 seconds" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /30 seconds/ })).toBeTruthy();
+    expect(screen.getByText("Recommended")).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: "Custom duration in seconds" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submit answers" })).toBeTruthy();
+  });
+
+  it("keeps explanatory copy for non-duration questionnaires", () => {
+    const toneQuestion = interaction.content.content_kind === "questionnaire"
+      ? interaction.content.questions[1]!
+      : (() => { throw new Error("Expected questionnaire fixture."); })();
+    render(
+      <QuestionnaireDecisionDock
+        interaction={{
+          ...interaction,
+          content: { content_kind: "questionnaire", questions: [toneQuestion] },
+        }}
+        pending={false}
+        issue={null}
+        onSubmit={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    expect(screen.getByText("Answer the questions to continue.")).toBeTruthy();
+    expect(screen.getByText("Which tone should lead?")).toBeTruthy();
+    expect(screen.getByText("Soft and human.")).toBeTruthy();
+  });
+
   it("tracks answered progress and submits the canonical answer union", () => {
     const submit = vi.fn().mockResolvedValue(true);
     render(<QuestionnaireDecisionDock interaction={interaction} pending={false} issue={null} onSubmit={submit} />);
