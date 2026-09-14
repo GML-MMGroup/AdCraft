@@ -70,6 +70,8 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     && preparationStatus !== undefined
     && preparationStatus !== "ready"
     && preparationStatus !== "not_applicable";
+  const preparingVideoPrompt = node.node_type === "video"
+    && (preparationStatus === "queued" || preparationStatus === "working");
 
   return (
     <NodeWorkbenchShell
@@ -81,6 +83,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           node={node}
           onWorkflowRefresh={onWorkflowRefresh}
           onRevise={() => promptEditorRef.current?.focus()}
+          hideActiveStatus={preparingVideoPrompt}
         />
       ) : null}
       {node.node_type === "text" ? (
@@ -120,6 +123,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           onOpenAssets={onOpenAssets}
           onUploadReferences={onUploadReferences}
           promptEditorRef={promptEditorRef}
+          preparingPrompt={preparingVideoPrompt}
         />
       ) : null}
       {node.node_type === "editing" ? (

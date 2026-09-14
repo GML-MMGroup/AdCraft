@@ -473,6 +473,46 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("shows the looping preparing copy inside a video prompt editor instead of a status banner", () => {
+    const baseNode = makeNode("video");
+    const node = {
+      ...baseNode,
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        ...baseNode.prompt_preparation!,
+        status: "working" as const,
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.queryByLabelText("Prompt preparation status")).toBeNull();
+    expect(screen.getByText("提示词正在准备...").classList.contains("agent-node-workbench__preparing-prompt")).toBe(true);
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    expect(editor.value).toBe("");
+    fireEvent.change(editor, { target: { value: "Keep the user's direction." } });
+    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+  });
+
+  it("removes the preparing copy as soon as a real video prompt is available or edited", () => {
+    const baseNode = makeNode("video");
+    const node = {
+      ...baseNode,
+      generation_prompt: "Create a warm product portrait for the campaign opening.",
+      prompt_preparation: {
+        ...baseNode.prompt_preparation!,
+        status: "ready" as const,
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.queryByText("提示词正在准备...")).toBeNull();
+    const editor = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    expect(editor.value).toBe(node.generation_prompt);
+  });
+
   it.each([
     ["queued", "Preparing generation prompt"],
     ["working", "Preparing generation prompt"],

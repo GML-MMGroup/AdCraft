@@ -19,10 +19,12 @@ export function NodePromptPreparationState({
   node,
   onWorkflowRefresh,
   onRevise,
+  hideActiveStatus = false,
 }: {
   node: CanvasNodeV2;
   onWorkflowRefresh?: () => Promise<void> | void;
   onRevise?: () => void;
+  hideActiveStatus?: boolean;
 }) {
   const preparation = promptPreparationForNode(node);
   const presentationStreamId = preparation?.status === "queued" || preparation?.status === "working"
@@ -45,6 +47,7 @@ export function NodePromptPreparationState({
   }, [onWorkflowRefresh, presentationStreamId, presentationStreams]);
 
   if (!preparation) return null;
+  if (hideActiveStatus && (preparation.status === "queued" || preparation.status === "working")) return null;
   if (preparation?.status === "ready" || preparation?.status === "not_applicable") return null;
 
   const summary = preparation.status === "waiting_user"
