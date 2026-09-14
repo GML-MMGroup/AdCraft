@@ -142,7 +142,7 @@ beforeEach(() => {
   panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult());
   panelMocks.prepareRoleVisual.mockReset();
   panelMocks.getRoleVisualSnapshot.mockReturnValue({
-    status: "ready", source: "/role.png", Artwork: null, error: null, generation: 1, fallbackKind: "none",
+    status: "ready", source: "/role.png", Artwork: () => null, error: null, generation: 1, fallbackKind: "none",
   });
 });
 
@@ -476,7 +476,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: "idle" });
   });
 
-  it("keeps the panel usable when the visual resource reports a module failure", async () => {
+  it("does not expose a failed working Role as a static or waiting visual", async () => {
     panelMocks.getRoleVisualSnapshot.mockReturnValue({
       status: "fallback", source: "/role.png", Artwork: null, error: "role chunk unavailable",
       generation: 1, fallbackKind: "bitmap", retryAvailable: true,
@@ -494,12 +494,10 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" }))
-        .toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" })).toBeTruthy());
     expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
-    expect(screen.getByRole("button", { name: "Retry World Setting Designer icon" })).toBeTruthy();
+    expect(document.querySelector(".agent-chat__stage-thread")).toBeNull();
+    expect(document.querySelector("[data-role-waiting-motion=\"true\"]")).toBeNull();
   });
 });
 
