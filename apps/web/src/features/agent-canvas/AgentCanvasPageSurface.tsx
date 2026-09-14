@@ -28,7 +28,6 @@ import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
   AssetsIcon,
-  CloseIcon,
   LayoutIcon,
   PauseIcon,
   PlayIcon,
@@ -277,6 +276,19 @@ export function AgentCanvasPage() {
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const canvasInteractionReasonsRef = useRef(new Set<CanvasInteractionReason>());
   const dragCancellationPendingRef = useRef(false);
+
+  const closeAssets = useCallback(() => setAssetsOpen(false), []);
+
+  useEffect(() => {
+    if (!assetsOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeAssets();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [assetsOpen, closeAssets]);
 
   if (edgeZoomControllerRef.current === null) {
     edgeZoomControllerRef.current = createCanvasEdgeZoomController({
@@ -1506,21 +1518,22 @@ export function AgentCanvasPage() {
         ) : null}
 
         {assetsOpen ? (
-          <div className="agent-canvas-overlay agent-canvas-overlay--assets" role="dialog" aria-modal="true" aria-label="Project assets">
-            <button
-              type="button"
-              className="agent-canvas-overlay__close"
-              aria-label="Close assets"
-              title="Close assets"
-              onClick={() => setAssetsOpen(false)}
-            >
-              <CloseIcon />
-            </button>
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- the dialog backdrop dismisses on direct pointer input; Escape and the header button provide keyboard dismissal.
+          <div
+            className="agent-canvas-overlay agent-canvas-overlay--assets"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Project assets"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeAssets();
+            }}
+          >
             <Suspense fallback={null}>
               <AgentAssetBrowser
                 workflowId={workflow.workflow_id}
                 onAddReferences={addReferences}
                 onCreateReadySourceNode={createReadySourceNode}
+                onClose={closeAssets}
                 onUploadComplete={refreshWorkflow}
               />
             </Suspense>

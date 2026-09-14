@@ -921,28 +921,6 @@
   backdrop-filter: blur(22px);
 }
 
-.agent-canvas-overlay__close {
-  position: absolute;
-  z-index: 4;
-  top: 16px;
-  right: 16px;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  place-items: center;
-  color: #53566b;
-  background: rgb(255 255 255 / 72%);
-  border: 1px solid rgb(98 101 129 / 15%);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.agent-canvas-overlay__close svg {
-  width: 16px;
-  height: 16px;
-}
-
 .agent-canvas-overlay .agent-asset-browser {
   height: 100%;
 }
@@ -964,23 +942,6 @@
   width: min(960px, 100%);
   max-height: min(760px, 100%);
   min-height: 0;
-}
-
-.agent-canvas-overlay--assets .agent-canvas-overlay__close {
-  top: 10px;
-  right: 12px;
-  color: #f5f5f5;
-  background: #292929;
-  border: 1px solid #505050;
-}
-
-.agent-canvas-overlay--assets .agent-canvas-overlay__close:hover {
-  border-color: #a3a3a3;
-}
-
-.agent-canvas-overlay--assets .agent-canvas-overlay__close:focus-visible {
-  outline: 2px solid #f5f5f5;
-  outline-offset: 2px;
 }
 
 .agent-canvas-reference-upload-input {

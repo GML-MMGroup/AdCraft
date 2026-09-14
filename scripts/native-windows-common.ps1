@@ -296,7 +296,7 @@ function Wait-AdCraftNativeUrl([string]$Label, [string]$Url, [hashtable]$Headers
             Write-Host "`r[AdCraft] [$Label] 服务已就绪。                    "
             return
         }
-        $elapsed = [math]::Floor($stopwatch.Elapsed.TotalSeconds)
+        $elapsed = [int][math]::Floor($stopwatch.Elapsed.TotalSeconds)
         Write-Host -NoNewline ("`r[AdCraft] [{0}] 等待服务启动 {1} {2:D4}s/{3}s" -f $Label, $frames[$frameIndex], $elapsed, $timeoutSeconds)
         $frameIndex = ($frameIndex + 1) % $frames.Count
         Start-Sleep -Seconds 1
