@@ -393,21 +393,6 @@ class DurableNextActionExecutionService:
             )
             return ValidatedNextActionV1(command=command)
 
-    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
-        """Return whether this exact agent notice was already published once.
-
-        Stage notices must fire once per stage, not once per next_action poll;
-        see the matching guard in agent_canvas_conversation.
-        """
-
-        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
-        return any(
-            entry.entry_type == "message"
-            and entry.speaker == "adcraft_video_agent"
-            and entry.content.strip() == message.strip()
-            for entry in timeline.items
-        )
-
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         policy = self._policy.evaluate(
             assemble_capability_policy_context(
@@ -577,6 +562,21 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    def _latest_agent_message_equals(self, workflow_id: str, message: str) -> bool:
+        """Return whether this exact agent notice was already published once.
+
+        Stage notices must fire once per stage, not once per next_action poll;
+        see the matching guard in agent_canvas_conversation.
+        """
+
+        timeline = self._conversations.list_timeline(workflow_id, after_seq=0, limit=200)
+        return any(
+            entry.entry_type == "message"
+            and entry.speaker == "adcraft_video_agent"
+            and entry.content.strip() == message.strip()
+            for entry in timeline.items
+        )
 
     def _reconcile_editing_failure(
         self,

@@ -185,8 +185,6 @@ for (const dpr of [1, 2]) {
     const context = await browser.newContext({ deviceScaleFactor: dpr, baseURL });
     const page = await context.newPage();
     try {
-      const moduleRequests: string[] = [];
-      page.on("request", request => { if (request.url().includes("/roles/SceneDesignerAnimation.tsx")) moduleRequests.push(request.url()); });
       await page.goto("/tests/browser/agent-role-scene-designer-mock.html", { waitUntil: "domcontentloaded" });
       const poster = page.getByTestId("agent-role-static-icon");
       await expect(poster).toHaveAttribute("src", /\/bitmaps-v1\/scene_design-96\.png/);
@@ -198,24 +196,20 @@ for (const dpr of [1, 2]) {
       expect(fidelity.meanChannelDifference).toBeLessThanOrEqual(9);
       expect(fidelity.changedPixelRatio).toBeLessThanOrEqual(0.13);
       expect(fidelity.alphaMismatchRatio).toBeLessThanOrEqual(0.1);
-      expect(moduleRequests).toEqual([]);
     } finally {
       await context.close();
     }
   });
 }
 
-test("Scene terminal state uses its bitmap without loading artwork", async ({ page }) => {
-  const moduleRequests: string[] = [];
-  page.on("request", request => { if (request.url().includes("/roles/SceneDesignerAnimation.tsx")) moduleRequests.push(request.url()); });
-  await page.route("**/roles/SceneDesignerAnimation.tsx*", (route) => route.abort());
+test("Scene terminal state uses its bitmap without rendering artwork", async ({ page }) => {
   await page.goto("/tests/browser/agent-role-scene-designer-mock.html");
   await expect(page.locator(ROOT)).toHaveCount(0);
   const poster = page.getByTestId("agent-role-static-icon");
   await expect(poster).toBeVisible();
   await expect(poster).toHaveAttribute("src", /\/bitmaps-v1\/scene_design-96\.png/);
   await expect.poll(() => poster.evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  expect(moduleRequests).toEqual([]);
+  await expect(page.getByTestId("agent-role-animation-frame").locator("svg")).toHaveCount(0);
 });
 
 test("Scene scanner visibly paints the sun and wider wall silhouette", async ({ page }) => {

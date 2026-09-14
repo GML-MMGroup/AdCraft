@@ -138,6 +138,25 @@ class GuidanceAdvanceService:
         )
         return self._conversations.create_guidance_advance_delivery(plan)
 
+    def submit_fresh_next_action(
+        self,
+        workflow_id: str,
+        *,
+        idempotency_key: str,
+    ) -> ChatTurnAcceptedV2:
+        """Queue the current typed journey action without a user turn."""
+
+        with self._conversations.database.engine.connect() as connection:
+            snapshot = self._authority.read_in_transaction(connection, workflow_id)
+        require_guidance_advance_eligible(snapshot)
+        if snapshot.precondition is None:
+            raise _not_available("Guidance Advance authority has no current precondition.")
+        return self.submit(
+            workflow_id,
+            GuidanceAdvanceRequestV1(precondition=snapshot.precondition),
+            idempotency_key=idempotency_key,
+        )
+
     def plan(
         self,
         workflow_id: str,

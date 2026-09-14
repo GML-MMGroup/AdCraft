@@ -1906,12 +1906,17 @@ class AgentConversationService:
             requirements,
             response_locale=session.response_locale,
         )
+        duration_interaction = (
+            session.interaction
+            if session.interaction is not None
+            and session.interaction.content == duration_questionnaire
+            else None
+        )
         if (
             intent.mode == "guided_production"
-            and requirement_changed
             and not requirements.ledger.unresolved_conflicts
             and session.journey.stage == "intake"
-            and session.awaiting is None
+            and (session.awaiting is None or duration_interaction is not None)
             and duration_questionnaire is not None
         ):
             duration_evidence = JourneyEvidenceV2(
@@ -1936,13 +1941,17 @@ class AgentConversationService:
             return self._conversations.complete_turn_with_clarification(
                 turn_id,
                 expected_session_revision=session.revision,
-                journey=duration_journey,
+                journey=session.journey if duration_interaction is not None else duration_journey,
                 assistant_message="Choose the total advertisement duration to continue.",
                 transition_key=(
                     f"intake-duration:{turn_id}:requirements:{requirements.revision_id}"
                 ),
                 questionnaire=duration_questionnaire,
-                checkpoint_id=f"duration:{turn_id}",
+                checkpoint_id=(
+                    duration_interaction.checkpoint_id
+                    if duration_interaction is not None
+                    else f"duration:{turn_id}"
+                ),
                 interaction_title="Choose production duration",
                 interaction_context=(
                     "Confirm the total duration before time-dependent authoring begins."

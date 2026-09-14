@@ -45,6 +45,7 @@ export interface AgentAssetBrowserProps {
     selection: AgentAssetSourceNodeSelection,
   ) => Promise<void> | void;
   onUploadComplete?: () => Promise<void> | void;
+  onClose?: () => void;
 }
 
 const SCOPES: Array<{ value: AgentAssetScope; label: string }> = [
@@ -112,6 +113,7 @@ export function AgentAssetBrowser({
   onAddReferences,
   onCreateReadySourceNode,
   onUploadComplete,
+  onClose,
 }: AgentAssetBrowserProps) {
   const [scope, setScope] = useState<AgentAssetScope>("project");
   const [mediaType, setMediaType] = useState<AgentAssetMediaFilter>("all");
@@ -222,6 +224,11 @@ export function AgentAssetBrowser({
   return (
     <section className="agent-asset-browser" aria-label="Agent Canvas assets">
       <header className="agent-asset-browser__header">
+        {onClose ? (
+          <button type="button" className="agent-asset-browser__close" aria-label="Close assets" title="Close assets" onClick={onClose}>
+            <span aria-hidden="true">×</span>
+          </button>
+        ) : null}
         <div className="agent-asset-browser__title">
           <AssetsIcon aria-hidden="true" />
           <div>
@@ -229,21 +236,6 @@ export function AgentAssetBrowser({
             <p>Attach references or place ready media on the canvas.</p>
           </div>
         </div>
-        {scope === "project" ? (
-          <label className={`agent-asset-browser__upload${uploading ? " is-busy" : ""}`}>
-            <UploadIcon aria-hidden="true" />
-            <span>{uploading ? "Uploading" : "Upload"}</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*,audio/*"
-              multiple
-              aria-label="Upload project media"
-              disabled={uploading}
-              onChange={handleUpload}
-            />
-          </label>
-        ) : null}
       </header>
 
       <div className="agent-asset-browser__controls">
@@ -376,6 +368,21 @@ export function AgentAssetBrowser({
             ? `${selectedReferences.length} image${selectedReferences.length === 1 ? "" : "s"} selected`
             : "Select compatible images to attach"}
         </span>
+        {scope === "project" ? (
+          <label className={`agent-asset-browser__upload${uploading ? " is-busy" : ""}`}>
+            <UploadIcon aria-hidden="true" />
+            <span>{uploading ? "Uploading" : "Upload"}</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*,audio/*"
+              multiple
+              aria-label="Upload project media"
+              disabled={uploading}
+              onChange={handleUpload}
+            />
+          </label>
+        ) : null}
         <button
           type="button"
           className="agent-asset-browser__add"
