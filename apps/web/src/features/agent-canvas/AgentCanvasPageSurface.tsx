@@ -28,7 +28,6 @@ import { useApp } from "../../AppContextValue.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
 import {
   AssetsIcon,
-  CloseIcon,
   LayoutIcon,
   PauseIcon,
   PlayIcon,
@@ -398,6 +397,19 @@ export function AgentCanvasPage() {
     const visibleNodeIds = new Set(flowNodesRef.current.map((node) => node.id));
     revealCanvasNodes(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
   }, [revealCanvasNodes]);
+
+  // Register receipt-owned nodes before the Workflow refresh triggered by the
+  // same event can make them visible. Edges remain hidden because they are
+  // derived exclusively from visible node ids.
+  useEffect(() => {
+    live.state.chatEvents.forEach((event) => {
+      if (event.event_type !== "action_receipt_created") return;
+      const createdNodeIds = event.payload?.created_node_ids;
+      if (!Array.isArray(createdNodeIds)) return;
+      const ids = createdNodeIds.filter((id): id is string => typeof id === "string");
+      if (ids.length) reserveRevealNodeIds(ids);
+    });
+  }, [live.state.chatEvents, reserveRevealNodeIds]);
   useEffect(() => {
     let active = true;
     void agentCanvasApi.agentCanvasConnectionPolicy()
@@ -1507,18 +1519,10 @@ export function AgentCanvasPage() {
 
         {assetsOpen ? (
           <div className="agent-canvas-overlay agent-canvas-overlay--assets" role="dialog" aria-modal="true" aria-label="Project assets">
-            <button
-              type="button"
-              className="agent-canvas-overlay__close"
-              aria-label="Close assets"
-              title="Close assets"
-              onClick={() => setAssetsOpen(false)}
-            >
-              <CloseIcon />
-            </button>
             <Suspense fallback={null}>
               <AgentAssetBrowser
                 workflowId={workflow.workflow_id}
+                onClose={() => setAssetsOpen(false)}
                 onAddReferences={addReferences}
                 onCreateReadySourceNode={createReadySourceNode}
                 onUploadComplete={refreshWorkflow}

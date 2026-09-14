@@ -55,7 +55,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
       : badgeState === "online"
         ? "API ready"
         : badgeState === "partial"
-          ? `API config ${apiConfig.configured.length}/${apiConfig.configured.length + apiConfig.coreMissing.length}`
+          ? `API config ${apiConfig?.configured.length ?? 0}/${(apiConfig?.configured.length ?? 0) + (apiConfig?.coreMissing.length ?? 0)}`
           : "API not configured";
   const badgeTitle = apiOnline === false || apiConfig === null
     ? apiMessage
