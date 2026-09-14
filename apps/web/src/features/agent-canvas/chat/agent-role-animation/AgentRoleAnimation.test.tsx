@@ -35,14 +35,14 @@ describe("AgentRoleAnimation visual lifecycle", () => {
     expect(getComputedStyle(artwork).opacity).not.toBe("0");
     expect(container.querySelector("svg")?.getAttribute("data-motion-state")).toBe("working");
   });
-  it("uses decoded fallback and a fixed slot during resource failure", () => {
+  it("leaves the working visual empty during resource failure", () => {
     visual.snapshot.mockReturnValue({ ...ready, status: "fallback", Artwork: null, error: "offline" });
     render(<AgentRoleAnimation capabilityId="scene_design" motionState="working" />);
     const frame = screen.getByTestId("agent-role-animation-frame");
     expect(getComputedStyle(frame).width).toBe("32px");
     expect(getComputedStyle(frame).height).toBe("32px");
-    expect(frame.dataset.roleWaitingMotion).toBe("true");
-    expect(screen.getByTestId("agent-role-static-icon").getAttribute("src")).toBe("/role.png");
+    expect(frame.dataset.roleWaitingMotion).toBeUndefined();
+    expect(screen.queryByTestId("agent-role-static-icon")).toBeNull();
   });
   it("provides visible generic fallback when even bundled bitmap fails", () => {
     visual.snapshot.mockReturnValue({ ...ready, status: "fallback", Artwork: null, source: null, fallbackKind: "generic" });
@@ -55,15 +55,15 @@ describe("AgentRoleAnimation visual lifecycle", () => {
     const BrokenArtwork = () => { throw new Error("broken artwork"); };
     visual.snapshot.mockReturnValue({ ...ready, Artwork: BrokenArtwork });
     render(<AgentRoleAnimation capabilityId="scene_design" motionState="working" />);
-    expect(screen.getByTestId("agent-role-static-icon")).toBeTruthy();
+    expect(screen.queryByTestId("agent-role-static-icon")).toBeNull();
     expect(log).toHaveBeenCalled();
-    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBe("true");
+    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
   });
   it("waiting has continuous fallback motion even for artwork without waiting tracks", () => {
     visual.snapshot.mockReturnValue(ready);
     const { rerender } = render(<AgentRoleAnimation capabilityId="world_setting" motionState="waiting" />);
-    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBe("true");
+    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
     rerender(<AgentRoleAnimation capabilityId="world_setting" motionState="working" />);
-    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBe("false");
+    expect(screen.getByTestId("agent-role-animation-frame").dataset.roleWaitingMotion).toBeUndefined();
   });
 });

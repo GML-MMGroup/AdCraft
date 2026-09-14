@@ -35,7 +35,7 @@ async function sampleIdentity(page: Page) {
   });
 }
 
-test("slow role resources never reveal a naked role name", async ({ page }) => {
+test("slow bitmap resources never reveal a naked role name", async ({ page }) => {
   await sampleIdentity(page);
   await page.route(/agent-role-icons|\/roles\/.*Animation\.tsx/, async route => {
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -52,30 +52,39 @@ test("slow role resources never reveal a naked role name", async ({ page }) => {
   expect(sample.bareFrames).toBe(0);
 });
 
-test("completed role uses a decoded bitmap without fetching its animation module", async ({ page }) => {
-  const worldChunks: string[] = [];
-  page.on("request", request => {
-    if (request.url().includes("/roles/WorldSettingAnimation.tsx")) worldChunks.push(request.url());
+test("working Role content and its SVG Artwork enter the Timeline together", async ({ page }) => {
+  await page.route("**/roles/SceneDesignerAnimation.tsx*", async route => {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    await route.continue();
   });
+  await page.goto(fixture, { waitUntil: "commit" });
+  const observations: Array<{ text: number; svg: number }> = [];
+  for (let index = 0; index < 20; index += 1) {
+    observations.push({
+      text: await page.locator(scene).getByText("Scene Designer", { exact: true }).count(),
+      svg: await page.locator(scene).locator("svg").count(),
+    });
+    await page.waitForTimeout(50);
+  }
+  expect(observations.some(({ text, svg }) => text === 1 && svg === 1)).toBe(true);
+  expect(observations.some(({ text, svg }) => text > 0 && svg === 0)).toBe(false);
+});
+
+test("completed role uses a decoded bitmap without fetching its animation module", async ({ page }) => {
   await page.goto(fixture);
   const world = page.locator(".agent-chat__stage-thread > header .is-role-world-setting");
   await expect(world.getByText("World Setting", { exact: true })).toBeVisible();
   await expect.poll(() => world.locator("img").evaluate(image =>
     image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
-  expect(worldChunks).toEqual([]);
   await expect(world.locator("svg")).toHaveCount(0);
 });
 
-test("a failed module exposes an explicit icon retry and recovers without resubmitting work", async ({ page }) => {
-  await page.route("**/roles/SceneDesignerAnimation.tsx*", route => route.abort());
+test("working roles use bundled Artwork without a retry or fallback visual", async ({ page }) => {
   await page.goto(fixture);
   const identity = page.locator(scene);
-  await expect(identity.getByRole("button", { name: "Retry Scene Designer icon" })).toBeVisible();
-  await expect(identity.locator("img")).toBeVisible();
-  await page.unroute("**/roles/SceneDesignerAnimation.tsx*");
-  await identity.getByRole("button", { name: "Retry Scene Designer icon" }).click();
   await expect(identity.locator("svg")).toHaveCount(1);
-  await expect(identity.getByRole("button", { name: "Retry Scene Designer icon" })).toHaveCount(0);
+  await expect(identity.locator("img")).toHaveCount(0);
+  await expect(identity.getByRole("button", { name: /Retry .* icon/ })).toHaveCount(0);
   await expect(page.getByText("Conversation could not be refreshed")).toHaveCount(0);
 });
 
@@ -83,8 +92,9 @@ test("missing remote bitmaps fall back without leaving a blank identity", async 
   await sampleIdentity(page);
   await page.route("**/bitmaps-v1/*.png*", route => route.abort());
   await page.goto(fixture);
-  await expect(page.locator(scene).getByText("Scene Designer", { exact: true })).toBeVisible();
-  await expect.poll(() => page.locator(scene).locator("img").evaluate(image =>
+  const identity = page.locator(".agent-chat__stage-thread > header .is-role-world-setting");
+  await expect(identity.getByText("World Setting", { exact: true })).toBeVisible();
+  await expect.poll(() => identity.locator("img").evaluate(image =>
     image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
   expect(await page.evaluate(() => (window as unknown as { roleIdentitySamples: { bareFrames: number } }).roleIdentitySamples.bareFrames)).toBe(0);
 });
@@ -114,9 +124,9 @@ test("stalled image decoding releases the whole identity with a paintable fallba
     };
   });
   await page.goto(fixture);
-  const identity = page.locator(scene);
+  const identity = page.locator(".agent-chat__stage-thread > header .is-role-world-setting");
   await expect(identity).toHaveAttribute("data-role-identity-state", "fallback");
   await expect(identity.locator('[data-role-generic-fallback="true"]')).toBeVisible();
-  await expect(identity.getByText("Scene Designer", { exact: true })).toBeVisible();
+  await expect(identity.getByText("World Setting", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { roleIdentitySamples: { bareFrames: number } }).roleIdentitySamples.bareFrames)).toBe(0);
 });

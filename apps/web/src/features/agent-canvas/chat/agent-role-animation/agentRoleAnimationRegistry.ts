@@ -2,6 +2,16 @@ import type { ComponentType } from "react";
 
 import type { AgentCapabilityIdV2 } from "../../../../types-v2.ts";
 import type { AgentRoleMotionState } from "./types.ts";
+import BgmDirectorAnimation from "./roles/BgmDirectorAnimation.tsx";
+import CharacterDesignerAnimation from "./roles/CharacterDesignerAnimation.tsx";
+import ProductDesignerAnimation from "./roles/ProductDesignerAnimation.tsx";
+import PropDesignerAnimation from "./roles/PropDesignerAnimation.tsx";
+import QuickMediaAnimation from "./roles/QuickMediaAnimation.tsx";
+import SceneDesignerAnimation from "./roles/SceneDesignerAnimation.tsx";
+import ScriptWriterAnimation from "./roles/ScriptWriterAnimation.tsx";
+import StoryboardArtistAnimation from "./roles/StoryboardArtistAnimation.tsx";
+import VideoDirectorAnimation from "./roles/VideoDirectorAnimation.tsx";
+import WorldSettingAnimation from "./roles/WorldSettingAnimation.tsx";
 
 const AGENT_ICON_ASSET_VERSION = "2026-08-28";
 
@@ -18,53 +28,53 @@ interface AgentRoleAnimationRegistryEntry {
 export const agentRoleAnimationRegistry = {
   world_setting: {
     staticSource: `/imgs/agent-role-icons/world-setting.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/WorldSettingAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/WorldSettingAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => WorldSettingAnimation,
+    retryLoad: async () => WorldSettingAnimation,
   },
   product_design: {
     staticSource: `/imgs/agent-role-icons/product-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/ProductDesignerAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/ProductDesignerAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => ProductDesignerAnimation,
+    retryLoad: async () => ProductDesignerAnimation,
   },
   prop_design: {
     staticSource: `/imgs/agent-role-icons/prop-designer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/PropDesignerAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/PropDesignerAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => PropDesignerAnimation,
+    retryLoad: async () => PropDesignerAnimation,
   },
   character_design: {
     staticSource: "/imgs/agent-role-icons/character-designer-20260906-line-art.svg",
-    load: () => import("./roles/CharacterDesignerAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/CharacterDesignerAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => CharacterDesignerAnimation,
+    retryLoad: async () => CharacterDesignerAnimation,
   },
   scene_design: {
     staticSource: "/imgs/agent-role-icons/scene-designer-20260906-atlas-replica.svg",
-    load: () => import("./roles/SceneDesignerAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/SceneDesignerAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => SceneDesignerAnimation,
+    retryLoad: async () => SceneDesignerAnimation,
   },
   script_authoring: {
     staticSource: `/imgs/agent-role-icons/script-writer.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/ScriptWriterAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/ScriptWriterAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => ScriptWriterAnimation,
+    retryLoad: async () => ScriptWriterAnimation,
   },
   storyboard_design: {
     staticSource: `/imgs/agent-role-icons/storyboard-artist.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/StoryboardArtistAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/StoryboardArtistAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => StoryboardArtistAnimation,
+    retryLoad: async () => StoryboardArtistAnimation,
   },
   video_direction: {
     staticSource: `/imgs/agent-role-icons/video-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/VideoDirectorAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/VideoDirectorAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => VideoDirectorAnimation,
+    retryLoad: async () => VideoDirectorAnimation,
   },
   bgm_direction: {
     staticSource: `/imgs/agent-role-icons/bgm-director.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/BgmDirectorAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/BgmDirectorAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => BgmDirectorAnimation,
+    retryLoad: async () => BgmDirectorAnimation,
   },
   quick_media: {
     staticSource: `/imgs/agent-role-icons/quick-media.png?v=${AGENT_ICON_ASSET_VERSION}`,
-    load: () => import("./roles/QuickMediaAnimation.tsx").then((module) => module.default),
-    retryLoad: () => import("./roles/QuickMediaAnimation.tsx?agent-role-retry").then((module) => module.default()),
+    load: async () => QuickMediaAnimation,
+    retryLoad: async () => QuickMediaAnimation,
   },
 } satisfies Record<AgentCapabilityIdV2, AgentRoleAnimationRegistryEntry>;
 

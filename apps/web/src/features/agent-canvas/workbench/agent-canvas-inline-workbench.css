@@ -103,6 +103,41 @@
   gap: 6px;
 }
 
+.agent-node-workbench__editor-shell {
+  position: relative;
+  display: block;
+  min-height: 0;
+  flex: 1;
+}
+
+.agent-node-workbench__preparing-prompt {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  color: rgb(240 240 240 / 62%);
+  font-size: 14px;
+  line-height: 22px;
+  pointer-events: none;
+  white-space: nowrap;
+  clip-path: inset(0 100% 0 0);
+  animation: agent-node-workbench-prompt-preparing 2.8s steps(10, end) infinite;
+}
+
+@keyframes agent-node-workbench-prompt-preparing {
+  0%, 8% { clip-path: inset(0 100% 0 0); }
+  62% { clip-path: inset(0 0 0 0); }
+  82% { clip-path: inset(0 0 0 0); }
+  83%, 100% { clip-path: inset(0 100% 0 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-node-workbench__preparing-prompt {
+    clip-path: none;
+    animation: none;
+  }
+}
+
 .agent-node-workbench__options label > span {
   color: rgb(218 221 234 / 60%);
   font-size: 10px;

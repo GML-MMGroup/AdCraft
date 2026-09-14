@@ -1,5 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const visual = vi.hoisted(() => ({ snapshot: vi.fn() }));
+
+vi.mock("./agent-role-animation/useAgentRoleVisual.ts", () => ({
+  useAgentRoleVisual: visual.snapshot,
+}));
 
 vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
   AgentRoleAnimation: ({
@@ -19,6 +25,15 @@ vi.mock("./agent-role-animation/AgentRoleAnimation.tsx", () => ({
 
 import type { StageThreadUnit } from "./stageThreadProjection.ts";
 import { StageThread } from "./StageThread.tsx";
+
+const readyVisual = {
+  status: "ready",
+  source: "/role.png",
+  Artwork: () => null,
+  error: null,
+  generation: 1,
+  fallbackKind: "none",
+} as const;
 
 function stageThread(overrides: Partial<StageThreadUnit> = {}): StageThreadUnit {
   return {
@@ -44,7 +59,32 @@ function stageThread(overrides: Partial<StageThreadUnit> = {}): StageThreadUnit 
 }
 
 describe("StageThread", () => {
+  beforeEach(() => {
+    visual.snapshot.mockReturnValue(readyVisual);
+  });
+
   afterEach(() => cleanup());
+
+  it("does not mount a working thread until its Artwork is ready", () => {
+    visual.snapshot.mockReturnValue({ ...readyVisual, status: "pending", Artwork: null });
+    const { container, rerender } = render(
+      <StageThread motionState="working" unit={stageThread({ status: "working" })}>
+        <div>Working detail</div>
+      </StageThread>,
+    );
+
+    expect(container.querySelector(".agent-chat__stage-thread")).toBeNull();
+
+    visual.snapshot.mockReturnValue(readyVisual);
+    rerender(
+      <StageThread motionState="working" unit={stageThread({ status: "working" })}>
+        <div>Working detail</div>
+      </StageThread>,
+    );
+
+    expect(screen.getByText("Working detail")).toBeTruthy();
+    expect(screen.getByText("World Setting Designer")).toBeTruthy();
+  });
 
   it("always shows workflow history and places the canvas action in the header", () => {
     render(

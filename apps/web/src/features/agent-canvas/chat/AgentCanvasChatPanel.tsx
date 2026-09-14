@@ -70,6 +70,7 @@ import { CapabilityActivityRow } from "./CapabilityActivitySection.tsx";
 import { StageThread } from "./StageThread.tsx";
 import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
 import { prepareRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
+import { roleVisualMode } from "./agent-role-animation/useAgentRoleVisual.ts";
 import { projectRoleLifecycles } from "./agent-role-animation/roleLifecycleProjection.ts";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
@@ -412,10 +413,10 @@ export function AgentCanvasChatPanel({
   const stageRoleMotionStates = useMemo(() => new Map(
     [...stageRoleLifecycles].map(([key, lifecycle]) => [key, lifecycle.motionState]),
   ), [stageRoleLifecycles]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     for (const unit of stageTimeline) {
       if (unit.unit_type !== "stage_thread") continue;
-      prepareRoleVisual(unit.capability_id, stageRoleMotionStates.get(unit.key) === "idle" ? "bitmap" : "animated");
+      prepareRoleVisual(unit.capability_id, roleVisualMode(stageRoleMotionStates.get(unit.key) ?? "idle"));
     }
   }, [stageTimeline, stageRoleMotionStates]);
   const conversationLinkIndex = useMemo(

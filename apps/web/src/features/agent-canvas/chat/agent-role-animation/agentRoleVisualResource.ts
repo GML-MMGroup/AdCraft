@@ -65,8 +65,8 @@ export function createRoleVisualCache(deps: Dependencies) {
     if (entries.get(role) !== entry) return;
     let changed = false;
     for (const mode of ["bitmap", "animated"] as const) {
-      const ready = !!entry.full && (mode === "bitmap" || !!entry.Artwork);
-      const error = entry.bitmapError ?? (mode === "animated" ? entry.moduleError : null);
+      const ready = mode === "bitmap" ? !!entry.full : !!entry.Artwork;
+      const error = mode === "bitmap" ? entry.bitmapError : entry.moduleError;
       const fallback = !ready && (!!error || entry.expired.has(mode));
       const status = ready ? "ready" : fallback ? "fallback" : "pending";
       const source = status === "pending" ? null : entry.full ? entry.asset.source : entry.small ? entry.asset.fallback : null;

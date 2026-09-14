@@ -10,6 +10,7 @@ export function FourLinePromptEditor({
   value,
   disabled = false,
   placeholder,
+  preparing = false,
   onChange,
   onBlur,
   editorRef: providedEditorRef,
@@ -18,6 +19,7 @@ export function FourLinePromptEditor({
   value: string;
   disabled?: boolean;
   placeholder?: string;
+  preparing?: boolean;
   onChange: ChangeEventHandler<HTMLTextAreaElement>;
   onBlur?: FocusEventHandler<HTMLTextAreaElement>;
   editorRef?: RefObject<HTMLTextAreaElement | null>;
@@ -47,16 +49,26 @@ export function FourLinePromptEditor({
     return () => editor.removeEventListener("wheel", onWheel);
   }, [editorRef]);
 
+  const showPreparingPrompt = preparing && !value.trim();
+
   return (
-    <textarea
-      ref={editorRef}
-      className="agent-node-workbench__four-line-editor"
-      aria-label={ariaLabel}
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      onChange={onChange}
-      onBlur={onBlur}
-    />
+    <span className="agent-node-workbench__editor-shell">
+      {showPreparingPrompt ? (
+        <span className="agent-node-workbench__preparing-prompt" aria-hidden="true">
+          提示词正在准备...
+        </span>
+      ) : null}
+      <textarea
+        ref={editorRef}
+        className="agent-node-workbench__four-line-editor"
+        aria-label={ariaLabel}
+        aria-busy={showPreparingPrompt}
+        value={value}
+        disabled={disabled}
+        placeholder={showPreparingPrompt ? undefined : placeholder}
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+    </span>
   );
 }

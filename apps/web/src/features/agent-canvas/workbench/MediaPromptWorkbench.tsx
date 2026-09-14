@@ -30,6 +30,7 @@ export function MediaPromptWorkbench({
   onOpenAssets,
   onUploadReferences,
   promptEditorRef,
+  preparingPrompt = false,
 }: {
   node: CanvasNodeV2;
   runtime: NodeRuntimeV2 | null;
@@ -42,6 +43,7 @@ export function MediaPromptWorkbench({
   onOpenAssets: () => void;
   onUploadReferences: () => void;
   promptEditorRef?: RefObject<HTMLTextAreaElement | null>;
+  preparingPrompt?: boolean;
 }) {
   const canConfigureProvider = ["draft", "failed", "ready", "working"].includes(node.status);
   const selectedModelRef = draft.modelSelectionMode === "explicit"
@@ -114,6 +116,7 @@ export function MediaPromptWorkbench({
           value={draft.prompt}
           disabled={draft.pending}
           placeholder={`Describe the ${node.node_type} you want to create.`}
+          preparing={preparingPrompt}
           onChange={(event) => draft.setPrompt(event.currentTarget.value)}
           onBlur={() => void draft.flushPrompt()}
           editorRef={promptEditorRef}

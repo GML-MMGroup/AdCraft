@@ -2,7 +2,6 @@ import { Component, useCallback, useRef, useState, type ReactNode } from "react"
 import type { AgentCapabilityIdV2 } from "../../../../types-v2.ts";
 import type { AgentRoleMotionState } from "./types.ts";
 import { useAgentRoleVisual } from "./useAgentRoleVisual.ts";
-import { useRoleWaitingMotion } from "./useRoleWaitingMotion.ts";
 import { reportRoleArtworkError } from "./agentRoleVisualResource.ts";
 
 class RoleArtworkBoundary extends Component<
@@ -27,20 +26,20 @@ export function AgentRoleAnimation({ capabilityId, motionState }: {
   const visual = useAgentRoleVisual(capabilityId, motionState);
   const [failedGeneration, setFailedGeneration] = useState<number | null>(null);
   const failed = failedGeneration === visual.generation;
-  const Artwork = motionState !== "idle" && !failed ? visual.Artwork : null;
-  const waiting = motionState === "waiting" || (motionState === "working" && !Artwork);
+  const Artwork = motionState === "working" && !failed ? visual.Artwork : null;
   const ref = useRef<HTMLSpanElement>(null);
-  useRoleWaitingMotion(ref, waiting && visual.status !== "pending");
   const onError = useCallback(() => {
     setFailedGeneration(visual.generation);
     reportRoleArtworkError(capabilityId, "Role artwork could not be displayed");
   }, [capabilityId, visual.generation]);
-  const fallback = <StaticRoleIcon source={visual.source} generic={visual.fallbackKind === "generic"} />;
+  const fallback = motionState === "working"
+    ? null
+    : <StaticRoleIcon source={visual.source} generic={visual.fallbackKind === "generic"} />;
   return (
     <span ref={ref} className="agent-chat__role-animation-frame"
       style={{ width: 32, height: 32 }}
       data-testid="agent-role-animation-frame" data-motion-state={motionState}
-      data-role-waiting-motion={String(waiting)} aria-hidden="true">
+      aria-hidden="true">
       {Artwork ? <RoleArtworkBoundary key={capabilityId + visual.generation} fallback={fallback} onError={onError}>
         <span className="agent-chat__role-animation-asset agent-chat__role-animation-artwork is-visible">
           <Artwork motionState={motionState} />

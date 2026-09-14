@@ -41,13 +41,27 @@ describe("role visual resource cache", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it("waits for decoded bitmap and artwork before publishing an animated identity", async () => {
+  it("publishes an animated identity as soon as Artwork is ready", async () => {
     const { cache, full, module } = setup();
     cache.prepare("character_design", "animated");
     module.resolve(Artwork); await flush();
-    expect(cache.snapshot("character_design", "animated").status).toBe("pending");
+    expect(cache.snapshot("character_design", "animated")).toMatchObject({ status: "ready", Artwork });
     full.resolve(image()); await flush();
     expect(cache.snapshot("character_design", "animated")).toMatchObject({ status: "ready", Artwork });
+  });
+
+  it("keeps bitmap decode errors isolated from an otherwise ready animation", async () => {
+    const { cache, full, module } = setup();
+    cache.prepare("character_design", "animated");
+    full.reject(new Error("bitmap unavailable"));
+    module.resolve(Artwork); await flush();
+
+    expect(cache.snapshot("character_design", "animated")).toMatchObject({
+      status: "ready", Artwork, error: null,
+    });
+    expect(cache.snapshot("character_design", "bitmap")).toMatchObject({
+      status: "fallback", error: "Error: bitmap unavailable",
+    });
   });
 
   it("publishes decoded small fallback at budget then upgrades without another request", async () => {
