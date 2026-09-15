@@ -836,12 +836,23 @@ class AgentCanvasWorkflowRepository:
                             "The editable prompt projection does not match the Node revision.",
                             stage="agent_canvas_workflow_repository",
                         )
-                    requested_manual_prompt = (
-                        node.prompt_preparation.status == "ready"
-                        and not _has_managed_prompt_preparation(node)
-                    )
+                    requested_manual_prompt = node.prompt_preparation.status in {
+                        "ready",
+                        "waiting_user",
+                    } and not _has_managed_prompt_preparation(node)
                     current_preparation_status = current_node.prompt_preparation.status
                     current_preparation_managed = _has_managed_prompt_preparation(current_node)
+                    user_prompt_edit = (
+                        current_node.generation_prompt != node.generation_prompt
+                        and current_node.summary_prompt == node.summary_prompt
+                        and current_node.structured_content == node.structured_content
+                        and current_node.model_selection_mode == node.model_selection_mode
+                        and current_node.model_ref == node.model_ref
+                        and current_node.parameters == node.parameters
+                        and node.node_type in {"image", "video", "audio"}
+                        and requested_manual_prompt
+                        and current_preparation_managed
+                    )
                     if (
                         node.execution_mode == "generative"
                         and _prompt_input_changed(current_node, node)
@@ -932,14 +943,15 @@ class AgentCanvasWorkflowRepository:
                             bindings=bindings_for_node,
                             now=node.updated_at,
                         )
-                    _invalidate_prompt_preparations_for_source(
-                        connection,
-                        events=self._events,
-                        prompt_dispatch=self._prompt_dispatch,
-                        workflow_id=node.workflow_id,
-                        source_node_id=node.node_id,
-                        updated_at=now,
-                    )
+                    if not user_prompt_edit:
+                        _invalidate_prompt_preparations_for_source(
+                            connection,
+                            events=self._events,
+                            prompt_dispatch=self._prompt_dispatch,
+                            workflow_id=node.workflow_id,
+                            source_node_id=node.node_id,
+                            updated_at=now,
+                        )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,

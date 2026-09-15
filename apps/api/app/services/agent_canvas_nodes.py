@@ -170,6 +170,13 @@ class AgentCanvasNodeService:
                 else None
             )
         if _has_managed_prompt_preparation(current) and _changes_prompt_authority(changes):
+            changes["prompt_context_snapshot_id"] = None
+            changes["metadata"] = {
+                key: value
+                for key, value in current.metadata.items()
+                if not key.startswith("prompt_")
+                and key not in {"prepared_reference_snapshots", "editable_prompt_projection"}
+            }
             visible_prompt = changes.get("generation_prompt", current.generation_prompt)
             if isinstance(visible_prompt, str) and visible_prompt.strip():
                 normalized_visible_prompt = visible_prompt.strip()
