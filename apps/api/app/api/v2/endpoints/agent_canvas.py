@@ -553,6 +553,8 @@ def _resume_prompt_preparation_barrier(
     materialization_barrier: (AgentCanvasMaterializationPromptPreparationBarrier | None) = None,
     prompt_ready_activation: Callable[..., object] | None = None,
     notified_dispatch_ids: set[str] | None = None,
+    progressive_storyboard_advance: Callable[[str, str], object] | None = None,
+    materialization_owned_nodes: dict[str, set[str]] | None = None,
 ) -> None:
     """Wake the existing scheduler after a committed prompt terminal result.
 
@@ -568,6 +570,10 @@ def _resume_prompt_preparation_barrier(
     materialization_owned = False
     if materialization_barrier is not None:
         materialization_owned = materialization_barrier.owns_dispatch(dispatch)
+        if materialization_owned and materialization_owned_nodes is not None:
+            materialization_owned_nodes.setdefault(dispatch.workflow_id, set()).add(
+                dispatch.node_id
+            )
         materialization_barrier.reconcile_terminal_dispatch(dispatch)
     dispatch_id = getattr(dispatch, "dispatch_id", None)
     if notified_dispatch_ids is not None and dispatch_id and dispatch_id in notified_dispatch_ids:
@@ -585,7 +591,12 @@ def _resume_prompt_preparation_barrier(
                 (dispatch.node_id,),
                 source_id=operation_id,
             )
-
+    if (
+        dispatch.status == "completed"
+        and not materialization_owned
+        and progressive_storyboard_advance is not None
+    ):
+        progressive_storyboard_advance(dispatch.workflow_id, dispatch.node_id)
     active = runtime_repository.get_active_execution(dispatch.workflow_id)
     if active is None:
         activation_succeeded = bool(
@@ -1060,6 +1071,7 @@ def create_agent_canvas_runtime(
 
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
+        conversations=conversation_repository,
         authoring=storyboard_authoring,
         gateway=video_agent_gateway,
         receipts=production_closure_receipts,
@@ -1698,6 +1710,15 @@ def create_agent_canvas_runtime(
             retryable=explicit_retryable,
         )
 
+    materialization_owned_nodes: dict[str, set[str]] = {}
+
+    def advance_completed_storyboard_prompts(delivery):
+        for node_id in tuple(materialization_owned_nodes.pop(delivery.workflow_id, set())):
+            storyboard_progression.advance_after_prompt_ready(
+                delivery.workflow_id,
+                node_id,
+            )
+
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
         next_action=durable_next_action.execute,
@@ -1721,6 +1742,7 @@ def create_agent_canvas_runtime(
                 materialization_id=materialization_id,
             )
         ),
+        on_completed=advance_completed_storyboard_prompts,
     )
 
     def activate_prompt_ready_nodes(
@@ -1783,6 +1805,8 @@ def create_agent_canvas_runtime(
             materialization_barrier=materialization_prompt_barrier,
             prompt_ready_activation=activate_prompt_ready_nodes,
             notified_dispatch_ids=notified_prompt_dispatch_ids,
+            progressive_storyboard_advance=storyboard_progression.advance_after_prompt_ready,
+            materialization_owned_nodes=materialization_owned_nodes,
         ),
     )
     guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(

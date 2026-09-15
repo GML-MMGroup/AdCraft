@@ -564,10 +564,17 @@ class AgentCanvasWorkflowRepository:
         bindings: tuple[CanvasBindingV2, ...],
         *,
         expected_revision: int,
+        prompt_context: Mapping[str, object] | None = None,
     ) -> int:
         """Insert one node and its inputs inside a caller-owned transaction."""
 
-        node = normalize_queued_node(node, bindings=bindings)
+        node = normalize_queued_node(
+            node,
+            bindings=bindings,
+            context_digest=(
+                _context_digest(prompt_context) if prompt_context is not None else None
+            ),
+        )
         current_revision = _require_workflow_revision(
             connection,
             node.workflow_id,
@@ -584,6 +591,7 @@ class AgentCanvasWorkflowRepository:
             connection,
             node,
             bindings=bindings,
+            context=prompt_context,
             now=node.updated_at,
         )
         _advance_workflow_revision(
@@ -3664,6 +3672,11 @@ def _workflow_not_found_error() -> V2PersistenceError:
         "Workflow was not found.",
         stage="agent_canvas_workflow_repository",
     )
+
+
+def _context_digest(context: Mapping[str, object]) -> str:
+    _payload, digest = detached_context_payload(context)
+    return digest
 
 
 def _node_not_found_error() -> V2PersistenceError:

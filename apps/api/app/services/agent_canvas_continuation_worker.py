@@ -61,6 +61,7 @@ class AgentCanvasContinuationWorker:
         jitter: Callable[[int], timedelta] | None = None,
         fail_turn: Callable[[str, str, str, bool], object] | None = None,
         dependency_reconciler: DependencyReconciler | None = None,
+        on_completed: Callable[[ContinuationDeliveryV2], object] | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_heartbeat,
     ) -> None:
         self._outbox = outbox
@@ -80,6 +81,7 @@ class AgentCanvasContinuationWorker:
         self._jitter = jitter or (lambda _: timedelta(0))
         self._fail_turn = fail_turn
         self._dependency_reconciler = dependency_reconciler
+        self._on_completed = on_completed
         self._heartbeat_wait = heartbeat_wait
 
     def run_once(self) -> ContinuationWorkerCycle:
@@ -115,6 +117,8 @@ class AgentCanvasContinuationWorker:
             failed += outcome == "failed"
             deferred += outcome == "deferred"
             lease_lost += outcome == "lease_lost"
+            if outcome == "completed" and self._on_completed is not None:
+                self._on_completed(delivery)
         return ContinuationWorkerCycle(
             claimed=len(claimed),
             completed=completed,

@@ -375,7 +375,13 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         if promotion is not None and self._on_storyboard_authored is not None:
-            self._on_storyboard_authored(outcome)
+            created = self._on_storyboard_authored(outcome)
+            self._prepare_progressive_storyboard_nodes(
+                envelope,
+                outcome,
+                created,
+                lease_guard=lease_guard,
+            )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent" and not reference_wait_opened:
             self._parent_derived.reconcile_after_parent(
@@ -1078,7 +1084,13 @@ class CapabilityMaterializationPublicationService:
             session_id=session.session_id,
         )
         if promotion is not None and self._on_storyboard_authored is not None:
-            self._on_storyboard_authored(outcome)
+            created = self._on_storyboard_authored(outcome)
+            self._prepare_progressive_storyboard_nodes(
+                envelope,
+                outcome,
+                created,
+                lease_guard=lease_guard,
+            )
         self._activate_prompt_ready_media(envelope, outcome)
         if envelope.operation_kind == "parent":
             parent = self._refreshed_parent_reconciliation_envelope(envelope, outcome)
@@ -1094,6 +1106,49 @@ class CapabilityMaterializationPublicationService:
                     source_turn_id=continuation_source_turn_id,
                 )
         return outcome.node_ids[0] if outcome.node_ids else None
+
+    def _prepare_progressive_storyboard_nodes(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome: MaterializationOutcomeV1,
+        created: object,
+        *,
+        lease_guard: Callable[[], None],
+    ) -> None:
+        """Attach the same durable wait to the next single storyboard Draft."""
+
+        if not isinstance(created, tuple) or not created:
+            return
+        pairs: list[tuple[str, str]] = []
+        contexts: dict[str, StageAuthoringContextV1] = {}
+        for node_id in created:
+            node = self._workflows.get_node(envelope.workflow_id, node_id)
+            operation_id = node.prompt_preparation.operation_id
+            if not isinstance(operation_id, str) or not operation_id:
+                raise V2PersistenceError(
+                    "storyboard_prompt_dispatch_missing",
+                    "Progressive Storyboard Draft has no durable prompt operation.",
+                    stage="capability_materialization_publication",
+                )
+            pairs.append((node_id, operation_id))
+            contexts[node_id] = self._load_persisted_prompt_context(
+                workflow_id=envelope.workflow_id,
+                node_id=node_id,
+                operation_id=operation_id,
+            )
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        self._prepare_prompts(
+            envelope,
+            next(iter(contexts.values())),
+            session_id=session.session_id,
+            session_revision=outcome.session_revision,
+            stage=outcome.journey_stage,
+            occurrence_id=None,
+            node_ids=tuple(node_id for node_id, _ in pairs),
+            operation_ids=tuple(operation_id for _, operation_id in pairs),
+            lease_guard=lease_guard,
+            context_by_node=contexts,
+        )
 
     def _resolve_reference_prompt_successor(
         self,

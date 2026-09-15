@@ -10,6 +10,9 @@ import json
 from types import SimpleNamespace
 from sqlalchemy.engine import Connection
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_prompt_preparation_dispatch_repository import (
+    AgentCanvasPromptPreparationDispatchRepository,
+)
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
@@ -30,6 +33,7 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_role_prompt_preparation import EditablePromptProjectionV1
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSequenceRowDraftV2,
@@ -40,6 +44,7 @@ from app.schemas.agent_canvas_production_closure import (
     StoryboardFanoutNodePlanV1,
     StoryboardFanoutPlanV1,
 )
+from app.schemas.agent_canvas_progressive_authoring import StageAuthoringContextV1
 from app.schemas.agent_working_documents import (
     StoryboardNodeRecordV2,
     StoryboardPlannedNodeV3,
@@ -87,6 +92,7 @@ class ProgressiveStoryboardReadyService:
         self,
         *,
         workflows: AgentCanvasWorkflowRepository,
+        conversations=None,
         authoring: StoryboardSequenceAuthoringService,
         gateway: VideoAgentGateway,
         receipts: AgentCanvasProductionClosureRepository | None = None,
@@ -98,6 +104,7 @@ class ProgressiveStoryboardReadyService:
         on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
+        self._conversations = conversations
         self._authoring = authoring
         self._gateway = gateway
         self._receipts = receipts
@@ -107,8 +114,12 @@ class ProgressiveStoryboardReadyService:
         self._video_resolution_resolver = video_resolution_resolver
         self._video_audio_constraints_resolver = video_audio_constraints_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
+        self._prompt_dispatches = AgentCanvasPromptPreparationDispatchRepository(
+            workflows.database,
+            events,
+        ) if events is not None else None
 
-    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> None:
+    def continue_authored_publication(self, outcome: MaterializationOutcomeV1) -> tuple[str, ...]:
         """Continue the committed Plan through the existing topology and journey owners."""
 
         document_ids = {result.document_id for result in outcome.document_results}
@@ -124,13 +135,59 @@ class ProgressiveStoryboardReadyService:
                 stage="storyboard_progression",
             )
         plan = plans[0]
-        self.materialize_planned_drafts(
+        created = self.materialize_planned_drafts(
             workflow_id=outcome.workflow_id,
             plan_document_id=plan.document_id,
             expected_plan_revision=plan.revision,
+            limit=1,
         )
-        if self._on_storyboard_pipeline_prepared is not None:
-            self._on_storyboard_pipeline_prepared(outcome.workflow_id, plan.document_id)
+        return created
+
+    def advance_after_prompt_ready(self, workflow_id: str, node_id: str) -> tuple[str, ...]:
+        """Publish the next planned Storyboard Draft after one prompt is ready."""
+
+        workflow = self._workflows.get_workflow(workflow_id)
+        current = next((node for node in workflow.nodes if node.node_id == node_id), None)
+        if (
+            current is None
+            or current.creative_role not in {"storyboard_sequence", "storyboard_video"}
+            or current.prompt_preparation.status != "ready"
+        ):
+            return ()
+        plan_document_id = current.metadata.get("source_agent_document_id")
+        if not isinstance(plan_document_id, str) or not plan_document_id:
+            return ()
+        plan = next(
+            (
+                item
+                for item in self._authoring.list_plans(workflow_id).items
+                if item.document_id == plan_document_id
+            ),
+            None,
+        )
+        if plan is None:
+            raise V2PersistenceError(
+                "storyboard_fanout_preflight_stale",
+                "Storyboard Draft progression requires the current accepted Plan.",
+                stage="storyboard_progression",
+            )
+        created = self.materialize_planned_drafts(
+            workflow_id=workflow_id,
+            plan_document_id=plan.document_id,
+            expected_plan_revision=plan.revision,
+            limit=1,
+        )
+        if created:
+            return created
+        if self._conversations is None:
+            return ()
+        session = self._conversations.get_guidance_session(workflow_id)
+        if (
+            self._on_storyboard_pipeline_prepared is not None
+            and session.journey.stage == "storyboard_grids"
+        ):
+            self._on_storyboard_pipeline_prepared(workflow_id, plan.document_id)
+        return ()
 
     def materialize_planned_drafts(
         self,
@@ -138,6 +195,7 @@ class ProgressiveStoryboardReadyService:
         workflow_id: str,
         plan_document_id: str,
         expected_plan_revision: int,
+        limit: int | None = None,
     ) -> tuple[str, ...]:
         """Publish accepted Plan topology without claiming a visual anchor."""
 
@@ -190,10 +248,26 @@ class ProgressiveStoryboardReadyService:
         )
         if not members:
             return ()
+        if limit is not None:
+            if limit < 1:
+                raise ValueError("Storyboard Draft materialization limit must be positive.")
+            members = members[:limit]
+        # The progressive path publishes a visible Draft first.  Its prompt
+        # is authored by the durable prompt worker after publication, rather
+        # than being copied from the in-memory fan-out plan.
+        members = tuple(
+            (_pending_prompt_node(node), bindings) for node, bindings in members
+        )
         next_content = _append_planned_nodes(
             content,
             plan_document_id=plan_document_id,
             planned=tuple(node for node, _ in members),
+        )
+        prompt_contexts = self._prompt_contexts_for_members(
+            workflow_id=workflow_id,
+            plan=plan,
+            source_grid=source_grid,
+            members=members,
         )
         with self._workflows.database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -205,6 +279,7 @@ class ProgressiveStoryboardReadyService:
                         node,
                         bindings,
                         expected_revision=revision,
+                        prompt_context=prompt_contexts.get(node.node_id),
                     )
                 self._authoring.commit_plan_content_in_transaction(
                     connection,
@@ -221,6 +296,77 @@ class ProgressiveStoryboardReadyService:
                 connection.rollback()
                 raise
         return tuple(node.node_id for node, _ in members)
+
+    def _prompt_contexts_for_members(self, *, workflow_id, plan, source_grid, members):
+        if self._prompt_dispatches is None:
+            return {}
+        operation_id = source_grid.prompt_preparation.operation_id
+        if not operation_id:
+            return {}
+        dispatch = self._prompt_dispatches.get_by_node_operation(
+            workflow_id, source_grid.node_id, operation_id
+        )
+        if dispatch is None or not dispatch.context_json:
+            raise V2PersistenceError(
+                "storyboard_prompt_context_missing",
+                "Progressive Storyboard Draft has no frozen prompt context.",
+                stage="storyboard_progression",
+            )
+        base = StageAuthoringContextV1.model_validate(dispatch.context_json)
+        content = _plan_content(plan.content)
+        excerpts = base.working_document_excerpts
+        if len(excerpts) != 1:
+            raise V2PersistenceError(
+                "storyboard_prompt_context_invalid",
+                "Progressive Storyboard Draft requires one frozen working-document excerpt.",
+                stage="storyboard_progression",
+            )
+        source_excerpt = excerpts[0]
+        contexts = {}
+        for node, _ in members:
+            sequence_id = node.metadata.get("source_sequence_id")
+            segment = next(
+                item for item in content.segments if item.sequence_id == sequence_id
+            )
+            rows = [
+                row.model_dump(mode="json")
+                for row in content.rows
+                if row.sequence_id == sequence_id
+            ]
+            document_content = dict(source_excerpt.content)
+            document_content["segments"] = [segment.model_dump(mode="json")]
+            document_content["rows"] = rows
+            if node.creative_role == "storyboard_video":
+                global_parameters = dict(document_content.get("global_parameters", {}))
+                global_parameters["total_duration_seconds"] = float(
+                    segment.end_seconds - segment.start_seconds
+                )
+                document_content["global_parameters"] = global_parameters
+            contexts[node.node_id] = base.model_copy(
+                update={
+                    "requirement_facts": (
+                        {
+                            **base.requirement_facts,
+                            "duration_seconds": float(
+                                segment.end_seconds - segment.start_seconds
+                            ),
+                        }
+                        if node.creative_role == "storyboard_video"
+                        else base.requirement_facts
+                    ),
+                    "working_document_excerpts": (
+                        source_excerpt.model_copy(
+                            update={
+                                "selector": f"sequence:{sequence_id}",
+                                "revision": plan.revision,
+                                "content_digest": plan.content_digest,
+                                "content": document_content,
+                            }
+                        ),
+                    ),
+                }
+            )
+        return contexts
 
     def preflight_fanout(
         self,
@@ -1910,6 +2056,22 @@ def _seed_presentation(prompt: str) -> EditablePromptProjectionV1:
         source="deterministic_projection",
         revision=1,
         prompt_digest=f"sha256:{sha256(prompt.encode('utf-8')).hexdigest()}",
+    )
+
+
+def _pending_prompt_node(node: CanvasNodeV2) -> CanvasNodeV2:
+    """Return a visible Draft whose prompt is owned by the prompt worker."""
+
+    return node.model_copy(
+        update={
+            "generation_prompt": None,
+            "prompt_presentation": None,
+            "prompt_preparation": NodePromptPreparationV1(
+                status="queued",
+                attempt_no=0,
+                updated_at=node.updated_at,
+            ),
+        }
     )
 
 
