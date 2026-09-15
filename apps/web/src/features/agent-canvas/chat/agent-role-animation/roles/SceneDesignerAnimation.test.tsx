@@ -150,7 +150,7 @@ describe("SceneDesignerAnimation", () => {
         "scene-scan",
       ]);
     expect(SCENE_DESIGNER_MOTION_PROGRAM.working.map(({ part }) => part))
-      .toEqual(["scene-scan", "scene-accent"]);
+      .toEqual(["scene-reveal", "construction-hide", "scene-scan", "scene-accent"]);
     expect(SCENE_DESIGNER_MOTION_PROGRAM.workingTransitionDurationMs).toBe(120);
 
     const reveal = trackFor("scene-reveal");
@@ -186,6 +186,17 @@ describe("SceneDesignerAnimation", () => {
     expect(loop.keyframes.some(({ transform, opacity }) => (
       transform === "translateY(368px)" && opacity === 1
     ))).toBe(true);
+
+    for (const part of ["scene-reveal", "construction-hide"] as const) {
+      const mask = trackFor(part, "working");
+      expect(mask.options.iterations).toBe(Infinity);
+      expect(mask.keyframes[0]).toMatchObject({ transform: "translateY(0px)", opacity: 1 });
+      expect(mask.keyframes.at(-1)).toMatchObject({ transform: "translateY(0px)", opacity: 1 });
+      expect(mask.keyframes.map(({ offset }) => offset))
+        .toEqual(loop.keyframes.map(({ offset }) => offset));
+      expect(mask.keyframes.map(({ transform }) => transform))
+        .toEqual(expect.arrayContaining(["translateY(368px)", "translateY(392px)"]));
+    }
 
     const sceneAccent = trackFor("scene-accent", "working");
     expect(sceneAccent.keyframes.map(({ opacity }) => opacity))
