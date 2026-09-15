@@ -1763,7 +1763,8 @@ export function useAgentCanvasChat({
       presentationStreams,
       loading,
       sending,
-      agentWorking: sending || advancingGuidance || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,
+      // Guided submission can precede the next Turn; keep feedback until authority releases its lock.
+      agentWorking: sending || advancingGuidance || Boolean(actingInteractionId) || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,
       postReadyCheckpoint,
       agentWaitingForModel,
       actingProposalId,
