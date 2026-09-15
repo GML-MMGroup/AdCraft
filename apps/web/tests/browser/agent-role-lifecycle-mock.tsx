@@ -86,15 +86,33 @@ function session(selected: Selection): GuidedSessionStateV2 {
 let timelineSession = session(selections[0]!);
 let fixtureTurns: Record<string, AgentCanvasChatTurnV2> = {};
 let items: ChatTimelineItemV2[] = [];
+const liveDetailRefresh = new URLSearchParams(location.search).has("live-detail-refresh");
 Object.assign(agentCanvasApi, Object.fromEntries(Object.keys(agentCanvasApi).map(key => [key,
   async () => { throw new Error(`API disabled in lifecycle fixture: ${key}`); }])));
 Object.assign(agentCanvasApi, {
   agentCanvasExecutionSettings: async () => ({ value: { workflow_id: "fixture-lifecycle", media_execution_mode: "manual",
     revision: 1, created_at: now, updated_at: now }, etag: '"fixture"' }),
   agentCanvasCreativeSession: async () => { throw new Error("No creative session in lifecycle fixture"); },
-  agentCanvasChatTimeline: async (): Promise<AgentCanvasChatViewTimelineV2> => ({ workflow_id: "fixture-lifecycle",
-    conversation_id: "fixture-conversation", guidanceSession: structuredClone(timelineSession), guidanceAdvancePrecondition: null,
-    continuations: [], current_session_actions: [], items: structuredClone(items), presentationItems: null, next_cursor: items.length }),
+  agentCanvasChatTimeline: async (): Promise<AgentCanvasChatViewTimelineV2> => {
+    const wireItems: ChatTimelineItemV2[] = liveDetailRefresh
+      ? items.filter(item => item.item_type !== "expert_activity").map((item, index) => item.item_type === "proposal"
+        ? { item_type: "proposal_pointer", proposal_id: item.proposal.proposal_id, sequence: index + 1, created_at: now }
+        : { ...structuredClone(item), sequence: index + 1 })
+      : structuredClone(items);
+    return { workflow_id: "fixture-lifecycle", conversation_id: "fixture-conversation",
+      guidanceSession: liveDetailRefresh ? null : structuredClone(timelineSession), guidanceAdvancePrecondition: null,
+      continuations: [], current_session_actions: [], items: wireItems,
+      // Deliberately immutable presentation identity, while detail changes live.
+      presentationItems: liveDetailRefresh ? wireItems.map((item, index) => ({
+        presentation_key: `live-detail-${index}`, presentation_revision: 1, source_entry_ids: [`entry-${index}`],
+        message_key: null, message_args: {}, response_locale: "en-US", item,
+      })) : null, next_cursor: wireItems.length };
+  },
+  agentCanvasProposal: async (_workflowId: string, proposalId: string) => {
+    const card = items.find(item => item.item_type === "proposal" && item.proposal.proposal_id === proposalId);
+    if (card?.item_type !== "proposal") throw new Error("Unknown fixture proposal");
+    return structuredClone(card.proposal);
+  },
   agentCanvasChatTurn: async (_workflowId: string, turnId: string) => structuredClone(fixtureTurns[turnId]!),
 } satisfies Partial<typeof agentCanvasApi>);
 
@@ -148,7 +166,7 @@ function LifecycleFixture() {
     attempt_stage: null, retryable: false, validation_paths: [], suggested_actions: [],
     completion_mode: null, warning_code: null,
   }, currentProposal];
-  if (new URLSearchParams(location.search).has("planning-progress")) {
+  if (liveDetailRefresh || new URLSearchParams(location.search).has("planning-progress")) {
     // Same wire shape as the stale queued hint following a completed Proposal.
     const planning = normalizeAgentCanvasChatTimelineV2({
       workflow_id: workflow.workflow_id, conversation_id: "fixture-conversation", next_cursor: revision * 2 + 2,

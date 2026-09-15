@@ -3,6 +3,26 @@ import { expect, test } from "@playwright/test";
 const URL = "/tests/browser/agent-role-lifecycle-mock.html";
 const character = ".agent-chat__stage-thread > header .is-role-character-design";
 
+test("live detail completion stops artwork without reloading or changing presentation revision", async ({ page }) => {
+  await page.goto(`${URL}?live-detail-refresh`);
+  const role = page.locator(character);
+  const frame = role.getByTestId("agent-role-animation-frame");
+  await expect(frame).toHaveAttribute("data-motion-state", "working");
+  await expect(role.locator("svg")).toBeVisible();
+  // The same thread/frame must survive each detail refresh.
+  await frame.evaluate(element => element.setAttribute("data-live-identity", "original"));
+  for (const terminal of ["Media success", "failed", "superseded"]) {
+    await page.getByRole("button", { name: terminal, exact: true }).click();
+    await expect(frame).toHaveAttribute("data-motion-state", "idle");
+    await expect(frame).toHaveAttribute("data-live-identity", "original");
+    await expect(role.locator("img")).toBeVisible();
+    await expect(role.locator("svg")).toHaveCount(0);
+    await page.getByRole("button", { name: "Retry task", exact: true }).click();
+    await expect(frame).toHaveAttribute("data-motion-state", "working");
+    await expect(role.locator("svg")).toBeVisible();
+  }
+});
+
 test("later queued planning inherits task completion, failure and retry without keeping artwork alive", async ({ page }) => {
   await page.goto(`${URL}?planning-progress`);
   const role = page.locator(character);
