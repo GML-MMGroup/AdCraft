@@ -181,14 +181,36 @@ describe("Timeline role presentation lifecycle", () => {
     expect(state({ ...input(), threads: [thread([card])] }).motionState)
       .toBe(status === "queued" || status === "working" ? "working" : "idle");
   });
-  it("new role entry never stops another role or restarts a completed role", () => {
+  it("hands motion from the previous role to the newly entered role", () => {
     const first = input().threads[0]!;
     const second = { ...first, key: "stage:scene_design", capability_id: "scene_design" as const,
       activities: [activity("second", "second", "working", 2)] };
     const both = projectRoleLifecycles({ ...input(), threads: [first, second] });
-    expect([...both.values()].map(x => x.motionState)).toEqual(["working", "working"]);
+    expect([...both.values()].map(x => x.motionState)).toEqual(["idle", "working"]);
     first.activities = [activity("a", "t", "completed")];
     expect([...projectRoleLifecycles({ ...input(), threads: [first, second] }).values()].map(x => x.motionState)).toEqual(["idle", "working"]);
+  });
+  it("keeps a completed role working while the conversation can still hand off", () => {
+    const completed = input([activity("a", "t", "completed")]);
+    expect(projectRoleLifecycles({ ...completed, conversationWorking: true })
+      .get("stage:character_design")?.motionState).toBe("working");
+
+    const next = {
+      ...completed,
+      conversationWorking: true,
+      threads: [
+        completed.threads[0]!,
+        {
+          ...completed.threads[0]!,
+          key: "stage:scene_design",
+          capability_id: "scene_design" as const,
+          activities: [activity("scene", "scene-turn", "working", 2)],
+        },
+      ],
+    };
+    const projected = projectRoleLifecycles(next);
+    expect(projected.get("stage:character_design")?.motionState).toBe("idle");
+    expect(projected.get("stage:scene_design")?.motionState).toBe("working");
   });
   it("keeps terminal across stale refresh and permits a newer retry", () => {
     const done = projectRoleLifecycles(input([activity("a", "t", "failed")]));

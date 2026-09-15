@@ -403,6 +403,7 @@ export function AgentCanvasChatPanel({
     threads: roleThreads,
     workflowId: workflow.workflow_id,
     turnsById: chat.state.turnsById,
+    conversationWorking: chat.state.agentWorking,
   });
   const stageRoleMotionStates = useMemo(() => new Map(
     [...stageRoleLifecycles].map(([key, lifecycle]) => [key, lifecycle.motionState]),
