@@ -1203,6 +1203,25 @@
   animation: agent-chat-section-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
+.agent-chat__stage-thread--loading {
+  min-height: 48px;
+  align-items: center;
+}
+
+.agent-chat__role-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--agent-chat-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__role-loading-loader {
+  color: var(--agent-chat-secondary);
+}
+
 .agent-chat__stage-thread > header {
   display: flex;
   align-items: flex-start;

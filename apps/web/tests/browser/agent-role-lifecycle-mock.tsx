@@ -84,7 +84,7 @@ function session(selected: Selection): GuidedSessionStateV2 {
 
 let timelineSession = session(selections[0]!);
 let fixtureTurns: Record<string, AgentCanvasChatTurnV2> = {};
-const items: ChatTimelineItemV2[] = selections.map(proposal);
+let items: ChatTimelineItemV2[] = [];
 Object.assign(agentCanvasApi, Object.fromEntries(Object.keys(agentCanvasApi).map(key => [key,
   async () => { throw new Error(`API disabled in lifecycle fixture: ${key}`); }])));
 Object.assign(agentCanvasApi, {
@@ -122,10 +122,35 @@ function LifecycleFixture() {
   timelineSession = session(selected);
   fixtureTurns = Object.fromEntries(selections.map(item => { const itemKey = `${item.occurrence}:${item.phase}`;
     return [`${item.occurrence}-${item.phase}-turn-1`, turn(`${item.occurrence}-${item.phase}-turn-1`, "completed", item, attempts[itemKey])]; }));
+  // Node/Prompt phases no longer drive role artwork. This fixture explicitly
+  // supplies the current role operation and its terminal evidence instead.
+  const currentProposal = proposal(selected, revision);
+  const materialization = currentProposal.proposal.materialization!;
+  materialization.attempt_no = attempts[key]!;
+  materialization.turn_id = `${selected.occurrence}-${selected.phase}-turn-${attempts[key]}`;
+  materialization.status = state === "succeeded" ? "completed" : state === "failed" ? "failed"
+    : state === "draft-waiting" ? "queued" : "working";
+  currentProposal.proposal.availability = state === "superseded" ? "superseded" : "applied";
+  fixtureTurns[materialization.turn_id] = {
+    ...turn(materialization.turn_id, state === "succeeded" ? "completed" : state === "failed" ? "failed"
+      : state === "superseded" ? "superseded" : "running", selected, attempts[key]),
+    operation_stage: state === "cancelled" ? "cancelled" : "running",
+  };
+  currentProposal.sequence = revision * 2 + 1;
+  items = [{
+    item_type: "expert_activity", activity_id: `activity-${materialization.turn_id}`,
+    turn_id: materialization.turn_id, capability_id: "character_design",
+    capability_display_name: "Character Designer", sequence: revision * 2,
+    status: state === "succeeded" ? "completed" : state === "failed" ? "failed"
+      : state === "superseded" ? "superseded" : "working",
+    started_at: now, finished_at: null, message: null, error_code: null, elapsed_ms: null,
+    attempt_stage: null, retryable: false, validation_paths: [], suggested_actions: [],
+    completion_mode: null, warning_code: null,
+  }, currentProposal];
   const lifecycle = useMemo(() => {
     const threads = buildStageThreadTimeline(items).filter(unit => unit.unit_type === "stage_thread");
-    return projectRoleLifecycles({ threads, workflow, runtime, session: timelineSession, turnsById: fixtureTurns }).values().next().value!;
-  }, [workflow, runtime]);
+    return projectRoleLifecycles({ threads, workflowId: workflow.workflow_id, turnsById: fixtureTurns }).values().next().value!;
+  }, [workflow]);
   const update = (next: FixtureState) => { setStates(current => ({ ...current, [key]: next })); setRevision(value => value + 1); };
   const choose = (next: Selection) => { setSelected(next); setRevision(value => value + 1); };
   return <main><section className="controls"><h1>Lifecycle authority fixture</h1>
@@ -133,8 +158,8 @@ function LifecycleFixture() {
     <button onClick={() => update("succeeded")}>Media success</button>{(["failed", "cancelled", "superseded"] as const).map(value => <button key={value} onClick={() => update(value)}>{value}</button>)}
     <button onClick={() => { setAttempts(current => ({ ...current, [key]: current[key]! + 1 })); update("prompt-working"); }}>Retry task</button>
     {selections.map(value => <button key={`${value.occurrence}-${value.phase}`} onClick={() => choose(value)}>Occurrence {value.occurrence.replace("character-", "")} {value.phase === "main" ? "Main" : "Turnaround"}</button>)}
-    <output data-testid="lifecycle-occurrence">{lifecycle.identity.occurrenceId}</output><output data-testid="lifecycle-character-phase">{lifecycle.identity.characterPhase}</output>
-    <output data-testid="lifecycle-phase">{lifecycle.phase}</output><output data-testid="lifecycle-evidence">{lifecycle.evidence.source}</output><output data-testid="lifecycle-attempt">{lifecycle.identity.attemptKey}</output>
+    <output data-testid="lifecycle-occurrence">{selected.occurrence}</output><output data-testid="lifecycle-character-phase">{selected.phase}</output>
+    <output data-testid="lifecycle-phase">{lifecycle.terminal ?? "working"}</output><output data-testid="lifecycle-evidence">timeline</output><output data-testid="lifecycle-attempt">{lifecycle.attemptKey}</output>
   </section><AgentCanvasChatPanel workflow={workflow} runtime={runtime} chatRevision={revision} chatEvents={[]} onFocusNode={() => undefined} /></main>;
 }
 

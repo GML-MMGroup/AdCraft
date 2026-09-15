@@ -345,12 +345,12 @@ describe("AgentCanvasChatPanel role motion integration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not animate a working activity before its exact turn is hydrated", () => {
+  it("animates a working activity before its exact turn is hydrated", () => {
     const chat = mockChatResult([capabilityActivity()]);
     chat.state.turnsById = {};
     panelMocks.useAgentCanvasChat.mockReturnValue(chat);
     render(<AgentCanvasChatPanel workflow={roleMotionWorkflow} chatRevision={0} chatEvents={[]} onFocusNode={vi.fn()} />);
-    expect(renderedRoleMotionStates()).toEqual({ world_setting: "idle" });
+    expect(renderedRoleMotionStates()).toEqual({ world_setting: "working" });
   });
 
   it("animates all ten concurrently working roles", () => {
@@ -462,7 +462,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       "world_setting",
     ],
     ["waiting-user", [proposalCard], "character_design"],
-  ] as const)("keeps a %s current stage idle", (_label, items, capabilityId) => {
+  ] as const)("only settles a terminal %s current stage", (label, items, capabilityId) => {
     panelMocks.useAgentCanvasChat.mockReturnValue(mockChatResult([...items], true));
 
     render(
@@ -474,7 +474,7 @@ describe("AgentCanvasChatPanel role motion integration", () => {
       />,
     );
 
-    expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: "idle" });
+    expect(renderedRoleMotionStates()).toEqual({ [capabilityId]: label === "completed" ? "idle" : "working" });
   });
 
   it("does not expose a failed working Role as a static or waiting visual", async () => {
@@ -497,7 +497,8 @@ describe("AgentCanvasChatPanel role motion integration", () => {
 
     await waitFor(() => expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" })).toBeTruthy());
     expect(panelMocks.prepareRoleVisual).toHaveBeenCalledWith("world_setting", "animated");
-    expect(document.querySelector(".agent-chat__stage-thread")).toBeNull();
+    expect(screen.getByText("Role animation could not be loaded.")).toBeTruthy();
+    expect(screen.queryByText("World Setting Designer")).toBeNull();
     expect(document.querySelector("[data-role-waiting-motion=\"true\"]")).toBeNull();
   });
 });

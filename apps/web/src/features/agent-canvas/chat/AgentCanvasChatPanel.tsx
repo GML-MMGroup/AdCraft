@@ -71,7 +71,7 @@ import { StageThread } from "./StageThread.tsx";
 import { AgentCapabilityIdentity } from "./AgentCapabilityIdentity.tsx";
 import { prepareRoleVisual } from "./agent-role-animation/agentRoleVisualResource.ts";
 import { roleVisualMode } from "./agent-role-animation/useAgentRoleVisual.ts";
-import { projectRoleLifecycles } from "./agent-role-animation/roleLifecycleProjection.ts";
+import { useTimelineRoleLifecycles } from "./agent-role-animation/roleLifecycleProjection.ts";
 import { buildStageThreadTimeline } from "./stageThreadProjection.ts";
 import { ConversationNodeLinks } from "./ConversationNodeLinks.tsx";
 import { CurrentProductionStep } from "./CurrentProductionStep.tsx";
@@ -411,13 +411,14 @@ export function AgentCanvasChatPanel({
     failedTurnsByMessageId,
     stageTimeline,
   ]);
-  const stageRoleLifecycles = useMemo(() => projectRoleLifecycles({
-    threads: stageTimeline.filter((unit) => unit.unit_type === "stage_thread"),
-    workflow,
-    runtime,
-    session: chat.state.guidanceSession,
+  const roleThreads = useMemo(
+    () => stageTimeline.filter((unit) => unit.unit_type === "stage_thread"), [stageTimeline],
+  );
+  const stageRoleLifecycles = useTimelineRoleLifecycles({
+    threads: roleThreads,
+    workflowId: workflow.workflow_id,
     turnsById: chat.state.turnsById,
-  }), [chat.state.guidanceSession, chat.state.turnsById, runtime, stageTimeline, workflow]);
+  });
   const stageRoleMotionStates = useMemo(() => new Map(
     [...stageRoleLifecycles].map(([key, lifecycle]) => [key, lifecycle.motionState]),
   ), [stageRoleLifecycles]);
