@@ -262,6 +262,58 @@ describe("ApiSpacePage provider registry", () => {
     expect(screen.getByText("SiliconFlow credentials saved.")).toBeTruthy();
   });
 
+  it("sends a base URL override together with the API key in one save", async () => {
+    render(<ApiSpacePage />);
+    const keyInput = await screen.findByLabelText("SiliconFlow Text API Key");
+    const baseUrlInput = screen.getByLabelText("SiliconFlow Text Base URL");
+
+    fireEvent.change(keyInput, { target: { value: "siliconflow-candidate" } });
+    fireEvent.change(baseUrlInput, { target: { value: "  https://api.siliconflow.example/v2  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save SiliconFlow credentials" }));
+
+    await waitFor(() => expect(fixture.api.updateProviderCredentials).toHaveBeenCalledWith("siliconflow", {
+      api_keys: { text: "siliconflow-candidate" },
+      base_urls: { text: "https://api.siliconflow.example/v2" },
+      clear_capabilities: [],
+    }));
+    expect((baseUrlInput as HTMLInputElement).value).toBe("");
+  });
+
+  it("omits base_urls when the base URL input is left empty", async () => {
+    render(<ApiSpacePage />);
+    const keyInput = await screen.findByLabelText("SiliconFlow Text API Key");
+
+    fireEvent.change(keyInput, { target: { value: "siliconflow-candidate" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save SiliconFlow credentials" }));
+
+    await waitFor(() => expect(fixture.api.updateProviderCredentials).toHaveBeenCalledWith("siliconflow", {
+      api_keys: { text: "siliconflow-candidate" },
+      clear_capabilities: [],
+    }));
+  });
+
+  it("shows the current endpoint as the base URL placeholder and supports endpoint-only updates", async () => {
+    render(
+      <ProviderCredentialCard
+        provider={openRouterProvider(true)}
+        models={[]}
+        onProviderUpdated={vi.fn()}
+        onModelsUpdated={vi.fn()}
+      />,
+    );
+    const textBaseUrl = screen.getByLabelText("OpenRouter Text Base URL") as HTMLInputElement;
+    expect(textBaseUrl.placeholder).toBe("Current: https://openrouter.ai/api/v1");
+
+    fireEvent.change(textBaseUrl, { target: { value: "https://openrouter.example/api/v2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save OpenRouter credentials" }));
+
+    await waitFor(() => expect(fixture.api.updateProviderCredentials).toHaveBeenCalledWith("openrouter", {
+      api_keys: {},
+      base_urls: { text: "https://openrouter.example/api/v2" },
+      clear_capabilities: [],
+    }));
+  });
+
   it("tests a SiliconFlow candidate with the matching provider ID", async () => {
     render(<ApiSpacePage />);
     const input = await screen.findByLabelText("SiliconFlow Text API Key");

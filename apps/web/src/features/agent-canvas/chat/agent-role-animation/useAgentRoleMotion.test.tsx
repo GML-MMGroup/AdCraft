@@ -30,11 +30,6 @@ const PROGRAM: AgentRoleMotionProgram = {
     ],
     options: { duration: 3_000, iterations: Infinity, easing: "ease-in-out" },
   }],
-  waiting: [{
-    part: "tool",
-    keyframes: [{ opacity: 0.72 }, { opacity: 1 }, { opacity: 0.72 }],
-    options: { duration: 4_800, iterations: Infinity, easing: "ease-in-out" },
-  }],
 };
 
 interface MockAnimation {
@@ -412,7 +407,7 @@ describe("useAgentRoleMotion", () => {
     expect(activeAnimationIndicesWithDuration(3_200)).toHaveLength(0);
   });
 
-  it.each(["idle", "waiting", "unmount"] as const)(
+  it.each(["idle", "unmount"] as const)(
     "does not let an interrupted intro restart after %s",
     async (nextState) => {
       const program = {
@@ -557,29 +552,6 @@ describe("useAgentRoleMotion", () => {
     expect(animations[2].currentTime).toBe(640);
   });
 
-  it("rolls back a partially-created waiting loop when the second track throws", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="first"></g><g data-part="second"></g>';
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [],
-      waiting: [
-        { ...PROGRAM.waiting[0], part: "first" },
-        { ...PROGRAM.waiting[0], part: "second" },
-      ],
-    };
-    throwOnAnimateCall(2);
-    const controller = createAgentRoleMotionController(root, program);
-
-    controller.playWaiting();
-    await flushAsyncTransitions();
-
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(2);
-    expect(animations).toHaveLength(1);
-    expect(animations[0].cancel).toHaveBeenCalledOnce();
-    expect(animations[0].playState).toBe("idle");
-  });
-
   it("rolls back a partially-created working entry when the second part throws", async () => {
     const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     root.innerHTML = '<g data-part="first"></g><g data-part="second"></g>';
@@ -589,7 +561,6 @@ describe("useAgentRoleMotion", () => {
         { ...PROGRAM.working[0], part: "first" },
         { ...PROGRAM.working[0], part: "second" },
       ],
-      waiting: [],
     };
     throwOnAnimateCall(4);
     const controller = createAgentRoleMotionController(root, program);
@@ -612,7 +583,6 @@ describe("useAgentRoleMotion", () => {
         { ...PROGRAM.working[0], part: "first" },
         { ...PROGRAM.working[0], part: "second" },
       ],
-      waiting: [],
     };
     throwOnAnimateCall(6);
     const controller = createAgentRoleMotionController(root, program);
@@ -627,34 +597,6 @@ describe("useAgentRoleMotion", () => {
     expect(animations.every((animation) => animation.playState === "idle")).toBe(true);
   });
 
-  it("rolls back a partially-created waiting transition", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="first"></g><g data-part="second"></g>';
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [
-        { ...PROGRAM.working[0], part: "first" },
-        { ...PROGRAM.working[0], part: "second" },
-      ],
-      waiting: [
-        { ...PROGRAM.waiting[0], part: "first" },
-        { ...PROGRAM.waiting[0], part: "second" },
-      ],
-    };
-    throwOnAnimateCall(8);
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-
-    controller.playWaiting();
-    await flushAsyncTransitions();
-
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(8);
-    expect(animations).toHaveLength(7);
-    expect(animations[6].cancel).toHaveBeenCalledOnce();
-    expect(animations.every((animation) => animation.playState === "idle")).toBe(true);
-  });
-
   it("resolves settle after rolling back a partially-created batch", async () => {
     const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     root.innerHTML = '<g data-part="first"></g><g data-part="second"></g>';
@@ -664,7 +606,6 @@ describe("useAgentRoleMotion", () => {
         { ...PROGRAM.working[0], part: "first" },
         { ...PROGRAM.working[0], part: "second" },
       ],
-      waiting: [],
     };
     throwOnAnimateCall(8);
     const controller = createAgentRoleMotionController(root, program);
@@ -694,7 +635,7 @@ describe("useAgentRoleMotion", () => {
     const entryIndex = activeAnimationIndicesWithDuration(220)[0];
     const entryAnimation = animations[entryIndex];
 
-    rerender(<MotionHarness motionState="waiting" />);
+    rerender(<MotionHarness motionState="idle" />);
     const callCount = animations.length;
     expect(entryAnimation.cancel).toHaveBeenCalledOnce();
 
@@ -707,72 +648,6 @@ describe("useAgentRoleMotion", () => {
     expect(vi.mocked(Element.prototype.animate).mock.calls.filter(
       ([frames]) => frames === PROGRAM.working[0].keyframes,
     )).toHaveLength(1);
-  });
-
-  it("hands working motion into waiting motion before settling idle", async () => {
-    const { rerender } = render(<MotionHarness motionState="working" />);
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      1,
-      PROGRAM.working[0].keyframes,
-      { ...PROGRAM.working[0].options, fill: "both" },
-    );
-
-    await completeWorkingEntry();
-
-    rerender(<MotionHarness motionState="waiting" />);
-
-    expect(animations[2].pause).toHaveBeenCalledOnce();
-    expect(animations[2].cancel).toHaveBeenCalledOnce();
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      4,
-      PROGRAM.waiting[0].keyframes,
-      { ...PROGRAM.waiting[0].options, fill: "both" },
-    );
-    expect(animations[3].pause).toHaveBeenCalledOnce();
-    expect(animations[3].currentTime).toBe(0);
-    expect(animations[3].cancel).toHaveBeenCalledOnce();
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      5,
-      [
-        { transform: "translateX(2px)", opacity: "0.5" },
-        { transform: "translateX(2px)", opacity: "0.5" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(5);
-
-    await act(async () => {
-      finishResolvers[4]();
-      await animations[4].finished;
-    });
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      6,
-      PROGRAM.waiting[0].keyframes,
-      { ...PROGRAM.waiting[0].options, fill: "both" },
-    );
-
-    rerender(<MotionHarness motionState="idle" />);
-
-    expect(animations[5].pause).toHaveBeenCalledOnce();
-    expect(animations[5].cancel).toHaveBeenCalledOnce();
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      7,
-      [
-        { transform: "translateX(2px)", opacity: "0.5" },
-        { transform: "translateX(2px)", opacity: "0.5" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
   });
 
   it("settles to a noncanonical underlying pose exposed after fill cancellation", async () => {
@@ -824,11 +699,11 @@ describe("useAgentRoleMotion", () => {
     }).toEqual(underlyingPose);
   });
 
-  it.each(["working", "waiting"] as const)(
-    "settles Prop %s light and guides to their authored hidden pose",
-    async (phase) => {
+  it(
+    "settles Prop working light and guides to their authored hidden pose",
+    async () => {
       const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      const activeTracks = PROP_DESIGNER_MOTION_PROGRAM[phase];
+      const activeTracks = PROP_DESIGNER_MOTION_PROGRAM.working;
       const parts = [...new Set(activeTracks.map((track) => track.part))];
       const hiddenParts = parts.filter((part) => (
         part === "shade-light" || part.startsWith("guide-active-")
@@ -845,7 +720,7 @@ describe("useAgentRoleMotion", () => {
         const style = getComputedStyle(target);
         return [target, { transform: style.transform, opacity: style.opacity }];
       }));
-      if (phase === "working") {
+      {
         const controller = createAgentRoleMotionController(
           root,
           PROP_DESIGNER_MOTION_PROGRAM,
@@ -875,45 +750,9 @@ describe("useAgentRoleMotion", () => {
           const partIndex = parts.indexOf(part);
           const settleFrames = vi.mocked(Element.prototype.animate)
             .mock.calls[settleIndices[partIndex]]?.[0] as Keyframe[];
-          expect(Number(settleFrames[0]?.opacity), `${phase} ${part} start`)
+          expect(Number(settleFrames[0]?.opacity), `working ${part} start`)
             .toBeGreaterThan(0);
-          expect(settleFrames[1]?.opacity, `${phase} ${part} endpoint`).toBe("0");
-        }
-
-        await act(async () => {
-          for (const index of settleIndices) finishResolvers[index]();
-          await settlePromise;
-        });
-      } else {
-        vi.stubGlobal("getComputedStyle", vi.fn((target: SVGGraphicsElement) => {
-        const part = target.dataset.part ?? "";
-        const active = animations.slice(0, activeTracks.length)
-          .some((animation) => animation.playState !== "idle");
-        if (active && hiddenParts.includes(part)) {
-          return {
-            transform: part === "shade-light"
-              ? "none"
-              : "matrix(1, 0, 0, 1, 0, 12)",
-            opacity: part === "shade-light" ? "0.68" : "0.58",
-          } as unknown as CSSStyleDeclaration;
-        }
-        return underlyingPoses.get(target) as unknown as CSSStyleDeclaration;
-        }));
-        const controller = createAgentRoleMotionController(
-          root,
-          PROP_DESIGNER_MOTION_PROGRAM,
-        );
-        controller.playWaiting();
-        const settlePromise = controller.settle();
-        const settleIndices = activeAnimationIndicesWithDuration(180);
-
-        for (const part of hiddenParts) {
-          const partIndex = parts.indexOf(part);
-          const settleFrames = vi.mocked(Element.prototype.animate)
-            .mock.calls[settleIndices[partIndex]]?.[0] as Keyframe[];
-          expect(Number(settleFrames[0]?.opacity), `${phase} ${part} start`)
-            .toBeGreaterThan(0);
-          expect(settleFrames[1]?.opacity, `${phase} ${part} endpoint`).toBe("0");
+          expect(settleFrames[1]?.opacity, `working ${part} endpoint`).toBe("0");
         }
 
         await act(async () => {
@@ -926,416 +765,13 @@ describe("useAgentRoleMotion", () => {
         const target = root.querySelector<SVGGraphicsElement>(
           `[data-part="${part}"]`,
         )!;
-        expect(getComputedStyle(target).opacity, `${phase} ${part} exposed`)
+        expect(getComputedStyle(target).opacity, `working ${part} exposed`)
           .toBe("0");
       }
     },
   );
 
-  it("settles working-only parts while shared parts enter their waiting start pose", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = [
-      '<g data-part="shared" style="transform: translateX(9px); opacity: 0.6"></g>',
-      '<g data-part="working-only" style="transform: translateY(-7px); opacity: 0.4"></g>',
-    ].join("");
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [
-        {
-          part: "shared",
-          keyframes: [{ transform: "none" }, { transform: "translateX(12px)" }],
-          options: { duration: 3_200, iterations: Infinity },
-        },
-        {
-          part: "working-only",
-          keyframes: [{ opacity: 1 }, { opacity: 0.5 }],
-          options: { duration: 3_200, iterations: Infinity },
-        },
-      ],
-      waiting: [{
-        part: "shared",
-        keyframes: [
-          { transform: "translateX(3px)", opacity: 0.8 },
-          { transform: "none", opacity: 1 },
-        ],
-        options: { duration: 4_800, iterations: Infinity },
-      }],
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    controller.playWaiting();
-
-    const settleIndices = activeAnimationIndicesWithDuration(180);
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      settleIndices[0] + 1,
-      [
-        { transform: "translateX(9px)", opacity: "0.6" },
-        { transform: "translateX(9px)", opacity: "0.6" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      settleIndices[1] + 1,
-      [
-        { transform: "translateY(-7px)", opacity: "0.4" },
-        { transform: "translateY(-7px)", opacity: "0.4" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-
-    await act(async () => {
-      for (const index of settleIndices) finishResolvers[index]();
-      await Promise.all(settleIndices.map((index) => animations[index].finished));
-    });
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      animations.length,
-      program.waiting[0].keyframes,
-      { ...program.waiting[0].options, fill: "both" },
-    );
-  });
-
-  it("hands a waiting-only part into its noncanonical first pose", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = [
-      '<g data-part="working" style="transform: translateY(-5px); opacity: 0.5"></g>',
-      '<g data-part="waiting-only" ',
-      'style="transform: translateX(4px); opacity: 1"></g>',
-    ].join("");
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [{
-        part: "working",
-        keyframes: [{ transform: "none" }, { transform: "translateY(-8px)" }],
-        options: { duration: 3_200, iterations: Infinity },
-      }],
-      waiting: [{
-        part: "waiting-only",
-        keyframes: [
-          { opacity: 0.7 },
-          { opacity: 1 },
-        ],
-        options: { duration: 4_800, iterations: Infinity },
-      }],
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    controller.playWaiting();
-
-    const settleIndices = activeAnimationIndicesWithDuration(180);
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      settleIndices[0] + 1,
-      [
-        { transform: "translateY(-5px)", opacity: "0.5" },
-        { transform: "translateY(-5px)", opacity: "0.5" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      settleIndices[1] + 1,
-      [
-        { transform: "translateX(4px)", opacity: "1" },
-        { transform: "translateX(4px)", opacity: "1" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-
-    await act(async () => {
-      for (const index of settleIndices) finishResolvers[index]();
-      await Promise.all(settleIndices.map((index) => animations[index].finished));
-    });
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      animations.length,
-      program.waiting[0].keyframes,
-      { ...program.waiting[0].options, fill: "both" },
-    );
-  });
-
-  it("merges first frames from independent same-part waiting tracks", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = [
-      '<g data-part="shared" ',
-      'style="transform: translateX(9px); opacity: 0.55"></g>',
-    ].join("");
-    const transformTrack = {
-      part: "shared",
-      keyframes: [
-        { transform: "translateX(3px)" },
-        { transform: "translateX(6px)" },
-      ],
-      options: { duration: 4_800, iterations: Infinity },
-    } satisfies AgentRoleMotionProgram["waiting"][number];
-    const opacityTrack = {
-      part: "shared",
-      keyframes: [{ opacity: 0.65 }, { opacity: 1 }],
-      options: { duration: 4_800, iterations: Infinity },
-    } satisfies AgentRoleMotionProgram["waiting"][number];
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [{
-        part: "shared",
-        keyframes: [{ transform: "none" }, { transform: "translateX(12px)" }],
-        options: { duration: 3_200, iterations: Infinity },
-      }],
-      waiting: [transformTrack, opacityTrack],
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    controller.playWaiting();
-
-    const settleIndex = activeAnimationIndicesWithDuration(180)[0];
-
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      settleIndex + 1,
-      [
-        { transform: "translateX(9px)", opacity: "0.55" },
-        { transform: "translateX(9px)", opacity: "0.55" },
-      ],
-      {
-        duration: 180,
-        easing: "cubic-bezier(.23, 1, .32, 1)",
-        fill: "both",
-      },
-    );
-
-    await act(async () => {
-      finishResolvers[settleIndex]();
-      await animations[settleIndex].finished;
-    });
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      animations.length - 1,
-      transformTrack.keyframes,
-      { ...transformTrack.options, fill: "both" },
-    );
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      animations.length,
-      opacityTrack.keyframes,
-      { ...opacityTrack.options, fill: "both" },
-    );
-  });
-
-  it("uses the browser-sampled pose when inherited or invalid keyframe values are ignored", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="shared"></g>';
-    const inheritedInvalidFrame = Object.assign(
-      Object.create({ transform: "translateX(999px)" }) as Keyframe,
-      { opacity: "definitely-invalid" },
-    );
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [{
-        part: "shared",
-        keyframes: [{ transform: "none" }, { transform: "translateX(12px)" }],
-        options: { duration: 3_200, iterations: Infinity },
-      }],
-      waiting: [{
-        part: "shared",
-        keyframes: [inheritedInvalidFrame, { opacity: 1 }],
-        options: { duration: 4_800, iterations: Infinity },
-      }],
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    const getStyle = stubComputedStyles(
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.8" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.8" },
-    );
-
-    controller.playWaiting();
-
-    const settleCall = vi.mocked(Element.prototype.animate).mock.calls.find(
-      ([, options]) => options?.duration === 180,
-    );
-    expect(getStyle).toHaveBeenCalledTimes(3);
-    const waitingPreviewIndex = vi.mocked(Element.prototype.animate).mock.calls
-      .findIndex(([frames], index) => (
-        index >= 3 && frames === program.waiting[0].keyframes
-      ));
-    expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-      waitingPreviewIndex + 1,
-      program.waiting[0].keyframes,
-      { ...program.waiting[0].options, fill: "both" },
-    );
-    expect(animations[waitingPreviewIndex].currentTime).toBe(0);
-    expect(animations[waitingPreviewIndex].cancel).toHaveBeenCalledOnce();
-    expect(settleCall?.[0]).toEqual([
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.8" },
-    ]);
-  });
-
-  it("uses the browser-composited pose for additive same-part waiting tracks", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="shared"></g>';
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [{
-        part: "shared",
-        keyframes: [{ transform: "none" }, { transform: "translateX(12px)" }],
-        options: { duration: 3_200, iterations: Infinity },
-      }],
-      waiting: [3, 5].map((distance) => ({
-        part: "shared",
-        keyframes: [
-          { transform: `translateX(${distance}px)` },
-          { transform: `translateX(${distance + 1}px)` },
-        ],
-        options: { duration: 4_800, iterations: Infinity, composite: "add" },
-      })),
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    const getStyle = stubComputedStyles(
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.8" },
-      { transform: "matrix(1, 0, 0, 1, 12, 0)", opacity: "0.8" },
-    );
-
-    controller.playWaiting();
-
-    const settleCall = vi.mocked(Element.prototype.animate).mock.calls.find(
-      ([, options]) => options?.duration === 180,
-    );
-    expect(getStyle).toHaveBeenCalledTimes(3);
-    for (const [index, waitingTrack] of program.waiting.entries()) {
-      expect(Element.prototype.animate).toHaveBeenNthCalledWith(
-        index + 4,
-        waitingTrack.keyframes,
-        { ...waitingTrack.options, fill: "both" },
-      );
-      expect(animations[index + 3].currentTime).toBe(0);
-      expect(animations[index + 3].cancel).toHaveBeenCalledOnce();
-    }
-    expect(settleCall?.[0]).toEqual([
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 12, 0)", opacity: "0.8" },
-    ]);
-  });
-
-  it("preserves a noncanonical underlying transform omitted by waiting", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="shared"></g>';
-    const program: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [{
-        part: "shared",
-        keyframes: [{ transform: "none" }, { transform: "translateX(12px)" }],
-        options: { duration: 3_200, iterations: Infinity },
-      }],
-      waiting: [{
-        part: "shared",
-        keyframes: [{ opacity: 0.65 }, { opacity: 1 }],
-        options: { duration: 4_800, iterations: Infinity },
-      }],
-    };
-    const controller = createAgentRoleMotionController(root, program);
-    controller.playWorking();
-    await completeWorkingEntry();
-    stubComputedStyles(
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.8" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.65" },
-    );
-
-    controller.playWaiting();
-
-    const settleCall = vi.mocked(Element.prototype.animate).mock.calls.find(
-      ([, options]) => options?.duration === 180,
-    );
-    expect(settleCall?.[0]).toEqual([
-      { transform: "matrix(1, 0, 0, 1, 9, 0)", opacity: "0.55" },
-      { transform: "matrix(1, 0, 0, 1, 4, 0)", opacity: "0.65" },
-    ]);
-  });
-
-  it("does not start a stale waiting loop when its handoff is interrupted", async () => {
-    const { rerender } = render(<MotionHarness motionState="working" />);
-    await completeWorkingEntry();
-    rerender(<MotionHarness motionState="waiting" />);
-    const handoffIndex = activeAnimationIndicesWithDuration(180)[0];
-    const handoffAnimation = animations[handoffIndex];
-
-    rerender(<MotionHarness motionState="working" />);
-    const replacementAnimation = animations.at(-1)!;
-    const callCount = animations.length;
-
-    await act(async () => {
-      finishResolvers[handoffIndex]();
-      await handoffAnimation.finished;
-    });
-
-    expect(handoffAnimation.cancel).toHaveBeenCalledOnce();
-    expect(replacementAnimation.cancel).not.toHaveBeenCalled();
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(callCount);
-  });
-
-  it("does not start a stale waiting loop after idle interrupts its handoff", async () => {
-    const { rerender } = render(<MotionHarness motionState="working" />);
-    await completeWorkingEntry();
-    rerender(<MotionHarness motionState="waiting" />);
-    const handoffIndex = activeAnimationIndicesWithDuration(180)[0];
-    const handoffAnimation = animations[handoffIndex];
-
-    rerender(<MotionHarness motionState="idle" />);
-    const idleSettleAnimation = animations.at(-1)!;
-    const callCount = animations.length;
-
-    await act(async () => {
-      finishResolvers[handoffIndex]();
-      await handoffAnimation.finished;
-    });
-
-    expect(handoffAnimation.cancel).toHaveBeenCalledOnce();
-    expect(idleSettleAnimation.cancel).not.toHaveBeenCalled();
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(callCount);
-  });
-
-  it("does not start a stale waiting loop after disposal", async () => {
-    const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    root.innerHTML = '<g data-part="tool"></g>';
-    const controller = createAgentRoleMotionController(root, PROGRAM);
-    controller.playWorking();
-    await completeWorkingEntry();
-    controller.playWaiting();
-    const handoffIndex = activeAnimationIndicesWithDuration(180)[0];
-    const handoffAnimation = animations[handoffIndex];
-
-    controller.dispose();
-    const callCount = animations.length;
-    await act(async () => {
-      finishResolvers[handoffIndex]();
-      await handoffAnimation.finished;
-    });
-
-    expect(handoffAnimation.cancel).toHaveBeenCalledOnce();
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(callCount);
-  });
-
-  it("settles an arbitrary Product sweep pose into its still waiting state", async () => {
+  it("settles an arbitrary Product sweep pose back to its underlying pose", async () => {
     const root = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     root.innerHTML = [
       '<g data-part="glass-sweep" ',
@@ -1349,10 +785,9 @@ describe("useAgentRoleMotion", () => {
     await completeWorkingEntry();
     stubComputedStyles(
       { transform: "translateX(11px)", opacity: "0.63" },
-      { transform: "none", opacity: "1" },
       { transform: "matrix(1, 0, 0, 1, 0, 0)", opacity: "1" },
     );
-    controller.playWaiting();
+    void controller.settle();
 
     const settleIndex = activeAnimationIndicesWithDuration(180)[0];
 
@@ -1378,15 +813,17 @@ describe("useAgentRoleMotion", () => {
   });
 
   it("does not let an unfinished settle clear a newer working loop", async () => {
-    const { rerender } = render(<MotionHarness motionState="waiting" />);
+    const { rerender } = render(<MotionHarness motionState="working" />);
+    await completeWorkingEntry();
     rerender(<MotionHarness motionState="idle" />);
 
-    const settleAnimation = animations[1];
+    const settleIndex = animations.length - 1;
+    const settleAnimation = animations[settleIndex];
     rerender(<MotionHarness motionState="working" />);
     const replacementAnimation = animations.at(-1)!;
 
     await act(async () => {
-      finishResolvers[1]();
+      finishResolvers[settleIndex]();
       await settleAnimation.finished;
     });
 
@@ -1406,7 +843,6 @@ describe("useAgentRoleMotion", () => {
           fill: "none",
         },
       }],
-      waiting: [],
     };
 
     render(<MotionHarness motionState="working" program={fillProgram} />);
@@ -1425,12 +861,11 @@ describe("useAgentRoleMotion", () => {
   it("cancels every owned animation on unmount", () => {
     const removeDocumentListener = vi.spyOn(document, "removeEventListener");
     const { rerender, unmount } = render(<MotionHarness motionState="working" />);
-    rerender(<MotionHarness motionState="waiting" />);
     rerender(<MotionHarness motionState="idle" />);
 
     unmount();
 
-    expect(animations).toHaveLength(5);
+    expect(animations).toHaveLength(3);
     for (const animation of animations) {
       expect(animation.cancel).toHaveBeenCalled();
     }
@@ -1452,40 +887,12 @@ describe("useAgentRoleMotion", () => {
         ...PROGRAM.working[0],
         part: "absent",
       }],
-      waiting: [],
     };
 
     expect(() => render(
       <MotionHarness motionState="working" program={missingPartProgram} />,
     )).not.toThrow();
     expect(animations).toHaveLength(0);
-  });
-
-  it("skips a missing waiting target during handoff and loop start", async () => {
-    const missingWaitingProgram: AgentRoleMotionProgram = {
-      workingEntryTimeMs: 220,
-      working: [PROGRAM.working[0]],
-      waiting: [{
-        ...PROGRAM.waiting[0],
-        part: "absent",
-      }],
-    };
-    const { rerender } = render(
-      <MotionHarness motionState="working" program={missingWaitingProgram} />,
-    );
-    await completeWorkingEntry();
-    rerender(
-      <MotionHarness motionState="waiting" program={missingWaitingProgram} />,
-    );
-
-    const settleIndex = activeAnimationIndicesWithDuration(180)[0];
-    expect(animations).toHaveLength(4);
-    await act(async () => {
-      finishResolvers[settleIndex]();
-      await animations[settleIndex].finished;
-    });
-    expect(animations).toHaveLength(4);
-    expect(Element.prototype.animate).toHaveBeenCalledTimes(4);
   });
 
   it("pauses while hidden and resumes when the motion state remains active", () => {
@@ -1505,10 +912,10 @@ describe("useAgentRoleMotion", () => {
     expect(workingAnimation.play).toHaveBeenCalledOnce();
   });
 
-  it.each(["working", "waiting"] as const)(
-    "resumes and completes a hidden idle settle entered from %s",
-    async (initialState) => {
-      const { rerender } = render(<MotionHarness motionState={initialState} />);
+  it(
+    "resumes and completes a hidden idle settle entered from working",
+    async () => {
+      const { rerender } = render(<MotionHarness motionState="working" />);
       const activeAnimation = animations.at(-1)!;
 
       act(() => {
@@ -1532,9 +939,7 @@ describe("useAgentRoleMotion", () => {
       });
       expect(settleAnimation.cancel).toHaveBeenCalledOnce();
       expect(activeAnimation.play).not.toHaveBeenCalled();
-      expect(Element.prototype.animate).toHaveBeenCalledTimes(
-        initialState === "working" ? 3 : 2,
-      );
+      expect(Element.prototype.animate).toHaveBeenCalledTimes(3);
     },
   );
 
@@ -1555,28 +960,9 @@ describe("useAgentRoleMotion", () => {
     expect(animations[1].play).not.toHaveBeenCalled();
   });
 
-  it("keeps a working-to-waiting handoff paused while hidden and resumes it", () => {
-    const { rerender } = render(<MotionHarness motionState="working" />);
-
-    act(() => {
-      hidden = true;
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    rerender(<MotionHarness motionState="waiting" />);
-    const handoffAnimation = animations.at(-1)!;
-    expect(handoffAnimation.pause).toHaveBeenCalledOnce();
-
-    act(() => {
-      hidden = false;
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    expect(handoffAnimation.play).toHaveBeenCalledOnce();
-  });
-
-  it("does not create work or wait animations when reduced motion is already preferred", () => {
+  it("does not create work animations when reduced motion is already preferred", () => {
     mediaQueryList.matches = true;
-    const { rerender } = render(<MotionHarness motionState="working" />);
-    rerender(<MotionHarness motionState="waiting" />);
+    render(<MotionHarness motionState="working" />);
 
     expect(animations).toHaveLength(0);
   });
@@ -1636,7 +1022,7 @@ describe("useAgentRoleMotion", () => {
     act(() => setReducedMotion(true));
     expect(entryAnimation.cancel).toHaveBeenCalledOnce();
 
-    rerender(<MotionHarness motionState="waiting" />);
+    rerender(<MotionHarness motionState="idle" />);
     expect(animations).toHaveLength(2);
   });
 });

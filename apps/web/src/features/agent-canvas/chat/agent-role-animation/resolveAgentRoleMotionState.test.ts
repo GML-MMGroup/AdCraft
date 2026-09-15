@@ -41,8 +41,8 @@ function unit(overrides: Partial<StageThreadUnit> = {}): StageThreadUnit {
 }
 
 describe("resolveAgentRoleMotionState", () => {
-  it.each([["working", "working"], ["failed", "idle"], ["queued", "waiting"], ["completed", "idle"],
-    ["waiting_user", "waiting"], ["superseded", "idle"]] as const)("maps %s stage status to %s", (status, expected) => {
+  it.each([["working", "working"], ["failed", "idle"], ["queued", "idle"], ["completed", "idle"],
+    ["waiting_user", "working"], ["superseded", "idle"]] as const)("maps %s stage status to %s", (status, expected) => {
     expect(resolveAgentRoleMotionState({ status, turnId: "own" })).toBe(expected);
   });
 
@@ -73,11 +73,11 @@ describe("resolveStageThreadRoleMotionState", () => {
       new: turn({ turn_id: "new", status: "running" }) })).toBe("working");
   });
 
-  it("uses the materialization turn and keeps queued materialization gently waiting", () => {
+  it("uses the materialization turn and keeps queued materialization static until it starts", () => {
     expect(resolveStageThreadRoleMotionState(unit({ activities: [], proposals: [proposal()] }), {
       "materialization-turn": turn({ turn_id: "materialization-turn", status: "failed" }),
     })).toBe("idle");
-    expect(resolveStageThreadRoleMotionState(unit({ activities: [], proposals: [proposal("queued")] }), {})).toBe("waiting");
+    expect(resolveStageThreadRoleMotionState(unit({ activities: [], proposals: [proposal("queued")] }), {})).toBe("idle");
   });
 
   it("keeps a working materialization active from its own running turn, not the failed proposal turn", () => {

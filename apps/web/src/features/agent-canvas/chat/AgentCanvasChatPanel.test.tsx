@@ -45,6 +45,7 @@ import type {
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
   ChatTimelineItemV2,
+  GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -1976,5 +1977,122 @@ describe("AgentCanvasChatPanel Style integration", () => {
 
     expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" })).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement).value).toBe("Keep this draft");
+  });
+});
+
+describe("AgentCanvasChatPanel decision dock overlay", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function openInteraction(): GuidedInteractionV1 {
+    return {
+      interaction_id: "interaction-overlay-1",
+      workflow_id: roleMotionWorkflow.workflow_id,
+      session_id: "session-1",
+      checkpoint_id: "checkpoint-1",
+      kind: "clarification_questionnaire",
+      status: "open",
+      response_locale: "en-US",
+      expected_session_revision: 3,
+      revision: 2,
+      title: "Choose duration",
+      context: "Choose one duration.",
+      content: {
+        content_kind: "questionnaire",
+        questions: [{
+          question_id: "production_duration_seconds",
+          prompt: "How long should the ad be?",
+          input_kind: "single_select",
+          options: [{
+            option_id: "duration-15",
+            title: "15 seconds",
+            summary: "Short and punchy.",
+            difference_tags: [],
+            recommended: true,
+            reference_preview: [],
+          }],
+          allow_custom: false,
+          allow_skip: false,
+          required: true,
+        }],
+      },
+      allowed_actions: ["answer"],
+      submit_path: "/guided-interactions/interaction-overlay-1/submit",
+      created_at: "2026-09-15T00:00:00Z",
+      updated_at: "2026-09-15T00:00:00Z",
+    };
+  }
+
+  function renderPanelWithInteraction(interaction: GuidedInteractionV1 = openInteraction()) {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      workflow_id: roleMotionWorkflow.workflow_id,
+      conversation_id: null,
+      items: [],
+      next_cursor: 0,
+    }), { headers: { "Content-Type": "application/json" } })));
+    const chat = mockChatResult();
+    chat.state.guidedInteraction = interaction;
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+    return render(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+  }
+
+  it("renders open interactions as a floating overlay that no longer squeezes the timeline", () => {
+    renderPanelWithInteraction();
+
+    const shell = document.querySelector(".agent-chat__timeline-shell");
+    const overlay = shell?.querySelector(":scope > .agent-chat__current-interaction--overlay");
+    expect(overlay).not.toBeNull();
+    expect(overlay?.querySelector(".agent-chat__decision-dock")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it("collapses the overlay into a chip and re-expands it on demand", () => {
+    renderPanelWithInteraction();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
+
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+    const chip = screen.getByRole("button", { name: /Choose duration/ });
+    expect(chip.querySelector(".agent-chat__interaction-chip") ?? chip).toBeTruthy();
+
+    fireEvent.click(chip);
+
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
+  });
+
+  it("auto-expands a new interaction even if the previous one was collapsed", () => {
+    const { rerender } = renderPanelWithInteraction();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse decision card" }));
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).toBeNull();
+
+    const chat = mockChatResult();
+    chat.state.guidedInteraction = {
+      ...openInteraction(),
+      interaction_id: "interaction-overlay-2",
+      title: "Pick a style",
+    };
+    panelMocks.useAgentCanvasChat.mockReturnValue(chat);
+
+    rerender(
+      <AgentCanvasChatPanel
+        workflow={roleMotionWorkflow}
+        chatRevision={1}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelector(".agent-chat__current-interaction--overlay")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse decision card" })).toBeTruthy();
   });
 });

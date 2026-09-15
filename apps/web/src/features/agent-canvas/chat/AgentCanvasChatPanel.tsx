@@ -193,6 +193,7 @@ export function AgentCanvasChatPanel({
   const [selectedConceptOptionId, setSelectedConceptOptionId] = useState<string | null>(null);
   const [optimisticProposalSelections, setOptimisticProposalSelections] = useState<Record<string, string>>({});
   const [optimisticallyDismissedInteractionId, setOptimisticallyDismissedInteractionId] = useState<string | null>(null);
+  const [interactionDockCollapsed, setInteractionDockCollapsed] = useState(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatPanelRef = useRef<HTMLElement>(null);
   const resizeSessionRef = useRef<ChatPanelResizeSession | null>(null);
@@ -233,6 +234,13 @@ export function AgentCanvasChatPanel({
     && shouldRenderStandaloneInteraction(chat.state.guidedInteraction)
     ? chat.state.guidedInteraction
     : null;
+  const shownInteractionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const shownId = standaloneGuidedInteraction?.interaction_id ?? null;
+    if (shownId === shownInteractionIdRef.current) return;
+    shownInteractionIdRef.current = shownId;
+    if (shownId !== null) setInteractionDockCollapsed(false);
+  }, [standaloneGuidedInteraction?.interaction_id]);
   const referenceOccurrenceLabel = useMemo(() => {
     const content = standaloneGuidedInteraction?.content;
     if (content?.content_kind !== "reference_source" || content.reference_kind !== "character_main") {
@@ -943,18 +951,41 @@ export function AgentCanvasChatPanel({
             <ChevronDownIcon />
           </button>
         ) : null}
-        {conceptInteraction ? (
-          <div className="agent-chat__current-interaction agent-chat__current-interaction--overlay" aria-live="polite">
+        {standaloneGuidedInteraction && !currentInteractionOptimisticallyDismissed
+          && interactionDockCollapsed ? (
+          <button
+            className="agent-chat__interaction-chip"
+            type="button"
+            aria-expanded="false"
+            onClick={() => setInteractionDockCollapsed(false)}
+          >
+            <strong>{standaloneGuidedInteraction.title}</strong>
+            <span>Pending your choice</span>
+            <ChevronUpIcon />
+          </button>
+        ) : null}
+        {standaloneGuidedInteraction
+          && !(interactionDockCollapsed && !currentInteractionOptimisticallyDismissed) ? (
+          <div
+            className="agent-chat__current-interaction agent-chat__current-interaction--overlay"
+            aria-live="polite"
+          >
+            {!currentInteractionOptimisticallyDismissed ? (
+              <button
+                className="agent-chat__interaction-collapse"
+                type="button"
+                aria-label="Collapse decision card"
+                title="Collapse decision card"
+                aria-expanded="true"
+                onClick={() => setInteractionDockCollapsed(true)}
+              >
+                <ChevronDownIcon />
+              </button>
+            ) : null}
             {renderStandaloneGuidedInteractionCard()}
           </div>
         ) : null}
       </div>
-
-      {standaloneGuidedInteraction && !conceptInteraction ? (
-        <div className="agent-chat__current-interaction" aria-live="polite">
-          {renderStandaloneGuidedInteractionCard()}
-        </div>
-      ) : null}
 
       {chat.state.composerRecovery ? (
         <ConversationRecoverySurface

@@ -174,7 +174,7 @@ export function createAgentRoleMotionController(
       if (initialTracks === program.working) return;
 
       // The controller retains ownership across the first-pass/loop seam, including
-      // hidden-page pauses and interruption by Waiting, Idle, or disposal.
+      // hidden-page pauses and interruption by Idle or disposal.
       await Promise.allSettled(animations.map(({ animation }) => animation.finished));
       if (disposed || entryGeneration !== transitionGeneration) return;
       cancelAnimations();
@@ -184,93 +184,9 @@ export function createAgentRoleMotionController(
     }
   };
 
-  const transitionToWaiting = async (): Promise<void> => {
-    try {
-      if (disposed) return;
-
-      const handoffGeneration = ++transitionGeneration;
-      if (animations.length === 0) {
-        startTracks(program.waiting);
-        return;
-      }
-
-      const resolvedWaitingTracks = resolveTracks(program.waiting);
-      const activeParts = new Set(animations.map(({ part }) => part));
-      const parts = [...new Set([
-        ...activeParts,
-        ...resolvedWaitingTracks.map(({ part }) => part),
-      ])];
-      for (const { animation } of animations) animation.pause();
-      const activePoses = new Map(
-        [...activeParts].map((part) => {
-          const style = getComputedStyle(part);
-          return [part, { transform: style.transform, opacity: style.opacity }];
-        }),
-      );
-      cancelAnimations();
-
-      if (disposed || handoffGeneration !== transitionGeneration) return;
-
-      const underlyingPoses = new Map(parts.map((part) => {
-        const style = getComputedStyle(part);
-        return [part, { transform: style.transform, opacity: style.opacity }];
-      }));
-
-      const previewAnimations = createOwnedAnimations(
-        resolvedWaitingTracks,
-        ({ part, track }) => part.animate(track.keyframes, {
-          ...track.options,
-          fill: "both",
-        }),
-        (animation) => {
-          animation.pause();
-          animation.currentTime = 0;
-        },
-      );
-      if (!previewAnimations) return;
-
-      const waitingPoses = new Map(parts.map((part) => {
-        const style = getComputedStyle(part);
-        return [part, { transform: style.transform, opacity: style.opacity }];
-      }));
-      cancelAnimations();
-
-      if (disposed || handoffGeneration !== transitionGeneration) return;
-
-      const poses = parts.map((part) => ({
-        part,
-        from: activePoses.get(part) ?? underlyingPoses.get(part)!,
-        to: waitingPoses.get(part)!,
-      }));
-      const handoffAnimations = createOwnedAnimations(
-        poses,
-        ({ part, from, to }) => part.animate([from, to], SETTLE_OPTIONS),
-        (animation) => {
-          if (paused) animation.pause();
-        },
-      );
-      if (!handoffAnimations) return;
-
-      await Promise.allSettled(
-        handoffAnimations.map(({ animation }) => animation.finished),
-      );
-
-      if (disposed || handoffGeneration !== transitionGeneration) return;
-
-      cancelAnimations();
-      startTracks(program.waiting);
-    } catch {
-      cancelAnimations();
-    }
-  };
-
   return {
     playWorking(): void {
       void transitionToWorking();
-    },
-
-    playWaiting(): void {
-      void transitionToWaiting();
     },
 
     async settle(): Promise<void> {
@@ -426,10 +342,6 @@ export function useAgentRoleMotion(
           case "working":
             resumeIdleSettle = false;
             activeController.playWorking();
-            break;
-          case "waiting":
-            resumeIdleSettle = false;
-            activeController.playWaiting();
             break;
           case "idle":
             resumeIdleSettle = document.hidden;

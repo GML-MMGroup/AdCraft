@@ -26,13 +26,17 @@ export function AgentRoleAnimation({ capabilityId, motionState }: {
   const visual = useAgentRoleVisual(capabilityId, motionState);
   const [failedGeneration, setFailedGeneration] = useState<number | null>(null);
   const failed = failedGeneration === visual.generation;
-  const Artwork = motionState === "working" && !failed ? visual.Artwork : null;
+  // Only working roles render the animated artwork; idle falls back to the
+  // static bitmap. A role keeps its working stretch until the next role takes
+  // over, so awaiting a user decision never freezes the artwork.
+  const animated = motionState === "working";
+  const Artwork = animated && !failed ? visual.Artwork : null;
   const ref = useRef<HTMLSpanElement>(null);
   const onError = useCallback(() => {
     setFailedGeneration(visual.generation);
     reportRoleArtworkError(capabilityId, "Role artwork could not be displayed");
   }, [capabilityId, visual.generation]);
-  const fallback = motionState === "working"
+  const fallback = animated
     ? null
     : <StaticRoleIcon source={visual.source} generic={visual.fallbackKind === "generic"} />;
   return (

@@ -139,10 +139,10 @@ describe("StageThread", () => {
     expect(screen.getByText("Receipt source")).toBeTruthy();
   });
 
-  it("forwards waiting state to the stage identity animation", () => {
+  it("forwards the working state to the stage identity animation", () => {
     render(
       <StageThread
-        motionState="waiting"
+        motionState="working"
         unit={stageThread({ status: "working", selected_option: null })}
       />,
     );
@@ -151,6 +151,6 @@ describe("StageThread", () => {
       '[data-testid="agent-role-animation-double"]',
     );
     expect(animation?.dataset.capabilityId).toBe("world_setting");
-    expect(animation?.dataset.motionState).toBe("waiting");
+    expect(animation?.dataset.motionState).toBe("working");
   });
 });

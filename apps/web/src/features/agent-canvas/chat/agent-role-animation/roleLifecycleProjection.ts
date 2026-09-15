@@ -60,10 +60,11 @@ const CAPABILITY_BY_STAGE: Partial<Record<GuidedProductionJourneyV2["stage"], Ag
   storyboard_grids: "storyboard_design", videos: "video_direction", bgm: "bgm_direction", editing: "video_direction",
 };
 
+// Two visual states only: a role keeps its animated artwork from the moment it
+// starts working until the next role starts working. Awaiting a user decision
+// is still part of its working stretch; queued work has not started yet.
 function motionState(phase: RoleLifecyclePhase): AgentRoleMotionState {
-  if (phase === "working") return "working";
-  if (phase === "queued" || phase === "awaiting_user") return "waiting";
-  return "idle";
+  return phase === "working" || phase === "awaiting_user" ? "working" : "idle";
 }
 
 function requestIdentity(turn: AgentCanvasChatTurnV2 | null | undefined): {
@@ -220,6 +221,34 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
   const session = input.session?.workflow_id === workflowId ? input.session : null;
   const selected = scopedProposal(unit, session, workflowId);
   const action = session?.journey.active_action;
+  // Conversation-driven stages (e.g. world_view concept selection) park the
+  // workflow on an awaiting checkpoint with no node_ids and a null occurrence,
+  // while the active action stalls in "reserved". That awaiting checkpoint is
+  // still the role's working stretch: the user is choosing inside its proposal.
+  // The authorization stays scoped: a checkpoint for one occurrence/phase
+  // (e.g. a Main reference request) must never animate a different one.
+  const interactionContent = session?.interaction?.content;
+  const awaitingContentOccurrence = interactionContent && "occurrence_id" in interactionContent
+    ? interactionContent.occurrence_id ?? null : null;
+  const awaitingPhase: "main" | "turnaround" | null = interactionContent?.content_kind === "reference_source"
+    ? interactionContent.reference_kind === "character_main" ? "main" : null
+    : interactionContent?.content_kind === "concept_choice"
+      ? interactionContent.character_phase
+        ?? (interactionContent.stage === "character" && interactionContent.occurrence_id !== null ? "main" : null)
+      : null;
+  const awaitingForStage = (() => {
+    const awaiting = session?.awaiting;
+    if (!awaiting?.requires_user_action) return false;
+    if (CAPABILITY_BY_STAGE[awaiting.stage] !== unit.capability_id) return false;
+    const knownIdentities = [
+      selected ? { occurrenceId: selected.proposal.occurrence_id, characterPhase: selected.proposal.character_phase } : null,
+      action ? { occurrenceId: action.occurrence_id, characterPhase: action.character_phase } : null,
+    ].filter((identity): identity is NonNullable<typeof identity> => identity !== null);
+    return knownIdentities.every(({ occurrenceId, characterPhase }) => (
+      (awaitingContentOccurrence === null || occurrenceId === null || awaitingContentOccurrence === occurrenceId)
+      && (awaitingPhase === null || characterPhase === null || awaitingPhase === characterPhase)
+    ));
+  })();
   const currentActionTargetsUnit = Boolean(action && CAPABILITY_BY_STAGE[action.stage] === unit.capability_id);
   const actionTurnIsInThread = Boolean(action?.turn_id && (
     unit.activities.some((activity) => activity.turn_id === action.turn_id)
@@ -228,7 +257,7 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
   const materialization = selected?.proposal.materialization ?? null;
   const actionOwnsSelectedMaterialization = Boolean(action?.turn_id && materialization?.turn_id === action.turn_id);
   const exactActionOwner = actionTurnIsInThread || actionOwnsSelectedMaterialization;
-  if (currentActionTargetsUnit && unit.proposals.length > 0 && selected === null && !exactActionOwner) {
+  if (currentActionTargetsUnit && unit.proposals.length > 0 && selected === null && !exactActionOwner && !awaitingForStage) {
     const fallbackIdentity = identityFor(input.workflow.workflow_id, unit, null, null, null);
     return result(fallbackIdentity, "unknown", { source: "unresolved", turnId: action?.turn_id ?? undefined,
       reason: "current action does not match this historical occurrence and phase" });
@@ -243,6 +272,9 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
       occurrenceId: action.occurrence_id,
       characterPhase: action.character_phase,
     };
+    if (awaitingForStage) {
+      return result(actionIdentity, "awaiting_user", { source: "guidance_awaiting", turnId: action.turn_id ?? undefined });
+    }
     if (actionTurn?.status === "queued") {
       return result(actionIdentity, "queued", { source: "journey_action", turnId: action.turn_id ?? undefined });
     }
@@ -278,19 +310,12 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
   const identity = identityFor(input.workflow.workflow_id, unit, selected, null, owningTurn);
   const emptyThread = unit.proposals.length === 0 && unit.activities.length === 0 && unit.planning.length === 0;
   if (action && CAPABILITY_BY_STAGE[action.stage] === unit.capability_id
-    && (selected !== null || actionTurnIsInThread || emptyThread)) {
+    && (selected !== null || actionTurnIsInThread || emptyThread || awaitingForStage)) {
     const candidateActionTurn = action.turn_id ? input.turnsById[action.turn_id] : null;
     const actionTurn = candidateActionTurn?.workflow_id === workflowId ? candidateActionTurn : null;
     const awaiting = session?.awaiting;
     const associatedNodeIds = new Set(nodes.map((node) => node.node_id));
     const awaitingOwnsNode = Boolean(awaiting?.node_ids.some((nodeId) => associatedNodeIds.has(nodeId)));
-    const interactionContent = session?.interaction?.content;
-    const awaitingPhase = interactionContent?.content_kind === "reference_source"
-      ? interactionContent.reference_kind === "character_main" ? "main" : null
-      : interactionContent?.content_kind === "concept_choice"
-        ? interactionContent.character_phase
-          ?? (interactionContent.stage === "character" && interactionContent.occurrence_id !== null ? "main" : null)
-        : null;
     const awaitingOwnsOccurrence = Boolean(
       awaiting?.requires_user_action
       && awaiting.stage === action.stage
@@ -304,14 +329,18 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
       return result(identity, materialization.status, { source: "materialization",
         turnId: materialization.turn_id, materializationId: materialization.materialization_id });
     }
-    const validOwner = actionTurn?.status === "queued" || actionTurn?.status === "running"
+    const ownerWithoutAwaiting = actionTurn?.status === "queued" || actionTurn?.status === "running"
       || awaitingOwnsNode || awaitingOwnsOccurrence;
-    if (!validOwner) {
+    if (!awaitingForStage && !ownerWithoutAwaiting) {
       return result(identity, "unknown", { source: "unresolved", turnId: action.turn_id ?? undefined,
         reason: "active action has no live turn, associated node, or awaiting checkpoint" });
     }
-    const phase = action.status === "working" ? "working" : action.status === "waiting_user" ? "awaiting_user" : "queued";
-    return result(identity, phase, { source: "journey_action", turnId: action.turn_id ?? undefined });
+    const phase = awaitingForStage ? "awaiting_user"
+      : action.status === "working" ? "working" : action.status === "waiting_user" ? "awaiting_user" : "queued";
+    return result(identity, phase, {
+      source: ownerWithoutAwaiting ? "journey_action" : "guidance_awaiting",
+      turnId: action.turn_id ?? undefined,
+    });
   }
   if (materialization) {
     const phase = materialization.status === "completed" ? "succeeded" : materialization.status === "failed"
@@ -355,6 +384,35 @@ function projectThread(input: ProjectRoleLifecyclesInput, unit: StageThreadUnit)
   return result(identity, "unknown", { source: "unresolved", reason: "no authoritative lifecycle owner" });
 }
 
+// Handoff rule: a role stays in its working stretch until the next role starts
+// working. A role that already delivered its result therefore keeps animating
+// while a later stage is still queued (none of them has taken over yet). Once
+// no later stage exists at all — the pipeline has run past it and finished —
+// the role settles back to its static bitmap.
+function handoffMotionStates(projections: readonly RoleLifecycleProjection[]): AgentRoleMotionState[] {
+  const hasStarted = (phase: RoleLifecyclePhase): boolean => (
+    phase === "working" || phase === "awaiting_user" || phase === "succeeded" || phase === "failed"
+  );
+  const states: AgentRoleMotionState[] = [];
+  let laterStarted = false;
+  for (let index = projections.length - 1; index >= 0; index -= 1) {
+    const projection = projections[index];
+    const holdsTheBaton = index < projections.length - 1
+      && projection.phase === "succeeded"
+      && !laterStarted;
+    states[index] = holdsTheBaton ? "working" : projection.motionState;
+    laterStarted ||= hasStarted(projection.phase);
+  }
+  return states;
+}
+
 export function projectRoleLifecycles(input: ProjectRoleLifecyclesInput): ReadonlyMap<string, RoleLifecycleProjection> {
-  return new Map(input.threads.map((unit) => [unit.key, projectThread(input, unit)]));
+  const projections = input.threads.map((unit) => projectThread(input, unit));
+  const motionStates = handoffMotionStates(projections);
+  return new Map(input.threads.map((unit, index) => {
+    const projection = projections[index];
+    return [unit.key, motionStates[index] === projection.motionState
+      ? projection
+      : { ...projection, motionState: motionStates[index] }];
+  }));
 }

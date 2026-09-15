@@ -133,7 +133,6 @@ describe("BgmDirectorAnimation", () => {
     expect(BGM_DIRECTOR_MOTION_PROGRAM.workingEntryTimeMs).toBe(0);
     expect(BGM_DIRECTOR_MOTION_PROGRAM.working.map(({ part }) => part))
       .toEqual(WORKING_PARTS);
-    expect(BGM_DIRECTOR_MOTION_PROGRAM.waiting).toEqual([]);
 
     const [staticTrack, stripTrack, ...remainingTracks] =
       BGM_DIRECTOR_MOTION_PROGRAM.working;

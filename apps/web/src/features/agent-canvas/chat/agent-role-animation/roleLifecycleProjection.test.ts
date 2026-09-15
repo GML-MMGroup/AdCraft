@@ -119,17 +119,32 @@ describe("projectRoleLifecycles", () => {
     });
   });
 
-  it("projects queued work and typed awaiting as waiting motion", () => {
+  it("projects queued work as static and typed awaiting as working motion", () => {
     const card = proposal("character-1", "materialize-1", ["node-1"]);
     expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "queued")]) }))
-      .toMatchObject({ phase: "queued", motionState: "waiting" });
+      .toMatchObject({ phase: "queued", motionState: "idle" });
     const waitingSession = session({ status: "waiting_user", occurrence_id: "character-1", character_phase: "main" });
     waitingSession.awaiting = { awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "session-1",
       checkpoint_id: "checkpoint-1", kind: "reference_source", requires_user_action: true,
       resume_policy: "submit_interaction", interaction_id: "interaction-1", node_ids: ["node-1"],
       stage: "character", stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
     expect(project({ threads: [thread([card])], workflow: workflow([node("node-1", "character-1", "ready")]),
-      session: waitingSession })).toMatchObject({ phase: "awaiting_user", motionState: "waiting" });
+      session: waitingSession })).toMatchObject({ phase: "awaiting_user", motionState: "working" });
+  });
+
+  it("keeps a conversation-driven concept_selection awaiting in the working stretch", () => {
+    // Regression: world_view concept selection parks the session on an awaiting
+    // checkpoint with empty node_ids and a null occurrence, while the active
+    // action stalls in "reserved". The projection used to fall through to
+    // "queued" (static) even though the role is still waiting on its proposal.
+    const card = proposal("character-1", "materialize-1", ["node-1"]);
+    const reservedSession = session({ status: "reserved" });
+    reservedSession.awaiting = { awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "session-1",
+      checkpoint_id: "checkpoint-1", kind: "concept_selection", requires_user_action: true,
+      resume_policy: "submit_interaction", interaction_id: "interaction-1", node_ids: [],
+      stage: "character", stage_revision: 1, created_at: "2026-09-07T00:00:00Z" };
+    expect(project({ threads: [thread([card])], session: reservedSession }))
+      .toMatchObject({ phase: "awaiting_user", motionState: "working", evidence: { source: "guidance_awaiting" } });
   });
 
   it("does not treat prompt ready as success while associated media is running", () => {
@@ -140,12 +155,12 @@ describe("projectRoleLifecycles", () => {
     });
   });
 
-  it("keeps a ready Draft waiting when no authoritative terminal operation exists", () => {
+  it("keeps a ready Draft static when no authoritative terminal operation exists", () => {
     const card = proposal("character-1", "materialize-1", ["node-1"]);
     const readyNode = node("node-1", "character-1", "ready");
     readyNode.latest_attempt = null;
     expect(project({ threads: [thread([card])], workflow: workflow([readyNode]) }))
-      .toMatchObject({ phase: "queued", motionState: "waiting",
+      .toMatchObject({ phase: "queued", motionState: "idle",
         evidence: { source: "prompt_preparation", nodeId: "node-1" } });
   });
 
@@ -193,7 +208,7 @@ describe("projectRoleLifecycles", () => {
     const staleRuntime = runtime("node-1", "running");
     staleRuntime.failed_node_ids = ["node-1"];
     expect(project({ threads: [thread([card])], workflow: workflow([currentNode]), runtime: staleRuntime }))
-      .toMatchObject({ phase: "queued", motionState: "waiting", evidence: { source: "node_attempt" } });
+      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "node_attempt" } });
   });
 
   it("stops the same task on an authoritative failure", () => {
@@ -304,13 +319,13 @@ describe("projectRoleLifecycles", () => {
         evidence: { source: "prompt_preparation", nodeId: "current-node" } });
   });
 
-  it("keeps exact queued materialization waiting after its action turn completes", () => {
+  it("keeps exact queued materialization static after its action turn completes", () => {
     const current = proposal("character-1", "current-materialization", []);
     current.proposal.materialization!.status = "queued";
     expect(project({ threads: [thread([current])], session: session({ status: "working",
       turn_id: "current-materialization", occurrence_id: "character-1", character_phase: "main" }),
     turnsById: { "current-materialization": turn("current-materialization", "completed") } }))
-      .toMatchObject({ phase: "queued", motionState: "waiting", evidence: { source: "materialization" } });
+      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "materialization" } });
   });
 
   it("keeps historical proposals while attaching a new occurrence action through its exact current activity", () => {
@@ -321,7 +336,7 @@ describe("projectRoleLifecycles", () => {
     ] }], workflow: workflow([]), session: session({ status: "reserved", turn_id: "current-turn",
       occurrence_id: "character-current", character_phase: "main" }), turnsById: { "current-turn": currentTurn } }))
       .toMatchObject({ identity: { occurrenceId: "character-current", attemptKey: "current-turn:0" },
-        phase: "queued", motionState: "waiting", evidence: { source: "journey_action", turnId: "current-turn" } });
+        phase: "queued", motionState: "idle", evidence: { source: "journey_action", turnId: "current-turn" } });
   });
 
   it("keeps an orphan reserved action unknown and static", () => {
@@ -338,10 +353,10 @@ describe("projectRoleLifecycles", () => {
     })).toMatchObject({ phase: "failed", motionState: "idle", evidence: { source: "activity", turnId: "failed" } });
   });
 
-  it("shows waiting when a working activity's exact owning turn is queued", () => {
+  it("shows queued motion as static when a working activity's exact owning turn is queued", () => {
     expect(project({ turnsById: { queued: turn("queued", "queued") }, workflow: workflow([]), session: null,
       runtime: null, threads: [{ ...thread(), activities: [activity("activity-1", "queued", "working")] }],
-    })).toMatchObject({ phase: "queued", motionState: "waiting", evidence: { source: "activity" } });
+    })).toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "activity" } });
   });
 
   it("keeps an active activity unknown until its exact turn is hydrated", () => {
@@ -353,7 +368,7 @@ describe("projectRoleLifecycles", () => {
   it("uses only an exact existing planning metadata turn", () => {
     expect(project({ threads: [{ ...thread(), planning: [planning("planning-turn")] }],
       turnsById: { "planning-turn": turn("planning-turn", "queued") } }))
-      .toMatchObject({ phase: "queued", motionState: "waiting", evidence: { source: "planning", turnId: "planning-turn" } });
+      .toMatchObject({ phase: "queued", motionState: "idle", evidence: { source: "planning", turnId: "planning-turn" } });
   });
 
   it("accepts an explicitly application-associated node without prompt identity for a non-occurrence role", () => {
@@ -442,7 +457,53 @@ describe("projectRoleLifecycles", () => {
     awaitingSession.interaction = { content: { content_kind: "concept_choice", occurrence_id: "character-1",
       stage: "character", stage_revision: 1 } } as GuidedSessionStateV2["interaction"];
     expect(project({ threads: [thread([card])], session: awaitingSession }))
-      .toMatchObject({ phase: "awaiting_user", motionState: "waiting", evidence: { source: "journey_action" } });
+      .toMatchObject({ phase: "awaiting_user", motionState: "working", evidence: { source: "journey_action" } });
+  });
+
+  it("keeps a delivered role animating while the next role is still queued", () => {
+    const deliveredCard = proposal("character-1", "materialize-1", ["node-1"]);
+    const nextCard = proposal("character-2", "materialize-2", ["node-2"]);
+    const deliveredNode = node("node-1", "character-1", "ready");
+    deliveredNode.execution_mode = "source_only";
+    deliveredNode.status = "ready";
+    deliveredNode.latest_attempt = null;
+    const threads = [
+      { ...thread([deliveredCard]), sequence: 1 },
+      { ...thread([nextCard]), key: "stage:prop_design", capability_id: "prop_design" as const,
+        capability_display_name: "Prop Designer", sequence: 2 },
+    ];
+    const projected = projectRoleLifecycles({
+      threads,
+      workflow: workflow([deliveredNode, node("node-2", "character-2", "queued")]),
+      runtime: null, session: null, turnsById: {},
+    });
+    expect(projected.get("stage:character_design"))
+      .toMatchObject({ phase: "succeeded", motionState: "working" });
+    expect(projected.get("stage:prop_design"))
+      .toMatchObject({ phase: "queued", motionState: "idle" });
+  });
+
+  it("settles a delivered role once the next role has started working", () => {
+    const deliveredCard = proposal("character-1", "materialize-1", ["node-1"]);
+    const nextCard = proposal("character-2", "materialize-2", ["node-2"]);
+    const deliveredNode = node("node-1", "character-1", "ready");
+    deliveredNode.execution_mode = "source_only";
+    deliveredNode.status = "ready";
+    deliveredNode.latest_attempt = null;
+    const threads = [
+      { ...thread([deliveredCard]), sequence: 1 },
+      { ...thread([nextCard]), key: "stage:prop_design", capability_id: "prop_design" as const,
+        capability_display_name: "Prop Designer", sequence: 2 },
+    ];
+    const projected = projectRoleLifecycles({
+      threads,
+      workflow: workflow([deliveredNode, node("node-2", "character-2", "working")]),
+      runtime: runtime("node-2", "running"), session: null, turnsById: {},
+    });
+    expect(projected.get("stage:character_design"))
+      .toMatchObject({ phase: "succeeded", motionState: "idle" });
+    expect(projected.get("stage:prop_design"))
+      .toMatchObject({ phase: "working", motionState: "working" });
   });
 
   it("rejects stale session, turn, runtime, and node authority from another workflow", () => {

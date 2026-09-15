@@ -1,7 +1,10 @@
 import type { AgentCanvasChatTurnV2 } from "../../../../types-v2.ts";
 import type { StageThreadStatus } from "../stageThreadProjection.ts";
 
-export type AgentRoleMotionState = "idle" | "working" | "waiting";
+// Two visual states only: a role is either static (idle) or playing its
+// animated artwork (working) from the moment it starts until the next role
+// takes over.
+export type AgentRoleMotionState = "idle" | "working";
 
 export interface AgentRoleMotionTrack {
   part: string;
@@ -15,12 +18,10 @@ export interface AgentRoleMotionProgram {
   /** Optional finite first pass; its final visible pose must match working at time zero. */
   workingIntro?: AgentRoleMotionTrack[];
   working: AgentRoleMotionTrack[];
-  waiting: AgentRoleMotionTrack[];
 }
 
 export interface AgentRoleMotionController {
   playWorking(): void;
-  playWaiting(): void;
   settle(): Promise<void>;
   pause(): void;
   resume(): void;

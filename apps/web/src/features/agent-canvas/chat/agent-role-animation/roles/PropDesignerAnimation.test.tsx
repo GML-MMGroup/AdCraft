@@ -48,7 +48,7 @@ interface Translation {
 
 function trackFor(
   part: string,
-  phase: "working" | "waiting",
+  phase: "working",
 ): AgentRoleMotionTrack {
   const track = PROP_DESIGNER_MOTION_PROGRAM[phase]
     .find((candidate) => candidate.part === part);
@@ -152,31 +152,22 @@ describe("PropDesignerAnimation", () => {
       ?.closest('[data-part="lamp-body"]')).not.toBeNull();
   });
 
-  it("uses exact guide, chain-response, and waiting periods without duplicate ownership", () => {
+  it("uses exact guide and chain-response periods without duplicate ownership", () => {
     expect(PRIMARY_GUIDES.map((part) => trackFor(part, "working").options.duration))
       .toEqual(PRIMARY_GUIDES.map(() => 3_600));
     expect(trackFor("pull-chain", "working").options.duration).toBe(7_200);
     expect(trackFor("tassels", "working").options.duration).toBe(7_200);
     expect(trackFor("shade-light", "working").options.duration).toBe(7_200);
 
-    expect(PROP_DESIGNER_MOTION_PROGRAM.waiting.map((track) => track.part))
-      .toEqual(["shade-light", "guide-active-vertical"]);
-    expect(PROP_DESIGNER_MOTION_PROGRAM.waiting.map((track) => (
-      track.options.duration
-    ))).toEqual([4_800, 4_800]);
-
-    for (const phase of ["working", "waiting"] as const) {
-      const parts = PROP_DESIGNER_MOTION_PROGRAM[phase]
-        .map((track) => track.part);
-      expect(parts).toHaveLength(new Set(parts).size);
-    }
+    const parts = PROP_DESIGNER_MOTION_PROGRAM.working
+      .map((track) => track.part);
+    expect(parts).toHaveLength(new Set(parts).size);
   });
 
   it("keeps the complete lamp silhouette and blueprint sheet fixed", () => {
-    const movingParts = new Set([
-      ...PROP_DESIGNER_MOTION_PROGRAM.working,
-      ...PROP_DESIGNER_MOTION_PROGRAM.waiting,
-    ].map((track) => track.part));
+    const movingParts = new Set(
+      PROP_DESIGNER_MOTION_PROGRAM.working.map((track) => track.part),
+    );
 
     for (const part of FIXED_PARTS) expect(movingParts).not.toContain(part);
     expect(movingParts).not.toContain("root");
@@ -262,10 +253,9 @@ describe("PropDesignerAnimation", () => {
   it("keeps every guide clip on a static parent window around the animated child", () => {
     const { container } = render(<PropDesignerAnimation motionState="working" />);
     const artwork = container.querySelector<SVGSVGElement>("svg")!;
-    const motionTargets = new Set([
-      ...PROP_DESIGNER_MOTION_PROGRAM.working,
-      ...PROP_DESIGNER_MOTION_PROGRAM.waiting,
-    ].map(({ part }) => part));
+    const motionTargets = new Set(
+      PROP_DESIGNER_MOTION_PROGRAM.working.map(({ part }) => part),
+    );
 
     for (const partName of PRIMARY_GUIDES) {
       const animatedPart = artwork.querySelector<SVGGElement>(
@@ -364,27 +354,9 @@ describe("PropDesignerAnimation", () => {
     expect(Number(firstPositive?.offset)).toBeGreaterThan(chainPeakHoldEnd);
   });
 
-  it("keeps waiting light steady while only one guide moves slowly", () => {
-    const light = trackFor("shade-light", "waiting");
-    const guide = trackFor("guide-active-vertical", "waiting");
-    const guideTranslations = guide.keyframes.map(translationFor);
-
-    expect(light.keyframes.every((frame) => (
-      frame.opacity === 0.68 && frame.transform === undefined
-    ))).toBe(true);
-    expect(guide.keyframes.every((frame) => (
-      /^translateY\([\d.]+px\)$/.test(String(frame.transform))
-    ))).toBe(true);
-    expect(Math.max(...guideTranslations.map(({ y }) => y))).toBe(12);
-    expect(Math.min(...guideTranslations.map(({ y }) => y))).toBe(0);
-  });
-
   it("uses canonical held seams, transform/opacity keyframes, and explicit origins", () => {
     const { container } = render(<PropDesignerAnimation motionState="working" />);
-    const tracks = [
-      ...PROP_DESIGNER_MOTION_PROGRAM.working,
-      ...PROP_DESIGNER_MOTION_PROGRAM.waiting,
-    ];
+    const tracks = [...PROP_DESIGNER_MOTION_PROGRAM.working];
 
     for (const track of tracks) {
       const first = track.keyframes[0];
@@ -438,13 +410,13 @@ describe("PropDesignerAnimation", () => {
   });
 
   it("connects the root, state, and exported program to the shared lifecycle", () => {
-    const { container } = render(<PropDesignerAnimation motionState="waiting" />);
+    const { container } = render(<PropDesignerAnimation motionState="working" />);
     expect(useAgentRoleMotion).toHaveBeenCalledOnce();
 
     const [rootRef, motionState, program] = vi.mocked(useAgentRoleMotion)
       .mock.calls[0];
     expect(rootRef.current).toBe(container.querySelector("svg"));
-    expect(motionState).toBe("waiting");
+    expect(motionState).toBe("working");
     expect(program).toBe(PROP_DESIGNER_MOTION_PROGRAM);
   });
 });

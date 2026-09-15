@@ -43,7 +43,7 @@ interface Pose {
 
 function trackFor(
   part: string,
-  phase: "working" | "waiting",
+  phase: "working",
 ): AgentRoleMotionTrack {
   const track = VIDEO_DIRECTOR_MOTION_PROGRAM[phase]
     .find((candidate) => candidate.part === part);
@@ -214,7 +214,7 @@ describe("VideoDirectorAnimation", () => {
     vi.mocked(useAgentRoleMotion).mockClear();
   });
 
-  it.each(["idle", "working", "waiting"] as const)(
+  it.each(["idle", "working"] as const)(
     "omits the upper vertical dashed decoration in %s state",
     (motionState) => {
       const { container } = render(
@@ -277,13 +277,7 @@ describe("VideoDirectorAnimation", () => {
     }
     expect(VIDEO_DIRECTOR_MOTION_PROGRAM.workingEntryTimeMs).toBe(16);
 
-    expect(VIDEO_DIRECTOR_MOTION_PROGRAM.waiting.map(({ part }) => part))
-      .toEqual(["left-reel", "right-reel", "record-dot"]);
-    expect(VIDEO_DIRECTOR_MOTION_PROGRAM.waiting.every(
-      ({ options }) => options.duration === 4_800,
-    )).toBe(true);
-
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       const tracks = VIDEO_DIRECTOR_MOTION_PROGRAM[phase];
       expect(tracks.map(({ part }) => part))
         .toHaveLength(new Set(tracks.map(({ part }) => part)).size);
@@ -316,7 +310,7 @@ describe("VideoDirectorAnimation", () => {
     expect(startVelocity).toBe(0);
     expect(endVelocity).toBe(0);
 
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       for (const track of VIDEO_DIRECTOR_MOTION_PROGRAM[phase]) {
         expect(track.options.easing).toBe("linear");
         if (track.part === "left-reel" || track.part === "right-reel") {
@@ -381,18 +375,6 @@ describe("VideoDirectorAnimation", () => {
     }
 
     expect(Math.sign(signedPeaks[0])).toBe(-Math.sign(signedPeaks[1]));
-
-    for (const [part, end] of [
-      ["left-reel", -360],
-      ["right-reel", 360],
-    ] as const) {
-      const waiting = trackFor(part, "waiting");
-      expect(waiting.keyframes).toEqual([
-        { offset: 0, transform: "rotate(0deg)" },
-        { offset: 1, transform: `rotate(${String(end)}deg)` },
-      ]);
-      expect(waiting.options.duration).toBe(4_800);
-    }
   });
 
   it("keeps the camera, lens housing, path, and semantic containers fixed", () => {
@@ -400,10 +382,9 @@ describe("VideoDirectorAnimation", () => {
       <VideoDirectorAnimation motionState="working" />,
     );
     const artwork = container.querySelector<SVGSVGElement>("svg")!;
-    const targets = new Set([
-      ...VIDEO_DIRECTOR_MOTION_PROGRAM.working,
-      ...VIDEO_DIRECTOR_MOTION_PROGRAM.waiting,
-    ].map(({ part }) => part));
+    const targets = new Set(
+      VIDEO_DIRECTOR_MOTION_PROGRAM.working.map(({ part }) => part),
+    );
 
     for (const fixedPart of [
       "base",
@@ -488,9 +469,9 @@ describe("VideoDirectorAnimation", () => {
       .toEqual({ x: 12, y: -8 });
   });
 
-  it("pulses only the local orange record dot in working and waiting", () => {
+  it("pulses only the local orange record dot in working", () => {
     const { container } = render(
-      <VideoDirectorAnimation motionState="waiting" />,
+      <VideoDirectorAnimation motionState="working" />,
     );
     const artwork = container.querySelector<SVGSVGElement>("svg")!;
     const indicator = artwork.querySelector<SVGGElement>(
@@ -502,14 +483,14 @@ describe("VideoDirectorAnimation", () => {
 
     expect(dot.getAttribute("fill")).toBe("#FFB323");
     expect(indicator.querySelector("[data-record-housing]")).not.toBeNull();
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       const track = trackFor("record-dot", phase);
       expect(track.keyframes.every((frame) => frame.transform === undefined))
         .toBe(true);
       expect(new Set(track.keyframes.map((frame) => frame.opacity)).size)
         .toBeGreaterThan(1);
     }
-    expect(VIDEO_DIRECTOR_MOTION_PROGRAM.waiting.map(({ part }) => part))
+    expect(VIDEO_DIRECTOR_MOTION_PROGRAM.working.map(({ part }) => part))
       .not.toContain("record-indicator");
   });
 
@@ -555,7 +536,7 @@ describe("VideoDirectorAnimation", () => {
   });
 
   it("keeps full-turn reel seams continuous and holds other turnarounds", () => {
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       for (const track of VIDEO_DIRECTOR_MOTION_PROGRAM[phase]) {
         if (track.part === "left-reel" || track.part === "right-reel") {
           expect(track.keyframes[0]).toEqual({
@@ -577,7 +558,7 @@ describe("VideoDirectorAnimation", () => {
     );
     const artwork = container.querySelector<SVGSVGElement>("svg")!;
 
-    for (const phase of ["working", "waiting"] as const) {
+    for (const phase of ["working"] as const) {
       for (const track of VIDEO_DIRECTOR_MOTION_PROGRAM[phase]) {
         const target = artwork.querySelector<SVGGraphicsElement>(
           `[data-part="${track.part}"]`,

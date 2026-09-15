@@ -132,7 +132,6 @@ export const QUICK_MEDIA_MOTION_PROGRAM: AgentRoleMotionProgram = {
       end: 0.77,
     }),
   ],
-  waiting: [],
 };
 
 interface QuickMediaAnimationProps {
