@@ -3819,6 +3819,9 @@ describe("Agent Canvas normalizers", () => {
         metadata: {
           capability_id: "world_setting",
           proposal_id: "proposal-world-1",
+          materialization_id: "materialization-world-1",
+          turn_id: "turn-world-1",
+          status: "queued",
         },
         command_plan: null,
         action_receipt: null,
@@ -3832,6 +3835,11 @@ describe("Agent Canvas normalizers", () => {
       message_kind: "planning_progress",
       capability_id: "world_setting",
       proposal_id: "proposal-world-1",
+      metadata: {
+        materialization_id: "materialization-world-1",
+        turn_id: "turn-world-1",
+        status: "queued",
+      },
     });
   });
 

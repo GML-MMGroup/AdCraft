@@ -17,6 +17,7 @@ interface Input {
   threads: readonly StageThreadUnit[];
   turnsById: Readonly<Record<string, AgentCanvasChatTurnV2>>;
 }
+type Candidate = Omit<RoleLifecycleProjection, "motionState">;
 export function roleTerminal(status: string | null | undefined): Terminal | null {
   return status === "completed" || status === "failed" || status === "cancelled" || status === "superseded"
     ? status : null;
@@ -30,18 +31,27 @@ function projectThread(input: Input, unit: StageThreadUnit): RoleLifecycleProjec
     return roleTerminal(turn.status)
       ?? (turn.operation_stage === "cancelled" ? "cancelled" : null);
   };
-  const candidates: Omit<RoleLifecycleProjection, "motionState">[] = [
-    ...unit.activities.map(activity => ({
-      attemptKey: `activity:${activity.activity_id}:${activity.turn_id}`,
-      sequence: activity.sequence,
-      revision: 0,
-      attempt: 0,
-      terminal: roleTerminal(activity.status) ?? exactTurnTerminal(activity.turn_id),
-    })),
-    ...unit.proposals.filter(card => card.proposal.workflow_id === input.workflowId).map(card => {
+  const byTurn = new Map<string, Candidate>();
+  const byProposal = new Map<string, Candidate>();
+  const byMaterialization = new Map<string, { proposalId: string; candidate: Candidate }>();
+  const candidates: Candidate[] = [
+    ...unit.activities.map(activity => {
+      const candidate: Candidate = {
+        attemptKey: `activity:${activity.activity_id}:${activity.turn_id}`,
+        sequence: activity.sequence,
+        revision: 0,
+        attempt: 0,
+        terminal: roleTerminal(activity.status) ?? exactTurnTerminal(activity.turn_id),
+      };
+      const previous = byTurn.get(activity.turn_id);
+      if (!previous || candidate.sequence >= previous.sequence) byTurn.set(activity.turn_id, candidate);
+      return candidate;
+    }),
+    ...unit.proposals.filter(card => card.proposal.workflow_id === input.workflowId
+      && card.proposal.capability_id === unit.capability_id).map(card => {
       const proposal = card.proposal;
       const materialization = proposal.materialization;
-      return {
+      const candidate: Candidate = {
         attemptKey: materialization
           ? `materialization:${materialization.materialization_id}:${materialization.attempt_no}`
           : `proposal:${proposal.proposal_id}`,
@@ -54,15 +64,38 @@ function projectThread(input: Input, unit: StageThreadUnit): RoleLifecycleProjec
           : materialization ? roleTerminal(materialization.status) ?? exactTurnTerminal(materialization.turn_id)
           : proposal.availability === "applied" ? "completed" as const : null,
       };
+      byProposal.set(proposal.proposal_id, candidate);
+      if (materialization) {
+        byMaterialization.set(materialization.materialization_id, { proposalId: proposal.proposal_id, candidate });
+        byTurn.set(materialization.turn_id, candidate);
+      }
+      return candidate;
     }),
-    ...unit.planning.map(message => ({
+  ];
+  for (const message of unit.planning) {
+    const metadata = message.metadata;
+    const materializationId = typeof metadata?.materialization_id === "string" ? metadata.materialization_id : null;
+    const proposalId = message.proposal_id;
+    const turnId = typeof metadata?.turn_id === "string" ? metadata.turn_id : null;
+    let owner: Candidate | undefined;
+    if (materializationId) {
+      const match = byMaterialization.get(materializationId);
+      if (match && (!proposalId || match.proposalId === proposalId)) owner = match.candidate;
+    } else if (proposalId) {
+      owner = byProposal.get(proposalId);
+    } else if (turnId) {
+      owner = byTurn.get(turnId);
+    }
+    // A progress line describes its owning operation, not a new attempt. Keep
+    // its later sequence so late detail hydration can settle the pending line.
+    candidates.push(owner ? { ...owner, sequence: Math.max(owner.sequence, message.sequence) } : {
       attemptKey: `planning:${message.message_id}`,
       sequence: message.sequence,
       revision: 0,
       attempt: 0,
-      terminal: exactTurnTerminal(typeof message.metadata?.turn_id === "string" ? message.metadata.turn_id : null),
-    })),
-  ];
+      terminal: exactTurnTerminal(turnId),
+    });
+  }
   const latest = candidates.reduce<(typeof candidates)[number] | null>((selected, candidate) =>
     !selected || candidate.sequence > selected.sequence ? candidate : selected, null);
   const value = latest ?? {

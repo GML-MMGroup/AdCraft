@@ -3,8 +3,10 @@ import type {
   AgentCanvasChatTurnV2,
   ChatCapabilityActivityV2,
   ChatProposalCardV2,
+  ChatMessageV2,
 } from "../../../../types-v2.ts";
-import type { StageThreadUnit } from "../stageThreadProjection.ts";
+import { buildStageThreadTimeline, type StageThreadUnit } from "../stageThreadProjection.ts";
+import { normalizeAgentCanvasChatTimelineV2 } from "../../model/normalizers.ts";
 import { mergeRoleLifecycles, projectRoleLifecycles, roleTerminal, useTimelineRoleLifecycles } from "./roleLifecycleProjection.ts";
 import { renderHook } from "@testing-library/react";
 
@@ -53,6 +55,91 @@ function input(activities: ChatCapabilityActivityV2[] = [activity("a", "t", "wor
 function state(value = input()) {
   return projectRoleLifecycles(value).get("stage:character_design")!;
 }
+
+function planning(card: ChatProposalCardV2, metadata: Record<string, unknown> = {}, presentation = false): ChatMessageV2 {
+  const entry = {
+    entry_id: "planning-selected", workflow_id: "workflow-1", conversation_id: "conversation-1",
+    entry_type: "planning_progress", sequence_no: 8, speaker: null,
+    content: "Preparing the selected direction.", created_at: "2026-09-07T00:00:00Z",
+    metadata: { capability_id: card.proposal.capability_id, proposal_id: card.proposal.proposal_id,
+      materialization_id: card.proposal.materialization?.materialization_id, status: "queued", ...metadata },
+  };
+  const normalized = normalizeAgentCanvasChatTimelineV2({
+    workflow_id: "workflow-1", conversation_id: "conversation-1", items: [entry], next_cursor: 8,
+    ...(presentation ? { presentation_items: [{ ...entry, presentation_key: "planning:selected",
+      presentation_revision: 1, source_entry_ids: [entry.entry_id], message_key: "planning_progress.next_action",
+      message_args: {}, response_locale: "en-US" }] } : {}),
+  });
+  return (presentation ? normalized.presentationItems![0]!.item : normalized.items[0]) as ChatMessageV2;
+}
+
+describe("planning ownership through the real Timeline normalizer", () => {
+  it.each([false, true])("settles a completed World Setting despite later queued planning (presentation=%s)", presentation => {
+    const card = proposal("world", "materialization-turn", [], 7);
+    card.proposal.capability_id = "world_setting";
+    card.proposal.proposal_kind = "world_setting";
+    const message = planning(card, {}, presentation);
+    expect(message.metadata).toMatchObject({ materialization_id: "materialization-world", status: "queued" });
+    const threads = buildStageThreadTimeline([card, message]).filter((unit): unit is StageThreadUnit => unit.unit_type === "stage_thread");
+    const result = projectRoleLifecycles({ workflowId: "workflow-1", threads, turnsById: {} }).get("stage:world_setting");
+    expect(result).toMatchObject({ motionState: "idle", terminal: "completed", sequence: 8,
+      attemptKey: "materialization:materialization-world:1" });
+  });
+
+  it.each(["queued", "working", "completed", "failed"] as const)("inherits owning materialization %s, not planning copy", status => {
+    const card = proposal("one", "m", [], 7);
+    card.proposal.materialization!.status = status;
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [planning(card)] }] }).motionState)
+      .toBe(status === "queued" || status === "working" ? "working" : "idle");
+  });
+
+  it("accepts terminal hydration at the planning sequence and rejects stale working refresh", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card);
+    const before = { ...input([]), threads: [{ ...thread(), planning: [message] }] };
+    const after = { ...before, threads: [{ ...thread([card]), planning: [message] }] };
+    const pending = projectRoleLifecycles(before);
+    const settled = mergeRoleLifecycles(pending, projectRoleLifecycles(after));
+    expect(settled.get("stage:character_design")).toMatchObject({ motionState: "idle", sequence: 8 });
+    card.proposal.materialization!.status = "working";
+    expect(mergeRoleLifecycles(settled, projectRoleLifecycles(after)).get("stage:character_design")?.motionState).toBe("idle");
+    card.proposal.materialization!.attempt_no = 2;
+    expect(mergeRoleLifecycles(settled, projectRoleLifecycles(after)).get("stage:character_design")?.motionState).toBe("working");
+  });
+
+  it("uses legacy proposal-only planning identity without requiring a Turn", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, { materialization_id: undefined });
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("idle");
+  });
+
+  it.each([
+    { materialization_id: "unrelated-materialization" },
+    { proposal_id: "unrelated-proposal" },
+  ])("does not use another task's terminal when explicit identity differs: %j", metadata => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, metadata);
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
+  });
+
+  it("does not inherit a terminal from a cross-workflow proposal", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card);
+    card.proposal.workflow_id = "different-workflow";
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
+  });
+
+  it("keeps a genuinely new unassociated planning task working after old work completed", () => {
+    const card = proposal("one", "m", [], 7);
+    const message = planning(card, { proposal_id: undefined, materialization_id: undefined, turn_id: "new-turn" });
+    expect(state({ ...input(), threads: [{ ...thread([card]), planning: [message] }] }).motionState).toBe("working");
+  });
+
+  it("preserves exact Turn terminal for standalone planning", () => {
+    const message = planning(proposal("one", "m", []), { proposal_id: undefined, materialization_id: undefined, turn_id: "planning-turn" });
+    expect(state({ ...input([]), threads: [{ ...thread(), planning: [message] }], turnsById: { "planning-turn": turn("planning-turn", "completed") } }).motionState).toBe("idle");
+  });
+});
 describe("Timeline role presentation lifecycle", () => {
   it("starts without Turn hydration", () => {
     expect(state().motionState).toBe("working");

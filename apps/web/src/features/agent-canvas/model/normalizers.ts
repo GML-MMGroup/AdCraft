@@ -4323,6 +4323,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           conversation_id: entry.conversation_id,
           speaker: "adcraft_video_agent",
           text: entry.content,
+          ...(Object.keys(entry.metadata).length > 0 ? { metadata: entry.metadata } : {}),
           linked_node_ids: [],
           script_node_id: null,
           proposal_id: typeof entry.metadata.proposal_id === "string"

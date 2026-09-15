@@ -4,6 +4,7 @@ import { agentCanvasApi } from "../../src/api/agentCanvasApi.ts";
 import { AgentCanvasChatPanel } from "../../src/features/agent-canvas/chat/AgentCanvasChatPanel.tsx";
 import { projectRoleLifecycles } from "../../src/features/agent-canvas/chat/agent-role-animation/roleLifecycleProjection.ts";
 import { buildStageThreadTimeline } from "../../src/features/agent-canvas/chat/stageThreadProjection.ts";
+import { normalizeAgentCanvasChatTimelineV2 } from "../../src/features/agent-canvas/model/normalizers.ts";
 import type { AgentCanvasChatTurnV2, AgentCanvasChatViewTimelineV2, AgentCanvasWorkflowV2, CanvasNodeV2,
   CanvasRuntimeSnapshotV2, ChatProposalCardV2, ChatTimelineItemV2, GuidedSessionStateV2 } from "../../src/types-v2.ts";
 import "../../src/features/agent-canvas/chat/agent-canvas-chat.css";
@@ -147,6 +148,18 @@ function LifecycleFixture() {
     attempt_stage: null, retryable: false, validation_paths: [], suggested_actions: [],
     completion_mode: null, warning_code: null,
   }, currentProposal];
+  if (new URLSearchParams(location.search).has("planning-progress")) {
+    // Same wire shape as the stale queued hint following a completed Proposal.
+    const planning = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: workflow.workflow_id, conversation_id: "fixture-conversation", next_cursor: revision * 2 + 2,
+      items: [{ entry_id: `planning-${materialization.materialization_id}`, workflow_id: workflow.workflow_id,
+        conversation_id: "fixture-conversation", sequence_no: revision * 2 + 2, entry_type: "planning_progress",
+        speaker: null, content: "Preparing the selected direction.", created_at: now,
+        metadata: { capability_id: "character_design", proposal_id: currentProposal.proposal.proposal_id,
+          materialization_id: materialization.materialization_id, status: "queued" } }],
+    });
+    items.push(...planning.items);
+  }
   const lifecycle = useMemo(() => {
     const threads = buildStageThreadTimeline(items).filter(unit => unit.unit_type === "stage_thread");
     return projectRoleLifecycles({ threads, workflowId: workflow.workflow_id, turnsById: fixtureTurns }).values().next().value!;

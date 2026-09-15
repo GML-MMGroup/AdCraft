@@ -3,6 +3,22 @@ import { expect, test } from "@playwright/test";
 const URL = "/tests/browser/agent-role-lifecycle-mock.html";
 const character = ".agent-chat__stage-thread > header .is-role-character-design";
 
+test("later queued planning inherits task completion, failure and retry without keeping artwork alive", async ({ page }) => {
+  await page.goto(`${URL}?planning-progress`);
+  const role = page.locator(character);
+  const frame = role.getByTestId("agent-role-animation-frame");
+  await expect(frame).toHaveAttribute("data-motion-state", "working");
+  for (const terminal of ["Media success", "failed", "cancelled", "superseded"]) {
+    await page.getByRole("button", { name: terminal, exact: true }).click();
+    await expect(frame).toHaveAttribute("data-motion-state", "idle");
+    await expect(role.locator("img")).toBeVisible();
+    await expect(role.locator("svg")).toHaveCount(0);
+    await page.getByRole("button", { name: "Retry task" }).click();
+    await expect(frame).toHaveAttribute("data-motion-state", "working");
+    await expect(role.locator("svg")).toBeVisible();
+  }
+});
+
 test("prompt and media intermediate states do not stop motion; explicit role completion does", async ({ page }) => {
   await page.goto(URL);
   const role = page.locator(character);
